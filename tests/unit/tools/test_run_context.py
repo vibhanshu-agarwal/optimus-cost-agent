@@ -162,6 +162,7 @@ def test_a_nested_default_pytest_completes_and_names_this_run_as_its_parent(requ
         (("--test-run-context=passive",), "requested", 0),
         (("-m", "requires_plan12_probe_redis"), "non_default_selection", 5),
         (("-m", "requires_plan12_capture_postgres"), "non_default_selection", 5),
+        (("-m", "requires_plan12_index_redis"), "non_default_selection", 5),
     ],
 )
 def test_other_selections_stay_passive(arguments: tuple[str, ...], reason: str, exit_code: int) -> None:

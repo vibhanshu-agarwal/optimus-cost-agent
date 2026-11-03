@@ -1,0 +1,142 @@
+"""Plan 12.10 Task 2: the context-index contract and admission, without Redis. The store's behaviour is proven on the real
+dedicated Redis in tests/integration/context."""
+
+from __future__ import annotations
+
+import json
+import threading
+import time
+from typing import Any
+
+import pytest
+
+from optimus_gateway import memory_index
+from optimus_security import memory_index_contract as mic
+
+_SCOPE = "ab" * 32
+_COVERAGE = json.dumps({"op": "coverage", "scope": _SCOPE}).encode()
+
+
+class _Store:
+    def __init__(self, *, release: threading.Event | None = None, error: Exception | None = None) -> None:
+        self.release = release
+        self.error = error
+        self.calls = 0
+
+    def dispatch(self, _body: dict[str, Any]) -> dict[str, Any]:
+        self.calls += 1
+        if self.release is not None:
+            self.release.wait(5)
+        if self.error is not None:
+            raise self.error
+        return {"status": "ok"}
+
+
+def _service(store: _Store, **kwargs: Any) -> memory_index.IndexService:
+    return memory_index.IndexService(store, **kwargs)  # type: ignore[arg-type]
+
+
+def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
+    release = threading.Event()
+    store = _Store(release=release)
+    service = _service(store)
+    results: list[int] = []
+    threads = [threading.Thread(target=lambda: results.append(service.handle(_COVERAGE, deadline=time.monotonic() + 5)[0]))
+               for _ in range(mic.SERVING_WORKERS + mic.QUEUE_DEPTH)]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + 5
+    while store.calls < mic.SERVING_WORKERS and time.monotonic() < deadline:
+        time.sleep(0.01)
+    time.sleep(0.05)
+    started = time.monotonic()
+    refused = service.handle(_COVERAGE, deadline=time.monotonic() + 5)
+    assert refused == (503, mic.error_body("INDEX_BUSY")) and time.monotonic() - started < 1
+    release.set()
+    for thread in threads:
+        thread.join(10)
+    assert store.calls == len(threads)
+
+
+def test_a_request_past_its_deadline_is_refused_without_reaching_the_store() -> None:
+    release = threading.Event()
+    store = _Store(release=release)
+    service = _service(store)
+    holders = [threading.Thread(target=service.handle, args=(_COVERAGE,), kwargs={"deadline": time.monotonic() + 5}) for _ in range(mic.SERVING_WORKERS)]
+    for holder in holders:
+        holder.start()
+    while store.calls < mic.SERVING_WORKERS:
+        time.sleep(0.01)
+    assert service.handle(_COVERAGE, deadline=time.monotonic() + 0.05) == (503, mic.error_body("INDEX_BUSY"))
+    release.set()
+    for holder in holders:
+        holder.join(10)
+
+
+def test_a_failed_startup_check_is_a_stable_refusal_and_is_tried_again() -> None:
+    store = _Store()
+    outcomes: list[Exception | None] = [memory_index.IndexStartupError("INDEX_REDIS_UNREACHABLE"), None]
+
+    def verify() -> None:
+        outcome = outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+
+    service = _service(store, verify=verify)
+    assert service.handle(_COVERAGE, deadline=time.monotonic() + 1) == (503, mic.error_body("INDEX_REDIS_UNREACHABLE"))
+    assert store.calls == 0
+    assert service.handle(_COVERAGE, deadline=time.monotonic() + 1) == (200, {"status": "ok"})
+
+
+def test_a_missing_password_serves_a_stable_refusal() -> None:
+    from optimus_security.memory_index_config import EmbeddingConfig, MemoryIndexConfig
+
+    class Keyring:
+        def get_password(self, _service: str, _name: str) -> None:
+            return None
+
+    embedding = EmbeddingConfig("m", "s", "r", "MIT", 8, 16, "0" * 64)
+    config = MemoryIndexConfig("optimus-memory-x", "redis@sha256:" + "0" * 64, "c1", "v1", "127.0.0.1", 9, "u", "n", 64, "0" * 64, embedding)
+    service = memory_index.build_index_service(config, keyring_backend=Keyring(), hmac_key=b"k" * 32)
+    assert service.handle(_COVERAGE, deadline=time.monotonic() + 1) == (503, mic.error_body("INDEX_CREDENTIAL_MISSING"))
+
+
+def test_the_endpoint_never_shows_its_password() -> None:
+    endpoint = memory_index.IndexEndpoint("127.0.0.1", 1, "u", "hunter2", "r")  # pragma: allowlist secret - synthetic test fixture
+    assert "hunter2" not in repr(endpoint)
+
+
+@pytest.mark.parametrize("path", ["../x.py", "/abs.py", "a/../b.py", "C:/x.py", "a\\b.py", "", "a//b.py", "a/./b.py", "bad\x00.py"])
+def test_a_path_cannot_leave_its_scope(path: str) -> None:
+    with pytest.raises(mic.IndexRequestError):
+        mic.relative_path(path)
+
+
+@pytest.mark.parametrize("terms", [["ok", "a b"], ["*"], ["@scope:{x}"], ["UPPER"], [], ["a"] * (mic.MAX_TEXT_TERMS + 1), "alpha", [1]])
+def test_a_lexical_query_cannot_become_query_syntax(terms: Any) -> None:
+    with pytest.raises(mic.IndexRequestError):
+        mic.query_terms(terms)
+
+
+def test_a_non_finite_vector_is_refused() -> None:
+    import struct
+
+    with pytest.raises(mic.IndexRequestError):
+        mic.decode_vector(mic.encode_vector(struct.pack("<2f", 1.0, float("nan"))), 2)
+    with pytest.raises(mic.IndexRequestError):
+        mic.decode_vector("not base64!!", 2)
+    assert mic.decode_vector(mic.encode_vector(struct.pack("<2f", 1.0, 2.0)), 2) == struct.pack("<2f", 1.0, 2.0)
+
+
+def test_progress_cannot_carry_a_payload() -> None:
+    body = {"op": "cursor", "scope": _SCOPE, "action": "set", "token": 1, "value": {"phase": "embedding", "source": "print('x')"}}
+    with pytest.raises(mic.IndexRequestError):
+        mic.parse_request(json.dumps(body).encode())
+
+
+@pytest.mark.parametrize("field", ["body", "content", "text", "raw", "source"])
+def test_a_record_cannot_carry_a_body_field(field: str) -> None:
+    record = {"id": "0" * 64, "kind": "file", "path": "a.py", "path_id": "1" * 64, "file_hash": "2" * 64, "language": "python", "terms": "a", field: "x"}
+    body = {"op": "batch", "scope": _SCOPE, "token": 1, "epoch": 1, "records": [record]}
+    with pytest.raises(mic.IndexRequestError):
+        mic.parse_request(json.dumps(body).encode())

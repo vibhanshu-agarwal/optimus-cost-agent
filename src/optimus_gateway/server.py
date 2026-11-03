@@ -23,7 +23,7 @@ from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependenc
 from optimus_gateway.upstream_client import UpstreamClient, begin_request_budget, end_request_budget
 from optimus_gateway.usage_capture import handle_usage_capture_request
 from optimus_gateway.usage_report import handle_usage_report_request
-from optimus_security import gateway_identity, usage_report_contract
+from optimus_security import gateway_identity, memory_index_contract, usage_report_contract
 from optimus_security.usage_capture_contract import CAPTURE_REQUEST_HEADER
 from optimus_security.usage_capture_contract import MAX_BODY_BYTES as MAX_CAPTURE_BODY_BYTES
 from optimus_security.usage_capture_contract import PATH as CAPTURE_PATH
@@ -55,6 +55,10 @@ _monotonic = time.monotonic
 _CORE_ROUTES = frozenset(
     {"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces", CAPTURE_PATH, _REPORT_PATH, _IDENTITY_PATH}
 )
+# Plan 12.10: the index route's body and write bounds (agent-selected); the store's own deadline is the contract's.
+_INDEX_BODY_SECONDS = 5.0
+_INDEX_WRITE_SECONDS = 5.0
+_INDEX_PATH = memory_index_contract.PATH
 
 
 class _RejectedPostError(Exception):
@@ -132,7 +136,8 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         path = self.path
         tool_dependencies = self.tool_dependencies
-        if path not in _CORE_ROUTES and not (path in TOOL_ROUTE_PATHS and tool_dependencies is not None):
+        serves_index = path == _INDEX_PATH and self.config.memory_index is not None
+        if path not in _CORE_ROUTES and not serves_index and not (path in TOOL_ROUTE_PATHS and tool_dependencies is not None):
             self._reject_unhandled_post()
             return
         if path == _IDENTITY_PATH:
@@ -140,6 +145,9 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             return
         if self._bound_to_another_identity():
             self._refuse_other_identity(path)
+            return
+        if serves_index:
+            self._handle_index()
             return
 
         # Correction plan v4, C9: one request-scoped diagnostic context per model request, read by `_finish` into the
@@ -273,6 +281,32 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             self._send_json(status, body, write_deadline=_monotonic() + _REPORT_WRITE_SECONDS)
         except TimeoutError:
             request_diagnostics.write_log_line(json.dumps({"event": "reply_undeliverable", "path": _REPORT_PATH, "status": status}))
+
+    def _handle_index(self) -> None:
+        """Plan 12.10 `POST /v1/context/index`: authenticated before any body byte is read, framed as the capture route is,
+        then admitted by the index service, so it never holds a model or capture request. Every refusal is a stable code."""
+        self.close_connection = True
+        service = self.config.memory_index
+        assert service is not None
+        deadline = _monotonic() + _INDEX_BODY_SECONDS
+        try:
+            if not authorize_bearer(authorization_header=self.headers.get("Authorization"), shared_secret=self.config.shared_secret):
+                raise _RejectedPostError(HTTPStatus.UNAUTHORIZED, "UNAUTHORIZED")
+            length = _rejected_post_length(self.headers, memory_index_contract.MAX_REQUEST_BYTES)
+            if not length:
+                raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "REQUEST_INVALID")
+            kept: list[bytes] = []
+            _discard_rejected_post_body(self.rfile, self.connection, length, deadline, kept)
+        except _RejectedPostError as rejection:
+            code = {HTTPStatus.UNAUTHORIZED: "UNAUTHORIZED", HTTPStatus.REQUEST_ENTITY_TOO_LARGE: "REQUEST_TOO_LARGE",
+                    HTTPStatus.REQUEST_TIMEOUT: "INDEX_TIMEOUT"}.get(rejection.status, "REQUEST_INVALID")
+            status, body = int(rejection.status), memory_index_contract.error_body(code)
+        else:
+            status, body = service.handle(b"".join(kept), deadline=_monotonic() + memory_index_contract.DEADLINE_SECONDS)
+        try:
+            self._send_json(status, body, write_deadline=_monotonic() + _INDEX_WRITE_SECONDS)
+        except TimeoutError:
+            request_diagnostics.write_log_line(json.dumps({"event": "reply_undeliverable", "path": _INDEX_PATH, "status": status}))
 
     def _handle_identity(self) -> None:
         """#465 `POST /v1/local/identity`: authenticated before any body byte is read, then framed as the capture route

@@ -12,6 +12,7 @@ Each field says what goes wrong if two launches differ on it:
 - ``registry``, ``composition``: which models, providers and controls are admitted (the Auto and test compositions).
 - ``stage_c``: the released test envelope, which an ordinary Gateway does not enforce.
 - ``accounting``: where capture lands, and how it is read.
+- ``memory_index``: which dedicated index this Gateway serves (Plan 12.10).
 - ``tool_policy``: which web and package upstreams the tool routes call, with which keys and limits.
 
 Workspace, branch, security snapshot, session, nonce and expiry stay out: they authorize a host, not shared upstream
@@ -60,6 +61,7 @@ TOOL_POLICY_NAMES = (
 # Each field and how a refusal names it to the person reading the Agent Panel.
 FIELD_LABELS: Mapping[str, str] = {
     "accounting": "usage accounting",
+    "memory_index": "context index",
     "composition": "composition (ordinary, Auto or test)",
     "gateway_key": "Gateway key",
     "provider": "provider",
@@ -120,9 +122,11 @@ def compose_identity(
     accounting: str | None,
     tool_environ: Mapping[str, str],
     hmac_key: bytes,
+    memory_index: str | None = None,
 ) -> GatewayIdentity:
     values = {
         "accounting": accounting or "",
+        "memory_index": memory_index or "",
         "composition": composition,
         "gateway_key": shared_secret,
         "provider": provider,

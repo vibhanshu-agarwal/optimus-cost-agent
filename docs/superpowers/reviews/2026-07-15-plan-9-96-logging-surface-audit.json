@@ -609,6 +609,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approval_cli:_cmd_memory_setup:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the setup description and outcome: resource names and a config path; the password never reaches this function.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_memory_setup:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the setup description and outcome: resource names and a config path; the password never reaches this function.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:confirm:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: shows the setup description: resource names and a digest; the password does not exist yet.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.local_infra:record_gateway_refusal:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: appends one JSON line with a typed refusal code and a fixed message naming a loopback address (never the configured URL's path or query) and configuration labels to the launch's own Gateway log; fingerprints and values stay out.",
@@ -630,6 +654,22 @@
       "rationale": "Inspection: one JSON record with a typed event or refusal code, a known route or a fixed message naming a loopback address and configuration labels; fingerprints and values stay out.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_refusal_reaches_the_launchs_own_log_without_secrets",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.memory_setup:run_setup:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file; the password goes only to the keyring.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.memory_setup:run_setup:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file; the password goes only to the keyring.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
       "evidence_tier": "unit"
     },
     {
@@ -1481,6 +1521,94 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.memory_index:IndexStore._begin:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore._ensure_search_index:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore._op_lease:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore._reply:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: sizes a schema-limited record; nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_the_endpoint_never_shows_its_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore._seal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a cursor of an epoch and a hex id, sealed for this scope.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_the_endpoint_never_shows_its_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.publish:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.publish:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.write:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:verify_resource:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:verify_resource:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.observability:_coerce_attribute_value:json_serialization",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:_coerce_attribute_value:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback. `_coerce_attribute_value` only runs on the already-`sanitize_for_persistence`-processed value returned by `_redact_field` in `_apply_redacted_attributes`; it never receives raw untrusted content directly.",
@@ -1502,6 +1630,14 @@
       "rationale": "Plan 12.4 Task 1: the decision envelope's validation errors are fixed texts that echo no request content, and each still passes the shared sanitizer (sanitize_error_message) before the 400 reply; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_malformed_envelope_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._handle_index:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a fixed event, the path and the status code; never a request body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_the_endpoint_never_shows_its_password",
       "evidence_tier": "unit"
     },
     {
@@ -1678,6 +1814,22 @@
       "rationale": "Inspection: serialize_gateway_child_manifest emits the fixed child-manifest schema with provider/shared-secret fingerprints rather than credential literals.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/security/test_launch_manifest.py::test_manifest_contains_no_raw_secret",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.memory_index_config:artifact_digest:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the artifact to hash it; nothing is written or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.memory_index_config:memory_index_literal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes a path and a digest for the signed manifest.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
       "evidence_tier": "unit"
     },
     {
