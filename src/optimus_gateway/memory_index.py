@@ -108,11 +108,19 @@ class IndexStore:
         self._cursor_key = cursor_key
         self._created_indexes: set[int] = set()
         self._lock = threading.Lock()
+        self._request = threading.local()
 
-    def dispatch(self, body: dict[str, Any]) -> dict[str, Any]:
+    def dispatch(self, body: dict[str, Any], *, deadline: float | None = None) -> dict[str, Any]:
+        self._request.deadline = deadline
         handler = getattr(self, f"_op_{body['op']}")
         result: dict[str, Any] = handler(body["scope"], body)
         return result
+
+    def _on_time(self) -> None:
+        """Called inside anything that takes many steps. Before MULTI, so stopping leaves nothing half-written."""
+        deadline = getattr(self._request, "deadline", None)
+        if deadline is not None and time.monotonic() >= deadline:
+            raise mic.IndexRequestError("INDEX_TIMEOUT", 503)
 
     # --- line and generation -------------------------------------------------------------------------------------------
 
@@ -200,13 +208,22 @@ class IndexStore:
         key, owner = self._lease_key(scope, body["kind"]), body["owner"]
         if body["action"] == "acquire":
             token = self._redis.incr(f"{_PREFIX}:fence")
-            if self._redis.set(key, f"{token}:{owner}", nx=True, px=body["ttl_ms"]):
-                return {"status": "ok", "token": token}
-            raw = self._redis.get(key)
-            if raw and _text(raw).split(":", 1)[1] == owner:  # the same owner resuming takes a new fence and retires its old one
-                self._redis.set(key, f"{token}:{owner}", px=body["ttl_ms"])
-                return {"status": "ok", "token": token}
-            raise mic.IndexRequestError("LEASE_HELD", 409)
+            for _ in range(_WATCH_ATTEMPTS):
+                with self._redis.pipeline() as pipe:
+                    try:
+                        pipe.watch(key)
+                        raw = pipe.get(key)
+                        # The same owner resuming takes a new fence and retires its old one. Another owner's lease is never replaced.
+                        if raw and _text(raw).split(":", 1)[1] != owner:
+                            pipe.unwatch()
+                            raise mic.IndexRequestError("LEASE_HELD", 409)
+                        pipe.multi()
+                        pipe.set(key, f"{token}:{owner}", px=body["ttl_ms"])
+                        pipe.execute()
+                        return {"status": "ok", "token": token}
+                    except WatchError:
+                        continue
+            raise mic.IndexRequestError("LEASE_CONTENDED", 409)
         expected = f"{body['token']}:{owner}"
         for _ in range(_WATCH_ATTEMPTS):
             with self._redis.pipeline() as pipe:
@@ -266,13 +283,15 @@ class IndexStore:
             removed: list[str] = []
             abandoned: list[tuple[str, str]] = []
             for removal in removals:
+                self._on_time()
                 path_id = removal["path_id"]
                 for raw in pipe.smembers(f"{_PREFIX}:members:{scope}:{path_id}"):
-                    added, file_hash = pipe.hmget(_text(raw), "epoch_added", "file_hash")
+                    added, file_hash, retired_at = pipe.hmget(_text(raw), "epoch_added", "file_hash", "epoch_removed")
                     if added is None:
                         continue
-                    if int(added) < epoch:  # a reader pinned to an earlier epoch still needs it
-                        removed.append(_text(raw))
+                    if int(added) < epoch:  # an earlier epoch's view still needs it, so a record already retired stays as it was
+                        if int(retired_at) == mic.NEVER_REMOVED:
+                            removed.append(_text(raw))
                     elif _text(file_hash) != removal.get("keep_hash"):  # this epoch's own leftover: no reader ever saw it
                         abandoned.append((_text(raw), path_id))
             pipe.multi()
@@ -318,7 +337,17 @@ class IndexStore:
             raise mic.IndexRequestError("NOT_PUBLISHED", 404)
         return current["epoch"], current
 
+    def _still_readable(self, scope: str, result: dict[str, Any]) -> dict[str, Any]:
+        """Checked after a read, so a prune that overtook it is a refusal the host can retry, never a silently partial answer."""
+        floor = self._redis.hget(f"{_PREFIX}:line:{scope}", "floor")
+        if floor is not None and result["epoch"] < int(floor):
+            raise mic.IndexRequestError("EPOCH_EXPIRED", 409)
+        return result
+
     def _op_query(self, scope: str, body: dict[str, Any]) -> dict[str, Any]:
+        return self._still_readable(scope, self._query(scope, body))
+
+    def _query(self, scope: str, body: dict[str, Any]) -> dict[str, Any]:
         line = self._line(scope)
         dimensions = int(line["dimensions"])
         epoch, current = self._visible_epoch(scope, body)
@@ -391,7 +420,11 @@ class IndexStore:
         return payload
 
     def _op_catalogue(self, scope: str, body: dict[str, Any]) -> dict[str, Any]:
-        """The file records live at one epoch, in path-id order. A cursor stays bound to its scope and epoch."""
+        return self._still_readable(scope, self._catalogue(scope, body))
+
+    def _catalogue(self, scope: str, body: dict[str, Any]) -> dict[str, Any]:
+        """The file records live at one epoch, in path-id order. A cursor stays bound to its scope and epoch. `unfinished` names
+        paths with records but no file record, which is what a crash leaves, so a resume can remove them even if the file has gone."""
         self._line(scope)
         start = "-"
         if "cursor" in body:
@@ -404,24 +437,33 @@ class IndexStore:
         limit = body.get("limit", mic.MAX_PAGE)
         path_ids = [_text(p) for p in self._redis.zrangebylex(f"{_PREFIX}:files:{scope}", start, "+", start=0, num=limit)]
         files: list[dict[str, Any]] = []
+        unfinished: list[str] = []
         for path_id in path_ids:
-            found = self._live_file(scope, path_id, epoch)
+            self._on_time()
+            found, live = self._live_file(scope, path_id, epoch)
             if found is not None:
                 files.append(found)
+            elif live:
+                unfinished.append(path_id)
         cursor = self._seal(scope, {"epoch": epoch, "after": path_ids[-1]}) if len(path_ids) == limit else None
-        return {"status": "ok", "epoch": epoch, "current": current, "files": files, "cursor": cursor}
+        return {"status": "ok", "epoch": epoch, "current": current, "files": files, "unfinished": unfinished, "cursor": cursor}
 
-    def _live_file(self, scope: str, path_id: str, epoch: int) -> dict[str, Any] | None:
+    def _live_file(self, scope: str, path_id: str, epoch: int) -> tuple[dict[str, Any] | None, bool]:
+        """This path's file record at this epoch, and whether anything of the path is live there at all."""
         members = [_text(raw) for raw in self._redis.smembers(f"{_PREFIX}:members:{scope}:{path_id}")]
         with self._redis.pipeline(transaction=False) as pipe:
             for key in members:
                 pipe.hmget(key, "kind", "path", "file_hash", "language", "modified", "epoch_added", "epoch_removed", "description")
             rows = pipe.execute()
+        live = False
         for kind, path, file_hash, language, modified, added, removed, description in rows:
-            if kind == b"file" and int(added) <= epoch < int(removed):
-                return {"path": _text(path), "path_id": path_id, "file_hash": _text(file_hash), "language": _text(language),
-                        "modified": int(modified) if modified else None, "description": _text(description) if description else None}
-        return None
+            if added is None or not int(added) <= epoch < int(removed):
+                continue
+            live = True
+            if kind == b"file":
+                return ({"path": _text(path), "path_id": path_id, "file_hash": _text(file_hash), "language": _text(language),
+                         "modified": int(modified) if modified else None, "description": _text(description) if description else None}, True)
+        return None, live
 
     # --- progress and cleanup ------------------------------------------------------------------------------------------
 
@@ -439,25 +481,26 @@ class IndexStore:
         return self._fenced(scope, body["token"], write)
 
     def _op_cleanup(self, scope: str, body: dict[str, Any]) -> dict[str, Any]:
-        """One bounded step. `prune` removes what no reader can name: records retired at or before the published epoch and
-        leftovers of abandoned epochs. `drop` removes the scope. The caller repeats until no cursor comes back."""
+        """One bounded step. `prune` raises the oldest readable epoch to the published one, so a reader pinned earlier is refused and
+        retries rather than getting part of a view, then removes what no reader can now name: records retired at or before that
+        epoch and leftovers of abandoned ones. `drop` removes the scope. The caller repeats until no cursor comes back."""
         cursor = 0
         if "cursor" in body:
             sealed = self._unseal(scope, body["cursor"])
             if sealed.get("cleanup") != body["action"]:
                 raise mic.IndexRequestError("CURSOR_INVALID")
             cursor = sealed["next"]
-        line = self._line(scope)
-        current = self._current(scope)
-        published = current["epoch"] if current else 0
-        building = int(line["building"]) if "building" in line else None
-        pattern = f"{_RECORD_PREFIX}{line['dimensions']}:{scope}:*"
         dropping = body["action"] == "drop"
 
-        def step(pipe: Any, _line: dict[str, str]) -> dict[str, Any]:
+        def step(pipe: Any, line: dict[str, str]) -> dict[str, Any]:
+            raw_current = pipe.get(f"{_PREFIX}:current:{scope}")
+            published = json.loads(raw_current)["epoch"] if raw_current else 0
+            building = int(line["building"]) if "building" in line else None
+            pattern = f"{_RECORD_PREFIX}{line['dimensions']}:{scope}:*"
             next_cursor, keys = pipe.scan(cursor=cursor, match=pattern, count=_CLEANUP_STEP)
             doomed: list[tuple[str, str]] = []
             for raw in keys:
+                self._on_time()
                 key = _text(raw)
                 added, removed, path_id = pipe.hmget(key, "epoch_added", "epoch_removed", "path_id")
                 if added is None:
@@ -467,6 +510,8 @@ class IndexStore:
                 if dropping or abandoned or retired:
                     doomed.append((key, _text(path_id)))
             pipe.multi()
+            if not dropping:
+                pipe.hset(f"{_PREFIX}:line:{scope}", "floor", str(published))
             for key, path_id in doomed:
                 pipe.delete(key)
                 pipe.srem(f"{_PREFIX}:members:{scope}:{path_id}", key)
@@ -502,6 +547,8 @@ class IndexService:
         finally:
             self._waiting.release()
         try:
+            if time.monotonic() >= deadline:
+                return 503, mic.error_body("INDEX_TIMEOUT")
             request = mic.parse_request(raw_body)
             if not self._verified and self._verify is not None:
                 try:
@@ -509,7 +556,7 @@ class IndexService:
                 except IndexStartupError as refusal:
                     return 503, mic.error_body(refusal.code)
                 self._verified = True
-            return 200, self._store.dispatch(request)
+            return 200, self._store.dispatch(request, deadline=deadline)
         except mic.IndexRequestError as refusal:
             return refusal.status, mic.error_body(refusal.code)
         except (RedisConnectionError, TimeoutError, OSError):

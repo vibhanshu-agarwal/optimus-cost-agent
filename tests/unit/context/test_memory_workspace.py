@@ -13,6 +13,7 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context import memory_workspace
 from optimus.context.memory_workspace import EmbedderUnavailableError, FastembedEmbedder, GatewayIndexStorage, current_branch, index_scope
 from optimus.context.project_registry import ProjectRegistration
+from optimus.guardrails.file_policy import FilePolicy
 from optimus.usage.savings_report import ReportTransportError
 from optimus_security.memory_index_config import ARTIFACTS_NAME, EmbeddingConfig, artifact_digest
 
@@ -105,3 +106,27 @@ def test_absent_packages_are_a_stable_refusal(tmp_path: Path, monkeypatch: pytes
 
 def test_importing_the_host_side_needs_no_optional_package() -> None:
     assert "fastembed" not in vars(memory_workspace)
+
+
+def _source(root: Path) -> memory_workspace.WorkspaceIndexSource:
+    return memory_workspace.WorkspaceIndexSource(FilePolicy(root))
+
+
+def test_a_repository_git_cannot_read_never_repeats_a_revision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    source = _source(tmp_path)
+    monkeypatch.setattr(memory_workspace, "_git", lambda *_a, **_k: None)
+    first, second = source.revision(), source.revision()
+    assert first[0] != second[0] and first[1] is True
+
+
+def test_outside_git_the_revision_follows_the_files_and_counts_as_dirty(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    source = _source(tmp_path)
+    first = source.revision()
+    assert source.revision() == first and first[1] is True
+    (tmp_path / "a.py").write_text("x = 22\n", encoding="utf-8")
+    assert source.revision()[0] != first[0]
+    (tmp_path / "b.py").write_text("y = 1\n", encoding="utf-8")
+    assert source.revision()[0] != first[0]

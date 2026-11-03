@@ -8,14 +8,18 @@ import json
 import threading
 import time
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from optimus.config.gateway import OptimusGatewaySettings
+from optimus.gateway.client import GatewayClient
+from optimus.usage.capture_delivery import CaptureDelivery
 from optimus_gateway import memory_index
 from optimus_security import memory_index_contract as mic
-from optimus_security.usage_capture_contract import PATH as CAPTURE_PATH
 from tests.unit.optimus_gateway.test_server import _config, _start_server
+from tests.unit.usage.test_capture_delivery import _AckingStore, _capture, _fill
 
 _SCOPE = "ab" * 32
 _COVERAGE = json.dumps({"op": "coverage", "scope": _SCOPE}).encode()
@@ -27,8 +31,9 @@ class _Store:
         self.error = error
         self.calls = 0
 
-    def dispatch(self, _body: dict[str, Any]) -> dict[str, Any]:
+    def dispatch(self, _body: dict[str, Any], *, deadline: float | None = None) -> dict[str, Any]:
         self.calls += 1
+        self.deadline = deadline
         if self.release is not None:
             self.release.wait(5)
         if self.error is not None:
@@ -62,12 +67,16 @@ def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
     assert store.calls == len(threads)
 
 
-def test_model_and_capture_routes_answer_while_the_index_is_saturated() -> None:
+def test_a_model_request_and_an_accepted_capture_batch_pass_a_saturated_index(tmp_path: Path) -> None:
     release = threading.Event()
     store = _Store(release=release)
     service = _service(store)
-    config = replace(_config(), memory_index=service)
+    ledger = _AckingStore()
+    config = replace(_config(), memory_index=service, usage_store=ledger)
     server, thread, host, port = _start_server(config=config)
+    capture = _capture(tmp_path)
+    _fill(capture, 2)
+    client = GatewayClient(settings=OptimusGatewaySettings(gateway_url=f"http://{host}:{port}", optimus_api_key=config.shared_secret))
 
     def post(path: str, body: bytes) -> tuple[int, dict[str, Any], float]:
         started = time.monotonic()
@@ -88,15 +97,32 @@ def test_model_and_capture_routes_answer_while_the_index_is_saturated() -> None:
         assert post(mic.PATH, _COVERAGE)[:2] == (503, mic.error_body("INDEX_BUSY"))
         status, _reply, seconds = post("/v1/responses", json.dumps({"model": "claude-haiku", "input": "hello"}).encode())
         assert status == 200 and seconds < 2
-        status, reply, seconds = post(CAPTURE_PATH, b"{}")
-        assert reply != mic.error_body("INDEX_BUSY") and status != 503 and seconds < 2
+        started = time.monotonic()
+        report = CaptureDelivery(capture, client).drain_once()
+        assert report.failures == [] and report.committed == capture.writer.stats().confirmed_sequence > 0
+        assert ledger.batches and time.monotonic() - started < 2
+        assert service._waiting._value == 0, "the index was still saturated when the batch was accepted"
     finally:
+        capture.stop()
         release.set()
         for request in held:
             request.join(10)
         server.shutdown()
         server.server_close()
         thread.join(5)
+
+
+def test_an_expired_deadline_with_a_free_worker_never_reaches_the_store() -> None:
+    store = _Store()
+    assert _service(store).handle(_COVERAGE, deadline=time.monotonic() - 1) == (503, mic.error_body("INDEX_TIMEOUT"))
+    assert store.calls == 0
+
+
+def test_the_deadline_reaches_the_store() -> None:
+    store = _Store()
+    deadline = time.monotonic() + 5
+    assert _service(store).handle(_COVERAGE, deadline=deadline)[0] == 200
+    assert store.deadline == deadline
 
 
 def test_a_request_past_its_deadline_is_refused_without_reaching_the_store() -> None:

@@ -36,8 +36,18 @@ _IMPORT_NODES: Final = frozenset({"import_statement", "import_from_statement", "
 _CASE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
-_FENCE = re.compile(r"^\s*(```|~~~)")
-_CODE_LITERAL = re.compile(r"""("[^"\n]*"|'[^'\n]*'|`[^`\n]*`|#.*$|//.*$)""", re.MULTILINE)
+_FENCE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
+_INDENTED_MARKDOWN = re.compile(r"^(?: {4}|\t)")
+_INDENTED_ANY = re.compile(r"^\s+\S")
+_CODE_LINE = re.compile(r"^\s*(?:>>>|\.\.\s)")
+# Inline spans and HTML blocks; a stray backtick then takes the rest of its line. A false match costs prose, never leaks code.
+_INLINE_CODE = re.compile(r"(`+)[\s\S]*?\1|<(pre|code)\b[\s\S]*?(?:</\2>|\Z)", re.IGNORECASE)
+_STRAY_BACKTICK = re.compile(r"`.*$", re.MULTILINE)
+_CODE_LITERAL = re.compile(
+    r'''("""[\s\S]*?(?:"""|\Z)|\'\'\'[\s\S]*?(?:\'\'\'|\Z)|/\*[\s\S]*?(?:\*/|\Z)|<!--[\s\S]*?(?:-->|\Z)'''
+    r'''|"(?:\\.|[^"\\\n])*(?:"|$)|\'(?:\\.|[^\'\\\n])*(?:\'|$)|`[^`\n]*(?:`|$)|\#.*$|//.*$|--\s.*$)''',
+    re.MULTILINE,
+)
 
 
 @dataclass(frozen=True)
@@ -225,12 +235,23 @@ def _parse_code(path: str, data: bytes, text: str, file_hash: str, modified: int
 
 
 def _parse_document(path: str, text: str, file_hash: str, modified: int | None, language: str) -> ParsedFile:
-    """Documentation prose may persist; a code block keeps only its pointer, terms and vector (Option A)."""
+    """Documentation prose may persist; a code block keeps only its pointer, terms and vector (Option A). Whatever may be code counts
+    as code, so unusual layout loses prose rather than keeping a body: indented blocks, literal blocks and directives, doctests, inline
+    spans and HTML blocks as well as fences. Only Markdown has a form of indented text that is common enough to spare."""
     records: list[IndexRecord] = []
-    heading, start, prose, code, in_fence, line_number = "", 1, [], [], False, 0  # type: tuple[str, int, list[str], list[str], bool, int]
+    heading, start, prose, code, line_number = "", 1, [], [], 0  # type: tuple[str, int, list[str], list[str], int]
+    fence: tuple[str, int] | None = None
+    indented = _INDENTED_MARKDOWN if language == "markdown" and not path.lower().endswith(".rst") else _INDENTED_ANY
+
+    def without_inline_code(text_with_spans: str) -> str:
+        def keep(match: re.Match[str]) -> str:
+            code.append(match.group(0))
+            return " "
+
+        return _STRAY_BACKTICK.sub(keep, _INLINE_CODE.sub(keep, text_with_spans))
 
     def flush(end: int) -> None:
-        body = "\n".join(prose).strip()
+        body = without_inline_code("\n".join(prose)).strip()
         block = "\n".join(code)
         if not body and not block:
             return
@@ -245,16 +266,24 @@ def _parse_document(path: str, text: str, file_hash: str, modified: int | None, 
             ))
 
     for line_number, line in enumerate(text.splitlines(), start=1):
-        if _FENCE.match(line):
-            in_fence = not in_fence
+        marker = _FENCE.match(line)
+        if fence is not None:
+            if marker and marker.group(1)[0] == fence[0] and len(marker.group(1)) >= fence[1] and not marker.group(2).strip():
+                fence = None
+            else:
+                code.append(line)
             continue
-        if in_fence:
+        if marker and not (marker.group(1)[0] == "`" and "`" in marker.group(2)):
+            fence = (marker.group(1)[0], len(marker.group(1)))
+            continue
+        if indented.match(line) or _CODE_LINE.match(line):
             code.append(line)
             continue
         match = _HEADING.match(line) if language == "markdown" else None
         if match:
             flush(line_number - 1)
-            heading, start, prose, code = match.group(2), line_number, [], []
+            prose, code = [], []
+            heading, start = without_inline_code(match.group(2)).strip(), line_number
             continue
         prose.append(line)
     flush(line_number)

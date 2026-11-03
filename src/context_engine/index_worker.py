@@ -128,6 +128,7 @@ class IndexWorker:
         self._cancel = threading.Event()
         self._heartbeat_stop = threading.Event()
         self._heartbeat: threading.Thread | None = None
+        self._lease_lost = False
         self._published_at = 0.0
         self._published_any = False
         self._coverage = Coverage()
@@ -150,14 +151,17 @@ class IndexWorker:
             self._release()
 
     def _beat(self) -> None:
-        """The lease means this process is alive, however long one file's parse or embedding takes. A failed renewal only ends the
-        beat: the next fenced write finds out and stops the worker, and an outage pauses it."""
+        """The lease means this process is alive, however long one file's parse or embedding takes. A brief outage is tried again; a
+        lease that is gone, including the machine's cold slot, which no write is fenced by, stops the worker at its next step."""
         while not self._heartbeat_stop.wait(RENEW_SECONDS):
             try:
                 self._storage.call("lease", action="renew", owner=self._owner, ttl_ms=LEASE_MS, kind="scope", token=self._token)
                 if self._cold_token:
                     self._storage.call("lease", action="renew", owner=self._owner, ttl_ms=LEASE_MS, kind="cold", token=self._cold_token)
-            except (StorageUnavailableError, StorageRefusedError):
+            except StorageUnavailableError:
+                continue
+            except StorageRefusedError:
+                self._lease_lost = True
                 return
 
     def _release(self) -> None:
@@ -175,9 +179,11 @@ class IndexWorker:
     def _run(self, cancel: threading.Event) -> WorkerOutcome:
         opened = self._storage.call("generation", action="open", embedding=self._embedder.identity, dimensions=self._embedder.dimensions,
                                     schema_version=SCHEMA_VERSION)
-        self._published_any = opened.get("current") is not None
+        current = opened.get("current")
+        self._published_any = current is not None
         self._token = self._storage.call("lease", action="acquire", owner=self._owner, ttl_ms=LEASE_MS, kind="scope")["token"]
-        if self._cold_admission and not self._published_any:
+        # The first file is published at once, so only a complete publication means the cold build is over.
+        if self._cold_admission and not (current and current["coverage"].get("complete")):
             self._cold_token = self._storage.call("lease", action="acquire", owner=self._owner, ttl_ms=LEASE_MS, kind="cold")["token"]
         self._heartbeat = threading.Thread(target=self._beat, name="index-lease", daemon=True)
         self._heartbeat.start()
@@ -250,6 +256,8 @@ class IndexWorker:
             page = self._storage.call("catalogue", epoch=self._epoch, limit=_CATALOGUE_PAGE, **({} if cursor is None else {"cursor": cursor}))
             for item in page["files"]:
                 held[item["path_id"]] = item["file_hash"]
+            for identity in page.get("unfinished", ()):  # no hash matches this, so it is redone if still wanted and removed if not
+                held[identity] = ""
             cursor = page.get("cursor")
             if cursor is None:
                 return held
@@ -318,5 +326,7 @@ class IndexWorker:
 
     def _yield_to_foreground(self, cancel: threading.Event) -> None:
         """Cooperative: while the person's turn is busy, wait in short steps. The heartbeat keeps the lease meanwhile."""
+        if self._lease_lost:
+            raise StorageRefusedError("LEASE_LOST")
         while self._foreground_busy() and not cancel.is_set():
             self._pause(0.05)

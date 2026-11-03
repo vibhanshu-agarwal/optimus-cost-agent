@@ -138,3 +138,55 @@ def test_importing_the_engine_needs_no_optional_package() -> None:
     probe = "import sys\nsys.modules['tree_sitter'] = None\nimport context_engine.code_index, context_engine.index_worker\nprint('ok')"
     result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=False)
     assert result.stdout.strip() == "ok", result.stderr
+
+
+def _prose_of(path: str, text: str) -> str:
+    parsed = parse_file(path, text.encode("utf-8"))
+    return "\n".join(record.prose or "" for record in parsed.records) + "\n".join(record.symbol or "" for record in parsed.records)
+
+
+def _terms_of(path: str, text: str) -> str:
+    return " ".join(record.terms for record in parse_file(path, text.encode("utf-8")).records)
+
+
+@pytest.mark.parametrize(
+    ("path", "text"),
+    [
+        ("a.md", "Before\n\n    run('LEAK')\n\nAfter\n"),
+        ("a.md", "Before\n\n\trun('LEAK')\n"),
+        ("a.md", "`````\n```\nLEAK\n```\n`````\n"),
+        ("a.md", "~~~~\n~~~\nLEAK\n~~~~\n"),
+        ("a.md", "Call `LEAK` now\n"),
+        ("a.md", "Call ``run(`LEAK`)`` now\n"),
+        ("a.md", "A stray ` then LEAK\n"),
+        ("a.md", "<pre>\nLEAK\n</pre>\n"),
+        ("a.md", "<code>LEAK</code>\n"),
+        ("a.md", ">>> LEAK\n"),
+        ("a.md", "# Using `LEAK`\nText\n"),
+        ("a.md", "```\nnever closed\nLEAK\n"),
+        ("a.rst", "Text::\n\n  LEAK = 1\n"),
+        ("a.rst", ".. code-block:: python\n\n   LEAK = 1\n"),
+        ("a.rst", ".. LEAK\n"),
+        ("a.txt", "Text\n\n  LEAK = 1\n"),
+    ],
+    ids=["indented", "tab", "long-backtick-fence", "long-tilde-fence", "inline", "double-backtick-inline", "stray-backtick", "pre", "code", "doctest", "heading-span", "unclosed-fence",
+         "rst-literal", "rst-directive", "rst-comment", "text-indented"],
+)
+def test_nothing_that_may_be_code_reaches_prose(path: str, text: str) -> None:
+    assert "LEAK" not in _prose_of(path, text)
+
+
+@pytest.mark.parametrize(
+    "block",
+    ['x = """\nLEAK\n"""', "x = '''\nLEAK\n'''", "/* LEAK\n*/", "<!-- LEAK\n-->", 'x = "a\\"LEAK"', 'x = "LEAK', "x = 1  # LEAK", "x = 1  // LEAK", "SELECT 1 -- LEAK"],
+    ids=["triple-double", "triple-single", "block-comment", "html-comment", "escaped-quote", "unterminated", "hash", "slashes", "sql"],
+)
+def test_strings_and_comments_of_document_code_stay_out_of_its_terms(block: str) -> None:
+    assert "leak" not in _terms_of("a.md", f"```\n{block}\nvisible_name\n```\n")
+    assert "visible_name" in _terms_of("a.md", f"```\nvisible_name\n{block}\n```\n") or "\n" in block
+
+
+def test_ordinary_prose_survives_and_a_code_blocks_names_are_terms() -> None:
+    text = "# Guide\nA plain sentence stays.\n\n- a list item stays\n\n```\ncompute_total(items)\n```\n"
+    assert "A plain sentence stays." in _prose_of("a.md", text) and "a list item stays" in _prose_of("a.md", text)
+    assert "compute_total" in _terms_of("a.md", text)

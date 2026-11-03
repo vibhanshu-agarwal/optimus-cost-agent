@@ -539,19 +539,32 @@ def _memory_container_view(docker: str, name: str) -> dict[str, Any] | None:
     return view
 
 
-def _memory_container_conflict(view: Mapping[str, Any], config: MemoryIndexConfig) -> str | None:
+def _memory_server_args(config: MemoryIndexConfig) -> list[str]:
+    return ["redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "everysec",
+            "--save", "300 1", "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction"]
+
+
+def _memory_container_conflict(view: Mapping[str, Any], config: MemoryIndexConfig, acl_path: Path) -> str | None:
     """Why an existing container is not the one setup described, or None. Optimus never adopts or replaces another's."""
     settings = view.get("Config") or {}
+    host = view.get("HostConfig") or {}
     if (settings.get("Labels") or {}).get(_MEMORY_RESOURCE_LABEL) != config.resource:
         return "it was not created for this configuration"
     if settings.get("Image") != config.image:
         return "it runs another image"
-    bindings = ((view.get("HostConfig") or {}).get("PortBindings") or {}).get("6379/tcp") or []
+    bindings = (host.get("PortBindings") or {}).get("6379/tcp") or []
     if [(binding.get("HostIp"), binding.get("HostPort")) for binding in bindings] != [(config.host, str(config.port))]:
         return "it publishes another port"
     volumes = [mount.get("Name") for mount in view.get("Mounts") or [] if mount.get("Destination") == "/data"]
     if volumes != [config.volume]:
         return "it uses another volume"
+    if host.get("Memory") != (config.maxmemory_mb + _MEMORY_HEADROOM_MB) * 1024 * 1024:
+        return "it has another memory limit"
+    if settings.get("Cmd") != _memory_server_args(config):
+        return "it runs Redis with other settings"
+    acl = [(mount.get("Type"), mount.get("Source"), mount.get("ReadOnly")) for mount in host.get("Mounts") or [] if mount.get("Target") == "/etc/redis/users.acl"]
+    if acl != [("bind", str(acl_path.resolve()), True)]:
+        return "it does not use the configured ACL file"
     return None
 
 
@@ -599,8 +612,7 @@ def ensure_memory_redis(root: Path, *, start: bool = True, log: Callable[[str], 
         run = [docker, "run", "-d", "--name", config.container, "--label", f"{_MEMORY_RESOURCE_LABEL}={config.resource}",
                "--restart", "no", "-p", f"{config.host}:{config.port}:6379", "--memory", f"{config.maxmemory_mb + _MEMORY_HEADROOM_MB}m",
                "-v", f"{config.volume}:/data", "--mount", f"type=bind,src={acl_path.resolve()},dst=/etc/redis/users.acl,readonly",
-               config.image, "redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "everysec",
-               "--save", "300 1", "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction"]
+               config.image, *_memory_server_args(config)]
         try:
             subprocess.run(run, capture_output=True, text=True, check=False, timeout=120)
         except (OSError, subprocess.TimeoutExpired):
@@ -608,7 +620,7 @@ def ensure_memory_redis(root: Path, *, start: bool = True, log: Callable[[str], 
         view = _memory_container_view(docker, config.container)  # a concurrent launch may have won the name; either way it is checked
     if view is None:
         return MemoryRedisStatus("unavailable", "the container does not exist")
-    conflict = _memory_container_conflict(view, config)
+    conflict = _memory_container_conflict(view, config, acl_path)
     if conflict is not None:
         return MemoryRedisStatus("conflict", f"container {config.container} exists, but {conflict}; Optimus will not change it")
     if not (view.get("State") or {}).get("Running"):

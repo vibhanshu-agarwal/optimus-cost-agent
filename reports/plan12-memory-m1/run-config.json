@@ -11,6 +11,7 @@
   "scale_records": 60000,
   "embedding_threads": 2,
   "query_samples": 200,
-  "acpx_turns": 5,
+  "acpx_turns": 20,
+  "load_paths": ["src", "tools"],
   "bulk_batches": 20
 }

@@ -87,6 +87,18 @@ class _Sampler:
         self._stop = threading.Event()
         self.samples: dict[str, list[tuple[float, int, int]]] = {name: [] for name in pids}
         self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread_cpu: dict[str, dict[int, float]] = {}
+        self._threads_working: dict[str, int] = {}
+        self._started = 0.0
+
+    def _cpu_by_thread(self) -> dict[str, dict[int, float]]:
+        out: dict[str, dict[int, float]] = {}
+        for name, process in self._processes.items():
+            try:
+                out[name] = {thread.id: thread.user_time + thread.system_time for thread in process.threads()}
+            except psutil.Error:
+                out[name] = {}
+        return out
 
     def _run(self) -> None:
         for process in self._processes.values():
@@ -100,16 +112,23 @@ class _Sampler:
                     pass
 
     def __enter__(self) -> _Sampler:
+        self._thread_cpu = self._cpu_by_thread()
+        self._started = time.perf_counter()
         self._thread.start()
         return self
 
     def __exit__(self, *_exc: object) -> None:
         self._stop.set()
         self._thread.join(5)
+        elapsed = max(time.perf_counter() - self._started, 0.001)
+        # Threads that did real work, as against pools that exist and sleep: the check on the configured two embedding threads.
+        for name, seen in self._cpu_by_thread().items():
+            self._threads_working[name] = sum((cpu - self._thread_cpu.get(name, {}).get(ident, 0.0)) / elapsed >= 0.05 for ident, cpu in seen.items())
 
     def report(self) -> dict[str, Any]:
         return {name: {"cpu_percent_mean": round(statistics.fmean(s[0] for s in rows), 1), "cpu_percent_max": round(max(s[0] for s in rows), 1),
-                       "rss_mb_max": round(max(s[1] for s in rows) / 1048576, 1), "threads_max": max(s[2] for s in rows)}
+                       "rss_mb_max": round(max(s[1] for s in rows) / 1048576, 1), "threads_max": max(s[2] for s in rows),
+                       "threads_using_over_5_percent_of_a_cpu": self._threads_working.get(name)}
                 for name, rows in self.samples.items() if rows}
 
 
@@ -257,6 +276,7 @@ class _AcpxTurns:
         evidence.mkdir(parents=True, exist_ok=True)
         self._stub = subprocess.Popen([sys.executable, "-I", str(kit / "stub_provider.py"), str(kit / "scenario.json"), str(evidence), "18791", "1800"],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self._opened_at = time.time()
         time.sleep(1.0)
 
     def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
@@ -284,17 +304,20 @@ class _AcpxTurns:
         return {"seconds_to_stop": round(time.perf_counter() - started, 3), "stop": "cancelled" if '"stopReason":"cancelled"' in output.replace(" ", "") else "other"}
 
     def close(self) -> None:
+        """Only this run's own queue owner: started after this kit was opened, and running this kit's exact agent path. Anything else on the
+        machine, however alike, is another lane's."""
         self._stub.kill()
-        for process in psutil.process_iter(["cmdline"]):
-            line = " ".join(process.info["cmdline"] or [])
-            if "__queue-owner" in line:
-                try:
-                    if any("run-a.cmd" in " ".join(child.cmdline()) for child in process.children()):
-                        for child in process.children(recursive=True):
-                            child.kill()
-                        process.kill()
-                except psutil.Error:
-                    pass
+        agent = str(self._kit / "run-a.cmd")
+        for process in psutil.process_iter(["cmdline", "create_time"]):
+            if process.info["create_time"] < self._opened_at or "__queue-owner" not in " ".join(process.info["cmdline"] or []):
+                continue
+            try:
+                if any(agent in " ".join(child.cmdline()) for child in process.children()):
+                    for child in process.children(recursive=True):
+                        child.kill()
+                    process.kill()
+            except psutil.Error:
+                pass
 
 
 def _redis_facts(client: redis.Redis, container: str) -> dict[str, Any]:
@@ -304,26 +327,25 @@ def _redis_facts(client: redis.Redis, container: str) -> dict[str, Any]:
             "disk_kb": int(usage) if usage.isdigit() else None, "maxmemory_mb": round(memory["maxmemory"] / 1048576, 1)}
 
 
-def _query_load(index: _Index, client: redis.Redis, *, samples: int, terms: Sequence[str], vector: str, dimensions: int) -> dict[str, Any]:
-    """The same operations through the route and directly with the authenticated client: the proxy's cost, on real data."""
-    name = f"oidx:idx:{dimensions}"
-    current = index.storage.call("coverage")["current"]
-    epoch = current["epoch"]
-    live = f"@scope:{{{index.scope}}} @epoch_added:[-inf {epoch}] @epoch_removed:[({epoch} +inf]"
-    blob = mic.decode_vector(vector, dimensions)
+def _direct(store: memory_index.IndexStore, scope: str, op: str, **fields: Any) -> dict[str, Any]:
+    """The Gateway's own store code and validation in this process with an authenticated client: all the same work, without the route."""
+    return store.dispatch(mic.parse_request(json.dumps({"op": op, "scope": scope, **fields}).encode("utf-8")))
+
+
+def _query_load(index: _Index, store: memory_index.IndexStore, *, samples: int, terms: Sequence[str], vector: str) -> dict[str, Any]:
+    """The same requests through the route and directly: what the route itself costs, on real data."""
     out: dict[str, list[float]] = {"proxy_lexical": [], "proxy_dense": [], "native_lexical": [], "native_dense": []}
     for number in range(samples):
         term = terms[number % len(terms)]
         out["proxy_lexical"].append(_timed(lambda term=term: index.storage.call("query", mode="lexical", terms=[term], k=20)))
-        out["native_lexical"].append(_timed(lambda term=term: client.execute_command("FT.SEARCH", name, f"{live} @terms:({term})", "RETURN", "1", "path", "LIMIT", "0", "20", "DIALECT", "2")))
+        out["native_lexical"].append(_timed(lambda term=term: _direct(store, index.scope, "query", mode="lexical", terms=[term], k=20)))
         out["proxy_dense"].append(_timed(lambda: index.storage.call("query", mode="dense", vector=vector, k=20)))
-        out["native_dense"].append(_timed(lambda: client.execute_command("FT.SEARCH", name, f"({live})=>[KNN 20 @vec $blob AS distance]", "PARAMS", "2", "blob", blob, "SORTBY", "distance",
-                                                                          "RETURN", "1", "path", "LIMIT", "0", "20", "DIALECT", "2")))
+        out["native_dense"].append(_timed(lambda: _direct(store, index.scope, "query", mode="dense", vector=vector, k=20)))
     return {name: _summary(values) for name, values in out.items()}
 
 
-def _bulk(index: _Index, client: redis.Redis, *, batches: int, dimensions: int, epoch_base: int) -> dict[str, Any]:
-    """Batches of real size through the route and with a direct pipeline, into their own epochs of this scope."""
+def _bulk(index: _Index, store: memory_index.IndexStore, *, batches: int, dimensions: int) -> dict[str, Any]:
+    """Batches of real size, with their fencing and membership writes, through the route and directly."""
     token = index.storage.call("lease", action="acquire", owner=index.owner, ttl_ms=60000, kind="scope")["token"]
     epoch = index.storage.call("generation", action="begin", token=token)["epoch"]
     vector = mic.encode_vector(struct.pack(f"<{dimensions}f", *([0.1] * dimensions)))
@@ -336,14 +358,9 @@ def _bulk(index: _Index, client: redis.Redis, *, batches: int, dimensions: int, 
     for batch in range(batches):
         index.storage.call("batch", token=token, epoch=epoch, records=records(batch, "proxy"))
     proxy_seconds = time.perf_counter() - started
-    store = memory_index.IndexStore(client, cursor_key=b"m" * 32)
     started = time.perf_counter()
     for batch in range(batches):
-        with client.pipeline() as pipe:
-            for record in records(batch, "native"):
-                key = store._record_key(index.scope, dimensions, epoch_base, record["id"])
-                pipe.hset(key, mapping=store._mapping(index.scope, dimensions, epoch_base, record))
-            pipe.execute()
+        _direct(store, index.scope, "batch", token=token, epoch=epoch, records=records(batch, "native"))
     native_seconds = time.perf_counter() - started
     index.storage.call("lease", action="release", owner=index.owner, kind="scope", token=token)
     total = batches * 128
@@ -408,13 +425,25 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
         launcher = psutil.Process(gateway.pid)  # a venv's python.exe is a launcher; the work happens in its child
         pids = {"gateway": (launcher.children() or [launcher])[0].pid, "worker": psutil.Process().pid}
 
+        store = memory_index.IndexStore(client, cursor_key=b"m" * 32)
         _note(f"cold build: {report['corpus']['embedded_chunks']} chunks")
+        real_call = index.storage.call
+        first_publish: list[float] = []
+
+        def watching(op: str, **fields: Any) -> dict[str, Any]:
+            reply = real_call(op, **fields)
+            if op == "generation" and fields.get("action") == "publish" and not first_publish:
+                first_publish.append(time.perf_counter())
+            return reply
+
+        index.storage.call = watching  # type: ignore[method-assign]
         started = time.perf_counter()
         with _Sampler(pids) as sampler:
             outcome = _required(index.worker().run(threading.Event()))
         cold = time.perf_counter() - started
+        index.storage.call = real_call  # type: ignore[method-assign]
         report["cold"] = {"state": outcome.state, "seconds": round(cold, 2), "files_written": outcome.files_written, "records_written": outcome.records_written, "coverage": outcome.coverage,
-                          "embedding_seconds": round(embedder.seconds, 2), "embedding_share": round(embedder.seconds / cold, 3), "embedded_items": embedder.items,
+                          "first_file_visible_seconds": round(first_publish[0] - started, 2), "embedding_seconds": round(embedder.seconds, 2), "embedding_share": round(embedder.seconds / cold, 3), "embedded_items": embedder.items,
                           "embedded_items_per_second": round(embedder.items / embedder.seconds, 1) if embedder.seconds else None,
                           "end_to_end_records_per_second": round(outcome.records_written / cold, 1), "processes": sampler.report(), "redis": _redis_facts(client, container)}
 
@@ -437,7 +466,7 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
         _note("queries")
         vector = mic.encode_vector(embedder.embed(["measure a query vector for this repository"])[0])
         terms = ["gateway", "redis", "context", "policy", "server", "approval", "token", "manifest"]
-        report["query_idle"] = _query_load(index, client, samples=config["query_samples"], terms=terms, vector=vector, dimensions=memory.embedding.dimensions)
+        report["query_idle"] = _query_load(index, store, samples=config["query_samples"], terms=terms, vector=vector)
 
         kit = os.environ.get("P1210_ACPX_KIT")
         turns = None if not kit else _AcpxTurns(Path(kit), work / "acpx-stub")
@@ -445,17 +474,22 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
             report["acpx_turns"] = {"state": "UNRUN", "reason": "P1210_ACPX_KIT names no approved stub agent"}
         else:
             _note("acpx turns while idle")
-            report["acpx_turns"] = {"session_new_exit": turns.open(), "idle": turns.turns(config["acpx_turns"]), "idle_cancel": turns.cancel_during_a_turn()}
+            opened = turns.open()
+            turns.turns(1)  # a session's first turn does one-time work; it is not what the comparison is about
+            report["acpx_turns"] = {"session_new_exit": opened, "measures": "machine load on a person's turn; this agent's own Gateway, not the measured index route",
+                                    "idle": turns.turns(config["acpx_turns"]), "idle_cancel": turns.cancel_during_a_turn()}
 
-        # Foreground queries while a second scope cold-builds: the load a person's turn would meet.
-        second = _Index(corpus, settings, embedder, project="pilot-load", parser_version="pilot-load")
+        # Foreground queries while a second scope cold-builds: the load a person's turn would meet. A wider copy, so it outlasts the measurements.
+        load_corpus = _corpus_copy(repository, work / "corpus-load", config["load_paths"])
+        report["load_corpus"] = count_corpus(load_corpus)
+        second = _Index(load_corpus, settings, embedder, project="pilot-load", parser_version="pilot-load")
         cancel = threading.Event()
         built: list[Any] = []
         loader = threading.Thread(target=lambda: built.append(second.worker().run(cancel)), daemon=True)
         with _Sampler(pids) as sampler:
             loader.start()
             time.sleep(1.0)
-            report["query_during_cold_build"] = _query_load(index, client, samples=config["query_samples"], terms=terms, vector=vector, dimensions=memory.embedding.dimensions)
+            report["query_during_cold_build"] = _query_load(index, store, samples=config["query_samples"], terms=terms, vector=vector)
             report["query_during_cold_build"]["build_still_running"] = loader.is_alive()
             if turns is not None:
                 _note("acpx turns during a cold build")
@@ -470,7 +504,7 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
         report["query_during_cold_build"]["processes"] = sampler.report()
 
         _note("bulk")
-        report["bulk"] = _bulk(index, client, batches=config["bulk_batches"], dimensions=memory.embedding.dimensions, epoch_base=1 << 40)
+        report["bulk"] = _bulk(index, store, batches=config["bulk_batches"], dimensions=memory.embedding.dimensions)
         report["redis_end"] = _redis_facts(client, container)
 
         _note("recovery")

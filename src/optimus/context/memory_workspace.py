@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 import shutil
 import subprocess
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -85,11 +86,22 @@ class WorkspaceIndexSource(IndexSource):
         return data if decision.allowed else None
 
     def revision(self) -> tuple[str, bool]:
-        """The commit and whether the tree differs from it. Hashing the status output makes a different dirty state a different revision."""
+        """What a pass read, and whether it differs from a commit. Git's status names changed paths, not their contents, so a further edit
+        to a file already dirty leaves it unchanged; each admitted file's size and modified time catch that, and a change of membership.
+        Inside a repository Git cannot read, the answer is new each time, so no pass there is called complete."""
         root = self._policy.root
+        status = _git(root, "status", "--porcelain=v1", "--untracked-files=normal")
+        if status is None and (root / ".git").exists():
+            return secrets.token_hex(32), True
         head = (_git(root, "rev-parse", "HEAD") or "").strip()
-        status = _git(root, "status", "--porcelain=v1", "--untracked-files=normal") or ""
-        return hashlib.sha256(f"{head}\0{status}".encode()).hexdigest(), bool(status.strip())
+        contents = hashlib.sha256()
+        for item in self.files():
+            try:
+                facts = (root / item.path).stat()
+            except OSError:
+                continue
+            contents.update(f"{item.path}\0{facts.st_size}\0{facts.st_mtime_ns}\0".encode())
+        return hashlib.sha256(f"{head}\0{status}\0{contents.hexdigest()}".encode()).hexdigest(), status is None or bool(status.strip())
 
 
 class GatewayIndexStorage:

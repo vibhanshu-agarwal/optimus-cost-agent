@@ -22,10 +22,10 @@ ACL_NAME = "users.acl"
 ARTIFACTS_NAME = "artifacts"
 SECURITY_LITERAL_NAME = "_memory_index_config"  # not an environment variable, like the accounting literal
 KEYRING_SERVICE = "optimus-gateway-memory-index"  # the Gateway's own namespace, apart from approvals and credentials
-ACL_COMMANDS = ("ping", "info", "module|list", "get", "set", "del", "incrby", "pexpire", "exists", "scan",
+ACL_COMMANDS = ("ping", "info", "module|list", "get", "set", "del", "incrby", "pexpire", "scan",
                 "hset", "hsetnx", "hget", "hmget", "hgetall", "hdel", "sadd", "srem", "smembers",
                 "zadd", "zrangebylex", "multi", "exec", "discard", "watch", "unwatch",
-                "ft.create", "ft.search", "ft.info", "ft.dropindex")
+                "ft.create", "ft.search")
 KEY_PATTERN = "oidx:*"
 _MAX_BYTES = 16 * 1024
 _KEYS = frozenset({"schema_version", "resource", "image", "container", "volume", "host", "port", "user", "credential_name",

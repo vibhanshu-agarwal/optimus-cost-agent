@@ -11,6 +11,7 @@ import http.client
 import json
 import struct
 import threading
+import time
 import uuid
 from collections.abc import Iterator
 from dataclasses import replace
@@ -174,6 +175,125 @@ def test_only_the_building_epoch_can_be_written_or_published(rpc: Rpc) -> None:
     rpc.refused("EPOCH_NOT_BUILDING", "generation", action="publish", token=token, epoch=epoch, revision=_REVISION, dirty=False,
                 coverage={"complete": True, "files_indexed": 1, "files_total": 1})
     assert rpc.ok("catalogue")["files"] == []
+
+
+def test_a_retirement_is_written_once_so_an_earlier_view_stays_as_it_was(rpc: Rpc) -> None:
+    token = rpc.open_line()
+    first = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=first, records=[_symbol("a.py", "1" * 64, "alpha", "alpha", _vector(1))])
+    rpc.publish(token, first)
+    second = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=second, removals=[{"path_id": _h("a.py")}], records=[_symbol("a.py", "2" * 64, "beta", "beta", _vector(1))])
+    rpc.publish(token, second)
+    third = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=third, removals=[{"path_id": _h("a.py")}], records=[_symbol("a.py", "3" * 64, "gamma", "gamma", _vector(1))])
+    assert rpc.ok("query", mode="lexical", terms=["alpha"], k=5)["records"] == []  # the old record must not return to the published view
+    assert [r["symbol"] for r in rpc.ok("query", mode="lexical", terms=["beta"], k=5)["records"]] == ["beta"]
+
+
+def test_after_a_prune_an_earlier_epoch_is_refused_and_never_answers_partly(rpc: Rpc) -> None:
+    token = rpc.open_line()
+    first = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=first, records=[_file(f"f{n}.py", "1" * 64) for n in range(3)] + [_symbol("f0.py", "1" * 64, "alpha", "alpha", _vector(1))])
+    rpc.publish(token, first, files=3)
+    old_page = rpc.ok("catalogue", limit=2)
+    second = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=second, removals=[{"path_id": _h("f0.py")}], records=[_file("f0.py", "2" * 64)])
+    rpc.publish(token, second, files=3)
+    assert [r["symbol"] for r in rpc.ok("query", mode="lexical", terms=["alpha"], k=5, epoch=first)["records"]] == ["alpha"]  # still readable before a prune
+    cursor = None
+    while True:
+        cursor = rpc.ok("cleanup", token=token, action="prune", **({"cursor": cursor} if cursor else {}))["cursor"]
+        if cursor is None:
+            break
+    rpc.refused("EPOCH_EXPIRED", "query", mode="lexical", terms=["alpha"], k=5, epoch=first)
+    rpc.refused("EPOCH_EXPIRED", "catalogue", epoch=first)
+    rpc.refused("EPOCH_EXPIRED", "catalogue", cursor=old_page["cursor"])
+    assert len(rpc.ok("catalogue")["files"]) == 3
+
+
+def test_the_catalogue_names_a_path_with_records_but_no_file_record(rpc: Rpc) -> None:
+    token = rpc.open_line()
+    epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=epoch, records=[_file("whole.py", "1" * 64), _symbol("part.py", "2" * 64, "alpha", "alpha", _vector(1))])
+    page = rpc.ok("catalogue", epoch=epoch)
+    assert _paths(page) == ["whole.py"] and page["unfinished"] == [_h("part.py")]
+
+
+class _Interleaved:
+    """The real client, running one action straight after a transaction's first read: the moment another request could arrive."""
+
+    def __init__(self, client: redis.Redis, action: Any) -> None:
+        self._client = client
+        self._action = action
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._client, name)
+
+    def pipeline(self, *args: Any, **kwargs: Any) -> Any:
+        pipe = self._client.pipeline(*args, **kwargs)
+        real_get = pipe.get
+
+        def get(key: str) -> Any:
+            value = real_get(key)
+            if self._action is not None:
+                action, self._action = self._action, None
+                action()
+            return value
+
+        pipe.get = get  # type: ignore[method-assign]
+        return pipe
+
+
+def test_a_resumer_never_replaces_a_lease_another_owner_took_meanwhile(client: redis.Redis) -> None:
+    scope = _h(uuid.uuid4().hex)
+    key = f"oidx:lease:{scope}"
+    client.set(key, "1:" + "ab" * 8, px=30000)
+    store = memory_index.IndexStore(_Interleaved(client, lambda: client.set(key, "2:" + "cd" * 8, px=30000)), cursor_key=b"c" * 32)  # type: ignore[arg-type]
+    with pytest.raises(mic.IndexRequestError) as refused:
+        store.dispatch({"op": "lease", "scope": scope, "action": "acquire", "owner": "ab" * 8, "ttl_ms": 30000, "kind": "scope"})
+    assert refused.value.code == "LEASE_HELD"
+    assert client.get(key) == b"2:" + b"cd" * 8
+    client.delete(key)
+
+
+def test_cleanup_decides_from_what_it_read_inside_its_transaction(rpc: Rpc, client: redis.Redis) -> None:
+    token = rpc.open_line()
+    first = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=first, records=[_file("a.py", "1" * 64)])
+    rpc.publish(token, first)
+    second: list[int] = []
+
+    def a_writer_continues() -> None:
+        second.append(rpc.ok("generation", action="begin", token=token)["epoch"])
+        rpc.ok("batch", token=token, epoch=second[0], records=[_symbol("b.py", "2" * 64, "beta", "beta", _vector(1))])
+
+    store = memory_index.IndexStore(_Interleaved(client, a_writer_continues), cursor_key=b"c" * 32)  # type: ignore[arg-type]
+    request = {"op": "cleanup", "scope": rpc.scope, "token": token, "action": "prune"}
+    while True:
+        step = store.dispatch(request)
+        if step["cursor"] is None:
+            break
+        request["cursor"] = step["cursor"]
+    rpc.publish(token, second[0])
+    assert [r["symbol"] for r in rpc.ok("query", mode="lexical", terms=["beta"], k=5)["records"]] == ["beta"]
+
+
+def test_a_slow_catalogue_stops_at_its_deadline(rpc: Rpc, client: redis.Redis) -> None:
+    token = rpc.open_line()
+    epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=epoch, records=[_file(f"f{n}.py", "1" * 64) for n in range(5)])
+    rpc.publish(token, epoch, files=5)
+    store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
+    real = store._live_file
+
+    def slow(*args: Any) -> Any:
+        time.sleep(0.05)
+        return real(*args)
+
+    store._live_file = slow  # type: ignore[method-assign]
+    body = json.dumps({"op": "catalogue", "scope": rpc.scope}).encode()
+    assert memory_index.IndexService(store).handle(body, deadline=time.monotonic() + 0.12) == (503, mic.error_body("INDEX_TIMEOUT"))
 
 
 def test_a_deleted_file_leaves_the_published_view(rpc: Rpc) -> None:

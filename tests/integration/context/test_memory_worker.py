@@ -24,7 +24,7 @@ import redis
 
 from context_engine import index_worker
 from context_engine.code_index import path_id
-from context_engine.index_worker import IndexWorker, StorageUnavailableError
+from context_engine.index_worker import IndexWorker, StorageRefusedError, StorageUnavailableError
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context.memory_workspace import GatewayIndexStorage, WorkspaceIndexSource, current_branch, index_scope
 from optimus.context.project_registry import ProjectRegistration
@@ -383,8 +383,8 @@ def test_a_part_of_a_file_left_by_a_crash_is_not_served_after_the_file_changes(i
     assert index.symbols("orphan_symbol") == []
 
 
-def test_a_file_interrupted_between_its_batches_is_redone_whole(tmp_path: Path, settings: OptimusGatewaySettings) -> None:
-    """A file's own record goes last, so one that exists proves the whole file arrived and a resume may skip it."""
+def _interrupted_in_a_big_file(tmp_path: Path, settings: OptimusGatewaySettings) -> Index:
+    """One batch of a large file is stored, and then the worker stops, before the file's own record."""
     root = _repository(tmp_path / "repo")
     (root / "big.py").write_text("".join(f"def big_{number}():\n    return {number}\n\n" for number in range(300)), encoding="utf-8")
     index = Index(root, settings)
@@ -402,10 +402,29 @@ def test_a_file_interrupted_between_its_batches_is_redone_whole(tmp_path: Path, 
     index.storage.call = fail_on_the_second_batch  # type: ignore[method-assign]
     assert index.build().state == "paused"
     index.storage.call = real_call  # type: ignore[method-assign]
+    return index
+
+
+def test_a_file_interrupted_between_its_batches_is_redone_whole(tmp_path: Path, settings: OptimusGatewaySettings) -> None:
+    """A file's own record goes last, so one that exists proves the whole file arrived and a resume may skip it."""
+    index = _interrupted_in_a_big_file(tmp_path, settings)
     building = index.storage.call("coverage")["building"]
     assert building is not None and index.paths(epoch=building) == []
     assert index.build().state == "complete"
     assert index.symbols("big_0") == ["big_0"] and index.symbols("big_299") == ["big_299"]
+
+
+@pytest.mark.parametrize("change", ["deleted", "excluded"])
+def test_a_file_interrupted_then_gone_leaves_nothing_published(tmp_path: Path, settings: OptimusGatewaySettings, change: str) -> None:
+    index = _interrupted_in_a_big_file(tmp_path, settings)
+    if change == "deleted":
+        (index.root / "big.py").unlink()
+    else:
+        (index.root / ".optimusignore").write_text("big.py\n", encoding="utf-8")
+    outcome = index.build()
+    assert outcome.state == "complete" and outcome.coverage["complete"] is True
+    assert index.find("big_0") == [] and index.find("big_299") == []
+    assert index.storage.call("catalogue")["unfinished"] == []
 
 
 def test_a_source_that_moves_during_a_pass_is_not_called_complete(index: Index) -> None:
@@ -422,6 +441,41 @@ def test_a_source_that_moves_during_a_pass_is_not_called_complete(index: Index) 
     index.embedder.embed = real_embed  # type: ignore[method-assign]
     assert index.build().state == "complete"
     assert index.symbols("moved_function") == ["moved_function"]
+
+
+@pytest.mark.parametrize("where", ["tracked", "untracked"])
+def test_a_further_edit_to_an_already_dirty_file_is_not_called_complete(index: Index, where: str) -> None:
+    """Git's status names the path, not its contents, so it reads the same before and after this edit."""
+    target = index.root / ("first.py" if where == "tracked" else "new_folder" / Path("late.py"))
+    target.parent.mkdir(exist_ok=True)
+    target.write_text("def edited_function():\n    return 3\n", encoding="utf-8")
+    real_embed = index.embedder.embed
+    edited = {"done": False}
+
+    def embed(texts: Sequence[str]) -> list[bytes]:
+        vectors = real_embed(texts)
+        if not edited["done"]:
+            edited["done"] = True
+            target.write_text("def edited_again():\n    return 4\n", encoding="utf-8")
+        return vectors
+
+    index.embedder.embed = embed  # type: ignore[method-assign]
+    outcome = index.build()
+    assert edited["done"] and outcome.state == "paused" and outcome.coverage["complete"] is False
+    index.embedder.embed = real_embed  # type: ignore[method-assign]
+    assert index.build().state == "complete"
+    assert index.symbols("edited_again") == ["edited_again"]
+
+
+def test_a_reader_pinned_across_an_ordinary_pass_is_refused_and_never_answered_partly(index: Index) -> None:
+    index.build()
+    pinned = index.storage.call("coverage")["current"]["epoch"]
+    (index.root / "first.py").write_text("def edited_function():\n    return 3\n", encoding="utf-8")
+    assert index.build().state == "complete"
+    with pytest.raises(StorageRefusedError) as refused:
+        index.find("first_function", epoch=pinned)
+    assert refused.value.code == "EPOCH_EXPIRED"
+    assert index.symbols("edited_function") == ["edited_function"]
 
 
 def test_a_borrowed_gateway_that_exits_pauses_the_worker_and_its_return_resumes_it(tmp_path: Path, client: redis.Redis) -> None:
@@ -500,6 +554,73 @@ def test_a_slow_embedder_does_not_lose_the_lease(tmp_path: Path, settings: Optim
     index.embedder.embed = embed  # type: ignore[method-assign]
     outcome = index.build()
     assert outcome.state == "complete", outcome
+
+
+def test_a_brief_outage_does_not_end_the_lease_heartbeat(tmp_path: Path, settings: OptimusGatewaySettings, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(index_worker, "LEASE_MS", 1500)
+    monkeypatch.setattr(index_worker, "RENEW_SECONDS", 0.3)
+    index = Index(_repository(tmp_path / "repo"), settings)
+    real_call, real_embed = index.storage.call, index.embedder.embed
+    failed = {"done": False}
+
+    def call(op: str, **fields: Any) -> dict[str, Any]:
+        if op == "lease" and fields.get("action") == "renew" and not failed["done"]:
+            failed["done"] = True
+            raise StorageUnavailableError("a moment")
+        return real_call(op, **fields)
+
+    def embed(texts: Sequence[str]) -> list[bytes]:
+        time.sleep(3.0)
+        return real_embed(texts)
+
+    index.storage.call = call  # type: ignore[method-assign]
+    index.embedder.embed = embed  # type: ignore[method-assign]
+    outcome = index.build()
+    assert failed["done"] and outcome.state == "complete", outcome
+
+
+def test_resuming_a_partial_cold_build_still_needs_the_cold_slot(tmp_path: Path, settings: OptimusGatewaySettings) -> None:
+    index = Index(_repository(tmp_path / "a"), settings, project="p-partial")
+    other = Index(_repository(tmp_path / "b"), settings, project="p-other")
+    real_call = index.storage.call
+    publishes = {"n": 0}
+
+    def stop_before_the_last_publish(op: str, **fields: Any) -> dict[str, Any]:
+        if op == "generation" and fields.get("action") == "publish":
+            publishes["n"] += 1
+            if publishes["n"] == 2:
+                raise StorageUnavailableError("gone")
+        return real_call(op, **fields)
+
+    index.storage.call = stop_before_the_last_publish  # type: ignore[method-assign]
+    assert index.build().state == "paused"
+    index.storage.call = real_call  # type: ignore[method-assign]
+    assert index.storage.call("coverage")["current"]["coverage"]["complete"] is False
+    token = other.storage.call("lease", action="acquire", owner=other.owner, ttl_ms=30000, kind="cold")["token"]
+    worker = IndexWorker(WorkspaceIndexSource(FilePolicy(index.root)), index.storage, index.embedder, owner=index.owner)
+    outcome = worker.run(threading.Event())
+    other.storage.call("lease", action="release", owner=other.owner, kind="cold", token=token)
+    assert outcome.state == "held" and outcome.detail == "LEASE_HELD"
+
+
+def test_a_worker_that_loses_the_cold_slot_stops(tmp_path: Path, settings: OptimusGatewaySettings, client: redis.Redis, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(index_worker, "RENEW_SECONDS", 0.1)
+    root = _repository(tmp_path / "repo")
+    for number in range(40):
+        (root / f"c{number:02}.py").write_text(f"def cold_{number}():\n    return {number}\n", encoding="utf-8")
+    index = Index(root, settings)
+    real_embed = index.embedder.embed
+
+    def embed(texts: Sequence[str]) -> list[bytes]:
+        client.set("oidx:lease:cold", "1:" + "cd" * 16, px=5000)  # a stranger now holds the machine's slot
+        time.sleep(0.3)
+        return real_embed(texts)
+
+    index.embedder.embed = embed  # type: ignore[method-assign]
+    worker = IndexWorker(WorkspaceIndexSource(FilePolicy(root)), index.storage, index.embedder, owner=index.owner)
+    outcome = worker.run(threading.Event())
+    client.delete("oidx:lease:cold")
+    assert outcome.state == "held" and outcome.detail == "LEASE_LOST"
 
 
 def test_only_one_workspace_cold_builds_at_a_time(tmp_path: Path, settings: OptimusGatewaySettings) -> None:

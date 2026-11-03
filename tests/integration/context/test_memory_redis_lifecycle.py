@@ -10,6 +10,7 @@ import socket
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 import redis
@@ -128,6 +129,34 @@ def test_a_stranger_in_the_container_name_is_refused_and_left_alone(provisioned:
     status = local_infra.ensure_memory_redis(provisioned.root)
     assert status.state == "conflict" and "will not change it" in status.detail
     assert _container_id() == stranger
+    remove_released_resources()
+    assert local_infra.ensure_memory_redis(provisioned.root).state == "ready"
+
+
+@pytest.mark.parametrize(
+    ("override", "reason"),
+    [
+        ({"memory": "2g"}, "memory limit"),
+        ({"args": ["redis-server", "--aclfile", "/etc/redis/users.acl"]}, "other settings"),
+        ({"acl": False}, "ACL file"),
+    ],
+    ids=["memory-limit", "server-settings", "no-acl-mount"],
+)
+def test_a_lookalike_container_is_refused_and_left_alone(provisioned: Provisioned, override: dict[str, Any], reason: str) -> None:
+    """The right name, label, image, port and volume are not enough: a limit or setting that differs is another resource."""
+    config = provisioned.config
+    remove_released_resources()
+    acl = provisioned.root / "users.acl"
+    docker("volume", "create", "--label", f"optimus.memory.resource={config.resource}", config.volume, check=True)
+    mount = ["--mount", f"type=bind,src={acl.resolve()},dst=/etc/redis/users.acl,readonly"] if override.get("acl", True) else []
+    args = override.get("args", ["redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "everysec", "--save", "300 1",
+                                 "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction"])
+    docker("run", "-d", "--name", config.container, "--label", f"optimus.memory.resource={config.resource}", "-p", f"{config.host}:{config.port}:6379",
+           "--memory", override.get("memory", f"{config.maxmemory_mb + 512}m"), "-v", f"{config.volume}:/data", *mount, config.image, *args, check=True)
+    lookalike = _container_id()
+    status = local_infra.ensure_memory_redis(provisioned.root)
+    assert status.state == "conflict" and "will not change it" in status.detail and reason in status.detail, status
+    assert _container_id() == lookalike
     remove_released_resources()
     assert local_infra.ensure_memory_redis(provisioned.root).state == "ready"
 

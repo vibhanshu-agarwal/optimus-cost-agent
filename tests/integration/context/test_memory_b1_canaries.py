@@ -44,6 +44,16 @@ FORBIDDEN = {
     "java annotation": "ZQXCANARYJAVAANNOT",
     "document code string": "ZQXCANARYDOCCODE",
     "document code comment": "ZQXCANARYDOCCOMMENT",
+    "document multiline string": "ZQXCANARYDOCTRIPLE",
+    "document block comment": "ZQXCANARYDOCBLOCK",
+    "document indented code": "ZQXCANARYDOCINDENT",
+    "document long fence": "ZQXCANARYDOCLONGFENCE",
+    "document inline code": "ZQXCANARYDOCINLINE",
+    "document html block": "ZQXCANARYDOCHTML",
+    "document doctest": "ZQXCANARYDOCTEST",
+    "rst literal block": "ZQXCANARYRSTLITERAL",
+    "rst directive": "ZQXCANARYRSTDIRECTIVE",
+    "text indented code": "ZQXCANARYTXTINDENT",
     "unsupported language": "ZQXCANARYKOTLIN",
 }
 ALLOWED = {"identifier": "zqxallowedidentifier", "documentation prose": "ZQXALLOWEDPROSE", "path": "zqxallowedpath"}
@@ -69,14 +79,52 @@ public class Canary {{
     }}
 }}
 '''
-_DOC = f"""# Guide
+_DOC = f'''# Guide
 
 {ALLOWED["documentation prose"]} explains this.
 
 ```python
 def documented():  # {FORBIDDEN["document code comment"]}
+    text = """
+    {FORBIDDEN["document multiline string"]}
+    """
+    /* {FORBIDDEN["document block comment"]}
+    */
     return "{FORBIDDEN["document code string"]}"
 ```
+
+Some text, then indented code:
+
+    secret_call("{FORBIDDEN["document indented code"]}")
+
+`````python
+```
+print("{FORBIDDEN["document long fence"]}")
+```
+`````
+
+Call `run("{FORBIDDEN["document inline code"]}")` with care.
+
+<pre>
+print("{FORBIDDEN["document html block"]}")
+</pre>
+
+>>> print("{FORBIDDEN["document doctest"]}")
+'''
+_RST = f"""Guide
+=====
+
+{ALLOWED["documentation prose"]} continues here::
+
+  value = "{FORBIDDEN["rst literal block"]}"
+
+.. code-block:: python
+
+    other = "{FORBIDDEN["rst directive"]}"
+"""
+_TXT = f"""{ALLOWED["documentation prose"]} in plain text.
+
+  value = "{FORBIDDEN["text indented code"]}"
 """
 _KOTLIN = f'fun main() {{ println("{FORBIDDEN["unsupported language"]}") }}\n'
 
@@ -153,6 +201,8 @@ def built(provisioned: Provisioned, tmp_path_factory: pytest.TempPathFactory) ->
     (root / ALLOWED["path"] / "canary.py").write_text(_PY, encoding="utf-8")
     (root / "Canary.java").write_text(_JAVA, encoding="utf-8")
     (root / "guide.md").write_text(_DOC, encoding="utf-8")
+    (root / "guide.rst").write_text(_RST, encoding="utf-8")
+    (root / "notes.txt").write_text(_TXT, encoding="utf-8")
     (root / "main.kt").write_text(_KOTLIN, encoding="utf-8")
     settings = OptimusGatewaySettings.from_env({"OPTIMUS_GATEWAY_URL": f"http://127.0.0.1:{server.server_address[1]}", "OPTIMUS_API_KEY": _SECRET})
     index = Index(root, settings, project="canary")
@@ -228,7 +278,7 @@ def test_the_host_side_writes_no_cache_or_journal_with_source_text(built: tuple[
     for root in (provisioned.root,):
         data = b"\n".join(path.read_bytes() for path in root.rglob("*") if path.is_file())
         _assert_clean(data, "the memory-index folder")
-    leftovers = [path for path in index.root.rglob("*") if path.is_file() and ".git" not in path.parts and path.name not in {"canary.py", "Canary.java", "guide.md", "main.kt"}]
+    leftovers = [path for path in index.root.rglob("*") if path.is_file() and ".git" not in path.parts and path.name not in {"canary.py", "Canary.java", "guide.md", "guide.rst", "notes.txt", "main.kt"}]
     assert leftovers == [], leftovers
 
 
