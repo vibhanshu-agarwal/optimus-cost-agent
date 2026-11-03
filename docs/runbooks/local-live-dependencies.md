@@ -117,6 +117,8 @@ optimus-agent --workspace-root . --no-auto-start
 
 Or drive the same agent with an independently authored external `acpx` client whose agent command includes `optimus-agent --no-auto-start`. Do not start a second Gateway from Terminal B.
 
+**Sharing a Gateway ([ADR-036](../decisions/ADR-036-local-gateway-attach-identity.md)):** an agent reuses a listening Gateway only if it proves the same configuration: upstream, credentials, model registry, composition, accounting and tool settings. Two workspaces with the same configuration share one. Otherwise the agent does not use it: the Agent Panel opens, every prompt answers with the reason (`GATEWAY_CONFIGURATION_MISMATCH`, `GATEWAY_KEY_REJECTED` or `GATEWAY_IDENTITY_UNCONFIRMED`), and no model request is sent. Stop that Gateway, or give the agent entry its own `OPTIMUS_GATEWAY_URL` port and approve the launch again. The same reason is in the launch's `local-gateway.log`.
+
 **Auto mode (opt-in, Plan 12.4):** when the agent's environment sets `OPTIMUS_AGENT_MODEL=auto` (for example in the IDE's agent server settings), start Terminal A with `run-gateway --with-local-phoenix --auto`, under a durable approval made with that setting in place. An ordinary Gateway refuses an Auto agent's calls (`REGISTRY_HASH_MISMATCH`), and the reverse also holds. See `README.md`, "Auto mode".
 
 ---

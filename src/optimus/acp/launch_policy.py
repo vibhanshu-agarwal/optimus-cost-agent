@@ -652,6 +652,16 @@ _register(
     uri_userinfo=False,
 )
 _register(
+    # #465 (ADR-036): set by the launch itself on its agent view, after authorization; never accepted from outside.
+    "OPTIMUS_GATEWAY_IDENTITY",
+    tier=LaunchVariableTier.INTERNAL_ONLY,
+    propagation=frozenset({PropagationTarget.NEVER}),
+    parser=_parse_internal_only,
+    display=_display_internal,
+    approval="reject_inherited",
+    uri_userinfo=False,
+)
+_register(
     "OPTIMUS_ACP_DEBUG_LOG",
     tier=LaunchVariableTier.INTERNAL_ONLY,
     propagation=frozenset({PropagationTarget.NEVER}),

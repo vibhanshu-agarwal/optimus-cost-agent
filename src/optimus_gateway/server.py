@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import secrets
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,7 +23,7 @@ from optimus_gateway.tool_handlers import TOOL_ROUTE_PATHS, GatewayToolDependenc
 from optimus_gateway.upstream_client import UpstreamClient, begin_request_budget, end_request_budget
 from optimus_gateway.usage_capture import handle_usage_capture_request
 from optimus_gateway.usage_report import handle_usage_report_request
-from optimus_security import usage_report_contract
+from optimus_security import gateway_identity, usage_report_contract
 from optimus_security.usage_capture_contract import CAPTURE_REQUEST_HEADER
 from optimus_security.usage_capture_contract import MAX_BODY_BYTES as MAX_CAPTURE_BODY_BYTES
 from optimus_security.usage_capture_contract import PATH as CAPTURE_PATH
@@ -46,8 +47,14 @@ _CAPTURE_WRITE_SECONDS = 10.0
 _REPORT_BODY_SECONDS = 5.0
 _REPORT_WRITE_SECONDS = 5.0
 _REPORT_PATH = usage_report_contract.PATH
+# #465: the identity route's body and write deadlines (agent-selected), inside the host's whole-exchange budget.
+_IDENTITY_BODY_SECONDS = 1.0
+_IDENTITY_WRITE_SECONDS = 1.0
+_IDENTITY_PATH = gateway_identity.PATH
 _monotonic = time.monotonic
-_CORE_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces", CAPTURE_PATH, _REPORT_PATH})
+_CORE_ROUTES = frozenset(
+    {"/v1/responses", "/v1/chat/completions", DECISIONS_PATH, "/v1/observability/traces", CAPTURE_PATH, _REPORT_PATH, _IDENTITY_PATH}
+)
 
 
 class _RejectedPostError(Exception):
@@ -127,6 +134,12 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         tool_dependencies = self.tool_dependencies
         if path not in _CORE_ROUTES and not (path in TOOL_ROUTE_PATHS and tool_dependencies is not None):
             self._reject_unhandled_post()
+            return
+        if path == _IDENTITY_PATH:
+            self._handle_identity()
+            return
+        if self._bound_to_another_identity():
+            self._refuse_other_identity(path)
             return
 
         # Correction plan v4, C9: one request-scoped diagnostic context per model request, read by `_finish` into the
@@ -260,6 +273,54 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             self._send_json(status, body, write_deadline=_monotonic() + _REPORT_WRITE_SECONDS)
         except TimeoutError:
             request_diagnostics.write_log_line(json.dumps({"event": "reply_undeliverable", "path": _REPORT_PATH, "status": status}))
+
+    def _handle_identity(self) -> None:
+        """#465 `POST /v1/local/identity`: authenticated before any body byte is read, then framed as the capture route
+        is. It answers from what was composed at startup and calls nothing."""
+        self.close_connection = True
+        served = self.config.local_identity
+        if served is None:
+            self._reject_unhandled_post()
+            return
+        deadline = _monotonic() + _IDENTITY_BODY_SECONDS
+        try:
+            if not authorize_bearer(authorization_header=self.headers.get("Authorization"), shared_secret=self.config.shared_secret):
+                raise _RejectedPostError(HTTPStatus.UNAUTHORIZED, "unauthorized")
+            length = _rejected_post_length(self.headers, gateway_identity.MAX_REQUEST_BYTES)
+            kept: list[bytes] = []
+            _discard_rejected_post_body(self.rfile, self.connection, length, deadline, kept)
+            nonce = gateway_identity.parse_request(b"".join(kept))
+            if nonce is None:
+                raise _RejectedPostError(HTTPStatus.BAD_REQUEST, "invalid identity request")
+        except _RejectedPostError as rejection:
+            status, body = int(rejection.status), {"error": rejection.error}
+        else:
+            status, body = int(HTTPStatus.OK), served.reply(nonce)
+        self._send_json(status, body, write_deadline=_monotonic() + _IDENTITY_WRITE_SECONDS)
+
+    def _bound_to_another_identity(self) -> bool:
+        """#465: a request that names the identity it expects reaches nothing here unless it is this one. A request that
+        names none has no expectation to protect; it is the bearer key's to authorize."""
+        served = self.config.local_identity
+        expected = self.headers.get(gateway_identity.HEADER)
+        return served is not None and expected is not None and not secrets.compare_digest(
+            expected.encode("utf-8", "replace"), served.identity.digest.encode("ascii")
+        )
+
+    def _refuse_other_identity(self, path: str) -> None:
+        """Refused before dispatch, so no upstream call, ledger write or budget is touched. The body is drained when it
+        can be, so a small client write is not reset; past the bound the answer is the same and the connection closes."""
+        self.close_connection = True
+        deadline = _monotonic() + _REJECTED_POST_BODY_SECONDS
+        with contextlib.suppress(_RejectedPostError):
+            length = _rejected_post_length(self.headers)
+            if length:
+                _discard_rejected_post_body(self.rfile, self.connection, length, deadline)
+        route = path if path in _CORE_ROUTES or path in TOOL_ROUTE_PATHS else "unrecognized"
+        with contextlib.suppress(Exception):  # noqa: BLE001 - a diagnostic never stops the refusal it describes
+            request_diagnostics.write_log_line(json.dumps({"event": "gateway_identity_mismatch", "path": route}))
+        self._send_json(HTTPStatus.CONFLICT, {"error": "gateway_identity_mismatch"},
+                        write_deadline=_monotonic() + _REJECTED_POST_WRITE_SECONDS)
 
     def _reject_unhandled_post(self) -> None:
         """Terminal handling for the early-404 branch: consume a bounded, well-framed body first."""

@@ -412,13 +412,14 @@ def test_an_approved_synthetic_profile_composes_the_gateway_and_server(launch, s
 
 
 def test_a_profile_launch_refuses_a_gateway_it_did_not_start(launch, synthetic_profile: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys) -> None:
-    """Fable M1: a Gateway already listening on the port (started by `optimus-trust run-gateway`, or a
-    stale unprofiled child) is not adopted. The real `ensure_local_gateway` leaves it alone and the
-    launch stops before the server, instead of serving every request into a generic refusal."""
+    """Fable M1: a Gateway already listening on the port is not adopted, even a compatible one. The real
+    `ensure_local_gateway` leaves it alone and the launch stops before the server, instead of serving every request into
+    a generic refusal. (#465: an incompatible one is refused earlier, with its reason, in `test_gateway_attach.py`.)"""
     keyring, started = launch
     authorize_workspace_for_test(env=_ENV, workspace_root=tmp_path, fake_keyring=keyring, test_profile="qualification")
     monkeypatch.setattr(acp_main, "ensure_local_gateway", local_infra.ensure_local_gateway)
     monkeypatch.setattr(local_infra, "_tcp_reachable", lambda host, port: True)  # someone else's Gateway is up
+    monkeypatch.setattr(local_infra, "verify_local_gateway", lambda *_a, **_k: None)  # and it proved compatible
 
     assert acp_main.main(["--workspace-root", str(tmp_path), "--plan12-test-profile", "qualification"]) == 2
     assert "TEST_PROFILE_GATEWAY_NOT_STARTED" in capsys.readouterr().err

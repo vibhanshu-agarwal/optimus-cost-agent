@@ -17,6 +17,13 @@ from optimus.acp.local_gateway_secrets import (
 _HMAC_KEY = b"test-local-infra-hmac-key-32byt!"
 
 
+@pytest.fixture(autouse=True)
+def _no_listener_to_confirm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These suites fake the child and the socket, so nothing answers. `test_gateway_attach.py` tests the check for real."""
+    monkeypatch.setattr(local_infra, "verify_local_gateway", lambda *_a, **_k: None)
+
+
+
 def _resolution(secrets: ProviderSecrets | None) -> ProviderCredentialResolution:
     provenance = CredentialProvenance(CredentialLayer.ENVIRONMENT, "test")
     return ProviderCredentialResolution(

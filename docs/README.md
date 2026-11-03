@@ -74,6 +74,7 @@ relevant records before proposing a change in their area.
 | [ADR-033: Accepts ADR-032](decisions/ADR-033-accepts-adr-032-durable-usage-capture.md) | Accepts durable usage capture as merged, with its disclosed limits; operator acceptance through Codex's review (source S17) |
 | [ADR-034: Cost-savings report](decisions/ADR-034-cost-savings-report-read-and-presentation.md) | Gateway read route over the ledger, dated reference-model columns (D3), explicit Auto attribution and `/savings` in Zed (Plan 12.9, #248); accepted by ADR-035 |
 | [ADR-035: Accepts ADR-034](decisions/ADR-035-accepts-adr-034-cost-savings-report.md) | Accepts the cost-savings report as merged, with its disclosed limits; delivery evidence stays qualified; operator acceptance confirmed by approval to merge (source S19) |
+| [ADR-036: Local Gateway attach identity](decisions/ADR-036-local-gateway-attach-identity.md) | A launch reuses a local Gateway only when it proves this launch's configuration, and otherwise says why in the Agent Panel (#465) |
 | [Ordering/lifecycle/signals and queue decision](decisions/2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Exact operator authority, accepted proposals, alternatives and scoped ADR-027 supersession |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
@@ -111,6 +112,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
+| [Plan 12.10: memory index, tools and context (M1)](superpowers/plans/2026-11-03-plan-12-10-memory-index-and-context-implementation.md) | #469; hybrid index, four read-only tools and first useful context |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |

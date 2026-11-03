@@ -473,6 +473,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.__main__:_serve_gateway_refusal:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.__main__:_serve_gateway_refusal:stderr_export prints a typed refusal code and a fixed message naming a loopback URL and configuration labels; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach_wiring.py::test_a_refused_launch_serves_only_the_diagnostic_host",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.__main__:_start_local_dependencies:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.__main__:_start_local_dependencies:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
@@ -582,6 +590,30 @@
       "rationale": "Inspection: optimus.acp.conversation:render_model_conversation:json_serialization serializes the same already-sanitized five-field conversation records as render_conversation_envelope, in numeric turn order and declared field order, as the planner's history (Plan 12.2 Task 3, F3); it is not a diagnostic export, and the storage serializer alone measures the cap.",
       "sanitizer": "conversation sanitizer applied before render; schema-limited five-field records only",
       "test_node": "tests/unit/acp/test_conversation_model_order.py::test_model_turn_and_field_order",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.local_infra:record_gateway_refusal:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: appends one JSON line with a typed refusal code and a fixed message naming a loopback URL and configuration labels to the launch's own Gateway log; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_refusal_reaches_the_launchs_own_log_without_secrets",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.local_infra:record_gateway_refusal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: one JSON record with a typed event or refusal code, a known route or a fixed message naming a loopback URL and configuration labels; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_refusal_reaches_the_launchs_own_log_without_secrets",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.local_infra:record_gateway_refusal:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: one JSON record with a typed event or refusal code, a known route or a fixed message naming a loopback URL and configuration labels; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_refusal_reaches_the_launchs_own_log_without_secrets",
       "evidence_tier": "unit"
     },
     {
@@ -1486,6 +1518,14 @@
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.responses:run_model_completion:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/optimus_gateway/test_responses.py::test_handle_responses_request_sanitizes_upstream_error_and_fails_closed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._refuse_other_identity:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: one JSON record with a typed event or refusal code, a known route or a fixed message naming a loopback URL and configuration labels; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_refusal_reaches_the_launchs_own_log_without_secrets",
       "evidence_tier": "unit"
     },
     {
