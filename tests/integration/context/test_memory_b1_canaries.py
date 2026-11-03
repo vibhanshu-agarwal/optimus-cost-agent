@@ -51,6 +51,9 @@ FORBIDDEN = {
     "document inline code": "ZQXCANARYDOCINLINE",
     "document html block": "ZQXCANARYDOCHTML",
     "document html block across a heading": "ZQXCANARYDOCPREHEAD",
+    "document html block past a lookalike tag": "ZQXCANARYDOCPREFIX",
+    "document second html block on a line": "ZQXCANARYDOCSECOND",
+    "document html comment": "ZQXCANARYDOCCOMMENTBLOCK",
     "document doctest": "ZQXCANARYDOCTEST",
     "rst literal block": "ZQXCANARYRSTLITERAL",
     "rst directive": "ZQXCANARYRSTDIRECTIVE",
@@ -114,6 +117,21 @@ print("{FORBIDDEN["document html block"]}")
 # Example
 print("{FORBIDDEN["document html block across a heading"]}")
 </pre>
+
+<pre>
+</prefix>
+# Lookalike
+print("{FORBIDDEN["document html block past a lookalike tag"]}")
+</pre>
+
+<code>x</code><pre>
+print("{FORBIDDEN["document second html block on a line"]}")
+</pre>
+
+<!--
+# Hidden
+print("{FORBIDDEN["document html comment"]}")
+-->
 
 >>> print("{FORBIDDEN["document doctest"]}")
 '''

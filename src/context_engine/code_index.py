@@ -41,8 +41,9 @@ _INDENTED_MARKDOWN = re.compile(r"^(?: {4}|\t)")
 _INDENTED_ANY = re.compile(r"^\s+\S")
 _CODE_LINE = re.compile(r"^\s*(?:>>>|\.\.\s)")
 # Inline spans and HTML blocks; a stray backtick then takes the rest of its line. A false match costs prose, never leaks code.
-_INLINE_CODE = re.compile(r"(`+)[\s\S]*?\1|<(pre|code|script|style)\b[\s\S]*?(?:</\2>|\Z)", re.IGNORECASE)
-_HTML_BLOCK = re.compile(r"<(pre|code|script|style)\b", re.IGNORECASE)
+_HTML_CODE_NAMES: Final = "pre|code|script|style|textarea|xmp|listing"
+_INLINE_CODE = re.compile(rf"(`+)[\s\S]*?\1|<({_HTML_CODE_NAMES})\b[\s\S]*?(?:</\2\s*>|\Z)|<!--[\s\S]*?(?:-->|\Z)", re.IGNORECASE)
+_HTML_TRANSITION = re.compile(rf"<!--|-->|<(/?)({_HTML_CODE_NAMES})(?:\s[^>]*)?(?:>|$)", re.IGNORECASE)
 _STRAY_BACKTICK = re.compile(r"`.*$", re.MULTILINE)
 _CODE_LITERAL = re.compile(
     r'''("""[\s\S]*?(?:"""|\Z)|\'\'\'[\s\S]*?(?:\'\'\'|\Z)|/\*[\s\S]*?(?:\*/|\Z)|<!--[\s\S]*?(?:-->|\Z)'''
@@ -235,6 +236,21 @@ def _parse_code(path: str, data: bytes, text: str, file_hash: str, modified: int
     return ParsedFile(file_hash, language, lines, (file_record, *records), parse_errors=root.has_error)
 
 
+def _html_state_after(line: str, state: str | None) -> str | None:
+    """Which HTML code block or comment is open after this line, taking every tag on it in order. Only a complete closing tag ends a block."""
+    for tag in _HTML_TRANSITION.finditer(line):
+        word = tag.group(0)
+        if word == "<!--":
+            state = state or "comment"
+        elif word == "-->":
+            state = None if state == "comment" else state
+        elif state is None and not tag.group(1):
+            state = tag.group(2).lower()
+        elif tag.group(1) and state == tag.group(2).lower():
+            state = None
+    return state
+
+
 def _parse_document(path: str, text: str, file_hash: str, modified: int | None, language: str) -> ParsedFile:
     """Documentation prose may persist; a code block keeps only its pointer, terms and vector (Option A). Whatever may be code counts
     as code, so unusual layout loses prose rather than keeping a body: indented blocks, literal blocks and directives, doctests, inline
@@ -275,18 +291,12 @@ def _parse_document(path: str, text: str, file_hash: str, modified: int | None, 
             else:
                 code.append(line)
             continue
-        if html_block is not None:
+        was_open, html_block = html_block, _html_state_after(line, html_block)
+        if was_open is not None or html_block is not None:
             code.append(line)
-            if html_block in line.lower():
-                html_block = None
             continue
         if marker and not (marker.group(1)[0] == "`" and "`" in marker.group(2)):
             fence = (marker.group(1)[0], len(marker.group(1)))
-            continue
-        opened = _HTML_BLOCK.search(line)
-        if opened and f"</{opened.group(1).lower()}" not in line[opened.end():].lower():
-            code.append(line)
-            html_block = f"</{opened.group(1).lower()}"
             continue
         if indented.match(line) or _CODE_LINE.match(line):
             code.append(line)

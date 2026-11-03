@@ -65,8 +65,9 @@ proves its whole file arrived and a resume can skip it. The catalogue names path
 when that file is next written, or removed if the file has gone, and no reader ever saw it. A record's retirement is written once, so an earlier view
 stays as it was. A prune raises the oldest readable epoch to the published one as it starts removing, so a reader pinned earlier is refused with
 `EPOCH_EXPIRED` and retries; it never gets part of a view. Epochs come from one counter and a new line's floor starts at its current value, so nothing from
-before a drop can name the line that replaced it, and a read overtaken by a drop is refused rather than answered empty. A pass is called complete only if the
-same files still hold the same bytes it read: size and time can stay the same when contents do not. Revision and dirty state are published inside the line; a
+before a drop can name the line that replaced it, and a read overtaken by a drop is refused rather than answered empty. A drop's first step takes the line out of
+service in one transaction, so nothing reads a part of it, and an interrupted drop stays out of service until it is run again. A pass is called complete only if the
+same files still hold the same bytes it read: size and time can stay the same when contents do not. That final check stops for a cancel and gives way to a turn. Revision and dirty state are published inside the line; a
 changed ignore file is reconciled inside it.
 
 Writers hold a lease whose fencing token every write checks under `WATCH`. A resuming owner takes a new token and retires its old one; another owner

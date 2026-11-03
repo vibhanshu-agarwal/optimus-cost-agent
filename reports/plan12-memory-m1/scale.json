@@ -3,7 +3,7 @@
   "plan": "12.10",
   "issue": 469,
   "state": "FORECAST_ONLY: no 1M LOC corpus has been counted or run. Task 5 qualifies scale against targets.json.",
-  "measured_source": "pilot.json, plan12.10-pilot-2026-11-03, rerun at the corrected 1 GiB container limit, on this repository's Python",
+  "measured_source": "pilot.json, plan12.10-pilot-2026-11-03, at code head 7c26c89 and the corrected 1 GiB container limit, on this repository's Python",
   "this_repository_src_and_tools": {
     "files": 392,
     "parsed_python_loc": 122111,

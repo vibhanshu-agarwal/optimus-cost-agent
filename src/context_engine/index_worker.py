@@ -237,18 +237,24 @@ class IndexWorker:
             if len(batch.removals) >= BATCH_RECORDS:
                 self._flush(pending, batch, force=True)
         self._flush(pending, batch, force=True)
-        unchanged = self._source.revision() == self._revision and self._still_what_was_read(contents)
+        unchanged = self._source.revision() == self._revision and self._still_what_was_read(contents, cancel)
+        if cancel.is_set():
+            raise _Cancelled([])
         current = self._publish(complete=unchanged)
         self._progress("idle")
         self._prune()
         return WorkerOutcome("complete" if unchanged else "paused", "" if unchanged else "the source changed during this pass", current,
                              self._files_written, self._records_written, self._coverage.report(complete=unchanged))
 
-    def _still_what_was_read(self, contents: dict[str, str | None]) -> bool:
-        """The final word on `complete`: the same files with the same bytes. A file's size and time can stay the same when its contents do not."""
+    def _still_what_was_read(self, contents: dict[str, str | None], cancel: threading.Event) -> bool:
+        """The final word on `complete`: the same files with the same bytes. A file's size and time can stay the same when its contents do not.
+        It reads the whole corpus again, so it stops for a cancel and gives way to a person's turn as the first read did."""
         if {item.path for item in self._source.files()} != set(contents):
             return False
         for path, expected in contents.items():
+            if cancel.is_set():
+                raise _Cancelled([])
+            self._yield_to_foreground(cancel)
             data = self._source.read(path)
             if (None if data is None else digest(data)) != expected:
                 return False

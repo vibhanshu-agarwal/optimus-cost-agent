@@ -37,6 +37,7 @@ _CLEANUP_STEP: Final = 512
 _SEARCH_FIELDS: Final = ("path", "path_id", "file_hash", "kind", "language", "symbol", "signature", "description", "prose",
                          "start_line", "end_line", "modified", "epoch_added")
 _INT_FIELDS: Final = frozenset({"start_line", "end_line", "modified", "epoch_added"})
+_READS: Final = frozenset({"query", "catalogue", "coverage"})
 
 
 class IndexUnavailableError(RuntimeError):
@@ -115,6 +116,8 @@ class IndexStore:
         self._on_time()
         handler = getattr(self, f"_op_{body['op']}")
         result: dict[str, Any] = handler(body["scope"], body)
+        if body["op"] in _READS or body.get("action") == "get":  # a late read is not a success; a committed write is, so it says so
+            self._on_time()
         return result
 
     def _on_time(self) -> None:
@@ -163,12 +166,16 @@ class IndexStore:
         wanted = {"embedding": body["embedding"], "dimensions": str(body["dimensions"]), "schema_version": str(body["schema_version"])}
         self._ensure_search_index(body["dimensions"])
         for field, value in wanted.items():
+            self._on_time()
             self._redis.hsetnx(key, field, value)
         # Epochs come from one counter and a new line's floor starts at its current value, so an epoch or a cursor from before a drop
         # can never name data in the line that replaced it.
         self._redis.hsetnx(key, "floor", str(self._redis.incr(f"{_PREFIX}:epochs")))
+        self._on_time()
         self._redis.sadd(f"{_PREFIX}:lines", scope)
         line = self._line(scope)
+        if "dropping" in line:
+            raise mic.IndexRequestError("SCOPE_DROPPING", 409)
         if any(line.get(field) != value for field, value in wanted.items()):
             raise mic.IndexRequestError("SCOPE_CONFIGURATION_MISMATCH", 409)
         return {"status": "ok", "current": self._current(scope)}
@@ -220,6 +227,7 @@ class IndexStore:
                         if raw and _text(raw).split(":", 1)[1] != owner:
                             pipe.unwatch()
                             raise mic.IndexRequestError("LEASE_HELD", 409)
+                        self._on_time()
                         pipe.multi()
                         pipe.set(key, f"{token}:{owner}", px=body["ttl_ms"])
                         pipe.execute()
@@ -235,6 +243,7 @@ class IndexStore:
                     if _text(pipe.get(key) or b"") != expected:
                         pipe.unwatch()
                         raise mic.IndexRequestError("LEASE_LOST", 409)
+                    self._on_time()
                     pipe.multi()
                     if body["action"] == "renew":
                         pipe.pexpire(key, body["ttl_ms"])
@@ -246,8 +255,8 @@ class IndexStore:
                     continue
         raise mic.IndexRequestError("LEASE_CONTENDED", 409)
 
-    def _fenced(self, scope: str, token: int, build: Any) -> dict[str, Any]:
-        """Run `build(pipe, line)` so its writes commit only if this writer still holds the scope's lease."""
+    def _fenced(self, scope: str, token: int, build: Any, *, while_dropping: bool = False) -> dict[str, Any]:
+        """Run `build(pipe, line)` so its writes commit only if this writer still holds the scope's lease. While a drop is under way, only the drop may."""
         key = self._lease_key(scope, "scope")
         for _ in range(_WATCH_ATTEMPTS):
             with self._redis.pipeline() as pipe:
@@ -261,6 +270,9 @@ class IndexStore:
                     if not line:
                         pipe.unwatch()
                         raise mic.IndexRequestError("SCOPE_UNKNOWN", 404)
+                    if "dropping" in line and not while_dropping:
+                        pipe.unwatch()
+                        raise mic.IndexRequestError("SCOPE_DROPPING", 409)
                     result = build(pipe, line)
                     if pipe.explicit_transaction:
                         self._on_time()
@@ -337,6 +349,10 @@ class IndexStore:
         """A reader names an epoch it is pinned to, or takes the published one. Nothing unpublished is ever the default."""
         current = self._current(scope)
         if "epoch" in body:
+            # Only an epoch this line has: its published ones, or the one its writer is building. A number from nowhere could otherwise be sealed in a cursor.
+            building = self._redis.hget(f"{_PREFIX}:line:{scope}", "building")
+            if not ((current is not None and body["epoch"] <= current["epoch"]) or (building is not None and int(building) == body["epoch"])):
+                raise mic.IndexRequestError("NOT_PUBLISHED", 404)
             return body["epoch"], current
         if current is None:
             raise mic.IndexRequestError("NOT_PUBLISHED", 404)
@@ -344,7 +360,6 @@ class IndexStore:
 
     def _still_readable(self, scope: str, result: dict[str, Any]) -> dict[str, Any]:
         """Checked after a read, so a prune or a drop that overtook it is a refusal the host can retry, never a silently partial answer."""
-        self._on_time()
         floor = self._redis.hget(f"{_PREFIX}:line:{scope}", "floor")
         if floor is None:
             raise mic.IndexRequestError("SCOPE_UNKNOWN", 404)
@@ -491,7 +506,8 @@ class IndexStore:
     def _op_cleanup(self, scope: str, body: dict[str, Any]) -> dict[str, Any]:
         """One bounded step. `prune` raises the oldest readable epoch to the published one, so a reader pinned earlier is refused and
         retries rather than getting part of a view, then removes what no reader can now name: records retired at or before that
-        epoch and leftovers of abandoned ones. `drop` removes the scope. The caller repeats until no cursor comes back."""
+        epoch and leftovers of abandoned ones. `drop` removes the scope; its first step takes the line out of service in one transaction,
+        so nothing reads a part of it, and an interrupted drop stays out of service until it is run again. The caller repeats until no cursor comes back."""
         cursor = 0
         if "cursor" in body:
             sealed = self._unseal(scope, body["cursor"])
@@ -503,6 +519,7 @@ class IndexStore:
         def step(pipe: Any, line: dict[str, str]) -> dict[str, Any]:
             raw_current = pipe.get(f"{_PREFIX}:current:{scope}")
             published = json.loads(raw_current)["epoch"] if raw_current else 0
+            newest_floor = pipe.incr(f"{_PREFIX}:epochs") if dropping and "dropping" not in line else None
             building = int(line["building"]) if "building" in line else None
             pattern = f"{_RECORD_PREFIX}{line['dimensions']}:{scope}:*"
             next_cursor, keys = pipe.scan(cursor=cursor, match=pattern, count=_CLEANUP_STEP)
@@ -518,6 +535,10 @@ class IndexStore:
                 if dropping or abandoned or retired:
                     doomed.append((key, _text(path_id)))
             pipe.multi()
+            if newest_floor is not None:
+                pipe.hset(f"{_PREFIX}:line:{scope}", mapping={"dropping": "1", "floor": str(newest_floor)})
+                pipe.hdel(f"{_PREFIX}:line:{scope}", "building")
+                pipe.delete(f"{_PREFIX}:current:{scope}")
             if not dropping and published > int(line.get("floor", 0)):
                 pipe.hset(f"{_PREFIX}:line:{scope}", "floor", str(published))
             for key, path_id in doomed:
@@ -530,7 +551,7 @@ class IndexStore:
             more = self._seal(scope, {"cleanup": body["action"], "next": int(next_cursor)}) if next_cursor else None
             return {"status": "ok", "removed": len(doomed), "cursor": more}
 
-        return self._fenced(scope, body["token"], step)
+        return self._fenced(scope, body["token"], step, while_dropping=dropping)
 
 
 class IndexService:

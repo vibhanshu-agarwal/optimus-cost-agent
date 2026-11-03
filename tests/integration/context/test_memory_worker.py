@@ -491,6 +491,68 @@ def test_an_edit_that_keeps_size_and_time_is_not_called_complete(index: Index) -
     assert outcome.state == "paused" and outcome.coverage["complete"] is False
 
 
+class _CountingSource(WorkspaceIndexSource):
+    """The real source, with a hook on each read so a test can act during the pass's final check of what it read."""
+
+    def __init__(self, root: Path, on_read: Any) -> None:
+        super().__init__(FilePolicy(root))
+        self._on_read = on_read
+
+    def read(self, path: str) -> bytes | None:
+        self._on_read(path)
+        return super().read(path)
+
+
+def test_the_final_check_stops_for_a_cancel_and_nothing_is_called_complete(index: Index) -> None:
+    cancel = threading.Event()
+    reads = {"n": 0}
+
+    def on_read(_path: str) -> None:
+        reads["n"] += 1
+        if reads["n"] == 4:  # three files were read to index them; this is the check's first
+            cancel.set()
+
+    worker = IndexWorker(_CountingSource(index.root, on_read), index.storage, index.embedder, owner=index.owner, cold_admission=False)
+    outcome = worker.run(cancel)
+    assert outcome.state == "cancelled"
+    assert reads["n"] == 4, "it should stop at once, not read the rest of the corpus"
+    assert index.storage.call("coverage")["current"]["coverage"]["complete"] is False
+
+
+def test_a_cancel_at_the_final_checks_last_read_is_not_published_as_complete(index: Index) -> None:
+    cancel = threading.Event()
+    reads = {"n": 0}
+
+    def on_read(_path: str) -> None:
+        reads["n"] += 1
+        if reads["n"] == 6:  # three to index, and the last of the check's three
+            cancel.set()
+
+    worker = IndexWorker(_CountingSource(index.root, on_read), index.storage, index.embedder, owner=index.owner, cold_admission=False)
+    assert worker.run(cancel).state == "cancelled"
+    assert index.storage.call("coverage")["current"]["coverage"]["complete"] is False
+
+
+def test_the_final_check_gives_way_to_a_persons_turn(index: Index) -> None:
+    reads = {"n": 0}
+    waited_during_check = {"n": 0}
+    busy = {"on": False}
+
+    def on_read(_path: str) -> None:
+        reads["n"] += 1
+        if reads["n"] == 4:
+            busy["on"] = True
+
+    def pause(_seconds: float) -> None:
+        waited_during_check["n"] += 1
+        busy["on"] = False
+
+    worker = IndexWorker(_CountingSource(index.root, on_read), index.storage, index.embedder, owner=index.owner, cold_admission=False,
+                         foreground_busy=lambda: busy["on"], pause=pause)
+    assert worker.run(threading.Event()).state == "complete"
+    assert waited_during_check["n"] == 1
+
+
 def test_a_reader_pinned_across_an_ordinary_pass_is_refused_and_never_answered_partly(index: Index) -> None:
     index.build()
     pinned = index.storage.call("coverage")["current"]["epoch"]

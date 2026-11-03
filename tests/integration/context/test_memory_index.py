@@ -306,6 +306,89 @@ def test_a_drop_during_a_read_is_a_refusal_and_not_an_empty_answer(rpc: Rpc, cli
     assert refused.value.code == "SCOPE_UNKNOWN"
 
 
+def test_a_drop_takes_the_line_out_of_service_in_its_first_step(rpc: Rpc, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Between a large drop's batches nothing may read a part of the line. An interrupted drop stays out of service until it is run again."""
+    token = rpc.open_line()
+    epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=epoch, records=[_file(f"f{n}.py", "1" * 64) for n in range(3)] + [_symbol("f0.py", "1" * 64, "alpha", "alpha", _vector(1))])
+    rpc.publish(token, epoch, files=3)
+    monkeypatch.setattr(memory_index, "_CLEANUP_STEP", 1)
+    first = rpc.ok("cleanup", token=token, action="drop")
+    assert first["cursor"] is not None
+    assert rpc.ok("coverage")["current"] is None
+    rpc.refused("NOT_PUBLISHED", "query", mode="lexical", terms=["alpha"], k=5)
+    rpc.refused("NOT_PUBLISHED", "catalogue")
+    rpc.refused("NOT_PUBLISHED", "query", mode="lexical", terms=["alpha"], k=5, epoch=epoch)
+    rpc.refused("SCOPE_DROPPING", "generation", action="open", embedding="test-embedding", dimensions=_DIMENSIONS, schema_version=1)
+    rpc.refused("SCOPE_DROPPING", "generation", action="begin", token=token)
+    rpc.refused("SCOPE_DROPPING", "batch", token=token, epoch=epoch, records=[_file("late.py", "1" * 64)])
+    rpc.refused("SCOPE_DROPPING", "cleanup", token=token, action="prune")
+    monkeypatch.setattr(memory_index, "_CLEANUP_STEP", 512)
+    _drop(rpc, token)  # started again from the beginning, as a host recovering from an interrupted drop would
+    rpc.refused("SCOPE_UNKNOWN", "coverage")
+    token = rpc.open_line()
+    fresh = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.publish(token, fresh, files=0)
+    assert rpc.ok("query", mode="lexical", terms=["alpha"], k=5)["records"] == []
+    assert rpc.ok("catalogue")["files"] == []
+
+
+def test_a_catalogue_cannot_name_or_seal_an_epoch_the_line_does_not_have(rpc: Rpc) -> None:
+    token = rpc.open_line()
+    epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=epoch, records=[_file(f"f{n}.py", "1" * 64) for n in range(3)])
+    rpc.refused("NOT_PUBLISHED", "catalogue", epoch=10**12)
+    assert len(rpc.ok("catalogue", epoch=epoch)["files"]) == 3  # its writer may read what it is building
+    rpc.publish(token, epoch, files=3)
+    rpc.refused("NOT_PUBLISHED", "catalogue", epoch=epoch + 1000)
+    rpc.refused("NOT_PUBLISHED", "catalogue", epoch=epoch + 1000, limit=1)
+
+
+@pytest.mark.parametrize("op", ["open", "acquire", "renew"])
+def test_a_request_that_expires_partway_changes_nothing_more(rpc: Rpc, client: redis.Redis, monkeypatch: pytest.MonkeyPatch, op: str) -> None:
+    token = rpc.open_line()
+    store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
+    other = _h(uuid.uuid4().hex)
+    bodies = {
+        "open": {"op": "generation", "scope": other, "action": "open", "embedding": "e", "dimensions": _DIMENSIONS, "schema_version": 1},
+        "acquire": {"op": "lease", "scope": rpc.scope, "action": "acquire", "owner": "ab" * 8, "ttl_ms": 30000, "kind": "scope"},
+        "renew": {"op": "lease", "scope": rpc.scope, "action": "renew", "owner": "ab" * 8, "ttl_ms": 30000, "kind": "scope", "token": token},
+    }
+    calls = {"n": 0}
+    real = time.monotonic
+
+    def clock() -> float:  # past the deadline from the second look at the clock on
+        calls["n"] += 1
+        return real() + (0 if calls["n"] == 1 else 1000)
+
+    held = client.get(f"oidx:lease:{rpc.scope}")
+    monkeypatch.setattr(memory_index.time, "monotonic", clock)
+    with pytest.raises(mic.IndexRequestError) as refused:
+        store.dispatch(bodies[op], deadline=real() + 5)
+    monkeypatch.undo()
+    assert refused.value.code == "INDEX_TIMEOUT"
+    assert client.get(f"oidx:lease:{rpc.scope}") == held
+    assert not client.hget(f"oidx:line:{other}", "floor")
+
+
+def test_a_read_that_finishes_late_is_refused(rpc: Rpc, client: redis.Redis, monkeypatch: pytest.MonkeyPatch) -> None:
+    rpc.open_line()
+    store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
+    real_time = time.monotonic
+    deadline = real_time() + 5
+    real_op = store._op_coverage
+
+    def late(*args: Any) -> Any:
+        result = real_op(*args)
+        monkeypatch.setattr(memory_index.time, "monotonic", lambda: real_time() + 1000)
+        return result
+
+    store._op_coverage = late  # type: ignore[method-assign]
+    with pytest.raises(mic.IndexRequestError) as refused:
+        store.dispatch({"op": "coverage", "scope": rpc.scope}, deadline=deadline)
+    assert refused.value.code == "INDEX_TIMEOUT"
+
+
 def test_nothing_from_before_a_drop_can_name_the_line_that_replaced_it(rpc: Rpc) -> None:
     token = rpc.open_line()
     first = rpc.ok("generation", action="begin", token=token)["epoch"]
