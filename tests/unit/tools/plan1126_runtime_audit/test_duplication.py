@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -313,6 +314,14 @@ def test_duplication_inventory_is_deterministic_and_reconciles_prior_seeds() -> 
     second = discover_duplication_candidates(source, DEFAULT_SCOPE, DEFAULT_PRIOR_SEEDS)
 
     assert canonical_json_bytes(first) == canonical_json_bytes(second)
+    committed = (_ROOT / "reports" / "plan-11-26-duplication-candidates.json").read_bytes()
+    audit = json.loads((_ROOT / "reports" / "plan-11-26-duplication-audit.json").read_bytes())
+    fresh = canonical_json_bytes(first)
+    matches = fresh == committed  # not inline: on CI pytest would ndiff both full inventories
+    assert matches, f"fresh {_sha256(fresh)} != committed {_sha256(committed)}; {sys.version}"
+    assert first["inventory_digest"] == audit["inventory_digest"]
+    assert audit["source_commit"] == _PINNED_COMMIT
+    assert len(first["candidate_groups"]) == audit["counts"]["raw_groups"] == 176
     assert first["source_commit"] == _PINNED_COMMIT
     assert first["candidate_groups"]
     reconciliation = first["prior_seed_reconciliation"]
