@@ -3,15 +3,19 @@ dedicated Redis in tests/integration/context."""
 
 from __future__ import annotations
 
+import http.client
 import json
 import threading
 import time
+from dataclasses import replace
 from typing import Any
 
 import pytest
 
 from optimus_gateway import memory_index
 from optimus_security import memory_index_contract as mic
+from optimus_security.usage_capture_contract import PATH as CAPTURE_PATH
+from tests.unit.optimus_gateway.test_server import _config, _start_server
 
 _SCOPE = "ab" * 32
 _COVERAGE = json.dumps({"op": "coverage", "scope": _SCOPE}).encode()
@@ -56,6 +60,43 @@ def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
     for thread in threads:
         thread.join(10)
     assert store.calls == len(threads)
+
+
+def test_model_and_capture_routes_answer_while_the_index_is_saturated() -> None:
+    release = threading.Event()
+    store = _Store(release=release)
+    service = _service(store)
+    config = replace(_config(), memory_index=service)
+    server, thread, host, port = _start_server(config=config)
+
+    def post(path: str, body: bytes) -> tuple[int, dict[str, Any], float]:
+        started = time.monotonic()
+        connection = http.client.HTTPConnection(host, port, timeout=20)
+        connection.request("POST", path, body, {"Authorization": f"Bearer {config.shared_secret}", "Content-Type": "application/json"})
+        response = connection.getresponse()
+        payload = json.loads(response.read() or b"{}")
+        connection.close()
+        return response.status, payload, time.monotonic() - started
+
+    held = [threading.Thread(target=post, args=(mic.PATH, _COVERAGE)) for _ in range(mic.SERVING_WORKERS + mic.QUEUE_DEPTH)]
+    try:
+        for request in held:
+            request.start()
+        deadline = time.monotonic() + 4
+        while service._waiting._value and time.monotonic() < deadline:  # connections can take a moment to be accepted
+            time.sleep(0.01)
+        assert post(mic.PATH, _COVERAGE)[:2] == (503, mic.error_body("INDEX_BUSY"))
+        status, _reply, seconds = post("/v1/responses", json.dumps({"model": "claude-haiku", "input": "hello"}).encode())
+        assert status == 200 and seconds < 2
+        status, reply, seconds = post(CAPTURE_PATH, b"{}")
+        assert reply != mic.error_body("INDEX_BUSY") and status != 503 and seconds < 2
+    finally:
+        release.set()
+        for request in held:
+            request.join(10)
+        server.shutdown()
+        server.server_close()
+        thread.join(5)
 
 
 def test_a_request_past_its_deadline_is_refused_without_reaching_the_store() -> None:

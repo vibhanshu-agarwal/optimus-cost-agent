@@ -131,6 +131,7 @@ _INDEX_LISTINGS = {
     "tools/testing/run_profile.py": "the runner itself: it runs inside the commit hook, where git's own GIT_INDEX_FILE is in force",
     "tools/probe_p11_zed_session_load.py": "a manually run probe digests its own checkout; no test run executes that listing",
     "tools/measure_context_engine_limits.py": "a manually run Plan 12 measurement tool; its in-suite uses list tracked file names to sample sizes and to build its measurement report, so the index it lists changes the sample or report, never a verdict about the commit",
+    "tools/plan12_memory/m1_scale.py": "a manually run Plan 12.10 measurement tool; it lists the tracked files it copies into its own corpus, so the index it reads changes the sample, never a verdict about the commit",
     "tests/unit/guardrails/test_ci_parity.py": "its listing programs run in per-test fixture repositories, never the repository being committed",
     "tests/unit/guardrails/test_file_policy.py": "lists a per-test temporary repository's ignored files to compare with the policy, never the repository being committed",
     "tests/unit/tools/test_probe_p11_zed_session_load.py": "a stand-in for git that the probe's isolated copies must never call",

@@ -153,6 +153,29 @@ def test_a_reader_pinned_to_an_epoch_keeps_seeing_it_while_the_next_one_is_publi
     assert rpc.ok("catalogue")["files"][0]["file_hash"] == new
 
 
+def test_a_reader_cannot_name_an_epoch_that_is_still_building(rpc: Rpc) -> None:
+    token = rpc.open_line()
+    first = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=first, records=[_symbol("a.py", "1" * 64, "alpha", "alpha", _vector(1))])
+    rpc.refused("NOT_PUBLISHED", "query", mode="lexical", terms=["alpha"], k=5, epoch=first)
+    rpc.publish(token, first)
+    second = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=second, records=[_symbol("b.py", "2" * 64, "beta", "beta", _vector(0, 1))])
+    rpc.refused("NOT_PUBLISHED", "query", mode="lexical", terms=["beta"], k=5, epoch=second)
+    assert [r["symbol"] for r in rpc.ok("query", mode="lexical", terms=["alpha"], k=5, epoch=first)["records"]] == ["alpha"]
+
+
+def test_only_the_building_epoch_can_be_written_or_published(rpc: Rpc) -> None:
+    token = rpc.open_line()
+    epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.refused("EPOCH_NOT_BUILDING", "batch", token=token, epoch=epoch + 1, records=[_file("a.py", "1" * 64)])
+    rpc.publish(token, epoch, files=0)
+    rpc.refused("EPOCH_NOT_BUILDING", "batch", token=token, epoch=epoch, records=[_file("a.py", "1" * 64)])
+    rpc.refused("EPOCH_NOT_BUILDING", "generation", action="publish", token=token, epoch=epoch, revision=_REVISION, dirty=False,
+                coverage={"complete": True, "files_indexed": 1, "files_total": 1})
+    assert rpc.ok("catalogue")["files"] == []
+
+
 def test_a_deleted_file_leaves_the_published_view(rpc: Rpc) -> None:
     token = rpc.open_line()
     first = rpc.ok("generation", action="begin", token=token)["epoch"]
@@ -273,10 +296,11 @@ def test_a_scope_with_the_same_key_can_read_another_scope_only_by_naming_it(rpc:
     rpc.ok("batch", token=token, epoch=epoch, records=[_symbol("a.py", "1" * 64, "secretish", "secretish", _vector(1))])
     rpc.publish(token, epoch)
     other = Rpc(rpc.port)
-    other.open_line()
-    other_epoch = other.ok("generation", action="begin", token=other.ok("lease", action="acquire", owner="ab" * 8, ttl_ms=30000, kind="scope")["token"])["epoch"]
-    assert other_epoch == 1
-    assert other.call("query", mode="lexical", terms=["secretish"], k=5, epoch=1)[1]["records"] == []
+    other_token = other.open_line()
+    other_epoch = other.ok("generation", action="begin", token=other_token)["epoch"]
+    assert other_epoch == epoch
+    other.publish(other_token, other_epoch, files=0)
+    assert other.ok("query", mode="lexical", terms=["secretish"], k=5, epoch=other_epoch)["records"] == []
     assert len(other.ok("query", scope=rpc.scope, mode="lexical", terms=["secretish"], k=5)["records"]) == 1
 
 
@@ -348,8 +372,14 @@ def test_a_batch_or_a_body_over_the_limit_is_refused(rpc: Rpc) -> None:
     epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
     too_many = [_file(f"f{n}.py", "1" * 64) for n in range(mic.MAX_RECORDS + 1)]
     rpc.refused("BATCH_TOO_LARGE", "batch", token=token, epoch=epoch, records=too_many)
-    status, body = rpc.raw(b"x" * (mic.MAX_REQUEST_BYTES + 1))
-    assert (status, body) == (413, mic.error_body("REQUEST_TOO_LARGE"))
+    connection = http.client.HTTPConnection("127.0.0.1", rpc.port, timeout=10)
+    connection.putrequest("POST", mic.PATH)
+    connection.putheader("Authorization", f"Bearer {_SECRET}")
+    connection.putheader("Content-Length", str(mic.MAX_REQUEST_BYTES + 1))
+    connection.endheaders()  # refused on the length alone, before any body byte
+    response = connection.getresponse()
+    assert (response.status, json.loads(response.read())) == (413, mic.error_body("REQUEST_TOO_LARGE"))
+    connection.close()
 
 
 def test_a_different_resource_is_refused_at_startup(client: redis.Redis) -> None:

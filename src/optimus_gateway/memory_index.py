@@ -322,6 +322,8 @@ class IndexStore:
         line = self._line(scope)
         dimensions = int(line["dimensions"])
         epoch, current = self._visible_epoch(scope, body)
+        if current is None or epoch > current["epoch"]:  # a building epoch is its writer's alone, and only through the catalogue
+            raise mic.IndexRequestError("NOT_PUBLISHED", 404)
         live = f"@scope:{{{scope}}} @epoch_added:[-inf {epoch}] @epoch_removed:[({epoch} +inf]"
         kinds = body.get("kinds")
         if kinds:

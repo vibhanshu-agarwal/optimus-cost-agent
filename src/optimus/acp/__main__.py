@@ -1001,8 +1001,10 @@ def main(argv: list[str] | None = None) -> int:
                     # the Gateway path that receives OTLP configuration.
                     if args.strict or args.with_local_phoenix:
                         gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
-                elif args.strict:
-                    _confirm_running_gateway()  # strict pre-flight sends a model request
+                else:
+                    _ensure_memory_index(start=False)
+                    if args.strict:
+                        _confirm_running_gateway()  # strict pre-flight sends a model request
                 try:
                     run_preflight(
                         agent_environ,
@@ -1061,6 +1063,7 @@ def main(argv: list[str] | None = None) -> int:
                     # Plan 12.9: the first prompt must not beat the answer. A loopback request, bounded by CAPABILITIES_SECONDS.
                     delivery.negotiate()
             else:
+                _ensure_memory_index(start=False)
                 try:
                     _confirm_running_gateway()
                 except LocalInfrastructureError as exc:

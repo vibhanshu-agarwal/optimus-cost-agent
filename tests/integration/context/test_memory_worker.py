@@ -59,19 +59,32 @@ def client(provisioned: Provisioned) -> Iterator[redis.Redis]:
     connection.close()
 
 
-@pytest.fixture
-def settings(client: redis.Redis) -> Iterator[OptimusGatewaySettings]:
+def _serve(client: redis.Redis, *, port: int = 0) -> tuple[Any, threading.Thread]:
     store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
-    config = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=0, shared_secret=_SECRET, provider="openrouter",
+    config = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=port, shared_secret=_SECRET, provider="openrouter",
                                   provider_api_key="sk-or-test",  # pragma: allowlist secret - synthetic test fixture
                                   base_url="http://127.0.0.1:9/api/v1")
     server = serve_gateway(config=replace(config, memory_index=memory_index.IndexService(store)), upstream_client=object())  # type: ignore[arg-type]
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
     thread.start()
-    yield OptimusGatewaySettings.from_env({"OPTIMUS_GATEWAY_URL": f"http://127.0.0.1:{server.server_address[1]}", "OPTIMUS_API_KEY": _SECRET})
+    return server, thread
+
+
+def _settings_for(server: Any) -> OptimusGatewaySettings:
+    return OptimusGatewaySettings.from_env({"OPTIMUS_GATEWAY_URL": f"http://127.0.0.1:{server.server_address[1]}", "OPTIMUS_API_KEY": _SECRET})
+
+
+def _stop(server: Any, thread: threading.Thread) -> None:
     server.shutdown()
     server.server_close()
     thread.join(5)
+
+
+@pytest.fixture
+def settings(client: redis.Redis) -> Iterator[OptimusGatewaySettings]:
+    server, thread = _serve(client)
+    yield _settings_for(server)
+    _stop(server, thread)
 
 
 def _git(root: Path, *args: str) -> str:
@@ -368,6 +381,79 @@ def test_a_part_of_a_file_left_by_a_crash_is_not_served_after_the_file_changes(i
     (index.root / "first.py").write_text("def edited_function():\n    return 3\n", encoding="utf-8")
     assert index.build().state == "complete"
     assert index.symbols("orphan_symbol") == []
+
+
+def test_a_file_interrupted_between_its_batches_is_redone_whole(tmp_path: Path, settings: OptimusGatewaySettings) -> None:
+    """A file's own record goes last, so one that exists proves the whole file arrived and a resume may skip it."""
+    root = _repository(tmp_path / "repo")
+    (root / "big.py").write_text("".join(f"def big_{number}():\n    return {number}\n\n" for number in range(300)), encoding="utf-8")
+    index = Index(root, settings)
+    index.priority = ["big.py"]
+    real_call = index.storage.call
+    batches = {"sent": 0}
+
+    def fail_on_the_second_batch(op: str, **fields: Any) -> dict[str, Any]:
+        if op == "batch":
+            batches["sent"] += 1
+            if batches["sent"] == 2:
+                raise StorageUnavailableError("gone")
+        return real_call(op, **fields)
+
+    index.storage.call = fail_on_the_second_batch  # type: ignore[method-assign]
+    assert index.build().state == "paused"
+    index.storage.call = real_call  # type: ignore[method-assign]
+    building = index.storage.call("coverage")["building"]
+    assert building is not None and index.paths(epoch=building) == []
+    assert index.build().state == "complete"
+    assert index.symbols("big_0") == ["big_0"] and index.symbols("big_299") == ["big_299"]
+
+
+def test_a_source_that_moves_during_a_pass_is_not_called_complete(index: Index) -> None:
+    real_embed = index.embedder.embed
+
+    def embed(texts: Sequence[str]) -> list[bytes]:
+        (index.root / "moved.py").write_text("def moved_function():\n    return 1\n", encoding="utf-8")
+        return real_embed(texts)
+
+    index.embedder.embed = embed  # type: ignore[method-assign]
+    outcome = index.build()
+    assert outcome.state == "paused" and outcome.coverage["complete"] is False
+    assert index.storage.call("coverage")["current"]["coverage"]["complete"] is False
+    index.embedder.embed = real_embed  # type: ignore[method-assign]
+    assert index.build().state == "complete"
+    assert index.symbols("moved_function") == ["moved_function"]
+
+
+def test_a_borrowed_gateway_that_exits_pauses_the_worker_and_its_return_resumes_it(tmp_path: Path, client: redis.Redis) -> None:
+    """The owning host may stop a Gateway another host borrows: no takeover, no new port, and Redis keeps what was published."""
+    root = _repository(tmp_path / "repo")
+    for number in range(20):
+        (root / f"b{number:02}.py").write_text(f"def borrowed_{number}():\n    return {number}\n", encoding="utf-8")
+    server, thread = _serve(client)
+    index = Index(root, _settings_for(server))
+    real_embed = index.embedder.embed
+    port = server.server_address[1]
+    stopped = {"done": False}
+
+    def embed(texts: Sequence[str]) -> list[bytes]:
+        vectors = real_embed(texts)
+        if index.embedder.calls >= 3 and not stopped["done"]:
+            stopped["done"] = True
+            _stop(server, thread)
+        return vectors
+
+    index.embedder.embed = embed  # type: ignore[method-assign]
+    outcome = index.build()
+    assert stopped["done"] and outcome.state == "paused", outcome
+    with pytest.raises(StorageUnavailableError):
+        index.storage.call("coverage")
+    index.embedder.embed = real_embed  # type: ignore[method-assign]
+    returned, returned_thread = _serve(client, port=port)
+    try:
+        assert index.build().state == "complete"
+        assert len(index.paths()) == 23 and index.symbols("borrowed_19") == ["borrowed_19"]
+    finally:
+        _stop(returned, returned_thread)
 
 
 def test_a_competing_worker_is_held_and_changes_nothing(index: Index, settings: OptimusGatewaySettings) -> None:

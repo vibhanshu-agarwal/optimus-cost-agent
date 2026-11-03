@@ -10,6 +10,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -628,6 +629,31 @@ def test_no_auto_start_skips_redis_in_check_config_branch(monkeypatch, tmp_path)
 
     assert exit_code == 0
     assert redis_calls == []
+
+
+@pytest.mark.parametrize(
+    ("argv", "start"),
+    [(["--no-auto-start"], False), (["--check-config", "--no-auto-start"], False), (["--check-config"], True)],
+    ids=["serve-no-auto-start", "check-no-auto-start", "check-auto-start"],
+)
+def test_an_approved_index_is_checked_or_started_and_never_stops_a_launch(monkeypatch, tmp_path, capsys, argv, start) -> None:
+    env = _base_env()
+    _authorize(monkeypatch, tmp_path, env)
+    calls: list[bool] = []
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "run_preflight", lambda environ, **k: None)
+    monkeypatch.setattr(acp_main, "gateway_memory_index", lambda *a, **k: (tmp_path, "literal"))
+
+    def ensure(_root, *, start, log):
+        calls.append(start)
+        return SimpleNamespace(state="unavailable", detail="the container is stopped")
+
+    monkeypatch.setattr(acp_main, "ensure_memory_redis", ensure)
+    _patch_common(monkeypatch)
+
+    assert acp_main.main([*argv, "--workspace-root", str(tmp_path)]) == 0
+    assert calls == [start]
+    assert "the context index is unavailable: the container is stopped" in capsys.readouterr().err
 
 
 def test_check_config_passes_sanitized_environ_to_preflight(monkeypatch, tmp_path) -> None:

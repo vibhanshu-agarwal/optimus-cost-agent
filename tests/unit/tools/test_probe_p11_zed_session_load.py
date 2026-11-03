@@ -4164,6 +4164,17 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     savings_committed = b"from optimus.usage.savings_report import" in head_spec
     if not savings_committed:
         expected -= {savings_path}
+    # Plan 12.10 adds the index configuration the launch reads and the setup command's module (one path each), keyed on HEAD.
+    memory_config_path = "src/optimus_security/memory_index_config.py"
+    head_gate = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/launch_gate.py")
+    memory_config_committed = b"from optimus_security.memory_index_config import" in head_gate
+    if not memory_config_committed:
+        expected -= {memory_config_path}
+    memory_setup_path = "src/optimus/acp/memory_setup.py"
+    head_cli = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/launch_approval_cli.py")
+    memory_setup_committed = b"from optimus.acp.memory_setup import" in head_cli
+    if not memory_setup_committed:
+        expected -= {memory_setup_path}
     assert (admission_path in closure) is admission_committed
     assert (secret_paths_path in closure) is secret_paths_committed
     assert (file_policy_path in closure) is file_policy_committed
@@ -4199,7 +4210,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         2 if loop_committed else 0
     ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + retention_committed + secret_paths_committed + file_policy_committed + (
         8 if capture_committed else 0
-    ) + report_contract_committed + savings_committed + identity_committed + refusal_committed
+    ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
