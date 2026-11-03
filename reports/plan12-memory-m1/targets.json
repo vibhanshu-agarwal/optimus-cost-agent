@@ -30,7 +30,7 @@
     {"metric": "worker mean CPU during a build, percent of one core", "latest": 204.1, "limit": 250},
     {"metric": "native embedding threads, as configured", "latest": 2, "limit": 2},
     {"metric": "process threads doing work during a build (over 5 percent of a core), including orchestration; a coarse check, not proof of the line above", "latest": 2, "limit": 3},
-    {"metric": "Gateway RSS, MB", "latest": 70.0, "limit": 150},
+    {"metric": "Gateway RSS, MB", "latest": 70.3, "limit": 150},
     {"metric": "Redis memory in the shipped configuration, MB", "latest": "349 of a 512 test limit, at 60000 records", "limit": 3072, "envelope": "maxmemory 4096 less a 1024 reserve, in a 4608 container. Nothing in the product enforces the reserve; a run over it fails."},
     {"metric": "index disk at 75000 records, MB, at its peak in the run", "latest": "296 peak, with 60000 scale records", "limit": 1024}
   ],
