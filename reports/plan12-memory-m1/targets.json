@@ -2,39 +2,48 @@
   "schema": "plan12-memory-m1.targets.v1",
   "plan": "12.10",
   "issue": 469,
-  "state": "PROPOSED: not frozen until the operator approves them (D6). Nothing has been evaluated against them.",
-  "basis": "Limits sit about twice above pilot.json so ordinary noise does not fail a run while a real regression does. K2 keeps the earlier probe's bounds and scales only its size.",
+  "state": "PROPOSED: not frozen until the operator approves them (D6). Nothing has been evaluated against them. Two pilot runs do not establish noise tolerance, so each limit is provisional until the Java sample and Task 5's first scale run.",
+  "basis": "Limits sit about twice above the latest pilot, because latency moved up to 1.8 times between two runs of the same work on this machine. K2 keeps the earlier probe's bounds and scales only its size.",
   "foreground": [
-    {"metric": "proxy dense query p95, idle, ms", "pilot": 14.5, "limit": 30},
-    {"metric": "proxy lexical query p95, idle, ms", "pilot": 7.3, "limit": 20},
-    {"metric": "proxy dense query p95, during a cold build, ms", "pilot": 37.0, "limit": 80},
-    {"metric": "proxy lexical query p95, during a cold build, ms", "pilot": 13.4, "limit": 40},
-    {"metric": "acpx turn p50 during a build, as a multiple of idle p50", "pilot": 1.2, "limit": 1.5},
-    {"metric": "acpx turn failures during a build", "pilot": 0, "limit": 0},
-    {"metric": "seconds for a person's cancel to stop a turn, during a build", "pilot": 2.47, "limit": 5}
+    {"metric": "proxy dense query p95, idle, ms", "runs": [14.5, 25.8], "limit": 50},
+    {"metric": "proxy lexical query p95, idle, ms", "runs": [7.3, 12.0], "limit": 25},
+    {"metric": "proxy dense query p95, during a cold build, ms", "runs": [37.0, 57.0], "limit": 110},
+    {"metric": "proxy lexical query p95, during a cold build, ms", "runs": [13.4, 21.6], "limit": 45},
+    {"metric": "acpx turn p50 during a build, as a multiple of idle p50, at least 20 matched turns each", "latest": 1.31, "limit": 1.5},
+    {"metric": "acpx turn p95 during a build, as a multiple of idle p95, at least 20 matched turns each", "latest": 1.18, "limit": 1.5},
+    {"metric": "acpx turn failures during a build", "latest": 0, "limit": 0},
+    {"metric": "seconds for a person's cancel to stop a turn, during a build", "runs": [2.47, 2.1], "limit": 5}
   ],
   "indexing": [
-    {"metric": "embedded chunks per second on two threads", "pilot": 10.1, "limit_at_least": 7},
-    {"metric": "proxy bulk records per second", "pilot": 4815, "limit_at_least": 3000},
-    {"metric": "hours for the whole approved 1M LOC corpus", "forecast": "1.7-2.1, Python-derived", "limit": 3},
-    {"metric": "seconds to index one edited file", "pilot": 2.39, "limit": 5},
-    {"metric": "seconds to reconcile an unchanged 50-file corpus", "pilot": 1.36, "limit": 5},
-    {"metric": "seconds to stop a build on cancel", "pilot": 1.08, "limit": 3},
-    {"metric": "seconds until answering after a Redis kill, same publication", "pilot": 2.4, "limit": 10}
+    {"metric": "embedded chunks per second on two threads", "runs": [10.1, 9.2], "limit_at_least": 7},
+    {"metric": "proxy bulk records per second", "runs": [4815, 4601], "limit_at_least": 3000},
+    {"metric": "seconds until the first file is visible, from the start of a cold build", "latest": 0.96, "limit": 5},
+    {"metric": "hours per 1M eligible parsed LOC", "forecast": "2.0-2.5, Python-derived", "limit": 4, "note": "The operator approves a total for the chosen corpus separately, after the Java sample."},
+    {"metric": "seconds from an edit to its symbol being queryable, one file", "runs": [2.39, 2.96], "limit": 6},
+    {"metric": "seconds per 1000 files to reconcile an unchanged tree", "latest": 32, "limit": 60, "note": "Measured on 50 files. Remeasure on the Java tree before relying on this."},
+    {"metric": "seconds to stop a build on cancel", "runs": [1.08, 0.23], "limit": 3},
+    {"metric": "seconds until answering after a Redis kill, same publication", "runs": [2.4, 2.67], "limit": 10}
   ],
   "resources": [
-    {"metric": "worker RSS, MB", "pilot": 935.8, "limit": 1500},
-    {"metric": "native embedding threads", "pilot": 2, "limit": 2},
-    {"metric": "Gateway RSS, MB", "pilot": 68.2, "limit": 150}
+    {"metric": "worker RSS, MB", "latest": 953.1, "limit": 1500},
+    {"metric": "worker mean CPU during a build, percent of one core", "latest": 200.5, "limit": 250},
+    {"metric": "worker threads doing work during a build (over 5 percent of a core)", "latest": 2, "limit": 3},
+    {"metric": "Gateway RSS, MB", "latest": 70.5, "limit": 150},
+    {"metric": "Redis memory at the run's record count, as a share of maxmemory", "latest": "349 MB of 512 at 60000 records", "limit": "below maxmemory minus the reserve"},
+    {"metric": "index disk at 75000 records, MB, at its peak in the run", "latest": "296 peak, with 60000 scale records", "limit": 1024}
+  ],
+  "task_4_gates": [
+    "Assembly's share of its budget and query fan-out are measured when assembly exists, and their limits are approved before Task 5.",
+    "First-file visibility in a real Zed session is shown there; the limit above is the worker's."
   ],
   "k2_second_run": {
     "items": 75000,
     "vector_dimensions": 384,
     "records": "production adapters and real records",
-    "concurrency": 4,
+    "concurrency": "four concurrent clients through the real route, served by its two workers and queue of eight, with INDEX_BUSY counted and reported",
     "maxmemory_mb": 4096,
-    "admission_reserve_mb": 1024,
-    "physical_ram_mb": 5120,
+    "reserve": {"mb": 1024, "enforcement": "Nothing in the product enforces it. The run fails if used memory exceeds 3072 MB."},
+    "physical_ram_mb": {"limit": 4608, "why": "the container's own limit: maxmemory plus 512 MB of headroom"},
     "disk_mb": 8192,
     "unchanged_from_the_first_probe": {
       "ack_latency_p95_ms": 1500,

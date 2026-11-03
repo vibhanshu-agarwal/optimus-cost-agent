@@ -2377,14 +2377,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.plan12_memory.m1_scale:_bulk:redis_hash_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.plan12_memory.m1_scale:_note:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",

@@ -15,15 +15,21 @@
     {"case": "cancel then resume redoes at most one window", "result": "PASS"},
     {"case": "a killed worker leaves nothing visible it did not finish, and a restart completes", "result": "PASS"},
     {"case": "a file interrupted between its batches is redone whole, and a crash's leftovers are not served", "result": "PASS"},
+    {"case": "a file interrupted and then deleted or excluded leaves nothing published", "result": "PASS"},
+    {"case": "a retirement is written once, so an earlier published view stays as it was", "result": "PASS"},
+    {"case": "after an ordinary pass prunes, a reader pinned earlier is refused with EPOCH_EXPIRED and never answered partly", "result": "PASS"},
+    {"case": "a lease another owner took during a re-acquire is not replaced; cleanup decides from state read inside its transaction", "result": "PASS"},
+    {"case": "the deadline covers execution: an expired request does not reach the store, and a slow catalogue stops", "result": "PASS"},
+    {"case": "a further edit to an already-dirty file is not called complete, tracked or untracked; a repository Git cannot read is never complete", "result": "PASS"},
+    {"case": "a resumed partial cold build needs the cold slot; losing the slot stops the worker; a brief outage does not end the heartbeat", "result": "PASS"},
     {"case": "a source that moves during a pass is not called complete", "result": "PASS"},
     {"case": "only one workspace cold-builds at a time", "result": "PASS"},
     {"case": "an outage pauses the worker and a later pass completes", "result": "PASS"},
     {"case": "a cursor cannot change scope; a host holding the same key reads another scope only by naming it (the stated residual)", "result": "PASS"}
   ],
   "revert_check": {
-    "script": "optimus-handoff/p465-cp1/revert_check_cp2.py, operator-local",
-    "first_run": "24 of 26 caught, 2 survived, 2 had no case. Each now has a test, and the review of those gaps found a reader could name an unpublished epoch, now refused.",
-    "final_run": "30 of 30 guards caught; log optimus-handoff/p465-cp1/revert-cp2-2.log"
+    "evidence": "revert-check.json holds every guard's file digest, the one test that failed and its failure, under the rule stated there",
+    "history": "The first run left 2 survivors and 2 cases with no mutation; closing them found a reader could name an unpublished epoch. A later check that required the named test to fail showed one earlier catch was false: removing the heartbeat's start crashed an unrelated test. That case now mutates the heartbeat itself."
   },
   "bugs_only_the_real_pilot_found": [
     "the embedding identity's characters were refused",

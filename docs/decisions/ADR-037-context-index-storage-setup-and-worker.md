@@ -47,7 +47,7 @@ the pilot freezes them.
 
 `POST /v1/context/index` takes a closed set of operations: `batch`, `catalogue`, `cleanup`, `coverage`, `cursor`, `generation`, `lease` and
 `query`. The bearer is checked before any body byte is read, and identity binding (ADR-036) applies before dispatch. Limits: 256 records, 1 MiB
-either way, a 5 second deadline, two serving workers and a queue of eight; a full queue is refused at once. Index traffic never holds a
+either way, a 5 second deadline that covers execution as well as waiting, two serving workers and a queue of eight; a full queue is refused at once. Index traffic never holds a
 model or capture request. No command, key or filesystem path crosses the route, and a record with any field outside the schema is refused.
 
 ### Scopes are host-asserted
@@ -61,17 +61,24 @@ add. Cursors are sealed with HMAC to their scope, so a cursor cannot change scop
 
 A line holds records carrying the epoch that added them and the epoch that removed them. A reader sees what is live at one published epoch, or
 the current one by default. A publish is one atomic step, so a half-written epoch is invisible. A file record is written last, so one that exists
-proves its whole file arrived and a resume can skip it. What a crash left of an unfinished file is deleted when that file is next written, and no
-reader ever saw it. Revision and dirty state are published inside the line; a changed ignore file is reconciled inside it.
+proves its whole file arrived and a resume can skip it. The catalogue names paths with records but no file record, so what a crash left is deleted
+when that file is next written, or removed if the file has gone, and no reader ever saw it. A record's retirement is written once, so an earlier view
+stays as it was. A prune raises the oldest readable epoch to the published one before removing anything, so a reader pinned earlier is refused with
+`EPOCH_EXPIRED` and retries; it never gets part of a view. The revision a pass publishes covers the commit, Git's status, and each admitted file's size
+and modified time, so a further edit to a file already dirty stops the pass being called complete. Revision and dirty state are published inside the line;
+a changed ignore file is reconciled inside it.
 
 Writers hold a lease whose fencing token every write checks under `WATCH`. A resuming owner takes a new token and retires its old one; another owner
-is refused until the lease expires. One machine-wide cold-build slot stops two workspaces saturating the machine at once.
+is refused until the lease expires. One machine-wide cold-build slot stops two workspaces saturating the machine at once. A build holds it until a
+complete publication, including across a resume, and a worker that loses it stops.
 
 ### What may persist (B1)
 
 Identifiers, signatures with literals masked, deterministic structural descriptions, relative paths and hashes, documentation prose with code
 blocks removed, vectors, and pointers. Source bodies, comments, docstrings and literals stay out. The text sent to the local embedder may contain
 them; it stays in RAM. Vectors keep the inversion risk the design records. Documentation code keeps only its pointer, names and vector (Option A).
+Whatever may be code counts as code: fences, indented and literal blocks, directives, doctests, inline spans and HTML blocks. Unusual layout loses prose
+rather than keeping a body.
 
 ### Setup and lifecycle
 
@@ -84,7 +91,8 @@ the attach identity bind it too. With no file, the feature is off and an existin
 
 The ACP host starts the dedicated container from that configuration, with `default` off and the index user limited to `oidx:*` and named commands.
 It needs no secret and no running Gateway, so any launch can ensure it, and concurrent launches agree on the one named resource. It refuses an unexpected
-container, volume or listener and never adopts or replaces one. `--no-auto-start` only checks. Persistence is AOF `everysec` with periodic RDB, and
+container, volume or listener, including a lookalike with another memory limit, other server settings or no ACL mount, and never adopts or replaces one.
+`--no-auto-start` only checks. Persistence is AOF `everysec` with periodic RDB, and
 `noeviction`. A logical database or the shared Redis is not an alternative.
 
 The Gateway resolves the password itself and proves authentication, Search, persistence, eviction and resource identity before it first serves, and again
