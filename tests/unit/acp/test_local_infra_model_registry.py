@@ -19,6 +19,8 @@ _LITERAL = "optimus-model-registry-v1:" + "c" * 64
 
 
 def _spawned_args(tmp_path, monkeypatch: pytest.MonkeyPatch, **extra: object) -> list[str]:
+    # The child and the socket are fakes, so nothing answers; `test_gateway_attach.py` tests the check for real.
+    monkeypatch.setattr(local_infra, "verify_local_gateway", lambda *_a, **_k: None)
     calls = {"n": 0}
 
     def reachable(host, port, *, timeout=1.0):

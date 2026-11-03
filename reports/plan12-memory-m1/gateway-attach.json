@@ -1,0 +1,174 @@
+{
+  "schema": "plan12-memory-m1.gateway-attach.v1",
+  "issue": 465,
+  "plan": "12.10",
+  "code_head": "hex:120e21a8369fabdf46f10816ba09300d5d1353a4",
+  "release": "operator released the zero-paid two-entry Zed proof in this session, 2026-11-03",
+  "zed_version": "1.26.2",
+  "acpx_version": "0.12.0",
+  "zero_paid": {
+    "provider_keys": "dummy in every entry",
+    "upstreams": [
+      "local stub on 127.0.0.1:18791",
+      "local stub on 127.0.0.1:18792"
+    ],
+    "gateway_port": 18766,
+    "stubs_never_forward": true,
+    "stub_requests": {
+      "rehearsal_attempt_1": {
+        "stub-a": 547,
+        "stub-other": 0
+      },
+      "rehearsal_attempt_2": {
+        "stub-a": 2,
+        "stub-other": 0
+      },
+      "zed_attempt_1": {
+        "stub-a": 1,
+        "stub-other": 0
+      },
+      "zed_attempt_2": {
+        "stub-a": 2,
+        "stub-other": 0
+      }
+    }
+  },
+  "cases": [
+    {
+      "case": "entry A starts its Gateway and answers",
+      "where": "real Zed",
+      "result": "PASS",
+      "evidence": [
+        "zed-run-2/shots/a-reply.jpg",
+        "zed-run-2/stub-a/stub-requests.ndjson",
+        "zed-run-2/a-local-gateway.log"
+      ]
+    },
+    {
+      "case": "a mismatched entry refuses visibly with no request",
+      "where": "real Zed",
+      "result": "PASS",
+      "observed": {
+        "code": "GATEWAY_CONFIGURATION_MISMATCH",
+        "rendered": "an ordinary reply, not a banner",
+        "stub_requests_after": {
+          "stub-a": 1,
+          "stub-other": 0
+        }
+      },
+      "evidence": [
+        "zed-run-attempt-1/shots/step2-refusal-zoom.jpg",
+        "zed-run-attempt-1/other-local-gateway.log"
+      ]
+    },
+    {
+      "case": "a second prompt to the mismatched entry refuses again",
+      "where": "real Zed",
+      "result": "PASS",
+      "evidence": [
+        "zed-run-attempt-1/shots/operator-1.png"
+      ]
+    },
+    {
+      "case": "a start race lost to another configuration refuses",
+      "where": "real Zed",
+      "result": "PASS",
+      "observed": "Zed started the other entry and entry B within a second; the other entry won the port; B started a child, checked the winner and refused.",
+      "evidence": [
+        "zed-run-attempt-1/zed-log-slice.txt",
+        "zed-run-attempt-1/b-local-gateway.log"
+      ]
+    },
+    {
+      "case": "a second workspace with the same configuration reuses the Gateway",
+      "where": "real Zed",
+      "result": "PASS",
+      "observed": {
+        "stub_requests": {
+          "stub-a": 2,
+          "stub-other": 0
+        },
+        "a_gateway_log_events": [
+          "gateway_listening",
+          "model_request",
+          "model_request"
+        ],
+        "b_gateway_log_events": [],
+        "gateway_owner": "entry A's agent; no Gateway under entry B"
+      },
+      "evidence": [
+        "zed-run-2/shots/b-reply-screen.jpg",
+        "zed-run-2/processes-at-reuse.txt",
+        "zed-run-2/zed-log-slice.txt"
+      ]
+    }
+  ],
+  "protocol_rehearsal": {
+    "client": "real acpx",
+    "folder": "rehearsal/attempt-2",
+    "result": "PASS",
+    "stop_reason": "end_turn on every prompt"
+  },
+  "attempts_kept": {
+    "rehearsal/attempt-1": "547 requests to stub A: the copied stub reply was invalid for a planning thread and acpx --approve-all kept continuing. Proof fixture, not product.",
+    "zed-run-attempt-1": "Refusal cases passed. Reuse was not tested: agent A had stopped, so the refusal shown for B was a correct mismatch. Why A stopped is not established; Zed logged a window error at 16:08:01.",
+    "zed-run-2 first B thread": "Failed to launch with 'session cwd outside configured workspace': the proof's instruction put B in A's window, and the guard was right."
+  },
+  "observations_not_from_this_change": {
+    "restored thread": "Zed showed 'Loading or resuming sessions is not supported by this agent' for a restored thread; Optimus does not advertise loadSession by design (P11-FEAT-ZED-RESUME). A new thread worked.",
+    "session/request_permission unknown session": "Zed logged this while sessions started; 240 such lines predate this run, and every prompt here worked."
+  },
+  "cleanup": {
+    "zed_settings_restored_byte_identical": true,
+    "processes_left": 0,
+    "ports_18766_18791_18792_8765": "refused",
+    "docker_operations": 0
+  },
+  "custody": {
+    "zed-run-2/a-local-gateway.log": "hex:05011812552344e30617edfd1bbae6b85e23cbf1759bb249b0311ff0815711cc",
+    "zed-run-2/log-offsets-before.json": "hex:c2f68fb1010f6b98a2c07117b2fdf5d22a032c47ca58b9a5b35e4aa581c71c6e",
+    "zed-run-2/processes-at-reuse.txt": "hex:d816ccfd5b3f789d20f8d0a2189e588c65a2ef2a8c7b10a1618d871772d85f8b",
+    "zed-run-2/shots/a-reply.jpg": "hex:80168c347eccc37acbe25b3ee0e1412707e8c06fe0ca86533ceef945835423e7",
+    "zed-run-2/shots/b-reply-screen.jpg": "hex:a3d41d16fb3eaaba3c937ccfe549554aafb1cd1800f9749e290a1a569d6d5074",
+    "zed-run-2/shots/b-thread-ready.jpg": "hex:346a5a3b9dd6afdac6cca1997f1f7001b6bbaa9f35f11f084ff21369c99a1bbc",
+    "zed-run-2/shots/operator-1.png": "hex:1efa8980ff7af5a10c0971ff1ec65f4976104e0b88a01f907c95f398f831eaec",
+    "zed-run-2/shots/operator-2.png": "hex:df796d91e8dbb611e9bccaa0e6859cae90ad203b21a3b92df88754baa197fb5c",
+    "zed-run-2/stub-a/stub-requests.ndjson": "hex:2f9c42d6ef63e18c9468751581905f72699d185e7be403c3e7059d144ed03cdb",
+    "zed-run-2/stub-other/stub-requests.ndjson": "hex:c184289768a681c2605fe44ee42c8b1b82f99fe347fabadbaeee4230dfdf1c24",
+    "zed-run-2/zed-log-slice.txt": "hex:2e1a9b385d4ff18ba5a853a89faecf5e2e1e8552ed1646887caa999e5049e0f2",
+    "zed-run-attempt-1/b-local-gateway.log": "hex:0c430d8743d04e55a10272acbcb18d94ffeb244a95637f33f84c97f260a02ffe",
+    "zed-run-attempt-1/log-offsets-before.json": "hex:f08eeb009a95b5f9eb7a3e1560fb5f093f56124f2f7dcc5d17a7a06f0ecb97b5",
+    "zed-run-attempt-1/other-local-gateway.log": "hex:f1fc7e2fea019047ebb0b426a4406747642f90270a96d90af1bc9982cc5d5f3b",
+    "zed-run-attempt-1/shots/operator-1.png": "hex:1efa8980ff7af5a10c0971ff1ec65f4976104e0b88a01f907c95f398f831eaec",
+    "zed-run-attempt-1/shots/step1-1.png": "hex:48b8b641e5edee98dfc4afecd03e619a767a70bfebd0d868b9a715d1846b8d7f",
+    "zed-run-attempt-1/shots/step1b-1.png": "hex:48b8b641e5edee98dfc4afecd03e619a767a70bfebd0d868b9a715d1846b8d7f",
+    "zed-run-attempt-1/shots/step2-refusal-zoom.jpg": "hex:a9fc9ee3571e12a612d6f1d959cccc3e51b67e28afdc16de3c1a7bea3fe4865b",
+    "zed-run-attempt-1/shots/step4-screen.jpg": "hex:821d8138d271b23e57c7089836b1b040db71a2abf81665f437c33ecb24b65ca7",
+    "zed-run-attempt-1/stub-a/stub-requests.ndjson": "hex:43ffb1bbfa780fbe3bd48e5886d7d85a53a6048898434aa61d1c6204a2d0a08c",
+    "zed-run-attempt-1/stub-other/stub-requests.ndjson": "hex:5a1c2b861f9076365a0b60d0a2ef9b9562a7ab48e0008446f73b97cc71f97f48",
+    "zed-run-attempt-1/zed-log-slice.txt": "hex:e3a77aa7989fe49bca881554fc4031cfcf72bf90c0c4815173e7782eebb85178",
+    "rehearsal/attempt-2/a-new.err": "hex:8b089ac42894a55aca5d8418fc222b2709f843e733b1765000c523e0205f4e8e",
+    "rehearsal/attempt-2/a-new.ndjson": "hex:ed39a6d5adfbe182d95f665dfddf81f34a05753fd4c7590046e88178f324e0ef",
+    "rehearsal/attempt-2/a-prompt.err": "hex:2b32c666fc5c1f5cbdce79300b13a2cf0dc253aa10c6f5470c7ceed8d3937f43",
+    "rehearsal/attempt-2/a-prompt.ndjson": "hex:9b7878163ef60818d4b494cb14e543379bff702d5605bf7ed70e97b82e1a5b7a",
+    "rehearsal/attempt-2/b-new.err": "hex:a31633eab55c81b00ca05f9545284c8d04249d2c536b9c8421d70bfc10149cb3",
+    "rehearsal/attempt-2/b-new.ndjson": "hex:b5397b762e249d2b0dc25a60ce52cef6c59470a29aebc02f8f253622c2d33251",
+    "rehearsal/attempt-2/b-prompt.err": "hex:f9271f198ad718031f23f1ffe76ab9e405ee461d2faaebfda9f2ec27b521c3a5",
+    "rehearsal/attempt-2/b-prompt.ndjson": "hex:e4217ad4fe1cf75ff089f621b091bad816e2585fb54b372bfeecf7693a1914ba",
+    "rehearsal/attempt-2/other-new.err": "hex:63d0cca0afd18c3f84915ef71cadd2a1894da0c5afa91248c2ffaf7bddc4ba96",
+    "rehearsal/attempt-2/other-new.ndjson": "hex:a975973fc78a0d6c495ede38dae2084284e0d550ca87a358305abeaa3938b96a",
+    "rehearsal/attempt-2/other-prompt-1.err": "hex:cadceeda903080d321c97ecef15fa6ac4b5b3928a3a1629b258cf1590a9c20bf",
+    "rehearsal/attempt-2/other-prompt-1.ndjson": "hex:7c25d78c457fc10eeda2b42b5b93f94dfcef6fe0ff34c22be5929bb55b42e63f",
+    "rehearsal/attempt-2/other-prompt-2.err": "hex:28a91d1393f465d4abd9040cbf7a0e5c2e54a2ba1a9fe3417533f3684f4275ee",
+    "rehearsal/attempt-2/other-prompt-2.ndjson": "hex:b9fcdefd2e63e5af6179849f2cefbebf0e6bfafff47ca76d64e1fd5ec4b03f14",
+    "rehearsal/attempt-2/stub-a/stub-requests.ndjson": "hex:a730af43b52ad32d76f9c4cf48737072e6252f522679e87f87b6443efcb74106",
+    "rehearsal/attempt-2/stub-other/stub-requests.ndjson": "hex:baa082ca2dda609362cb06be95151d9626b9560868facaee808595e36f9b834a",
+    "scenario.json": "hex:9f0fa2b71b74863c6519cbded8fe4020bcf2213bb6b1e752c560e619ca7e860a"
+  },
+  "pending": {
+    "pr": null,
+    "linux_ci": null,
+    "merge": null
+  },
+  "raw_evidence": "operator-local kit folder optimus-handoff/p465-zed, by artifact policy"
+}

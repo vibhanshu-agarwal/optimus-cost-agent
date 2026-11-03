@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import json
 import shutil
 import socket
 import subprocess
@@ -11,15 +13,20 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from contextvars import copy_context
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
+
+from pydantic import SecretStr
 
 from optimus.acp.launch_policy import project_gateway_tool_child_env
 from optimus.acp.local_gateway_secrets import ProviderCredentialResolution, _parse_env_gateway_file
 from optimus.acp.process_lifecycle import cleanup_failure, raise_preserving_failure
 from optimus.agent.defaults import default_agent_model
-from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES
+from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES, OptimusGatewaySettings
+from optimus.usage.savings_report import ReportTransportError, gateway_post
 from optimus_model_policy.binding import operator_override, trusted_snapshot
+from optimus_security import gateway_identity
 from optimus_security.accounting_config import AccountingConfigError, accounting_literal, accounting_root, config_literal
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 
@@ -449,6 +456,172 @@ class LocalGatewayProcess:
             self._stop_error = exc
 
 
+def _gateway_destination(gateway_url: str) -> tuple[str, int]:
+    """The host and port this launch's requests go to. The HTTP senders use a URL's explicit port, otherwise its scheme's
+    default, so a Gateway is started and confirmed there and nowhere else."""
+    parsed = urlparse(gateway_url)
+    return parsed.hostname or "127.0.0.1", parsed.port or (443 if parsed.scheme == "https" else 80)
+
+
+def _listener_label(gateway_url: str) -> str:
+    """A Gateway URL may carry a path or query the settings allow; what is shown or logged names only the address."""
+    host, port = _gateway_destination(gateway_url)
+    return f"{urlparse(gateway_url).scheme}://{f'[{host}]' if ':' in host else host}:{port}"
+
+
+def gateway_tool_environ(config_root: Path | None, system_env: Mapping[str, str]) -> dict[str, str]:
+    """The Gateway's tool configuration from `.env.gateway`, with inherited values filling what it omits."""
+    tool_env: dict[str, str] = {}
+    if config_root is not None:
+        tool_env = project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))
+    return {**project_gateway_tool_child_env(system_env), **tool_env}
+
+
+def gateway_accounting(
+    config_root: Path, approved: str | None, *, log: Callable[[str], None] = _noop_log
+) -> tuple[Path | None, str | None]:
+    """Plan 12.8 (ADR-032): the Gateway's accounting root under the authorized config root and the literal its manifest
+    binds, when the configuration found there is the approved one; otherwise the Gateway runs without accounting."""
+    accounting_dir = accounting_root(config_root)
+    try:
+        current = config_literal(accounting_dir)
+    except AccountingConfigError as exc:
+        current = f"unusable:{exc.code}"
+    if current != approved:
+        log("optimus-agent: the accounting configuration is not the approved one; the Gateway starts without accounting.")
+        return None, None
+    return accounting_dir, accounting_literal(accounting_dir, current)
+
+
+def expected_gateway_identity(
+    *,
+    gateway_url: str,
+    provider_credentials: ProviderCredentialResolution | None,
+    shared_secret: str | None,
+    manifest_hmac_key: bytes,
+    system_env: Mapping[str, str] = _EMPTY_MAPPING,
+    config_root: Path | None = None,
+    model_registry: str | None = None,
+    test_profile: str | None = None,
+    stage_c_envelope: str | None = None,
+    auto_composition: bool = False,
+    usage_accounting: bool = False,
+    approved_accounting_config: str | None = None,
+) -> gateway_identity.GatewayIdentity | None:
+    """#465 (ADR-036): the identity of the Gateway this launch would start. None when the launch names no local upstream:
+    a remote Gateway, or a host given only the Gateway URL and key, whose approval binds no upstream to compare."""
+    if not _is_loopback(urlparse(gateway_url).hostname):
+        return None
+    secrets = None if provider_credentials is None else provider_credentials.secrets
+    if secrets is None or not shared_secret:
+        return None
+    accounting = None
+    if usage_accounting and config_root is not None:
+        accounting = gateway_accounting(config_root, approved_accounting_config)[1]
+    if test_profile is not None:
+        composition = gateway_identity.profile_composition(test_profile)
+    else:
+        composition = gateway_identity.COMPOSITION_AUTO if auto_composition else gateway_identity.COMPOSITION_STANDARD
+    return gateway_identity.compose_identity(
+        provider=secrets.provider,
+        base_url=secrets.base_url,
+        provider_api_key=secrets.model_provider_api_key,
+        shared_secret=shared_secret,
+        composition=composition,
+        model_registry=model_registry,
+        stage_c_envelope=stage_c_envelope,
+        accounting=accounting,
+        tool_environ=gateway_tool_environ(config_root, system_env),
+        hmac_key=manifest_hmac_key,
+    )
+
+
+_ATTACH_REMEDY = (
+    "Stop that listener (another Optimus agent or `optimus-trust run-gateway` may own it), or give this agent entry its "
+    "own OPTIMUS_GATEWAY_URL port and approve the launch again."
+)
+
+
+def verify_local_gateway(
+    gateway_url: str,
+    *,
+    api_key: str | None,
+    hmac_key: bytes,
+    expected: gateway_identity.GatewayIdentity | None,
+    log: Callable[[str], None] = _noop_log,
+) -> None:
+    """Confirm that what listens at ``gateway_url`` is a Gateway serving this launch's configuration, or refuse with a
+    stated reason (`LocalInfrastructureError`). One bounded authenticated request that calls no upstream; a listener
+    that is refused is never terminated. With no ``expected`` it can only confirm a current Gateway answers this key."""
+    if not api_key:
+        log("optimus-agent: no Gateway key to confirm the listening Gateway with; leaving pre-flight to fail closed.")
+        return
+    settings = OptimusGatewaySettings(gateway_url=gateway_url, optimus_api_key=SecretStr(api_key))
+    nonce = gateway_identity.new_nonce()
+    listener = _listener_label(gateway_url)
+    unconfirmed = LocalInfrastructureError(
+        code="GATEWAY_IDENTITY_UNCONFIRMED",
+        user_message=(
+            f"Something is listening at {listener}, but it did not confirm that it is a current Optimus Gateway: it may "
+            f"be an older Gateway or another program. This agent will not use it, so no model request was sent. {_ATTACH_REMEDY}"
+        ),
+    )
+    try:
+        post = gateway_post(settings, timeout=gateway_identity.READ_SECONDS, path=gateway_identity.PATH)
+        status, reply = post(gateway_identity.build_request(nonce))
+    except ReportTransportError:
+        raise unconfirmed from None
+    if status in {401, 403}:
+        raise LocalInfrastructureError(
+            code="GATEWAY_KEY_REJECTED",
+            user_message=(
+                f"The Gateway at {listener} refused this agent's key, so it was started with a different configuration. "
+                f"This agent will not use it, so no model request was sent. {_ATTACH_REMEDY}"
+            ),
+        )
+    if status != 200:
+        raise unconfirmed
+    try:
+        reported = gateway_identity.read_reply(reply, nonce=nonce, hmac_key=hmac_key)
+    except gateway_identity.IdentityReplyError:
+        raise unconfirmed from None
+    if expected is None or reported.digest == expected.digest:
+        return
+    differing = ", ".join(gateway_identity.FIELD_LABELS[name] for name in gateway_identity.differing_fields(expected, reported))
+    raise LocalInfrastructureError(
+        code="GATEWAY_CONFIGURATION_MISMATCH",
+        user_message=(
+            f"A Gateway is already running at {listener} with a different configuration ({differing}). This agent will "
+            f"not use it, so no model request was sent. {_ATTACH_REMEDY}"
+        ),
+    )
+
+
+def record_gateway_refusal(runtime_root: Path, *, code: str, reason: str) -> None:
+    """One JSON line in the launch's Gateway log: the refusal's cause outlives the session that showed it. Its text names a
+    loopback URL and configuration labels only. A log that cannot be written never stops the refusal it describes."""
+    line = json.dumps({"event": "gateway_refused", "at": datetime.now(timezone.utc).isoformat(), "code": code, "reason": reason})
+    with contextlib.suppress(OSError):
+        runtime_root.mkdir(parents=True, exist_ok=True)
+        with open(runtime_root / "local-gateway.log", "ab") as log_file:
+            log_file.write(line.encode("utf-8") + b"\n")
+
+
+def confirm_running_gateway(
+    gateway_url: str,
+    *,
+    api_key: str | None,
+    hmac_key: bytes,
+    expected: gateway_identity.GatewayIdentity | None,
+    log: Callable[[str], None] = _noop_log,
+) -> None:
+    """For a launch that starts nothing (`--no-auto-start`): confirm a local Gateway that is listening. A remote one, or
+    none at all, is left to pre-flight as before."""
+    host, port = _gateway_destination(gateway_url)
+    if _is_loopback(host) and _tcp_reachable(host, port):
+        verify_local_gateway(gateway_url, api_key=api_key, hmac_key=hmac_key, expected=expected, log=log)
+
+
 def ensure_local_gateway(
     *,
     gateway_url: str,
@@ -470,6 +643,8 @@ def ensure_local_gateway(
     auto_composition: bool = False,
     usage_accounting: bool = False,
     approved_accounting_config: str | None = None,
+    api_key: str | None = None,
+    expected_identity: gateway_identity.GatewayIdentity | None = None,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
 
@@ -486,14 +661,21 @@ def ensure_local_gateway(
     ``.env.gateway`` (Tavily, domain allowlist, tool Redis URL, OSV, registry
     base URLs, call caps) are projected into the child env so
     ``build_tool_dependencies`` can return a real dependency bundle.
+
+    #465 (ADR-036): a Gateway already listening is reused only after it proves ``expected_identity``; anything else raises
+    `LocalInfrastructureError` with the reason, and the listener is left running. Returns None for a reused Gateway.
     """
-    parsed = urlparse(gateway_url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 8765
+    host, port = _gateway_destination(gateway_url)
     if not _is_loopback(host):
         return None
+
+    def confirm_listener() -> None:
+        verify_local_gateway(gateway_url, api_key=api_key or shared_secret, hmac_key=manifest_hmac_key,
+                             expected=expected_identity, log=log)
+
     if _tcp_reachable(host, port):
-        return None  # already up - ours from an earlier session, or someone else's; don't own it
+        confirm_listener()
+        return None  # a compatible Gateway, from an earlier session or another workspace; don't own it
 
     if provider_credentials is None:
         log(
@@ -512,11 +694,7 @@ def ensure_local_gateway(
         )
         return None
 
-    tool_env: dict[str, str] = {}
-    if config_root is not None:
-        tool_env = project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))
-    # Allow inherited/snapshot values to fill gaps when .env.gateway omits them.
-    tool_env = {**project_gateway_tool_child_env(system_env), **tool_env}
+    tool_env = gateway_tool_environ(config_root, system_env)
 
     child_env: dict[str, str] = {
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,
@@ -531,20 +709,11 @@ def ensure_local_gateway(
         if value:
             child_env[key] = value
 
-    # Plan 12.8 (ADR-032): the Gateway's accounting root under the authorized config root, and the configuration found
-    # there (approved by the launch gate). The Gateway composes the same literal itself; the manifest must bind it.
-    accounting_dir = accounting_root(config_root) if usage_accounting and config_root is not None else None
-    accounting = None
-    if accounting_dir is not None:
-        try:
-            current = config_literal(accounting_dir)
-        except AccountingConfigError as exc:
-            current = f"unusable:{exc.code}"
-        if current != approved_accounting_config:
-            log("optimus-agent: the accounting configuration is not the approved one; the Gateway starts without accounting.")
-            accounting_dir = None
-        else:
-            accounting = accounting_literal(accounting_dir, current)
+    # Plan 12.8 (ADR-032): the configuration found under the authorized config root, approved by the launch gate. The
+    # Gateway composes the same literal itself; the manifest must bind it.
+    accounting_dir = accounting = None
+    if usage_accounting and config_root is not None:
+        accounting_dir, accounting = gateway_accounting(config_root, approved_accounting_config, log=log)
     manifest = build_gateway_child_manifest(
         workspace_digest=workspace_digest,
         security_snapshot_digest=security_snapshot_digest,
@@ -623,8 +792,12 @@ def ensure_local_gateway(
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 log(f"optimus-agent: local gateway exited early (code {process.returncode}); see {log_path}")
+                # Two launches can start at once; the loser's child cannot bind. What holds the port is not this launch's.
+                if _tcp_reachable(host, port):
+                    confirm_listener()
                 return None
             if _tcp_reachable(host, port):
+                confirm_listener()  # the port may be another launch's while this child is still starting
                 return owned
             time.sleep(_POLL_INTERVAL_SECONDS)
 

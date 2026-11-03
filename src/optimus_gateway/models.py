@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from optimus_gateway.model_policy import GatewayModelPolicy
     from optimus_gateway.usage_store import UsageStore
     from optimus_model_policy.stage_c import StageCGuard
+    from optimus_security.gateway_identity import ServedIdentity
 
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _GATEWAY_PROVIDER = "openrouter"
@@ -46,6 +47,9 @@ class GatewayServiceConfig:
     # Plan 12.8 (ADR-032): the Gateway-owned usage ledger, opened at startup only with an approved accounting
     # configuration; None (capture batches are refused as retryable and stay in their outboxes) otherwise.
     usage_store: UsageStore | None = field(default=None, repr=False)
+    # #465 (ADR-036): the identity this Gateway serves, composed at startup from its verified manifest values; None
+    # (no identity route, no request binding) only outside the real entrypoint.
+    local_identity: ServedIdentity | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.bind_host.lower() not in _LOOPBACK_HOSTS:

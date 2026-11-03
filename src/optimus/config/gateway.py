@@ -6,8 +6,12 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
+from optimus_security import gateway_identity
+
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _DEFAULT_GATEWAY_URL = "http://127.0.0.1:8765"
+# Set in-process on the launch's already-authorized agent view; registered reject-inherited, so it is never taken from outside.
+GATEWAY_IDENTITY_ENVIRON = "OPTIMUS_GATEWAY_IDENTITY"
 
 LOCAL_PROVIDER_KEY_NAMES = frozenset(
     {
@@ -34,6 +38,9 @@ class OptimusGatewaySettings(BaseModel):
 
     gateway_url: str = _DEFAULT_GATEWAY_URL
     optimus_api_key: SecretStr = Field(min_length=1)
+    # #465 (ADR-036): the identity this launch expects of a local Gateway, sent on every request so a Gateway that took
+    # over the port refuses it before dispatch. A keyed digest, not a credential. None: this launch has no expectation.
+    gateway_identity: str | None = None
 
     @field_validator("gateway_url", mode="before")
     @classmethod
@@ -51,12 +58,16 @@ class OptimusGatewaySettings(BaseModel):
         settings = cls(
             gateway_url=env.get("OPTIMUS_GATEWAY_URL", _DEFAULT_GATEWAY_URL),
             optimus_api_key=SecretStr(_required_env(env, "OPTIMUS_API_KEY")),
+            gateway_identity=env.get(GATEWAY_IDENTITY_ENVIRON) or None,
         )
         settings.validate_no_local_provider_keys(env)
         return settings
 
     def auth_headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.optimus_api_key.get_secret_value()}"}
+        headers = {"Authorization": f"Bearer {self.optimus_api_key.get_secret_value()}"}
+        if self.gateway_identity is not None:
+            headers[gateway_identity.HEADER] = self.gateway_identity
+        return headers
 
     def validate_trusted_gateway(self) -> None:
         _validate_loopback_gateway_url(self.gateway_url)

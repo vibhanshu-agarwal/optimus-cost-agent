@@ -35,14 +35,13 @@ from optimus.acp.launch_gate import (
     resolve_launch_candidate,
     validate_config_file_permissions,
 )
-from optimus.acp.launch_policy import LaunchEnvironmentSnapshot, project_gateway_tool_child_env
+from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.local_gateway_secrets import (
     ProviderCredentialConfigurationError,
-    _parse_env_gateway_file,
     resolve_provider_credentials,
     resolve_shared_secret,
 )
-from optimus.acp.local_infra import LocalInfrastructureError, ensure_local_phoenix
+from optimus.acp.local_infra import LocalInfrastructureError, ensure_local_phoenix, gateway_accounting, gateway_tool_environ
 from optimus.acp.operator_paths import (
     OperatorPathConfigurationError,
     OperatorPaths,
@@ -89,6 +88,7 @@ from optimus_model_policy.stage_c import (
     stage_c_ledger_status,
 )
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
+from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTING_LITERAL_NAME
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from optimus_security.sanitization import mask_uri_userinfo
 
@@ -1079,6 +1079,7 @@ def _cmd_run_gateway(
     hmac_key_source = KeyringApprovalStore(
         keyring_backend=credential_keyring_backend, runtime_root=trusted_roots.approval_runtime_root
     )
+    approval = None
     # ADR-025: with the registry now operator data, this command signs only a registry hash that the workspace's durable
     # launch approval already binds, so composing a changed override never authorizes itself.
     if model_registry is not None:
@@ -1106,6 +1107,12 @@ def _cmd_run_gateway(
         field_name="run_gateway_snapshot",
         hmac_key=hmac_key_source.hmac_key,
     )
+    # #465 (ADR-036): the accounting a launch under this approval would serve, so an agent can still reuse this Gateway.
+    accounting_dir, accounting = gateway_accounting(
+        operator_paths.config_root,
+        None if approval is None else approval.security_literals.get(ACCOUNTING_LITERAL_NAME),
+        log=lambda msg: print(msg, file=sys.stderr),
+    )
 
     manifest = build_gateway_child_manifest(
         workspace_digest=workspace_identity.digest,
@@ -1120,6 +1127,7 @@ def _cmd_run_gateway(
         policy_version=LAUNCH_POLICY_COMPATIBILITY,
         # Plan 12.2 Task 5: the Gateway refuses to start unless this matches its own registry.
         model_registry=model_registry,
+        accounting=accounting,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 
@@ -1127,7 +1135,8 @@ def _cmd_run_gateway(
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
         **provider_secrets.as_gateway_child_env(),
-        **project_gateway_tool_child_env(_parse_env_gateway_file(env_gateway_path)),
+        # #465 (ADR-036): the same composition an agent expects: this file, with inherited values filling what it omits.
+        **gateway_tool_environ(config_root, LaunchEnvironmentSnapshot.capture(os.environ).values),
     }
     for key in ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP"):
         value = os.environ.get(key, "")
@@ -1155,6 +1164,7 @@ def _cmd_run_gateway(
             serialized_manifest,
             *([] if registry_override is None else ["--registry-override", str(registry_override)]),
             *(["--auto-composition"] if auto else []),
+            *([] if accounting_dir is None else ["--accounting-root", str(accounting_dir)]),
         ],
         env=child_env,
         shell=False,
