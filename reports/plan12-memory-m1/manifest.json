@@ -1,0 +1,50 @@
+{
+  "schema": "plan12-memory-m1.manifest.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "plan_sha256": "hex:f136397fe605d51bd6dfee1ab4ed8705e7c3a45d05eb52b6c5cf569a7d02adb1",
+  "recorded": "2026-11-03",
+  "note": "Availability is what the read-only inventory found. Authority is what the operator has released. One does not imply the other.",
+  "prerequisites": [
+    {
+      "item": "host",
+      "availability": "Windows 11, Python 3.14.4, uv 0.11.29",
+      "authority": "use"
+    },
+    {
+      "item": "WSL",
+      "availability": "Ubuntu-24.04 present, stopped",
+      "authority": "not released"
+    },
+    {
+      "item": "Docker and Redis",
+      "availability": "Docker 29.9.2; optimus-redis (redis:8) running on 6379",
+      "authority": "no Docker operation released; the zero-paid proof used none"
+    },
+    {
+      "item": "native keyring",
+      "availability": "WinVaultKeyring",
+      "authority": "no keyring operation released beyond reads at launch"
+    },
+    {
+      "item": "Zed and acpx",
+      "availability": "Zed 1.26.2, acpx 0.12.0",
+      "authority": "released once for the #465 zero-paid proof, now finished; each later session needs its own"
+    },
+    {
+      "item": "offline embedding artifact",
+      "availability": "the configured M0 embedding is reachable upstream (HTTP 307); no offline copy made",
+      "authority": "download not released"
+    },
+    {
+      "item": "corpus",
+      "availability": "this repository; Hadoop rel/release-3.4.3 and IntelliJ Community reachable by git",
+      "authority": "clone not released"
+    },
+    {
+      "item": "cache route and prices",
+      "availability": "the registry has one verified:true entry and no prompt_cache field yet",
+      "authority": "paid runs not released"
+    }
+  ]
+}

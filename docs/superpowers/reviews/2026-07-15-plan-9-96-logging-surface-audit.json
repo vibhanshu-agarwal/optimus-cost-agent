@@ -473,6 +473,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.__main__:_serve_gateway_refusal:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: optimus.acp.__main__:_serve_gateway_refusal:stderr_export prints a typed refusal code and a fixed message naming a loopback address (never the configured URL's path or query) and configuration labels; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach_wiring.py::test_a_refused_launch_serves_only_the_diagnostic_host",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.__main__:_start_local_dependencies:stderr_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.__main__:_start_local_dependencies:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
@@ -582,6 +590,46 @@
       "rationale": "Inspection: optimus.acp.conversation:render_model_conversation:json_serialization serializes the same already-sanitized five-field conversation records as render_conversation_envelope, in numeric turn order and declared field order, as the planner's history (Plan 12.2 Task 3, F3); it is not a diagnostic export, and the storage serializer alone measures the cap.",
       "sanitizer": "conversation sanitizer applied before render; schema-limited five-field records only",
       "test_node": "tests/unit/acp/test_conversation_model_order.py::test_model_turn_and_field_order",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.gateway_refusal:GatewayRefusalServer.serve:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the framing error's fixed text is only compared to decide whether to stop serving; the client is sent a fixed message and its code.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_diagnostic_host_answers_only_the_framed_transport_too",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.gateway_refusal:GatewayRefusalServer.serve:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes JSON-RPC responses on the ACP stream: a fixed refusal text with its code, and fixed error messages. No exception text or client content is echoed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_diagnostic_host_answers_only_the_framed_transport_too",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.local_infra:record_gateway_refusal:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: appends one JSON line with a typed refusal code and a fixed message naming a loopback address (never the configured URL's path or query) and configuration labels to the launch's own Gateway log; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_refusal_reaches_the_launchs_own_log_without_secrets",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.local_infra:record_gateway_refusal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: one JSON record with a typed event or refusal code, a known route or a fixed message naming a loopback address and configuration labels; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_refusal_reaches_the_launchs_own_log_without_secrets",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.local_infra:record_gateway_refusal:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: one JSON record with a typed event or refusal code, a known route or a fixed message naming a loopback address and configuration labels; fingerprints and values stay out.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_gateway_attach.py::test_the_refusal_reaches_the_launchs_own_log_without_secrets",
       "evidence_tier": "unit"
     },
     {
@@ -1489,6 +1537,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._refuse_other_identity:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: one JSON record with a fixed event name and a known route (any other request target is logged as unrecognized); no header value or body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_local_identity.py::test_a_request_bound_to_another_identity_is_refused_before_dispatch",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.server:OptimusGatewayHandler._send_json:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional protocol serialization at optimus_gateway.server:OptimusGatewayHandler._send_json:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
@@ -1582,6 +1638,30 @@
       "rationale": "Inspection (Plan 11.4 re-verified): call_with_upstream_retry uses str(exc) only to rewrap a RetryableUpstreamError as RuntimeError in memory after transient-attempt exhaustion; no sanitizer runs at this site. The message is sanitized at the existing run_model_completion RuntimeError\u2192502 boundary (sanitize_error_message) before any HTTP response export. The on_attempt_failure callback added for model-path retry telemetry receives only attempt number, a literal transient/permanent classification string, latency, and disposition \u2014 never exception text, so it does not add a new exception_export surface. Non-retryable exceptions are re-raised as-is (bare raise, no str()/repr() conversion) and are outside this surface. Callers that reuse this helper without that outer catch must add their own sanitizing boundary.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_model_retry_ceiling_is_three_attempts",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.gateway_identity:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON of field names and keyed fingerprints, only as HMAC input; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_local_identity.py::test_the_reply_carries_no_url_or_secret_in_the_clear",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.gateway_identity:_tool_policy:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON of tool settings, only as HMAC input; the result is never written or sent.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_local_identity.py::test_the_reply_carries_no_url_or_secret_in_the_clear",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.gateway_identity:build_request:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the identity request: one generated nonce, sent only to the Gateway.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_local_identity.py::test_the_reply_carries_no_url_or_secret_in_the_clear",
       "evidence_tier": "unit"
     },
     {

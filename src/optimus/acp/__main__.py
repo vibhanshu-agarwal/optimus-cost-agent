@@ -22,6 +22,7 @@ from optimus.acp.debug_trace import (
     log_provenance_once,
     resolve_debug_log_path,
 )
+from optimus.acp.gateway_refusal import GatewayRefusalServer
 from optimus.acp.launch_approvals import LAUNCH_POLICY_COMPATIBILITY, ApprovalError, KeyringApprovalStore
 from optimus.acp.launch_audit import LaunchAuditError, LaunchAuditEvent, append_launch_audit_event
 from optimus.acp.launch_gate import AuthorizedLaunch, LaunchCandidate, LaunchGateError, authorize_launch, resolve_launch_candidate
@@ -32,9 +33,12 @@ from optimus.acp.local_infra import (
     LocalGatewayProcess,
     LocalInfrastructureError,
     apply_local_defaults,
+    confirm_running_gateway,
     ensure_local_gateway,
     ensure_local_phoenix,
     ensure_local_redis,
+    expected_gateway_identity,
+    record_gateway_refusal,
 )
 from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_authorized_operator_paths
 from optimus.acp.outbound_writer import DedicatedOutboundWriter
@@ -60,6 +64,7 @@ from optimus.acp.trusted_paths import (
     revalidate_workspace_security_state,
 )
 from optimus.agent.defaults import AgentModelError, auto_requested, resolve_agent_model
+from optimus.config.gateway import GATEWAY_IDENTITY_ENVIRON
 from optimus.gateway.client import DEFAULT_GATEWAY_TIMEOUT_SECONDS, validate_gateway_timeout_seconds
 from optimus.mcp.client_disposition import ClientMcpRuntime
 from optimus.mcp.client_supervisor import MCPSupervisorState
@@ -866,9 +871,39 @@ def main(argv: list[str] | None = None) -> int:
             return None, 2
         return None, None
 
+    # #465 (ADR-036): what this launch would serve, known before any request, so every request from here on names it and
+    # a Gateway serving anything else refuses it before dispatch.
+    expected_identity = expected_gateway_identity(
+        gateway_url=agent_environ.get("OPTIMUS_GATEWAY_URL", ""),
+        provider_credentials=candidate.provider_credentials,
+        shared_secret=candidate.shared_secret,
+        manifest_hmac_key=store.hmac_key,
+        system_env=snapshot.values,
+        config_root=candidate.operator_paths.config_root,
+        model_registry=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
+        test_profile=args.plan12_test_profile,
+        stage_c_envelope=None if stage_c_launch is None else stage_c_launch.envelope.literal,
+        auto_composition=auto_composition is not None,
+        usage_accounting=True,  # Plan 12.8
+        approved_accounting_config=candidate.security_literals.get(ACCOUNTING_LITERAL_NAME),
+    )
+    if expected_identity is not None:
+        agent_environ[GATEWAY_IDENTITY_ENVIRON] = expected_identity.digest
+
+    def _confirm_running_gateway() -> None:
+        confirm_running_gateway(
+            agent_environ.get("OPTIMUS_GATEWAY_URL", ""),
+            api_key=agent_environ.get("OPTIMUS_API_KEY"),
+            hmac_key=store.hmac_key,
+            expected=expected_identity,
+            log=_print_log,
+        )
+
     def _start_gateway(*, otlp_endpoint: str | None):
         return ensure_local_gateway(
             gateway_url=agent_environ.get("OPTIMUS_GATEWAY_URL", ""),
+            api_key=agent_environ.get("OPTIMUS_API_KEY"),
+            expected_identity=expected_identity,
             provider_credentials=candidate.provider_credentials,
             shared_secret=candidate.shared_secret,
             workspace_digest=candidate.workspace_identity.digest,
@@ -909,8 +944,8 @@ def main(argv: list[str] | None = None) -> int:
             durable_capture.stop()
 
     def _capture_delivery(durable_capture: DurableCapture) -> Any:
-        """Drain capture to the Gateway-owned ledger through the existing Gateway URL and key, on its own thread. A
-        Gateway not up yet only makes early passes retry; delivery never delays startup or a model call."""
+        """Drain capture to the Gateway-owned ledger through the existing Gateway URL and key, on its own thread, started
+        once this launch's Gateway is confirmed (#465): a batch must never reach another configuration's ledger."""
         from optimus.config.gateway import OptimusGatewaySettings
         from optimus.gateway.client import GatewayClient
         from optimus.usage.capture_delivery import CaptureDelivery
@@ -924,8 +959,15 @@ def main(argv: list[str] | None = None) -> int:
                                        capabilities=gateway_post(settings, timeout=CAPABILITIES_SECONDS))
         except Exception:  # noqa: BLE001 - without delivery, capture stays in the outbox for a later launch
             return None
-        delivery.start()
         return delivery
+
+    def _serve_gateway_refusal(exc: LocalInfrastructureError) -> int:
+        """#465: the Agent Panel shows the reason on the first prompt, and this process holds nothing that can call a model.
+        The stated cause is also the persisted one: stderr reaches Zed's log, and this line the launch's own."""
+        print(f"optimus-agent: {exc.code}: {exc.user_message}", file=sys.stderr)
+        record_gateway_refusal(candidate.operator_paths.runtime_root, code=exc.code, reason=exc.user_message)
+        refusal = GatewayRefusalServer(code=exc.code, reason=exc.user_message)
+        return asyncio.run(_run_serving_process(refusal, lifecycle=lifecycle, framed=args.framed))
 
     def _run_authorized(durable_capture: DurableCapture, delivery: Any) -> int:
         nonlocal configured_server, startup_control
@@ -942,6 +984,8 @@ def main(argv: list[str] | None = None) -> int:
                     # the Gateway path that receives OTLP configuration.
                     if args.strict or args.with_local_phoenix:
                         gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+                elif args.strict:
+                    _confirm_running_gateway()  # strict pre-flight sends a model request
                 try:
                     run_preflight(
                         agent_environ,
@@ -957,6 +1001,9 @@ def main(argv: list[str] | None = None) -> int:
                 log_provenance_once()
                 print("Optimus ACP agent configuration OK.", file=sys.stderr)
                 return 0
+            except LocalInfrastructureError as exc:  # there is no panel here to show it in
+                print(f"optimus-agent: {exc.code}: {exc.user_message}", file=sys.stderr)
+                return 2
             except BaseException as exc:
                 startup_failure = exc
                 if not lifecycle.bound and lifecycle.reason in (StopReason.SIGINT, StopReason.SIGTERM):
@@ -979,7 +1026,10 @@ def main(argv: list[str] | None = None) -> int:
                 otlp_endpoint, error_exit = _start_local_dependencies()
                 if error_exit is not None:
                     return error_exit
-                gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+                try:
+                    gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+                except LocalInfrastructureError as exc:
+                    return _serve_gateway_refusal(exc)
                 if test_composition is not None and gateway_process is None:
                     # The profiled launch owns its profiled Gateway child. A Gateway already listening, or none
                     # at all, would refuse every bound request with a generic text (Fable CP4 release review M1).
@@ -991,9 +1041,15 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     return 2
                 if gateway_process is not None and delivery is not None:
-                    # Plan 12.9: delivery's first pass ran before this Gateway was up and its next is a pass away; the
-                    # first prompt must not beat the answer. A loopback request, bounded by CAPABILITIES_SECONDS.
+                    # Plan 12.9: the first prompt must not beat the answer. A loopback request, bounded by CAPABILITIES_SECONDS.
                     delivery.negotiate()
+            else:
+                try:
+                    _confirm_running_gateway()
+                except LocalInfrastructureError as exc:
+                    return _serve_gateway_refusal(exc)
+            if delivery is not None:
+                delivery.start()
             try:
                 # Seam 3: MCP construction reads PATH/PATHEXT/SystemRoot and the
                 # ephemeral-HMAC request from the ORIGINAL launch snapshot, projected to

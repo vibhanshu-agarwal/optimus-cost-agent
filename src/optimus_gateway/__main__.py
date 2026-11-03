@@ -26,6 +26,14 @@ from optimus_model_policy.stage_c import StageCGuard, StageCLedgerError, compose
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES, compose_test_profile_snapshot
 from optimus_security.accounting_config import REFERENCES_NAME, AccountingConfigError, accounting_literal
 from optimus_security.accounting_config import read_with_references as read_accounting_config
+from optimus_security.gateway_identity import (
+    COMPOSITION_AUTO,
+    COMPOSITION_STANDARD,
+    ServedIdentity,
+    compose_identity,
+    profile_composition,
+    proof_key,
+)
 from optimus_security.launch_manifest import (
     LaunchManifestError,
     read_manifest_hmac_key,
@@ -205,6 +213,31 @@ def main(argv: list[str] | None = None) -> int:
     except LaunchManifestError as exc:
         print(f"optimus-local-gateway: manifest validation failed ({exc.code}); refusing to start.", file=sys.stderr)
         return 2
+
+    # #465 (ADR-036): the identity a launch compares, from the values just verified against the signed manifest and what
+    # this process actually serves, never from what a caller says it expects.
+    if args.plan12_test_profile is not None:
+        composition = profile_composition(args.plan12_test_profile)
+    else:
+        composition = COMPOSITION_AUTO if args.auto_composition else COMPOSITION_STANDARD
+    config = replace(
+        config,
+        local_identity=ServedIdentity(
+            compose_identity(
+                provider=config.provider,
+                base_url=config.base_url,
+                provider_api_key=config.provider_api_key,
+                shared_secret=config.shared_secret,
+                composition=composition,
+                model_registry=None if registry is None else approval_literal(registry),
+                stage_c_envelope=None if envelope is None else envelope.literal,
+                accounting=accounting_bound,
+                tool_environ=environ,
+                hmac_key=hmac_key,
+            ),
+            proof_key(hmac_key),
+        ),
+    )
 
     if registry is not None:
         config = replace(

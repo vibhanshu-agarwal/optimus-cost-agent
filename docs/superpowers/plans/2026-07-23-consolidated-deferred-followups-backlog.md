@@ -71,6 +71,7 @@ unchanged, to [Archived moved plans](#archived-moved-plans).
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
+| [Plan 12.10 memory index, tools and context (M1)](2026-11-03-plan-12-10-memory-index-and-context-implementation.md) | — | — | [#469](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/469) |
 | [Idle client-MCP lifetime v3](2026-10-26-idle-mcp-suspension-main-port_v3.md) | — | — | [#427](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/427) |
 | [Ordering/lifecycle/signals and queue](2026-10-27-ordering-lifecycle-signals-queue-plan.md) | — | — | [#302](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/302) |
 | [Local-hook UTF-8 decoding repair](2026-09-06-local-hook-utf8-repair.md) | `Blocked` | `P11-FEAT-ACP-RUNTIME-HARDENING` | Local delivery at `c9745898` is independently accepted and published to PR #196 with both first-execution checks passed. The operator authorized documentation review and normal merge conditional on the final head passing required checks; PR #196 records the result. Retained under transitional custody pending separate archival disposition; no further implementation or inherited budget is released. Preserve baseline identities, frozen documents and CI scope. |

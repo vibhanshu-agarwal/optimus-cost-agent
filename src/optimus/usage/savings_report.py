@@ -115,8 +115,8 @@ class ReportTransportError(Exception):
 Post = Callable[[bytes], tuple[int, Any]]
 
 
-def gateway_post(settings: OptimusGatewaySettings, *, timeout: float = READ_SECONDS) -> Post:
-    """POST to the report route with the host's Gateway URL and key, reading at most the contract's response bound.
+def gateway_post(settings: OptimusGatewaySettings, *, timeout: float = READ_SECONDS, path: str = urc.PATH) -> Post:
+    """POST to the report route (or ``path``) with the host's Gateway URL and key, reading at most the contract's response bound.
 
     One deadline covers the whole exchange, enforced on the socket this function owns: the connection, the send and
     every receive each get exactly the time left, so slow headers, late headers then a stalled body, or a body that
@@ -124,7 +124,7 @@ def gateway_post(settings: OptimusGatewaySettings, *, timeout: float = READ_SECO
     that bound: shutting a socket down from another thread does not wake a receive already blocked on it everywhere.
     The request asks the Gateway to close the connection, and its reply carries a Content-Length."""
     settings.validate_trusted_gateway()
-    parts = urlsplit(settings.gateway_url.rstrip("/") + urc.PATH)
+    parts = urlsplit(settings.gateway_url.rstrip("/") + path)
     host, port = parts.hostname or "", parts.port or (443 if parts.scheme == "https" else 80)
 
     def post(body: bytes) -> tuple[int, Any]:

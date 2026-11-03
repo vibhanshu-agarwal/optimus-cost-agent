@@ -334,7 +334,8 @@ def test_a_launch_settles_the_report_feature_after_its_gateway_is_up_and_before_
 
     acp_main.main(["--workspace-root", str(tmp_path)])
 
-    assert order[:4] == ["delivery", "gateway", "negotiate", "server"]
+    # #465: nothing is delivered until this launch's Gateway is confirmed.
+    assert order[:4] == ["gateway", "negotiate", "delivery", "server"]
 
 
 def test_shutdown_report_contains_only_bounded_fields(capsys):
