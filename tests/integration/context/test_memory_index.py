@@ -372,14 +372,17 @@ def test_a_slow_catalogue_stops_at_its_deadline(rpc: Rpc, client: redis.Redis) -
     rpc.publish(token, epoch, files=5)
     store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
     real = store._live_file
+    looked_at: list[str] = []
 
     def slow(*args: Any) -> Any:
+        looked_at.append(args[1])
         time.sleep(0.05)
         return real(*args)
 
     store._live_file = slow  # type: ignore[method-assign]
     body = json.dumps({"op": "catalogue", "scope": rpc.scope}).encode()
     assert memory_index.IndexService(store).handle(body, deadline=time.monotonic() + 0.12) == (503, mic.error_body("INDEX_TIMEOUT"))
+    assert len(looked_at) < 5, "it should stop as soon as the time is up, not finish the page first"
 
 
 def test_a_deleted_file_leaves_the_published_view(rpc: Rpc) -> None:

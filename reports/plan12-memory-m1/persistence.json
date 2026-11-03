@@ -4,7 +4,7 @@
   "issue": 469,
   "tests": "tests/integration/context/test_memory_b1_canaries.py, on the released Redis",
   "encodings_scanned": ["plain", "lower", "json", "ascii-escaped", "base64", "urlsafe-base64", "hex", "utf-16"],
-  "forbidden_canaries": ["python comment", "python docstring", "python module docstring", "python string", "python default", "python body text", "java comment", "java javadoc", "java string", "java annotation", "document code string", "document code comment", "document multiline string", "document block comment", "document indented code", "document long fence", "document inline code", "document html block", "document doctest", "rst literal block", "rst directive", "text indented code", "unsupported language"],
+  "forbidden_canaries": ["python comment", "python docstring", "python module docstring", "python string", "python default", "python body text", "java comment", "java javadoc", "java string", "java annotation", "document code string", "document code comment", "document multiline string", "document block comment", "document indented code", "document long fence", "document inline code", "document html block", "document html block across a heading", "document doctest", "rst literal block", "rst directive", "text indented code", "unsupported language"],
   "allowed_controls": ["identifier", "documentation prose", "path"],
   "surfaces": [
     {"surface": "every key's stored values", "forbidden_found": 0, "controls_found": true},

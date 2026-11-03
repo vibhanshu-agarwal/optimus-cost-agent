@@ -6,39 +6,39 @@
   "measured_source": "pilot.json, plan12.10-pilot-2026-11-03, rerun at the corrected 1 GiB container limit, on this repository's Python",
   "this_repository_src_and_tools": {
     "files": 392,
-    "parsed_python_loc": 122065,
-    "chunks": 7226,
-    "chunk_chars_mean": 830.8,
+    "parsed_python_loc": 122111,
+    "chunks": 7229,
+    "chunk_chars_mean": 830.9,
     "chunk_chars_p95": 2785,
-    "read_and_parse_seconds": 6.9
+    "read_and_parse_seconds": 5.4
   },
   "pilot_end_to_end": {
-    "parsed_python_loc": 10116,
-    "chunks": 753,
-    "cold_seconds": 85.12,
-    "first_file_visible_seconds": 0.96,
-    "embedded_items_per_second": 9.2,
-    "embedding_share_of_build": 0.964,
-    "worker_rss_mb_max": 936.7,
-    "worker_cpu_percent_mean": 199.0,
+    "parsed_python_loc": 10229,
+    "chunks": 760,
+    "cold_seconds": 80.33,
+    "first_file_visible_seconds": 0.85,
+    "embedded_items_per_second": 9.8,
+    "embedding_share_of_build": 0.965,
+    "worker_rss_mb_max": 937.1,
+    "worker_cpu_percent_mean": 203.4,
     "worker_threads_existing": 31,
     "worker_threads_doing_work": 2,
-    "gateway_rss_mb_max": 68.2
+    "gateway_rss_mb_max": 68.3
   },
   "rates_seen": {
     "note": "Different samples of real Python chunks on two threads, so the forecast uses a range rather than the best one.",
-    "items_per_second": {"src_and_tools_length_sorted_sample": 8.7, "pilot_first_run": 10.1, "pilot_this_run": 9.2}
+    "items_per_second": {"src_and_tools_length_sorted_sample": 8.7, "pilot_runs": [10.1, 9.2, 9.8]}
   },
   "forecast_for_1m_parsed_loc": {
     "basis": "Python only. Java chunk density and length are unmeasured, and Hadoop's eligible count is unknown. The sample release replaces this.",
     "chunks_per_1k_loc": [59, 74],
     "chunks": [60000, 75000],
     "hours_end_to_end_at_8_7_items_per_second_and_this_embedding_share": [2.0, 2.5],
-    "redis_memory_mb_at_60000_records": 348.4,
+    "redis_memory_mb_at_60000_records": 349.3,
     "redis_memory_mb_at_75000_records_scaled": 436,
     "redis_disk_mb_at_60000_records_after_load": 141,
     "redis_disk_mb_peak_seen_in_the_run": 296,
-    "unchanged_reconcile_seconds_per_1000_files": {"measured": 32, "basis": "1.62 seconds over 50 files, of which reading and parsing is most; needs Java and a larger tree to confirm"}
+    "unchanged_reconcile_seconds_per_1000_files": {"measured": 34, "basis": "1.70 seconds over 50 files, including the final check of what was read; needs Java and a larger tree to confirm"}
   },
   "correction_to_the_plan": "P2's 89-100 items per second came from short synthetic text. Real chunks embed at about 9 per second on the same two threads, so the plan's 6-12 minute illustration becomes two hours or more.",
   "not_measured_yet": [

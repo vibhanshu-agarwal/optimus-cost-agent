@@ -6,31 +6,31 @@
   "basis": "Limits sit about twice above the latest pilot, because latency moved up to 1.8 times between runs on this machine; those runs differ in more than noise, so this is a judgement and not a measured tolerance. K2 keeps the earlier probe's bounds and scales only its size.",
   "zero_tolerance": ["critical B1 failures", "authority failures", "wrong-branch evidence", "stale evidence"],
   "foreground": [
-    {"metric": "proxy dense query p95, idle, ms", "runs": [14.5, 25.8], "limit": 50},
-    {"metric": "proxy lexical query p95, idle, ms", "runs": [7.3, 12.0], "limit": 25},
-    {"metric": "proxy dense query p95, during a cold build, ms", "runs": [37.0, 57.0], "limit": 110},
-    {"metric": "proxy lexical query p95, during a cold build, ms", "runs": [13.4, 21.6], "limit": 45},
-    {"metric": "acpx turn p50 during a build, as a multiple of idle p50, at least 20 matched turns each", "latest": 1.31, "limit": 1.5},
-    {"metric": "acpx turn p95 during a build, as a multiple of idle p95, at least 20 matched turns each", "latest": 1.18, "limit": 1.5},
+    {"metric": "proxy dense query p95, idle, ms", "runs": [14.5, 25.8, 16.9], "limit": 50},
+    {"metric": "proxy lexical query p95, idle, ms", "runs": [7.3, 12.0, 8.1], "limit": 25},
+    {"metric": "proxy dense query p95, during a cold build, ms", "runs": [37.0, 57.0, 48.7], "limit": 110},
+    {"metric": "proxy lexical query p95, during a cold build, ms", "runs": [13.4, 21.6, 17.5], "limit": 45},
+    {"metric": "acpx turn p50 during a build, as a multiple of idle p50, at least 20 matched turns each", "runs": [1.31, 1.29], "limit": 1.5},
+    {"metric": "acpx turn p95 during a build, as a multiple of idle p95, at least 20 matched turns each", "runs": [1.18, 1.21], "limit": 1.5},
     {"metric": "acpx turn failures during a build", "latest": 0, "limit": 0},
-    {"metric": "seconds for a person's cancel to stop a turn, during a build", "runs": [2.47, 2.1], "limit": 5}
+    {"metric": "seconds for a person's cancel to stop a turn, during a build", "runs": [2.47, 2.1, 2.35], "limit": 5}
   ],
   "indexing": [
-    {"metric": "embedded chunks per second on two threads", "runs": [10.1, 9.2], "limit_at_least": 7},
-    {"metric": "proxy bulk records per second", "runs": [4815, 4601], "limit_at_least": 3000},
-    {"metric": "seconds until the first file is visible, from the start of a cold build", "latest": 0.96, "limit": 5},
+    {"metric": "embedded chunks per second on two threads", "runs": [10.1, 9.2, 9.8], "limit_at_least": 7},
+    {"metric": "proxy bulk records per second", "runs": [4815, 4601, 5264], "limit_at_least": 3000},
+    {"metric": "seconds until the first file is visible, from the start of a cold build", "runs": [0.96, 0.85], "limit": 5},
     {"metric": "hours per 1M eligible parsed LOC", "forecast": "2.0-2.5, Python-derived", "limit": 4, "note": "The operator approves a total for the chosen corpus separately, after the Java sample."},
-    {"metric": "seconds from an edit to its symbol being queryable, one file", "runs": [2.39, 2.96], "limit": 6},
-    {"metric": "seconds per 1000 files to reconcile an unchanged tree", "latest": 32, "limit": 60, "note": "Measured on 50 files. Remeasure on the Java tree before relying on this."},
-    {"metric": "seconds to stop a build on cancel", "runs": [1.08, 0.23], "limit": 3},
-    {"metric": "seconds until answering after a Redis kill, same publication", "runs": [2.4, 2.67], "limit": 10}
+    {"metric": "seconds from an edit to its symbol being queryable, one file", "runs": [2.39, 2.96, 2.67], "limit": 6},
+    {"metric": "seconds per 1000 files to reconcile an unchanged tree", "runs": [32, 34], "limit": 60, "note": "Measured on 50 files. Remeasure on the Java tree before relying on this."},
+    {"metric": "seconds to stop a build on cancel", "runs": [1.08, 0.23, 0.52], "limit": 3},
+    {"metric": "seconds until answering after a Redis kill, same publication", "runs": [2.4, 2.67, 2.59], "limit": 10}
   ],
   "resources": [
-    {"metric": "worker RSS, MB", "latest": 953.1, "limit": 1500},
-    {"metric": "worker mean CPU during a build, percent of one core", "latest": 200.5, "limit": 250},
+    {"metric": "worker RSS, MB", "latest": 955.3, "limit": 1500},
+    {"metric": "worker mean CPU during a build, percent of one core", "latest": 204.1, "limit": 250},
     {"metric": "native embedding threads, as configured", "latest": 2, "limit": 2},
     {"metric": "process threads doing work during a build (over 5 percent of a core), including orchestration; a coarse check, not proof of the line above", "latest": 2, "limit": 3},
-    {"metric": "Gateway RSS, MB", "latest": 70.5, "limit": 150},
+    {"metric": "Gateway RSS, MB", "latest": 70.0, "limit": 150},
     {"metric": "Redis memory in the shipped configuration, MB", "latest": "349 of a 512 test limit, at 60000 records", "limit": 3072, "envelope": "maxmemory 4096 less a 1024 reserve, in a 4608 container. Nothing in the product enforces the reserve; a run over it fails."},
     {"metric": "index disk at 75000 records, MB, at its peak in the run", "latest": "296 peak, with 60000 scale records", "limit": 1024}
   ],
