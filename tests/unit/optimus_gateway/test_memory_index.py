@@ -128,6 +128,14 @@ def test_a_non_finite_vector_is_refused() -> None:
     assert mic.decode_vector(mic.encode_vector(struct.pack("<2f", 1.0, 2.0)), 2) == struct.pack("<2f", 1.0, 2.0)
 
 
+def test_an_embedding_identity_may_name_its_model_and_revision() -> None:
+    """A real configured identity, which a stand-in embedder's plain name did not exercise."""
+    body = {"op": "generation", "scope": _SCOPE, "action": "open", "embedding": "BAAI/bge-small-en-v1.5@aa8f8b060edb", "dimensions": 384, "schema_version": 1}
+    assert mic.parse_request(json.dumps(body).encode())["embedding"] == body["embedding"]
+    with pytest.raises(mic.IndexRequestError):
+        mic.parse_request(json.dumps({**body, "embedding": "a b"}).encode())
+
+
 def test_progress_cannot_carry_a_payload() -> None:
     body = {"op": "cursor", "scope": _SCOPE, "action": "set", "token": 1, "value": {"phase": "embedding", "source": "print('x')"}}
     with pytest.raises(mic.IndexRequestError):

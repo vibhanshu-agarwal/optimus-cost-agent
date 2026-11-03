@@ -1,6 +1,22 @@
 {
   "surfaces": [
     {
+      "key": "context_engine.index_worker:IndexWorker._release:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds or sends only the wire record, whose schema excludes source bodies; embedding text stays in RAM and reaches only the local embedder.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "context_engine.index_worker:IndexWorker.run:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds or sends only the wire record, whose schema excludes source bodies; embedding text stays in RAM and reaches only the local embedder.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "evidence_handoff.collector.bundles:_atomic_write_json:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: opens a sibling temporary JSON stage file only to publish digest-bound portable run/bundle documents; no diagnostic body retention.",
@@ -1169,6 +1185,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_workspace:GatewayIndexStorage.call:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds or sends only the wire record, whose schema excludes source bodies; embedding text stays in RAM and reaches only the local embedder.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_workspace:index_scope:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds or sends only the wire record, whose schema excludes source bodies; embedding text stays in RAM and reaches only the local embedder.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.gates.fitness:FitnessGateRunner.run:logger_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.gates.fitness:FitnessGateRunner.run:logger_export is an AST-overmatch with no sink call in its scoped body.",
@@ -2334,6 +2366,94 @@
       "rationale": "Inspection: AST overmatch on threading.Event.set() inside run_relay; no Redis client or hash write exists in the opaque relay.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_empty_streams_produce_eof_and_empty_bins",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_Sampler.__exit__:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_bulk:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_note:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_redis_facts:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:run_pilot:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:run_pilot:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:run_pilot:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:run_pilot:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:run_pilot:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
       "evidence_tier": "unit"
     },
     {

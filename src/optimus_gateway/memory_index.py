@@ -264,20 +264,29 @@ class IndexStore:
             # Decoding before MULTI: a bad vector refuses the whole batch with nothing written.
             encoded = [(record, self._mapping(scope, dimensions, epoch, record)) for record in body["records"]]
             removed: list[str] = []
-            for path_id in removals:
+            abandoned: list[tuple[str, str]] = []
+            for removal in removals:
+                path_id = removal["path_id"]
                 for raw in pipe.smembers(f"{_PREFIX}:members:{scope}:{path_id}"):
-                    added = pipe.hget(_text(raw), "epoch_added")
-                    if added is not None and int(added) < epoch:
+                    added, file_hash = pipe.hmget(_text(raw), "epoch_added", "file_hash")
+                    if added is None:
+                        continue
+                    if int(added) < epoch:  # a reader pinned to an earlier epoch still needs it
                         removed.append(_text(raw))
+                    elif _text(file_hash) != removal.get("keep_hash"):  # this epoch's own leftover: no reader ever saw it
+                        abandoned.append((_text(raw), path_id))
             pipe.multi()
             for key in removed:
                 pipe.hset(key, "epoch_removed", str(epoch))
+            for key, path_id in abandoned:
+                pipe.delete(key)
+                pipe.srem(f"{_PREFIX}:members:{scope}:{path_id}", key)
             for record, mapping in encoded:
                 key = self._record_key(scope, dimensions, epoch, record["id"])
                 pipe.hset(key, mapping=mapping)
                 pipe.sadd(f"{_PREFIX}:members:{scope}:{record['path_id']}", key)
                 pipe.zadd(f"{_PREFIX}:files:{scope}", {record["path_id"]: 0})
-            return {"status": "ok", "written": len(encoded), "removed": len(removed)}
+            return {"status": "ok", "written": len(encoded), "removed": len(removed) + len(abandoned)}
 
         return self._fenced(scope, body["token"], write)
 
@@ -404,12 +413,12 @@ class IndexStore:
         members = [_text(raw) for raw in self._redis.smembers(f"{_PREFIX}:members:{scope}:{path_id}")]
         with self._redis.pipeline(transaction=False) as pipe:
             for key in members:
-                pipe.hmget(key, "kind", "path", "file_hash", "language", "modified", "epoch_added", "epoch_removed")
+                pipe.hmget(key, "kind", "path", "file_hash", "language", "modified", "epoch_added", "epoch_removed", "description")
             rows = pipe.execute()
-        for kind, path, file_hash, language, modified, added, removed in rows:
+        for kind, path, file_hash, language, modified, added, removed, description in rows:
             if kind == b"file" and int(added) <= epoch < int(removed):
                 return {"path": _text(path), "path_id": path_id, "file_hash": _text(file_hash), "language": _text(language),
-                        "modified": int(modified) if modified else None}
+                        "modified": int(modified) if modified else None, "description": _text(description) if description else None}
         return None
 
     # --- progress and cleanup ------------------------------------------------------------------------------------------

@@ -139,7 +139,7 @@ def test_a_reader_pinned_to_an_epoch_keeps_seeing_it_while_the_next_one_is_publi
 
     second = rpc.ok("generation", action="begin", token=token)["epoch"]
     new = "2" * 64
-    rpc.ok("batch", token=token, epoch=second, removals=[_h("a.py")], records=[_file("a.py", new), _symbol("a.py", new, "beta", "beta", _vector(0, 1))])
+    rpc.ok("batch", token=token, epoch=second, removals=[{"path_id": _h("a.py")}], records=[_file("a.py", new), _symbol("a.py", new, "beta", "beta", _vector(0, 1))])
     # Mid-update: the published view is untouched, in both directions.
     assert [r["symbol"] for r in rpc.ok("query", mode="lexical", terms=["alpha"], k=5)["records"]] == ["alpha"]
     assert rpc.ok("query", mode="lexical", terms=["beta"], k=5)["records"] == []
@@ -159,7 +159,7 @@ def test_a_deleted_file_leaves_the_published_view(rpc: Rpc) -> None:
     rpc.ok("batch", token=token, epoch=first, records=[_file("a.py", "1" * 64), _file("b.py", "2" * 64)])
     rpc.publish(token, first, files=2)
     second = rpc.ok("generation", action="begin", token=token)["epoch"]
-    rpc.ok("batch", token=token, epoch=second, records=[], removals=[_h("a.py")])
+    rpc.ok("batch", token=token, epoch=second, records=[], removals=[{"path_id": _h("a.py")}])
     rpc.publish(token, second)
     assert _paths(rpc.ok("catalogue")) == ["b.py"]
 
@@ -286,7 +286,7 @@ def test_prune_keeps_the_published_view_and_drop_removes_the_scope(rpc: Rpc) -> 
     rpc.ok("batch", token=token, epoch=first, records=[_file("a.py", "1" * 64), _symbol("a.py", "1" * 64, "alpha", "alpha", _vector(1))])
     rpc.publish(token, first)
     second = rpc.ok("generation", action="begin", token=token)["epoch"]
-    rpc.ok("batch", token=token, epoch=second, removals=[_h("a.py")], records=[_file("a.py", "2" * 64), _symbol("a.py", "2" * 64, "beta", "beta", _vector(1))])
+    rpc.ok("batch", token=token, epoch=second, removals=[{"path_id": _h("a.py")}], records=[_file("a.py", "2" * 64), _symbol("a.py", "2" * 64, "beta", "beta", _vector(1))])
     rpc.publish(token, second)
 
     def run(action: str) -> int:

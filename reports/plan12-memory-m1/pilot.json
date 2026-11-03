@@ -1,0 +1,250 @@
+{
+  "acpx_turns": {
+    "build_still_running": true,
+    "during_build": {
+      "failures": 0,
+      "max_ms": 5214.802,
+      "mean_ms": 5033.294,
+      "p50_ms": 5035.278,
+      "p95_ms": 5214.802,
+      "samples": 5
+    },
+    "during_build_cancel": {
+      "seconds_to_stop": 2.468,
+      "stop": "cancelled"
+    },
+    "idle": {
+      "failures": 0,
+      "max_ms": 9774.474,
+      "mean_ms": 5284.489,
+      "p50_ms": 4182.538,
+      "p95_ms": 9774.474,
+      "samples": 5
+    },
+    "idle_cancel": {
+      "seconds_to_stop": 2.286,
+      "stop": "cancelled"
+    },
+    "session_new_exit": "0"
+  },
+  "bulk": {
+    "native_records_per_second": 10901.9,
+    "native_seconds": 0.235,
+    "proxy_records_per_second": 6414.4,
+    "proxy_seconds": 0.399,
+    "records": 2560
+  },
+  "cancel": {
+    "seconds_to_stop": 1.079,
+    "state": "cancelled"
+  },
+  "cold": {
+    "coverage": {
+      "complete": true,
+      "excluded": 0,
+      "files_indexed": 50,
+      "files_total": 50,
+      "parsed_loc": {
+        "python": 10116
+      },
+      "records": 803,
+      "unsupported": 6
+    },
+    "embedded_items": 753,
+    "embedded_items_per_second": 10.1,
+    "embedding_seconds": 74.71,
+    "embedding_share": 0.979,
+    "end_to_end_records_per_second": 10.5,
+    "files_written": 50,
+    "processes": {
+      "gateway": {
+        "cpu_percent_max": 5.9,
+        "cpu_percent_mean": 0.2,
+        "rss_mb_max": 68.2,
+        "threads_max": 5
+      },
+      "worker": {
+        "cpu_percent_max": 217.1,
+        "cpu_percent_mean": 200.5,
+        "rss_mb_max": 935.8,
+        "threads_max": 31
+      }
+    },
+    "records_written": 803,
+    "redis": {
+      "disk_kb": 2444,
+      "maxmemory_mb": 1024.0,
+      "used_memory_mb": 8.0,
+      "used_memory_peak_mb": 9.1
+    },
+    "seconds": 76.35,
+    "state": "complete"
+  },
+  "config": {
+    "acpx_turns": 5,
+    "authorization": "Operator, Claude chat 2026-11-03: released the CP2 development resources (dedicated test Redis, packages, embedding artifact, isolated keyring, WSL).",
+    "bulk_batches": 20,
+    "container": "p1210-index-test-redis",
+    "corpus_paths": [
+      "src/optimus_gateway",
+      "src/context_engine",
+      "src/optimus_model_policy"
+    ],
+    "embedding_threads": 2,
+    "label": "plan12.10-pilot-2026-11-03",
+    "maxmemory_mb": 1024,
+    "port": 6392,
+    "query_samples": 200,
+    "scale_records": 60000,
+    "volume": "p1210-index-test-data",
+    "work_dir": "tmp/plan12-m1-pilot"
+  },
+  "corpus": {
+    "chunk_chars_mean": 708.0,
+    "chunk_chars_p95": 2326,
+    "embedded_chunks": 753,
+    "excluded": {
+      "deny.skipped_dir": 79
+    },
+    "files": {
+      "java": 0,
+      "markdown": 0,
+      "python": 44,
+      "text": 0,
+      "unsupported": 6
+    },
+    "parse_error_files": 0,
+    "parse_seconds": 0.696,
+    "parsed_lines": {
+      "java": 0,
+      "markdown": 0,
+      "python": 10116,
+      "text": 0,
+      "unsupported": 0
+    },
+    "records": {
+      "java": 0,
+      "markdown": 0,
+      "python": 797,
+      "text": 0,
+      "unsupported": 6
+    }
+  },
+  "host": {
+    "cpus": 12,
+    "memory_gb": 47.8,
+    "platform": "win32",
+    "python": "3.14.4"
+  },
+  "incremental_one_file": {
+    "new_symbol_found": true,
+    "records_written": 6,
+    "seconds": 2.39,
+    "state": "complete"
+  },
+  "phase": "pilot",
+  "query_during_cold_build": {
+    "build_still_running": true,
+    "native_dense": {
+      "max_ms": 65.855,
+      "mean_ms": 16.588,
+      "p50_ms": 13.783,
+      "p95_ms": 29.929,
+      "samples": 200
+    },
+    "native_lexical": {
+      "max_ms": 3.815,
+      "mean_ms": 1.704,
+      "p50_ms": 1.593,
+      "p95_ms": 2.831,
+      "samples": 200
+    },
+    "processes": {
+      "gateway": {
+        "cpu_percent_max": 25.4,
+        "cpu_percent_mean": 3.6,
+        "rss_mb_max": 69.0,
+        "threads_max": 3
+      },
+      "worker": {
+        "cpu_percent_max": 240.6,
+        "cpu_percent_mean": 206.6,
+        "rss_mb_max": 940.0,
+        "threads_max": 31
+      }
+    },
+    "proxy_dense": {
+      "max_ms": 78.018,
+      "mean_ms": 23.862,
+      "p50_ms": 21.034,
+      "p95_ms": 36.963,
+      "samples": 200
+    },
+    "proxy_lexical": {
+      "max_ms": 31.015,
+      "mean_ms": 9.527,
+      "p50_ms": 8.778,
+      "p95_ms": 13.407,
+      "samples": 200
+    }
+  },
+  "query_idle": {
+    "native_dense": {
+      "max_ms": 10.693,
+      "mean_ms": 7.73,
+      "p50_ms": 7.603,
+      "p95_ms": 8.972,
+      "samples": 200
+    },
+    "native_lexical": {
+      "max_ms": 1.846,
+      "mean_ms": 1.015,
+      "p50_ms": 0.958,
+      "p95_ms": 1.491,
+      "samples": 200
+    },
+    "proxy_dense": {
+      "max_ms": 17.21,
+      "mean_ms": 12.744,
+      "p50_ms": 12.501,
+      "p95_ms": 14.541,
+      "samples": 200
+    },
+    "proxy_lexical": {
+      "max_ms": 8.899,
+      "mean_ms": 6.143,
+      "p50_ms": 6.059,
+      "p95_ms": 7.312,
+      "samples": 200
+    }
+  },
+  "reconcile_unchanged": {
+    "records_written": 0,
+    "seconds": 1.36,
+    "state": "complete"
+  },
+  "recovery": {
+    "ensure_state": "ready",
+    "records_after": 20,
+    "same_publication": true,
+    "seconds_until_answering": 2.4
+  },
+  "redis_at_scale": {
+    "disk_kb": 144876,
+    "maxmemory_mb": 1024.0,
+    "used_memory_mb": 348.4,
+    "used_memory_peak_mb": 349.1
+  },
+  "redis_end": {
+    "disk_kb": 158460,
+    "maxmemory_mb": 1024.0,
+    "used_memory_mb": 376.1,
+    "used_memory_peak_mb": 376.6
+  },
+  "scale_load": {
+    "records": 60000,
+    "records_per_second": 4815.3,
+    "seconds": 12.5
+  },
+  "schema": "plan12-memory-m1.pilot.v1"
+}

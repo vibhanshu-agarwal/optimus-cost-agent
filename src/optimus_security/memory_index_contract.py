@@ -41,6 +41,7 @@ CURSOR_PHASES: Final = frozenset({"idle", "catalogue", "embedding", "reconcile"}
 _HEX64 = re.compile(r"[0-9a-f]{64}")
 _OWNER = re.compile(r"[0-9a-f]{16,64}")
 _IDENT = re.compile(r"[A-Za-z0-9._:-]{1,128}")
+_EMBEDDING = re.compile(r"[A-Za-z0-9._:/@-]{1,128}")
 _TERM = re.compile(r"[a-z0-9_]{1,64}")
 _MAX_FIELD = {"symbol": 256, "signature": 2048, "description": 2048, "prose": 8192, "terms": 16384, "path": 1024}
 _RECORD_KEYS = frozenset({"id", "kind", "path", "path_id", "file_hash", "language", "symbol", "signature", "description", "prose",
@@ -174,8 +175,11 @@ def _batch(body: dict[str, Any]) -> None:
         raise IndexRequestError("BATCH_TOO_LARGE")
     for record in records:
         _record(record)
-    for path_id in removals:
-        _hex64(path_id)
+    for removal in removals:
+        removed = _object(removal, {"path_id", "keep_hash"}, {"path_id"})
+        _hex64(removed["path_id"])
+        if "keep_hash" in removed:
+            _hex64(removed["keep_hash"])
 
 
 def _catalogue(body: dict[str, Any]) -> None:
@@ -241,7 +245,7 @@ def _generation(body: dict[str, Any]) -> None:
     action = body.get("action")
     if action == "open":
         _operand(body, {"action", "embedding", "dimensions", "schema_version"}, {"action", "embedding", "dimensions", "schema_version"})
-        if not isinstance(body["embedding"], str) or not _IDENT.fullmatch(body["embedding"]):
+        if not isinstance(body["embedding"], str) or not _EMBEDDING.fullmatch(body["embedding"]):
             raise _refuse()
         _integer(body["dimensions"], minimum=1, maximum=MAX_DIMENSIONS)
         _integer(body["schema_version"], minimum=1, maximum=1 << 16)
