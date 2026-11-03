@@ -4,7 +4,7 @@
   "container": "p1210-index-test-redis",
   "volume": "p1210-index-test-data",
   "port": 6392,
-  "maxmemory_mb": 1024,
+  "maxmemory_mb": 512,
   "work_dir": "tmp/plan12-m1-pilot",
   "artifact_cache": "tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
   "corpus_paths": ["src/optimus_gateway", "src/context_engine", "src/optimus_model_policy"],

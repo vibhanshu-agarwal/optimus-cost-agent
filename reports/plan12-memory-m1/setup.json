@@ -1,0 +1,39 @@
+{
+  "schema": "plan12-memory-m1.setup.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "release": "Operator, Claude chat 2026-11-03: test Redis p1210-index-test-redis / p1210-index-test-data on 127.0.0.1:6392, the isolated keyring service optimus-p1210-test, one artifact download, packages. Real Optimus keyring entries, optimus-redis and every other container were not touched.",
+  "release_departure": "The release capped the test container at 1 GiB. Runs up to this report used Redis maxmemory 1 GiB, and ensure_memory_redis adds 512 MB of headroom, so the Docker limit was 1.5 GiB. Peak Redis use was 376.6 MB. Test and pilot settings now use maxmemory 512 MB, which makes the Docker limit 1 GiB.",
+  "image": "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5",
+  "tests": {
+    "dedicated_resource": "tests/integration/context/test_memory_redis_lifecycle.py, on real Docker and Redis under the real ACL",
+    "route": "tests/integration/context/test_memory_index.py, over real HTTP",
+    "native_keyring": "tests/integration/context/test_memory_native_keyring.py, Windows Credential Manager under the isolated service; no residue",
+    "offline_model": "tests/integration/context/test_memory_embedder.py, the real artifact through setup's layout and digest check, with every socket connection refused in the child",
+    "units": ["tests/unit/context/test_memory_setup.py", "tests/unit/context/test_memory_workspace.py", "tests/unit/optimus_gateway/test_memory_index.py", "tests/unit/acp/test_main_wiring.py"]
+  },
+  "cases": [
+    {"case": "the ACL file holds only a hash and the container's arguments no secret", "result": "PASS"},
+    {"case": "without the password nothing is readable; the index user has no administrative command and no key outside oidx:", "result": "PASS"},
+    {"case": "the password is only in the keyring; a rerun keeps it and downloads nothing", "result": "PASS"},
+    {"case": "a wrong artifact or a keyring failure configures nothing", "result": "PASS"},
+    {"case": "absent feature: no file means nothing is bound and today's context stays", "result": "PASS"},
+    {"case": "the manifest binds the index literal both ways, and a manifest without an index keeps its version", "result": "PASS"},
+    {"case": "ensuring again and concurrent launches agree on one resource", "result": "PASS"},
+    {"case": "a stranger's container, a stranger on the port and a changed ACL are refused and left alone", "result": "PASS"},
+    {"case": "--no-auto-start only checks, in serving and check-config; anything short of ready never stops a launch", "result": "PASS"},
+    {"case": "no running Gateway is needed to ensure the container", "result": "PASS"},
+    {"case": "a Redis outage refuses index requests, and what returns on the port proves itself again", "result": "PASS"},
+    {"case": "an absent credential is a stable refusal from the index route", "result": "PASS"},
+    {"case": "a borrowed Gateway's exit pauses the worker and its return resumes it, with no takeover or new port", "result": "PASS"},
+    {"case": "a model request answers while the index is saturated; the capture route answers, as a refusal here because no accounting is configured", "result": "PASS"},
+    {"case": "the configured artifact loads offline and its vectors separate related from unrelated text", "result": "PASS"}
+  ],
+  "unrun": [
+    {"item": "huggingface_download itself", "reason": "the released download went through fastembed; setup's own download runs when the operator first runs memory-setup, in Task 4's Zed proof"},
+    {"item": "the terminal prompt of memory-setup", "reason": "needs the operator's terminal; Task 4"},
+    {"item": "the product container in its final name and port", "reason": "not released; Task 4"},
+    {"item": "a capture request accepted under index saturation", "reason": "this test configures no accounting ledger; the pilot's acpx turns under load are the end-to-end evidence so far"}
+  ],
+  "decision_rejected": "run-gateway does not ensure the container. It is an operator's manual Gateway; the ACP launch that needs the index ensures it, and the Gateway refuses with a stable code until then."
+}

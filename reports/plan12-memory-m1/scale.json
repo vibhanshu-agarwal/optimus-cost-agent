@@ -1,0 +1,44 @@
+{
+  "schema": "plan12-memory-m1.scale.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "state": "FORECAST_ONLY: no 1M LOC corpus has been counted or run. Task 5 qualifies scale against targets.json.",
+  "measured_source": "pilot.json, plan12.10-pilot-2026-11-03, on this repository's Python",
+  "sample_of_this_repository": {
+    "roots": ["src", "tools"],
+    "files": 392,
+    "parsed_python_loc": 121813,
+    "chunks": 7205,
+    "chunk_chars_mean": 983,
+    "chunk_chars_p95": 3490,
+    "items_per_second_random_batches_of_32": 3.9,
+    "items_per_second_length_sorted_batches_of_16": 8.7
+  },
+  "pilot_end_to_end": {
+    "parsed_python_loc": 10116,
+    "chunks": 753,
+    "cold_seconds": 76.35,
+    "embedded_items_per_second": 10.1,
+    "embedding_share_of_build": 0.979,
+    "worker_rss_mb_max": 935.8,
+    "worker_cpu_percent_mean": 200.5,
+    "gateway_rss_mb_max": 68.2
+  },
+  "forecast_for_1m_parsed_loc": {
+    "basis": "Python only. Java chunk density and length are unmeasured, and Hadoop's eligible count is unknown; the sample release replaces this.",
+    "chunks_per_1k_loc": [59, 74],
+    "chunks": [60000, 75000],
+    "hours_at_10_items_per_second": [1.7, 2.1],
+    "redis_memory_mb_at_60000_records": 348.4,
+    "redis_memory_mb_at_75000_records_scaled": 436,
+    "redis_disk_mb_at_60000_records": 141.5,
+    "redis_disk_mb_at_75000_records_scaled": 177
+  },
+  "correction_to_the_plan": "P2's 89-100 items per second came from short synthetic text. Real chunks embed at about 10 per second on the same two threads, so the plan's 6-12 minute illustration becomes about two hours.",
+  "not_measured_yet": [
+    "Java: chunk density, chunk length and embedding rate",
+    "Assembly-budget share: assembly arrives in Task 4",
+    "Query fan-out across retrieval channels: arrives in Task 4",
+    "First-file visible time in a real session: Task 4's Zed proof"
+  ]
+}

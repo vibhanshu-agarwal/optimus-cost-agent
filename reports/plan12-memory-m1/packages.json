@@ -1,0 +1,299 @@
+{
+  "schema": "plan12-memory-m1.packages.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "memory_extra": [
+    "fastembed==0.9.1",
+    "tree-sitter==0.26.0",
+    "tree-sitter-java==0.23.5",
+    "tree-sitter-python==0.25.0"
+  ],
+  "not_added": {
+    "rustworkx": "the repository map ranks with the standard library; unused",
+    "psutil": "measurement only, installed in the local venv and not a dependency"
+  },
+  "uv_lock": "hex:d648ee3e893d9783783a3df0ab094d4b7d158f7fab2dcc2f0ad2f052810d3aa5",
+  "wheel_digests": "each wheel's sha256 is pinned in uv.lock under the digest above",
+  "pillow": {
+    "constraint": [
+      "Pillow>=12.3,<13"
+    ],
+    "locked": "12.3.0"
+  },
+  "custody": "Historical Plan 11.7 fixtures are unchanged; tests/unit/tools/test_run_plan117_custody_feasibility.py and test_verify_plan117_custody_feasibility.py pass at this head.",
+  "windows": {
+    "state": "PROVEN",
+    "python": "3.14.4",
+    "how": "installed together in this worktree's venv; the parser, worker, pilot and offline model load ran on it"
+  },
+  "linux": {
+    "state": "UNRUN",
+    "reason": "WSL Ubuntu-24.04 has Python 3.12 and the project needs 3.14; installing 3.14 downloads from GitHub, outside the release. Lock-level wheel availability below is not an install."
+  },
+  "packages": [
+    {
+      "name": "anyio",
+      "locked": "4.14.2",
+      "installed_windows": "4.14.2",
+      "licence": "MIT",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "certifi",
+      "locked": "2026.6.17",
+      "installed_windows": "2026.6.17",
+      "licence": "MPL-2.0",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "charset-normalizer",
+      "locked": "3.4.7",
+      "installed_windows": "3.4.7",
+      "licence": "MIT",
+      "cp314_windows_wheels_in_lock": 3,
+      "cp314_linux_x86_64_wheels_in_lock": 3
+    },
+    {
+      "name": "click",
+      "locked": "8.4.2",
+      "installed_windows": "8.4.2",
+      "licence": "BSD-3-Clause",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "colorama",
+      "locked": "0.4.6",
+      "installed_windows": "0.4.6",
+      "licence": "BSD License",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "fastembed",
+      "locked": "0.9.1",
+      "installed_windows": "0.9.1",
+      "licence": "Apache-2.0",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "filelock",
+      "locked": "3.29.5",
+      "installed_windows": "3.29.5",
+      "licence": "MIT",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "flatbuffers",
+      "locked": "25.12.19",
+      "installed_windows": "25.12.19",
+      "licence": "Apache 2.0",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "fsspec",
+      "locked": "2026.9.0",
+      "installed_windows": "2026.9.0",
+      "licence": "BSD-3-Clause",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "h11",
+      "locked": "0.16.0",
+      "installed_windows": "0.16.0",
+      "licence": "MIT",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "hf-xet",
+      "locked": "1.8.0",
+      "installed_windows": "1.8.0",
+      "licence": "Apache-2.0",
+      "cp314_windows_wheels_in_lock": 2,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "httpcore",
+      "locked": "1.0.9",
+      "installed_windows": "1.0.9",
+      "licence": "BSD-3-Clause",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "httpx",
+      "locked": "0.28.1",
+      "installed_windows": "0.28.1",
+      "licence": "BSD-3-Clause",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "huggingface-hub",
+      "locked": "1.33.0",
+      "installed_windows": "1.33.0",
+      "licence": "Apache-2.0",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "idna",
+      "locked": "3.18",
+      "installed_windows": "3.18",
+      "licence": "BSD-3-Clause",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "loguru",
+      "locked": "0.7.3",
+      "installed_windows": "0.7.3",
+      "licence": "MIT License",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "mmh3",
+      "locked": "5.3.1",
+      "installed_windows": "5.3.1",
+      "licence": "MIT License",
+      "cp314_windows_wheels_in_lock": 2,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "numpy",
+      "locked": "2.5.4",
+      "installed_windows": "2.5.4",
+      "licence": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+      "cp314_windows_wheels_in_lock": 2,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "onnxruntime",
+      "locked": "1.31.1",
+      "installed_windows": "1.31.1",
+      "licence": "MIT License",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "packaging",
+      "locked": "26.2",
+      "installed_windows": "26.2",
+      "licence": "Apache-2.0 OR BSD-2-Clause",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "pillow",
+      "locked": "12.3.0",
+      "installed_windows": "12.3.0",
+      "licence": "MIT-CMU",
+      "cp314_windows_wheels_in_lock": 2,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "protobuf",
+      "locked": "7.35.1",
+      "installed_windows": "7.35.1",
+      "licence": "3-Clause BSD License",
+      "cp314_windows_wheels_in_lock": 2,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "py-rust-stemmers",
+      "locked": "0.1.8",
+      "installed_windows": "0.1.8",
+      "licence": "MIT, from the wheel's licenses/LICENSE; its metadata names none",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "pyyaml",
+      "locked": "6.0.3",
+      "installed_windows": "6.0.3",
+      "licence": "MIT",
+      "cp314_windows_wheels_in_lock": 2,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "requests",
+      "locked": "2.34.2",
+      "installed_windows": "2.34.2",
+      "licence": "Apache-2.0",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "tokenizers",
+      "locked": "0.23.3",
+      "installed_windows": "0.23.3",
+      "licence": "Apache Software License",
+      "cp314_windows_wheels_in_lock": 2,
+      "cp314_linux_x86_64_wheels_in_lock": 2
+    },
+    {
+      "name": "tqdm",
+      "locked": "4.70.1",
+      "installed_windows": "4.70.1",
+      "licence": "MPL-2.0 AND MIT",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "tree-sitter",
+      "locked": "0.26.0",
+      "installed_windows": "0.26.0",
+      "licence": "MIT License",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "tree-sitter-java",
+      "locked": "0.23.5",
+      "installed_windows": "0.23.5",
+      "licence": "MIT",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "tree-sitter-python",
+      "locked": "0.25.0",
+      "installed_windows": "0.25.0",
+      "licence": "MIT",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "typing-extensions",
+      "locked": "4.16.0",
+      "installed_windows": "4.16.0",
+      "licence": "PSF-2.0",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "urllib3",
+      "locked": "2.7.0",
+      "installed_windows": "2.7.0",
+      "licence": "MIT",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    },
+    {
+      "name": "win32-setctime",
+      "locked": "1.2.1",
+      "installed_windows": "1.2.1",
+      "licence": "MIT license",
+      "cp314_windows_wheels_in_lock": 1,
+      "cp314_linux_x86_64_wheels_in_lock": 1
+    }
+  ]
+}

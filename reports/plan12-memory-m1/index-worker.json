@@ -1,0 +1,34 @@
+{
+  "schema": "plan12-memory-m1.index-worker.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "tests": "tests/integration/context/test_memory_worker.py and test_memory_index.py: real files, real Git, the real Gateway route and the released Redis. The embedder is a deterministic stand-in there; pilot.json uses the real one.",
+  "cases": [
+    {"case": "first file published at once and marked incomplete; open files first", "result": "PASS"},
+    {"case": "edit replaces only that file; delete leaves; rename moves; a file the policy now excludes leaves", "result": "PASS"},
+    {"case": "an excluded file is never read or indexed", "result": "PASS"},
+    {"case": "branches, worktrees and clones never share a scope", "result": "PASS"},
+    {"case": "a new caller appears without a rebuild; dirty and committed trees are published differently", "result": "PASS"},
+    {"case": "a reader pinned to an epoch keeps its view; a reader cannot name a building epoch", "result": "PASS"},
+    {"case": "only the building epoch can be written or published", "result": "PASS"},
+    {"case": "competing workers leave one winner; a fenced-out writer changes nothing; a slow embedder keeps its lease", "result": "PASS"},
+    {"case": "cancel then resume redoes at most one window", "result": "PASS"},
+    {"case": "a killed worker leaves nothing visible it did not finish, and a restart completes", "result": "PASS"},
+    {"case": "a file interrupted between its batches is redone whole, and a crash's leftovers are not served", "result": "PASS"},
+    {"case": "a source that moves during a pass is not called complete", "result": "PASS"},
+    {"case": "only one workspace cold-builds at a time", "result": "PASS"},
+    {"case": "an outage pauses the worker and a later pass completes", "result": "PASS"},
+    {"case": "a cursor cannot change scope; a host holding the same key reads another scope only by naming it (the stated residual)", "result": "PASS"}
+  ],
+  "revert_check": {
+    "script": "optimus-handoff/p465-cp1/revert_check_cp2.py, operator-local",
+    "first_run": "24 of 26 caught, 2 survived, 2 had no case. Each now has a test, and the review of those gaps found a reader could name an unpublished epoch, now refused.",
+    "final_run": "30 of 30 guards caught; log optimus-handoff/p465-cp1/revert-cp2-2.log"
+  },
+  "bugs_only_the_real_pilot_found": [
+    "the embedding identity's characters were refused",
+    "a lease expired during real embedding batches",
+    "Git's read-only objects blocked a corpus cleanup",
+    "the pilot ignored a worker's refusal"
+  ]
+}

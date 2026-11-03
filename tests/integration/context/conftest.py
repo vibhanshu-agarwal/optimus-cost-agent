@@ -51,7 +51,7 @@ def settings(tmp: Path) -> dict[str, Any]:
     embedding = {"model": "test/model", "source": "test", "repository": "test/repository", "revision": "abc", "licence": "MIT",
                  "dimensions": 8, "max_input_tokens": 16, "artifact_directory": "model", "artifact_sha256": artifact_digest(probe)}
     return {"image": IMAGE, "container": CONTAINER, "volume": VOLUME, "host": "127.0.0.1", "port": PORT, "user": "optimus-index",
-            "maxmemory_mb": 1024, "artifact_megabytes": 1, "embedding": embedding}
+            "maxmemory_mb": 512, "artifact_megabytes": 1, "embedding": embedding}  # 1 GiB in all, with the container's headroom: the released cap
 
 
 @dataclass

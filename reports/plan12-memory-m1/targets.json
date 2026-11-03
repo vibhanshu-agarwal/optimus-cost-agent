@@ -1,0 +1,48 @@
+{
+  "schema": "plan12-memory-m1.targets.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "state": "PROPOSED: not frozen until the operator approves them (D6). Nothing has been evaluated against them.",
+  "basis": "Limits sit about twice above pilot.json so ordinary noise does not fail a run while a real regression does. K2 keeps the earlier probe's bounds and scales only its size.",
+  "foreground": [
+    {"metric": "proxy dense query p95, idle, ms", "pilot": 14.5, "limit": 30},
+    {"metric": "proxy lexical query p95, idle, ms", "pilot": 7.3, "limit": 20},
+    {"metric": "proxy dense query p95, during a cold build, ms", "pilot": 37.0, "limit": 80},
+    {"metric": "proxy lexical query p95, during a cold build, ms", "pilot": 13.4, "limit": 40},
+    {"metric": "acpx turn p50 during a build, as a multiple of idle p50", "pilot": 1.2, "limit": 1.5},
+    {"metric": "acpx turn failures during a build", "pilot": 0, "limit": 0},
+    {"metric": "seconds for a person's cancel to stop a turn, during a build", "pilot": 2.47, "limit": 5}
+  ],
+  "indexing": [
+    {"metric": "embedded chunks per second on two threads", "pilot": 10.1, "limit_at_least": 7},
+    {"metric": "proxy bulk records per second", "pilot": 4815, "limit_at_least": 3000},
+    {"metric": "hours for the whole approved 1M LOC corpus", "forecast": "1.7-2.1, Python-derived", "limit": 3},
+    {"metric": "seconds to index one edited file", "pilot": 2.39, "limit": 5},
+    {"metric": "seconds to reconcile an unchanged 50-file corpus", "pilot": 1.36, "limit": 5},
+    {"metric": "seconds to stop a build on cancel", "pilot": 1.08, "limit": 3},
+    {"metric": "seconds until answering after a Redis kill, same publication", "pilot": 2.4, "limit": 10}
+  ],
+  "resources": [
+    {"metric": "worker RSS, MB", "pilot": 935.8, "limit": 1500},
+    {"metric": "native embedding threads", "pilot": 2, "limit": 2},
+    {"metric": "Gateway RSS, MB", "pilot": 68.2, "limit": 150}
+  ],
+  "k2_second_run": {
+    "items": 75000,
+    "vector_dimensions": 384,
+    "records": "production adapters and real records",
+    "concurrency": 4,
+    "maxmemory_mb": 4096,
+    "admission_reserve_mb": 1024,
+    "physical_ram_mb": 5120,
+    "disk_mb": 8192,
+    "unchanged_from_the_first_probe": {
+      "ack_latency_p95_ms": 1500,
+      "projection_latency_p95_ms": 250,
+      "restart_to_usable_seconds": 60,
+      "logical_purge_seconds": 1,
+      "physical_erasure_seconds": 120
+    }
+  },
+  "retrieval": "Recall, required-evidence, irrelevant-token and coverage targets are set from context-off and lexical baselines before the held-out set is opened, in Task 5, and need their own approval. No number is proposed here because nothing has measured them."
+}
