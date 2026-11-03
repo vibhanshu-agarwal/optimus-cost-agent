@@ -1609,6 +1609,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.memory_index:IndexStore.step:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.memory_index:IndexStore.write:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
@@ -2370,6 +2378,14 @@
     },
     {
       "key": "tools.plan12_memory.m1_scale:_Sampler.__exit__:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_direct:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
