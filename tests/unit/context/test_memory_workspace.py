@@ -130,3 +130,12 @@ def test_outside_git_the_revision_follows_the_files_and_counts_as_dirty(tmp_path
     assert source.revision()[0] != first[0]
     (tmp_path / "b.py").write_text("y = 1\n", encoding="utf-8")
     assert source.revision()[0] != first[0]
+
+
+def test_a_folder_beneath_a_repository_git_cannot_read_never_repeats_a_revision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    source = _source(tmp_path / "pkg")
+    monkeypatch.setattr(memory_workspace, "_git", lambda *_a, **_k: None)
+    assert source.revision()[0] != source.revision()[0]

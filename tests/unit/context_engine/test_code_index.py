@@ -161,6 +161,9 @@ def _terms_of(path: str, text: str) -> str:
         ("a.md", "A stray ` then LEAK\n"),
         ("a.md", "<pre>\nLEAK\n</pre>\n"),
         ("a.md", "<code>LEAK</code>\n"),
+        ("a.md", "<pre>\n# Example\nprint('LEAK')\n</pre>\n"),
+        ("a.md", "Before <pre>\nLEAK\n"),
+        ("a.md", "<script>\n# Heading\nLEAK\n</script>\n"),
         ("a.md", ">>> LEAK\n"),
         ("a.md", "# Using `LEAK`\nText\n"),
         ("a.md", "```\nnever closed\nLEAK\n"),
@@ -169,7 +172,7 @@ def _terms_of(path: str, text: str) -> str:
         ("a.rst", ".. LEAK\n"),
         ("a.txt", "Text\n\n  LEAK = 1\n"),
     ],
-    ids=["indented", "tab", "long-backtick-fence", "long-tilde-fence", "inline", "double-backtick-inline", "stray-backtick", "pre", "code", "doctest", "heading-span", "unclosed-fence",
+    ids=["indented", "tab", "long-backtick-fence", "long-tilde-fence", "inline", "double-backtick-inline", "stray-backtick", "pre", "code", "pre-across-a-heading", "pre-never-closed", "script", "doctest", "heading-span", "unclosed-fence",
          "rst-literal", "rst-directive", "rst-comment", "text-indented"],
 )
 def test_nothing_that_may_be_code_reaches_prose(path: str, text: str) -> None:
@@ -190,3 +193,8 @@ def test_ordinary_prose_survives_and_a_code_blocks_names_are_terms() -> None:
     text = "# Guide\nA plain sentence stays.\n\n- a list item stays\n\n```\ncompute_total(items)\n```\n"
     assert "A plain sentence stays." in _prose_of("a.md", text) and "a list item stays" in _prose_of("a.md", text)
     assert "compute_total" in _terms_of("a.md", text)
+
+
+def test_prose_after_a_closed_html_block_stays() -> None:
+    text = "<pre>\nhidden\n</pre>\nThis sentence stays.\n"
+    assert "This sentence stays." in _prose_of("a.md", text) and "hidden" not in _prose_of("a.md", text)

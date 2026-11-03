@@ -50,6 +50,7 @@ FORBIDDEN = {
     "document long fence": "ZQXCANARYDOCLONGFENCE",
     "document inline code": "ZQXCANARYDOCINLINE",
     "document html block": "ZQXCANARYDOCHTML",
+    "document html block across a heading": "ZQXCANARYDOCPREHEAD",
     "document doctest": "ZQXCANARYDOCTEST",
     "rst literal block": "ZQXCANARYRSTLITERAL",
     "rst directive": "ZQXCANARYRSTDIRECTIVE",
@@ -107,6 +108,11 @@ Call `run("{FORBIDDEN["document inline code"]}")` with care.
 
 <pre>
 print("{FORBIDDEN["document html block"]}")
+</pre>
+
+<pre>
+# Example
+print("{FORBIDDEN["document html block across a heading"]}")
 </pre>
 
 >>> print("{FORBIDDEN["document doctest"]}")

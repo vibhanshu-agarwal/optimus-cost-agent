@@ -265,6 +265,12 @@ def _load_scale_records(index: _Index, *, total: int, dimensions: int) -> dict[s
     return {"records": written, "seconds": round(seconds, 1), "records_per_second": round(written / seconds, 1)}
 
 
+def runs_agent(arguments: Sequence[str], agent: str) -> bool:
+    """One argument is exactly the agent, quoted or not. `run-a.cmd.backup.cmd` beside it is another program."""
+    wanted = agent.casefold()
+    return any(argument.strip("\"'").casefold() == wanted for argument in arguments)
+
+
 class _AcpxTurns:
     """Real acpx turns against a real approved agent whose upstream is a local stub, so a person's turn is measured, idle and during a
     cold build. The folder comes only from P1210_ACPX_KIT, because its launch approvals belong to that folder; without it this reports UNRUN."""
@@ -276,7 +282,8 @@ class _AcpxTurns:
         evidence.mkdir(parents=True, exist_ok=True)
         self._stub = subprocess.Popen([sys.executable, "-I", str(kit / "stub_provider.py"), str(kit / "scenario.json"), str(evidence), "18791", "1800"],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self._opened_at = time.time()
+        self._before = set(psutil.pids())
+        self._owners: list[tuple[int, float]] = []
         time.sleep(1.0)
 
     def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
@@ -303,16 +310,26 @@ class _AcpxTurns:
         output, _ = turn.communicate(timeout=120)
         return {"seconds_to_stop": round(time.perf_counter() - started, 3), "stop": "cancelled" if '"stopReason":"cancelled"' in output.replace(" ", "") else "other"}
 
-    def close(self) -> None:
-        """Only this run's own queue owner: started after this kit was opened, and running this kit's exact agent path. Anything else on the
-        machine, however alike, is another lane's."""
-        self._stub.kill()
+    def record_owner(self) -> int:
+        """Called once a turn has run, when this run's queue owner exists: a process that did not exist before this run, with a child whose
+        argument is exactly this kit's agent. Only what is recorded here is ever stopped; anything else on the machine is another lane's."""
         agent = str(self._kit / "run-a.cmd")
-        for process in psutil.process_iter(["cmdline", "create_time"]):
-            if process.info["create_time"] < self._opened_at or "__queue-owner" not in " ".join(process.info["cmdline"] or []):
+        for process in psutil.process_iter(["pid", "cmdline", "create_time"]):
+            if process.info["pid"] in self._before or not any("__queue-owner" in part for part in process.info["cmdline"] or []):
                 continue
             try:
-                if any(agent in " ".join(child.cmdline()) for child in process.children()):
+                if any(runs_agent(child.cmdline(), agent) for child in process.children()):
+                    self._owners.append((process.info["pid"], process.info["create_time"]))
+            except psutil.Error:
+                pass
+        return len(self._owners)
+
+    def close(self) -> None:
+        self._stub.kill()
+        for pid, created in self._owners:
+            try:
+                process = psutil.Process(pid)
+                if process.create_time() == created:  # a pid can be reused
                     for child in process.children(recursive=True):
                         child.kill()
                     process.kill()
@@ -475,8 +492,9 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
         else:
             _note("acpx turns while idle")
             opened = turns.open()
-            turns.turns(1)  # a session's first turn does one-time work; it is not what the comparison is about
-            report["acpx_turns"] = {"session_new_exit": opened, "measures": "machine load on a person's turn; this agent's own Gateway, not the measured index route",
+            first_turn = turns.turns(1)  # a session's first turn does one-time work, so it is kept apart from the comparison
+            report["acpx_turns"] = {"session_new_exit": opened, "first_turn": first_turn, "queue_owners_recorded": turns.record_owner(),
+                                    "measures": "machine load on a person's turn; this agent's own Gateway, not the measured index route",
                                     "idle": turns.turns(config["acpx_turns"]), "idle_cancel": turns.cancel_during_a_turn()}
 
         # Foreground queries while a second scope cold-builds: the load a person's turn would meet. A wider copy, so it outlasts the measurements.

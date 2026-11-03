@@ -38,3 +38,12 @@ def test_a_worker_that_did_not_finish_is_not_a_measurement() -> None:
 
     with pytest.raises(SystemExit, match="LEASE_LOST"):
         m1_scale._required(Outcome())
+
+
+def test_only_the_exact_agent_counts_as_this_runs_own(tmp_path: Path) -> None:
+    agent = str(tmp_path / "run-a.cmd")
+    assert m1_scale.runs_agent(["cmd.exe", "/d", "/s", "/c", agent], agent)
+    assert m1_scale.runs_agent(["cmd.exe", "/c", f"'{agent}'"], agent)
+    assert m1_scale.runs_agent(["cmd.exe", "/c", f'"{agent.upper()}"'], agent)
+    assert not m1_scale.runs_agent(["cmd.exe", "/c", agent + ".backup.cmd"], agent)
+    assert not m1_scale.runs_agent(["cmd.exe", "/c", str(tmp_path / "other" / "run-a.cmd")], agent)

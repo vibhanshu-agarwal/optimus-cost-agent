@@ -41,7 +41,8 @@ _INDENTED_MARKDOWN = re.compile(r"^(?: {4}|\t)")
 _INDENTED_ANY = re.compile(r"^\s+\S")
 _CODE_LINE = re.compile(r"^\s*(?:>>>|\.\.\s)")
 # Inline spans and HTML blocks; a stray backtick then takes the rest of its line. A false match costs prose, never leaks code.
-_INLINE_CODE = re.compile(r"(`+)[\s\S]*?\1|<(pre|code)\b[\s\S]*?(?:</\2>|\Z)", re.IGNORECASE)
+_INLINE_CODE = re.compile(r"(`+)[\s\S]*?\1|<(pre|code|script|style)\b[\s\S]*?(?:</\2>|\Z)", re.IGNORECASE)
+_HTML_BLOCK = re.compile(r"<(pre|code|script|style)\b", re.IGNORECASE)
 _STRAY_BACKTICK = re.compile(r"`.*$", re.MULTILINE)
 _CODE_LITERAL = re.compile(
     r'''("""[\s\S]*?(?:"""|\Z)|\'\'\'[\s\S]*?(?:\'\'\'|\Z)|/\*[\s\S]*?(?:\*/|\Z)|<!--[\s\S]*?(?:-->|\Z)'''
@@ -241,6 +242,7 @@ def _parse_document(path: str, text: str, file_hash: str, modified: int | None, 
     records: list[IndexRecord] = []
     heading, start, prose, code, line_number = "", 1, [], [], 0  # type: tuple[str, int, list[str], list[str], int]
     fence: tuple[str, int] | None = None
+    html_block: str | None = None  # tracked here, because a heading inside one must not end it
     indented = _INDENTED_MARKDOWN if language == "markdown" and not path.lower().endswith(".rst") else _INDENTED_ANY
 
     def without_inline_code(text_with_spans: str) -> str:
@@ -273,8 +275,18 @@ def _parse_document(path: str, text: str, file_hash: str, modified: int | None, 
             else:
                 code.append(line)
             continue
+        if html_block is not None:
+            code.append(line)
+            if html_block in line.lower():
+                html_block = None
+            continue
         if marker and not (marker.group(1)[0] == "`" and "`" in marker.group(2)):
             fence = (marker.group(1)[0], len(marker.group(1)))
+            continue
+        opened = _HTML_BLOCK.search(line)
+        if opened and f"</{opened.group(1).lower()}" not in line[opened.end():].lower():
+            code.append(line)
+            html_block = f"</{opened.group(1).lower()}"
             continue
         if indented.match(line) or _CODE_LINE.match(line):
             code.append(line)

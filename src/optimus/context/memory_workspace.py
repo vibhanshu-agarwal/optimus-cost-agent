@@ -86,12 +86,12 @@ class WorkspaceIndexSource(IndexSource):
         return data if decision.allowed else None
 
     def revision(self) -> tuple[str, bool]:
-        """What a pass read, and whether it differs from a commit. Git's status names changed paths, not their contents, so a further edit
-        to a file already dirty leaves it unchanged; each admitted file's size and modified time catch that, and a change of membership.
-        Inside a repository Git cannot read, the answer is new each time, so no pass there is called complete."""
+        """What a pass read, and whether it differs from a commit. Git's status names changed paths, not their contents, so each admitted
+        file's size and modified time go in too; the worker's own check of the bytes is what decides `complete`. Inside a repository Git
+        cannot read, including from a folder beneath its root, the answer is new each time, so no pass there is called complete."""
         root = self._policy.root
         status = _git(root, "status", "--porcelain=v1", "--untracked-files=normal")
-        if status is None and (root / ".git").exists():
+        if status is None and any((folder / ".git").exists() for folder in (root, *root.resolve().parents)):
             return secrets.token_hex(32), True
         head = (_git(root, "rev-parse", "HEAD") or "").strip()
         contents = hashlib.sha256()

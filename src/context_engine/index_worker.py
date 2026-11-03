@@ -16,7 +16,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
 
-from .code_index import IndexRecord, ParsedFile, parse_file, path_id
+from .code_index import IndexRecord, ParsedFile, digest, parse_file, path_id
 
 SCHEMA_VERSION: Final = 1
 BATCH_RECORDS: Final = 128  # agent-selected, frozen by the pilot; the route's own limit is 256
@@ -199,6 +199,7 @@ class IndexWorker:
         pending: list[IndexRecord] = []
         self._progress("embedding")
         seen: set[str] = set()
+        contents: dict[str, str | None] = {}
         for source_file in wanted:
             identity = path_id(source_file.path)
             seen.add(identity)
@@ -206,6 +207,7 @@ class IndexWorker:
                 return WorkerOutcome("cancelled", "", self._epoch, self._files_written, self._records_written)
             self._yield_to_foreground(cancel)
             data = self._source.read(source_file.path)
+            contents[source_file.path] = None if data is None else digest(data)
             if data is None:  # the policy changed since listing
                 self._coverage.files_total -= 1
                 self._coverage.excluded += 1
@@ -235,12 +237,22 @@ class IndexWorker:
             if len(batch.removals) >= BATCH_RECORDS:
                 self._flush(pending, batch, force=True)
         self._flush(pending, batch, force=True)
-        unchanged = self._source.revision() == self._revision
+        unchanged = self._source.revision() == self._revision and self._still_what_was_read(contents)
         current = self._publish(complete=unchanged)
         self._progress("idle")
         self._prune()
         return WorkerOutcome("complete" if unchanged else "paused", "" if unchanged else "the source changed during this pass", current,
                              self._files_written, self._records_written, self._coverage.report(complete=unchanged))
+
+    def _still_what_was_read(self, contents: dict[str, str | None]) -> bool:
+        """The final word on `complete`: the same files with the same bytes. A file's size and time can stay the same when its contents do not."""
+        if {item.path for item in self._source.files()} != set(contents):
+            return False
+        for path, expected in contents.items():
+            data = self._source.read(path)
+            if (None if data is None else digest(data)) != expected:
+                return False
+        return True
 
     def _ordered_files(self) -> list[SourceFile]:
         """Open and named files first, then the catalogue order, so the first file a person cares about is the first published."""

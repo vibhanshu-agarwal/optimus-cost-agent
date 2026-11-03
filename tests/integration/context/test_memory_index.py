@@ -279,6 +279,92 @@ def test_cleanup_decides_from_what_it_read_inside_its_transaction(rpc: Rpc, clie
     assert [r["symbol"] for r in rpc.ok("query", mode="lexical", terms=["beta"], k=5)["records"]] == ["beta"]
 
 
+def _drop(rpc: Rpc, token: int) -> None:
+    cursor = None
+    while True:
+        cursor = rpc.ok("cleanup", token=token, action="drop", **({"cursor": cursor} if cursor else {}))["cursor"]
+        if cursor is None:
+            return
+
+
+def test_a_drop_during_a_read_is_a_refusal_and_not_an_empty_answer(rpc: Rpc, client: redis.Redis) -> None:
+    token = rpc.open_line()
+    epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=epoch, records=[_symbol("a.py", "1" * 64, "alpha", "alpha", _vector(1))])
+    rpc.publish(token, epoch)
+    store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
+    real = store._query
+
+    def query_then_drop(scope: str, body: dict[str, Any]) -> dict[str, Any]:
+        result = real(scope, body)
+        _drop(rpc, token)
+        return result
+
+    store._query = query_then_drop  # type: ignore[method-assign]
+    with pytest.raises(mic.IndexRequestError) as refused:
+        store.dispatch({"op": "query", "scope": rpc.scope, "mode": "lexical", "terms": ["alpha"], "k": 5})
+    assert refused.value.code == "SCOPE_UNKNOWN"
+
+
+def test_nothing_from_before_a_drop_can_name_the_line_that_replaced_it(rpc: Rpc) -> None:
+    token = rpc.open_line()
+    first = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=first, records=[_file(f"f{n}.py", "1" * 64) for n in range(3)])
+    rpc.publish(token, first, files=3)
+    old_cursor = rpc.ok("catalogue", limit=2)["cursor"]
+    _drop(rpc, token)
+    token = rpc.open_line()
+    second = rpc.ok("generation", action="begin", token=token)["epoch"]
+    assert second > first
+    rpc.ok("batch", token=token, epoch=second, records=[_file("new.py", "2" * 64)])
+    rpc.publish(token, second)
+    rpc.refused("EPOCH_EXPIRED", "catalogue", cursor=old_cursor)
+    rpc.refused("EPOCH_EXPIRED", "catalogue", epoch=first)
+    rpc.refused("EPOCH_EXPIRED", "query", mode="lexical", terms=["new"], k=5, epoch=first)
+    assert _paths(rpc.ok("catalogue")) == ["new.py"]
+
+
+def test_a_read_whose_only_step_outlasts_its_deadline_is_refused(rpc: Rpc, client: redis.Redis) -> None:
+    token = rpc.open_line()
+    epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
+    rpc.ok("batch", token=token, epoch=epoch, records=[_file("only.py", "1" * 64)])
+    rpc.publish(token, epoch)
+    store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
+    real = store._live_file
+
+    def slow(*args: Any) -> Any:
+        time.sleep(0.2)
+        return real(*args)
+
+    store._live_file = slow  # type: ignore[method-assign]
+    body = json.dumps({"op": "catalogue", "scope": rpc.scope}).encode()
+    assert memory_index.IndexService(store).handle(body, deadline=time.monotonic() + 0.1) == (503, mic.error_body("INDEX_TIMEOUT"))
+
+
+def test_a_batch_that_outlasts_its_deadline_writes_nothing(rpc: Rpc, client: redis.Redis) -> None:
+    token = rpc.open_line()
+    epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
+    store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
+    real = store._mapping
+
+    def slow(*args: Any) -> Any:
+        time.sleep(0.2)
+        return real(*args)
+
+    store._mapping = slow  # type: ignore[method-assign]
+    body = json.dumps({"op": "batch", "scope": rpc.scope, "token": token, "epoch": epoch, "records": [_file("late.py", "1" * 64)]}).encode()
+    assert memory_index.IndexService(store).handle(body, deadline=time.monotonic() + 0.1) == (503, mic.error_body("INDEX_TIMEOUT"))
+    assert rpc.ok("catalogue", epoch=epoch)["files"] == []
+
+
+def test_a_slow_startup_check_counts_against_the_deadline(rpc: Rpc, client: redis.Redis) -> None:
+    rpc.open_line()
+    store = memory_index.IndexStore(client, cursor_key=b"c" * 32)
+    service = memory_index.IndexService(store, verify=lambda: time.sleep(0.2))
+    body = json.dumps({"op": "coverage", "scope": rpc.scope}).encode()
+    assert service.handle(body, deadline=time.monotonic() + 0.1) == (503, mic.error_body("INDEX_TIMEOUT"))
+
+
 def test_a_slow_catalogue_stops_at_its_deadline(rpc: Rpc, client: redis.Redis) -> None:
     token = rpc.open_line()
     epoch = rpc.ok("generation", action="begin", token=token)["epoch"]
@@ -418,7 +504,6 @@ def test_a_scope_with_the_same_key_can_read_another_scope_only_by_naming_it(rpc:
     other = Rpc(rpc.port)
     other_token = other.open_line()
     other_epoch = other.ok("generation", action="begin", token=other_token)["epoch"]
-    assert other_epoch == epoch
     other.publish(other_token, other_epoch, files=0)
     assert other.ok("query", mode="lexical", terms=["secretish"], k=5, epoch=other_epoch)["records"] == []
     assert len(other.ok("query", scope=rpc.scope, mode="lexical", terms=["secretish"], k=5)["records"]) == 1

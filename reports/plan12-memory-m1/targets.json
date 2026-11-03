@@ -2,8 +2,9 @@
   "schema": "plan12-memory-m1.targets.v1",
   "plan": "12.10",
   "issue": 469,
-  "state": "PROPOSED: not frozen until the operator approves them (D6). Nothing has been evaluated against them. Two pilot runs do not establish noise tolerance, so each limit is provisional until the Java sample and Task 5's first scale run.",
-  "basis": "Limits sit about twice above the latest pilot, because latency moved up to 1.8 times between two runs of the same work on this machine. K2 keeps the earlier probe's bounds and scales only its size.",
+  "state": "PROPOSED: not frozen until the operator approves them (D6). Nothing has been evaluated against them. They are frozen before qualification. The Java sample may change them before approval; a later calibration run would be identified as one and could not silently move a frozen limit.",
+  "basis": "Limits sit about twice above the latest pilot, because latency moved up to 1.8 times between runs on this machine; those runs differ in more than noise, so this is a judgement and not a measured tolerance. K2 keeps the earlier probe's bounds and scales only its size.",
+  "zero_tolerance": ["critical B1 failures", "authority failures", "wrong-branch evidence", "stale evidence"],
   "foreground": [
     {"metric": "proxy dense query p95, idle, ms", "runs": [14.5, 25.8], "limit": 50},
     {"metric": "proxy lexical query p95, idle, ms", "runs": [7.3, 12.0], "limit": 25},
@@ -27,9 +28,10 @@
   "resources": [
     {"metric": "worker RSS, MB", "latest": 953.1, "limit": 1500},
     {"metric": "worker mean CPU during a build, percent of one core", "latest": 200.5, "limit": 250},
-    {"metric": "worker threads doing work during a build (over 5 percent of a core)", "latest": 2, "limit": 3},
+    {"metric": "native embedding threads, as configured", "latest": 2, "limit": 2},
+    {"metric": "process threads doing work during a build (over 5 percent of a core), including orchestration; a coarse check, not proof of the line above", "latest": 2, "limit": 3},
     {"metric": "Gateway RSS, MB", "latest": 70.5, "limit": 150},
-    {"metric": "Redis memory at the run's record count, as a share of maxmemory", "latest": "349 MB of 512 at 60000 records", "limit": "below maxmemory minus the reserve"},
+    {"metric": "Redis memory in the shipped configuration, MB", "latest": "349 of a 512 test limit, at 60000 records", "limit": 3072, "envelope": "maxmemory 4096 less a 1024 reserve, in a 4608 container. Nothing in the product enforces the reserve; a run over it fails."},
     {"metric": "index disk at 75000 records, MB, at its peak in the run", "latest": "296 peak, with 60000 scale records", "limit": 1024}
   ],
   "task_4_gates": [
@@ -40,7 +42,8 @@
     "items": 75000,
     "vector_dimensions": 384,
     "records": "production adapters and real records",
-    "concurrency": "four concurrent clients through the real route, served by its two workers and queue of eight, with INDEX_BUSY counted and reported",
+    "concurrency": "four concurrent clients through the real route, served by its two workers and queue of eight",
+    "must_be_zero": ["INDEX_BUSY responses at this nominal load", "lost items", "conflicting items", "unacknowledged items"],
     "maxmemory_mb": 4096,
     "reserve": {"mb": 1024, "enforcement": "Nothing in the product enforces it. The run fails if used memory exceeds 3072 MB."},
     "physical_ram_mb": {"limit": 4608, "why": "the container's own limit: maxmemory plus 512 MB of headroom"},

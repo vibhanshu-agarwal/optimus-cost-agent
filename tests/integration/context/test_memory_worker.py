@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -465,6 +466,29 @@ def test_a_further_edit_to_an_already_dirty_file_is_not_called_complete(index: I
     index.embedder.embed = real_embed  # type: ignore[method-assign]
     assert index.build().state == "complete"
     assert index.symbols("edited_again") == ["edited_again"]
+
+
+def test_an_edit_that_keeps_size_and_time_is_not_called_complete(index: Index) -> None:
+    """The file is dirty before the pass and again during it, with the same length and a restored time, so nothing but its bytes differ."""
+    target = index.root / "first.py"
+    target.write_text("def aaaaaaa_function():\n    return 3\n", encoding="utf-8")
+    facts = target.stat()
+    real_embed = index.embedder.embed
+    edited = {"done": False}
+
+    def embed(texts: Sequence[str]) -> list[bytes]:
+        vectors = real_embed(texts)
+        if not edited["done"]:
+            edited["done"] = True
+            target.write_text("def bbbbbbb_function():\n    return 3\n", encoding="utf-8")
+            os.utime(target, ns=(facts.st_atime_ns, facts.st_mtime_ns))
+        return vectors
+
+    index.priority = ["first.py"]
+    index.embedder.embed = embed  # type: ignore[method-assign]
+    outcome = index.build()
+    assert edited["done"] and target.stat().st_mtime_ns == facts.st_mtime_ns
+    assert outcome.state == "paused" and outcome.coverage["complete"] is False
 
 
 def test_a_reader_pinned_across_an_ordinary_pass_is_refused_and_never_answered_partly(index: Index) -> None:

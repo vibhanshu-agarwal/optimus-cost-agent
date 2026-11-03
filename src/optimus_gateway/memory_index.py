@@ -112,12 +112,14 @@ class IndexStore:
 
     def dispatch(self, body: dict[str, Any], *, deadline: float | None = None) -> dict[str, Any]:
         self._request.deadline = deadline
+        self._on_time()
         handler = getattr(self, f"_op_{body['op']}")
         result: dict[str, Any] = handler(body["scope"], body)
         return result
 
     def _on_time(self) -> None:
-        """Called inside anything that takes many steps. Before MULTI, so stopping leaves nothing half-written."""
+        """Called between steps and last before a commit or a reply, so an expired request changes nothing and reports nothing. One Redis
+        command that is already running is bounded by the connection's own timeout, the same five seconds."""
         deadline = getattr(self._request, "deadline", None)
         if deadline is not None and time.monotonic() >= deadline:
             raise mic.IndexRequestError("INDEX_TIMEOUT", 503)
@@ -162,6 +164,9 @@ class IndexStore:
         self._ensure_search_index(body["dimensions"])
         for field, value in wanted.items():
             self._redis.hsetnx(key, field, value)
+        # Epochs come from one counter and a new line's floor starts at its current value, so an epoch or a cursor from before a drop
+        # can never name data in the line that replaced it.
+        self._redis.hsetnx(key, "floor", str(self._redis.incr(f"{_PREFIX}:epochs")))
         self._redis.sadd(f"{_PREFIX}:lines", scope)
         line = self._line(scope)
         if any(line.get(field) != value for field, value in wanted.items()):
@@ -172,9 +177,7 @@ class IndexStore:
         building = line.get("building")
         if building:
             return {"status": "ok", "epoch": int(building)}
-        raw = pipe.get(f"{_PREFIX}:current:{scope}")
-        published = json.loads(raw)["epoch"] if raw else 0
-        epoch = published + 1
+        epoch = pipe.incr(f"{_PREFIX}:epochs")  # runs at once under WATCH; a retry only skips a number
         pipe.multi()
         pipe.hset(f"{_PREFIX}:line:{scope}", "building", str(epoch))
         return {"status": "ok", "epoch": epoch}
@@ -260,6 +263,7 @@ class IndexStore:
                         raise mic.IndexRequestError("SCOPE_UNKNOWN", 404)
                     result = build(pipe, line)
                     if pipe.explicit_transaction:
+                        self._on_time()
                         pipe.execute()
                     else:
                         pipe.unwatch()
@@ -286,6 +290,7 @@ class IndexStore:
                 self._on_time()
                 path_id = removal["path_id"]
                 for raw in pipe.smembers(f"{_PREFIX}:members:{scope}:{path_id}"):
+                    self._on_time()
                     added, file_hash, retired_at = pipe.hmget(_text(raw), "epoch_added", "file_hash", "epoch_removed")
                     if added is None:
                         continue
@@ -338,9 +343,12 @@ class IndexStore:
         return current["epoch"], current
 
     def _still_readable(self, scope: str, result: dict[str, Any]) -> dict[str, Any]:
-        """Checked after a read, so a prune that overtook it is a refusal the host can retry, never a silently partial answer."""
+        """Checked after a read, so a prune or a drop that overtook it is a refusal the host can retry, never a silently partial answer."""
+        self._on_time()
         floor = self._redis.hget(f"{_PREFIX}:line:{scope}", "floor")
-        if floor is not None and result["epoch"] < int(floor):
+        if floor is None:
+            raise mic.IndexRequestError("SCOPE_UNKNOWN", 404)
+        if result["epoch"] < int(floor):
             raise mic.IndexRequestError("EPOCH_EXPIRED", 409)
         return result
 
@@ -510,7 +518,7 @@ class IndexStore:
                 if dropping or abandoned or retired:
                     doomed.append((key, _text(path_id)))
             pipe.multi()
-            if not dropping:
+            if not dropping and published > int(line.get("floor", 0)):
                 pipe.hset(f"{_PREFIX}:line:{scope}", "floor", str(published))
             for key, path_id in doomed:
                 pipe.delete(key)

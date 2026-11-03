@@ -63,10 +63,11 @@ A line holds records carrying the epoch that added them and the epoch that remov
 the current one by default. A publish is one atomic step, so a half-written epoch is invisible. A file record is written last, so one that exists
 proves its whole file arrived and a resume can skip it. The catalogue names paths with records but no file record, so what a crash left is deleted
 when that file is next written, or removed if the file has gone, and no reader ever saw it. A record's retirement is written once, so an earlier view
-stays as it was. A prune raises the oldest readable epoch to the published one before removing anything, so a reader pinned earlier is refused with
-`EPOCH_EXPIRED` and retries; it never gets part of a view. The revision a pass publishes covers the commit, Git's status, and each admitted file's size
-and modified time, so a further edit to a file already dirty stops the pass being called complete. Revision and dirty state are published inside the line;
-a changed ignore file is reconciled inside it.
+stays as it was. A prune raises the oldest readable epoch to the published one as it starts removing, so a reader pinned earlier is refused with
+`EPOCH_EXPIRED` and retries; it never gets part of a view. Epochs come from one counter and a new line's floor starts at its current value, so nothing from
+before a drop can name the line that replaced it, and a read overtaken by a drop is refused rather than answered empty. A pass is called complete only if the
+same files still hold the same bytes it read: size and time can stay the same when contents do not. Revision and dirty state are published inside the line; a
+changed ignore file is reconciled inside it.
 
 Writers hold a lease whose fencing token every write checks under `WATCH`. A resuming owner takes a new token and retires its old one; another owner
 is refused until the lease expires. One machine-wide cold-build slot stops two workspaces saturating the machine at once. A build holds it until a
