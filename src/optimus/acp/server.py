@@ -507,6 +507,10 @@ class NdjsonOutboundChannel:
             raise AcpOutboundError(code=INTERNAL_ERROR, message="outbound delivery failed")
         return completion.outcome
 
+    async def submit_message(self, message: Mapping[str, Any]) -> None:
+        """One complete JSON-RPC message, through the same owned path as a notification."""
+        await self._submit_payload(message, kind="message")
+
     async def notify(self, method: str, params: dict[str, Any], *, require_flushed: bool = False) -> None:
         # region agent log
         if debug_trace_enabled():

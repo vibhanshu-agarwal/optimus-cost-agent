@@ -33,7 +33,6 @@ import secrets
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 PATH = "/v1/local/identity"
 HEADER = "X-Optimus-Gateway-Identity"
@@ -99,9 +98,9 @@ def _digest(fields: Mapping[str, str], key: bytes) -> str:
 
 
 def _normal_url(url: str | None) -> str:
-    """One spelling per destination: case-insensitive parts lowered, a trailing slash ignored."""
-    parts = urlsplit((url or "").strip())
-    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), parts.query, ""))
+    """What the upstream client itself ignores (a trailing slash), and nothing more: its path, query and fragment change
+    the request it sends, and a differently spelled host is at worst a stated refusal."""
+    return (url or "").strip().rstrip("/")
 
 
 def _tool_policy(environ: Mapping[str, str]) -> str:

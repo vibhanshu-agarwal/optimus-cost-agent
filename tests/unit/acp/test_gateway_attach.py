@@ -7,6 +7,7 @@ upstream finds another launch's Gateway on its port.
 from __future__ import annotations
 
 import ast
+import asyncio
 import io
 import json
 import socket
@@ -23,7 +24,7 @@ from optimus.acp import gateway_refusal, local_infra, spec
 from optimus.acp.gateway_refusal import GatewayRefusalServer
 from optimus.acp.local_gateway_secrets import CredentialLayer, CredentialProvenance, ProviderCredentialResolution, ProviderSecrets
 from optimus.acp.local_infra import LocalInfrastructureError
-from optimus.acp.process_lifecycle import ProcessLifecycle
+from optimus.acp.process_lifecycle import ProcessLifecycle, StopReason
 from optimus.acp.server import StdioByteReader, StdioByteWriter, StdioNdjsonLineReader, StdioNdjsonLineWriter
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
@@ -336,6 +337,34 @@ def test_a_launch_that_starts_nothing_confirms_a_listening_gateway(listeners) ->
     local_infra.confirm_running_gateway(listener.url, api_key=_SECRET, hmac_key=_KEY, expected=_expected(_REAL))
 
 
+def test_a_url_with_no_port_is_confirmed_where_its_requests_would_go(monkeypatch) -> None:
+    """Pre-flight and the prompts use the scheme's default port; confirming 8765 instead would pass an older Gateway on 80."""
+    probed: list[tuple[str, int]] = []
+    verified: list[str] = []
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda host, port, **_k: probed.append((host, port)) or True)
+    monkeypatch.setattr(local_infra, "verify_local_gateway", lambda url, **_k: verified.append(url))
+    local_infra.confirm_running_gateway("http://127.0.0.1", api_key=_SECRET, hmac_key=_KEY, expected=_expected())
+    assert probed == [("127.0.0.1", 80)]
+    assert verified == ["http://127.0.0.1"]
+
+
+def test_a_url_with_no_port_is_not_started_or_confirmed_elsewhere(tmp_path, monkeypatch, no_spawn) -> None:
+    probed: list[int] = []
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda _host, port, **_k: probed.append(port) or True)
+    monkeypatch.setattr(local_infra, "verify_local_gateway", lambda *_a, **_k: None)
+    assert _ensure("http://127.0.0.1", tmp_path) is None
+    assert probed == [80]
+
+
+def test_a_refusal_names_only_the_address_of_a_url_with_a_path_and_query(listeners, tmp_path, no_spawn) -> None:
+    listener, _ = _real_gateway(listeners, _expected(_REAL))
+    url = f"{listener.url}/private-marker?token=sensitive-value"
+    with pytest.raises(LocalInfrastructureError) as raised:
+        _ensure(url, tmp_path)
+    assert listener.url in raised.value.user_message
+    assert "private-marker" not in raised.value.user_message and "sensitive-value" not in raised.value.user_message
+
+
 def test_a_launch_that_starts_nothing_leaves_an_absent_gateway_to_preflight() -> None:
     with socket.create_server(("127.0.0.1", 0)) as free:
         url = f"http://127.0.0.1:{free.getsockname()[1]}"
@@ -413,6 +442,37 @@ async def test_the_diagnostic_host_answers_only_the_framed_transport_too() -> No
     assert b'"protocolVersion":1' in output.getvalue().replace(b" ", b"")
 
 
+@pytest.mark.asyncio
+async def test_shutdown_waits_for_a_diagnostic_write_the_client_is_blocking() -> None:
+    """Zed stopped reading: the write stays owned, so the process does not report itself finished while it is stuck."""
+    from optimus.acp.__main__ import _run_serving_process
+
+    entered, release = threading.Event(), threading.Event()
+
+    class BlockedOutput:
+        def write(self, data: bytes) -> int:
+            entered.set()
+            release.wait(10)
+            return len(data)
+
+        def flush(self) -> None:
+            return None
+
+    lifecycle = ProcessLifecycle()
+    call = asyncio.create_task(_run_serving_process(
+        GatewayRefusalServer(code="C", reason=_REASON), lifecycle=lifecycle, observation_seconds=0.03,
+        reader=StdioNdjsonLineReader(io.BytesIO(_lines(_dialogue()[0]))), writer=StdioNdjsonLineWriter(BlockedOutput()),
+    ))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        lifecycle.request_stop(StopReason.SIGTERM)
+        await asyncio.sleep(0.3)
+        assert not call.done()
+    finally:
+        release.set()
+    assert await asyncio.wait_for(call, 10) == 143
+
+
 def test_other_requests_are_refused_and_a_foreign_session_is_unknown() -> None:
     server = GatewayRefusalServer(code="C", reason=_REASON)
     assert server._answer({"jsonrpc": "2.0", "id": 1, "method": "session/set_mode", "params": {}})[0]["error"]["code"] == -32601
@@ -425,7 +485,12 @@ def test_it_speaks_the_serving_hosts_protocol_version() -> None:
     assert gateway_refusal._initialize_result()["protocolVersion"] == spec.ACP_PROTOCOL_VERSION
 
 
-def test_the_diagnostic_host_imports_no_path_to_a_model() -> None:
+def test_the_diagnostic_host_is_given_no_path_to_a_model() -> None:
+    """The channel is only its writer. Nothing else here can send anything anywhere."""
     source = Path(gateway_refusal.__file__).read_text(encoding="utf-8")
     imported = {node.module for node in ast.walk(ast.parse(source)) if isinstance(node, ast.ImportFrom)}
-    assert imported <= {"__future__", "collections.abc", "typing", "optimus.acp.errors", "optimus.acp.framing", "optimus.acp.shapes"}
+    assert imported <= {"__future__", "collections.abc", "typing", "optimus.acp.errors", "optimus.acp.framing",
+                        "optimus.acp.server", "optimus.acp.shapes"}
+    names = {node.names[0].name for node in ast.walk(ast.parse(source))
+             if isinstance(node, ast.ImportFrom) and node.module == "optimus.acp.server"}
+    assert names == {"NdjsonOutboundChannel"}

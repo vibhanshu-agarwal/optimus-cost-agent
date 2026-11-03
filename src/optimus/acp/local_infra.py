@@ -456,7 +456,20 @@ class LocalGatewayProcess:
             self._stop_error = exc
 
 
-def _gateway_tool_environ(config_root: Path | None, system_env: Mapping[str, str]) -> dict[str, str]:
+def _gateway_destination(gateway_url: str) -> tuple[str, int]:
+    """The host and port this launch's requests go to. The HTTP senders use a URL's explicit port, otherwise its scheme's
+    default, so a Gateway is started and confirmed there and nowhere else."""
+    parsed = urlparse(gateway_url)
+    return parsed.hostname or "127.0.0.1", parsed.port or (443 if parsed.scheme == "https" else 80)
+
+
+def _listener_label(gateway_url: str) -> str:
+    """A Gateway URL may carry a path or query the settings allow; what is shown or logged names only the address."""
+    host, port = _gateway_destination(gateway_url)
+    return f"{urlparse(gateway_url).scheme}://{f'[{host}]' if ':' in host else host}:{port}"
+
+
+def gateway_tool_environ(config_root: Path | None, system_env: Mapping[str, str]) -> dict[str, str]:
     """The Gateway's tool configuration from `.env.gateway`, with inherited values filling what it omits."""
     tool_env: dict[str, str] = {}
     if config_root is not None:
@@ -518,7 +531,7 @@ def expected_gateway_identity(
         model_registry=model_registry,
         stage_c_envelope=stage_c_envelope,
         accounting=accounting,
-        tool_environ=_gateway_tool_environ(config_root, system_env),
+        tool_environ=gateway_tool_environ(config_root, system_env),
         hmac_key=manifest_hmac_key,
     )
 
@@ -545,10 +558,11 @@ def verify_local_gateway(
         return
     settings = OptimusGatewaySettings(gateway_url=gateway_url, optimus_api_key=SecretStr(api_key))
     nonce = gateway_identity.new_nonce()
+    listener = _listener_label(gateway_url)
     unconfirmed = LocalInfrastructureError(
         code="GATEWAY_IDENTITY_UNCONFIRMED",
         user_message=(
-            f"Something is listening at {gateway_url}, but it did not confirm that it is a current Optimus Gateway: it may "
+            f"Something is listening at {listener}, but it did not confirm that it is a current Optimus Gateway: it may "
             f"be an older Gateway or another program. This agent will not use it, so no model request was sent. {_ATTACH_REMEDY}"
         ),
     )
@@ -561,7 +575,7 @@ def verify_local_gateway(
         raise LocalInfrastructureError(
             code="GATEWAY_KEY_REJECTED",
             user_message=(
-                f"The Gateway at {gateway_url} refused this agent's key, so it was started with a different configuration. "
+                f"The Gateway at {listener} refused this agent's key, so it was started with a different configuration. "
                 f"This agent will not use it, so no model request was sent. {_ATTACH_REMEDY}"
             ),
         )
@@ -577,7 +591,7 @@ def verify_local_gateway(
     raise LocalInfrastructureError(
         code="GATEWAY_CONFIGURATION_MISMATCH",
         user_message=(
-            f"A Gateway is already running at {gateway_url} with a different configuration ({differing}). This agent will "
+            f"A Gateway is already running at {listener} with a different configuration ({differing}). This agent will "
             f"not use it, so no model request was sent. {_ATTACH_REMEDY}"
         ),
     )
@@ -603,9 +617,8 @@ def confirm_running_gateway(
 ) -> None:
     """For a launch that starts nothing (`--no-auto-start`): confirm a local Gateway that is listening. A remote one, or
     none at all, is left to pre-flight as before."""
-    parsed = urlparse(gateway_url)
-    host = parsed.hostname or "127.0.0.1"
-    if _is_loopback(host) and _tcp_reachable(host, parsed.port or 8765):
+    host, port = _gateway_destination(gateway_url)
+    if _is_loopback(host) and _tcp_reachable(host, port):
         verify_local_gateway(gateway_url, api_key=api_key, hmac_key=hmac_key, expected=expected, log=log)
 
 
@@ -652,9 +665,7 @@ def ensure_local_gateway(
     #465 (ADR-036): a Gateway already listening is reused only after it proves ``expected_identity``; anything else raises
     `LocalInfrastructureError` with the reason, and the listener is left running. Returns None for a reused Gateway.
     """
-    parsed = urlparse(gateway_url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 8765
+    host, port = _gateway_destination(gateway_url)
     if not _is_loopback(host):
         return None
 
@@ -683,7 +694,7 @@ def ensure_local_gateway(
         )
         return None
 
-    tool_env = _gateway_tool_environ(config_root, system_env)
+    tool_env = gateway_tool_environ(config_root, system_env)
 
     child_env: dict[str, str] = {
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,

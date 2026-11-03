@@ -4,8 +4,8 @@ A process that exits at startup shows the person in Zed nothing useful, and stde
 This host answers `initialize` and `session/new`, so the Agent Panel opens, and answers every prompt with the stated
 reason and a normal `end_turn` (a `refusal` stop reason can be shown as a content-policy banner in place of the text).
 
-It holds no Gateway client, Redis, model, tool or MCP path, so by construction it can reach no provider: nothing here
-imports them. A session is only an identifier to answer with; it has no modes or configuration to offer.
+It is given no Gateway client, Redis, model, tool or MCP path, so by construction nothing it runs can reach a provider. A
+session is only an identifier to answer with; it has no modes or configuration to offer.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from optimus.acp.errors import (
     success_response,
 )
 from optimus.acp.framing import FramingError, encode_message, read_message
+from optimus.acp.server import NdjsonOutboundChannel
 from optimus.acp.shapes import build_agent_message_chunk_notification
 
 _PROTOCOL_VERSION = 1  # `spec.ACP_PROTOCOL_VERSION`, by value: importing `spec` would bring the model paths in
@@ -34,17 +35,19 @@ class GatewayRefusalServer:
         self._text = f"**This agent did not start.** {reason}\n\nRefusal code: `{code}`"
         self._sessions: set[str] = set()
 
-    async def serve_ndjson(self, reader: Any, writer: Any, **_transport: Any) -> None:
+    async def serve_ndjson(self, reader: Any, writer: Any, *, dedicated_writer: Any = None, **_transport: Any) -> None:
+        # The channel the serving process's cleanup observes: a blocked client write stays owned until it ends.
+        outbound = NdjsonOutboundChannel(writer, dedicated_writer=dedicated_writer)
         while line := await reader.readline():
             if not line.strip():
                 continue
             try:
                 message = json.loads(line)
             except (ValueError, UnicodeDecodeError):
-                await writer.write_line(error_response(None, JsonRpcError(code=PARSE_ERROR, message="invalid JSON")))
+                await outbound.submit_message(error_response(None, JsonRpcError(code=PARSE_ERROR, message="invalid JSON")))
                 continue
             for outgoing in self._answer(message):
-                await writer.write_line(outgoing)
+                await outbound.submit_message(outgoing)
 
     async def serve(self, reader: Any, writer: Any, **_transport: Any) -> None:
         while True:
@@ -53,7 +56,7 @@ class GatewayRefusalServer:
             except FramingError as exc:
                 if str(exc) == "unexpected end of stream":
                     return
-                writer.write(encode_message(error_response(None, JsonRpcError(code=exc.code, message=str(exc)))))
+                writer.write(encode_message(error_response(None, JsonRpcError(code=exc.code, message="invalid frame"))))
                 await writer.drain()
                 if str(exc) in {"body too large", "header too large"}:
                     return

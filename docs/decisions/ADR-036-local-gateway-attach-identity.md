@@ -54,8 +54,9 @@ are agent-selected.
   Agent Panel opens, and each prompt shows the reason and remedy and ends with `end_turn`, because Zed can show a `refusal`
   stop reason as a content-policy banner in place of the text. The listener is never terminated. `--check-config --strict`
   prints the reason and exits 2.
-- **`optimus-trust run-gateway`** now serves the accounting a launch under the same approval would, so an agent with
-  `--no-auto-start` can still reuse it. Its Gateway gains accounting when one is approved.
+- **`optimus-trust run-gateway`** now serves the accounting and the tool composition a launch under the same approval
+  would, so an agent with `--no-auto-start` can still reuse it. Its Gateway gains accounting when one is approved, and
+  inherited tool settings its `.env.gateway` omits.
 
 ## Consequences and residuals
 
@@ -69,8 +70,12 @@ are agent-selected.
   one within one session; it is not closed here.
 - **Mixed configurations on one port now refuse.** A person running differently configured entries gives each its own
   `OPTIMUS_GATEWAY_URL` port and approves it, as the refusal says.
-- **Sibling attaches.** `ensure_local_redis` and `ensure_local_phoenix` have the same reachability shape, without the upstream
-  billing gap. They are named residuals on #469 and do not hold #465 open.
+- **Sibling attaches.** Neither has the upstream billing gap. `ensure_local_redis` borrows a reachable loopback listener
+  without authenticating it (its default-port check reads a Docker name); `ensure_local_phoenix` checks a Docker name, image
+  and health. They are named residuals on #469 and do not hold #465 open.
+- **Two `.env.gateway` files.** `run-gateway` reads the workspace's and an agent its operator config root's. Tool settings
+  that differ between them now refuse as `tool configuration`, because they do change what the Gateway's tool routes call.
+- **A portless URL** is now started and confirmed on its scheme's default port, where its requests always went.
 
 ## Evidence
 

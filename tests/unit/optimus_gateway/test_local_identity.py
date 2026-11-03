@@ -216,8 +216,14 @@ def test_the_same_configuration_has_the_same_identity_in_every_session() -> None
     assert _identity() == _identity()
 
 
-def test_a_url_spelled_differently_is_the_same_destination() -> None:
-    assert _identity(base_url="HTTP://127.0.0.1:9/api/v1/").digest == _identity().digest
+def test_a_trailing_slash_is_the_same_upstream_as_the_client_treats_it() -> None:
+    assert _identity(base_url="http://127.0.0.1:9/api/v1/").digest == _identity().digest
+
+
+@pytest.mark.parametrize("suffix", ["#stub", "?target=other", "/other"])
+def test_what_changes_the_upstream_request_changes_the_identity(suffix: str) -> None:
+    """The client appends its route to the URL as written, so each of these sends a different request."""
+    assert gi.differing_fields(_identity(), _identity(base_url="http://127.0.0.1:9/api/v1" + suffix)) == ("upstream",)
 
 
 def test_a_tool_setting_absent_equals_a_blank_one() -> None:
