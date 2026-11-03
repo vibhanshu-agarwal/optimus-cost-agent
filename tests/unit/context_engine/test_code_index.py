@@ -165,6 +165,7 @@ def _terms_of(path: str, text: str) -> str:
         ("a.md", "Before <pre>\nLEAK\n"),
         ("a.md", "<script>\n# Heading\nLEAK\n</script>\n"),
         ("a.md", "<pre>\n</prefix>\n# Heading\nLEAK\n</pre>\n"),
+        ("a.md", "<pre>\n</pre\n# Heading\nLEAK\n</pre>\n"),
         ("a.md", "<code>x</code><pre>\nLEAK\n"),
         ("a.md", "<pre>\nx\n</pre><pre>\n# Heading\nLEAK\n</pre>\n"),
         ("a.md", "<code>x</code><pre>\n# Heading\nLEAK\n</pre>\n"),
@@ -180,7 +181,7 @@ def _terms_of(path: str, text: str) -> str:
         ("a.rst", ".. LEAK\n"),
         ("a.txt", "Text\n\n  LEAK = 1\n"),
     ],
-    ids=["indented", "tab", "long-backtick-fence", "long-tilde-fence", "inline", "double-backtick-inline", "stray-backtick", "pre", "code", "pre-across-a-heading", "pre-never-closed", "script", "lookalike-closing-tag", "second-block-on-a-line", "closed-and-reopened-on-a-line", "second-block-across-a-heading", "comment-across-a-heading", "comment", "textarea", "uppercase-with-attributes", "doctest", "heading-span", "unclosed-fence",
+    ids=["indented", "tab", "long-backtick-fence", "long-tilde-fence", "inline", "double-backtick-inline", "stray-backtick", "pre", "code", "pre-across-a-heading", "pre-never-closed", "script", "lookalike-closing-tag", "incomplete-closing-tag", "second-block-on-a-line", "closed-and-reopened-on-a-line", "second-block-across-a-heading", "comment-across-a-heading", "comment", "textarea", "uppercase-with-attributes", "doctest", "heading-span", "unclosed-fence",
          "rst-literal", "rst-directive", "rst-comment", "text-indented"],
 )
 def test_nothing_that_may_be_code_reaches_prose(path: str, text: str) -> None:

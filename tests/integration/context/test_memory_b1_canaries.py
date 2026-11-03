@@ -52,6 +52,7 @@ FORBIDDEN = {
     "document html block": "ZQXCANARYDOCHTML",
     "document html block across a heading": "ZQXCANARYDOCPREHEAD",
     "document html block past a lookalike tag": "ZQXCANARYDOCPREFIX",
+    "document html block past an incomplete tag": "ZQXCANARYDOCPARTTAG",
     "document second html block on a line": "ZQXCANARYDOCSECOND",
     "document html comment": "ZQXCANARYDOCCOMMENTBLOCK",
     "document doctest": "ZQXCANARYDOCTEST",
@@ -122,6 +123,12 @@ print("{FORBIDDEN["document html block across a heading"]}")
 </prefix>
 # Lookalike
 print("{FORBIDDEN["document html block past a lookalike tag"]}")
+</pre>
+
+<pre>
+</pre
+# Incomplete
+print("{FORBIDDEN["document html block past an incomplete tag"]}")
 </pre>
 
 <code>x</code><pre>

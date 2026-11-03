@@ -170,14 +170,19 @@ class IndexStore:
             self._redis.hsetnx(key, field, value)
         # Epochs come from one counter and a new line's floor starts at its current value, so an epoch or a cursor from before a drop
         # can never name data in the line that replaced it.
-        self._redis.hsetnx(key, "floor", str(self._redis.incr(f"{_PREFIX}:epochs")))
+        self._on_time()
+        floor = self._redis.incr(f"{_PREFIX}:epochs")
+        self._on_time()
+        self._redis.hsetnx(key, "floor", str(floor))
         self._on_time()
         self._redis.sadd(f"{_PREFIX}:lines", scope)
+        self._on_time()
         line = self._line(scope)
         if "dropping" in line:
             raise mic.IndexRequestError("SCOPE_DROPPING", 409)
         if any(line.get(field) != value for field, value in wanted.items()):
             raise mic.IndexRequestError("SCOPE_CONFIGURATION_MISMATCH", 409)
+        self._on_time()
         return {"status": "ok", "current": self._current(scope)}
 
     def _begin(self, scope: str, pipe: Any, line: dict[str, str]) -> dict[str, Any]:

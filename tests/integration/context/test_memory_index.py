@@ -371,6 +371,42 @@ def test_a_request_that_expires_partway_changes_nothing_more(rpc: Rpc, client: r
     assert not client.hget(f"oidx:line:{other}", "floor")
 
 
+class _CountingClient:
+    """The real client, noting each command, with an action after the chosen one: the moment a command finishes past the deadline."""
+
+    def __init__(self, client: redis.Redis, after: int, action: Any) -> None:
+        self._client = client
+        self._after = after
+        self._action = action
+        self.calls: list[str] = []
+
+    def __getattr__(self, name: str) -> Any:
+        real = getattr(self._client, name)
+
+        def call(*args: Any, **kwargs: Any) -> Any:
+            result = real(*args, **kwargs)
+            self.calls.append(name)
+            if len(self.calls) == self._after:
+                self._action()
+            return result
+
+        return call
+
+
+@pytest.mark.parametrize("after", [1, 3, 4, 5, 6, 7], ids=["field-1", "field-3", "counter", "floor", "lines", "line"])
+def test_opening_a_line_starts_no_further_command_after_its_deadline(client: redis.Redis, monkeypatch: pytest.MonkeyPatch, after: int) -> None:
+    real_time = time.monotonic
+    counting = _CountingClient(client, after, lambda: monkeypatch.setattr(memory_index.time, "monotonic", lambda: real_time() + 1000))
+    store = memory_index.IndexStore(counting, cursor_key=b"c" * 32)  # type: ignore[arg-type]
+    store._created_indexes.add(_DIMENSIONS)
+    body = {"op": "generation", "scope": _h(uuid.uuid4().hex), "action": "open", "embedding": "e", "dimensions": _DIMENSIONS, "schema_version": 1}
+    with pytest.raises(mic.IndexRequestError) as refused:
+        store.dispatch(body, deadline=real_time() + 5)
+    monkeypatch.undo()
+    assert refused.value.code == "INDEX_TIMEOUT"
+    assert len(counting.calls) == after, counting.calls
+
+
 def test_a_read_that_finishes_late_is_refused(rpc: Rpc, client: redis.Redis, monkeypatch: pytest.MonkeyPatch) -> None:
     rpc.open_line()
     store = memory_index.IndexStore(client, cursor_key=b"c" * 32)

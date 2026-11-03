@@ -114,6 +114,8 @@ embedding threads, in bounded batches, and yields while a foreground turn is bus
   volume survive for a later compatible launch.
 - `users.acl` is world-readable on POSIX so the container's user can read its bind mount. It holds only the hash of a generated high-entropy password.
 - A branch's first build is a cold build; no vectors are shared between lines yet.
+- Leases expire on the container's clock. Docker Desktop's VM clock was measured running slow and then jumping forward by a few seconds. The 60 second lease renewed
+  every 15 seconds has 45 seconds of margin; a larger jump, as after a host sleep, loses the lease, and the worker stops and resumes on its next pass. Nothing is corrupted.
 - Rebuildable data accepts losing up to about a second on a crash (`everysec`). A worker replays what was not confirmed and never labels missing data complete.
 
 ## Evidence

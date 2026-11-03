@@ -39,6 +39,8 @@ pytestmark = [pytest.mark.requires_plan12_index_redis]
 
 _SECRET = "index-worker-secret"  # pragma: allowlist secret - synthetic test fixture
 _DIMENSIONS = 8
+# Short, but above the few seconds Docker Desktop's VM clock was measured jumping forward, which expires a shorter lease early.
+_SHORT_LEASE_MS = 8000
 
 
 class StubEmbedder:
@@ -628,13 +630,16 @@ def test_a_worker_that_loses_its_lease_stops_and_its_writes_are_refused(tmp_path
 
 def test_a_slow_embedder_does_not_lose_the_lease(tmp_path: Path, settings: OptimusGatewaySettings, monkeypatch: pytest.MonkeyPatch) -> None:
     """A real embedding batch can outlast a lease. The lease must follow the process, not the batches: found by the first real pilot."""
-    monkeypatch.setattr(index_worker, "LEASE_MS", 1500)
+    monkeypatch.setattr(index_worker, "LEASE_MS", _SHORT_LEASE_MS)
     monkeypatch.setattr(index_worker, "RENEW_SECONDS", 0.3)
     index = Index(_repository(tmp_path / "repo"), settings)
     real_embed = index.embedder.embed
+    slept = {"done": False}
 
     def embed(texts: Sequence[str]) -> list[bytes]:
-        time.sleep(3.0)
+        if not slept["done"]:
+            slept["done"] = True
+            time.sleep(_SHORT_LEASE_MS / 1000 + 1)
         return real_embed(texts)
 
     index.embedder.embed = embed  # type: ignore[method-assign]
@@ -643,11 +648,12 @@ def test_a_slow_embedder_does_not_lose_the_lease(tmp_path: Path, settings: Optim
 
 
 def test_a_brief_outage_does_not_end_the_lease_heartbeat(tmp_path: Path, settings: OptimusGatewaySettings, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(index_worker, "LEASE_MS", 1500)
+    monkeypatch.setattr(index_worker, "LEASE_MS", _SHORT_LEASE_MS)
     monkeypatch.setattr(index_worker, "RENEW_SECONDS", 0.3)
     index = Index(_repository(tmp_path / "repo"), settings)
     real_call, real_embed = index.storage.call, index.embedder.embed
     failed = {"done": False}
+    slept = {"done": False}
 
     def call(op: str, **fields: Any) -> dict[str, Any]:
         if op == "lease" and fields.get("action") == "renew" and not failed["done"]:
@@ -656,7 +662,9 @@ def test_a_brief_outage_does_not_end_the_lease_heartbeat(tmp_path: Path, setting
         return real_call(op, **fields)
 
     def embed(texts: Sequence[str]) -> list[bytes]:
-        time.sleep(3.0)
+        if not slept["done"]:
+            slept["done"] = True
+            time.sleep(_SHORT_LEASE_MS / 1000 + 1)
         return real_embed(texts)
 
     index.storage.call = call  # type: ignore[method-assign]

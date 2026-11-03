@@ -43,7 +43,7 @@ _CODE_LINE = re.compile(r"^\s*(?:>>>|\.\.\s)")
 # Inline spans and HTML blocks; a stray backtick then takes the rest of its line. A false match costs prose, never leaks code.
 _HTML_CODE_NAMES: Final = "pre|code|script|style|textarea|xmp|listing"
 _INLINE_CODE = re.compile(rf"(`+)[\s\S]*?\1|<({_HTML_CODE_NAMES})\b[\s\S]*?(?:</\2\s*>|\Z)|<!--[\s\S]*?(?:-->|\Z)", re.IGNORECASE)
-_HTML_TRANSITION = re.compile(rf"<!--|-->|<(/?)({_HTML_CODE_NAMES})(?:\s[^>]*)?(?:>|$)", re.IGNORECASE)
+_HTML_TRANSITION = re.compile(rf"<!--|-->|<(/?)({_HTML_CODE_NAMES})(?:\s[^>]*)?(>|$)", re.IGNORECASE)
 _STRAY_BACKTICK = re.compile(r"`.*$", re.MULTILINE)
 _CODE_LITERAL = re.compile(
     r'''("""[\s\S]*?(?:"""|\Z)|\'\'\'[\s\S]*?(?:\'\'\'|\Z)|/\*[\s\S]*?(?:\*/|\Z)|<!--[\s\S]*?(?:-->|\Z)'''
@@ -246,7 +246,7 @@ def _html_state_after(line: str, state: str | None) -> str | None:
             state = None if state == "comment" else state
         elif state is None and not tag.group(1):
             state = tag.group(2).lower()
-        elif tag.group(1) and state == tag.group(2).lower():
+        elif tag.group(1) and tag.group(3) == ">" and state == tag.group(2).lower():
             state = None
     return state
 
