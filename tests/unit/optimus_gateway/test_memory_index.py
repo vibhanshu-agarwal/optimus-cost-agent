@@ -118,6 +118,13 @@ def test_an_expired_deadline_with_a_free_worker_never_reaches_the_store() -> Non
     assert store.calls == 0
 
 
+def test_a_store_given_an_expired_deadline_does_no_work_at_all() -> None:
+    store = memory_index.IndexStore(object(), cursor_key=b"c" * 32)  # type: ignore[arg-type]  # any use of this client would raise
+    with pytest.raises(mic.IndexRequestError) as refused:
+        store.dispatch({"op": "coverage", "scope": _SCOPE}, deadline=time.monotonic() - 1)
+    assert refused.value.code == "INDEX_TIMEOUT"
+
+
 def test_the_deadline_reaches_the_store() -> None:
     store = _Store()
     deadline = time.monotonic() + 5
