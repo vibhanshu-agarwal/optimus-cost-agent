@@ -2,16 +2,16 @@
  "schema": "plan12-memory-m1.revert-check.v1",
  "plan": "12.10",
  "issue": 469,
- "head": "hex:41ed6bc54999fd31843abf1406b78037ef1db3de",
+ "head": "hex:064f07353449b1a85b0533bc444ec1cdcf8920a2",
  "rule": "A case counts only if pytest exits 1 with exactly one failed node, no collection error, and that node is the test named for the guard.",
- "cases": 73,
- "caught": 73,
+ "cases": 79,
+ "caught": 79,
  "not_caught": [],
  "results": [
   {
    "guard": "a publish is not atomic: readers see the building epoch",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -21,7 +21,7 @@
   {
    "guard": "a reader may name a building epoch",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -31,7 +31,7 @@
   {
    "guard": "the epoch filter is gone (membership)",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -41,7 +41,7 @@
   {
    "guard": "the scope filter is gone",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -51,7 +51,7 @@
   {
    "guard": "writers are not fenced",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -61,7 +61,7 @@
   {
    "guard": "a batch may write any epoch",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -71,7 +71,7 @@
   {
    "guard": "a removal does not retire old records",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -81,7 +81,7 @@
   {
    "guard": "a retirement can be overwritten",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -91,7 +91,7 @@
   {
    "guard": "an expired epoch answers partly",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -101,7 +101,7 @@
   {
    "guard": "a vanished line reads as empty",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -111,17 +111,17 @@
   {
    "guard": "a new line's epochs can repeat",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
    "failing_node": "tests/integration/context/test_memory_index.py::test_nothing_from_before_a_drop_can_name_the_line_that_replaced_it",
-   "failure": "E   AssertionError: (200, {'current': {'coverage': {'complete': True, 'files_indexed': 1, 'files_total': 1}, 'dirty': False, 'epoch': 23, ...': '<hex>'}, 'cursor': None, 'epoch': 21, 'files': [], ...})"
+   "failure": "E   AssertionError: (200, {'current': {'coverage': {'complete': True, 'files_indexed': 1, 'files_total': 1}, 'dirty': False, 'epoch': 46, ...': '<hex>'}, 'cursor': None, 'epoch': 43, 'files': [], ...})"
   },
   {
    "guard": "an expired read still answers",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -131,7 +131,7 @@
   {
    "guard": "a drop leaves the line readable between batches",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -141,7 +141,7 @@
   {
    "guard": "a line being dropped accepts writes",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -151,7 +151,7 @@
   {
    "guard": "a line being dropped can be opened",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -161,7 +161,7 @@
   {
    "guard": "a catalogue can name any epoch",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -171,7 +171,7 @@
   {
    "guard": "an expired acquire still replaces",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -181,7 +181,7 @@
   {
    "guard": "an expired renew still changes",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -189,19 +189,69 @@
    "failure": "E   Failed: DID NOT RAISE IndexRequestError"
   },
   {
-   "guard": "an expired open still writes",
+   "guard": "an open goes on to its next field after expiry",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
-   "failing_node": "tests/integration/context/test_memory_index.py::test_a_request_that_expires_partway_changes_nothing_more[open]",
-   "failure": "E   AssertionError: assert not b'35'"
+   "failing_node": "tests/integration/context/test_memory_index.py::test_opening_a_line_starts_no_further_command_after_its_deadline[field-1]",
+   "failure": "E   AssertionError: ['hsetnx', 'hsetnx', 'hsetnx']"
+  },
+  {
+   "guard": "an open takes a counter value after expiry",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_opening_a_line_starts_no_further_command_after_its_deadline[field-3]",
+   "failure": "E   AssertionError: ['hsetnx', 'hsetnx', 'hsetnx', 'incr']"
+  },
+  {
+   "guard": "an open writes its floor after expiry",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_opening_a_line_starts_no_further_command_after_its_deadline[counter]",
+   "failure": "E   AssertionError: ['hsetnx', 'hsetnx', 'hsetnx', 'incr', 'hsetnx']"
+  },
+  {
+   "guard": "an open joins the line list after expiry",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_opening_a_line_starts_no_further_command_after_its_deadline[floor]",
+   "failure": "E   AssertionError: ['hsetnx', 'hsetnx', 'hsetnx', 'incr', 'hsetnx', 'sadd']"
+  },
+  {
+   "guard": "an open reads its line after expiry",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_opening_a_line_starts_no_further_command_after_its_deadline[lines]",
+   "failure": "E   AssertionError: ['hsetnx', 'hsetnx', 'hsetnx', 'incr', 'hsetnx', 'sadd', ...]"
+  },
+  {
+   "guard": "an open reads the publication after expiry",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_opening_a_line_starts_no_further_command_after_its_deadline[line]",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
   },
   {
    "guard": "an expired batch still commits",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -211,7 +261,7 @@
   {
    "guard": "a slow startup check runs on past its deadline",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -221,7 +271,7 @@
   {
    "guard": "a prune does not raise the floor",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -231,7 +281,7 @@
   {
    "guard": "the catalogue hides an unfinished path",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -241,7 +291,7 @@
   {
    "guard": "a resumer can replace another owner",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -251,7 +301,7 @@
   {
    "guard": "cleanup uses a stale view of the building epoch",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -261,7 +311,7 @@
   {
    "guard": "a slow read ignores its deadline",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -271,7 +321,7 @@
   {
    "guard": "an expired request still runs",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -281,17 +331,17 @@
   {
    "guard": "the deadline stops at the door",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
    "result": "caught",
    "exit": 1,
    "failing_node": "tests/unit/optimus_gateway/test_memory_index.py::test_the_deadline_reaches_the_store",
-   "failure": "E   assert None == 144671.9208222"
+   "failure": "E   assert None == 147432.6695549"
   },
   {
    "guard": "a crash's leftovers survive",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_worker.py",
    "result": "caught",
    "exit": 1,
@@ -301,7 +351,7 @@
   {
    "guard": "a cursor is not bound to its scope",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/integration/context/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -341,7 +391,7 @@
   {
    "guard": "admission is unbounded",
    "file": "src/optimus_gateway/memory_index.py",
-   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "file_sha256": "hex:c1fbfd4c4917a6ff3f542a5b70860eb28fe0a3abca772755e6b78e4b3c90c6dd",
    "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
    "result": "caught",
    "exit": 1,
@@ -436,7 +486,7 @@
    "result": "caught",
    "exit": 1,
    "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_the_acl_file_holds_only_the_hash",
-   "failure": "E   AssertionError: assert ('dR_-83O9BPD...azBrA5BAaTOk' not in 'user defaul...+ft.search\\n'"
+   "failure": "E   AssertionError: assert ('gE7SATFMwEn...Y1aGalnHGhbc' not in 'user defaul...+ft.search\\n'"
   },
   {
    "guard": "the ACL opens every key",
@@ -611,7 +661,7 @@
   {
    "guard": "signature keeps literals",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -621,7 +671,7 @@
   {
    "guard": "document code strings reach the terms",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -631,7 +681,7 @@
   {
    "guard": "indented code reaches prose",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -641,7 +691,7 @@
   {
    "guard": "an HTML block ends at a heading",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -651,7 +701,7 @@
   {
    "guard": "a lookalike tag closes an HTML block",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -659,9 +709,19 @@
    "failure": "E   AssertionError: assert 'LEAK' not in '\\n\\nLEAK\\n<...>\\n\\nHeading'"
   },
   {
+   "guard": "an incomplete closing tag ends an HTML block",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[incomplete-closing-tag]",
+   "failure": "E   AssertionError: assert 'LEAK' not in '\\n\\nLEAK\\n<...>\\n\\nHeading'"
+  },
+  {
    "guard": "only a line's first HTML tag counts",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -671,7 +731,7 @@
   {
    "guard": "an HTML comment reaches prose",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -681,7 +741,7 @@
   {
    "guard": "doctests reach prose",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -691,7 +751,7 @@
   {
    "guard": "a shorter fence closes a longer one",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
@@ -701,7 +761,7 @@
   {
    "guard": "inline code reaches prose",
    "file": "src/context_engine/code_index.py",
-   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "file_sha256": "hex:849f146062dedc07ad8c67853e91e02a8b42843ba8726a1ab7036bbaa75e44ef",
    "test_file": "tests/unit/context_engine/test_code_index.py",
    "result": "caught",
    "exit": 1,
