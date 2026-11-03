@@ -34,6 +34,10 @@ _ENV = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
     "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
     "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
+    # Named here because the environment outranks the keyring: without them, a developer machine's real credentials decide.
+    "OPTIMUS_LOCAL_GATEWAY_PROVIDER": "openrouter",
+    "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+    "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
 }
 
 
@@ -244,6 +248,7 @@ def test_an_agent_under_the_same_approval_can_reuse_what_run_gateway_starts(monk
             "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS=example.com\n",
             encoding="utf-8",
         )
+        (root / ".env.gateway").chmod(0o600)  # the launch gate refuses anything wider on POSIX
     monkeypatch.setenv("OPTIMUS_GATEWAY_TOOL_MAX_CALLS_PER_TOOL", "2")
     registry = auto_approval_literal() if auto else trusted_approval_literal()
     approved = SimpleNamespace(security_literals={
