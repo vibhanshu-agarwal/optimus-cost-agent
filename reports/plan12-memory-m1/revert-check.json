@@ -1,0 +1,742 @@
+{
+ "schema": "plan12-memory-m1.revert-check.v1",
+ "plan": "12.10",
+ "issue": 469,
+ "head": "hex:41ed6bc54999fd31843abf1406b78037ef1db3de",
+ "rule": "A case counts only if pytest exits 1 with exactly one failed node, no collection error, and that node is the test named for the guard.",
+ "cases": 73,
+ "caught": 73,
+ "not_caught": [],
+ "results": [
+  {
+   "guard": "a publish is not atomic: readers see the building epoch",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_reader_pinned_to_an_epoch_keeps_seeing_it_while_the_next_one_is_published",
+   "failure": "E   AssertionError: assert [] == ['alpha']"
+  },
+  {
+   "guard": "a reader may name a building epoch",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_reader_cannot_name_an_epoch_that_is_still_building",
+   "failure": "E   AssertionError: (200, {'current': None, 'epoch': 7, 'records': [{'end_line': 2, 'epoch_added': 7, 'file_hash': '<hex>...11111111111111', 'id': '<hex>', ...}], 'status': 'ok', ...})"
+  },
+  {
+   "guard": "the epoch filter is gone (membership)",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_reader_pinned_to_an_epoch_keeps_seeing_it_while_the_next_one_is_published",
+   "failure": "E   AssertionError: assert [{'end_line':...50c06c', ...}] == []"
+  },
+  {
+   "guard": "the scope filter is gone",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_reader_pinned_to_an_epoch_keeps_seeing_it_while_the_next_one_is_published",
+   "failure": "E   AssertionError: assert ['alpha', 'alpha'] == ['alpha']"
+  },
+  {
+   "guard": "writers are not fenced",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_fenced_out_writer_can_change_nothing",
+   "failure": "E   AssertionError: (200, {'removed': 0, 'status': 'ok', 'written': 1})"
+  },
+  {
+   "guard": "a batch may write any epoch",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_only_the_building_epoch_can_be_written_or_published",
+   "failure": "E   AssertionError: (200, {'removed': 0, 'status': 'ok', 'written': 1})"
+  },
+  {
+   "guard": "a removal does not retire old records",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_reader_pinned_to_an_epoch_keeps_seeing_it_while_the_next_one_is_published",
+   "failure": "E   AssertionError: assert [{'end_line':...dc2b99', ...}] == []"
+  },
+  {
+   "guard": "a retirement can be overwritten",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_retirement_is_written_once_so_an_earlier_view_stays_as_it_was",
+   "failure": "E   AssertionError: assert [{'end_line':...dc2b99', ...}] == []"
+  },
+  {
+   "guard": "an expired epoch answers partly",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_after_a_prune_an_earlier_epoch_is_refused_and_never_answers_partly",
+   "failure": "E   AssertionError: (200, {'current': {'coverage': {'complete': True, 'files_indexed': 3, 'files_total': 3}, 'dirty': False, 'epoch': 17, ... '<hex>'}, 'epoch': 16, 'records': [], 'status': 'ok', ...})"
+  },
+  {
+   "guard": "a vanished line reads as empty",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_drop_during_a_read_is_a_refusal_and_not_an_empty_answer",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
+  },
+  {
+   "guard": "a new line's epochs can repeat",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_nothing_from_before_a_drop_can_name_the_line_that_replaced_it",
+   "failure": "E   AssertionError: (200, {'current': {'coverage': {'complete': True, 'files_indexed': 1, 'files_total': 1}, 'dirty': False, 'epoch': 23, ...': '<hex>'}, 'cursor': None, 'epoch': 21, 'files': [], ...})"
+  },
+  {
+   "guard": "an expired read still answers",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_read_that_finishes_late_is_refused",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
+  },
+  {
+   "guard": "a drop leaves the line readable between batches",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_drop_takes_the_line_out_of_service_in_its_first_step",
+   "failure": "E   AssertionError: assert {'coverage': {'complete': True, 'files_indexed': 3, 'files_total': 3}, 'dirty': False, 'epoch': 27, 'revision': '<hex>'} is None"
+  },
+  {
+   "guard": "a line being dropped accepts writes",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_drop_takes_the_line_out_of_service_in_its_first_step",
+   "failure": "E   AssertionError: (200, {'epoch': 30, 'status': 'ok'})"
+  },
+  {
+   "guard": "a line being dropped can be opened",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_drop_takes_the_line_out_of_service_in_its_first_step",
+   "failure": "E   AssertionError: (200, {'current': None, 'status': 'ok'})"
+  },
+  {
+   "guard": "a catalogue can name any epoch",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_catalogue_cannot_name_or_seal_an_epoch_the_line_does_not_have",
+   "failure": "E   AssertionError: (200, {'current': None, 'cursor': None, 'epoch': 1000000000000, 'files': [{'description': None, 'file_hash': '11111111...'<hex>', 'language': 'python', 'modified': 100, ...}], ...})"
+  },
+  {
+   "guard": "an expired acquire still replaces",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_request_that_expires_partway_changes_nothing_more[acquire]",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
+  },
+  {
+   "guard": "an expired renew still changes",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_request_that_expires_partway_changes_nothing_more[renew]",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
+  },
+  {
+   "guard": "an expired open still writes",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_request_that_expires_partway_changes_nothing_more[open]",
+   "failure": "E   AssertionError: assert not b'35'"
+  },
+  {
+   "guard": "an expired batch still commits",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_batch_that_outlasts_its_deadline_writes_nothing",
+   "failure": "E   AssertionError: assert (200, {'statu...'removed': 0}) == (503, {'statu...DEX_TIMEOUT'})"
+  },
+  {
+   "guard": "a slow startup check runs on past its deadline",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_store_given_an_expired_deadline_does_no_work_at_all",
+   "failure": "E   AttributeError: 'object' object has no attribute 'hgetall'"
+  },
+  {
+   "guard": "a prune does not raise the floor",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_after_a_prune_an_earlier_epoch_is_refused_and_never_answers_partly",
+   "failure": "E   AssertionError: (200, {'current': {'coverage': {'complete': True, 'files_indexed': 3, 'files_total': 3}, 'dirty': False, 'epoch': 17, ... '<hex>'}, 'epoch': 16, 'records': [], 'status': 'ok', ...})"
+  },
+  {
+   "guard": "the catalogue hides an unfinished path",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_the_catalogue_names_a_path_with_records_but_no_file_record",
+   "failure": "E   AssertionError: assert (['whole.py'] == ['whole.py']"
+  },
+  {
+   "guard": "a resumer can replace another owner",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_resumer_never_replaces_a_lease_another_owner_took_meanwhile",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
+  },
+  {
+   "guard": "cleanup uses a stale view of the building epoch",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_cleanup_decides_from_what_it_read_inside_its_transaction",
+   "failure": "E   AssertionError: assert [] == ['beta']"
+  },
+  {
+   "guard": "a slow read ignores its deadline",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_slow_catalogue_stops_at_its_deadline",
+   "failure": "E   AssertionError: it should stop as soon as the time is up, not finish the page first"
+  },
+  {
+   "guard": "an expired request still runs",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_memory_index.py::test_an_expired_deadline_with_a_free_worker_never_reaches_the_store",
+   "failure": "E   AssertionError: assert (200, {'status': 'ok'}) == (503, {'statu...DEX_TIMEOUT'})"
+  },
+  {
+   "guard": "the deadline stops at the door",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_memory_index.py::test_the_deadline_reaches_the_store",
+   "failure": "E   assert None == 144671.9208222"
+  },
+  {
+   "guard": "a crash's leftovers survive",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_part_of_a_file_left_by_a_crash_is_not_served_after_the_file_changes",
+   "failure": "E   AssertionError: assert ['orphan_symbol'] == []"
+  },
+  {
+   "guard": "a cursor is not bound to its scope",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/integration/context/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_index.py::test_a_cursor_cannot_change_scope",
+   "failure": "E   AssertionError: (409, {'error': 'EPOCH_EXPIRED', 'status': 'rejected'})"
+  },
+  {
+   "guard": "an unknown record field is admitted",
+   "file": "src/optimus_security/memory_index_contract.py",
+   "file_sha256": "hex:b142aea2af686d50c8488d095f0848bbf87a13a3ada836a609685466f9f84e5b",
+   "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field[body]",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
+  },
+  {
+   "guard": "a path can leave its scope",
+   "file": "src/optimus_security/memory_index_contract.py",
+   "file_sha256": "hex:b142aea2af686d50c8488d095f0848bbf87a13a3ada836a609685466f9f84e5b",
+   "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_path_cannot_leave_its_scope[../x.py]",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
+  },
+  {
+   "guard": "a non-finite vector is admitted",
+   "file": "src/optimus_security/memory_index_contract.py",
+   "file_sha256": "hex:b142aea2af686d50c8488d095f0848bbf87a13a3ada836a609685466f9f84e5b",
+   "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_non_finite_vector_is_refused",
+   "failure": "E   Failed: DID NOT RAISE IndexRequestError"
+  },
+  {
+   "guard": "admission is unbounded",
+   "file": "src/optimus_gateway/memory_index.py",
+   "file_sha256": "hex:cbe861256957a15e0e9361ea319ef91fee38873e9bab5c937e3012f7cdbb9dbf",
+   "test_file": "tests/unit/optimus_gateway/test_memory_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_memory_index.py::test_two_requests_serve_and_a_full_queue_is_refused_at_once",
+   "failure": "E   AssertionError: assert ((200, {'status': 'ok'}) == (503, {'statu...'INDEX_BUSY'})"
+  },
+  {
+   "guard": "a stranger's container is adopted",
+   "file": "src/optimus/acp/local_infra.py",
+   "file_sha256": "hex:2cc9035498abbcc499f31d744f79e4957b6309d010c961d786ef67daad790a1f",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_a_stranger_in_the_container_name_is_refused_and_left_alone",
+   "failure": "E   AssertionError: assert ('unavailable' == 'conflict'"
+  },
+  {
+   "guard": "another memory limit is accepted",
+   "file": "src/optimus/acp/local_infra.py",
+   "file_sha256": "hex:2cc9035498abbcc499f31d744f79e4957b6309d010c961d786ef67daad790a1f",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_a_lookalike_container_is_refused_and_left_alone[memory-limit]",
+   "failure": "E   AssertionError: MemoryRedisStatus(state='ready', detail='')"
+  },
+  {
+   "guard": "other server settings are accepted",
+   "file": "src/optimus/acp/local_infra.py",
+   "file_sha256": "hex:2cc9035498abbcc499f31d744f79e4957b6309d010c961d786ef67daad790a1f",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_a_lookalike_container_is_refused_and_left_alone[server-settings]",
+   "failure": "E   AssertionError: MemoryRedisStatus(state='ready', detail='')"
+  },
+  {
+   "guard": "a container without the ACL is accepted",
+   "file": "src/optimus/acp/local_infra.py",
+   "file_sha256": "hex:2cc9035498abbcc499f31d744f79e4957b6309d010c961d786ef67daad790a1f",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_a_lookalike_container_is_refused_and_left_alone[no-acl-mount]",
+   "failure": "E   AssertionError: MemoryRedisStatus(state='ready', detail='')"
+  },
+  {
+   "guard": "a stranger on the port is ignored",
+   "file": "src/optimus/acp/local_infra.py",
+   "file_sha256": "hex:2cc9035498abbcc499f31d744f79e4957b6309d010c961d786ef67daad790a1f",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_a_stranger_on_the_port_is_refused_and_left_alone",
+   "failure": "E   AssertionError: assert ('ready' == 'conflict'"
+  },
+  {
+   "guard": "a changed ACL file is used",
+   "file": "src/optimus/acp/local_infra.py",
+   "file_sha256": "hex:2cc9035498abbcc499f31d744f79e4957b6309d010c961d786ef67daad790a1f",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_a_changed_acl_file_is_refused",
+   "failure": "E   AssertionError: assert ('conflict' == 'conflict'"
+  },
+  {
+   "guard": "no-auto-start starts it (serve)",
+   "file": "src/optimus/acp/__main__.py",
+   "file_sha256": "hex:aaa7c16d095986cb4d99e84c300f74725db1ea440b548a1d6f2aa51acdb06576",
+   "test_file": "tests/unit/acp/test_main_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_main_wiring.py::test_an_approved_index_is_checked_or_started_and_never_stops_a_launch[serve-no-auto-start]",
+   "failure": "E   assert [True] == [False]"
+  },
+  {
+   "guard": "no-auto-start starts it",
+   "file": "src/optimus/acp/local_infra.py",
+   "file_sha256": "hex:2cc9035498abbcc499f31d744f79e4957b6309d010c961d786ef67daad790a1f",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_data_survives_a_stop_and_a_start",
+   "failure": "E   AssertionError: assert 'ready' == 'unavailable'"
+  },
+  {
+   "guard": "the ACL leaves default on",
+   "file": "src/optimus_security/memory_index_config.py",
+   "file_sha256": "hex:32f062db78b4ee12c2517e8aca1843271bfda3761b15c268b805e7be6a337202",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_the_acl_file_holds_only_the_hash",
+   "failure": "E   AssertionError: assert ('dR_-83O9BPD...azBrA5BAaTOk' not in 'user defaul...+ft.search\\n'"
+  },
+  {
+   "guard": "the ACL opens every key",
+   "file": "src/optimus_security/memory_index_config.py",
+   "file_sha256": "hex:32f062db78b4ee12c2517e8aca1843271bfda3761b15c268b805e7be6a337202",
+   "test_file": "tests/integration/context/test_memory_redis_lifecycle.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_redis_lifecycle.py::test_the_index_user_cannot_touch_keys_outside_the_index",
+   "failure": "E   Failed: DID NOT RAISE any of (NoPermissionError, ResponseError)"
+  },
+  {
+   "guard": "the file record is written first",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_file_interrupted_between_its_batches_is_redone_whole",
+   "failure": "E   AssertionError: assert (76 is not None and ['big.py'] == []"
+  },
+  {
+   "guard": "a crash's orphan survives a deletion",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_file_interrupted_then_gone_leaves_nothing_published[deleted]",
+   "failure": "E   AssertionError: assert ([{'descriptio...a33e70', ...}] == []"
+  },
+  {
+   "guard": "the lease follows batches only",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_slow_embedder_does_not_lose_the_lease",
+   "failure": "E   AssertionError: WorkerOutcome(state='held', detail='LEASE_LOST', epoch=131, files_written=1, records_written=0, coverage=None)"
+  },
+  {
+   "guard": "a brief outage ends the heartbeat",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_brief_outage_does_not_end_the_lease_heartbeat",
+   "failure": "E   AssertionError: WorkerOutcome(state='held', detail='LEASE_LOST', epoch=134, files_written=1, records_written=0, coverage=None)"
+  },
+  {
+   "guard": "a resumed partial build skips the cold slot",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_resuming_a_partial_cold_build_still_needs_the_cold_slot",
+   "failure": "E   AssertionError: assert ('complete' == 'held'"
+  },
+  {
+   "guard": "a lost cold slot is ignored",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_worker_that_loses_the_cold_slot_stops",
+   "failure": "E   AssertionError: assert ('complete' == 'held'"
+  },
+  {
+   "guard": "unchanged files are embedded again",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_second_pass_embeds_nothing_when_nothing_changed",
+   "failure": "E   assert 4 == 0"
+  },
+  {
+   "guard": "deleted files stay",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_deleted_file_leaves_and_a_rename_moves",
+   "failure": "E   AssertionError: assert ['first.py', ..., 'second.py'] == ['notes.md', 'renamed.py']"
+  },
+  {
+   "guard": "complete is claimed even if the source moved",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_source_that_moves_during_a_pass_is_not_called_complete",
+   "failure": "E   AssertionError: assert ('complete' == 'paused'"
+  },
+  {
+   "guard": "a changed revision is not compared",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_further_edit_to_an_already_dirty_file_is_not_called_complete[untracked]",
+   "failure": "E   AssertionError: assert (True and 'complete' == 'paused'"
+  },
+  {
+   "guard": "what was read is not checked against the disk",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_an_edit_that_keeps_size_and_time_is_not_called_complete",
+   "failure": "E   AssertionError: assert ('complete' == 'paused'"
+  },
+  {
+   "guard": "the final check ignores a cancel",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_the_final_check_stops_for_a_cancel_and_nothing_is_called_complete",
+   "failure": "E   AssertionError: it should stop at once, not read the rest of the corpus"
+  },
+  {
+   "guard": "the final check does not yield",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_the_final_check_gives_way_to_a_persons_turn",
+   "failure": "E   assert 0 == 1"
+  },
+  {
+   "guard": "a cancel at the last check read still publishes complete",
+   "file": "src/context_engine/index_worker.py",
+   "file_sha256": "hex:0aeab72ea997ddbdbc8e54137c20e98932b265497b68bb71c367068c272df53f",
+   "test_file": "tests/integration/context/test_memory_worker.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_worker.py::test_a_cancel_at_the_final_checks_last_read_is_not_published_as_complete",
+   "failure": "E   AssertionError: assert 'complete' == 'cancelled'"
+  },
+  {
+   "guard": "a beneath-the-root Git failure can be called complete",
+   "file": "src/optimus/context/memory_workspace.py",
+   "file_sha256": "hex:02e6ac0e7b9b98efb4de1076266069e60a04411cba4226d63a983b0adbbc5a89",
+   "test_file": "tests/unit/context/test_memory_workspace.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_workspace.py::test_a_folder_beneath_a_repository_git_cannot_read_never_repeats_a_revision",
+   "failure": "E   AssertionError: assert '<hex>' != '<hex>'"
+  },
+  {
+   "guard": "a Git failure can be called complete",
+   "file": "src/optimus/context/memory_workspace.py",
+   "file_sha256": "hex:02e6ac0e7b9b98efb4de1076266069e60a04411cba4226d63a983b0adbbc5a89",
+   "test_file": "tests/unit/context/test_memory_workspace.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_workspace.py::test_a_repository_git_cannot_read_never_repeats_a_revision",
+   "failure": "E   AssertionError: assert ('<hex>' != '<hex>')"
+  },
+  {
+   "guard": "signature keeps literals",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine[pkg/a.py-\"\"\"DOCCANARY\"\"\"\\nfrom pkg.mod import thing\\n\\nVALUE = \"LITERALCANARY\"\\n\\n\\nclass Foo(Base):\\n    \"\"\"CLASSDOCCANARY\"\"\"\\n\\n    def bar(self, first=1, second=\"DEFAULTCANARY\") -> int:  # COMMENTCANARY\\n        # INNERCOMMENTCANARY\\n        value = compute(\"BODYCANARY\")\\n        return value + innerCall(first)\\n\\n\\ndef top():\\n    pass\\n]",
+   "failure": "E   AssertionError: assert ['DEFAULTCANA...OMMENTCANARY'] == []"
+  },
+  {
+   "guard": "document code strings reach the terms",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_a_document_keeps_its_prose_and_only_the_names_of_its_code",
+   "failure": "E   assert 'snippetcanary' not in '[{\"id\": \"c0...d_line\": 8}]'"
+  },
+  {
+   "guard": "indented code reaches prose",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[indented]",
+   "failure": "E   assert 'LEAK' not in \"\\nBefore\\n\\...)\\n\\nAfter\\n\""
+  },
+  {
+   "guard": "an HTML block ends at a heading",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[pre-across-a-heading]",
+   "failure": "E   assert 'LEAK' not in \"\\n\\nprint('...>\\n\\nExample\""
+  },
+  {
+   "guard": "a lookalike tag closes an HTML block",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[lookalike-closing-tag]",
+   "failure": "E   AssertionError: assert 'LEAK' not in '\\n\\nLEAK\\n<...>\\n\\nHeading'"
+  },
+  {
+   "guard": "only a line's first HTML tag counts",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[closed-and-reopened-on-a-line]",
+   "failure": "E   AssertionError: assert 'LEAK' not in '\\n\\nLEAK\\n<...>\\n\\nHeading'"
+  },
+  {
+   "guard": "an HTML comment reaches prose",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[comment-across-a-heading]",
+   "failure": "E   AssertionError: assert 'LEAK' not in '\\n\\nLEAK\\n-->\\n\\nHeading'"
+  },
+  {
+   "guard": "doctests reach prose",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[doctest]",
+   "failure": "E   AssertionError: assert 'LEAK' not in '\\n>>> LEAK\\n'"
+  },
+  {
+   "guard": "a shorter fence closes a longer one",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[long-backtick-fence]",
+   "failure": "E   AssertionError: assert 'LEAK' not in '\\nLEAK\\n'"
+  },
+  {
+   "guard": "inline code reaches prose",
+   "file": "src/context_engine/code_index.py",
+   "file_sha256": "hex:19c5d5124b6f264b9a49fbe34742ecdd4e6fa2b2d37ee0d4e5e064541fc87888",
+   "test_file": "tests/unit/context_engine/test_code_index.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_code_index.py::test_nothing_that_may_be_code_reaches_prose[inline]",
+   "failure": "E   AssertionError: assert 'LEAK' not in '\\nCall `LEAK` now\\n'"
+  },
+  {
+   "guard": "setup accepts a wrong artifact",
+   "file": "src/optimus/acp/memory_setup.py",
+   "file_sha256": "hex:6a055aace7fcb77e31e1a01dd85495b529475b74d24c7b802bb43c8736c4bdbc",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_a_wrong_artifact_configures_nothing_and_stores_no_password",
+   "failure": "E   Failed: DID NOT RAISE MemorySetupError"
+  },
+  {
+   "guard": "a rerun replaces the password",
+   "file": "src/optimus/acp/memory_setup.py",
+   "file_sha256": "hex:6a055aace7fcb77e31e1a01dd85495b529475b74d24c7b802bb43c8736c4bdbc",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_a_rerun_never_replaces_a_working_password_or_downloads_again",
+   "failure": "E   Failed: no prompt"
+  },
+  {
+   "guard": "the manifest ignores the index literal",
+   "file": "src/optimus_security/launch_manifest.py",
+   "file_sha256": "hex:23d5a3628fe74daec952453f114769eb747294d02300eef3be61b41f5756587d",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_the_manifest_binds_the_index_literal_both_ways",
+   "failure": "E   Failed: DID NOT RAISE LaunchManifestError"
+  }
+ ]
+}
