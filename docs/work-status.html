@@ -101,7 +101,7 @@ GitHub's close reason and its title is struck through. “Belongs to” is the i
 table only. The Product choice above the tables and the tiles that show a count of Blocked, High priority or Partially implemented issues apply to every table, on top of each table's own
 filters. A missing, conflicting or unknown value, or a parent link that loops back (“parent cycle”),
 is shown in red, never guessed, and an issue without a recognized product and kind label is listed as untriaged, whatever the filters. A table wider than
-the page scrolls inside its own section.</p>
+the page scrolls inside its own section. Existing closed issues keep their prior classification; the Bugs table starts with the separately reviewed open-issue batch.</p>
 
 <script type="application/json" id="work-status-vocabulary">
 {
@@ -133,6 +133,7 @@ the page scrolls inside its own section.</p>
     "plan": "Plan",
     "track": "Track",
     "candidate": "Candidate",
+    "bug": "Bug",
     "follow-up": "Follow-up",
     "obligation": "Obligation",
     "item": "Item"
@@ -140,7 +141,8 @@ the page scrolls inside its own section.</p>
   "tables": [
     {"key": "features", "title": "Features", "kinds": ["feature"]},
     {"key": "plans", "title": "Plans", "kinds": ["plan"]},
-    {"key": "follow-ups", "title": "Follow-ups and defects", "kinds": ["follow-up"]},
+    {"key": "bugs", "title": "Bugs", "kinds": ["bug"]},
+    {"key": "follow-ups", "title": "Follow-ups", "kinds": ["follow-up"]},
     {"key": "hardening", "title": "Hardening work", "kinds": ["track", "item", "candidate"], "collapsed": true},
     {"key": "obligations", "title": "Obligations", "kinds": ["obligation"], "collapsed": true}
   ]
@@ -378,6 +380,7 @@ the page scrolls inside its own section.</p>
       blocked: count((row) => row.statusKey === "blocked"),
       high: priority === null ? 0 : count((row) => row.cells.priority.text === priority),
       partial: count((row) => row.statusKey === "partially-implemented"),
+      bugs: count((row) => row.kindKey === "bug"),
       followUps: count((row) => row.kindKey === "follow-up"),
       attention: count((row) => row.relationError !== null || row.problems.length > 0 || Object.keys(row.cells).some((name) => row.cells[name].bad)),
     };
@@ -386,6 +389,7 @@ the page scrolls inside its own section.</p>
       {id: "blocked", label: vocab.statuses.blocked, count: summary.blocked, column: "status", value: vocab.statuses.blocked},
       {id: "high", label: "High priority", count: summary.high, column: "priority", value: priority},
       {id: "partial", label: vocab.statuses["partially-implemented"], count: summary.partial, column: "status", value: vocab.statuses["partially-implemented"]},
+      {id: "bugs", label: "Bugs", count: summary.bugs},
       {id: "followUps", label: "Follow-ups", count: summary.followUps},
       {id: "attention", label: "Need attention", count: summary.attention},
     ].filter((tile) => tile.column === undefined || tile.value);
