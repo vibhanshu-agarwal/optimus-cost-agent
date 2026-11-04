@@ -31,7 +31,7 @@
     "where": "WSL2 Ubuntu-24.04, Linux 6.18, glibc 2.39, x86_64",
     "python": "3.14.6, uv's managed CPython already on that machine",
     "uv": "0.11.31",
-    "source": "hex:9665c09, exported into the WSL home",
+    "source": "hex:9a3a3d7, exported into the WSL home",
     "environment": "uv sync --frozen --extra memory --extra dev into a separate venv, 345 MB",
     "installed": "the locked versions, from PyPI",
     "real_parse": "tree-sitter parsed Python and Java",
@@ -40,11 +40,23 @@
       "CPUExecutionProvider"
     ],
     "tests": {
-      "focused": "476 passed, 8 skipped: 7 Windows-only behaviours and 1 needing psutil, which is measurement-only",
+      "focused": "494 passed, 15 skipped",
+      "skipped": [
+        {
+          "count": 14,
+          "why": "Windows-only behaviours: NTFS case rules, junctions, the path length limit and the extended path form",
+          "where": "tests/unit/guardrails/test_file_policy.py, tests/unit/context/test_memory_workspace.py"
+        },
+        {
+          "count": 1,
+          "why": "needs psutil, which is measurement-only and deliberately not a dependency",
+          "where": "tests/unit/tools/test_plan12_memory_m1_scale.py"
+        }
+      ],
       "offline_model": "1 passed: the real artifact through setup's layout and digest check, with every socket connection refused"
     },
     "not_run_there": "the released-Redis tests, which need Docker from inside that distribution. CI's Linux run covers the rest of the suite at the PR.",
-    "log": "optimus-handoff/p465-cp1/wsl-qualify-4.log, operator-local"
+    "log": "optimus-handoff/p465-cp1/wsl-qualify-5.log, operator-local"
   },
   "packages": [
     {
