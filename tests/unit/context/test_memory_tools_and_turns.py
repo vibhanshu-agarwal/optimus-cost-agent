@@ -422,6 +422,14 @@ def test_a_workspace_that_cannot_be_registered_logs_why(workspace, tmp_path, mon
     assert session_factory(memory_root=tmp_path, config_root=tmp_path, settings=None, config=config, artifact_directory="a")(workspace) is None
     assert "WORKSPACE_IDENTITY_UNAVAILABLE" in caplog.text and "git context is unavailable" in caplog.text
 
+    def denied(_workspace):
+        raise PermissionError("C:/private/folder is denied")
+
+    caplog.clear()
+    monkeypatch.setattr(memory_session, "resolve_workspace_identity", denied)
+    assert session_factory(memory_root=tmp_path, config_root=tmp_path, settings=None, config=config, artifact_directory="a")(workspace) is None
+    assert "PermissionError" in caplog.text and "private" not in caplog.text  # any other error's text may hold a path
+
 
 # --- the editor's unsaved text ---------------------------------------------------------------------
 

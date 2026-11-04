@@ -713,11 +713,27 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._prepare_memory:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: logs a fixed phrase or an exception's type name, never its text, a path or file contents; the status line it sends is a fixed line or counts.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_memory_wiring.py::test_an_index_that_fails_while_preparing_never_fails_a_turn",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.spec:AcpDuplexAdapter.card:logger_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: a live tool card: the tool's name, the model's argument and a line and timing count, sent only to this session's own client.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_each_tool_gets_a_started_and_an_ended_card",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:_in_own_thread:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: hands a call's result or exception to the waiter on the event loop; nothing is written anywhere.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_memory_wiring.py::test_an_index_that_fails_while_preparing_never_fails_a_turn",
       "evidence_tier": "unit"
     },
     {
@@ -1249,6 +1265,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_session:MemorySession.status:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the route's refusal or outage code and an exception's type name; the route's codes are fixed strings with no path or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_status_that_cannot_be_read_says_so_and_logs_why",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession.status:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the route's refusal or outage code and an exception's type name; the route's codes are fixed strings with no path or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_status_that_cannot_be_read_says_so_and_logs_why",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_session:MemorySession.stop:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
@@ -1262,6 +1294,22 @@
       "rationale": "Inspection: paths, hashes, symbols, ranks and reasons; the pack's bodies are not in this document and the pack holds them only in RAM.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodies",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:open_session:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the registry's and the workspace identity's own codes and fixed details, their probe diagnostics (names, counts, error numbers), or another error's type name only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_workspace_that_cannot_be_registered_logs_why",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:open_session:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the registry's and the workspace identity's own codes and fixed details, their probe diagnostics (names, counts, error numbers), or another error's type name only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_workspace_that_cannot_be_registered_logs_why",
       "evidence_tier": "unit"
     },
     {

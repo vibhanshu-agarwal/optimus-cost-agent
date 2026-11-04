@@ -27,7 +27,7 @@ from context_engine.context_pack import Pack, assemble_pack
 from context_engine.index_worker import Embedder, IndexStorage, IndexWorker, StorageRefusedError, StorageUnavailableError, WorkerOutcome
 from context_engine.repo_map import MapFile, RepoMap, build_repo_map
 from context_engine.retrieval import RRF_K, WEIGHTS, CatalogueFile, Retrieval, Retriever, query_terms, read_catalogue, seed_files
-from optimus.acp.trusted_paths import resolve_workspace_identity
+from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
 from optimus.agent.workspace_context import (
     DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
     WorkspaceContextResult,
@@ -707,7 +707,9 @@ def session_factory(*, memory_root: Path, config_root: Path, settings: OptimusGa
         try:
             registration = registry.resolve(resolve_workspace_identity(workspace), create=True)
         except (ProjectRegistryError, OSError, ValueError) as exc:
-            _LOG.warning("context index: this workspace cannot be registered: %s %s", exc, getattr(exc, "diagnostics", ()))
+            # These two carry codes and fixed details. Any other error's text may hold a path, so only its type is logged.
+            said = str(exc) if isinstance(exc, ProjectRegistryError | TrustedPathError) else type(exc).__name__
+            _LOG.warning("context index: this workspace cannot be registered: %s %s", said, getattr(exc, "diagnostics", ()))
             return None
         return MemorySession(
             policy=FilePolicy(workspace),
