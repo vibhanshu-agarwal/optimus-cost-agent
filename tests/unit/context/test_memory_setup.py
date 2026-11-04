@@ -6,13 +6,16 @@ from __future__ import annotations
 import base64
 import fnmatch
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from optimus.acp import launch_approval_cli, local_infra, memory_setup
+from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.local_gateway_secrets import CredentialLayer, CredentialProvenance, ProviderCredentialResolution, ProviderSecrets
+from optimus.acp.operator_paths import resolve_authorized_operator_paths
 from optimus_gateway import __main__ as gateway_main
 from optimus_model_policy.binding import trusted_approval_literal
 from optimus_security import gateway_identity as gi
@@ -80,8 +83,55 @@ def test_the_description_names_what_will_happen_before_any_download(tmp_path: Pa
         return True
 
     _run(tmp_path, confirm=confirm)
-    for fact in ("test/model", "abc", "MIT", "test-redis", "test-data", "6399", "No model is called"):
+    for fact in ("test/model", "abc", "MIT", "test-redis", "test-data", "6399", "No model is called", str(mc.memory_index_root(tmp_path))):
         assert fact in described[0]
+
+
+def test_a_rejected_download_leaves_nothing_and_the_next_attempt_is_not_hashed_with_it(tmp_path: Path) -> None:
+    """Found by the second real setup: the first attempt's extra files stayed and failed the digest of a correct download."""
+    settings = _settings(tmp_path)
+    artifact = mc.memory_index_root(tmp_path) / mc.ARTIFACTS_NAME / "model"
+
+    def with_an_extra_file(*, repository: str, revision: str, target: Path) -> None:
+        _download(repository=repository, revision=revision, target=target)
+        (target / "extra.txt").write_bytes(b"outside the digest")
+
+    def interrupted(*, repository: str, revision: str, target: Path) -> None:
+        (target / "partial.bin").write_bytes(b"half a file")
+        raise KeyboardInterrupt
+
+    with pytest.raises(memory_setup.MemorySetupError, match="digest"):
+        memory_setup.run_setup(tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=with_an_extra_file, defaults=settings)
+    assert not artifact.exists()
+    with pytest.raises(KeyboardInterrupt):
+        memory_setup.run_setup(tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=interrupted, defaults=settings)
+    assert (artifact / "partial.bin").exists()  # what a killed process leaves, which only the next attempt can clear
+
+    path = memory_setup.run_setup(tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=_download, defaults=settings)
+    assert path.exists() and [file.name for file in artifact.iterdir()] == ["model.onnx"]
+
+
+def test_setup_writes_where_a_launch_with_the_same_environment_reads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Found by the first real setup: it ignored OPTIMUS_CONFIG_ROOT, so it wrote to the default folder and the launch never saw it."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    override = tmp_path / "separate-config"
+    monkeypatch.setenv("OPTIMUS_CONFIG_ROOT", str(override))
+    monkeypatch.setattr(launch_approval_cli, "_require_tty", lambda: None)
+    written_to: list[Path] = []
+
+    def run_setup(config_root: Path, **_kwargs: Any) -> Path:
+        written_to.append(config_root)
+        return config_root / "config.json"
+
+    monkeypatch.setattr(memory_setup, "run_setup", run_setup)
+    assert launch_approval_cli.main(["--workspace-root", str(workspace), "memory-setup"]) == 0
+    launch_reads = resolve_authorized_operator_paths(workspace_root=workspace, snapshot_values=LaunchEnvironmentSnapshot.capture(os.environ).values)
+    assert written_to == [launch_reads.config_root] and launch_reads.config_root == override.resolve()
+
+    monkeypatch.setenv("OPTIMUS_CONFIG_ROOT", str(workspace / "inside"))  # a launch refuses this folder, so setup says so too
+    assert launch_approval_cli.main(["--workspace-root", str(workspace), "memory-setup"]) == 2
+    assert written_to == [launch_reads.config_root]
 
 
 def test_a_wrong_artifact_configures_nothing_and_stores_no_password(tmp_path: Path) -> None:

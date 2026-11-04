@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import secrets
+import shutil
 from collections.abc import Callable
 from importlib import resources
 from pathlib import Path
@@ -62,11 +63,12 @@ def _atomic_write(path: Path, data: bytes, *, mode: int) -> None:
     os.replace(temporary, path)
 
 
-def describe(defaults: dict[str, Any]) -> str:
+def describe(defaults: dict[str, Any], root: Path) -> str:
     embedding = defaults["embedding"]
     return (
         f"  Download once: {embedding['model']} from {embedding['source']} at revision {embedding['revision']}, "
         f"licence {embedding['licence']}, about {defaults['artifact_megabytes']} MB.\n"
+        f"  Folder: {root}.\n"
         f"  Keyring: one generated password in {KEYRING_SERVICE}.\n"
         f"  Docker, at the next approved launch: container {defaults['container']}, volume {defaults['volume']}, "
         f"{defaults['host']}:{defaults['port']}, up to {defaults['maxmemory_mb']} MB, image {defaults['image']}.\n"
@@ -93,16 +95,19 @@ def run_setup(
     if literal is not None:
         return root / CONFIG_NAME
     settings = shipped_defaults() if defaults is None else defaults
-    if not confirm(describe(settings)):
+    if not confirm(describe(settings, root)):
         raise MemorySetupError("Setup was not confirmed; nothing was changed.")
 
     embedding = settings["embedding"]
     root.mkdir(parents=True, exist_ok=True)
     artifact = root / ARTIFACTS_NAME / embedding["artifact_directory"]
-    artifact.mkdir(parents=True, exist_ok=True)
+    if artifact.exists():  # an earlier attempt's files would be hashed as part of this one
+        shutil.rmtree(artifact)
+    artifact.mkdir(parents=True)
     download(repository=embedding["repository"], revision=embedding["revision"], target=artifact)
     found = artifact_digest(_content_only(artifact))
     if found != embedding["artifact_sha256"]:
+        shutil.rmtree(artifact, ignore_errors=True)  # a rerun clears anything this could not
         raise MemorySetupError(f"The downloaded artifact's digest is {found}, not the configured one; nothing was configured.")
 
     password = secrets.token_urlsafe(32)

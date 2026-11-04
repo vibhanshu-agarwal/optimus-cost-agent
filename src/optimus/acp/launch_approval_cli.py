@@ -299,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "setup-credentials":
             return _cmd_setup_credentials(workspace_root)
         if args.command == "memory-setup":
-            return _cmd_memory_setup()
+            return _cmd_memory_setup(workspace_root)
         if args.command == "run":
             return _cmd_run(
                 workspace_root,
@@ -880,7 +880,7 @@ def _cmd_rotate_key(workspace_root: Path) -> int:
     return 0
 
 
-def _cmd_memory_setup() -> int:
+def _cmd_memory_setup(workspace_root: Path) -> int:
     """Plan 12.10 (ADR-037): the one place the artifact is downloaded and the index password created."""
     _require_tty()
 
@@ -892,9 +892,13 @@ def _cmd_memory_setup() -> int:
         print(f"optimus-trust: this opts this machine into the context index:\n{description}")
         return input("optimus-trust: continue? [y/N]: ").strip().lower() == "y"
 
-    roots = resolve_trusted_operator_roots(platform_name=sys.platform)
+    # The same resolution a launch uses, or a launch with OPTIMUS_CONFIG_ROOT never finds what this configured.
     try:
-        path = run_setup(roots.default_config_root, keyring_backend=keyring_backend, confirm=confirm)
+        _snapshot, paths = _prepare_candidate_context(workspace_root)
+        path = run_setup(paths.config_root, keyring_backend=keyring_backend, confirm=confirm)
+    except OperatorPathConfigurationError as exc:
+        print(f"optimus-trust: {exc.user_message}", file=sys.stderr)
+        return exc.exit_code
     except MemorySetupError as exc:
         print(f"optimus-trust: {exc}", file=sys.stderr)
         return 2
