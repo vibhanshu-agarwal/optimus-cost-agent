@@ -87,6 +87,7 @@ if TYPE_CHECKING:
 
 
 MEMORY_NOT_APPROVED_NOTICE = "Context index: set up, but this launch has not approved it. Run optimus-trust approve to use it. This session uses today's context."
+MEMORY_SETUP_REQUIRED_NOTICE = "Context index: setup required. Run optimus-trust memory-setup to use it. This session uses today's context."
 
 
 class _BuildServerKwargs(TypedDict):
@@ -882,6 +883,8 @@ def main(argv: list[str] | None = None) -> int:
             candidate.operator_paths.config_root, candidate.security_literals.get(MEMORY_INDEX_LITERAL_NAME), log=not_approved
         )[0]
         if memory_dir is None:
+            if not memory_notices:
+                memory_notices.append(MEMORY_SETUP_REQUIRED_NOTICE)
             return
         status = ensure_memory_redis(memory_dir, start=start, log=_print_log)
         if status.state != "ready":

@@ -699,13 +699,14 @@ def test_set_up_but_not_approved_says_how_to_approve_it(monkeypatch, tmp_path) -
     assert served[0]["memory_notice"] == acp_main.MEMORY_NOT_APPROVED_NOTICE and "optimus-trust approve" in acp_main.MEMORY_NOT_APPROVED_NOTICE
 
 
-def test_a_machine_that_never_set_it_up_gets_no_notice(monkeypatch, tmp_path) -> None:
+def test_a_machine_that_never_set_it_up_is_told_setup_is_required_and_gets_no_index(monkeypatch, tmp_path) -> None:
     _authorize(monkeypatch, tmp_path, _base_env())
     monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
     monkeypatch.setattr(acp_main, "gateway_memory_index", lambda *a, **k: (None, None))
     served = _served_kwargs(monkeypatch)
     assert acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)]) == 0
-    assert "memory_notice" not in served[0] and "memory_index" not in served[0]
+    assert served[0]["memory_notice"] == acp_main.MEMORY_SETUP_REQUIRED_NOTICE and "memory_index" not in served[0]
+    assert "optimus-trust memory-setup" in acp_main.MEMORY_SETUP_REQUIRED_NOTICE
 
 
 def test_check_config_passes_sanitized_environ_to_preflight(monkeypatch, tmp_path) -> None:
@@ -859,7 +860,7 @@ def test_anthropic_provider_selection_fails_before_agent_or_gateway_start(monkey
         gateway_call_seen["provider_credentials"] = provider_credentials
         return None
 
-    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None):
+    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None, memory_notice=None):
         agent_environ_seen.update(environ)
 
         class FakeServer:
@@ -900,7 +901,7 @@ def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(mo
         gateway_call_seen["shared_secret"] = shared_secret
         return None
 
-    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None):
+    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None, memory_notice=None):
         agent_environ_seen.update(environ)
 
         class FakeServer:
@@ -1248,7 +1249,7 @@ def test_no_gated_helper_reads_os_environ_after_capture(monkeypatch, tmp_path) -
         os_module.environ["OPTIMUS_API_KEY"] = "attacker-injected-key"  # pragma: allowlist secret
         return result
 
-    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None):
+    def fake_build_configured_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None, memory_notice=None):
         agent_environ_seen.update(environ)
 
         class FakeServer:
@@ -1417,7 +1418,7 @@ def test_main_omits_gateway_timeout_override_when_flag_absent(monkeypatch, tmp_p
     _authorize(monkeypatch, tmp_path, env)
     captured_kwargs: dict[str, object] = {}
 
-    def capturing_build(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None):
+    def capturing_build(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None, memory_notice=None):
         captured_kwargs.update(
             {"environ": environ, "workspace_root": workspace_root, "model": model}
         )
@@ -1520,7 +1521,7 @@ def test_serve_with_phoenix_passes_otlp_endpoint_only_to_gateway(monkeypatch, tm
         gateway_kwargs.update(kwargs)
         return None
 
-    def fake_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None):
+    def fake_server(*, environ, workspace_root, model, system_environ, ephemeral_hmac, durable_capture=None, memory_notice=None):
         agent_environ_seen.update(environ)
 
         class FakeServer:
@@ -2521,7 +2522,7 @@ def test_main_supplies_a_captured_system_view_and_not_the_agent_environ(monkeypa
     exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
 
     assert exit_code == 0
-    assert set(captured) == {"environ", "workspace_root", "model", "system_environ", "ephemeral_hmac", "durable_capture"}, sorted(captured)
+    assert set(captured) == {"environ", "workspace_root", "model", "system_environ", "ephemeral_hmac", "durable_capture", "memory_notice"}, sorted(captured)
     view = captured["system_environ"]
     assert view.get("PATH") == "/captured/bin", "must derive from the snapshot, not from agent_environ or os.environ"
     assert view.get("PATHEXT") == ".EXE"
