@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -155,6 +156,90 @@ def test_the_status_line_shows_only_when_the_state_changes(tmp_path: Path) -> No
         await _chat(adapter, session_id, "p4")
         shown = [text for text in _texts(outbound) if text.startswith("Context index")]
         assert shown == ["Context index: building, nothing published yet. This turn uses today's context.\n\n", "Context index: building, 1 of 9 files.\n\n", "Context index: ready, 9 of 9 files.\n\n"]
+
+    asyncio.run(scenario())
+
+
+class _Blocked(FakeSession):
+    """Its turn, or that turn's status, does not return until released."""
+
+    def __init__(self, where: str) -> None:
+        super().__init__()
+        self.where = where
+        self.release = threading.Event()
+        self.calls = 0
+
+    def turn(self, *, cancelled: Any) -> FakeTurn:
+        self.calls += 1
+        if self.where == "turn":
+            assert self.release.wait(30)
+        made = super().turn(cancelled=cancelled)
+        if self.where == "status":
+            made.status = lambda: (self.release.wait(30), self.state)[1]  # type: ignore[method-assign]
+        return made
+
+
+@pytest.mark.parametrize("where", ["turn", "status"])
+def test_a_blocked_index_never_holds_a_turn_and_its_late_answer_is_dropped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, where: str) -> None:
+    """Two real prompts hung for 150 s with no line at all, and nothing bounded this wait."""
+    monkeypatch.setattr(spec, "MEMORY_PREPARE_SECONDS", 0.05)
+
+    async def scenario() -> None:
+        session = _Blocked(where)
+        runner = MemoryRunner()
+        adapter, outbound = _adapter(tmp_path, lambda workspace: session, runner=runner)
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        try:
+            assert (await asyncio.wait_for(_chat(adapter, session_id, "p1"), 10))["result"]["stopReason"] == "end_turn"
+            assert runner.packers[0].memory is None  # today's context
+            assert (await asyncio.wait_for(_chat(adapter, session_id, "p2"), 10))["result"]["stopReason"] == "end_turn"
+            assert session.calls == 1 and runner.packers[1].memory is None  # no second call while the first is out
+        finally:
+            session.release.set()
+        await adapter._sessions.get(session_id).memory_probe
+        session.where = ""
+        await _chat(adapter, session_id, "p3")
+        assert session.calls == 2 and runner.packers[2].memory is session.turns[-1]
+        assert [text for text in _texts(outbound) if text.startswith("Context index")] == [
+            spec.INDEX_NOT_ANSWERING_NOTICE + "\n\n", "Context index: building, 1 of 9 files.\n\n"]
+
+    asyncio.run(scenario())
+
+
+def test_an_index_that_fails_while_preparing_never_fails_a_turn(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    class Failing(FakeSession):
+        def turn(self, *, cancelled: Any) -> FakeTurn:
+            raise RuntimeError("a native model has no error contract")
+
+    async def scenario() -> None:
+        runner = MemoryRunner()
+        adapter, outbound = _adapter(tmp_path, lambda workspace: Failing(), runner=runner)
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        assert (await _chat(adapter, session_id, "p1"))["result"]["stopReason"] == "end_turn"
+        assert runner.packers[0].memory is None
+        assert spec.INDEX_NOT_ANSWERING_NOTICE + "\n\n" in _texts(outbound)
+        assert "RuntimeError" in caplog.text
+
+    asyncio.run(scenario())
+
+
+def test_a_cancel_while_waiting_on_the_index_still_ends_the_turn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(spec, "MEMORY_PREPARE_SECONDS", 30)
+
+    async def scenario() -> None:
+        session = _Blocked("turn")
+        adapter, _outbound = _adapter(tmp_path, lambda workspace: session)
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        waiting = asyncio.create_task(_chat(adapter, session_id, "p1"))
+        try:
+            while session.calls == 0:
+                await asyncio.sleep(0.01)
+            waiting.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await waiting
+            assert session_id not in adapter._active_turns
+        finally:
+            session.release.set()
 
     asyncio.run(scenario())
 

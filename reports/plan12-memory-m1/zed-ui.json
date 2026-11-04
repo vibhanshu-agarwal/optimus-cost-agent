@@ -1,10 +1,61 @@
 {
+  "artifacts": {
+    "kept_at": "optimus-handoff/p1210-zed; screenshots show private file names, so only their digests are here",
+    "sha256": {
+      "expected.json": "hex:a0c9f4955ef241731c2697b78ec33c88f679cbb1bad8f93570a5c5f749a6fe81",
+      "scenario.json": "hex:a3f6cd6bf0bdb0fcac5c1d92327ccd9110acfdb7f1a3db8f98f46dcbd8d06098",
+      "stub/stub-requests.ndjson": "hex:0cd1bb44c9d162cfbdeb107cf37df241331149ca0c8d58f90e43a02c86de5515",
+      "stub_provider.py": "hex:c9c803d6e12e275bdfff21180cba16e090e5404697c0001ab3f6c0dae7b34e17",
+      "workspace/.optimus/debug-acp.ndjson": "hex:86bbc58b5da4d3b1d295fea148634b5832b0aee3447f78bd34a0829adde30098",
+      "workspace/.optimus/telemetry.jsonl": "hex:7f43f0f6c37ea2c87836ffed67baacc44ca7127755db7e82640202ebe1dd94d0",
+      "zed-entry.py": "hex:fa6d99f13ff4aebb6ce5ce730d16ebfd5e0bba276c5c26a5a40256bdea7794a9",
+      "zed-run/c1-chat-partial-grounding-full-screen.jpg": "hex:abae08290bd97033b4faf4731d6671ced395445c2ff5e6a205b7ae3bbbba978b",
+      "zed-run/f1-first-prompt-full-screen.jpg": "hex:9edb8793300b9a2d7b9486f80e543cf1320f5847ffd6efbadf37e516d8d48892",
+      "zed-run/manifests/session-5de88bf7c541499a93ff4b50c720e455_1.json": "hex:a5764cda4b298a24fb3eac7a2a1f21b827d395bf024c322ae7e07b2c586ff75b",
+      "zed-run/manifests/session-5de88bf7c541499a93ff4b50c720e455_2.json": "hex:44f7c015689b034f1286ebebd82e991dbc823ae453cd83cb9326690b594cce04",
+      "zed-run/manifests/session-6d7b8d032d284b57b1edb9fd96cffee5_1.json": "hex:7e6654d6932791b9f5c4f379e71e9e7d649505199f45ec961a7ecbf3f2507d17",
+      "zed-run/manifests/session-6d7b8d032d284b57b1edb9fd96cffee5_2.json": "hex:8ebd57e728a79e929cc45a5e440486a083e3c698650d005658730fd3676bbb3c",
+      "zed-run/manifests/session-6d7b8d032d284b57b1edb9fd96cffee5_3.json": "hex:7454530a8175709faa92f70e764dc2d91ff8d7aeb42c511ea293ee8a54113fa8",
+      "zed-run/manifests/session-6d7b8d032d284b57b1edb9fd96cffee5_4.json": "hex:ef5a3bcc0d3e287af9346bde2dee4821617dc44de56e871274092823cf6d0691",
+      "zed-run/manifests/session-827a8515c36940b29260dd1c1f13e5c4_1.json": "hex:7eabec14bb312defde257e3deeafe80a3021be5818c2eb93b0030c78365a83d2",
+      "zed-run/p1-saved-control-full-screen.jpg": "hex:e5300da9efe87e2539e7f10b64de620598ff531e94b5c3d5ad20901c2bd8ed54",
+      "zed-run/p2-unsaved-full-screen.jpg": "hex:a147899dc6ce07fce930d342fc7aeaae2f3d64ee6c2cc054386aac6c33b6cfd1",
+      "zed-run/p3-after-save-full-screen.jpg": "hex:eeec70ccc05b53a90f4a6255767e15da0b4e1fef27d1e2cc72102d82ab9a3979",
+      "zed-run/resume-after-exit-full-screen.jpg": "hex:8bf5aca0e4eac98a881d2c45aecba30a9d71ab18ecc0f979db7c20a5492d9398",
+      "zed-run/s1-setup-required.jpg": "hex:525ebc4062999b41ff4e40cfe71e3c8931c1a28f7b8637ded5b1ba12a8a14dd7",
+      "zed-run/s2-refused-until-approved.jpg": "hex:63092143a7dfbb0b98de9d4a92a096f07a1c608ff60faaea6df1e8bd8f8f465e",
+      "zed-run/t1-card-open.jpg": "hex:58929d0dab9f070d84b0dec427a52a40897560e408f1815d2ab8259ab9d189d3",
+      "zed-run/t1-four-tool-cards-full-screen.jpg": "hex:a783c203d676690d90a98236df0f00d1ec8ac38b5e5e2e0960644e3ebdbe6661"
+    }
+  },
   "chat": {
     "cards": [
       "SYMBOLS fuse",
       "grounding_check"
     ],
     "grounding_note": "not found in the inspected scope: gone_file_p1210.py"
+  },
+  "hung_attempts": {
+    "kept_at": "optimus-handoff/p1210-zed/rehearsal",
+    "note": "r7-index ran on the source that became 893981b with no probe; r9-stacks had a temporary faulthandler probe, which printed only a freed thread state",
+    "sha256": {
+      "rehearsal/r7-index/close.ndjson": "hex:241b9f20499747f3a9f4156853d5c4775a89d20682374472be7c83ed6aee503d",
+      "rehearsal/r7-index/new.ndjson": "hex:bf1620fe95c2eb9ab25bc04fafa50666a932e39516e8f65a1094aa8e813c4300",
+      "rehearsal/r7-index/prompt.err": "hex:808eeb248abd04649fa38da78350f91679ee2b5d9154c369a51d02f1cb210b17",
+      "rehearsal/r7-index/prompt.ndjson": "hex:a60e7dc2de158a3e387b1e61e63104838e78887fb239f40a332870dbbcd61d27",
+      "rehearsal/r9-stacks/close.ndjson": "hex:536f000d9cba37a64aeab7d932d3f88d430ecc6ee16fcbaa80e0edec6b2a3844",
+      "rehearsal/r9-stacks/new.ndjson": "hex:342a955409834aec66d171ba3b3b0b6f6ded5d270963edfbddd2e35d9e7891b4",
+      "rehearsal/r9-stacks/prompt.err": "hex:c2bf17c2232319ef4328ada5f0c5f34acf2338593e15fe238f5129b0631be763",
+      "rehearsal/r9-stacks/prompt.ndjson": "hex:edd0e4381e38a001c13daa541eb1709fabb473a1019890c2f518dd8ab2cdad17"
+    }
+  },
+  "launch": {
+    "agent": "optimus-agent.exe --workspace-root <kit>/workspace --debug-trace",
+    "approve": "optimus-trust --workspace-root <kit>/workspace approve --mode durable",
+    "environment": "zed-entry.py",
+    "rehearsal": "rehearse.sh, real acpx",
+    "setup": "optimus-trust --workspace-root <kit>/workspace memory-setup",
+    "zed": "Zed.exe -n <kit>/workspace, then the agent panel's optimus-p1210-index entry"
   },
   "not_quality_evidence": "every reply came from the stub, so this proves the plumbing in the real editor and says nothing about answer quality",
   "open": [
@@ -85,6 +136,15 @@
   "plan": "12.10",
   "schema": "plan12-memory-m1-zed-ui-v1",
   "setup": "ordinary optimus-trust memory-setup against a separate OPTIMUS_CONFIG_ROOT, typed by the operator; no test provisioner",
+  "source": {
+    "after_the_proof": "a later commit changes only how the status line compares states, and later ones bound the index wait; the states and cards above were not rerun on them",
+    "commit_time": "2026-11-04T23:11:12+05:30",
+    "commit_under_test": "hex:893981bc8b5c5bf75d7b5eb6dcbb02465033ac4d",
+    "dirty": false,
+    "first_zed_launch": "2026-11-04T23:12:17+05:30",
+    "last_zed_launch": "2026-11-04T23:33:02+05:30",
+    "loaded_from": "the worktree's src, as the debug trace's provenance records (optimus_acp_file)"
+  },
   "states": {
     "exit_and_resume": {
       "after_restart_line": "Context index: building, 374 of 398 files.",

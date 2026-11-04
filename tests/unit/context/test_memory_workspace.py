@@ -283,4 +283,3 @@ def test_git_answers_while_the_acp_reader_is_waiting_on_stdin(tmp_path: Path) ->
     finally:
         child.kill()
         child.communicate()
-

@@ -5,6 +5,7 @@ import concurrent.futures
 import contextlib
 import inspect
 import itertools
+import logging
 import re
 import sys
 import threading
@@ -15,7 +16,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from time import monotonic
-from typing import TYPE_CHECKING, Any, Literal, NotRequired, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, Protocol, TypedDict
 
 from context_engine import SummaryCheckpoint
 from optimus.acp.admission import AdmissionClass
@@ -168,6 +169,8 @@ ACP_PROTOCOL_VERSION = 1
 
 # Plan 12.1: ACP mode IDs <-> the canonical per-session ExecutionMode. Internal
 _LIVE_TOOL_NAMES = frozenset({"index_search", "index_outline", "index_symbols", "index_list"})
+MEMORY_PREPARE_SECONDS: Final = 2.0  # agent-selected: how long a person's turn waits for the index before going on without it
+INDEX_NOT_ANSWERING_NOTICE = "Context index: did not answer in time. This turn uses today's context."
 INDEX_NOT_REGISTERED_NOTICE = "Context index: this workspace could not be registered. This session uses today's context."
 BUFFER_READ_SECONDS = 2.0  # an editor answers from memory; a turn's context must not hang on one that does not
 _BUFFER_POLL_SECONDS = 0.05
@@ -449,6 +452,7 @@ class AcpSpecSession:
     # Plan 12.10: this session's context index, when the launch has one, and the last state a person was told.
     memory: Any = field(default=None, repr=False, compare=False)
     memory_state_shown: str | None = None
+    memory_probe: asyncio.Future[Any] | None = field(default=None, repr=False, compare=False)
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
     # Plan 12.4 Task 4, Auto launches only: each committed turn's routing, keyed by its turn sequence and published only
     # when that turn commits as completed or rejected. Kept apart from the canonical five-field turn records.
@@ -774,6 +778,32 @@ class RecordingOutboundChannel:
 
     def cancel_request(self, request_id: str | int, result: dict[str, Any]) -> None:
         self.respond(request_id, result)
+
+
+_LOG = logging.getLogger(__name__)
+
+
+def _in_own_thread(call: Callable[[], Any]) -> asyncio.Future[Any]:
+    """A daemon thread, so a call that never returns holds neither the shared executor nor the process's exit."""
+    loop = asyncio.get_running_loop()
+    future: asyncio.Future[Any] = loop.create_future()
+    future.add_done_callback(lambda done: done.cancelled() or done.exception())  # a late failure is expected and already reported
+
+    def deliver(result: Any, error: BaseException | None) -> None:
+        if not future.done():
+            future.set_result(result) if error is None else future.set_exception(error)
+
+    def run() -> None:
+        result, error = None, None
+        try:
+            result = call()
+        except Exception as exc:  # noqa: BLE001 - delivered to the waiter
+            error = exc
+        with contextlib.suppress(RuntimeError):  # the loop has closed, so nobody is waiting
+            loop.call_soon_threadsafe(deliver, result, error)
+
+    threading.Thread(target=copy_context().run, args=(run,), name="context-index-prepare", daemon=True).start()
+    return future
 
 
 class AcpDuplexAdapter:
@@ -1886,14 +1916,6 @@ class AcpDuplexAdapter:
             else None
         )
         turn.attached = attached_turn
-        if attached_turn is not None and session.memory is not None:
-            attached_turn.memory = await asyncio.to_thread(session.memory.turn, cancelled=turn.turn_control.halt_requested)
-            attached_turn.memory.on_tool = self._index_tool_cards(session_id, asyncio.get_running_loop())
-            if self._client_reads_files:
-                attached_turn.memory.read_buffer = self._buffer_reader(session_id, asyncio.get_running_loop(), turn.turn_control.halt_requested)
-            await self._emit_memory_status(session, turn, attached_turn.memory)
-        elif session.memory is None and (self._memory_notice is not None or self._memory_factory is not None):
-            await self._emit_index_line(session, turn, self._memory_notice or INDEX_NOT_REGISTERED_NOTICE)
         if self._route_policy is not None:
             turn.route_binder = self._route_policy.capture(
                 session_id=session_id, turn_seq=turn_seq, deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop())
@@ -1908,6 +1930,10 @@ class AcpDuplexAdapter:
             strategy=attached_turn.strategy if attached_turn is not None else None,
         )
         try:
+            if attached_turn is not None and session.memory is not None:
+                await self._prepare_memory(session, turn, attached_turn)
+            elif session.memory is None and (self._memory_notice is not None or self._memory_factory is not None):
+                await self._emit_index_line(session, turn, self._memory_notice or INDEX_NOT_REGISTERED_NOTICE)
             if self._auto_router is not None:
                 try:
                     routed = await self._route_auto_turn(
@@ -2475,9 +2501,30 @@ class AcpDuplexAdapter:
 
         return read
 
-    async def _emit_memory_status(self, session: AcpSpecSession, turn: AcpPromptTurn, memory: Any) -> None:
-        """Says where the context index stands when that changes, so a partial build or an outage is never silent. Live-only."""
-        await self._emit_index_line(session, turn, await asyncio.to_thread(memory.status))
+    async def _prepare_memory(self, session: AcpSpecSession, turn: AcpPromptTurn, attached_turn: AttachedTurn) -> None:
+        """What a person's turn waits for from the index, and where it stands, bounded. Past the limit the turn goes on with today's context. A
+        blocked call cannot be interrupted, so it keeps its own thread, its late result is dropped, and its session starts no other until it ends."""
+        probe = None
+        if session.memory_probe is None or session.memory_probe.done():
+            memory, cancelled = session.memory, turn.turn_control.halt_requested
+
+            def prepare() -> tuple[Any, str]:
+                prepared = memory.turn(cancelled=cancelled)
+                return prepared, prepared.status()
+
+            probe = session.memory_probe = _in_own_thread(prepare)
+            await asyncio.wait({probe}, timeout=MEMORY_PREPARE_SECONDS)
+        if probe is None or not probe.done() or probe.exception() is not None:
+            cause = "a call is still out" if probe is None else "past the limit" if not probe.done() else type(probe.exception()).__name__
+            _LOG.warning("context index: this turn goes on without it: %s", cause)
+            await self._emit_index_line(session, turn, INDEX_NOT_ANSWERING_NOTICE)
+            return
+        prepared, status = probe.result()
+        attached_turn.memory = prepared
+        prepared.on_tool = self._index_tool_cards(turn.session_id, asyncio.get_running_loop())
+        if self._client_reads_files:
+            prepared.read_buffer = self._buffer_reader(turn.session_id, asyncio.get_running_loop(), turn.turn_control.halt_requested)
+        await self._emit_index_line(session, turn, status)
 
     async def _emit_index_line(self, session: AcpSpecSession, turn: AcpPromptTurn, status: str) -> None:
         state = re.sub(r"\d+", "", status)  # newer counts are the same state; "nothing published" and "N of M" are not

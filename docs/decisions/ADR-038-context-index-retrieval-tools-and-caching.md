@@ -80,7 +80,7 @@ reply, a two second wait, a binary buffer or one over 8 MiB leaves the turn on d
 
 ### When the index is not in use
 
-A machine that never ran setup, a launch whose Redis is not ready, or a workspace that cannot be registered keeps today's context and says why once a session in the agent panel, because a person in the editor never sees the launch's log. For a machine that never ran setup, that line is the only change: its prompts and identities are the same. Between setup and the new approval the launch gate refuses the whole launch and names the approve command, like any change to an approved configuration (ADR-037). The panel's not-approved line covers only a configuration that changes after the gate passed.
+A machine that never ran setup, a launch whose Redis is not ready, or a workspace that cannot be registered keeps today's context and says why once a session in the agent panel, because a person in the editor never sees the launch's log. For a machine that never ran setup, that line is the only change: its prompts and identities are the same. Between setup and the new approval the launch gate refuses the whole launch and names the approve command, like any change to an approved configuration (ADR-037). The panel's not-approved line covers only a configuration that changes after the gate passed. A turn waits at most two seconds for the index to open its view and report its state (agent-selected). Past that, or on a failure, the turn goes on with today's context and says so. A blocked call cannot be interrupted, so it keeps its own thread, its late result is dropped, and the session starts no other until it ends.
 
 ### Grounding and the manifest
 
