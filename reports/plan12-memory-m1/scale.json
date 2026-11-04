@@ -3,6 +3,13 @@
   "plan": "12.10",
   "issue": 469,
   "state": "FORECAST_ONLY: Hadoop has been counted and sampled but not indexed. Task 5 qualifies scale against targets.json.",
+  "approved_corpus": {
+    "decision": "D5: the operator approved option B with a 4-hour limit on 2026-11-04.",
+    "repository": "Apache Hadoop rel/release-3.4.3, commit 9d50c68",
+    "scope": "All main Java and documents. Test Java is left out by an .optimusignore in the corpus, using the sample's rule: a path part is test or tests, or the name starts with Test or ends with Test.java or Tests.java. This needs no code change. Task 5 confirms the counts under the ignore file before the run.",
+    "hours_limit": 4,
+    "not_released": "This selects the corpus and its limit. The large run and the 4,608 MiB product Redis it needs still need their own release in Task 5."
+  },
   "measured_source": "pilot.json, plan12.10-pilot-2026-11-03, at code head 7c26c89 and the corrected 1 GiB container limit, on this repository's Python",
   "this_repository_src_and_tools": {
     "files": 392,

@@ -2,7 +2,8 @@
   "schema": "plan12-memory-m1.targets.v1",
   "plan": "12.10",
   "issue": 469,
-  "state": "PROPOSED: not frozen until the operator approves them (D6). Nothing has been evaluated against them. They are frozen before qualification. They now reflect the Java sample. A later calibration run would be identified as one and could not silently move a frozen limit.",
+  "state": "FROZEN: approved by the operator on 2026-11-04 (D6), unchanged from the proposal, before any qualification. Nothing has been evaluated against them. A later calibration run would be identified as one and could not silently move a frozen limit; changing a limit needs the operator.",
+  "frozen_at": "2026-11-04, proposal at code head b9b4154",
   "basis": "Limits sit about twice above the latest pilot, because latency moved up to 1.8 times between runs on this machine; those runs differ in more than noise, so this is a judgement and not a measured tolerance. K2 keeps the earlier probe's bounds and scales only its size.",
   "zero_tolerance": ["critical B1 failures", "authority failures", "wrong-branch evidence", "stale evidence"],
   "foreground": [
@@ -19,7 +20,7 @@
     {"metric": "embedded chunks per second on two threads", "runs": [10.1, 9.2, 9.8], "java_sample": 10.74, "limit_at_least": 7},
     {"metric": "proxy bulk records per second", "runs": [4815, 4601, 5264], "limit_at_least": 3000},
     {"metric": "seconds until the first file is visible, from the start of a cold build", "runs": [0.96, 0.85], "limit": 5},
-    {"metric": "hours per 1M eligible parsed LOC", "forecast": "2.0-2.4 for the recommended corpus", "limit": 4, "note": "The operator approves a total for the chosen corpus separately: 4 hours is proposed for corpus B in scale.json."},
+    {"metric": "hours per 1M eligible parsed LOC", "forecast": "2.0-2.4 for the recommended corpus", "limit": 4, "note": "The operator approved 4 hours in total for corpus B, recorded in scale.json."},
     {"metric": "seconds from an edit to its symbol being queryable, one file", "runs": [2.39, 2.96, 2.67], "limit": 6},
     {"metric": "seconds per 1000 files to reconcile an unchanged tree", "runs": [32, 34], "limit": 60, "note": "Measured on 50 files end to end. On Hadoop its read and parse parts come to 18 per 1000 files; the catalogue's cost is added in Task 5."},
     {"metric": "seconds to stop a build on cancel", "runs": [1.08, 0.23, 0.52], "limit": 3},
@@ -40,7 +41,7 @@
   ],
   "k2_second_run": {
     "items": 125000,
-    "items_why": "corpus B's real records, rounded up",
+    "items_why": "the approved corpus B's real records, rounded up",
     "vector_dimensions": 384,
     "records": "production adapters and real records",
     "concurrency": "four concurrent clients through the real route, served by its two workers and queue of eight",
