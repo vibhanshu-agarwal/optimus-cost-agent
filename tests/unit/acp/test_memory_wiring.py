@@ -4,6 +4,7 @@ turn handling and its retention are real. What the index itself does is proved i
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from pathlib import Path
 from typing import Any
@@ -11,11 +12,14 @@ from typing import Any
 import pytest
 
 from optimus.acp import spec
+from optimus.acp.server import NdjsonOutboundChannel
 from optimus.acp.session_retention import RetirementReason, RetirementStatus, SessionCloseResult
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.context.memory_session import GroundingReport
+from optimus.mcp.client_disposition import ClientMcpSessionState
 from tests.support.contract_doubles import checked_agent_runner
 from tests.unit.acp.test_context_engine_admission import Runner, make_attachment, new_session, prompt_request, rpc
+from tests.unit.acp.test_debug_trace_call_sites import _Writer
 
 
 class FakeTurn:
@@ -364,3 +368,66 @@ def test_a_cancel_ends_the_wait_for_the_editor_at_once_and_takes_back_the_reques
 
     asyncio.run(scenario())
     assert results == [None] and waited[0] < 1.5
+
+
+def test_a_session_removed_synchronously_with_failing_cleanup_still_stops_indexing(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        session = FakeSession()
+        adapter, _outbound = _adapter(tmp_path, lambda workspace: session)
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        spec_session = adapter._sessions.get(session_id)
+        assert spec_session is not None
+        spec_session.client_mcp_state = ClientMcpSessionState(session_id)
+        spec_session.client_mcp_state.register_close_hook(lambda: (_ for _ in ()).throw(OSError("controlled")))
+        with contextlib.suppress(OSError):
+            adapter.retention.remove_sync(session_id)
+        assert session.stopped == 1, "a quarantined session kept indexing"
+        adapter.retention._entries.clear()
+
+    asyncio.run(scenario())
+
+
+def _on_the_real_channel(tmp_path: Path, step: Any) -> None:
+    async def scenario() -> None:
+        channel = NdjsonOutboundChannel(_Writer())
+        adapter = AcpDuplexAdapter(runner=checked_agent_runner(MemoryRunner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=channel,
+                                   context_attachment=make_attachment())
+        halted = [False]
+        read = adapter._buffer_reader("session-1", asyncio.get_running_loop(), lambda: halted[0])
+        task = asyncio.create_task(asyncio.to_thread(read, "C:/x/a.py"))
+        while not channel._futures:
+            await asyncio.sleep(0.001)
+        request_id = next(iter(channel._futures))
+        await step(channel, request_id, halted, task)
+
+    asyncio.run(scenario())
+
+
+def test_the_real_channel_answers_the_reader(tmp_path: Path) -> None:
+    async def step(channel: Any, request_id: Any, _halted: Any, task: Any) -> None:
+        channel.deliver_client_response({"id": request_id, "result": {"content": "unsaved"}})
+        assert await task == "unsaved" and channel._futures == {}
+
+    _on_the_real_channel(tmp_path, step)
+
+
+def test_the_real_channels_error_means_disk(tmp_path: Path) -> None:
+    async def step(channel: Any, request_id: Any, _halted: Any, task: Any) -> None:
+        channel.deliver_client_response({"id": request_id, "error": {"code": -32000, "message": "no such file"}})
+        assert await task is None and channel._futures == {}
+
+    _on_the_real_channel(tmp_path, step)
+
+
+def test_on_the_real_channel_a_cancel_clears_the_request_and_a_late_reply_finds_nothing(tmp_path: Path) -> None:
+    async def step(channel: Any, request_id: Any, halted: Any, task: Any) -> None:
+        halted[0] = True
+        assert await task is None
+        for _ in range(100):
+            if not channel._futures:
+                break
+            await asyncio.sleep(0.001)
+        assert channel._futures == {}
+        channel.deliver_client_response({"id": request_id, "result": {"content": "late"}})
+
+    _on_the_real_channel(tmp_path, step)

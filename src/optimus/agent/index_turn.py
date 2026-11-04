@@ -44,7 +44,7 @@ class IndexRound:
 def _parameters(request: IndexToolRequest) -> dict[str, Any]:
     """A path argument as it is. Search text can quote source, so it is told apart by digest and length, never kept."""
     if request.tool in {"OUTLINE", "LIST"}:
-        return {"path": request.argument[:1024]}
+        return {"path": request.argument}
     return {"argument_sha256": hashlib.sha256(request.argument.encode("utf-8")).hexdigest(), "argument_chars": len(request.argument), "literal": request.argument.startswith('"')}
 
 

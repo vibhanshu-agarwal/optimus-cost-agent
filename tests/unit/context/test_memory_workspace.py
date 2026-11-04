@@ -201,3 +201,13 @@ def test_a_revision_reads_no_files_bytes_but_follows_them(tmp_path: Path, monkey
 
     monkeypatch.setattr(file_policy, "_read_validated", refuse)
     assert source.revision() != before
+
+
+def test_disk_facts_count_a_file_too_large_to_index(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+    policy = FilePolicy(tmp_path, max_index_file_bytes=10)
+    assert WorkspaceIndexSource(policy).disk_facts()[1] == 0
+    (tmp_path / "big.py").write_text("y = 1\n" * 10, encoding="utf-8")
+    source = WorkspaceIndexSource(policy)
+    revision, too_large = source.disk_facts()
+    assert too_large == 1 and revision == source.revision()[0]

@@ -314,7 +314,7 @@ def _session(workspace: Path, storage: _Storage, *, branch="main") -> MemorySess
         policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False), storage_for=lambda scope: storage,
         embedder_for=lambda: None, embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / f"{workspace.name}-manifests", branch_of=lambda root: branch,
     )
-    session.revision = lambda: "r" * 64  # type: ignore[method-assign]  # the disk matches what the table says was published
+    session.disk_facts = lambda: ("r" * 64, 0)  # type: ignore[method-assign]  # the disk matches what the table says was published; real revisions are in tests/integration/context
     return session
 
 
@@ -782,7 +782,7 @@ def test_a_record_of_changed_text_proves_nothing_either_way(workspace):
 
 def test_absence_is_not_claimed_from_a_generation_older_than_the_disk(workspace):
     session = _session(workspace, _Storage())
-    session.revision = lambda: "s" * 64  # a file has changed since this complete generation
+    session.disk_facts = lambda: ("s" * 64, 0)  # a file has changed since this complete generation
     assert session.turn().ground("`added_since`").unresolved == ()
 
 
@@ -800,7 +800,7 @@ def test_absence_is_not_claimed_where_the_parser_cannot_see(workspace):
 def test_grounding_asks_for_the_disk_only_once_and_only_if_something_looks_absent(workspace):
     session = _session(workspace, _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))]))
     asked = []
-    session.revision = lambda: asked.append(1) or "r" * 64
+    session.disk_facts = lambda: asked.append(1) or ("r" * 64, 0)
     session.turn().ground("`helper`")
     assert asked == []
     session.turn().ground("`one_name` and `other_name`")
@@ -958,3 +958,78 @@ def test_a_halted_turn_records_nothing_further(workspace):
     memory.on_tool = lambda call_id, phase, tool, argument, summary: state.__setitem__(0, phase == "completed")
     run_index_tools((IndexToolRequest("LIST", "."),), memory, _toolbox(workspace), halted=halted, event_sink=events.append, run_id="r")
     assert events == []
+
+
+# --- what review 2 found ----------------------------------------------------------------------------
+
+
+def test_the_map_reads_its_hashes_from_its_own_epoch_even_during_a_build(workspace):
+    class Moving(_Storage):
+        epoch = 3
+
+        def call(self, op, **fields):
+            reply = super().call(op, **fields)
+            if op == "coverage":
+                reply["current"]["epoch"] = self.epoch
+            return reply
+
+    storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=False)
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    storage.epoch = 4
+    session.repo_map(session._current_scope())
+    assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3, 4]
+
+
+@pytest.mark.parametrize("damage", ["emptied", "binary"])
+def test_a_file_that_can_no_longer_be_read_keeps_no_symbols_in_the_map(workspace, damage):
+    session, scope = _mapped(workspace)
+    assert "helper" in session.repo_map(scope)
+    (workspace / "pkg" / "a.py").write_bytes(b"" if damage == "emptied" else b"a\x00b")
+    text = session.repo_map(scope)
+    assert "helper" not in text and "pkg/a.py" in text
+
+
+def test_grounding_does_not_trust_a_listing_that_predates_a_deletion_or_an_exclusion(workspace):
+    session = _session(workspace, _Storage())
+    session.listing()
+    (workspace / "notes.md").unlink()
+    assert session.turn().ground("See notes.md.").unresolved == ("notes.md",)
+    session.listing()
+    _ignore(workspace, "pkg/\n")
+    assert session.turn().ground("See pkg/a.py.").unresolved == ("pkg/a.py",)
+
+
+def test_a_new_file_with_the_same_name_makes_a_bare_name_ambiguous_at_once(workspace):
+    session = _session(workspace, _Storage())
+    session.listing()
+    (workspace / "other").mkdir()
+    (workspace / "other" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    assert session.turn().ground("See a.py.").ambiguous == ("a.py",)
+    assert _assemble(session.turn(), task="explain a.py").blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
+
+
+def test_absence_is_not_claimed_when_a_file_was_too_large_to_parse(workspace):
+    session = _session(workspace, _Storage())
+    session.disk_facts = lambda: ("r" * 64, 1)
+    assert session.turn().ground("`defined_in_the_big_file`").unresolved == ()
+
+
+def test_an_empty_list_still_says_what_it_could_not_see(workspace, monkeypatch):
+    real = file_policy.os.scandir
+
+    def scandir(path):
+        if str(path).endswith("pkg"):
+            raise PermissionError(path)
+        return real(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    answer = _session(workspace, _Storage()).turn().tools.run("LIST", "pkg")
+    assert "Nothing the file policy admits" in answer and "1 folders could not be listed" in answer
+
+
+def test_a_long_path_argument_is_recorded_whole(workspace):
+    events = []
+    long_path = "a/" * 800 + "b.py"
+    run_index_tools((IndexToolRequest("OUTLINE", long_path),), _memory(_tools(workspace, _Storage())), _toolbox(workspace), event_sink=events.append, run_id="r")
+    assert events[0].payload["parameters"] == {"path": long_path}

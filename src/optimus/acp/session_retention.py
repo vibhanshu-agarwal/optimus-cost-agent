@@ -367,6 +367,8 @@ class SessionRetentionOwner:
         if entry is None or entry.result is not None:
             return
         entry.phase, entry.reason = 'RETIRING', RetirementReason.EXPLICIT_REMOVE
+        if entry.session.memory is not None:
+            entry.session.memory.stop()  # as in `_retire`: before any cleanup that may fail
         failures: list[str] = []
         pending = False
         primary: BaseException | None = None

@@ -36,7 +36,7 @@ tools-disabled final answer", and its D7 recommends "Zero paid calls for #465, s
 | | Search across all unsaved buffers | Rejected (plan) | The protocol has no such operation, and asking for every file is a global unsaved search. |
 | | Index or embed unsaved text | Rejected (plan) | It would persist what the person has not saved. |
 | Agent-selected | Judge a listing by name, and refresh it when something is missing or a disk tool runs | Chosen | Named files, tools and grounding see a file made seconds ago. A full policy walk reads every file: 34 to 47 seconds on Hadoop's 15,499 files, against 1.8 seconds by name. |
-| Agent-selected | During a build, reuse a catalogue for up to 60 seconds across publications | Chosen | A catalogue only suggests what to ask for, and every record is then asked for at the retrieval's own epoch, so an older one can miss a new file but cannot make a record current. Without it, a turn during a large build could spend dozens of calls on pages. A complete generation never reuses one. |
+| Agent-selected | During a build, reuse a catalogue for up to 60 seconds across publications | Chosen | A catalogue only suggests what to ask for, and every record is then asked for at the retrieval's own epoch, so an older one can miss a new file but cannot make a record current. Without it, a turn during a large build could spend dozens of calls on pages. A complete generation never reuses one, and the map never does, because its hashes are evidence and not a hint. |
 
 ## Decision
 
@@ -80,7 +80,7 @@ reply, a two second wait, a binary buffer or one over 8 MiB leaves the turn on d
 
 ### Grounding and the manifest
 
-After a reply, a card names cited files and symbols the inspected scope does not hold, or that match more than one file. It reports and decides nothing, and it never fails a turn. Symbols are judged on verified records and this turn's unsaved text. It claims one is absent only from a complete generation of exactly what is on disk now, with nothing in a language the parser cannot see; otherwise it says nothing. A manifest per run holds paths, hashes, symbols, ranks, reasons, budget and grounding, never a body, with the newest 200 kept per scope.
+After a reply, a card names cited files and symbols the inspected scope does not hold, or that match more than one file. It reports and decides nothing, and it never fails a turn. Symbols are judged on verified records and this turn's unsaved text. It claims one is absent only from a complete generation of exactly what is on disk now, with nothing in a language the parser cannot see and no file too large to parse; otherwise it says nothing. A cached listing vouches only for an exact path still admitted, so a deleted path or a second file of a bare name shows at once. A manifest per run holds paths, hashes, symbols, ranks, reasons, budget and grounding, never a body, with the newest 200 kept per scope.
 
 ## Consequences
 

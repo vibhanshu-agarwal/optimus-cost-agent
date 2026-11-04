@@ -337,6 +337,16 @@ class MemorySession:
                            unlisted=lambda: self._unlisted, unsaved_symbols=unsaved_symbols, before_each=self._policy.forget_ignore_files)
         return MemoryTurn(self, scope, retriever, tools, cancelled, overlay, read)
 
+    def listing_for(self, references: Sequence[str]) -> Sequence[str]:
+        """A listing current enough to resolve these. The cached one will do only for exact paths still admitted, since a bare name's
+        owners, or a path's existence, can change without it."""
+        listed = self.listing()
+        known = set(listed)
+        admits = self._policy.admitter()
+        if all(reference in known and admits(reference) for reference in references):
+            return listed
+        return self.listing(fresh=True)
+
     def repo_map(self, scope: _Scope) -> str:
         """The stable prefix. During a build its input is refreshed at most once per `MAP_SECONDS`; a failure gives no map, never a failed
         turn. What it renders is checked each time, because a cache's age never makes a record true."""
@@ -346,7 +356,7 @@ class MemorySession:
             try:
                 current = scope.storage.call("coverage").get("current")
                 if current:
-                    catalogue = self._catalogue_for(scope, current["epoch"], bool(current["coverage"].get("complete")))
+                    catalogue = read_catalogue(scope.storage, current["epoch"])  # exactly this epoch: its hashes are what the symbols below are checked against
                     cached = _CachedMap(scope.identity, self._clock(), seed_files(scope.storage, current["epoch"], catalogue), {item.path: item.file_hash for item in catalogue})
                     self._map = cached
                 elif cached is None:
@@ -371,7 +381,7 @@ class MemorySession:
                     kept.append(item)
                 elif not admits(item.path):
                     changed = True
-                elif item.symbols and (data := self._read(item.path)) is not None and hashlib.sha256(data).hexdigest() != cached.hashes.get(item.path):
+                elif item.symbols and ((data := self._read(item.path)) is None or hashlib.sha256(data).hexdigest() != cached.hashes.get(item.path)):
                     kept.append(MapFile(item.path))
                     changed = True
                 else:
@@ -404,8 +414,9 @@ class MemorySession:
             self._listed, self._unlisted = self._policy.names()
         return self._listed
 
-    def revision(self) -> str:
-        return self._source.revision()[0]
+    def disk_facts(self) -> tuple[str, int]:
+        """What a generation's revision would be now, and how many files are too large to index. This thread's own source and policy."""
+        return WorkspaceIndexSource(self._policy).disk_facts()
 
     @property
     def policy(self) -> FilePolicy:
@@ -446,9 +457,7 @@ class MemoryTurn:
         policy.forget_ignore_files()
         budget = min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
         with self._session.foreground():
-            diagnostics = resolve_task_references(selection_text, policy, self._session.listing())
-            if any(item.status is not WorkspaceReferenceStatus.RESOLVED for item in diagnostics):  # the last listing may predate the file
-                diagnostics = resolve_task_references(selection_text, policy, self._session.listing(fresh=True))
+            diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(extract_file_references(selection_text)))
             stop_reason, message = blocking_from_diagnostics(diagnostics)
             if stop_reason is not None:
                 return self._blocked(diagnostics, stop_reason, message)
@@ -568,9 +577,7 @@ class MemoryTurn:
         """Check what an answer cited against what exists now. An intended new file is #258's; here it only reads as not found."""
         self._session.policy.forget_ignore_files()
         references = extract_file_references(answer)
-        listed = list(self._session.listing())
-        if not {*references} <= {*listed, *(path.rsplit("/", 1)[-1] for path in listed)}:  # this turn may have written it
-            listed = list(self._session.listing(fresh=True))
+        listed = list(self._session.listing_for(references))
         names: dict[str, list[str]] = {}
         for path in listed:
             names.setdefault(path.rsplit("/", 1)[-1], []).append(path)
@@ -587,11 +594,11 @@ class MemoryTurn:
                 ambiguous.setdefault(reference)
             else:
                 unresolved.setdefault(reference)
-        now: list[str] = []  # what the disk is now, asked for at most once a reply and only if something looks absent
+        now: list[tuple[str, int]] = []  # what the disk is now, asked for at most once a reply and only if something looks absent
 
-        def on_disk_now() -> str:
+        def on_disk_now() -> tuple[str, int]:
             if not now:
-                now.append(self._session.revision())
+                now.append(self._session.disk_facts())
             return now[0]
 
         for symbol in dict.fromkeys(_BACKTICKED.findall(answer)):
@@ -610,10 +617,10 @@ class MemoryTurn:
             self._session.write_manifest(self._run_id, self.manifest)
         return report
 
-    def _symbol_state(self, symbol: str, on_disk_now: Callable[[], str]) -> str | None:
+    def _symbol_state(self, symbol: str, on_disk_now: Callable[[], tuple[str, int]]) -> str | None:
         """found, ambiguous or absent, judged on verified records and this turn's unsaved text, which replaces what the index holds for its
         file. None when nothing can be proved: absence takes a complete generation of exactly what is on disk now, with nothing in a language
-        the parser cannot see."""
+        the parser cannot see and no file too large for it to have read."""
         owners: set[str] = set()
         for path in list(self._overlay):
             data = self._read(path)
@@ -638,7 +645,7 @@ class MemoryTurn:
         if stale or not current:
             return None
         coverage = current["coverage"]
-        return "absent" if coverage.get("complete") and not coverage.get("unsupported") and current.get("revision") == on_disk_now() else None
+        return "absent" if coverage.get("complete") and not coverage.get("unsupported") and on_disk_now() == (current.get("revision"), 0) else None
 
 
 def session_factory(*, memory_root: Path, config_root: Path, settings: OptimusGatewaySettings, config: MemoryIndexConfig, artifact_directory: str) -> Callable[[Path], MemorySession | None]:

@@ -104,6 +104,10 @@ class FilePolicy:
     def root(self) -> Path:
         return self._root
 
+    @property
+    def max_index_file_bytes(self) -> int:
+        return self._max_index_file_bytes
+
     def revision(self) -> str:
         """The policy version bound to every ignore file consulted so far."""
         entries = sorted(
@@ -151,7 +155,7 @@ class FilePolicy:
             if links and any(parts[:end] in links for end in range(1, len(parts) + 1)):
                 admitted = admits("/".join(parts))
             else:
-                admitted = _parts_denial(parts) is None and self._ignored(parts, folders) is None
+                admitted = _relative_parts("/".join(parts)) == parts and _parts_denial(parts) is None and self._ignored(parts, folders) is None
             if admitted:
                 kept.append("/".join(parts))
         return tuple(kept), sum(1 for _parts, listed in entries if not listed)

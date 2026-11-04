@@ -680,3 +680,20 @@ def test_names_judges_a_symlink_by_its_target(tmp_path):
         pytest.skip("this host cannot create symbolic links")
     names = FilePolicy(root).names()[0]
     assert names == ("keep.py",)
+
+
+def test_names_refuses_what_a_read_would_refuse_for_its_spelling(tmp_path, monkeypatch):
+    _write(tmp_path, "keep.py", SENTINEL)
+    policy = FilePolicy(tmp_path)
+    monkeypatch.setattr(policy, "_listing", lambda *_args: iter([(("keep.py",), True), (("a:b.py",), True), (("c\\d.py",), True)]))
+    assert policy.names()[0] == ("keep.py",)
+    assert not policy.admitter()("a:b.py")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows cannot create this name")
+def test_names_and_a_read_agree_on_a_real_file_with_a_colon(tmp_path):
+    _write(tmp_path, "keep.py", SENTINEL)
+    (tmp_path / "a:b.py").write_text(SENTINEL, encoding="utf-8")
+    policy = FilePolicy(tmp_path)
+    assert policy.names()[0] == ("keep.py",)
+    assert not policy.read("a:b.py", purpose=AUTO)[0].allowed

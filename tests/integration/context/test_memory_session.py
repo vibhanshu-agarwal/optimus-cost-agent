@@ -316,6 +316,23 @@ def test_grounding_checks_real_symbols_on_a_complete_index(root: Path, sessions:
     assert set(report.resolved) == {"first.py", "first_function"} and report.unresolved == ("invented_name",)  # the disk is what was published
 
 
+def test_on_a_real_revision_absence_is_claimed_only_while_the_disk_matches(root: Path, sessions: _Sessions) -> None:
+    session = sessions.open(root)
+    _ready(session)
+    _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
+    assert session.turn().ground("`invented_name`").unresolved == ("invented_name",)
+    (root / "untouched.py").write_text("x = 1\n", encoding="utf-8")
+    assert session.turn().ground("`invented_name`").unresolved == ()
+
+
+def test_a_symbol_in_a_file_too_large_to_index_is_not_called_absent(root: Path, sessions: _Sessions) -> None:
+    (root / "large.py").write_text("def in_the_large_file():\n    return 1\n" + "# padding\n" * 120_000, encoding="utf-8")
+    session = sessions.open(root)
+    _ready(session)
+    _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
+    assert session.turn().ground("`in_the_large_file`").unresolved == ()
+
+
 def test_a_symbol_added_since_the_generation_is_not_called_absent(root: Path, sessions: _Sessions) -> None:
     session = sessions.open(root)
     _ready(session)

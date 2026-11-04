@@ -209,7 +209,7 @@ class IndexTools:
             else:
                 files.append(head)
         if not folders and not files:
-            return [f"Nothing the file policy admits is listed under {prefix or '.'}. Excluded files are not shown here."]
+            return [f"Nothing the file policy admits is listed under {prefix or '.'}. Excluded files are not shown here.{self._unseen_folders()}"]
         entries = [f"{name}/ ({count} files)" for name, count in sorted(folders.items())] + sorted(files)
         lines = [f"Scope: {prefix or '.'} as the file policy admits it, {len(entries)} entries. Excluded files are not shown.{self._unseen_folders()}"]
         lines.extend(entries[:LIST_ENTRIES])

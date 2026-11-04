@@ -71,6 +71,7 @@ class WorkspaceIndexSource(IndexSource):
     def __init__(self, policy: FilePolicy) -> None:
         self._policy = policy
         self._unreachable = 0
+        self._too_large = 0
 
     def files(self) -> Iterable[SourceFile]:
         unreachable = 0
@@ -94,6 +95,10 @@ class WorkspaceIndexSource(IndexSource):
         decision, data = self._policy.read(path, purpose=FilePurpose.INDEX)
         return data if decision.allowed else None
 
+    def disk_facts(self) -> tuple[str, int]:
+        """The revision a pass would publish now, and how many admitted files are over the index's size limit."""
+        return self.revision()[0], self._too_large
+
     def revision(self) -> tuple[str, bool]:
         """What a pass read, and whether it differs from a commit. Git's status names changed paths, not their contents, so each admitted
         file's size and modified time go in too; the worker's own check of the bytes is what decides `complete`, so no bytes are read here. Inside a repository Git
@@ -102,15 +107,19 @@ class WorkspaceIndexSource(IndexSource):
         self._policy.forget_ignore_files()
         status = _git(root, "status", "--porcelain=v1", "--untracked-files=normal")
         if status is None and any((folder / ".git").exists() for folder in (root, *root.resolve().parents)):
-            return secrets.token_hex(32), True
+            self._too_large = 0
+            return secrets.token_hex(32), True  # never equal to a published revision, so it proves nothing
         head = (_git(root, "rev-parse", "HEAD") or "").strip()
         contents = hashlib.sha256()
+        too_large = 0
         for path in self._policy.names()[0]:
             try:
                 facts = os.stat(reachable_path(root / path))
             except OSError:
                 continue
+            too_large += facts.st_size > self._policy.max_index_file_bytes
             contents.update(f"{path}\0{facts.st_size}\0{facts.st_mtime_ns}\0".encode())
+        self._too_large = too_large
         return hashlib.sha256(f"{head}\0{status}\0{contents.hexdigest()}".encode()).hexdigest(), status is None or bool(status.strip())
 
 
