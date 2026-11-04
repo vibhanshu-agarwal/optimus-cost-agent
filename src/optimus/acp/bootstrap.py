@@ -199,6 +199,7 @@ def build_configured_server(
     stage_c: StageCLaunch | None = None,
     auto_composition: AutoComposition | None = None,
     durable_capture: DurableCapture | None = None,
+    memory_index: tuple[Path, Path] | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -333,6 +334,19 @@ def build_configured_server(
                 shared_secret=settings.optimus_api_key.get_secret_value(),
                 attempt_observer=harness.attempt_observer,
             )
+        # Plan 12.10: (index root, config root) when this launch's approved index and its Redis are ready; otherwise today's context.
+        memory_factory = None
+        if memory_index is not None and stage_c is None:
+            from optimus.acp.memory_setup import shipped_defaults
+            from optimus.context.memory_session import session_factory
+            from optimus_security import memory_index_config
+
+            _literal, memory_config, _refused = memory_index_config.read(memory_index[0])
+            if memory_config is not None:
+                memory_factory = session_factory(
+                    memory_root=memory_index[0], config_root=memory_index[1], settings=settings, config=memory_config,
+                    artifact_directory=shipped_defaults()["embedding"]["artifact_directory"],
+                )
         # Seam 2, checkpoint B: the server takes custody of the Redis runtime and closes
         # it as the last stage of its own teardown.
         return AcpStreamServer(
@@ -346,6 +360,7 @@ def build_configured_server(
             route_policy=route_policy,
             context_attachment=context_attachment,
             session_seeder=session_seeder,
+            memory_factory=None if stage_c is not None else memory_factory,
             failure_telemetry=harness.telemetry_writer,
             auto_router=auto,
             durable_capture=durable_capture,

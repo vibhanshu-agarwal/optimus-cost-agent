@@ -97,6 +97,7 @@ class _BuildServerKwargs(TypedDict):
     stage_c: NotRequired[StageCLaunch]
     auto_composition: NotRequired[AutoComposition]
     durable_capture: NotRequired[DurableCapture]
+    memory_index: NotRequired[tuple[Path, Path]]
 
 
 
@@ -863,6 +864,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"optimus-agent: {exc.code}", file=sys.stderr)
         return 2
 
+    memory_index_ready: list[Path] = []
+
     def _ensure_memory_index(*, start: bool) -> None:
         """Plan 12.10: the approved context index's dedicated Redis. Anything short of ready says why and keeps today's context."""
         memory_dir = gateway_memory_index(
@@ -873,6 +876,8 @@ def main(argv: list[str] | None = None) -> int:
         status = ensure_memory_redis(memory_dir, start=start, log=_print_log)
         if status.state != "ready":
             _print_log(f"optimus-agent: the context index is {status.state}: {status.detail}. This launch keeps today's context.")
+            return
+        memory_index_ready.append(memory_dir)
 
     def _start_local_dependencies() -> tuple[str | None, int | None]:
         """Start Redis (+ optional Phoenix). Returns (otlp_endpoint, error_exit)."""
@@ -1095,6 +1100,8 @@ def main(argv: list[str] | None = None) -> int:
                     build_server_kwargs["stage_c"] = stage_c_launch
                 if auto_composition is not None:
                     build_server_kwargs["auto_composition"] = auto_composition
+                if memory_index_ready:
+                    build_server_kwargs["memory_index"] = (memory_index_ready[-1], candidate.operator_paths.config_root)
                 server = build_configured_server(**build_server_kwargs)
                 configured_server = server
             except StartupConfigurationError as exc:

@@ -71,15 +71,25 @@ class WorkspaceIndexSource(IndexSource):
     def __init__(self, policy: FilePolicy) -> None:
         self._policy = policy
         self._unreachable = 0
+        self._listing: tuple[str, ...] | None = None
 
     def files(self) -> Iterable[SourceFile]:
         unreachable = 0
+        listed: list[str] = []
         for decision in self._policy.walk(purpose=FilePurpose.INDEX):
             if decision.allowed:
+                listed.append(decision.relative_path)
                 yield SourceFile(decision.relative_path, self._modified(decision.relative_path))
             elif decision.reason == "excluded.unreadable":
                 unreachable += 1
         self._unreachable = unreachable
+        self._listing = tuple(listed)
+
+    def listing(self) -> tuple[str, ...]:
+        """The admitted files as of the last whole walk, or a walk now if there has been none. Paths only."""
+        if self._listing is None:
+            self._listing = tuple(decision.relative_path for decision in self._policy.walk(purpose=FilePurpose.INDEX) if decision.allowed)
+        return self._listing
 
     def unreachable(self) -> int:
         return self._unreachable

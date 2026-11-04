@@ -694,6 +694,7 @@ class AcpStreamServer:
         route_policy: Any | None = None,
         context_attachment: Any | None = None,
         session_seeder: Any | None = None,
+        memory_factory: Any | None = None,
         failure_telemetry: Any | None = None,
         auto_router: Any | None = None,
         mcp_idle_seconds: int | None = None,
@@ -720,6 +721,7 @@ class AcpStreamServer:
         # one-time scenario seeder, passed into every ndjson session adapter. None: absent engine.
         self._context_attachment = context_attachment
         self._session_seeder = session_seeder
+        self._memory_factory = memory_factory
         # Plan 12.4 Task 4: an Auto launch's per-turn router, which binds each turn's route and attachment itself.
         self._auto_router = auto_router
         # Plan 9.96, Task 5 Step 2: resolved once by build_configured_server()
@@ -1041,6 +1043,7 @@ class AcpStreamServer:
             route_policy=self._route_policy,
             context_attachment=self._context_attachment,
             session_seeder=self._session_seeder,
+            memory_factory=self._memory_factory,
             failure_telemetry=self._failure_telemetry,
             auto_router=self._auto_router,
             mcp_idle_seconds=self._mcp_idle_seconds,

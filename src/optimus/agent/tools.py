@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from optimus.agent.directives import validate_mcp_name
+from optimus.agent.directives import IndexToolRequest, validate_mcp_name
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
@@ -93,6 +94,42 @@ class AgentToolbox:
         return target.read_text(encoding="utf-8", newline=newline), AgentToolCall(
             tool_name="file_reader",
             summary=f"read {target.relative_to(self._workspace_root).as_posix()}",
+            authorization_outcome=result.verdict.value,
+        )
+
+    @staticmethod
+    def index_tool_name(request: IndexToolRequest) -> str:
+        return f"index_{request.tool.lower()}"
+
+    def index_tool(self, request: IndexToolRequest, tools: Any) -> tuple[str, AgentToolCall]:
+        """One read-only index tool after the guard allows it, under the same FILE_READ surface as any read. A tool that names a path
+        is judged on that path; one that does not is judged on the workspace, and the file policy still decides each file it reads."""
+        names_path = request.tool in {"OUTLINE", "LIST"}
+        target = self._workspace_root / request.argument if names_path else self._workspace_root
+        resolved = resolve_target(target)
+        result = self._guard.check(
+            PreToolRequest(
+                run_id=self._run_id,
+                session_id=self._session_id,
+                execution_mode=self._context.execution_mode,
+                tool_surface=ToolSurface.FILE_READ,
+                action=self.index_tool_name(request),
+                target_path=str(target if resolved is None else resolved),
+                generation_scope=GenerationScope.INLINE_SNIPPET,
+                approval_granted=self._context.approval_granted,
+                approver=self._context.user_approval_id,
+                requested_relative_path=request.argument if names_path and request.argument != "." else None,
+                target_unresolved=resolved is None,
+            )
+        )
+        if result.verdict is not PreToolVerdict.ALLOW or resolved is None:
+            raise PermissionError(result.reason)
+        started = time.monotonic()
+        text = tools.run(request.tool, request.argument)
+        milliseconds = round((time.monotonic() - started) * 1000)
+        return text, AgentToolCall(
+            tool_name=self.index_tool_name(request),
+            summary=f"{request.tool} {request.argument[:80]}: {text.count(chr(10)) + 1} lines in {milliseconds} ms",
             authorization_outcome=result.verdict.value,
         )
 

@@ -55,7 +55,8 @@ def huggingface_download(*, repository: str, revision: str, target: Path) -> Non
 
 def _atomic_write(path: Path, data: bytes, *, mode: int) -> None:
     temporary = path.with_name(path.name + ".tmp")
-    temporary.write_bytes(data)
+    with open(temporary, "wb") as handle:
+        handle.write(data)
     os.chmod(temporary, mode)
     os.replace(temporary, path)
 

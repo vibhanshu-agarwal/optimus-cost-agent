@@ -17,8 +17,10 @@ from optimus.agent.directives import (
     EDIT_OLD_MARKER,
     AgentDirectiveParseError,
     AgentPlanDirectives,
+    IndexToolRequest,
     directive_text,
     parse_agent_plan,
+    parse_index_tool_reply,
     parse_mcp_call_line,
     parse_mcp_list_line,
     plan_line_text,
@@ -26,6 +28,7 @@ from optimus.agent.directives import (
     split_cr_lf_keepends,
     strip_plan_text,
 )
+from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope
@@ -53,7 +56,7 @@ from optimus.loops.controller import GoalLoopController, GoalLoopResult
 from optimus.loops.detector import LoopDetection, LoopDetector, LoopSignalKind, LoopThresholds
 from optimus.loops.ledger import InMemoryProgressLedger
 from optimus.loops.models import IterationOutcome, IterationState, LoopBudgetPolicy, LoopStopReason, LoopToolExecutorProtocol
-from optimus.loops.signals import LoopStep, McpResults, ReadCoverage, ReadResult, mcp_step, parse_failure_step, read_step
+from optimus.loops.signals import LoopStep, McpResults, ReadCoverage, ReadResult, index_step, mcp_step, parse_failure_step, read_step
 from optimus.retry.policy import RetryController, RetryPolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
@@ -92,6 +95,7 @@ _BULLET_PREFIXES = ("- ", "* ", "+ ")
 class PlanningTurnKind(StrEnum):
     READ_MORE = "READ_MORE"
     MCP_TOOL = "MCP_TOOL"
+    INDEX_TOOL = "INDEX_TOOL"
     FINAL_PLAN = "FINAL_PLAN"
     REFUSE = "REFUSE"
 
@@ -263,6 +267,7 @@ class PlanningTurnDecision(BaseModel):
     mcp_server: str | None = None
     mcp_tool: str | None = None
     mcp_arguments: dict[str, object] | None = None
+    index_requests: tuple[IndexToolRequest, ...] = ()
 
 
 class PlanningLoopResult(BaseModel):
@@ -595,10 +600,15 @@ _FINAL_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")  # #410 R1: space
 _FINAL_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 
 
-def parse_planning_turn(text: str) -> PlanningTurnDecision:
+def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurnDecision:
+    """`index_tools`: this turn may ask for index tools (Plan 12.10). Without it those lines are not grammar."""
     stripped = strip_plan_text(text)  # #410 R1: a content separator at either end survives classification
     if not stripped:
         raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
+    if index_tools:
+        requests = parse_index_tool_reply(stripped)
+        if requests is not None:
+            return PlanningTurnDecision(kind=PlanningTurnKind.INDEX_TOOL, index_requests=requests)
 
     refuse_decision = _try_parse_refuse(stripped)
     if refuse_decision is not None:
@@ -1343,6 +1353,9 @@ class _PlanningIterationRunner:
         self._current_reads: tuple[PlanningReadEvidence, ...] = ()
         self._mcp_evidence_envelope: str = ""
         self._mcp_tool_calls: list[AgentToolCall] = []
+        self._memory = getattr(context_packer, "memory", None)  # Plan 12.10: the turn's context index, when it has one
+        self._index_rounds = 0
+        self._index_results = ""
         self._gateway_request_ids: list[str] = []
         self._total_cost_usd = Decimal("0")
         self._cost_complete = True
@@ -1351,7 +1364,7 @@ class _PlanningIterationRunner:
         self._last_provider: str | None = None
         self._last_wire_retry_count = 0
         self._typed_planning_stop_reason: str | None = None
-        self._last_non_progress_kind: Literal["GATEWAY_FAILURE", "READ_MORE", "MCP_TOOL", "UNPARSEABLE"] | None = None
+        self._last_non_progress_kind: Literal["GATEWAY_FAILURE", "READ_MORE", "MCP_TOOL", "INDEX_TOOL", "UNPARSEABLE"] | None = None
         self._halt_requested = halt_requested or (lambda: False)
         self._guard = guard or PreToolGuard.for_workspace(
             workspace_root=workspace_root,
@@ -1368,6 +1381,9 @@ class _PlanningIterationRunner:
             client_mcp_service=client_mcp_service,
             mcp_permission_broker=mcp_permission_broker,
         )
+
+    def _index_tools_open(self) -> bool:
+        return self._memory is not None and self._index_rounds < MAX_INDEX_ROUNDS
 
     def _cap_reached(self, spent: Decimal) -> bool:
         """Whether an evaluation caller's explicit cap is spent; a product run has no cap (Plan 12.2 Task 11)."""
@@ -1817,6 +1833,7 @@ class _PlanningIterationRunner:
         recovery_note = self._nudge or ""
         # Captured once per turn, so every repack and wire retry of this turn carries the same notice (#403).
         correction_notice = _correction_notice(self._parse_failure_code)
+        repo_map = "" if self._memory is None else self._memory.repo_map()
 
         def build(conversation_envelope: str) -> str:
             return build_multi_turn_planner_input(
@@ -1828,6 +1845,9 @@ class _PlanningIterationRunner:
                 carried_observations_envelope=carried_envelope,
                 current_read_evidence_envelope=current_envelope,
                 mcp_evidence_envelope=mcp_evidence_envelope,
+                repo_map=None if self._memory is None else repo_map,
+                index_results=self._index_results,
+                index_tools_enabled=self._index_tools_open(),
                 initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
                 # The sizes stay until the first guarded read: a turn that read nothing still needs
                 # them to size its re-read (#388). The raw context stays turn-1-only (Plan 9.87).
@@ -1902,7 +1922,7 @@ class _PlanningIterationRunner:
             )
 
         try:
-            decision = parse_planning_turn(response.output_text)
+            decision = parse_planning_turn(response.output_text, index_tools=self._index_tools_open())
         except PlanningTurnParseError as exc:
             self._last_non_progress_kind = "UNPARSEABLE"
             self._parse_failure_code = exc.code  # the next turn's notice; the repeat signature is unchanged (#403)
@@ -2070,6 +2090,25 @@ class _PlanningIterationRunner:
                 planning_turn,
             )
 
+        if decision.kind is PlanningTurnKind.INDEX_TOOL:
+            self._last_non_progress_kind = "INDEX_TOOL"
+            self._index_rounds += 1
+            assert self._memory is not None  # this kind is only ever parsed with one
+            ran = run_index_tools(decision.index_requests, self._memory, self._mcp_toolbox, halted=self._halt_requested)
+            self._mcp_tool_calls.extend(ran.calls)
+            self._index_results = keep_newest(self._index_results + ran.envelope)
+            self._current_reads = ()  # as for MCP evidence: raw ranges are visible for the turn after they were read
+            return self._observed(
+                IterationOutcome(
+                    summary="planning requested index tool evidence",
+                    deterministic_completion=False,
+                    failure_signature="INDEX:" + "|".join(f"{item.tool}:{item.argument}" for item in decision.index_requests),
+                    cost_usd=attempt_cost,
+                ),
+                index_step(requests=[(item.tool, item.argument) for item in decision.index_requests], evidence_envelope=ran.envelope, results=self._mcp_results),
+                planning_turn,
+            )
+
         if decision.kind is PlanningTurnKind.FINAL_PLAN:
             # The same turn-1-only rule as the initial context the prompt showed, plus this turn's current reads.
             self._final_evidence_sha256s = {
@@ -2204,6 +2243,7 @@ class _PlanningIterationRunner:
                 "GATEWAY_FAILURE": "PLANNING_GATEWAY_FAILURE",
                 "UNPARSEABLE": "PLANNING_UNPARSEABLE_RESPONSE",
                 "MCP_TOOL": "PLANNING_REPEATED_MCP_REQUEST",  # not a read (Plan 12.3, Design 7)
+                "INDEX_TOOL": "PLANNING_REPEATED_MCP_REQUEST",  # the same closed code: a repeated tool request that adds nothing
             }
             repeated_stop = repeated_stops.get(self._last_non_progress_kind, "PLANNING_REPEATED_READ_REQUEST")
             return self._planning_failure_result(

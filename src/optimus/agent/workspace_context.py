@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -213,6 +213,21 @@ def assemble_workspace_context_for_prompt(
         policy_revision=policy.revision(),
         excluded_counts=excluded_counts,
     )
+
+
+def resolve_task_references(task: str, policy: FilePolicy, listed: Sequence[str]) -> tuple[WorkspaceReferenceDiagnostic, ...]:
+    """What the task names, resolved against an already known listing of admitted files, by the rules a full walk uses."""
+    index = _build_eligible_file_index([policy.root / path for path in listed], policy.root)
+    found = (_resolve_reference(reference, policy, index) for reference in _extract_file_references(task))
+    return tuple(item for item in found if item is not None)
+
+
+def extract_file_references(text: str) -> tuple[str, ...]:
+    return _extract_file_references(text)
+
+
+def blocking_from_diagnostics(diagnostics: tuple[WorkspaceReferenceDiagnostic, ...]) -> tuple[str | None, str | None]:
+    return _blocking_from_diagnostics(diagnostics)
 
 
 def _blocking_from_diagnostics(

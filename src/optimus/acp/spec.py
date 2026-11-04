@@ -98,6 +98,7 @@ from optimus.acp.shapes import (
     build_request_permission_params,
     build_session_mode_state,
     build_tool_call_notification,
+    build_tool_call_update_notification,
     build_usage_update,
     new_approval_id,
     new_tool_call_id,
@@ -165,6 +166,7 @@ class _PlanningRequestFields(TypedDict):
 ACP_PROTOCOL_VERSION = 1
 
 # Plan 12.1: ACP mode IDs <-> the canonical per-session ExecutionMode. Internal
+_LIVE_TOOL_NAMES = frozenset({"index_search", "index_outline", "index_symbols", "index_list"})
 # ExecutionMode.PLAN is deliberately not selectable from ACP.
 _MODE_BY_ID: dict[str, ExecutionMode] = {AGENT_MODE_ID: ExecutionMode.AGENT, CHAT_MODE_ID: ExecutionMode.CHAT}
 _ID_BY_MODE: dict[ExecutionMode, str] = {mode: mode_id for mode_id, mode in _MODE_BY_ID.items()}
@@ -440,6 +442,9 @@ class AcpSpecSession:
     # Plan 12.2 Task 11: every model attempt of this session, settled exactly once, and the cost
     # alert crossings already reported.
     cost_settlement: TurnSettlement = field(default_factory=TurnSettlement, repr=False, compare=False)
+    # Plan 12.10: this session's context index, when the launch has one, and the last state a person was told.
+    memory: Any = field(default=None, repr=False, compare=False)
+    memory_state_shown: str | None = None
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
     # Plan 12.4 Task 4, Auto launches only: each committed turn's routing, keyed by its turn sequence and published only
     # when that turn commits as completed or rejected. Kept apart from the canonical five-field turn records.
@@ -524,6 +529,8 @@ class InMemoryAcpSpecSessionStore:
             return False
         del self._sessions[session.session_id]
         self._closed_state_ids.discard(session.session_id)
+        if session.memory is not None:
+            session.memory.stop()  # closing the session pauses its indexing
         return True
 
     def get(self, session_id: str) -> AcpSpecSession | None:
@@ -800,6 +807,7 @@ class AcpDuplexAdapter:
         alert_policies: tuple[AlertPolicy, ...] = (),
         route_policy: RoutePolicy | None = None,
         session_seeder: Callable[[Any], str | None] | None = None,
+        memory_factory: Callable[[Path], Any] | None = None,
         failure_telemetry: JsonlTelemetryWriter | None = None,
         interactive_recovery: bool = True,
         auto_router: AutoRouter | None = None,
@@ -870,6 +878,8 @@ class AcpDuplexAdapter:
         # attached session; a returned reason refuses the session instead. None (every other composition)
         # seeds nothing.
         self._session_seeder = session_seeder if context_attachment is not None else None
+        # Plan 12.10: only an attached launch can use it, because the pack is sized by the attachment's route.
+        self._memory_factory = memory_factory if context_attachment is not None else None
         self._closed = False
         self._session_retention_policy = session_retention_policy
         self._retention: SessionRetentionOwner | None = None
@@ -1661,6 +1671,11 @@ class AcpDuplexAdapter:
                     runtime.disposition.attach_runtime_resolver(state, sdk_adapter=runtime.sdk_adapter)
                 except Exception:
                     return error_response(request.get('id'), JsonRpcError(code=INVALID_REQUEST, message='invalid request'))
+            if self._memory_factory is not None:
+                # A session without an index keeps today's context; nothing about opening one refuses a session.
+                session.memory = await asyncio.to_thread(self._memory_factory, Path(cwd))
+                if session.memory is not None:
+                    session.memory.start()
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
             completed = True
@@ -1861,6 +1876,10 @@ class AcpDuplexAdapter:
             else None
         )
         turn.attached = attached_turn
+        if attached_turn is not None and session.memory is not None:
+            attached_turn.memory = await asyncio.to_thread(session.memory.turn, cancelled=turn.turn_control.halt_requested)
+            attached_turn.memory.on_tool = self._index_tool_cards(session_id, asyncio.get_running_loop())
+            await self._emit_memory_status(session, turn, attached_turn.memory)
         if self._route_policy is not None:
             turn.route_binder = self._route_policy.capture(
                 session_id=session_id, turn_seq=turn_seq, deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop())
@@ -2017,6 +2036,8 @@ class AcpDuplexAdapter:
             # endregion
             if planning_result.status is not AgentRunStatus.AWAITING_APPROVAL:
                 turn_control.record_outcome(Settlement(_conversation_outcome(planning_result).value))
+            if attached_turn is not None and attached_turn.memory is not None:
+                await self._emit_grounding(turn, attached_turn.memory, planning_result.output_text)
             if turn.execution_mode is ExecutionMode.CHAT:
                 return await self._finish_chat_turn(
                     request_id=request.get("id"),
@@ -2401,6 +2422,48 @@ class AcpDuplexAdapter:
             await self._emit_final_text(session_id=turn.session_id, text=_AUTO_REFUSAL_TEXT[reason], turn=turn)
             await self._emit_cost_alerts(turn)
         return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
+
+    def _index_tool_cards(self, session_id: str, loop: asyncio.AbstractEventLoop) -> Callable[[str, str, str, str], None]:
+        """Live ACP cards for index tools, sent from the worker thread as each one starts and ends. Cards are informational, so an
+        undelivered one never stops the tool."""
+        ids: dict[tuple[str, str], str] = {}
+
+        def card(phase: str, tool: str, argument: str, summary: str) -> None:
+            key = (tool, argument)
+            title = f"{tool} {argument[:80]}"
+            if phase == "started":
+                ids[key] = new_tool_call_id()
+                payload = build_tool_call_notification(session_id=session_id, tool_call_id=ids[key], title=title, summary="running", kind=tool_kind_for_name(f"index_{tool.lower()}"))
+            else:
+                payload = build_tool_call_update_notification(session_id=session_id, tool_call_id=ids[key], title=title, summary=summary, status=phase)
+            future = asyncio.run_coroutine_threadsafe(self._outbound.notify("session/update", payload), loop)
+            future.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+
+        return card
+
+    async def _emit_memory_status(self, session: AcpSpecSession, turn: AcpPromptTurn, memory: Any) -> None:
+        """Says where the context index stands when that changes, so a partial build or an outage is never silent. Live-only."""
+        status = await asyncio.to_thread(memory.status)
+        state = status.split(",", 1)[0]
+        if state == session.memory_state_shown or turn.turn_control.transport_abandoned():
+            return
+        session.memory_state_shown = state
+        try:
+            await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=f"{status}\n\n"), require_flushed=True)
+        except Exception:  # noqa: BLE001 - informational, like the Auto line
+            return
+
+    async def _emit_grounding(self, turn: AcpPromptTurn, memory: Any, text: str) -> None:
+        """A card naming what the reply cited that the inspected scope does not hold. It reports; it decides nothing, and it never fails a turn."""
+        try:
+            note = (await asyncio.to_thread(memory.ground, text)).note()
+            if note is None or turn.turn_control.transport_abandoned():
+                return
+            await self._outbound.notify(
+                "session/update", build_tool_call_notification(session_id=turn.session_id, tool_call_id=new_tool_call_id(), title="grounding_check", summary=note, kind=tool_kind_for_name("grounding_check"))
+            )
+        except Exception:  # noqa: BLE001 - see above
+            return
 
     async def _emit_auto_notice(self, turn: AcpPromptTurn, decision: AutoDecision) -> bool:
         """The turn's one Auto line (Plan 12.4 Task 5): live-only, never stored in the canonical history. True only once
@@ -3225,6 +3288,8 @@ class AcpDuplexAdapter:
             await self._outbound.notify("session/update", update_payload)
             return
         for tool_call in result.tool_calls:
+            if tool_call.tool_name in _LIVE_TOOL_NAMES:
+                continue  # its card was sent as it ran
             tool_call_id = new_tool_call_id()
             payload = build_tool_call_notification(
                 session_id=session_id,
