@@ -4,6 +4,7 @@ tests/integration/context."""
 from __future__ import annotations
 
 import base64
+import fnmatch
 import json
 from pathlib import Path
 from typing import Any
@@ -278,3 +279,24 @@ def test_a_launch_expects_what_the_gateway_it_starts_serves_with_an_index(monkey
     assert gateway_main.main(spawned["argv"][2:]) == 0
     assert configs[0].local_identity.identity == expected
     assert configs[0].memory_index is not None
+
+
+def test_the_real_download_asks_for_exactly_the_files_the_digest_covers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Found by the first real download: every other test copies a snapshot, so none went through this filter."""
+    repository_files = {name: name.encode("utf-8") for name in (
+        ".gitattributes", "README.md", "config.json", "model_optimized.onnx", "ort_config.json", "special_tokens_map.json", "tokenizer.json", "tokenizer_config.json", "vocab.txt")}
+    only_the_digests_files = {name: data for name, data in repository_files.items() if name in memory_setup._ALLOWED_ARTIFACT_FILES}
+    assert set(only_the_digests_files) == {"config.json", "model_optimized.onnx", "special_tokens_map.json", "tokenizer.json", "tokenizer_config.json"}
+
+    def snapshot_download(*, repo_id: str, revision: str, local_dir: Path, allow_patterns: list[str]) -> None:
+        for name, data in repository_files.items():
+            if any(fnmatch.fnmatchcase(name, pattern) for pattern in allow_patterns):
+                (local_dir / name).write_bytes(data)
+        (local_dir / ".cache").mkdir(exist_ok=True)  # what the hub leaves beside a local_dir download
+        (local_dir / ".cache" / "marker.lock").write_bytes(b"")
+
+    monkeypatch.setattr("huggingface_hub.snapshot_download", snapshot_download)
+    target = tmp_path / "artifact"
+    target.mkdir()
+    memory_setup.huggingface_download(repository="r", revision="v", target=target)
+    assert {path.name for path in target.iterdir() if path.is_file()} == set(only_the_digests_files)

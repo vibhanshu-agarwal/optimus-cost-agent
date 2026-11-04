@@ -30,7 +30,8 @@ from optimus_security.memory_index_config import (
 
 _DEFAULTS = "memory_index_defaults.json"
 _CREDENTIAL_NAME = "redis-password"
-_ALLOWED_ARTIFACT_FILES = ("*.json", "*.onnx", "*.txt")
+# Exactly what the configured digest covers and what is proved to load offline. A wildcard also fetches files outside the digest.
+_ALLOWED_ARTIFACT_FILES = ("config.json", "model_optimized.onnx", "special_tokens_map.json", "tokenizer.json", "tokenizer_config.json")
 
 
 class MemorySetupError(RuntimeError):
