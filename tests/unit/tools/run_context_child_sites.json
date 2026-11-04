@@ -596,6 +596,24 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited environment that imports the neutral engine modules with the optional parser package blocked, and starts nothing; proven by the census at the acceptance candidate."
   },
+  "tests/unit/context/test_memory_workspace.py::test_past_the_path_limit_the_revision_follows_the_file_and_git_reads_the_repository#1": {
+   "mechanism": "indirect",
+   "disposition": "non_python",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Launches git to build a temporary repository holding a file past the Windows path limit."
+  },
+  "tests/unit/context/test_memory_workspace.py::test_past_the_path_limit_the_revision_follows_the_file_and_git_reads_the_repository#2": {
+   "mechanism": "indirect",
+   "disposition": "non_python",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Launches git to build a temporary repository holding a file past the Windows path limit."
+  },
+  "tests/unit/context/test_memory_workspace.py::test_past_the_path_limit_the_revision_follows_the_file_and_git_reads_the_repository#3": {
+   "mechanism": "indirect",
+   "disposition": "non_python",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
+   "basis": "Launches git to build a temporary repository holding a file past the Windows path limit."
+  },
   "tests/unit/context/test_project_registry.py::_git#1": {
    "mechanism": "indirect",
    "disposition": "non_python",

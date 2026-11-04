@@ -586,12 +586,12 @@ def test_a_file_past_the_windows_path_limit_is_indexed_and_counted(index: Index)
     try:
         outcome = index.build()
         assert outcome.state == "complete" and outcome.coverage["parsed_loc"]["java"] == 3
-        assert relative in index.paths() and index.symbols("deepMethod") == ["Deep", "Deep.deepMethod"]
+        assert relative in index.paths() and index.symbols("deepmethod") == ["Deep", "Deep.deepMethod"]
         # An edit to it is seen, as any other file's would be.
         with open(full, "w", encoding="utf-8") as stream:
             stream.write("class Deep {\n  int otherMethod() { return 1; }\n}\n")
         assert index.build().state == "complete"
-        assert index.symbols("otherMethod") == ["Deep", "Deep.otherMethod"] and index.symbols("deepMethod") == []
+        assert index.symbols("othermethod") == ["Deep", "Deep.otherMethod"] and index.symbols("deepmethod") == []
     finally:
         shutil.rmtree(file_policy._extended(str(index.root / "a_folder_named_long_enough_to_add_up")))
 

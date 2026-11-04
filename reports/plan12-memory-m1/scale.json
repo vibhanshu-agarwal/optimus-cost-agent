@@ -2,7 +2,7 @@
   "schema": "plan12-memory-m1.scale.v1",
   "plan": "12.10",
   "issue": 469,
-  "state": "FORECAST_ONLY: no 1M LOC corpus has been counted or run. Task 5 qualifies scale against targets.json.",
+  "state": "FORECAST_ONLY: Hadoop has been counted and sampled but not indexed. Task 5 qualifies scale against targets.json.",
   "measured_source": "pilot.json, plan12.10-pilot-2026-11-03, at code head 7c26c89 and the corrected 1 GiB container limit, on this repository's Python",
   "this_repository_src_and_tools": {
     "files": 392,
@@ -29,21 +29,30 @@
     "note": "Different samples of real Python chunks on two threads, so the forecast uses a range rather than the best one.",
     "items_per_second": {"src_and_tools_length_sorted_sample": 8.7, "pilot_runs": [10.1, 9.2, 9.8]}
   },
-  "forecast_for_1m_parsed_loc": {
-    "basis": "Python only. Java chunk density and length are unmeasured, and Hadoop's eligible count is unknown. The sample release replaces this.",
-    "chunks_per_1k_loc": [59, 74],
-    "chunks": [60000, 75000],
-    "hours_end_to_end_at_8_7_items_per_second_and_this_embedding_share": [2.0, 2.5],
-    "redis_memory_mb_at_60000_records": 349.3,
-    "redis_memory_mb_at_75000_records_scaled": 436,
-    "redis_disk_mb_at_60000_records_after_load": 141,
-    "redis_disk_mb_peak_seen_in_the_run": 296,
-    "unchanged_reconcile_seconds_per_1000_files": {"measured": 34, "basis": "1.70 seconds over 50 files, including the final check of what was read; needs Java and a larger tree to confirm"}
+  "java_corpus": {
+    "evidence": "java-sample.json: Hadoop rel/release-3.4.3 under the real file policy and parser, with 2,000 Java chunks embedded by the production embedder and batching",
+    "parsed_java_loc": {"main": 1438914, "test": 1120627},
+    "embedded_chunks": {"java_main": 107204, "java_test": 61227, "documents_and_python": 5566},
+    "chunks_per_1k_loc": {"java_main": 74.5, "java_test": 54.6},
+    "embedded_items_per_second": 10.74,
+    "parse_error_files": 0,
+    "seconds_for_a_first_read_of_15302_files": 205.7,
+    "seconds_for_a_second_read_and_hash": 74.0
   },
-  "correction_to_the_plan": "P2's 89-100 items per second came from short synthetic text. Real chunks embed at about 9 per second on the same two threads, so the plan's 6-12 minute illustration becomes two hours or more.",
+  "forecast_by_corpus": {
+    "basis": "Embedding at 10.74 per second, or by characters for main code's shorter chunks, at the pilot's 96.5 percent embedding share. Documents are scaled by their length and are not measured: at 2,292 characters a chunk they are the slowest part. A forecast, not a measurement.",
+    "options": [
+      {"name": "A: main Java and documents of common, hdfs and yarn", "parsed_java_loc": 1081408, "chunks_estimated": 84000, "hours": [2.2, 2.6]},
+      {"name": "B: all main Java and documents", "parsed_java_loc": 1438914, "chunks": 112770, "records": 123812, "hours": [2.9, 3.4], "redis_memory_mb_scaled": 720, "redis_disk_peak_mb_scaled": 610},
+      {"name": "C: everything, with tests", "parsed_java_loc": 2559541, "chunks": 173997, "records": 189299, "hours": [5.0, 5.1], "redis_memory_mb_scaled": 1100, "redis_disk_peak_mb_scaled": 935}
+    ],
+    "unchanged_reconcile": {"seconds_per_1000_files_measured_parts": 18, "seconds_for_all_15302_files_measured_parts": 280, "basis": "first read plus second read and hash, measured on this tree; catalogue calls to the route are additional", "consequence": "a launch on a tree this size spends minutes in the background confirming nothing changed. It parses every file to count coverage, which is what to change if this proves too slow."}
+  },
+  "correction_to_the_plan": "P2's 89-100 items per second came from short synthetic text. Real chunks embed at about 9 to 11 per second on the same two threads, so the plan's 6-12 minute illustration becomes hours.",
+  "finding_from_the_sample": "On Windows with long paths off, the file policy's walk silently missed 3,713 of Hadoop's 15,586 tracked files, including 3,592 Java files. It now reaches them; see ADR-037.",
   "not_measured_yet": [
-    "Java: chunk density, chunk length and embedding rate",
-    "Unchanged reconcile on a tree of Hadoop's size",
+    "A full index of any option above: storage and route costs on real Java records",
+    "Documents' embedding rate on this corpus",
     "Assembly-budget share: assembly arrives in Task 4",
     "Query fan-out across retrieval channels: arrives in Task 4",
     "First-file visible time in a real session: Task 4's Zed proof"

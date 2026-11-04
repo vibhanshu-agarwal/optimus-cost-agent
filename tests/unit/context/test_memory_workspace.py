@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,6 +16,7 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context import memory_workspace
 from optimus.context.memory_workspace import EmbedderUnavailableError, FastembedEmbedder, GatewayIndexStorage, current_branch, index_scope
 from optimus.context.project_registry import ProjectRegistration
+from optimus.guardrails import file_policy
 from optimus.guardrails.file_policy import FilePolicy
 from optimus.usage.savings_report import ReportTransportError
 from optimus_security.memory_index_config import ARTIFACTS_NAME, EmbeddingConfig, artifact_digest
@@ -139,3 +143,38 @@ def test_a_folder_beneath_a_repository_git_cannot_read_never_repeats_a_revision(
     source = _source(tmp_path / "pkg")
     monkeypatch.setattr(memory_workspace, "_git", lambda *_a, **_k: None)
     assert source.revision()[0] != source.revision()[0]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the path length limit is a Windows mechanism")
+def test_past_the_path_limit_the_revision_follows_the_file_and_git_reads_the_repository(tmp_path: Path) -> None:
+    relative = "/".join(["a_folder_named_long_enough_to_add_up"] * 10) + "/deep.py"
+    full = file_policy._extended(str(tmp_path.joinpath(*relative.split("/"))))
+    os.makedirs(os.path.dirname(full))
+    with open(full, "w", encoding="utf-8") as stream:
+        stream.write("x = 1\n")
+    git = ["git", "-C", str(tmp_path), "-c", "core.longpaths=true", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run([*git, "init", "-q"], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-q", "-m", "one"], check=True)
+    source = _source(tmp_path)
+    try:
+        first, dirty = source.revision()
+        assert dirty is False, "a tracked file past the limit is not a deletion"
+        assert [item.path for item in source.files()] == [relative]
+        with open(full, "w", encoding="utf-8") as stream:
+            stream.write("x = 22\n")
+        second, dirty = source.revision()
+        assert second != first and dirty is True
+    finally:
+        shutil.rmtree(file_policy._extended(str(tmp_path / "a_folder_named_long_enough_to_add_up")))
+
+
+def test_a_folder_the_listing_could_not_read_is_counted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "locked").mkdir()
+    (tmp_path / "locked" / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("y = 1\n", encoding="utf-8")
+    source = _source(tmp_path)
+    assert [item.path for item in source.files()] == ["b.py", "locked/a.py"] and source.unreachable() == 0
+    real = os.scandir
+    monkeypatch.setattr(file_policy.os, "scandir", lambda path: (_ for _ in ()).throw(PermissionError(path)) if os.path.basename(path) == "locked" else real(path))
+    assert [item.path for item in source.files()] == ["b.py"] and source.unreachable() == 1

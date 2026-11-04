@@ -27,8 +27,24 @@
     "how": "installed together in this worktree's venv; the parser, worker, pilot and offline model load ran on it"
   },
   "linux": {
-    "state": "UNRUN",
-    "reason": "WSL Ubuntu-24.04 has Python 3.12 and the project needs 3.14; installing 3.14 downloads from GitHub, outside the release. Lock-level wheel availability below is not an install."
+    "state": "PROVEN",
+    "where": "WSL2 Ubuntu-24.04, Linux 6.18, glibc 2.39, x86_64",
+    "python": "3.14.6, uv's managed CPython already on that machine",
+    "uv": "0.11.31",
+    "source": "hex:9665c09, exported into the WSL home",
+    "environment": "uv sync --frozen --extra memory --extra dev into a separate venv, 345 MB",
+    "installed": "the locked versions, from PyPI",
+    "real_parse": "tree-sitter parsed Python and Java",
+    "onnx_providers": [
+      "AzureExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "tests": {
+      "focused": "476 passed, 8 skipped: 7 Windows-only behaviours and 1 needing psutil, which is measurement-only",
+      "offline_model": "1 passed: the real artifact through setup's layout and digest check, with every socket connection refused"
+    },
+    "not_run_there": "the released-Redis tests, which need Docker from inside that distribution. CI's Linux run covers the rest of the suite at the PR.",
+    "log": "optimus-handoff/p465-cp1/wsl-qualify-4.log, operator-local"
   },
   "packages": [
     {

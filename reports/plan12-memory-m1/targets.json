@@ -2,7 +2,7 @@
   "schema": "plan12-memory-m1.targets.v1",
   "plan": "12.10",
   "issue": 469,
-  "state": "PROPOSED: not frozen until the operator approves them (D6). Nothing has been evaluated against them. They are frozen before qualification. The Java sample may change them before approval; a later calibration run would be identified as one and could not silently move a frozen limit.",
+  "state": "PROPOSED: not frozen until the operator approves them (D6). Nothing has been evaluated against them. They are frozen before qualification. They now reflect the Java sample. A later calibration run would be identified as one and could not silently move a frozen limit.",
   "basis": "Limits sit about twice above the latest pilot, because latency moved up to 1.8 times between runs on this machine; those runs differ in more than noise, so this is a judgement and not a measured tolerance. K2 keeps the earlier probe's bounds and scales only its size.",
   "zero_tolerance": ["critical B1 failures", "authority failures", "wrong-branch evidence", "stale evidence"],
   "foreground": [
@@ -16,30 +16,31 @@
     {"metric": "seconds for a person's cancel to stop a turn, during a build", "runs": [2.47, 2.1, 2.35], "limit": 5}
   ],
   "indexing": [
-    {"metric": "embedded chunks per second on two threads", "runs": [10.1, 9.2, 9.8], "limit_at_least": 7},
+    {"metric": "embedded chunks per second on two threads", "runs": [10.1, 9.2, 9.8], "java_sample": 10.74, "limit_at_least": 7},
     {"metric": "proxy bulk records per second", "runs": [4815, 4601, 5264], "limit_at_least": 3000},
     {"metric": "seconds until the first file is visible, from the start of a cold build", "runs": [0.96, 0.85], "limit": 5},
-    {"metric": "hours per 1M eligible parsed LOC", "forecast": "2.0-2.5, Python-derived", "limit": 4, "note": "The operator approves a total for the chosen corpus separately, after the Java sample."},
+    {"metric": "hours per 1M eligible parsed LOC", "forecast": "2.0-2.4 for the recommended corpus", "limit": 4, "note": "The operator approves a total for the chosen corpus separately: 4 hours is proposed for corpus B in scale.json."},
     {"metric": "seconds from an edit to its symbol being queryable, one file", "runs": [2.39, 2.96, 2.67], "limit": 6},
-    {"metric": "seconds per 1000 files to reconcile an unchanged tree", "runs": [32, 34], "limit": 60, "note": "Measured on 50 files. Remeasure on the Java tree before relying on this."},
+    {"metric": "seconds per 1000 files to reconcile an unchanged tree", "runs": [32, 34], "limit": 60, "note": "Measured on 50 files end to end. On Hadoop its read and parse parts come to 18 per 1000 files; the catalogue's cost is added in Task 5."},
     {"metric": "seconds to stop a build on cancel", "runs": [1.08, 0.23, 0.52], "limit": 3},
     {"metric": "seconds until answering after a Redis kill, same publication", "runs": [2.4, 2.67, 2.59], "limit": 10}
   ],
   "resources": [
-    {"metric": "worker RSS, MB", "latest": 955.3, "limit": 1500},
+    {"metric": "worker RSS, MB", "latest": 1067.5, "limit": 1500},
     {"metric": "worker mean CPU during a build, percent of one core", "latest": 204.1, "limit": 250},
     {"metric": "native embedding threads, as configured", "latest": 2, "limit": 2},
     {"metric": "process threads doing work during a build (over 5 percent of a core), including orchestration; a coarse check, not proof of the line above", "latest": 2, "limit": 3},
     {"metric": "Gateway RSS, MB", "latest": 70.3, "limit": 150},
     {"metric": "Redis memory in the shipped configuration, MB", "latest": "349 of a 512 test limit, at 60000 records", "limit": 3072, "envelope": "maxmemory 4096 less a 1024 reserve, in a 4608 container. Nothing in the product enforces the reserve; a run over it fails."},
-    {"metric": "index disk at 75000 records, MB, at its peak in the run", "latest": "296 peak, with 60000 scale records", "limit": 1024}
+    {"metric": "index disk at the run's record count, MB, at its peak", "latest": "296 peak, with 60000 scale records; about 610 scaled to corpus B", "limit": 2048}
   ],
   "task_4_gates": [
     "Assembly's share of its budget and query fan-out are measured when assembly exists, and their limits are approved before Task 5.",
     "First-file visibility in a real Zed session is shown there; the limit above is the worker's."
   ],
   "k2_second_run": {
-    "items": 75000,
+    "items": 125000,
+    "items_why": "corpus B's real records, rounded up",
     "vector_dimensions": 384,
     "records": "production adapters and real records",
     "concurrency": "four concurrent clients through the real route, served by its two workers and queue of eight",

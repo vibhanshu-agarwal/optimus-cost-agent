@@ -26,6 +26,8 @@
     {"case": "a further edit to an already-dirty file is not called complete, tracked or untracked, nor one that keeps its size and time; a repository Git cannot read is never complete, from its root or a folder beneath; the final check stops for a cancel and gives way to a turn", "result": "PASS"},
     {"case": "a resumed partial cold build needs the cold slot; losing the slot stops the worker; a brief outage does not end the heartbeat", "result": "PASS"},
     {"case": "a source that moves during a pass is not called complete", "result": "PASS"},
+    {"case": "a file past the Windows path limit is walked, read, judged by the same rules, indexed, counted, and seen again when edited; a junction deep in a long path is judged by its real target", "result": "PASS"},
+    {"case": "a folder that cannot be listed is reported and stops a pass being called complete; a junction back to its own ancestor ends the walk there", "result": "PASS"},
     {"case": "only one workspace cold-builds at a time", "result": "PASS"},
     {"case": "an outage pauses the worker and a later pass completes", "result": "PASS"},
     {"case": "a cursor cannot change scope; a host holding the same key reads another scope only by naming it (the stated residual)", "result": "PASS"}
