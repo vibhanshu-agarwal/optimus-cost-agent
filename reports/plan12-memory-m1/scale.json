@@ -60,8 +60,7 @@
   "not_measured_yet": [
     "A full index of any option above: storage and route costs on real Java records",
     "Documents' embedding rate on this corpus",
-    "Assembly-budget share: assembly arrives in Task 4",
-    "Query fan-out across retrieval channels: arrives in Task 4",
+    "Assembly and fan-out on a large corpus: assembly.json measures a 52-file one",
     "First-file visible time in a real session: Task 4's Zed proof"
   ]
 }

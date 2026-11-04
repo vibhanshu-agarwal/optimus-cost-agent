@@ -21,7 +21,6 @@ RRF_K: Final = 60
 WEIGHTS: Final = {"lexical": 1.0, "dense": 1.0, "structure": 1.5, "recency": 0.25, "memory": 1.0}
 CHANNEL_K: Final = 40
 MAX_TERMS: Final = 64
-MAX_TERM_CHARS: Final = 64  # the route refuses a longer term, and with it every other term of the query
 MAX_SYMBOL_CHARS: Final = 256  # the route's limit, and no real symbol is longer
 MAX_NAMED: Final = 8
 MAP_SYMBOL_FILES: Final = 48
@@ -88,8 +87,7 @@ def query_terms(text: str) -> list[str]:
     seen: dict[str, None] = {}
     for word in text.split():
         for term in split_terms([word]).split():
-            if len(term) <= MAX_TERM_CHARS:
-                seen.setdefault(term)
+            seen.setdefault(term)
     return list(seen)[:MAX_TERMS]
 
 

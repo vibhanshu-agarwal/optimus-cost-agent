@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from optimus.gateway.disclosure import ContributorDisclosure
 from optimus_gateway.chat_completions import handle_chat_completions_request
 from optimus_gateway.responses import handle_responses_request
 from optimus_gateway.upstream_client import UrllibOpenAICompatibleClient
@@ -167,3 +168,23 @@ def test_a_contributor_disclosure_covers_the_cached_payload_it_was_issued_for(mo
     status, _ = _send("responses", config, client, model="us/contrib", route_binding=_contributor_binding(snapshot, prompt_cache="top_level"))
     assert status == 200
     assert wire.request_body(0)["cache_control"] == {"type": "ephemeral"}
+
+
+def test_the_hosts_own_disclosure_is_accepted_for_a_cached_route(monkeypatch, tmp_path):
+    """Not a binding built for the test: the one the host really signs must cover the control the Gateway will send."""
+    snapshot = verified_snapshot(tmp_path, _with_cache("top_level", count=2))
+    wire = Wire(reply=http_reply(200, ok_completion_body())).install(monkeypatch)
+    client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="https://openrouter.ai/api/v1")
+    disclosure = ContributorDisclosure(snapshot=snapshot, key=disclosure_key(SHARED_SECRET), deliver_notice=lambda _notice: True)
+    made = disclosure.binding(model_id="us/contrib", request_id="req-1", input_text="hi", output_cap=CAP)
+    assert made is not None
+    status, _ = _send("responses", gateway_config(model_policy(snapshot)), client, model="us/contrib", route_binding=made.to_wire())
+    assert status == 200 and wire.request_body(0)["cache_control"] == {"type": "ephemeral"}
+
+
+@pytest.mark.parametrize("mode", [None, "none", "implicit"])
+def test_the_client_itself_adds_nothing_for_any_other_setting(monkeypatch, mode):
+    wire = Wire(reply=http_reply(200, ok_completion_body())).install(monkeypatch)
+    client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="https://openrouter.ai/api/v1")
+    client.create_message_once(model="cn/alpha", input_text="hi", max_tokens=CAP, provider_controls={}, reasoning=None, prompt_cache=mode)
+    assert "cache_control" not in wire.request_body(0)
