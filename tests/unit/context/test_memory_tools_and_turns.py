@@ -466,7 +466,7 @@ def test_tools_and_grounding_agree_with_the_buffer_the_turn_saw(workspace):
     searched = turn.tools.run("SYMBOLS", "helper")
     assert "unsaved_helper" in searched and "(unsaved)" in searched and "their files changed" in searched  # the index's record is of the text on disk
     report = turn.ground("`unsaved_helper` is new and `invented_name` is not, and `helper` was replaced.")
-    assert report.resolved == ("unsaved_helper",) and report.unresolved == ("invented_name", "helper")
+    assert report.resolved == ("unsaved_helper",) and report.not_in_index == ("invented_name", "helper")
 
 
 def test_an_unsaved_buffer_never_reaches_the_manifest(workspace):
@@ -512,10 +512,11 @@ def test_named_symbols_are_code_shaped_words_only():
 def test_grounding_reports_what_is_not_there_and_never_claims_absence_during_a_build(workspace):
     turn = _session(workspace, _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=True)).turn()
     report = turn.ground("See a.py and pkg/gone.py, `helper` and `missing_name`.")
-    assert report.resolved == ("pkg/a.py", "helper") and set(report.unresolved) == {"pkg/gone.py", "missing_name"}
+    assert report.resolved == ("pkg/a.py", "helper") and report.unresolved == ("pkg/gone.py",) and report.not_in_index == ("missing_name",)
     assert "pkg/gone.py" in (report.note() or "")
+    assert "no definition in index generation 3, and the disk was not exhaustively checked: missing_name" in (report.note() or "")
     building = _session(workspace, _Storage(complete=False)).turn().ground("`missing_name`")
-    assert building.unresolved == ()
+    assert building.not_in_index == ()
 
 
 def test_grounding_says_when_a_name_is_ambiguous(workspace):
@@ -777,14 +778,16 @@ def test_grounding_says_a_symbol_with_two_verified_owners_is_ambiguous(workspace
 
 def test_a_record_of_changed_text_proves_nothing_either_way(workspace):
     records = [_record("x", "pkg/a.py", "helper", _sha("older text"))]
-    report = _session(workspace, _Storage(records)).turn().ground("`helper`")
-    assert report.resolved == () and report.unresolved == ()
+    session = _session(workspace, _Storage(records))
+    report = session.turn().ground("`helper`")
+    assert report.resolved == () and report.not_in_index == ()
+    assert session._priorities() == ("pkg/a.py",), "a proved change gets its pass"
 
 
 def test_absence_is_not_claimed_from_a_generation_older_than_the_disk(workspace):
     session = _session(workspace, _Storage())
     session.disk_facts = lambda: ("s" * 64, 0)  # a file has changed since this complete generation
-    assert session.turn().ground("`added_since`").unresolved == ()
+    assert session.turn().ground("`added_since`").not_in_index == ()
 
 
 def test_absence_is_not_claimed_where_the_parser_cannot_see(workspace):
@@ -795,7 +798,7 @@ def test_absence_is_not_claimed_where_the_parser_cannot_see(workspace):
                 reply["current"]["coverage"]["unsupported"] = 3
             return reply
 
-    assert _session(workspace, Unsupported()).turn().ground("`written_in_kotlin`").unresolved == ()
+    assert _session(workspace, Unsupported()).turn().ground("`written_in_kotlin`").not_in_index == ()
 
 
 def test_grounding_asks_for_the_disk_only_once_and_only_if_something_looks_absent(workspace):
@@ -1013,7 +1016,7 @@ def test_a_new_file_with_the_same_name_makes_a_bare_name_ambiguous_at_once(works
 def test_absence_is_not_claimed_when_a_file_was_too_large_to_parse(workspace):
     session = _session(workspace, _Storage())
     session.disk_facts = lambda: ("r" * 64, 1)
-    assert session.turn().ground("`defined_in_the_big_file`").unresolved == ()
+    assert session.turn().ground("`defined_in_the_big_file`").not_in_index == ()
 
 
 def test_an_empty_list_still_says_what_it_could_not_see(workspace, monkeypatch):
@@ -1067,17 +1070,17 @@ def test_absence_needs_each_changed_files_bytes_to_match_the_generation(workspac
     session = _session(workspace, storage)
     session.dirty_paths = lambda: ("pkg/a.py",)
     storage.held = _sha("what it was before an edit that kept its size and time")
-    assert session.turn().ground("`new_name`").unresolved == ()
+    assert session.turn().ground("`new_name`").not_in_index == ()
     storage.held = _sha(SOURCE)
-    assert session.turn().ground("`new_name`").unresolved == ("new_name",)
+    assert session.turn().ground("`new_name`").not_in_index == ("new_name",)
 
 
 def test_absence_is_not_claimed_outside_git_or_past_too_many_changes(workspace):
     session = _session(workspace, _Storage())
     session.dirty_paths = lambda: None
-    assert session.turn().ground("`any_name`").unresolved == ()
+    assert session.turn().ground("`any_name`").not_in_index == ()
     session.dirty_paths = lambda: tuple(f"f{number}.py" for number in range(65))
-    assert session.turn().ground("`any_name`").unresolved == ()
+    assert session.turn().ground("`any_name`").not_in_index == ()
 
 
 def test_the_proof_is_asked_for_once_a_reply_and_only_if_something_looks_absent(workspace):
@@ -1088,3 +1091,60 @@ def test_the_proof_is_asked_for_once_a_reply_and_only_if_something_looks_absent(
     assert asked == []
     session.turn().ground("`one_name` and `other_name`")
     assert asked == [1]
+
+
+# --- what review 4 found ----------------------------------------------------------------------------
+
+
+def test_what_was_proved_for_one_generation_says_nothing_about_the_next(workspace):
+    class Publishing(_Storage):
+        epoch = 3
+
+        def call(self, op, **fields):
+            reply = super().call(op, **fields)
+            if op == "coverage":
+                reply["current"]["epoch"] = self.epoch
+                self.epoch += 1  # each symbol's look finds a newer generation than the last
+            return reply
+
+    report = _session(workspace, Publishing()).turn().ground("`first_name` and `second_name`")
+    assert report.not_in_index == ("first_name",) and report.generation == 3
+
+
+def test_a_report_with_nothing_missing_names_no_generation(workspace):
+    report = _session(workspace, _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])).turn().ground("`helper`")
+    assert report.generation is None and report.note() is None
+
+
+@pytest.mark.parametrize("tool", ["SEARCH", "SYMBOLS"])
+def test_a_tool_that_finds_a_changed_file_asks_for_its_repair(workspace, tool):
+    session = _session(workspace, _Storage([_record("x", "pkg/a.py", "helper", _sha("older"), signature="def old():")]))
+    session.turn().tools.run(tool, "helper")
+    assert session._priorities() == ("pkg/a.py",)
+
+
+@pytest.mark.parametrize("tool", ["SEARCH", "SYMBOLS"])
+def test_unsaved_text_is_no_reason_to_repair_the_index(workspace, tool):
+    session = _session(workspace, _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE), signature="def helper():")]))
+    turn = session.turn()
+    turn.read_buffer = lambda path: UNSAVED
+    _assemble(turn, task="explain pkg/a.py")
+    turn.tools.run(tool, "helper")
+    assert session._priorities() == ()
+
+
+def test_the_map_asks_for_the_repair_and_rereads_the_generation_next_time(workspace):
+    session, scope = _mapped(workspace)
+    session.repo_map(scope)
+    (workspace / "pkg" / "a.py").write_text("def other():\n    return 1\n", encoding="utf-8")
+    session.repo_map(scope)
+    assert session._priorities() == ("pkg/a.py",)
+    assert session._map.at == float("-inf")
+
+
+def test_a_file_that_cannot_be_read_asks_for_no_repair(workspace):
+    session, scope = _mapped(workspace)
+    session.repo_map(scope)
+    (workspace / "pkg" / "a.py").write_bytes(b"a\x00b")
+    session.repo_map(scope)
+    assert session._priorities() == ()

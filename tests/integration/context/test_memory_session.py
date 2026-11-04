@@ -202,7 +202,7 @@ def test_a_partial_build_is_usable_and_says_so_and_a_turn_does_not_wait_for_the_
         assert time.monotonic() - started < 10
         assert "still building" in result.text and "covers only this scope" in result.text
         assert "still building" in session.turn().tools.run("SYMBOLS", "no_such_symbol")
-        assert session.turn().ground("`no_such_symbol`").unresolved == ()  # absence is not provable during a build
+        assert session.turn().ground("`no_such_symbol`").not_in_index == ()  # absence is not provable during a build
     finally:
         hold.set()
     _ready(session)
@@ -313,7 +313,7 @@ def test_grounding_checks_real_symbols_on_a_complete_index(root: Path, sessions:
     session = sessions.open(root)
     _ready(session)
     report = session.turn().ground("`first_function` is in first.py but `invented_name` is not.")
-    assert set(report.resolved) == {"first.py", "first_function"} and report.unresolved == ("invented_name",)  # the disk is what was published
+    assert set(report.resolved) == {"first.py", "first_function"} and report.not_in_index == ("invented_name",)  # the disk is what was published
 
 
 def test_on_a_real_revision_absence_is_claimed_only_while_the_disk_matches(root: Path, sessions: _Sessions) -> None:
@@ -321,9 +321,9 @@ def test_on_a_real_revision_absence_is_claimed_only_while_the_disk_matches(root:
     _ready(session)
     _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
     session.close()  # no worker may publish again, so this generation stays what it is
-    assert session.turn().ground("`invented_name`").unresolved == ("invented_name",)
+    assert session.turn().ground("`invented_name`").not_in_index == ("invented_name",)
     (root / "untouched.py").write_text("x = 1\n", encoding="utf-8")
-    assert session.turn().ground("`invented_name`").unresolved == ()
+    assert session.turn().ground("`invented_name`").not_in_index == ()
 
 
 def _same_size_and_time(path: Path, text: str) -> None:
@@ -339,11 +339,11 @@ def test_an_edit_keeping_size_and_time_is_not_read_as_absence(root: Path, sessio
     _ready(session)
     _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
     session.close()
-    assert session.turn().ground("`invented_name`").unresolved == ("invented_name",)
+    assert session.turn().ground("`invented_name`").not_in_index == ("invented_name",)
     before = session.disk_facts()
     _same_size_and_time(root / "dirty.py", "def bbbbbbb_name():\n    return 1\n")
     assert session.disk_facts() == before, "this edit must not be visible to size and time, or the case proves nothing"
-    assert session.turn().ground("`bbbbbbb_name`").unresolved == ()
+    assert session.turn().ground("`bbbbbbb_name`").not_in_index == ()
 
 
 def test_a_change_a_turn_proved_gets_its_pass_even_if_size_and_time_say_nothing_moved(root: Path, sessions: _Sessions) -> None:
@@ -357,19 +357,30 @@ def test_a_change_a_turn_proved_gets_its_pass_even_if_size_and_time_say_nothing_
     _until(lambda: "dirty.py:" in session.turn().tools.run("SYMBOLS", "bbbbbbb_name"))
 
 
+def test_a_change_only_a_tool_noticed_gets_its_pass(root: Path, sessions: _Sessions) -> None:
+    (root / "dirty.py").write_text("def aaaaaaa_name():\n    return 1\n", encoding="utf-8", newline="\n")
+    session = sessions.open(root)
+    _ready(session)
+    _until(lambda: session._indexed_revision is not None)
+    _same_size_and_time(root / "dirty.py", "def bbbbbbb_name():\n    return 1\n")
+    answer = session.turn().tools.run("SYMBOLS", "aaaaaaa_name")
+    assert "their files changed" in answer
+    _until(lambda: "dirty.py:" in session.turn().tools.run("SYMBOLS", "bbbbbbb_name"))
+
+
 def test_a_symbol_in_a_file_too_large_to_index_is_not_called_absent(root: Path, sessions: _Sessions) -> None:
     (root / "large.py").write_text("def in_the_large_file():\n    return 1\n" + "# padding\n" * 120_000, encoding="utf-8")
     session = sessions.open(root)
     _ready(session)
     _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
-    assert session.turn().ground("`in_the_large_file`").unresolved == ()
+    assert session.turn().ground("`in_the_large_file`").not_in_index == ()
 
 
 def test_a_symbol_added_since_the_generation_is_not_called_absent(root: Path, sessions: _Sessions) -> None:
     session = sessions.open(root)
     _ready(session)
     (root / "second.py").write_text("def added_since():\n    return 1\n", encoding="utf-8")
-    assert session.turn().ground("`added_since`").unresolved == ()
+    assert session.turn().ground("`added_since`").not_in_index == ()
 
 
 def test_editing_the_ignore_file_mid_session_takes_effect_at_once_and_leaves_the_index(root: Path, sessions: _Sessions) -> None:

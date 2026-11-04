@@ -49,8 +49,9 @@ def _where(hit: Hit) -> str:
 class IndexTools:
     def __init__(self, *, retriever: Retriever, storage: IndexStorage, read: Callable[[str], bytes | None], listing: Callable[[], Sequence[str]],
                  cancelled: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.monotonic, unlisted: Callable[[], int] = lambda: 0,
-                 unsaved_symbols: Callable[[str], Sequence[str]] = lambda _name: (), before_each: Callable[[], None] = lambda: None) -> None:
+                 unsaved_symbols: Callable[[str], Sequence[str]] = lambda _name: (), before_each: Callable[[], None] = lambda: None, changed: Callable[[str], None] = lambda _path: None) -> None:
         self._before_each = before_each
+        self._changed = changed
         self._unlisted = unlisted
         self._unsaved_symbols = unsaved_symbols
         self._retriever = retriever
@@ -68,6 +69,8 @@ class IndexTools:
         if hit.path not in seen:
             data = self._read(hit.path)
             seen[hit.path] = None if data is None else hashlib.sha256(data).hexdigest()
+        if seen[hit.path] not in {None, hit.file_hash}:
+            self._changed(hit.path)
         return seen[hit.path] == hit.file_hash
 
     @staticmethod

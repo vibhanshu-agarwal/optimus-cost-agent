@@ -96,13 +96,17 @@ class GroundingReport:
     """What an answer cited and whether it exists in what was inspected. It never decides whether the answer is right."""
 
     resolved: tuple[str, ...] = ()
-    unresolved: tuple[str, ...] = ()
+    unresolved: tuple[str, ...] = ()  # files, checked against the disk now
     ambiguous: tuple[str, ...] = ()
+    not_in_index: tuple[str, ...] = ()  # symbols with no definition in that generation: reading every file for each reply is not affordable
+    generation: int | None = None
 
     def note(self) -> str | None:
         parts = []
         if self.unresolved:
             parts.append("not found in the inspected scope: " + ", ".join(self.unresolved))
+        if self.not_in_index:
+            parts.append(f"no definition in index generation {self.generation}, and the disk was not exhaustively checked: " + ", ".join(self.not_in_index))
         if self.ambiguous:
             parts.append("matches more than one file: " + ", ".join(self.ambiguous))
         return "; ".join(parts) or None
@@ -332,9 +336,13 @@ class MemorySession:
                 if record.symbol and (record.symbol == name or wanted & set(query_terms(record.symbol)))
             ]
 
+        def changed(path: str) -> None:
+            if path not in overlay:  # the index is not wrong about a file whose unsaved text merely differs
+                self.request_pass((path,))
+
         # A tool answers about the disk as it is now: a person or the agent may have just made the file being asked about.
         tools = IndexTools(retriever=retriever, storage=scope.storage, read=read, listing=lambda: self.listing(fresh=True), cancelled=cancelled, clock=self._clock,
-                           unlisted=lambda: self._unlisted, unsaved_symbols=unsaved_symbols, before_each=self._policy.forget_ignore_files)
+                           unlisted=lambda: self._unlisted, unsaved_symbols=unsaved_symbols, before_each=self._policy.forget_ignore_files, changed=changed)
         return MemoryTurn(self, scope, retriever, tools, cancelled, overlay, read)
 
     def listing_for(self, references: Sequence[str]) -> Sequence[str]:
@@ -381,11 +389,16 @@ class MemorySession:
                     kept.append(item)
                 elif not admits(item.path):
                     changed = True
-                elif item.symbols and ((data := self._read(item.path)) is None or hashlib.sha256(data).hexdigest() != cached.hashes.get(item.path)):
+                elif not item.symbols:
+                    kept.append(item)
+                elif (data := self._read(item.path)) is not None and hashlib.sha256(data).hexdigest() == cached.hashes.get(item.path):
+                    kept.append(item)
+                else:
                     kept.append(MapFile(item.path))
                     changed = True
-                else:
-                    kept.append(item)
+                    if data is not None:
+                        self.request_pass((item.path,))
+                        cached.at = float("-inf")  # read the repaired generation next time, or this asks for a pass on every turn until the map ages out
             if not changed:
                 return built
             files = kept
@@ -588,6 +601,7 @@ class MemoryTurn:
         resolved: dict[str, None] = {}
         unresolved: dict[str, None] = {}
         ambiguous: dict[str, None] = {}
+        not_in_index: dict[str, None] = {}
         for reference in references:
             if len(names.get(reference, ())) > 1:  # a bare name, even if one of its owners sits at the root
                 ambiguous.setdefault(reference)
@@ -597,15 +611,16 @@ class MemoryTurn:
                 resolved.setdefault(names[reference][0])
             else:
                 unresolved.setdefault(reference)
-        proved: list[bool] = []  # asked for at most once a reply, and only if something looks absent
+        proved: list[tuple[tuple[int, Any], bool]] = []  # asked for at most once a reply, only if something looks absent, and good only for that generation
 
         def generation_is_the_disk(current: Mapping[str, Any]) -> bool:
+            generation = (current["epoch"], current.get("revision"))
             if not proved:
-                proved.append(self._generation_is_the_disk(current))
-            return proved[0]
+                proved.append((generation, self._generation_is_the_disk(current)))
+            return proved[0] == (generation, True)
 
         for symbol in dict.fromkeys(_BACKTICKED.findall(answer)):
-            if symbol in resolved or symbol in unresolved or symbol in ambiguous:
+            if symbol in resolved or symbol in unresolved or symbol in ambiguous or symbol in not_in_index:
                 continue
             found = self._symbol_state(symbol, generation_is_the_disk)
             if found == "found":
@@ -613,15 +628,17 @@ class MemoryTurn:
             elif found == "ambiguous":
                 ambiguous.setdefault(symbol)
             elif found == "absent":
-                unresolved.setdefault(symbol)
-        report = GroundingReport(tuple(resolved), tuple(unresolved), tuple(ambiguous))
+                not_in_index.setdefault(symbol)
+        report = GroundingReport(tuple(resolved), tuple(unresolved), tuple(ambiguous), tuple(not_in_index), proved[0][0][0] if proved and not_in_index else None)
         if self.manifest:
             self.manifest["grounding"] = asdict(report)
             self._session.write_manifest(self._run_id, self.manifest)
         return report
 
     def _generation_is_the_disk(self, current: Mapping[str, Any]) -> bool:
-        """Size and time are only a hint, so every file Git calls changed is compared by its bytes. For the rest, this is as sure as Git is."""
+        """Whether a generation may be reported as having no definition of a name. Size and time are only a hint, so every file Git calls
+        changed is compared by its bytes. For the rest this is as sure as Git is, which is why the report names the generation and says the
+        disk was not exhaustively checked rather than saying the name is absent."""
         session = self._session
         coverage = current["coverage"]
         if not coverage.get("complete") or coverage.get("unsupported") or session.disk_facts() != (current.get("revision"), 0):
@@ -642,9 +659,9 @@ class MemoryTurn:
         return True
 
     def _symbol_state(self, symbol: str, generation_is_the_disk: Callable[[Mapping[str, Any]], bool]) -> str | None:
-        """found, ambiguous or absent, judged on verified records and this turn's unsaved text, which replaces what the index holds for its
-        file. None when nothing can be proved: absence takes a complete generation of what is on disk now, with nothing in a language the
-        parser cannot see and no file too large for it to have read."""
+        """found, ambiguous or absent from the generation, judged on verified records and this turn's unsaved text, which replaces what the
+        index holds for its file. None when nothing can be said: that takes a complete generation of what is on disk now, as far as size,
+        time and Git can tell, with nothing in a language the parser cannot see and no file too large for it to have read."""
         owners: set[str] = set()
         for path in list(self._overlay):
             data = self._read(path)
@@ -664,6 +681,8 @@ class MemoryTurn:
                 owners.add(record["path"])
             else:
                 stale = True
+                if data is not None:
+                    self._session.request_pass((record["path"],))
         if owners:
             return "ambiguous" if len(owners) > 1 else "found"
         if stale or not current:
