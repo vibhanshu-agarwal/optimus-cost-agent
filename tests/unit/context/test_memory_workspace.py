@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -250,3 +251,36 @@ def test_a_workers_source_sees_an_ignore_file_change_at_its_next_revision(tmp_pa
     (tmp_path / ".optimusignore").write_text("a.py\n", encoding="utf-8")
     source.revision()
     assert "a.py" not in [item.path for item in source.files()]
+
+
+_READER_IS_WAITING = """
+import sys, threading, time
+from pathlib import Path
+threading.Thread(target=sys.stdin.buffer.readline, daemon=True).start()
+time.sleep(0.5)
+from optimus.acp.debug_trace import _git_sha
+from optimus.acp.trusted_paths import resolve_workspace_identity
+from optimus.context.memory_workspace import current_branch
+root = Path(sys.argv[1])
+print(resolve_workspace_identity(root).git_context.disposition.value, current_branch(root), _git_sha() != "unknown", flush=True)
+"""
+
+
+def test_git_answers_while_the_acp_reader_is_waiting_on_stdin(tmp_path: Path) -> None:
+    """Found by the first real launch: every git call a session makes timed out on Windows, and no test had a reader waiting on a real pipe."""
+    git = shutil.which("git")
+    assert git is not None
+    subprocess.run([git, "init", "-q", "-b", "proof", str(tmp_path)], check=True)
+    env = {**os.environ, "PYTHONPATH": str(Path(memory_workspace.__file__).parents[2])}
+    child = subprocess.Popen([sys.executable, "-c", _READER_IS_WAITING, str(tmp_path)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    try:
+        assert child.stdout is not None
+        line: list[str] = []
+        reader = threading.Thread(target=lambda: line.append(child.stdout.readline()), daemon=True)
+        reader.start()
+        reader.join(12)  # far under the 15 s the identity probe alone needs when it blocks
+        assert line and line[0].split() == ["present", "proof", "True"], line
+    finally:
+        child.kill()
+        child.communicate()
+

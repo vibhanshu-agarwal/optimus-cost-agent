@@ -111,6 +111,13 @@ def _ready(session: MemorySession) -> None:
     _until(lambda: session.status().startswith("Context index: ready"))
 
 
+def test_a_scope_the_route_has_not_met_reads_as_building(sessions: _Sessions, root: Path) -> None:
+    """Found by the first real launch: a person's first turn on a new project said the index could not be reached."""
+    seen: list[str] = []
+    sessions.open(root, prepare=lambda session: seen.append(session.status()))
+    assert seen == ["Context index: building, nothing published yet. This turn uses today's context."]
+
+
 def _assemble(turn: Any, task: str, *, run_id: str = "run-1", usable: int = 40_000) -> Any:
     return turn.assemble(run_id=run_id, task=task, selection_text=task, model_id="m", estimate=len, usable_input_tokens=usable)
 

@@ -13,16 +13,18 @@ from types import SimpleNamespace
 import pytest
 
 from context_engine.code_index import path_id
-from context_engine.index_worker import StorageUnavailableError
+from context_engine.index_worker import StorageRefusedError, StorageUnavailableError
 from context_engine.retrieval import Hit, Retriever
+from optimus.acp.trusted_paths import TrustedPathError
 from optimus.agent.directives import IndexToolRequest, parse_index_tool_reply
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentRunRequest, AgentRunStatus
 from optimus.agent.prompts import build_agent_planner_input, build_indexed_chat_input, build_multi_turn_planner_input
 from optimus.agent.runner import AgentRunner
 from optimus.agent.tools import AgentToolbox
+from optimus.context import memory_session
 from optimus.context.index_tools import IndexTools
-from optimus.context.memory_session import GroundingReport, MemorySession, _Scope, named_symbols
+from optimus.context.memory_session import GroundingReport, MemorySession, _Scope, named_symbols, session_factory
 from optimus.context.project_registry import ProjectRegistration
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails import file_policy
@@ -388,6 +390,37 @@ def test_status_is_one_content_free_line(workspace):
     assert _session(workspace, _Storage(complete=False)).status() == "Context index: building, 2 of 9 files."
     assert _session(workspace, _Storage()).status() == "Context index: ready, 2 of 2 files."
     assert "nothing published" in _session(workspace, _Storage(current=False)).status()
+
+
+def test_a_status_that_cannot_be_read_says_so_and_logs_why(workspace, caplog):
+    class Failing(_Storage):
+        def __init__(self, error):
+            super().__init__()
+            self.error = error
+
+        def call(self, op, **fields):
+            if op == "coverage":
+                raise self.error
+            return super().call(op, **fields)
+
+    assert "nothing published" in _session(workspace, Failing(StorageRefusedError("SCOPE_UNKNOWN"))).status()  # a new scope is building
+    assert not caplog.records
+    assert "cannot be reached" in _session(workspace, Failing(StorageRefusedError("SCOPE_DROPPING"))).status()
+    assert "SCOPE_DROPPING" in caplog.text
+    assert "cannot be reached" in _session(workspace, Failing(StorageUnavailableError("INDEX_UNAVAILABLE"))).status()
+    assert "INDEX_UNAVAILABLE" in caplog.text
+
+
+def test_a_workspace_that_cannot_be_registered_logs_why(workspace, tmp_path, monkeypatch, caplog):
+    """Found by the first real launch: the panel said it could not be registered and nothing anywhere said why."""
+
+    def unavailable(_workspace):
+        raise TrustedPathError(code="WORKSPACE_IDENTITY_UNAVAILABLE", detail="git context is unavailable")
+
+    monkeypatch.setattr(memory_session, "resolve_workspace_identity", unavailable)
+    config = SimpleNamespace(embedding=SimpleNamespace(model="m", revision="r"))
+    assert session_factory(memory_root=tmp_path, config_root=tmp_path, settings=None, config=config, artifact_directory="a")(workspace) is None
+    assert "WORKSPACE_IDENTITY_UNAVAILABLE" in caplog.text and "git context is unavailable" in caplog.text
 
 
 # --- the editor's unsaved text ---------------------------------------------------------------------

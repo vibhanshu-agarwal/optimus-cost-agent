@@ -44,7 +44,8 @@ def _git(root: Path, *args: str) -> str | None:
     if git is None:
         return None
     try:
-        result = subprocess.run([git, "-c", "core.longpaths=true", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=_GIT_SECONDS)
+        # Never the host's stdin: on Windows a child inheriting a pipe with a read pending blocks until the next ACP message.
+        result = subprocess.run([git, "-c", "core.longpaths=true", "-C", str(root), *args], stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=_GIT_SECONDS)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return result.stdout if result.returncode == 0 else None

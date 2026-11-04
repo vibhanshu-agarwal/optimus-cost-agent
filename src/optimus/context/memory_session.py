@@ -289,7 +289,13 @@ class MemorySession:
             return f"Context index: not updating ({self._unusable}). Turns use what is already indexed, or today's context if nothing is."
         try:
             current = self._current_scope().storage.call("coverage").get("current")
-        except (StorageRefusedError, StorageUnavailableError):
+        except StorageRefusedError as exc:
+            if str(exc) != "SCOPE_UNKNOWN":  # the route knows a scope from its first batch, so a new one is still building
+                _LOG.warning("context index: the route refused: %s", exc)
+                return "Context index: cannot be reached right now. This turn uses today's context."
+            current = None
+        except StorageUnavailableError as exc:
+            _LOG.warning("context index: the route did not answer: %s (%s)", exc, type(exc.__cause__).__name__)
             return "Context index: cannot be reached right now. This turn uses today's context."
         if not current:
             return "Context index: building, nothing published yet. This turn uses today's context."
@@ -700,7 +706,8 @@ def session_factory(*, memory_root: Path, config_root: Path, settings: OptimusGa
     def open_session(workspace: Path) -> MemorySession | None:
         try:
             registration = registry.resolve(resolve_workspace_identity(workspace), create=True)
-        except (ProjectRegistryError, OSError, ValueError):
+        except (ProjectRegistryError, OSError, ValueError) as exc:
+            _LOG.warning("context index: this workspace cannot be registered: %s %s", exc, getattr(exc, "diagnostics", ()))
             return None
         return MemorySession(
             policy=FilePolicy(workspace),
