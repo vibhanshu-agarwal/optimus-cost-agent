@@ -5,6 +5,7 @@ import concurrent.futures
 import contextlib
 import inspect
 import itertools
+import re
 import sys
 import threading
 import uuid
@@ -2479,7 +2480,7 @@ class AcpDuplexAdapter:
         await self._emit_index_line(session, turn, await asyncio.to_thread(memory.status))
 
     async def _emit_index_line(self, session: AcpSpecSession, turn: AcpPromptTurn, status: str) -> None:
-        state = status.split(",", 1)[0]
+        state = re.sub(r"\d+", "", status)  # newer counts are the same state; "nothing published" and "N of M" are not
         if state == session.memory_state_shown or turn.turn_control.transport_abandoned():
             return
         session.memory_state_shown = state

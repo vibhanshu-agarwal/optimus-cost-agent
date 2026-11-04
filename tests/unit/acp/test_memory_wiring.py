@@ -143,15 +143,18 @@ def test_a_turn_reaches_the_runner_with_its_index_and_cancel(tmp_path: Path) -> 
 def test_the_status_line_shows_only_when_the_state_changes(tmp_path: Path) -> None:
     async def scenario() -> None:
         session = FakeSession()
+        session.state = "Context index: building, nothing published yet. This turn uses today's context."
         adapter, outbound = _adapter(tmp_path, lambda workspace: session)
         session_id = await new_session(adapter, tmp_path, mode="chat")
         await _chat(adapter, session_id, "p1")
+        session.state = "Context index: building, 1 of 9 files."  # found in real Zed: the first line kept saying today's context was in use
+        await _chat(adapter, session_id, "p2")
         session.state = "Context index: building, 5 of 9 files."
-        await _chat(adapter, session_id, "p2")  # the same state with newer counts
+        await _chat(adapter, session_id, "p3")  # the same state with newer counts
         session.state = "Context index: ready, 9 of 9 files."
-        await _chat(adapter, session_id, "p3")
+        await _chat(adapter, session_id, "p4")
         shown = [text for text in _texts(outbound) if text.startswith("Context index")]
-        assert shown == ["Context index: building, 1 of 9 files.\n\n", "Context index: ready, 9 of 9 files.\n\n"]
+        assert shown == ["Context index: building, nothing published yet. This turn uses today's context.\n\n", "Context index: building, 1 of 9 files.\n\n", "Context index: ready, 9 of 9 files.\n\n"]
 
     asyncio.run(scenario())
 

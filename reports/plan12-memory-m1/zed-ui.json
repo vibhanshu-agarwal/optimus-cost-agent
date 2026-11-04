@@ -1,0 +1,152 @@
+{
+  "chat": {
+    "cards": [
+      "SYMBOLS fuse",
+      "grounding_check"
+    ],
+    "grounding_note": "not found in the inspected scope: gone_file_p1210.py"
+  },
+  "not_quality_evidence": "every reply came from the stub, so this proves the plumbing in the real editor and says nothing about answer quality",
+  "open": [
+    "two acpx rehearsal prompts hung for the full 150 s at 22:52 and 22:56 with no status line; no cause found; more than 20 later runs and this whole Zed proof did not repeat it",
+    "the first file took about 100 s or more to publish on this 398-file corpus, against seconds on a 12-file one; not yet measured separately",
+    "the Auto line says the classifier failed because the stub answers that path with an error; it is the stub's doing"
+  ],
+  "p5a": {
+    "after_save": {
+      "disk": "hex:16938c043dffe8231a9999c266b82775a791605ce720f9bfa2266ebd45a44f1b",
+      "manifest": {
+        "file_hash": "hex:16938c043dffe8231a9999c266b82775a791605ce720f9bfa2266ebd45a44f1b",
+        "manifest": "session-6d7b8d032d284b57b1edb9fd96cffee5_4.json",
+        "unsaved_buffers": []
+      },
+      "stub": {
+        "at": "2026-11-04T17:58:32.950590+00:00",
+        "input_bytes": 31353,
+        "markers": [
+          "--- proof/notes.py ---",
+          "--- scope: index generation",
+          "DISK_MARKER_P1210",
+          "UNSAVED_MARKER_P1210"
+        ]
+      }
+    },
+    "agent_requests_fs_read_text_file": 9,
+    "client_reads_files": true,
+    "saved_control": {
+      "disk": "hex:3f0322bafec7f1dfb0e0e436edc52dfba6e09f09496665de77f03b831aebe0dd",
+      "manifest": {
+        "file_hash": "hex:3f0322bafec7f1dfb0e0e436edc52dfba6e09f09496665de77f03b831aebe0dd",
+        "manifest": "session-6d7b8d032d284b57b1edb9fd96cffee5_2.json",
+        "unsaved_buffers": []
+      },
+      "stub": {
+        "at": "2026-11-04T17:55:20.384343+00:00",
+        "input_bytes": 30488,
+        "markers": [
+          "--- proof/notes.py ---",
+          "--- scope: index generation",
+          "DISK_MARKER_P1210"
+        ]
+      }
+    },
+    "status": "proved",
+    "unsaved": {
+      "disk_during_edit": "hex:3f0322bafec7f1dfb0e0e436edc52dfba6e09f09496665de77f03b831aebe0dd",
+      "expected_buffer": "hex:16938c043dffe8231a9999c266b82775a791605ce720f9bfa2266ebd45a44f1b",
+      "manifest": {
+        "file_hash": "hex:16938c043dffe8231a9999c266b82775a791605ce720f9bfa2266ebd45a44f1b",
+        "manifest": "session-6d7b8d032d284b57b1edb9fd96cffee5_3.json",
+        "unsaved_buffers": [
+          "proof/notes.py"
+        ]
+      },
+      "stub": {
+        "at": "2026-11-04T17:57:10.622519+00:00",
+        "input_bytes": 30848,
+        "markers": [
+          "--- proof/notes.py ---",
+          "--- scope: index generation",
+          "DISK_MARKER_P1210",
+          "UNSAVED_MARKER_P1210",
+          "shown from the editor's unsaved text"
+        ]
+      }
+    }
+  },
+  "paid": {
+    "default_port_8765_listening": false,
+    "first_prompt_gate": "stub log checked after every prompt before the next",
+    "gateway_port": 18767,
+    "model_calls": 0,
+    "provider_key": "dummy",
+    "upstream": "local stub that never forwards"
+  },
+  "plan": "12.10",
+  "schema": "plan12-memory-m1-zed-ui-v1",
+  "setup": "ordinary optimus-trust memory-setup against a separate OPTIMUS_CONFIG_ROOT, typed by the operator; no test provisioner",
+  "states": {
+    "exit_and_resume": {
+      "after_restart_line": "Context index: building, 374 of 398 files.",
+      "finished": {
+        "complete": true,
+        "files_indexed": 398,
+        "files_total": 398,
+        "records": 7790
+      },
+      "seconds_from_restart_to_complete": 120,
+      "stopped_at_published_files": 374
+    },
+    "first_prompt_during_cold_build": {
+      "line": "Context index: building, nothing published yet. This turn uses today's context.",
+      "seconds_after_launch": 100,
+      "stub": {
+        "at": "2026-11-04T17:49:21.941378+00:00",
+        "input_bytes": 22364,
+        "markers": []
+      },
+      "usable": true
+    },
+    "partial": {
+      "line": "Context index: building, 106 of 398 files.",
+      "stub": {
+        "at": "2026-11-04T17:53:15.283522+00:00",
+        "input_bytes": 30200,
+        "markers": [
+          "--- scope: index generation"
+        ]
+      }
+    },
+    "set_up_not_approved": {
+      "by": "the launch gate; the whole launch is refused, as for any change to an approved configuration (ADR-037)",
+      "shown": "Failed to Launch, naming the approve command"
+    },
+    "setup_required": {
+      "how": "the setup's folder moved aside, which is the state of a machine that never ran setup",
+      "line": "Context index: setup required. Run optimus-trust memory-setup to use it. This session uses today's context.",
+      "stub": {
+        "at": "2026-11-04T17:43:58.744439+00:00",
+        "input_bytes": 21813,
+        "markers": []
+      }
+    }
+  },
+  "task": 4,
+  "tool_cards": {
+    "cards": [
+      "SEARCH how fusion ranks channels",
+      "OUTLINE src/context_engine/retrieval.py",
+      "SYMBOLS Retriever",
+      "LIST src/context_engine"
+    ],
+    "opened_card": "OUTLINE src/context_engine/retrieval.py: 22 lines in 24 ms",
+    "stub": {
+      "at": "2026-11-04T17:51:27.887100+00:00",
+      "input_bytes": 34329,
+      "markers": [
+        "--- scope: index generation"
+      ]
+    }
+  },
+  "zed_version": "1.26.2 c4273271092b0287f7d181f616bd5171e0a2f70c"
+}
