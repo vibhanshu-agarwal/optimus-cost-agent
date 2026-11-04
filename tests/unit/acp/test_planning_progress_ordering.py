@@ -15,6 +15,7 @@ from optimus.acp.spec import AcpDuplexAdapter, AcpPromptTurn, AcpSpecSession, In
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.agent.planning_loop import PlanningProgressEvent
 from tests.support.contract_doubles import checked_agent_runner
+from tests.unit.acp.test_settlement_truth import ServerTurn
 
 
 def progress_lane(send):
@@ -329,3 +330,95 @@ async def test_real_prompt_branch_waits_for_progress_admission(tmp_path, branch)
         release.set()
         await asyncio.gather(call, return_exceptions=True)
         await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_reader_eof_during_held_progress_flush_keeps_custody_without_later_frames(tmp_path, monkeypatch):
+    offer_second, offer_late, finish = threading.Event(), threading.Event(), threading.Event()
+    second_offered, late_offered, teardown = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    loop = asyncio.get_running_loop()
+    original_cancel_loop_work = AcpDuplexAdapter._cancel_loop_work
+
+    def observed_cancel_loop_work(adapter):
+        original_cancel_loop_work(adapter)
+        teardown.set()
+
+    monkeypatch.setattr(AcpDuplexAdapter, "_cancel_loop_work", observed_cancel_loop_work)
+
+    class Runner:
+        def run(self, request, *, planning_progress_observer=None, **kwargs):
+            def offer(settled_turn):
+                planning_progress_observer(PlanningProgressEvent(run_id=request.run_id, session_id=request.session_id,
+                    settled_turn=settled_turn, max_planning_turns=3))
+
+            offer(1)
+            assert offer_second.wait(5), "fixture must release its own worker"
+            offer(2)
+            loop.call_soon_threadsafe(second_offered.set)
+            assert offer_late.wait(5), "fixture must release its own worker"
+            offer(3)
+            loop.call_soon_threadsafe(late_offered.set)
+            assert finish.wait(5), "fixture must release its own worker"
+            # Approval-bound, so an un-suppressed return would reach the wire as plan, permission and response.
+            return AgentRunResult(run_id=request.run_id, session_id=request.session_id,
+                execution_mode=request.execution_mode, status=AgentRunStatus.AWAITING_APPROVAL,
+                final_state="AWAITING_APPROVAL", output_text="answer", tool_calls=(), total_cost_usd=Decimal("0"),
+                mutation_count=0, provider_keys_resolvable=(), plan_hash="fixture-plan")
+
+    h = ServerTurn(tmp_path, monkeypatch, Runner())
+    try:
+        await h.start()
+        setup_writes = len(h.transport.writes)  # session/new's own frames are not the prompt under test
+        h.transport.hold = lambda m: m.get("params", {}).get("update", {}).get("sessionUpdate") == "agent_message_chunk"
+        h.transport.release.clear()
+        await h.prompt()
+        await asyncio.wait_for(h.transport.entered.wait(), 3)
+        [lane] = h.adapter._progress_lanes
+        [worker] = h.adapter._worker_tasks
+        [(first_send, admission)] = lane._sends.items()
+        control = h.adapter._active_turns[h.session_id].turn_control
+        [progress] = h.transport.writes[setup_writes:]
+        assert "Planning turn 1 of 3" in progress["params"]["update"]["content"]["text"]
+
+        offer_second.set()
+        await asyncio.wait_for(second_offered.wait(), 3)
+        await loop_turn()
+        assert lane.late_offers == 0, "progress 2 was accepted while the lane was open"
+        assert tuple(lane._sends) == (first_send,)
+        assert not teardown.is_set() and not control.transport_abandoned() and not h.task.done()
+
+        h.reader.close()
+        await asyncio.wait_for(teardown.wait(), 3)
+        # Production composition only: the prompt's own cancel handler also cancels this lane.
+        assert control.transport_abandoned() and lane._cancelled
+
+        offer_late.set()
+        await asyncio.wait_for(late_offered.wait(), 3)  # delivered by the loop, so the callback returned and the loop runs
+        assert lane.late_offers >= 1
+        await loop_turn()
+        assert not h.task.done() and not admission.physical_future.done()
+        assert tuple(lane._sends) == (first_send,)
+        assert h.transport.writes[setup_writes:] == [progress]
+
+        finish.set()
+        done, _ = await asyncio.wait({worker}, timeout=5)
+        assert done == {worker} and worker.result()[0], "the fixture worker must return through every barrier"
+        await loop_turn()
+        assert not h.task.done(), "a returned worker does not release the held physical send"
+        assert tuple(lane._sends) == (first_send,) and not admission.physical_future.done()
+        assert h.transport.writes[setup_writes:] == [progress]
+
+        h.transport.release.set()
+        done, _ = await asyncio.wait({h.task}, timeout=5)
+        assert done == {h.task}
+        h.task.result()
+        assert h.transport.writes[setup_writes:] == [progress], "no plan, permission, response or later progress"
+        assert h.transport.flushes[setup_writes:] == [progress]
+        assert admission.physical_future.done() and not lane._sends
+        assert lane not in h.adapter._progress_lanes and not h.adapter._worker_tasks
+        assert not h.server._serving_dedicated.thread_alive
+    finally:
+        offer_second.set()
+        offer_late.set()
+        finish.set()
+        await h.close()  # releases the transport and the reader before its bounded wait
