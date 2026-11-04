@@ -21,7 +21,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
-from context_engine.code_index import PARSER_VERSION
+from context_engine.code_index import PARSER_VERSION, parse_file
 from context_engine.context_pack import Pack, assemble_pack
 from context_engine.index_worker import Embedder, IndexStorage, IndexWorker, StorageRefusedError, StorageUnavailableError, WorkerOutcome
 from context_engine.repo_map import RepoMap
@@ -60,6 +60,8 @@ MAP_SECONDS: Final = 300.0  # the map sits in the cacheable prefix, so a build d
 _RECONCILE_ATTEMPTS: Final = 2
 _RECONCILE_WAIT_SECONDS: Final = 1.0
 _MANIFESTS_KEPT: Final = 200
+MAX_BUFFER_BYTES: Final = 8 * 1024 * 1024
+MAX_BUFFERS: Final = 8
 _QUERY_CHARS: Final = 2_000
 _MAX_SYMBOLS: Final = 8
 # A name someone wrote as code: backticked, dotted, or with an inner capital or underscore. Ordinary words are not symbols.
@@ -75,6 +77,11 @@ def named_symbols(text: str) -> tuple[str, ...]:
         if len(found) == _MAX_SYMBOLS:
             break
     return tuple(found)
+
+
+def _same_text(left: bytes, right: bytes) -> bool:
+    """An editor normalizes line endings in its buffer, so a saved CRLF file must not read as an unsaved edit."""
+    return left.replace(b"\r\n", b"\n") == right.replace(b"\r\n", b"\n")
 
 
 @dataclass(frozen=True)
@@ -263,9 +270,14 @@ class MemorySession:
         scope = self._current_scope()
         self.request_pass()
         retriever = Retriever(scope.storage, self._embedder, catalogue=self._catalogue_for, cancelled=cancelled)
+        overlay: dict[str, bytes] = {}
+
+        def read(path: str) -> bytes | None:
+            return overlay[path] if path in overlay else self._read(path)
+
         # A tool answers about the disk as it is now: a person or the agent may have just made the file being asked about.
-        tools = IndexTools(retriever=retriever, storage=scope.storage, read=self._read, listing=lambda: self.listing(fresh=True), cancelled=cancelled, clock=self._clock)
-        return MemoryTurn(self, scope, retriever, tools, cancelled)
+        tools = IndexTools(retriever=retriever, storage=scope.storage, read=read, listing=lambda: self.listing(fresh=True), cancelled=cancelled, clock=self._clock)
+        return MemoryTurn(self, scope, retriever, tools, cancelled, overlay, read)
 
     def repo_map(self, scope: _Scope) -> str:
         """The stable prefix. During a build it changes at most once per `MAP_SECONDS`; a failure gives no map, never a failed turn."""
@@ -313,7 +325,9 @@ class MemorySession:
 class MemoryTurn:
     """One turn's view: one scope, and the same read path for the pack and the tools."""
 
-    def __init__(self, session: MemorySession, scope: _Scope, retriever: Retriever, tools: IndexTools, cancelled: Callable[[], bool]) -> None:
+    def __init__(self, session: MemorySession, scope: _Scope, retriever: Retriever, tools: IndexTools, cancelled: Callable[[], bool], overlay: dict[str, bytes], read: Callable[[str], bytes | None]) -> None:
+        self._overlay = overlay  # the selected files' unsaved text: this turn's RAM only, never indexed, embedded or written
+        self._read = read
         self._session = session
         self._scope = scope
         self._retriever = retriever
@@ -322,6 +336,7 @@ class MemoryTurn:
         self.manifest: dict[str, Any] = {}
         self._run_id = ""
         self.on_tool: Callable[[str, str, str, str], None] | None = None  # the host's live tool cards
+        self.read_buffer: Callable[[str], str | None] | None = None  # set only when the client advertised it can read its own buffers
         self.seen_requests: set[tuple[str, str]] = set()
 
     def repo_map(self) -> str:
@@ -344,6 +359,7 @@ class MemoryTurn:
             if stop_reason is not None:
                 return self._blocked(diagnostics, stop_reason, message)
             required = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED))
+            self._capture_buffers(required)
             retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task)
         if retrieval.state != "ok" or pack is None:
             return self._today(task=selection_text, retrieval=retrieval)
@@ -357,6 +373,24 @@ class MemoryTurn:
         return WorkspaceContextResult(text=text, max_total_bytes=DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES, used_bytes=len(text.encode("utf-8")), prioritized_paths=required, omitted_paths=omitted,
                                       diagnostics=diagnostics, file_sha256s=dict(pack.file_sha256s), policy_revision=policy.revision())
 
+    def _capture_buffers(self, required: Sequence[str]) -> None:
+        """The editor's text for the files this task names, where it differs from disk. The policy decides first, so a denied file is
+        never asked for. Only the selected files, so there is no search across unsaved work, and an editor that does not answer costs
+        one wait and leaves this turn on disk."""
+        self._overlay.clear()
+        if self.read_buffer is None:
+            return
+        for path in required[:MAX_BUFFERS]:
+            disk = self._session._read(path)
+            if disk is None:
+                continue
+            text = self.read_buffer(str(self._session.policy.root / path))
+            if text is None:
+                return
+            data = text.encode("utf-8", errors="replace")
+            if not _same_text(data, disk) and b"\x00" not in data and len(data) <= MAX_BUFFER_BYTES:
+                self._overlay[path] = data
+
     def _retrieve(self, text: str, required: Sequence[str], estimate: Callable[[str], int], budget: int, task: str) -> tuple[Retrieval, Pack | None]:
         query = text[:_QUERY_CHARS]
         symbols = named_symbols(task)
@@ -365,7 +399,7 @@ class MemoryTurn:
             retrieval = self._retriever.retrieve(query, named_paths=required, named_symbols=symbols)
             if retrieval.state != "ok":
                 return retrieval, None
-            pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._session._read, estimate=estimate, budget_tokens=budget)
+            pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget)
             if not pack.stale_paths or attempt == _RECONCILE_ATTEMPTS or self._cancelled():
                 return retrieval, pack
             self._session.request_pass(pack.stale_paths)
@@ -373,6 +407,7 @@ class MemoryTurn:
         raise AssertionError("unreachable")
 
     def _today(self, *, task: str, retrieval: Retrieval) -> WorkspaceContextResult:
+        self._overlay.clear()  # today's selection reads disk, so nothing else this turn may see other text
         result = assemble_workspace_context_for_prompt(self._session.policy.root, task=task)
         line = f"Context index: no usable generation ({retrieval.state}). These files are today's selection, not a ranked search."
         self.manifest = {"schema": "optimus.context-manifest.v1", "run_id": self._run_id, "retrieval": {"state": retrieval.state, "channels": dict(retrieval.channels)}}
@@ -402,8 +437,7 @@ class MemoryTurn:
         stop_reason, message = blocking_from_diagnostics(result)
         return self._blocked(result, stop_reason or "REQUIRED_WORKSPACE_FILE_TOO_LARGE", message)
 
-    @staticmethod
-    def _coverage_line(retrieval: Retrieval, pack: Pack) -> str:
+    def _coverage_line(self, retrieval: Retrieval, pack: Pack) -> str:
         coverage = retrieval.coverage
         state = "complete" if coverage.get("complete") else "still building"
         over = sum(1 for item in pack.selected if item.reason == "over the budget")
@@ -414,6 +448,8 @@ class MemoryTurn:
             parts.append(f"{over} results left out by the budget")
         if pack.stale_paths:
             parts.append(f"incomplete: {len(pack.stale_paths)} files changed since they were indexed and are not shown")
+        if self._overlay:
+            parts.append(f"shown from the editor's unsaved text, which differs from disk: {', '.join(sorted(self._overlay))}")
         return "; ".join(parts) + ". Saying something is absent covers only this scope. ---"
 
     def _manifest(self, retrieval: Retrieval, pack: Pack, *, model_id: str, budget: int, task_terms: int) -> dict[str, Any]:
@@ -426,6 +462,7 @@ class MemoryTurn:
             "budget": {"tokens": pack.tokens, "budget_tokens": pack.budget_tokens, "task_words": task_terms},
             "selected": [asdict(item) for item in pack.selected],
             "stale_paths": list(pack.stale_paths),
+            "unsaved_buffers": sorted(self._overlay),
             "grounding": None,
         }
 
@@ -467,6 +504,9 @@ class MemoryTurn:
 
     def _symbol_exists(self, symbol: str) -> bool | None:
         """None when the index cannot say, or is still building and so cannot prove absence."""
+        for path, data in self._overlay.items():
+            if any(record.symbol == symbol for record in parse_file(path, data).records):
+                return True
         try:
             current = self._scope.storage.call("coverage").get("current")
             if not current:

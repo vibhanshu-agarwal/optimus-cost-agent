@@ -167,6 +167,7 @@ ACP_PROTOCOL_VERSION = 1
 
 # Plan 12.1: ACP mode IDs <-> the canonical per-session ExecutionMode. Internal
 _LIVE_TOOL_NAMES = frozenset({"index_search", "index_outline", "index_symbols", "index_list"})
+BUFFER_READ_SECONDS = 2.0  # an editor answers from memory; a turn's context must not hang on one that does not
 # ExecutionMode.PLAN is deliberately not selectable from ACP.
 _MODE_BY_ID: dict[str, ExecutionMode] = {AGENT_MODE_ID: ExecutionMode.AGENT, CHAT_MODE_ID: ExecutionMode.CHAT}
 _ID_BY_MODE: dict[ExecutionMode, str] = {mode: mode_id for mode_id, mode in _MODE_BY_ID.items()}
@@ -880,6 +881,7 @@ class AcpDuplexAdapter:
         self._session_seeder = session_seeder if context_attachment is not None else None
         # Plan 12.10: only an attached launch can use it, because the pack is sized by the attachment's route.
         self._memory_factory = memory_factory if context_attachment is not None else None
+        self._client_reads_files = False
         self._closed = False
         self._session_retention_policy = session_retention_policy
         self._retention: SessionRetentionOwner | None = None
@@ -1481,6 +1483,9 @@ class AcpDuplexAdapter:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("protocolVersion"), int):
             return error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request"))
+        client_capabilities = params.get("clientCapabilities")
+        client_fs = client_capabilities.get("fs") if isinstance(client_capabilities, dict) else None
+        self._client_reads_files = isinstance(client_fs, dict) and client_fs.get("readTextFile") is True
         agent_capabilities: dict[str, Any] = {
             "promptCapabilities": {
                 "image": False,
@@ -1879,6 +1884,8 @@ class AcpDuplexAdapter:
         if attached_turn is not None and session.memory is not None:
             attached_turn.memory = await asyncio.to_thread(session.memory.turn, cancelled=turn.turn_control.halt_requested)
             attached_turn.memory.on_tool = self._index_tool_cards(session_id, asyncio.get_running_loop())
+            if self._client_reads_files:
+                attached_turn.memory.read_buffer = self._buffer_reader(session_id, asyncio.get_running_loop())
             await self._emit_memory_status(session, turn, attached_turn.memory)
         if self._route_policy is not None:
             turn.route_binder = self._route_policy.capture(
@@ -2433,13 +2440,28 @@ class AcpDuplexAdapter:
             title = f"{tool} {argument[:80]}"
             if phase == "started":
                 ids[key] = new_tool_call_id()
-                payload = build_tool_call_notification(session_id=session_id, tool_call_id=ids[key], title=title, summary="running", kind=tool_kind_for_name(f"index_{tool.lower()}"))
+                payload = build_tool_call_notification(session_id=session_id, tool_call_id=ids[key], title=title, summary="running", kind=tool_kind_for_name(f"index_{tool.lower()}"), status="in_progress")
             else:
                 payload = build_tool_call_update_notification(session_id=session_id, tool_call_id=ids[key], title=title, summary=summary, status=phase)
             future = asyncio.run_coroutine_threadsafe(self._outbound.notify("session/update", payload), loop)
             future.add_done_callback(lambda done: None if done.cancelled() else done.exception())
 
         return card
+
+    def _buffer_reader(self, session_id: str, loop: asyncio.AbstractEventLoop) -> Callable[[str], str | None]:
+        """The editor's current text of one file, asked from the turn's worker thread. Whatever goes wrong, the turn sees the file on disk."""
+
+        def read(path: str) -> str | None:
+            future = asyncio.run_coroutine_threadsafe(self._outbound.request("fs/read_text_file", {"sessionId": session_id, "path": path}), loop)
+            try:
+                reply = future.result(BUFFER_READ_SECONDS)
+            except Exception:  # noqa: BLE001 - a refusal, an absent file or a slow editor all mean disk
+                future.cancel()
+                return None
+            content = reply.get("content") if isinstance(reply, dict) else None
+            return content if isinstance(content, str) else None
+
+        return read
 
     async def _emit_memory_status(self, session: AcpSpecSession, turn: AcpPromptTurn, memory: Any) -> None:
         """Says where the context index stands when that changes, so a partial build or an outage is never silent. Live-only."""
@@ -2449,7 +2471,7 @@ class AcpDuplexAdapter:
             return
         session.memory_state_shown = state
         try:
-            await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=f"{status}\n\n"), require_flushed=True)
+            await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=status), require_flushed=True)
         except Exception:  # noqa: BLE001 - informational, like the Auto line
             return
 

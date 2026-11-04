@@ -155,6 +155,20 @@ def test_a_named_symbol_reaches_the_route_in_a_form_it_accepts(root: Path, sessi
     assert "structure refused" not in _assemble(session.turn(), task).text
 
 
+def test_an_unsaved_buffer_never_reaches_the_store(root: Path, sessions: _Sessions, client: redis.Redis) -> None:
+    session = sessions.open(root)
+    _ready(session)
+    turn = session.turn()
+    turn.read_buffer = lambda path: "def unsaved_canary_name():\n    return 'unsaved_canary_value'\n"
+    assert "unsaved_canary_value" in _assemble(turn, "explain first.py").text
+    assert "unsaved_canary_name" in turn.tools.run("OUTLINE", "first.py")
+    session.request_pass()
+    _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
+    assert "unsaved_canary" not in turn.tools.run("SYMBOLS", "unsaved_canary_name").split("Scope", 1)[0]
+    keys = list(client.scan_iter(match="oidx:rec:*", count=1000))
+    assert keys and not any(b"unsaved_canary" in value for key in keys for value in client.hgetall(key).values())
+
+
 def test_a_partial_build_is_usable_and_says_so_and_a_turn_does_not_wait_for_the_worker(tmp_path: Path, sessions: _Sessions) -> None:
     root = _repository(tmp_path / "repo")
     for number in range(40):

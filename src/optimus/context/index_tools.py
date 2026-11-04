@@ -137,7 +137,7 @@ class IndexTools:
                         break
             if why_stopped:
                 break
-        scope = f"Scope: read {scanned} of {len(paths)} admitted files from disk" + (f", stopped by {why_stopped}." if why_stopped else ".")
+        scope = f"Scope: read {scanned} of {len(paths)} admitted files now" + (f", stopped by {why_stopped}." if why_stopped else ".")
         return [scope, *(found or ["No matches in this scope."])]
 
     def outline(self, path: str) -> list[str]:
@@ -147,8 +147,8 @@ class IndexTools:
         parsed = parse_file(path, data)
         entries = sorted((record for record in parsed.records if record.kind != "file"), key=lambda record: (record.start_line or 0, record.symbol or ""))
         if not entries:
-            return [f"{path}: read from disk now, language {parsed.language}, no symbols or sections this parser understands."]
-        lines = [f"{path}: read from disk now, language {parsed.language}, {len(entries)} entries."]
+            return [f"{path}: read now, language {parsed.language}, no symbols or sections this parser understands."]
+        lines = [f"{path}: read now, language {parsed.language}, {len(entries)} entries."]
         lines.extend(f"{record.start_line}-{record.end_line} {record.symbol or record.kind}: {' '.join((record.signature or record.description or '').split())[:_LINE_CHARS]}" for record in entries[:OUTLINE_ENTRIES])
         return lines
 

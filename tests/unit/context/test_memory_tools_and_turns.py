@@ -198,7 +198,7 @@ def test_with_no_index_search_says_it_knows_nothing_rather_than_no_matches(works
 def test_a_quoted_search_reads_disk_and_says_what_it_read(workspace):
     text = _tools(workspace, _Storage(current=False)).run("SEARCH", '"needle here"')
     assert "pkg/a.py:7:" in text and "needle here" in text
-    assert "read 2 of 2 admitted files from disk." in text
+    assert "read 2 of 2 admitted files now." in text
 
 
 def test_a_quoted_search_never_reads_a_denied_file(workspace):
@@ -218,7 +218,7 @@ def test_a_cancel_stops_a_quoted_search(workspace):
 
 def test_outline_reads_the_file_now_so_it_needs_no_index(workspace):
     text = _tools(workspace, _Storage(current=False)).run("OUTLINE", "pkg/a.py")
-    assert "read from disk now" in text and "Parser.parse" in text and "helper" in text
+    assert "read now" in text and "Parser.parse" in text and "helper" in text
 
 
 def test_outline_refuses_a_denied_file_without_opening_it(workspace):
@@ -310,7 +310,7 @@ def test_evidence_keeps_the_newest_whole_blocks():
 def _session(workspace: Path, storage: _Storage, *, branch="main") -> MemorySession:
     return MemorySession(
         policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False), storage_for=lambda scope: storage,
-        embedder_for=lambda: None, embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "manifests", branch_of=lambda root: branch,
+        embedder_for=lambda: None, embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / f"{workspace.name}-manifests", branch_of=lambda root: branch,
     )
 
 
@@ -325,7 +325,7 @@ def test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodi
     assert "return 'needle here'" in result.text
     assert "scope: index generation 3, complete" in result.text and "covers only this scope" in result.text
     assert result.file_sha256s == {"pkg/a.py": _sha(SOURCE)}
-    written = next((workspace.parent / "manifests").rglob("run-1.json")).read_text(encoding="utf-8")
+    written = next((workspace.parent / f"{workspace.name}-manifests").rglob("run-1.json")).read_text(encoding="utf-8")
     manifest = json.loads(written)
     assert manifest["selected"][0]["disclosure"] == "body" and manifest["retrieval"]["generation"] == 3
     assert "needle" not in written
@@ -383,6 +383,120 @@ def test_status_is_one_content_free_line(workspace):
     assert _session(workspace, _Storage(complete=False)).status() == "Context index: building, 2 of 9 files."
     assert _session(workspace, _Storage()).status() == "Context index: ready, 2 of 2 files."
     assert "nothing published" in _session(workspace, _Storage(current=False)).status()
+
+
+# --- the editor's unsaved text ---------------------------------------------------------------------
+
+
+UNSAVED = "class Parser:\n    def parse(self, text):\n        return text\n\n\ndef unsaved_helper():\n    return 'unsaved needle'\n"
+
+
+def _buffered(workspace: Path, buffers: dict, *, storage: _Storage | None = None):
+    """A turn whose editor holds `buffers`, keyed by path, and which records what it was asked."""
+    asked: list[str] = []
+
+    def read_buffer(path: str) -> str | None:
+        asked.append(Path(path).relative_to(workspace).as_posix())
+        return buffers.get(asked[-1], SOURCE)
+
+    turn = _session(workspace, storage or _Storage()).turn()
+    turn.read_buffer = read_buffer
+    return turn, asked
+
+
+def test_a_dirty_buffer_is_what_the_turn_sees_and_it_says_so(workspace):
+    turn, asked = _buffered(workspace, {"pkg/a.py": UNSAVED})
+    result = _assemble(turn, task="explain pkg/a.py")
+    assert asked == ["pkg/a.py"]
+    assert "unsaved needle" in result.text and "'needle here'" not in result.text
+    assert "shown from the editor's unsaved text, which differs from disk: pkg/a.py" in result.text
+    assert result.file_sha256s == {"pkg/a.py": _sha(UNSAVED)}  # an EDIT bound to this digest is refused until the file on disk agrees
+    assert (workspace / "pkg" / "a.py").read_text(encoding="utf-8") == SOURCE
+
+
+def test_a_saved_buffer_is_the_control_and_no_overlay_exists(workspace):
+    turn, asked = _buffered(workspace, {"pkg/a.py": SOURCE})
+    result = _assemble(turn, task="explain pkg/a.py")
+    assert asked == ["pkg/a.py"] and "unsaved" not in result.text and result.file_sha256s == {"pkg/a.py": _sha(SOURCE)}
+
+
+def test_a_saved_crlf_file_is_not_an_unsaved_edit_because_the_editor_shows_lf(workspace):
+    (workspace / "pkg" / "a.py").write_bytes(SOURCE.replace("\n", "\r\n").encode("utf-8"))
+    turn, _asked = _buffered(workspace, {"pkg/a.py": SOURCE})
+    assert "unsaved" not in _assemble(turn, task="explain pkg/a.py").text
+
+
+def test_a_denied_file_is_never_asked_for(workspace):
+    turn, asked = _buffered(workspace, {".env": "TOKEN=unsaved"})
+    result = _assemble(turn, task="show me .env")
+    assert asked == [] and result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE" and "unsaved" not in result.text
+
+
+def test_only_named_files_are_asked_for_so_unsaved_work_is_not_searched(workspace):
+    storage = _Storage([_record("x", "notes.md", None, _sha("# Title\n\nSome prose.\n"), kind="file")])
+    turn, asked = _buffered(workspace, {"notes.md": "unsaved note"}, storage=storage)
+    result = _assemble(turn, task="how does helper work")
+    assert asked == [] and "unsaved note" not in result.text
+
+
+def test_an_editor_that_gives_nothing_means_disk_and_is_not_asked_again(workspace):
+    (workspace / "pkg" / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def no_answer(path: str) -> None:
+        calls.append(path)
+
+    turn = _session(workspace, _Storage()).turn()
+    turn.read_buffer = no_answer
+    result = _assemble(turn, task="explain pkg/a.py and pkg/b.py")
+    assert len(calls) == 1 and "'needle here'" in result.text and "unsaved" not in result.text
+
+
+def test_tools_and_grounding_agree_with_the_buffer_the_turn_saw(workspace):
+    storage = _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE), lines=(6, 7), signature="def helper():")])
+    turn, _asked = _buffered(workspace, {"pkg/a.py": UNSAVED}, storage=storage)
+    _assemble(turn, task="explain pkg/a.py")
+    assert "unsaved_helper" in turn.tools.run("OUTLINE", "pkg/a.py")
+    assert "unsaved needle" in turn.tools.run("SEARCH", '"unsaved needle"')
+    searched = turn.tools.run("SYMBOLS", "helper")
+    assert "No matching symbols" in searched and "their files changed" in searched  # the index's record is of the text on disk
+    report = turn.ground("`unsaved_helper` is new and `invented_name` is not.")
+    assert report.resolved == ("unsaved_helper",) and report.unresolved == ("invented_name",)
+
+
+def test_an_unsaved_buffer_never_reaches_the_manifest(workspace):
+    turn, _asked = _buffered(workspace, {"pkg/a.py": UNSAVED})
+    _assemble(turn, task="explain pkg/a.py")
+    written = next((workspace.parent / f"{workspace.name}-manifests").rglob("run-1.json")).read_text(encoding="utf-8")
+    assert json.loads(written)["unsaved_buffers"] == ["pkg/a.py"] and "unsaved needle" not in written and "unsaved_helper" not in written
+
+
+def test_each_turn_asks_again_so_a_saved_or_changed_buffer_leaves_no_trace(workspace):
+    buffers = {"pkg/a.py": UNSAVED}
+    session = _session(workspace, _Storage())
+
+    def assemble():
+        turn = session.turn()
+        turn.read_buffer = lambda path: buffers["pkg/a.py"]
+        return _assemble(turn, task="explain pkg/a.py")
+
+    assert "unsaved needle" in assemble().text
+    buffers["pkg/a.py"] = SOURCE
+    second = assemble()
+    assert "unsaved needle" not in second.text and "unsaved text" not in second.text
+
+
+def test_when_the_index_cannot_answer_nothing_this_turn_sees_the_buffer(workspace):
+    turn, _asked = _buffered(workspace, {"pkg/a.py": UNSAVED}, storage=_Storage(current=False))
+    result = _assemble(turn, task="explain pkg/a.py")
+    assert "no usable generation" in result.text and "unsaved needle" not in result.text
+    assert "unsaved_helper" not in turn.tools.run("OUTLINE", "pkg/a.py")
+
+
+@pytest.mark.parametrize("kind", ["binary", "too large"])
+def test_a_buffer_this_turn_could_not_use_means_disk(workspace, kind):
+    turn, _asked = _buffered(workspace, {"pkg/a.py": "a\x00b" if kind == "binary" else "x" * (8 * 1024 * 1024 + 1)})
+    assert "'needle here'" in _assemble(turn, task="explain pkg/a.py", usable=10**9).text
 
 
 def test_named_symbols_are_code_shaped_words_only():
