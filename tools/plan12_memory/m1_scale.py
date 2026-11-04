@@ -1,4 +1,4 @@
-"""Plan 12.10 M1 measurement: `python -m tools.plan12_memory.m1_scale --phase pilot --config reports/plan12-memory-m1/run-config.json`.
+"""Plan 12.10 M1 measurement: `python -m tools.plan12_memory.m1_scale --phase pilot|assembly --config reports/plan12-memory-m1/run-config.json`.
 
 Runs against the released dedicated Redis and a real Gateway process, on a throwaway copy of the corpus. Measures, never tunes: it
 reports what the pilot saw so the operator can freeze targets from numbers. No generative or provider call is possible here: the
@@ -32,6 +32,7 @@ from context_engine.index_worker import IndexWorker
 from optimus.acp import local_infra
 from optimus.acp.memory_setup import run_setup
 from optimus.config.gateway import OptimusGatewaySettings
+from optimus.context.memory_session import PACK_MAX_TOKENS, MemorySession
 from optimus.context.memory_workspace import FastembedEmbedder, GatewayIndexStorage, WorkspaceIndexSource, current_branch, index_scope
 from optimus.context.project_registry import ProjectRegistration
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
@@ -385,8 +386,8 @@ def _bulk(index: _Index, store: memory_index.IndexStore, *, batches: int, dimens
             "proxy_seconds": round(proxy_seconds, 3), "native_seconds": round(native_seconds, 3)}
 
 
-def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
-    work = repository / config["work_dir"]
+def _provision(config: dict[str, Any], repository: Path, work: Path) -> tuple[Path, Any, str, redis.Redis, subprocess.Popen[str], OptimusGatewaySettings, dict[str, Any]]:
+    """The released Redis made the way a real launch makes it, and a real Gateway process in front of it."""
     work.mkdir(parents=True, exist_ok=True)
     container, volume = config["container"], config["volume"]
     assert container.startswith("p1210-") and volume.startswith("p1210-"), "only the released resources"
@@ -431,7 +432,130 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
     gateway.stdin.flush()
     port = int(gateway.stdout.readline())
     settings = OptimusGatewaySettings.from_env({"OPTIMUS_GATEWAY_URL": f"http://127.0.0.1:{port}", "OPTIMUS_API_KEY": _SECRET})
+    return root, memory, password, client, gateway, settings, settings_file
 
+
+# Fixed, so two runs compare: a plain question, a named file, a named symbol, and a task naming the most files the structure channel follows.
+ASSEMBLY_TASKS = (
+    "how does the gateway decide which provider serves a chat completion",
+    "explain src/optimus_gateway/memory_index.py",
+    "where does `select_eligible_models` get its candidates and how does IndexWorker resume",
+    "compare src/context_engine/retrieval.py src/context_engine/context_pack.py src/context_engine/repo_map.py src/context_engine/code_index.py",
+)
+_ASSEMBLY_USABLE_TOKENS = 200_000  # enough that the pack's own cap is the budget
+
+
+def _bytes_estimate(text: str) -> int:
+    return (len(text.encode("utf-8")) + 3) // 4
+
+
+class _CountingStorage:
+    """The real storage port, counting one thread's calls and their time; the worker's own calls go uncounted."""
+
+    def __init__(self, inner: Any, thread: int) -> None:
+        self._inner = inner
+        self._thread = thread
+        self.calls: dict[str, int] = {}
+        self.seconds = 0.0
+
+    def call(self, op: str, **fields: Any) -> dict[str, Any]:
+        if threading.get_ident() != self._thread:
+            return self._inner.call(op, **fields)
+        label = f"{op}:{fields['mode']}" if op == "query" else op
+        self.calls[label] = self.calls.get(label, 0) + 1
+        started = time.perf_counter()
+        try:
+            return self._inner.call(op, **fields)
+        finally:
+            self.seconds += time.perf_counter() - started
+
+
+def _measure_turn(session: MemorySession, counters: list[_CountingStorage], task: str, run_id: str) -> dict[str, Any]:
+    for counter in counters:
+        counter.calls.clear()
+        counter.seconds = 0.0
+    started = time.perf_counter()
+    turn = session.turn()
+    result = turn.assemble(run_id=run_id, task=task, selection_text=task, model_id="measurement", estimate=_bytes_estimate, usable_input_tokens=_ASSEMBLY_USABLE_TOKENS)
+    wall = time.perf_counter() - started
+    calls: dict[str, int] = {}
+    for counter in counters:
+        for label, count in counter.calls.items():
+            calls[label] = calls.get(label, 0) + count
+    budget = turn.manifest.get("budget", {})
+    return {"task": task, "wall_ms": round(wall * 1000, 1), "route_ms": round(sum(counter.seconds for counter in counters) * 1000, 1), "route_calls": sum(calls.values()), "calls": calls,
+            "state": turn.manifest.get("retrieval", {}).get("state"), "pack_tokens": budget.get("tokens"), "budget_tokens": budget.get("budget_tokens"), "blocked": result.blocking_stop_reason}
+
+
+def _assembly_summary(turns: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    used = [turn["pack_tokens"] / turn["budget_tokens"] for turn in turns if turn.get("budget_tokens")]
+    return {"turns": len(turns), "wall_ms": _summary([turn["wall_ms"] for turn in turns]), "route_ms": _summary([turn["route_ms"] for turn in turns]),
+            "route_calls_max": max((turn["route_calls"] for turn in turns), default=None), "route_calls_median": statistics.median(turn["route_calls"] for turn in turns) if turns else None,
+            "pack_share_of_token_budget_max": round(max(used), 3) if used else None, "states": sorted({str(turn["state"]) for turn in turns}), "blocked": sorted({turn["blocked"] for turn in turns if turn["blocked"]})}
+
+
+def run_assembly(config: dict[str, Any], repository: Path) -> dict[str, Any]:
+    """A real session on the real artifact and route: what one turn's context costs while the worker builds, and after. No model is called."""
+    work = repository / config["work_dir"] / "assembly"
+    root, memory, _password, client, gateway, settings, settings_file = _provision(config, repository, work)
+    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    report: dict[str, Any] = {"schema": "plan12-memory-m1.assembly.v1", "phase": "assembly", "head": f"hex:{head}", "config": {k: v for k, v in config.items() if k != "artifact_cache"}, "estimator": "utf8 bytes / 4",
+                              "pack_max_tokens": PACK_MAX_TOKENS, "tasks": list(ASSEMBLY_TASKS)}
+    report["host"] = {"cpus": psutil.cpu_count(), "memory_gb": round(psutil.virtual_memory().total / 2**30, 1), "python": sys.version.split()[0], "platform": sys.platform}
+    try:
+        corpus = _corpus_copy(repository, work / "corpus", config["assembly_corpus_paths"])
+        report["corpus"] = count_corpus(corpus)
+        embedder = _TimedEmbedder(FastembedEmbedder(root, memory.embedding, directory=settings_file["embedding"]["artifact_directory"], threads=config["embedding_threads"]))
+        counters: list[_CountingStorage] = []
+        me = threading.get_ident()
+
+        def storage_for(scope: str) -> _CountingStorage:
+            counters.append(_CountingStorage(GatewayIndexStorage(settings, scope=scope), me))
+            return counters[-1]
+
+        session = MemorySession(policy=FilePolicy(corpus), registration=ProjectRegistration("assembly", 1, "git:assembly", str(corpus), created=False), storage_for=storage_for,
+                                embedder_for=lambda: embedder, embedding_identity=embedder.identity, parser_version="assembly", manifest_root=work / "manifests")
+        session.start()
+        try:
+            deadline = time.monotonic() + 600
+            while "building, " not in session.status() or "nothing" in session.status():
+                assert time.monotonic() < deadline, session.status()
+                time.sleep(0.2)
+            _note("turns during the build")
+            during: list[dict[str, Any]] = []
+            ordinal = 0
+            while session.status().startswith("Context index: building"):
+                assert time.monotonic() < deadline, session.status()
+                during.append(_measure_turn(session, counters, ASSEMBLY_TASKS[ordinal % len(ASSEMBLY_TASKS)], f"build-{ordinal}"))
+                ordinal += 1
+            report["during_build"] = {**_assembly_summary(during), "per_task": during[: len(ASSEMBLY_TASKS)]}
+            _note("turns after the build")
+            while session._last_outcome is None or session._last_outcome.state != "complete":
+                assert time.monotonic() < deadline, session.status()
+                time.sleep(0.2)
+            scope = session._current_scope()
+            for counter in counters:
+                counter.calls.clear()
+            session._map = None
+            started = time.perf_counter()
+            map_text = session.repo_map(scope)
+            report["repo_map_on_a_miss"] = {"wall_ms": round((time.perf_counter() - started) * 1000, 1), "route_calls": sum(sum(counter.calls.values()) for counter in counters), "chars": len(map_text)}
+            idle = [_measure_turn(session, counters, task, f"idle-{round_}-{number}") for round_ in range(config["assembly_rounds"]) for number, task in enumerate(ASSEMBLY_TASKS)]
+            report["idle"] = {**_assembly_summary(idle), "per_task": idle[-len(ASSEMBLY_TASKS):]}
+            report["coverage"] = session.status()
+        finally:
+            session.close()
+        client.close()
+    finally:
+        gateway.kill()
+        gateway.wait(10)
+    return report
+
+
+def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
+    work = repository / config["work_dir"]
+    container = config["container"]
+    root, memory, _password, client, gateway, settings, settings_file = _provision(config, repository, work)
     report: dict[str, Any] = {"schema": "plan12-memory-m1.pilot.v1", "phase": "pilot", "config": {k: v for k, v in config.items() if k != "artifact_cache"}}
     report["host"] = {"cpus": psutil.cpu_count(), "memory_gb": round(psutil.virtual_memory().total / 2**30, 1), "python": sys.version.split()[0], "platform": sys.platform}
     try:
@@ -549,13 +673,13 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="m1_scale")
-    parser.add_argument("--phase", choices=["pilot"], required=True)
+    parser.add_argument("--phase", choices=["pilot", "assembly"], required=True)
     parser.add_argument("--config", required=True)
     args = parser.parse_args(argv)
     repository = Path(__file__).resolve().parents[2]
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
-    report = run_pilot(config, repository)
-    out = Path(args.config).with_name("pilot.json")
+    report = (run_assembly if args.phase == "assembly" else run_pilot)(config, repository)
+    out = Path(args.config).with_name(f"{args.phase}.json")
     out.write_text(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")
     return 0
 

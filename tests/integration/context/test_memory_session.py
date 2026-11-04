@@ -6,6 +6,7 @@ Selected with `-m requires_plan12_index_redis`. The embedder is a deterministic 
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -20,16 +21,23 @@ import redis
 
 from context_engine.index_worker import StorageRefusedError
 from optimus.acp.memory_setup import run_setup, shipped_defaults
+from optimus.agent.directives import IndexToolRequest
+from optimus.agent.index_turn import run_index_tools
+from optimus.agent.tools import AgentToolbox
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context import memory_session
 from optimus.context.memory_session import MemorySession, session_factory
 from optimus.context.memory_workspace import GatewayIndexStorage
 from optimus.context.project_registry import ProjectRegistration
 from optimus.guardrails.file_policy import FilePolicy
+from optimus.runtime.modes import ExecutionMode
+from optimus.runtime.state import RuntimeContext
 from optimus_security.memory_index_config import memory_index_root, read
 from tests.integration.context.conftest import CONTAINER, Provisioned, docker
 from tests.integration.context.test_memory_worker import StubEmbedder, _git, _repository, _serve, _settings_for, _stop
 from tests.unit.acp.conftest import FakeKeyring
+from tests.unit.acp.test_context_engine_admission import new_session
+from tests.unit.acp.test_memory_wiring import MemoryRunner, _adapter, _chat, _updates
 
 pytestmark = [pytest.mark.requires_plan12_index_redis]
 
@@ -256,6 +264,16 @@ def test_a_file_made_just_before_the_turn_is_found_when_it_is_named(root: Path, 
     assert result.blocking_stop_reason is None and "brand_new_body" in result.text and result.prioritized_paths == ("brand_new.py",)
 
 
+def test_a_tool_sees_a_file_made_after_the_last_walk(root: Path, sessions: _Sessions) -> None:
+    session = sessions.open(root)
+    _ready(session)
+    session.listing()
+    turn = session.turn()
+    (root / "just_made.py").write_text("def just_made():\n    return 'just_made_value'\n", encoding="utf-8")
+    assert "just_made.py" in turn.tools.run("LIST", ".")
+    assert "just_made_value" in turn.tools.run("SEARCH", '"just_made_value"')
+
+
 def test_a_file_written_during_a_turn_is_not_reported_as_missing(root: Path, sessions: _Sessions) -> None:
     session = sessions.open(root)
     _ready(session)
@@ -345,6 +363,31 @@ def test_an_outage_keeps_todays_context_says_so_and_the_session_recovers(root: P
     (root / "after_outage.py").write_text("def after_outage():\n    return 1\n", encoding="utf-8")
     session.request_pass()
     _until(lambda: "after_outage.py:" in session.turn().tools.run("SYMBOLS", "after_outage"), seconds=60)
+
+
+def test_the_host_drives_a_real_session_through_a_turn(root: Path, sessions: _Sessions) -> None:
+    """The adapter's real wiring on the real session, so the two cannot drift apart behind their doubles."""
+    session = sessions.open(root)
+    _ready(session)
+    seen: dict[str, Any] = {}
+
+    def during(memory: Any) -> None:
+        seen["context"] = memory.assemble(run_id="host-1", task="how does first_function work", selection_text="how does first_function work", model_id="m", estimate=len, usable_input_tokens=40_000)
+        seen["ran"] = run_index_tools((IndexToolRequest("SEARCH", "first_function"), IndexToolRequest("LIST", ".")), memory, AgentToolbox.for_workspace(workspace_root=root, context=RuntimeContext(execution_mode=ExecutionMode.CHAT), run_id="r", session_id="s"), halted=lambda: False)
+
+    async def scenario() -> list[dict[str, Any]]:
+        adapter, outbound = _adapter(root, lambda workspace: session, runner=MemoryRunner(during))
+        session_id = await new_session(adapter, root, mode="chat")
+        assert (await _chat(adapter, session_id, "p1"))["result"]["stopReason"] == "end_turn"
+        await asyncio.sleep(0)
+        return _updates(outbound)
+
+    updates = asyncio.run(scenario())
+    assert _BODY_CANARY in seen["context"].text
+    assert [call.authorization_outcome for call in seen["ran"].calls] == ["ALLOW", "ALLOW"]
+    assert any("Context index: ready, 3 of 3 files." in str(update) for update in updates)
+    titles = [(update["sessionUpdate"], update["title"], update["status"]) for update in updates if update.get("sessionUpdate", "").startswith("tool_call") and update["title"].split(" ")[0] in {"SEARCH", "LIST"}]
+    assert titles == [("tool_call", "SEARCH first_function", "in_progress"), ("tool_call_update", "SEARCH first_function", "completed"), ("tool_call", "LIST .", "in_progress"), ("tool_call_update", "LIST .", "completed")]
 
 
 def _pings(connection: redis.Redis) -> bool:

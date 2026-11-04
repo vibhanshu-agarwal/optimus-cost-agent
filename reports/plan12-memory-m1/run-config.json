@@ -13,5 +13,7 @@
   "query_samples": 200,
   "acpx_turns": 20,
   "load_paths": ["src", "tools"],
-  "bulk_batches": 20
+  "bulk_batches": 20,
+  "assembly_corpus_paths": ["src/optimus_gateway", "src/context_engine", "src/optimus_model_policy"],
+  "assembly_rounds": 10
 }

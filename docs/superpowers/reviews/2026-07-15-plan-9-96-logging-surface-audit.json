@@ -2489,6 +2489,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m1_scale:_provision:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_provision:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m1_scale:_redis_facts:logger_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
@@ -2521,14 +2537,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.plan12_memory.m1_scale:run_pilot:json_serialization",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "tools.plan12_memory.m1_scale:run_pilot:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
@@ -2538,14 +2546,6 @@
     },
     {
       "key": "tools.plan12_memory.m1_scale:run_pilot:text_file_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "tools.plan12_memory.m1_scale:run_pilot:text_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",

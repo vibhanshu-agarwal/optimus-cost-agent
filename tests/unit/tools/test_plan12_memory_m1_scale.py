@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import pytest
@@ -47,3 +48,21 @@ def test_only_the_exact_agent_counts_as_this_runs_own(tmp_path: Path) -> None:
     assert m1_scale.runs_agent(["cmd.exe", "/c", f'"{agent.upper()}"'], agent)
     assert not m1_scale.runs_agent(["cmd.exe", "/c", agent + ".backup.cmd"], agent)
     assert not m1_scale.runs_agent(["cmd.exe", "/c", str(tmp_path / "other" / "run-a.cmd")], agent)
+
+
+def test_assembly_counts_only_the_turns_own_calls_and_summarises_them():
+    class Inner:
+        def call(self, op, **fields):
+            return {"op": op}
+
+    counting = m1_scale._CountingStorage(Inner(), threading.get_ident())
+    counting.call("query", mode="dense")
+    counting.call("coverage")
+    worker = threading.Thread(target=counting.call, args=("batch",))
+    worker.start()
+    worker.join()
+    assert counting.calls == {"query:dense": 1, "coverage": 1}
+    turns = [{"wall_ms": 10.0, "route_ms": 4.0, "route_calls": 3, "pack_tokens": 50, "budget_tokens": 100, "state": "ok", "blocked": None},
+             {"wall_ms": 20.0, "route_ms": 6.0, "route_calls": 9, "pack_tokens": None, "budget_tokens": None, "state": "unavailable", "blocked": "X"}]
+    summary = m1_scale._assembly_summary(turns)
+    assert summary["route_calls_max"] == 9 and summary["pack_share_of_token_budget_max"] == 0.5 and summary["states"] == ["ok", "unavailable"] and summary["blocked"] == ["X"]
