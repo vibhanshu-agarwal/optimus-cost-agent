@@ -223,13 +223,18 @@ def test_an_index_that_fails_while_preparing_never_fails_a_turn(tmp_path: Path, 
     asyncio.run(scenario())
 
 
-def test_a_cancel_while_waiting_on_the_index_still_ends_the_turn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_cancel_while_waiting_on_the_index_still_closes_the_turn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The wait is inside the turn's cleanup: a turn cancelled here still finalizes its settlement, which closes its coverage epoch."""
     monkeypatch.setattr(spec, "MEMORY_PREPARE_SECONDS", 30)
 
     async def scenario() -> None:
         session = _Blocked("turn")
         adapter, _outbound = _adapter(tmp_path, lambda workspace: session)
         session_id = await new_session(adapter, tmp_path, mode="chat")
+        settlement = adapter._sessions.get(session_id).cost_settlement
+        finalized: list[str] = []
+        finalize = settlement.finalize_turn
+        monkeypatch.setattr(settlement, "finalize_turn", lambda run_id: (finalized.append(run_id), finalize(run_id))[1])
         waiting = asyncio.create_task(_chat(adapter, session_id, "p1"))
         try:
             while session.calls == 0:
@@ -237,7 +242,7 @@ def test_a_cancel_while_waiting_on_the_index_still_ends_the_turn(tmp_path: Path,
             waiting.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await waiting
-            assert session_id not in adapter._active_turns
+            assert session_id not in adapter._active_turns and len(finalized) == 1
         finally:
             session.release.set()
 
