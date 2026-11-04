@@ -64,6 +64,15 @@ def _edges(files: Sequence[MapFile]) -> dict[str, set[str]]:
     return edges
 
 
+def neighbours(files: Sequence[MapFile], paths: Sequence[str]) -> list[str]:
+    """What the given files import, then what imports them, each in path order. Only observed edges, so a file nothing links to has none."""
+    edges = _edges(files)
+    chosen = set(paths)
+    imported = sorted({target for path in paths for target in edges.get(path, ())} - chosen)
+    importers = sorted({source for source, targets in edges.items() if targets & chosen} - chosen - set(imported))
+    return imported + importers
+
+
 def rank(files: Sequence[MapFile]) -> dict[str, float]:
     """PageRank over observed imports. Deterministic: sorted iteration and a fixed number of rounds."""
     edges = _edges(files)
