@@ -158,13 +158,16 @@ def test_past_the_path_limit_the_revision_follows_the_file_and_git_reads_the_rep
     subprocess.run([*git, "commit", "-q", "-m", "one"], check=True)
     source = _source(tmp_path)
     try:
-        first, dirty = source.revision()
+        _first, dirty = source.revision()
         assert dirty is False, "a tracked file past the limit is not a deletion"
         assert [item.path for item in source.files()] == [relative]
         with open(full, "w", encoding="utf-8") as stream:
             stream.write("x = 22\n")
-        second, dirty = source.revision()
-        assert second != first and dirty is True
+        edited, dirty = source.revision()
+        assert dirty is True
+        with open(full, "w", encoding="utf-8") as stream:  # already dirty, so only the file's own facts can show this
+            stream.write("x = 333\n")
+        assert source.revision()[0] != edited
     finally:
         shutil.rmtree(file_policy._extended(str(tmp_path / "a_folder_named_long_enough_to_add_up")))
 
