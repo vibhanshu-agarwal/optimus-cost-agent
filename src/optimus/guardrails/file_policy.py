@@ -15,8 +15,10 @@ a rule id, never content, and the policy revision binds the ignore files that ju
 
 Windows refuses a path near its length limit unless told not to normalize it, so such a path gets the extended form for
 its I/O alone. Every path here is built from validated parts under the resolved root, and every check still sees the plain
-spelling, so this reaches more of the workspace and can name nothing new. A folder that cannot be listed is reported,
-never skipped in silence, because what is missing must not look like what was excluded.
+spelling. That form also turns off Windows' own normalization, which could let `.env ` past a check that knows `.env`, so a
+name Windows would normalize or treat as a device is denied, on the spelling and the target, before anything is opened. A
+folder that cannot be listed, the root included, is reported and never skipped in silence, because what is missing must not
+look like what was excluded.
 """
 
 from __future__ import annotations
@@ -45,10 +47,12 @@ _MAX_IGNORE_FILE_BYTES = 1024 * 1024
 _CASE_INSENSITIVE = sys.platform in ("win32", "darwin")
 _WINDOWS_PATH_ROOM: Final = 240  # below MAX_PATH, and below the shorter limit on folders
 _EXTENDED: Final = "\\\\?\\"
+_WINDOWS_DEVICES: Final = frozenset({"con", "prn", "aux", "nul", "conin$", "conout$", *(f"{port}{n}" for port in ("com", "lpt") for n in "123456789¹²³")})
 
 ALLOWED = "allowed"
 REASON_TEXT = {
     "deny.invalid_path": "not a workspace-relative path",
+    "deny.windows_name": "a name Windows would normalize or treat as a device",
     "deny.skipped_dir": "inside a skipped tool folder",
     "deny.runtime_tree": "inside the Optimus runtime folder",
     "deny.secret": "a secret or credential file",  # pragma: allowlist secret - a reason label
@@ -141,8 +145,7 @@ class FilePolicy:
                 return
             entries = list(os.scandir(folder))
         except OSError:
-            if parts:
-                yield parts, False
+            yield parts, False
             return
         for entry in entries:
             child = (*parts, entry.name)
@@ -315,7 +318,14 @@ def describe(reason: str) -> str:
     return REASON_TEXT.get(reason, reason)
 
 
+def windows_special_name(name: str) -> bool:
+    """A name Windows would change or read as a device through an ordinary path, but which the extended form takes literally."""
+    return name != name.rstrip(" .") or name.split(".", 1)[0].rstrip(" ").casefold() in _WINDOWS_DEVICES
+
+
 def _parts_denial(parts: tuple[str, ...]) -> str | None:
+    if sys.platform == "win32" and any(windows_special_name(part) for part in parts):
+        return "deny.windows_name"
     names = tuple(part.casefold() for part in parts) if _CASE_INSENSITIVE else parts
     if any(name in SKIP_DIR_NAMES for name in names):
         return "deny.skipped_dir"

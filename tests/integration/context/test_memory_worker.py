@@ -576,6 +576,41 @@ def test_a_folder_that_cannot_be_read_stops_a_pass_being_called_complete(index: 
     assert index.symbols("hidden_function") == ["hidden_function"]
 
 
+def test_an_unreadable_root_is_not_published_as_an_empty_complete_index(index: Index, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert index.build().state == "complete"
+    before = index.paths()
+
+    def scandir(path: Any) -> Any:
+        raise PermissionError(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    outcome = index.build()
+    monkeypatch.undo()
+    assert outcome.state == "paused" and outcome.coverage["complete"] is False
+    assert index.storage.call("coverage")["current"]["coverage"]["complete"] is False
+    assert index.paths() == before, "what could not be seen was not removed"
+    assert index.symbols("first_function") == ["first_function"]
+    assert index.build().state == "complete" and index.paths() == before
+
+
+def test_a_folder_that_cannot_be_read_keeps_what_was_indexed_from_it(index: Index, monkeypatch: pytest.MonkeyPatch) -> None:
+    (index.root / "locked").mkdir()
+    (index.root / "locked" / "hidden.py").write_text("def hidden_function():\n    return 1\n", encoding="utf-8")
+    assert index.build().state == "complete"
+    real = os.scandir
+
+    def scandir(path: Any) -> Any:
+        if os.path.basename(path) == "locked":
+            raise PermissionError(path)
+        return real(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    outcome = index.build()
+    monkeypatch.undo()
+    assert outcome.state == "paused"
+    assert index.symbols("hidden_function") == ["hidden_function"]
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="the path length limit is a Windows mechanism")
 def test_a_file_past_the_windows_path_limit_is_indexed_and_counted(index: Index) -> None:
     relative = "/".join(["a_folder_named_long_enough_to_add_up"] * 10) + "/Deep.java"

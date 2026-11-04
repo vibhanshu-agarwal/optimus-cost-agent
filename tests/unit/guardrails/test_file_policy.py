@@ -251,6 +251,47 @@ def test_a_folder_that_cannot_be_listed_is_reported_and_not_skipped_in_silence(t
     assert file_policy.describe("excluded.unreadable") == "a folder that cannot be listed"
 
 
+@pytest.mark.parametrize(
+    ("name", "special"),
+    [(".env ", True), (".env.", True), ("private.key ", True), ("a.txt...", True), ("CON", True), ("nul.txt", True), ("Com1.log", True), ("LPT9", True), ("conin$", True), ("aux .txt", True),
+     (".env", False), ("console.log", False), ("nullable.java", False), ("com10.txt", False), ("a b.txt", False), (".hidden", False)],
+)
+def test_the_names_windows_would_change_or_read_as_a_device(name, special):
+    assert file_policy.windows_special_name(name) is special
+
+
+@pytest.mark.skipif(not WINDOWS, reason="only the Windows extended path form takes these names literally")
+@pytest.mark.parametrize("name", [".env ", "private.key ", ".env.", "CON", "NUL.txt", "notes. "])
+def test_a_name_only_the_extended_form_reaches_is_denied_unopened(tmp_path, monkeypatch, name):
+    root = tmp_path / "ws"
+    deep = _deep(root)
+    _long_write(root, f"{deep}/{name}", SENTINEL)
+    _long_write(root, f"{deep}/control.txt", "ordinary\n")
+    opened = []
+    real_open = open
+    monkeypatch.setattr("builtins.open", lambda path, *a, **k: opened.append(os.fspath(path)) or real_open(path, *a, **k))
+    try:
+        policy = FilePolicy(root)
+        reasons = _reasons(policy)
+        decision, data = policy.read(f"{deep}/{name}", purpose=AUTO)
+    finally:
+        monkeypatch.undo()
+        shutil.rmtree(file_policy._extended(str(root)))
+    assert reasons[f"{deep}/{name}"] == decision.reason == "deny.windows_name" and data is None
+    assert reasons[f"{deep}/control.txt"] == "allowed"
+    assert not [path for path in opened if path.endswith(name)], "denied before anything opened it"
+
+
+def test_a_workspace_root_that_cannot_be_listed_is_reported(tmp_path, monkeypatch):
+    _write(tmp_path, "a.py")
+
+    def scandir(path):
+        raise PermissionError(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    assert _reasons(FilePolicy(tmp_path)) == {".": "excluded.unreadable"}
+
+
 def test_a_path_keeps_its_spelling_until_it_nears_the_limit():
     short = str(Path("C:/short/file.txt"))
     assert file_policy.reachable_path(short) == short

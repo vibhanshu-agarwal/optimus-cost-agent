@@ -236,7 +236,8 @@ class IndexWorker:
                 self._flush(pending, batch, force=True)
                 self._publish(complete=False)
                 self._epoch = self._storage.call("generation", action="begin", token=self._token)["epoch"]
-        for identity in sorted(set(held) - seen):
+        # A file the listing could not reach may still exist, so nothing is removed on its account while part of the tree is out of sight.
+        for identity in () if self._source.unreachable() else sorted(set(held) - seen):
             batch.removals.append({"path_id": identity})
             if len(batch.removals) >= BATCH_RECORDS:
                 self._flush(pending, batch, force=True)
