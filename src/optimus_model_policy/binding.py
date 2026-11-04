@@ -191,17 +191,17 @@ def route_digest(model_id: str, entry: ModelEntry) -> str:
     return _sha256_canonical({"model": model_id, "route": entry.route.model_dump(mode="json")})
 
 
-def payload_digest(model_id: str, messages: Sequence[Message], output_cap: int, *, reasoning: str | None) -> str:
+def payload_digest(model_id: str, messages: Sequence[Message], output_cap: int, *, reasoning: str | None, prompt_cache: str | None = None) -> str:
     """Identity of the final upstream payload, after every host and Gateway transformation: model,
-    messages, output cap and the approved reasoning setting it is sent with."""
-    return _sha256_canonical(
-        {
-            "model": model_id,
-            "messages": [[message.role, message.content] for message in messages],
-            "output_cap": output_cap,
-            "reasoning": reasoning,
-        }
-    )
+    messages, output cap and the approved reasoning setting it is sent with. Only ``top_level`` caching
+    changes those bytes, so only it changes this digest."""
+    payload = {
+        "model": model_id,
+        "messages": [[message.role, message.content] for message in messages],
+        "output_cap": output_cap,
+        "reasoning": reasoning,
+    }
+    return _sha256_canonical({**payload, "prompt_cache": prompt_cache} if prompt_cache == "top_level" else payload)
 
 
 # --- Upstream wire mapping and attempts ------------------------------------------------------------

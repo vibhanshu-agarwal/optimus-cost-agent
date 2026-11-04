@@ -33,6 +33,7 @@ from pydantic import (
     ValidationError,
     field_serializer,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -278,6 +279,17 @@ class Route(BaseModel):
     endpoints: Annotated[tuple[Endpoint, ...], Field(min_length=1)]
     allow_fallbacks: StrictFlag = False
     require_parameters: StrictFlag = True
+    prompt_cache: Literal["none", "implicit", "top_level"] | None = None
+    """Absent and ``none`` send what was always sent, as does ``implicit``, which records that the provider caches by itself.
+    ``top_level`` adds the root ``cache_control``. A route that only caches by content block has no value here: it stays uncached."""
+
+    @model_serializer(mode="wrap")
+    def absent_cache_keeps_identity(self, handler: Any) -> dict[str, Any]:
+        """Registries that say nothing about caching keep the hashes already approved; opting in enters them."""
+        data: dict[str, Any] = handler(self)
+        if self.prompt_cache is None:
+            data.pop("prompt_cache", None)
+        return data
 
     @property
     def providers(self) -> tuple[str, ...]:

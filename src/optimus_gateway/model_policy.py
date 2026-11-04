@@ -142,6 +142,8 @@ class AdmittedRequest:
     experimental: ExperimentalRoute | None = None
     """The reviewed experimental test route this request was admitted under, if any: every reply is
     then checked with :func:`check_experimental_reply`."""
+    prompt_cache: str | None = None
+    """The route's approved caching setting; decision requests never carry one."""
 
 
 def parse_route_binding(request_body: Mapping[str, Any], policy: GatewayModelPolicy | None) -> RouteBinding | None:
@@ -199,7 +201,7 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
             request_id=binding.request_id,
             model_id=model,
             route=route_digest(model, entry),
-            payload=payload_digest(model, messages, binding.output_cap, reasoning=entry.default_reasoning),
+            payload=payload_digest(model, messages, binding.output_cap, reasoning=entry.default_reasoning, prompt_cache=entry.route.prompt_cache),
         ):
             raise ModelPolicyRefusal("DISCLOSURE_INVALID", "the disclosure does not cover this request, route and payload")
 
@@ -218,6 +220,7 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
         request_id=binding.request_id,
         reasoning=entry.default_reasoning,
         experimental=experimental,
+        prompt_cache=entry.route.prompt_cache,
     )
 
 
