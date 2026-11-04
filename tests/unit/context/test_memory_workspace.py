@@ -241,3 +241,12 @@ def test_dirty_paths_names_each_changed_file_relative_to_this_root(tmp_path: Pat
 def test_dirty_paths_is_none_outside_git(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("a = 1\n", encoding="utf-8")
     assert WorkspaceIndexSource(FilePolicy(tmp_path)).dirty_paths() is None
+
+
+def test_a_workers_source_sees_an_ignore_file_change_at_its_next_revision(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("a = 1\n", encoding="utf-8")
+    source = WorkspaceIndexSource(FilePolicy(tmp_path))
+    assert [item.path for item in source.files()] == ["a.py"]
+    (tmp_path / ".optimusignore").write_text("a.py\n", encoding="utf-8")
+    source.revision()
+    assert "a.py" not in [item.path for item in source.files()]

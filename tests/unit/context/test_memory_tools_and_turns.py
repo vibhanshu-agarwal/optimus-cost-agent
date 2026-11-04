@@ -1151,3 +1151,14 @@ def test_a_file_that_cannot_be_read_asks_for_no_repair(workspace):
     (workspace / "pkg" / "a.py").write_bytes(b"a\x00b")
     session.repo_map(scope)
     assert session._priorities() == ()
+
+
+# --- guards review 7 asked to see proved --------------------------------------------------------------
+
+
+def test_grounding_on_one_turn_sees_an_ignore_file_change_by_itself(workspace):
+    turn = _session(workspace, _Storage()).turn()
+    turn._session.listing()
+    assert turn.ground("See pkg/a.py.").resolved == ("pkg/a.py",)
+    _ignore(workspace, "pkg/\n")
+    assert turn.ground("See pkg/a.py.").unresolved == ("pkg/a.py",)  # the same turn, with no tool or new turn between
