@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import secrets
 import shutil
 import subprocess
@@ -20,7 +21,7 @@ from typing import Any
 from context_engine.index_worker import SCHEMA_VERSION, IndexSource, SourceFile, StorageRefusedError, StorageUnavailableError
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context.project_registry import ProjectRegistration
-from optimus.guardrails.file_policy import POLICY_VERSION, FilePolicy, FilePurpose
+from optimus.guardrails.file_policy import POLICY_VERSION, FilePolicy, FilePurpose, reachable_path
 from optimus.usage.savings_report import ReportTransportError, gateway_post
 from optimus_security import memory_index_contract as mic
 from optimus_security.memory_index_config import ARTIFACTS_NAME, EmbeddingConfig, artifact_digest
@@ -43,7 +44,7 @@ def _git(root: Path, *args: str) -> str | None:
     if git is None:
         return None
     try:
-        result = subprocess.run([git, "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=_GIT_SECONDS)
+        result = subprocess.run([git, "-c", "core.longpaths=true", "-C", str(root), *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=_GIT_SECONDS)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return result.stdout if result.returncode == 0 else None
@@ -69,15 +70,23 @@ def index_scope(registration: ProjectRegistration, *, branch: str, embedding: st
 class WorkspaceIndexSource(IndexSource):
     def __init__(self, policy: FilePolicy) -> None:
         self._policy = policy
+        self._unreachable = 0
 
     def files(self) -> Iterable[SourceFile]:
+        unreachable = 0
         for decision in self._policy.walk(purpose=FilePurpose.INDEX):
             if decision.allowed:
                 yield SourceFile(decision.relative_path, self._modified(decision.relative_path))
+            elif decision.reason == "excluded.unreadable":
+                unreachable += 1
+        self._unreachable = unreachable
+
+    def unreachable(self) -> int:
+        return self._unreachable
 
     def _modified(self, path: str) -> int | None:
         try:
-            return int((self._policy.root / path).stat().st_mtime)
+            return int(os.stat(reachable_path(self._policy.root / path)).st_mtime)
         except OSError:
             return None
 
@@ -97,7 +106,7 @@ class WorkspaceIndexSource(IndexSource):
         contents = hashlib.sha256()
         for item in self.files():
             try:
-                facts = (root / item.path).stat()
+                facts = os.stat(reachable_path(root / item.path))
             except OSError:
                 continue
             contents.update(f"{item.path}\0{facts.st_size}\0{facts.st_mtime_ns}\0".encode())

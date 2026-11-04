@@ -181,6 +181,84 @@ def test_junction_aliases_to_secret_or_outside_targets_are_denied(tmp_path):
     assert reasons["src-alias/app.py"] == "allowed"
 
 
+def _deep(root: Path) -> str:
+    """A folder whose full path is well past Windows' limit."""
+    return "/".join(["a_folder_named_long_enough_to_add_up"] * 10)
+
+
+def _long_write(root: Path, relative: str, text: str) -> None:
+    path = file_policy._extended(str(root.joinpath(*relative.split("/"))))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+
+
+@pytest.mark.skipif(not WINDOWS, reason="the path length limit is a Windows mechanism")
+def test_a_file_past_the_windows_path_limit_is_walked_read_and_judged_like_any_other(tmp_path):
+    import _winapi
+
+    root, outside = tmp_path / "ws", tmp_path / "outside"
+    deep = _deep(root)
+    assert len(str(root)) + len(deep) > 300
+    _long_write(root, f"{deep}/App.java", "class App {}\n")
+    _long_write(root, f"{deep}/.env", SENTINEL)
+    _long_write(root, f"{deep}/.gitignore", "skipped.txt\n")
+    _long_write(root, f"{deep}/skipped.txt", SENTINEL)
+    _write(outside, "shared.txt", SENTINEL)
+    link = file_policy._extended(str(root.joinpath(*deep.split("/"), "away")))
+    _winapi.CreateJunction(str(outside), link)
+    try:
+        policy = FilePolicy(root)
+        reasons = _reasons(policy)
+        decision, data = policy.read(f"{deep}/App.java", purpose=AUTO)
+    finally:
+        os.rmdir(link)
+        shutil.rmtree(file_policy._extended(str(root)))
+    assert reasons[f"{deep}/App.java"] == "allowed"
+    assert reasons[f"{deep}/.env"] == "deny.secret"
+    assert reasons[f"{deep}/skipped.txt"] == "ignored.gitignore"
+    assert reasons[f"{deep}/away/shared.txt"] == "deny.outside_workspace"
+    assert decision.allowed and data == b"class App {}\n" and decision.resolved_identity == f"{deep}/App.java"
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
+def test_a_junction_back_to_its_own_ancestor_ends_the_walk_there(tmp_path):
+    import _winapi
+
+    root = tmp_path / "ws"
+    _write(root, "src/app.py")
+    _winapi.CreateJunction(str(root), str(root / "src" / "loop"))
+    try:
+        reasons = _reasons(FilePolicy(root))
+    finally:
+        os.rmdir(root / "src" / "loop")
+    assert reasons == {"src/app.py": "allowed"}
+
+
+def test_a_folder_that_cannot_be_listed_is_reported_and_not_skipped_in_silence(tmp_path, monkeypatch):
+    _write(tmp_path, "open/a.py")
+    _write(tmp_path, "locked/b.py")
+    real = os.scandir
+
+    def scandir(path):
+        if os.path.basename(path) == "locked":
+            raise PermissionError(path)
+        return real(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    reasons = _reasons(FilePolicy(tmp_path))
+    assert reasons == {"locked": "excluded.unreadable", "open/a.py": "allowed"}
+    assert file_policy.describe("excluded.unreadable") == "a folder that cannot be listed"
+
+
+def test_a_path_keeps_its_spelling_until_it_nears_the_limit():
+    short = str(Path("C:/short/file.txt"))
+    assert file_policy.reachable_path(short) == short
+    long = "C:\\" + "x" * 300
+    assert file_policy.reachable_path(long) == (f"\\\\?\\{long}" if WINDOWS else long)
+    assert file_policy._plain("\\\\?\\C:\\x") == "C:\\x" and file_policy._plain("\\\\?\\UNC\\host\\share") == "\\\\host\\share"
+
+
 def test_invalid_paths_are_denied_without_touching_the_filesystem(tmp_path):
     policy = FilePolicy(tmp_path)
 

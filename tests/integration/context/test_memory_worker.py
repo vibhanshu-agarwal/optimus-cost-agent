@@ -10,6 +10,7 @@ import base64
 import hashlib
 import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
@@ -29,6 +30,7 @@ from context_engine.index_worker import IndexWorker, StorageRefusedError, Storag
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context.memory_workspace import GatewayIndexStorage, WorkspaceIndexSource, current_branch, index_scope
 from optimus.context.project_registry import ProjectRegistration
+from optimus.guardrails import file_policy
 from optimus.guardrails.file_policy import FilePolicy
 from optimus_gateway import memory_index
 from optimus_gateway.models import GatewayServiceConfig
@@ -553,6 +555,45 @@ def test_the_final_check_gives_way_to_a_persons_turn(index: Index) -> None:
                          foreground_busy=lambda: busy["on"], pause=pause)
     assert worker.run(threading.Event()).state == "complete"
     assert waited_during_check["n"] == 1
+
+
+def test_a_folder_that_cannot_be_read_stops_a_pass_being_called_complete(index: Index, monkeypatch: pytest.MonkeyPatch) -> None:
+    (index.root / "locked").mkdir()
+    (index.root / "locked" / "hidden.py").write_text("def hidden_function():\n    return 1\n", encoding="utf-8")
+    real = os.scandir
+
+    def scandir(path: Any) -> Any:
+        if os.path.basename(path) == "locked":
+            raise PermissionError(path)
+        return real(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    outcome = index.build()
+    assert outcome.state == "paused" and "1 folders could not be read" in outcome.detail and outcome.coverage["complete"] is False
+    assert index.storage.call("coverage")["current"]["coverage"]["complete"] is False
+    monkeypatch.undo()
+    assert index.build().state == "complete"
+    assert index.symbols("hidden_function") == ["hidden_function"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the path length limit is a Windows mechanism")
+def test_a_file_past_the_windows_path_limit_is_indexed_and_counted(index: Index) -> None:
+    relative = "/".join(["a_folder_named_long_enough_to_add_up"] * 10) + "/Deep.java"
+    full = file_policy._extended(str(index.root.joinpath(*relative.split("/"))))
+    os.makedirs(os.path.dirname(full))
+    with open(full, "w", encoding="utf-8") as stream:
+        stream.write("class Deep {\n  int deepMethod() { return 1; }\n}\n")
+    try:
+        outcome = index.build()
+        assert outcome.state == "complete" and outcome.coverage["parsed_loc"]["java"] == 3
+        assert relative in index.paths() and index.symbols("deepMethod") == ["Deep", "Deep.deepMethod"]
+        # An edit to it is seen, as any other file's would be.
+        with open(full, "w", encoding="utf-8") as stream:
+            stream.write("class Deep {\n  int otherMethod() { return 1; }\n}\n")
+        assert index.build().state == "complete"
+        assert index.symbols("otherMethod") == ["Deep", "Deep.otherMethod"] and index.symbols("deepMethod") == []
+    finally:
+        shutil.rmtree(file_policy._extended(str(index.root / "a_folder_named_long_enough_to_add_up")))
 
 
 def test_a_reader_pinned_across_an_ordinary_pass_is_refused_and_never_answered_partly(index: Index) -> None:

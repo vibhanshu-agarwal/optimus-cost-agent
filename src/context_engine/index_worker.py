@@ -69,6 +69,10 @@ class IndexSource(Protocol):
 
     def revision(self) -> tuple[str, bool]: ...
 
+    def unreachable(self) -> int:
+        """How many folders the last listing could not read. What they hold is missing, not excluded."""
+        ...
+
 
 @dataclass
 class Coverage:
@@ -240,11 +244,13 @@ class IndexWorker:
         unchanged = self._source.revision() == self._revision and self._still_what_was_read(contents, cancel)
         if cancel.is_set():
             raise _Cancelled([])
-        current = self._publish(complete=unchanged)
+        unreachable = self._source.unreachable()
+        complete = unchanged and not unreachable
+        current = self._publish(complete=complete)
         self._progress("idle")
         self._prune()
-        return WorkerOutcome("complete" if unchanged else "paused", "" if unchanged else "the source changed during this pass", current,
-                             self._files_written, self._records_written, self._coverage.report(complete=unchanged))
+        detail = "" if complete else f"{unreachable} folders could not be read" if unreachable else "the source changed during this pass"
+        return WorkerOutcome("complete" if complete else "paused", detail, current, self._files_written, self._records_written, self._coverage.report(complete=complete))
 
     def _still_what_was_read(self, contents: dict[str, str | None], cancel: threading.Event) -> bool:
         """The final word on `complete`: the same files with the same bytes. A file's size and time can stay the same when its contents do not.
