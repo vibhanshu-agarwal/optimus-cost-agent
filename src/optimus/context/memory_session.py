@@ -175,7 +175,9 @@ class MemorySession:
         self._thread: threading.Thread | None = None
         self._last_outcome: WorkerOutcome | None = None
         self._indexed_revision: tuple[str, bool] | None = None
-        self._scope = self._new_scope()
+        self._branch_asks = 0
+        self._branch_answered = 0
+        self._scope = self._new_scope(self._branch_of(policy.root))
         self._catalogue = _Cached()
         self._map: _CachedMap | None = None
         self._listed: tuple[str, ...] | None = None
@@ -203,21 +205,28 @@ class MemorySession:
     def _on_branch(self, branch: str) -> Callable[[], bool]:
         return lambda: self._branch_of(self._policy.root) == branch
 
-    def _new_scope(self) -> _Scope:
-        branch = self._branch_of(self._policy.root)
+    def _new_scope(self, branch: str) -> _Scope:
         identity = index_scope(self._registration, branch=branch, embedding=self._embedding_identity, parser_version=self._parser_version)
         return _Scope(identity, branch, self._storage_for(identity))
 
     def _current_scope(self) -> _Scope:
-        """The scope for this moment. A new branch cancels whatever pass the old one has running and starts its own."""
+        """The scope for this moment. A new branch cancels whatever pass the old one has running and starts its own. Git can stall and the
+        event loop takes this lock to stop a session, so the branch is asked for outside it, and an older answer never undoes a newer one."""
         with self._lock:
-            if self._branch_of(self._policy.root) != self._scope.branch:
-                self._scope = self._new_scope()
-                self._catalogue = _Cached()
-                self._map = None
-                self._indexed_revision = None
-                self._cancel.set()
-                self._wake.set()
+            self._branch_asks += 1
+            ask = self._branch_asks
+        branch = self._branch_of(self._policy.root)
+        found = self._new_scope(branch)
+        with self._lock:
+            if ask > self._branch_answered:
+                self._branch_answered = ask
+                if branch != self._scope.branch:
+                    self._scope = found
+                    self._catalogue = _Cached()
+                    self._map = None
+                    self._indexed_revision = None
+                    self._cancel.set()
+                    self._wake.set()
             return self._scope
 
     def request_pass(self, priority: Sequence[str] = ()) -> None:

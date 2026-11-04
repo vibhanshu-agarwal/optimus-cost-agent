@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -384,6 +386,67 @@ def test_changing_branch_moves_to_that_branchs_line(workspace):
     branch[0] = "other"
     session.turn()
     assert len(set(scopes)) == 2
+
+
+def _stalled_branch(session: MemorySession, answers: list[str]) -> tuple[threading.Event, threading.Event]:
+    """Branch discovery that says it has started, then waits until released before giving its answer."""
+    started, release = threading.Event(), threading.Event()
+    remaining = list(answers)
+
+    def branch_of(_root):
+        answer = remaining.pop(0)
+        started.set()
+        assert release.wait(30)
+        return answer
+
+    session._branch_of = branch_of
+    return started, release
+
+
+def test_stalled_branch_discovery_holds_no_lock_a_person_or_the_event_loop_waits_on(workspace):
+    """Codex review 11: stopping a session takes this lock on the event loop, and a repair before the model call takes it too."""
+    session = _session(workspace, _Storage())
+    started, release = _stalled_branch(session, ["main"])
+    asking = threading.Thread(target=session._current_scope, daemon=True)
+    asking.start()
+    assert started.wait(10)
+    try:
+        for call in (session.stop, session.request_pass, session._priorities):
+            caller = threading.Thread(target=call, daemon=True)
+            caller.start()
+            caller.join(2)
+            assert not caller.is_alive(), call
+    finally:
+        release.set()
+    asking.join(10)
+    assert not asking.is_alive()
+
+
+def test_an_older_branch_answer_never_undoes_a_newer_one(workspace):
+    session = _session(workspace, _Storage())
+    started, release = _stalled_branch(session, ["main"])
+    results: list[Any] = []
+    older = threading.Thread(target=lambda: results.append(session._current_scope()), daemon=True)
+    older.start()
+    assert started.wait(10)
+    session._branch_of = lambda _root: "feature"
+    newer = session._current_scope()
+    assert newer.branch == "feature" and session._cancel.is_set()
+    release.set()
+    older.join(10)
+    assert session._scope is newer and results == [newer]
+
+
+def test_a_new_branch_still_gets_its_own_scope_and_clears_what_the_old_one_cached(workspace):
+    session = _session(workspace, _Storage())
+    original = session._scope
+    session._map = object()
+    session._indexed_revision = ("r", False)
+    session._branch_of = lambda _root: "feature"
+    assert session._current_scope().branch == "feature" and session._scope is not original
+    assert session._map is None and session._indexed_revision is None and session._wake.is_set() and session._cancel.is_set()
+    same = session._scope
+    assert session._current_scope() is same  # an unchanged branch keeps its scope
 
 
 def test_status_is_one_content_free_line(workspace):
