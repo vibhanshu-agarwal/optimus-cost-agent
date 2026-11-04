@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          ref: c9e099d13eab2d3c0092785e921defe93dcee76a  # pragma: allowlist secret - exact merge commit SHA
 
       - name: Set up Node
         uses: actions/setup-node@v4
