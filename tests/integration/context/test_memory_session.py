@@ -303,6 +303,7 @@ def test_a_tool_sees_a_file_made_after_the_last_walk(root: Path, sessions: _Sess
 def test_a_file_written_during_a_turn_is_not_reported_as_missing(root: Path, sessions: _Sessions) -> None:
     session = sessions.open(root)
     _ready(session)
+    session.listing()  # as a turn's assembly has already done by the time it writes
     turn = session.turn()
     (root / "written_now.py").write_text("def written_now():\n    return 1\n", encoding="utf-8")
     report = turn.ground("I wrote written_now.py, and gone_entirely.py is cited too.")

@@ -29,9 +29,9 @@
     "work_dir": "tmp/plan12-m1-pilot"
   },
   "corpus": {
-    "chunk_chars_mean": 713.0,
+    "chunk_chars_mean": 712.8,
     "chunk_chars_p95": 2337,
-    "embedded_chunks": 794,
+    "embedded_chunks": 795,
     "excluded": {
       "deny.skipped_dir": 81
     },
@@ -43,18 +43,18 @@
       "unsupported": 6
     },
     "parse_error_files": 0,
-    "parse_seconds": 0.704,
+    "parse_seconds": 0.759,
     "parsed_lines": {
       "java": 0,
       "markdown": 0,
-      "python": 10645,
+      "python": 10649,
       "text": 0,
       "unsupported": 0
     },
     "records": {
       "java": 0,
       "markdown": 0,
-      "python": 840,
+      "python": 841,
       "text": 0,
       "unsupported": 6
     }
@@ -76,10 +76,10 @@
         },
         "pack_tokens": 31,
         "route_calls": 5,
-        "route_ms": 43.7,
+        "route_ms": 49.8,
         "state": "ok",
         "task": "how does the gateway decide which provider serves a chat completion",
-        "wall_ms": 148.3
+        "wall_ms": 169.2
       },
       {
         "blocked": null,
@@ -93,10 +93,10 @@
         },
         "pack_tokens": 8284,
         "route_calls": 7,
-        "route_ms": 58.7,
+        "route_ms": 47.4,
         "state": "ok",
         "task": "explain src/optimus_gateway/memory_index.py",
-        "wall_ms": 165.9
+        "wall_ms": 163.2
       },
       {
         "blocked": null,
@@ -110,10 +110,10 @@
         },
         "pack_tokens": 31,
         "route_calls": 6,
-        "route_ms": 50.5,
+        "route_ms": 51.5,
         "state": "ok",
         "task": "where does `select_eligible_models` get its candidates and how does IndexWorker resume",
-        "wall_ms": 166.1
+        "wall_ms": 183.5
       },
       {
         "blocked": null,
@@ -125,36 +125,37 @@
           "query:path": 5,
           "query:symbol": 5
         },
-        "pack_tokens": 9762,
+        "pack_tokens": 9851,
         "route_calls": 13,
-        "route_ms": 120.6,
+        "route_ms": 114.3,
         "state": "ok",
         "task": "compare src/context_engine/retrieval.py src/context_engine/context_pack.py src/context_engine/repo_map.py src/context_engine/code_index.py",
-        "wall_ms": 255.8
+        "wall_ms": 258.3
       }
     ],
-    "route_calls_max": 20,
+    "route_calls_max": 21,
     "route_calls_median": 7.0,
     "route_ms": {
-      "max_ms": 220.8,
-      "mean_ms": 87.344,
-      "p50_ms": 68.7,
-      "p95_ms": 178.1,
-      "samples": 242
+      "max_ms": 251.5,
+      "mean_ms": 98.287,
+      "p50_ms": 89.3,
+      "p95_ms": 199.3,
+      "samples": 246
     },
     "states": [
       "ok"
     ],
-    "turns": 242,
+    "turns": 246,
     "wall_ms": {
-      "max_ms": 491.7,
-      "mean_ms": 233.467,
-      "p50_ms": 209.9,
-      "p95_ms": 340.5,
-      "samples": 242
+      "max_ms": 508.6,
+      "mean_ms": 257.105,
+      "p50_ms": 251.8,
+      "p95_ms": 398.2,
+      "samples": 246
     }
   },
   "estimator": "utf8 bytes / 4",
+  "head": "hex:5daffc200636d76f0a20a53e5d69c5a36b313d2c",
   "host": {
     "cpus": 12,
     "memory_gb": 47.8,
@@ -176,10 +177,10 @@
         },
         "pack_tokens": 16364,
         "route_calls": 11,
-        "route_ms": 75.4,
+        "route_ms": 91.9,
         "state": "ok",
         "task": "how does the gateway decide which provider serves a chat completion",
-        "wall_ms": 212.0
+        "wall_ms": 306.7
       },
       {
         "blocked": null,
@@ -193,10 +194,10 @@
         },
         "pack_tokens": 16321,
         "route_calls": 16,
-        "route_ms": 114.1,
+        "route_ms": 126.9,
         "state": "ok",
         "task": "explain src/optimus_gateway/memory_index.py",
-        "wall_ms": 239.5
+        "wall_ms": 341.8
       },
       {
         "blocked": null,
@@ -210,10 +211,10 @@
         },
         "pack_tokens": 15500,
         "route_calls": 13,
-        "route_ms": 99.0,
+        "route_ms": 123.3,
         "state": "ok",
         "task": "where does `select_eligible_models` get its candidates and how does IndexWorker resume",
-        "wall_ms": 228.4
+        "wall_ms": 351.9
       },
       {
         "blocked": null,
@@ -225,21 +226,21 @@
           "query:path": 12,
           "query:symbol": 5
         },
-        "pack_tokens": 15869,
+        "pack_tokens": 15891,
         "route_calls": 20,
-        "route_ms": 143.0,
+        "route_ms": 178.3,
         "state": "ok",
         "task": "compare src/context_engine/retrieval.py src/context_engine/context_pack.py src/context_engine/repo_map.py src/context_engine/code_index.py",
-        "wall_ms": 273.5
+        "wall_ms": 410.9
       }
     ],
     "route_calls_max": 20,
     "route_calls_median": 14.5,
     "route_ms": {
-      "max_ms": 150.5,
-      "mean_ms": 104.4,
-      "p50_ms": 99.0,
-      "p95_ms": 143.0,
+      "max_ms": 210.8,
+      "mean_ms": 121.897,
+      "p50_ms": 116.9,
+      "p95_ms": 174.6,
       "samples": 40
     },
     "states": [
@@ -247,19 +248,19 @@
     ],
     "turns": 40,
     "wall_ms": {
-      "max_ms": 283.0,
-      "mean_ms": 235.618,
-      "p50_ms": 229.2,
-      "p95_ms": 268.2,
+      "max_ms": 457.3,
+      "mean_ms": 319.442,
+      "p50_ms": 317.4,
+      "p95_ms": 410.9,
       "samples": 40
     }
   },
   "pack_max_tokens": 16384,
   "phase": "assembly",
   "repo_map_on_a_miss": {
-    "chars": 7131,
-    "route_calls": 34,
-    "wall_ms": 311.6
+    "chars": 9987,
+    "route_calls": 50,
+    "wall_ms": 483.0
   },
   "schema": "plan12-memory-m1.assembly.v1",
   "tasks": [

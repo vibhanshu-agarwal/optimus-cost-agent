@@ -829,6 +829,8 @@ def test_a_turn_keeps_its_own_scopes_catalogue_after_a_switch(workspace):
     old._retriever.retrieve("helper")
     assert second.calls == [], "an old turn read another branch's line with its own epoch number"
     assert any(op == "catalogue" for op, _fields in first.calls)
+    session.turn()._retriever.retrieve("helper")  # both lines happen to be at epoch 3, and the old turn's catalogue is the one in the cache
+    assert any(op == "catalogue" for op, _fields in second.calls), "a turn was given another branch's catalogue"
 
 
 def test_a_complete_generation_never_reuses_an_older_catalogue(workspace):
