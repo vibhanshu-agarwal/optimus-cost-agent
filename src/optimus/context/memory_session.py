@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
-from context_engine.code_index import PARSER_VERSION, parse_file
+from context_engine.code_index import PARSER_VERSION, parse_file, path_id
 from context_engine.context_pack import Pack, assemble_pack
 from context_engine.index_worker import Embedder, IndexStorage, IndexWorker, StorageRefusedError, StorageUnavailableError, WorkerOutcome
 from context_engine.repo_map import MapFile, RepoMap, build_repo_map
@@ -67,6 +67,7 @@ MAX_BUFFER_BYTES: Final = 8 * 1024 * 1024
 MAX_BUFFERS: Final = 8
 _MAP_CHECKS: Final = 4
 _SYMBOL_OWNERS: Final = 8
+_MAX_DIRTY_CHECKED: Final = 64
 BRANCH_MOVED: Final = "BRANCH_MOVED"
 _QUERY_CHARS: Final = 2_000
 _MAX_SYMBOLS: Final = 8
@@ -248,9 +249,8 @@ class MemorySession:
                 self._cancel = threading.Event()
                 scope = self._scope
             revision = self._source.revision()
-            if revision == self._indexed_revision:
-                with self._lock:
-                    self._priority = []
+            # Size and time are a hint. A file a turn proved has changed gets its pass even if they say nothing moved.
+            if revision == self._indexed_revision and not self._priorities():
                 continue
             storage = _BranchPinned(self._storage_for(scope.identity), self._on_branch(scope.branch))
             worker = IndexWorker(self._source, storage, self._embedder, owner=secrets.token_hex(16), priority=self._priorities, foreground_busy=self._busy.is_set)
@@ -338,12 +338,12 @@ class MemorySession:
         return MemoryTurn(self, scope, retriever, tools, cancelled, overlay, read)
 
     def listing_for(self, references: Sequence[str]) -> Sequence[str]:
-        """A listing current enough to resolve these. The cached one will do only for exact paths still admitted, since a bare name's
-        owners, or a path's existence, can change without it."""
+        """A listing current enough to resolve these. The cached one will do only for exact paths with a folder in them and still admitted:
+        a bare name's owners can change without it, even when one of them sits at the root."""
         listed = self.listing()
         known = set(listed)
         admits = self._policy.admitter()
-        if all(reference in known and admits(reference) for reference in references):
+        if all("/" in reference.replace("\\", "/") and reference in known and admits(reference) for reference in references):
             return listed
         return self.listing(fresh=True)
 
@@ -417,6 +417,9 @@ class MemorySession:
     def disk_facts(self) -> tuple[str, int]:
         """What a generation's revision would be now, and how many files are too large to index. This thread's own source and policy."""
         return WorkspaceIndexSource(self._policy).disk_facts()
+
+    def dirty_paths(self) -> tuple[str, ...] | None:
+        return WorkspaceIndexSource(self._policy).dirty_paths()
 
     @property
     def policy(self) -> FilePolicy:
@@ -586,25 +589,25 @@ class MemoryTurn:
         unresolved: dict[str, None] = {}
         ambiguous: dict[str, None] = {}
         for reference in references:
-            if reference in known:
+            if len(names.get(reference, ())) > 1:  # a bare name, even if one of its owners sits at the root
+                ambiguous.setdefault(reference)
+            elif reference in known:
                 resolved.setdefault(reference)
             elif len(names.get(reference, ())) == 1:
                 resolved.setdefault(names[reference][0])
-            elif len(names.get(reference, ())) > 1:
-                ambiguous.setdefault(reference)
             else:
                 unresolved.setdefault(reference)
-        now: list[tuple[str, int]] = []  # what the disk is now, asked for at most once a reply and only if something looks absent
+        proved: list[bool] = []  # asked for at most once a reply, and only if something looks absent
 
-        def on_disk_now() -> tuple[str, int]:
-            if not now:
-                now.append(self._session.disk_facts())
-            return now[0]
+        def generation_is_the_disk(current: Mapping[str, Any]) -> bool:
+            if not proved:
+                proved.append(self._generation_is_the_disk(current))
+            return proved[0]
 
         for symbol in dict.fromkeys(_BACKTICKED.findall(answer)):
             if symbol in resolved or symbol in unresolved or symbol in ambiguous:
                 continue
-            found = self._symbol_state(symbol, on_disk_now)
+            found = self._symbol_state(symbol, generation_is_the_disk)
             if found == "found":
                 resolved.setdefault(symbol)
             elif found == "ambiguous":
@@ -617,10 +620,31 @@ class MemoryTurn:
             self._session.write_manifest(self._run_id, self.manifest)
         return report
 
-    def _symbol_state(self, symbol: str, on_disk_now: Callable[[], tuple[str, int]]) -> str | None:
+    def _generation_is_the_disk(self, current: Mapping[str, Any]) -> bool:
+        """Size and time are only a hint, so every file Git calls changed is compared by its bytes. For the rest, this is as sure as Git is."""
+        session = self._session
+        coverage = current["coverage"]
+        if not coverage.get("complete") or coverage.get("unsupported") or session.disk_facts() != (current.get("revision"), 0):
+            return False
+        dirty = session.dirty_paths()
+        if dirty is None or len(dirty) > _MAX_DIRTY_CHECKED:
+            return False
+        for path in dirty:
+            data = session._read(path)
+            if data is None:
+                continue  # gone or refused, and so not something a symbol could be in
+            try:
+                records = self._scope.storage.call("query", mode="path", epoch=current["epoch"], path_id=path_id(path), k=1, kinds=["file"])["records"]
+            except (StorageRefusedError, StorageUnavailableError):
+                return False
+            if not records or records[0]["file_hash"] != hashlib.sha256(data).hexdigest():
+                return False
+        return True
+
+    def _symbol_state(self, symbol: str, generation_is_the_disk: Callable[[Mapping[str, Any]], bool]) -> str | None:
         """found, ambiguous or absent, judged on verified records and this turn's unsaved text, which replaces what the index holds for its
-        file. None when nothing can be proved: absence takes a complete generation of exactly what is on disk now, with nothing in a language
-        the parser cannot see and no file too large for it to have read."""
+        file. None when nothing can be proved: absence takes a complete generation of what is on disk now, with nothing in a language the
+        parser cannot see and no file too large for it to have read."""
         owners: set[str] = set()
         for path in list(self._overlay):
             data = self._read(path)
@@ -644,8 +668,7 @@ class MemoryTurn:
             return "ambiguous" if len(owners) > 1 else "found"
         if stale or not current:
             return None
-        coverage = current["coverage"]
-        return "absent" if coverage.get("complete") and not coverage.get("unsupported") and on_disk_now() == (current.get("revision"), 0) else None
+        return "absent" if generation_is_the_disk(current) else None
 
 
 def session_factory(*, memory_root: Path, config_root: Path, settings: OptimusGatewaySettings, config: MemoryIndexConfig, artifact_directory: str) -> Callable[[Path], MemorySession | None]:

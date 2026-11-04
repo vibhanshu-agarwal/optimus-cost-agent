@@ -80,7 +80,7 @@ reply, a two second wait, a binary buffer or one over 8 MiB leaves the turn on d
 
 ### Grounding and the manifest
 
-After a reply, a card names cited files and symbols the inspected scope does not hold, or that match more than one file. It reports and decides nothing, and it never fails a turn. Symbols are judged on verified records and this turn's unsaved text. It claims one is absent only from a complete generation of exactly what is on disk now, with nothing in a language the parser cannot see and no file too large to parse; otherwise it says nothing. A cached listing vouches only for an exact path still admitted, so a deleted path or a second file of a bare name shows at once. A manifest per run holds paths, hashes, symbols, ranks, reasons, budget and grounding, never a body, with the newest 200 kept per scope.
+After a reply, a card names cited files and symbols the inspected scope does not hold, or that match more than one file. It reports and decides nothing, and it never fails a turn. Symbols are judged on verified records and this turn's unsaved text. It claims one is absent only from a complete generation of what is on disk now, with nothing in a language the parser cannot see and no file too large to parse, and only after comparing by bytes every file Git calls changed; otherwise it says nothing. A cached listing vouches only for an exact path with a folder in it and still admitted, so a deleted path or a second file of a bare name shows at once. A manifest per run holds paths, hashes, symbols, ranks, reasons, budget and grounding, never a body, with the newest 200 kept per scope.
 
 ## Consequences
 
@@ -88,6 +88,7 @@ After a reply, a card names cited files and symbols the inspected scope does not
 - A turn whose named files are unsaved shows text the disk does not have. An `EDIT` then needs the file saved first.
 - A by-name walk runs for every `LIST` and quoted `SEARCH`, and when a named or cited file is not in the last listing: about 1.8 seconds on Hadoop, on this host. A listing can name a binary file that a read then refuses.
 - A worker's revision check is a by-name walk plus a stat of each file, on every turn's request. Only a pass that finds a difference reads files.
+- Size and time only hint that nothing moved. A committed file edited to the same length with its time restored is invisible to Git too, so grounding could call a symbol in it absent until a pass runs. The pack and tools compare bytes, so its text is never shown as current, and the first such comparison gets the file its pass.
 - Grounding will often say nothing about a symbol in a repository holding any language the parser cannot see. That is the price of never claiming a false absence.
 - The check that a pass is still on its branch runs before each write, so one batch read just before a switch can still land. The pack and tools verify every record against the disk, so it cannot become current evidence, and the next pass on that branch reconciles it.
 - One loaded model serves the worker and a person's query at once, with no lock. A real-artifact test proves no errors, not how the two affect each other's speed at scale.

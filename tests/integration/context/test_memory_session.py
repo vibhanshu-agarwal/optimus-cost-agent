@@ -320,9 +320,41 @@ def test_on_a_real_revision_absence_is_claimed_only_while_the_disk_matches(root:
     session = sessions.open(root)
     _ready(session)
     _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
+    session.close()  # no worker may publish again, so this generation stays what it is
     assert session.turn().ground("`invented_name`").unresolved == ("invented_name",)
     (root / "untouched.py").write_text("x = 1\n", encoding="utf-8")
     assert session.turn().ground("`invented_name`").unresolved == ()
+
+
+def _same_size_and_time(path: Path, text: str) -> None:
+    facts = path.stat()
+    path.write_text(text, encoding="utf-8", newline="\n")
+    assert path.stat().st_size == facts.st_size
+    os.utime(path, ns=(facts.st_atime_ns, facts.st_mtime_ns))
+
+
+def test_an_edit_keeping_size_and_time_is_not_read_as_absence(root: Path, sessions: _Sessions) -> None:
+    (root / "dirty.py").write_text("def aaaaaaa_name():\n    return 1\n", encoding="utf-8", newline="\n")
+    session = sessions.open(root)
+    _ready(session)
+    _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
+    session.close()
+    assert session.turn().ground("`invented_name`").unresolved == ("invented_name",)
+    before = session.disk_facts()
+    _same_size_and_time(root / "dirty.py", "def bbbbbbb_name():\n    return 1\n")
+    assert session.disk_facts() == before, "this edit must not be visible to size and time, or the case proves nothing"
+    assert session.turn().ground("`bbbbbbb_name`").unresolved == ()
+
+
+def test_a_change_a_turn_proved_gets_its_pass_even_if_size_and_time_say_nothing_moved(root: Path, sessions: _Sessions) -> None:
+    (root / "dirty.py").write_text("def aaaaaaa_name():\n    return 1\n", encoding="utf-8", newline="\n")
+    session = sessions.open(root)
+    _ready(session)
+    _until(lambda: session._indexed_revision is not None)
+    _same_size_and_time(root / "dirty.py", "def bbbbbbb_name():\n    return 1\n")
+    result = _assemble(session.turn(), "how does aaaaaaa_name work")
+    assert "aaaaaaa_name" not in result.text.replace("how does aaaaaaa_name work", "")
+    _until(lambda: "dirty.py:" in session.turn().tools.run("SYMBOLS", "bbbbbbb_name"))
 
 
 def test_a_symbol_in_a_file_too_large_to_index_is_not_called_absent(root: Path, sessions: _Sessions) -> None:

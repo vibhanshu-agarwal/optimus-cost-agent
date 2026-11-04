@@ -95,6 +95,25 @@ class WorkspaceIndexSource(IndexSource):
         decision, data = self._policy.read(path, purpose=FilePurpose.INDEX)
         return data if decision.allowed else None
 
+    def dirty_paths(self) -> tuple[str, ...] | None:
+        """The files under this root Git says differ from HEAD, relative to it. None outside Git."""
+        root = self._policy.root
+        prefix = _git(root, "rev-parse", "--show-prefix")
+        status = _git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".")
+        if prefix is None or status is None:
+            return None
+        lead = prefix.strip()
+        paths: list[str] = []
+        fields = iter(status.split("\0"))
+        for field in fields:
+            if len(field) < 4:
+                continue
+            if field[0] in "RC":
+                next(fields, None)  # a rename's other name comes next, and only the new one is on disk
+            if field[3:].startswith(lead):
+                paths.append(field[3 + len(lead):])
+        return tuple(paths)
+
     def disk_facts(self) -> tuple[str, int]:
         """The revision a pass would publish now, and how many admitted files are over the index's size limit."""
         return self.revision()[0], self._too_large

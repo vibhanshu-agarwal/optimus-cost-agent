@@ -211,3 +211,33 @@ def test_disk_facts_count_a_file_too_large_to_index(tmp_path: Path) -> None:
     source = WorkspaceIndexSource(policy)
     revision, too_large = source.disk_facts()
     assert too_large == 1 and revision == source.revision()[0]
+
+
+def _committed(root: Path) -> Path:
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args], capture_output=True, check=True)
+
+    root.mkdir(parents=True)
+    git("init", "-q")
+    (root / "sub").mkdir()
+    (root / "sub" / "a.py").write_text("a = 1\n", encoding="utf-8")
+    (root / "b.py").write_text("b = 1\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "one")
+    return root
+
+
+def test_dirty_paths_names_each_changed_file_relative_to_this_root(tmp_path: Path) -> None:
+    root = _committed(tmp_path / "repo")
+    (root / "sub" / "a.py").write_text("a = 2\n", encoding="utf-8")
+    (root / "sub" / "new folder").mkdir()
+    (root / "sub" / "new folder" / "n é.py").write_text("n = 1\n", encoding="utf-8")
+    (root / "b.py").rename(root / "renamed.py")
+    subprocess.run(["git", "-C", str(root), "add", "-A", "renamed.py", "b.py"], check=True)
+    assert set(WorkspaceIndexSource(FilePolicy(root)).dirty_paths() or ()) == {"sub/a.py", "sub/new folder/n é.py", "renamed.py"}
+    assert set(WorkspaceIndexSource(FilePolicy(root / "sub")).dirty_paths() or ()) == {"a.py", "new folder/n é.py"}
+
+
+def test_dirty_paths_is_none_outside_git(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("a = 1\n", encoding="utf-8")
+    assert WorkspaceIndexSource(FilePolicy(tmp_path)).dirty_paths() is None

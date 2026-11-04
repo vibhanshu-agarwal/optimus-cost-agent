@@ -315,6 +315,7 @@ def _session(workspace: Path, storage: _Storage, *, branch="main") -> MemorySess
         embedder_for=lambda: None, embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / f"{workspace.name}-manifests", branch_of=lambda root: branch,
     )
     session.disk_facts = lambda: ("r" * 64, 0)  # type: ignore[method-assign]  # the disk matches what the table says was published; real revisions are in tests/integration/context
+    session.dirty_paths = lambda: ()  # type: ignore[method-assign]
     return session
 
 
@@ -1033,3 +1034,57 @@ def test_a_long_path_argument_is_recorded_whole(workspace):
     long_path = "a/" * 800 + "b.py"
     run_index_tools((IndexToolRequest("OUTLINE", long_path),), _memory(_tools(workspace, _Storage())), _toolbox(workspace), event_sink=events.append, run_id="r")
     assert events[0].payload["parameters"] == {"path": long_path}
+
+
+# --- what review 3 found ----------------------------------------------------------------------------
+
+
+def test_a_root_files_name_is_still_ambiguous_once_a_second_file_has_it(workspace):
+    session = _session(workspace, _Storage())
+    (workspace / "root.py").write_text("x = 1\n", encoding="utf-8")
+    session.listing()
+    (workspace / "other").mkdir()
+    (workspace / "other" / "root.py").write_text("x = 2\n", encoding="utf-8")
+    assert session.turn().ground("See root.py.").ambiguous == ("root.py",)
+    assert _assemble(session.turn(), task="explain root.py").blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
+
+
+def test_a_cached_listing_is_used_for_an_exact_path_still_admitted(workspace):
+    session = _session(workspace, _Storage())
+    listed = session.listing()
+    assert session.listing_for(("pkg/a.py",)) is listed
+    assert session.listing_for(()) is listed
+
+
+def test_absence_needs_each_changed_files_bytes_to_match_the_generation(workspace):
+    class FileRecords(_Storage):
+        def call(self, op, **fields):
+            if op == "query" and fields.get("mode") == "path":
+                return {"records": [{"file_hash": self.held}]}
+            return super().call(op, **fields)
+
+    storage = FileRecords()
+    session = _session(workspace, storage)
+    session.dirty_paths = lambda: ("pkg/a.py",)
+    storage.held = _sha("what it was before an edit that kept its size and time")
+    assert session.turn().ground("`new_name`").unresolved == ()
+    storage.held = _sha(SOURCE)
+    assert session.turn().ground("`new_name`").unresolved == ("new_name",)
+
+
+def test_absence_is_not_claimed_outside_git_or_past_too_many_changes(workspace):
+    session = _session(workspace, _Storage())
+    session.dirty_paths = lambda: None
+    assert session.turn().ground("`any_name`").unresolved == ()
+    session.dirty_paths = lambda: tuple(f"f{number}.py" for number in range(65))
+    assert session.turn().ground("`any_name`").unresolved == ()
+
+
+def test_the_proof_is_asked_for_once_a_reply_and_only_if_something_looks_absent(workspace):
+    session = _session(workspace, _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))]))
+    asked = []
+    session.dirty_paths = lambda: asked.append(1) or ()
+    session.turn().ground("`helper`")
+    assert asked == []
+    session.turn().ground("`one_name` and `other_name`")
+    assert asked == [1]
