@@ -1225,11 +1225,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.context.memory_session:MemorySession._loop:redis_hash_write",
+      "key": "optimus.context.memory_session:MemorySession._loop:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: logs only the exception's type name, never its text, a path or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_worker_that_fails_says_so_rather_than_building_forever",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession._passes:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_search_drops_a_record_the_file_policy_now_refuses",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_worker_that_fails_says_so_rather_than_building_forever",
       "evidence_tier": "unit"
     },
     {

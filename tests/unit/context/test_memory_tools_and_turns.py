@@ -86,6 +86,65 @@ def _tools(workspace: Path, storage: _Storage, *, listing=None, **kwargs) -> Ind
     return IndexTools(retriever=Retriever(storage, None), storage=storage, read=read, listing=lambda: listed, **kwargs)
 
 
+# --- what the index cannot answer -----------------------------------------------------------------
+
+
+class _BrokenEmbedder:
+    def embed(self, texts):
+        raise RuntimeError("native failure")
+
+
+def test_a_model_that_fails_is_a_search_that_did_not_answer_and_never_a_failed_turn():
+    result = Retriever(_Storage(), _BrokenEmbedder()).retrieve("helper")
+    assert result.state == "ok" and result.channels["dense"] == "unavailable" and result.channels["lexical"] == "0 results"
+
+
+def test_search_never_reads_a_search_that_did_not_answer_as_no_matches(workspace):
+    storage = _Storage()
+    answer = IndexTools(retriever=Retriever(storage, _BrokenEmbedder()), storage=storage, read=lambda path: None, listing=lambda: []).run("SEARCH", "helper")
+    assert "No matches in this scope." in answer and "did not answer" in answer and "dense unavailable" in answer
+
+
+def test_a_term_or_name_the_route_would_refuse_is_left_out_before_it_gets_there(workspace):
+    storage = _Storage()
+    Retriever(storage, None).retrieve("real_term " + "a" * 65, named_symbols=("b" * 257, "kept_name"))
+    lexical = next(fields for op, fields in storage.calls if fields.get("mode") == "lexical")
+    assert "real_term" in lexical["terms"] and all(len(term) <= 64 for term in lexical["terms"])
+    assert [fields["symbol"] for op, fields in storage.calls if fields.get("mode") == "symbol"] == ["kept_name"]
+    storage.calls.clear()
+    assert "No matching symbols" in _tools(workspace, storage).run("SYMBOLS", "c" * 257)
+    assert not any(fields.get("mode") == "symbol" for _op, fields in storage.calls)
+
+
+def test_a_worker_that_fails_says_so_rather_than_building_forever(workspace):
+    class Broken:
+        identity, dimensions = "e@1", 8
+
+        def embed(self, texts):
+            raise RuntimeError("native failure")
+
+    session = MemorySession(policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False), storage_for=lambda scope: _Opening(), embedder_for=Broken,
+                            embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "m", branch_of=lambda root: "main")
+    session.start()
+    assert session._thread is not None
+    session._thread.join(10)
+    assert not session._thread.is_alive()
+    assert session.status().startswith("Context index: not updating (INDEX_WORKER_FAILED:RuntimeError)")
+
+
+class _Opening(_Storage):
+    """Just enough of a storage port for a worker to reach its first embedding."""
+
+    def call(self, op, **fields):
+        if op == "generation":
+            return {"status": "ok", "epoch": 1, "resume_epoch": None, "building": None, "current": None, "cursor": None}
+        if op == "lease":
+            return {"status": "ok", "token": 1}
+        if op == "catalogue":
+            return {"status": "ok", "files": [], "cursor": None, "unfinished": []}
+        return super().call(op, **fields)
+
+
 # --- the grammar ----------------------------------------------------------------------------------
 
 

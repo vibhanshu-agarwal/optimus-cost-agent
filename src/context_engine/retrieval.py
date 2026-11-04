@@ -21,6 +21,8 @@ RRF_K: Final = 60
 WEIGHTS: Final = {"lexical": 1.0, "dense": 1.0, "structure": 1.5, "recency": 0.25, "memory": 1.0}
 CHANNEL_K: Final = 40
 MAX_TERMS: Final = 64
+MAX_TERM_CHARS: Final = 64  # the route refuses a longer term, and with it every other term of the query
+MAX_SYMBOL_CHARS: Final = 256  # the route's limit, and no real symbol is longer
 MAX_NAMED: Final = 8
 MAP_SYMBOL_FILES: Final = 48
 MAP_SYMBOLS_PER_FILE: Final = 12
@@ -86,7 +88,8 @@ def query_terms(text: str) -> list[str]:
     seen: dict[str, None] = {}
     for word in text.split():
         for term in split_terms([word]).split():
-            seen.setdefault(term)
+            if len(term) <= MAX_TERM_CHARS:
+                seen.setdefault(term)
     return list(seen)[:MAX_TERMS]
 
 
@@ -194,13 +197,16 @@ class Retriever:
 
     def _dense(self, text: str, epoch: int) -> list[Hit]:
         assert self._embedder is not None
-        vector = base64.b64encode(self._embedder.embed([text])[0]).decode("ascii")
-        return self._ask(epoch, mode="dense", vector=vector, k=CHANNEL_K)
+        try:
+            embedded = self._embedder.embed([text])[0]
+        except Exception as exc:  # a native model has no error contract, and a person's turn never fails because the index did
+            raise StorageUnavailableError("the embedder failed") from exc
+        return self._ask(epoch, mode="dense", vector=base64.b64encode(embedded).decode("ascii"), k=CHANNEL_K)
 
     def _structure(self, named_paths: Sequence[str], named_symbols: Sequence[str], epoch: int) -> list[Hit]:
         """Only what was named or observed: the named files, the named symbols, then what the named files import or are imported by."""
         hits: list[Hit] = []
-        for symbol in named_symbols[:MAX_NAMED]:
+        for symbol in [name for name in named_symbols if len(name) <= MAX_SYMBOL_CHARS][:MAX_NAMED]:
             hits.extend(self._ask(epoch, mode="symbol", symbol=symbol, k=MAX_NAMED))
         chosen = list(named_paths[:MAX_NAMED])
         for path in chosen:

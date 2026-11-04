@@ -8,6 +8,7 @@ index keeps today's context and says so. Turns never wait on the worker, beyond 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -64,6 +65,7 @@ _MAX_SYMBOLS: Final = 8
 # A name someone wrote as code: backticked, dotted, or with an inner capital or underscore. Ordinary words are not symbols.
 _SYMBOL_WORD = re.compile(r"`([A-Za-z_][\w.]*)`|\b([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+|[a-z]+[A-Z]\w*|[A-Z][a-z0-9]+[A-Z]\w*|[a-z]+_\w+)\b")
 _BACKTICKED = re.compile(r"`([A-Za-z_][\w.]*)`")
+_LOG = logging.getLogger(__name__)
 
 
 def named_symbols(text: str) -> tuple[str, ...]:
@@ -146,7 +148,8 @@ class MemorySession:
     def stop(self) -> None:
         """Pause indexing without waiting: the worker stops at its next step and releases its leases, which also expire on their own."""
         self._stop.set()
-        self._cancel.set()
+        with self._lock:
+            self._cancel.set()
         self._wake.set()
 
     def close(self) -> None:
@@ -181,19 +184,27 @@ class MemorySession:
             return tuple(self._priority)
 
     def _loop(self) -> None:
+        """A failure here must not leave a thread dead behind a status that still says building, so it ends indexing and says why."""
         try:
             self._embedder = self._embedder_for()
+            self._passes()
         except EmbedderUnavailableError as exc:
             self._unusable = exc.code
-            return
+        except Exception as exc:  # a native model has no error contract
+            self._unusable = f"INDEX_WORKER_FAILED:{type(exc).__name__}"
+            _LOG.warning("context index worker stopped: %s", type(exc).__name__)
+
+    def _passes(self) -> None:
+        assert self._embedder is not None
         self._wake.set()
         while not self._stop.is_set():
             self._wake.wait()
             self._wake.clear()
-            if self._stop.is_set():
-                return
-            self._cancel = threading.Event()
-            scope = self._scope
+            with self._lock:  # against stop() and a branch change: a cancel meant for this pass must land on this pass's event
+                if self._stop.is_set():
+                    return
+                self._cancel = threading.Event()
+                scope = self._scope
             revision = self._source.revision()
             if revision == self._indexed_revision:
                 with self._lock:
@@ -203,9 +214,10 @@ class MemorySession:
             outcome = worker.run(self._cancel)
             self._last_outcome = outcome
             if outcome.state == "complete":
-                self._indexed_revision = revision
                 with self._lock:
                     self._priority = []
+                    if scope is self._scope:  # two branches at one commit read as one revision, so this must not vouch for the new line
+                        self._indexed_revision = revision
             elif outcome.state in {"paused", "held", "refused"} and not self._stop.is_set():
                 self._wake.wait(RETRY_SECONDS)
                 self._wake.set()
@@ -224,7 +236,7 @@ class MemorySession:
     def status(self) -> str:
         """One line for a person. Nothing here names a file or holds any content."""
         if self._unusable is not None:
-            return f"Context index: unavailable ({self._unusable}). This session keeps today's context."
+            return f"Context index: not updating ({self._unusable}). Turns use what is already indexed, or today's context if nothing is."
         try:
             current = self._current_scope().storage.call("coverage").get("current")
         except (StorageRefusedError, StorageUnavailableError):
@@ -251,7 +263,8 @@ class MemorySession:
         scope = self._current_scope()
         self.request_pass()
         retriever = Retriever(scope.storage, self._embedder, catalogue=self._catalogue_for, cancelled=cancelled)
-        tools = IndexTools(retriever=retriever, storage=scope.storage, read=self._read, listing=self._source.listing, cancelled=cancelled, clock=self._clock)
+        # A tool answers about the disk as it is now: a person or the agent may have just made the file being asked about.
+        tools = IndexTools(retriever=retriever, storage=scope.storage, read=self._read, listing=lambda: self.listing(fresh=True), cancelled=cancelled, clock=self._clock)
         return MemoryTurn(self, scope, retriever, tools, cancelled)
 
     def repo_map(self, scope: _Scope) -> str:
@@ -286,8 +299,8 @@ class MemorySession:
         except OSError:
             return
 
-    def listing(self) -> Sequence[str]:
-        return self._source.listing()
+    def listing(self, *, fresh: bool = False) -> Sequence[str]:
+        return self._source.listing(fresh=fresh)
 
     @property
     def policy(self) -> FilePolicy:
@@ -325,6 +338,8 @@ class MemoryTurn:
         budget = min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
         with self._session.foreground():
             diagnostics = resolve_task_references(selection_text, policy, self._session.listing())
+            if any(item.status is not WorkspaceReferenceStatus.RESOLVED for item in diagnostics):  # the worker's last walk may predate the file
+                diagnostics = resolve_task_references(selection_text, policy, self._session.listing(fresh=True))
             stop_reason, message = blocking_from_diagnostics(diagnostics)
             if stop_reason is not None:
                 return self._blocked(diagnostics, stop_reason, message)
@@ -416,7 +431,10 @@ class MemoryTurn:
 
     def ground(self, answer: str) -> GroundingReport:
         """Check what an answer cited against what exists now. An intended new file is #258's; here it only reads as not found."""
+        references = extract_file_references(answer)
         listed = list(self._session.listing())
+        if not {*references} <= {*listed, *(path.rsplit("/", 1)[-1] for path in listed)}:  # this turn may have written it
+            listed = list(self._session.listing(fresh=True))
         names: dict[str, list[str]] = {}
         for path in listed:
             names.setdefault(path.rsplit("/", 1)[-1], []).append(path)
@@ -424,7 +442,7 @@ class MemoryTurn:
         resolved: dict[str, None] = {}
         unresolved: dict[str, None] = {}
         ambiguous: dict[str, None] = {}
-        for reference in extract_file_references(answer):
+        for reference in references:
             if reference in known:
                 resolved.setdefault(reference)
             elif len(names.get(reference, ())) == 1:

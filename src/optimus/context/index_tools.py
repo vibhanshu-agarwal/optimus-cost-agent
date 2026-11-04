@@ -14,7 +14,7 @@ from typing import Final
 
 from context_engine.code_index import parse_file
 from context_engine.index_worker import IndexStorage, StorageRefusedError, StorageUnavailableError
-from context_engine.retrieval import Hit, Retrieval, Retriever, query_terms
+from context_engine.retrieval import MAX_SYMBOL_CHARS, Hit, Retrieval, Retriever, query_terms
 
 MAX_RESULT_BYTES: Final = 8 * 1024
 SEARCH_RESULTS: Final = 10
@@ -71,7 +71,9 @@ class IndexTools:
             return f"Scope: the index could not answer ({result.state}), so this says nothing about the workspace. Use a quoted SEARCH, OUTLINE or LIST, which read disk."
         coverage = result.coverage
         state = "complete" if coverage.get("complete") else "still building"
-        return f"Scope: index generation {result.epoch}, {state}, {coverage.get('files_indexed', 0)} of {coverage.get('files_total', 0)} files. Not finding something covers only this scope."
+        silent = [f"{name} {outcome}" for name, outcome in sorted(result.channels.items()) if outcome.startswith(("refused", "unavailable"))]
+        missing = f" These searches did not answer, so they found nothing either way: {', '.join(silent)}." if silent else ""
+        return f"Scope: index generation {result.epoch}, {state}, {coverage.get('files_indexed', 0)} of {coverage.get('files_total', 0)} files. Not finding something covers only this scope.{missing}"
 
     def search(self, query: str) -> list[str]:
         text = query.strip()
@@ -157,7 +159,7 @@ class IndexTools:
             if not current:
                 return ["The index has published nothing yet, so this says nothing about the workspace. Use a quoted SEARCH."]
             epoch = current["epoch"]
-            hits = [Hit.from_wire(record) for record in self._storage.call("query", mode="symbol", epoch=epoch, symbol=name, k=SYMBOL_RESULTS)["records"]]
+            hits = [Hit.from_wire(record) for record in self._storage.call("query", mode="symbol", epoch=epoch, symbol=name, k=SYMBOL_RESULTS)["records"]] if len(name) <= MAX_SYMBOL_CHARS else []
             terms = query_terms(name)
             if terms:
                 known = {hit.id for hit in hits}
