@@ -673,6 +673,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.memory_setup:_atomic_write:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.memory_setup:_atomic_write:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.memory_setup:run_setup:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file; the password goes only to the keyring.",
