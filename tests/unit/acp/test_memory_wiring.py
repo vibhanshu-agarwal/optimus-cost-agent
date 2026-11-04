@@ -114,16 +114,6 @@ def test_a_new_session_starts_its_index_for_its_own_workspace(tmp_path: Path) ->
     asyncio.run(scenario())
 
 
-def test_a_workspace_with_no_index_is_an_ordinary_session(tmp_path: Path) -> None:
-    async def scenario() -> None:
-        adapter, outbound = _adapter(tmp_path, lambda workspace: None)
-        session_id = await new_session(adapter, tmp_path, mode="chat")
-        assert (await _chat(adapter, session_id, "p1"))["result"]["stopReason"] == "end_turn"
-        assert not any("Context index" in text for text in _texts(outbound))
-
-    asyncio.run(scenario())
-
-
 def test_without_the_attached_context_no_index_is_opened(tmp_path: Path) -> None:
     """The index needs the attached path's budget and estimator, so the factory is never even called without them."""
 
@@ -431,3 +421,39 @@ def test_on_the_real_channel_a_cancel_clears_the_request_and_a_late_reply_finds_
         channel.deliver_client_response({"id": request_id, "result": {"content": "late"}})
 
     _on_the_real_channel(tmp_path, step)
+
+
+def test_a_launch_that_could_not_use_its_index_says_why_once_a_session(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        outbound = RecordingOutboundChannel()
+        adapter = AcpDuplexAdapter(runner=checked_agent_runner(MemoryRunner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
+                                   context_attachment=make_attachment(), memory_notice="Context index: set up, but not approved.")
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        assert (await _chat(adapter, session_id, "p1"))["result"]["stopReason"] == "end_turn"
+        await _chat(adapter, session_id, "p2")
+        assert [text for text in _texts(outbound) if text.startswith("Context index")] == ["Context index: set up, but not approved.\n\n"]
+        second = await new_session(adapter, tmp_path, mode="chat")
+        await _chat(adapter, second, "p3")
+        assert len([text for text in _texts(outbound) if text.startswith("Context index")]) == 2
+
+    asyncio.run(scenario())
+
+
+def test_a_workspace_that_could_not_be_registered_says_so(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        adapter, outbound = _adapter(tmp_path, lambda workspace: None)
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        assert (await _chat(adapter, session_id, "p1"))["result"]["stopReason"] == "end_turn"
+        assert any("could not be registered" in text for text in _texts(outbound))
+
+    asyncio.run(scenario())
+
+
+def test_a_machine_that_never_opted_in_sees_nothing(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        adapter, outbound = _adapter(tmp_path, None)
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        await _chat(adapter, session_id, "p1")
+        assert not any("Context index" in text for text in _texts(outbound))
+
+    asyncio.run(scenario())

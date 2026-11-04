@@ -86,6 +86,9 @@ if TYPE_CHECKING:
     from optimus.usage.durable_capture import DurableCapture
 
 
+MEMORY_NOT_APPROVED_NOTICE = "Context index: set up, but this launch has not approved it. Run optimus-trust approve to use it. This session uses today's context."
+
+
 class _BuildServerKwargs(TypedDict):
     environ: Mapping[str, str]
     system_environ: Mapping[str, str]
@@ -98,6 +101,7 @@ class _BuildServerKwargs(TypedDict):
     auto_composition: NotRequired[AutoComposition]
     durable_capture: NotRequired[DurableCapture]
     memory_index: NotRequired[tuple[Path, Path]]
+    memory_notice: NotRequired[str]
 
 
 
@@ -865,17 +869,24 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     memory_index_ready: list[Path] = []
+    memory_notices: list[str] = []  # the panel's copy of why not: a person in the editor never sees this launch's log
 
     def _ensure_memory_index(*, start: bool) -> None:
         """Plan 12.10: the approved context index's dedicated Redis. Anything short of ready says why and keeps today's context."""
+
+        def not_approved(line: str) -> None:
+            _print_log(line)
+            memory_notices.append(MEMORY_NOT_APPROVED_NOTICE)
+
         memory_dir = gateway_memory_index(
-            candidate.operator_paths.config_root, candidate.security_literals.get(MEMORY_INDEX_LITERAL_NAME), log=_print_log
+            candidate.operator_paths.config_root, candidate.security_literals.get(MEMORY_INDEX_LITERAL_NAME), log=not_approved
         )[0]
         if memory_dir is None:
             return
         status = ensure_memory_redis(memory_dir, start=start, log=_print_log)
         if status.state != "ready":
             _print_log(f"optimus-agent: the context index is {status.state}: {status.detail}. This launch keeps today's context.")
+            memory_notices.append(f"Context index: {status.state} ({status.detail}). This session uses today's context.")
             return
         memory_index_ready.append(memory_dir)
 
@@ -1102,6 +1113,8 @@ def main(argv: list[str] | None = None) -> int:
                     build_server_kwargs["auto_composition"] = auto_composition
                 if memory_index_ready:
                     build_server_kwargs["memory_index"] = (memory_index_ready[-1], candidate.operator_paths.config_root)
+                elif memory_notices:
+                    build_server_kwargs["memory_notice"] = memory_notices[-1]
                 server = build_configured_server(**build_server_kwargs)
                 configured_server = server
             except StartupConfigurationError as exc:

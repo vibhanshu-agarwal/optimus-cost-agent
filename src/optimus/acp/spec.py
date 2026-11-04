@@ -167,6 +167,7 @@ ACP_PROTOCOL_VERSION = 1
 
 # Plan 12.1: ACP mode IDs <-> the canonical per-session ExecutionMode. Internal
 _LIVE_TOOL_NAMES = frozenset({"index_search", "index_outline", "index_symbols", "index_list"})
+INDEX_NOT_REGISTERED_NOTICE = "Context index: this workspace could not be registered. This session uses today's context."
 BUFFER_READ_SECONDS = 2.0  # an editor answers from memory; a turn's context must not hang on one that does not
 _BUFFER_POLL_SECONDS = 0.05
 # ExecutionMode.PLAN is deliberately not selectable from ACP.
@@ -810,6 +811,7 @@ class AcpDuplexAdapter:
         route_policy: RoutePolicy | None = None,
         session_seeder: Callable[[Any], str | None] | None = None,
         memory_factory: Callable[[Path], Any] | None = None,
+        memory_notice: str | None = None,
         failure_telemetry: JsonlTelemetryWriter | None = None,
         interactive_recovery: bool = True,
         auto_router: AutoRouter | None = None,
@@ -882,6 +884,7 @@ class AcpDuplexAdapter:
         self._session_seeder = session_seeder if context_attachment is not None else None
         # Plan 12.10: only an attached launch can use it, because the pack is sized by the attachment's route.
         self._memory_factory = memory_factory if context_attachment is not None else None
+        self._memory_notice = memory_notice
         self._client_reads_files = False
         self._closed = False
         self._session_retention_policy = session_retention_policy
@@ -1888,6 +1891,8 @@ class AcpDuplexAdapter:
             if self._client_reads_files:
                 attached_turn.memory.read_buffer = self._buffer_reader(session_id, asyncio.get_running_loop(), turn.turn_control.halt_requested)
             await self._emit_memory_status(session, turn, attached_turn.memory)
+        elif session.memory is None and (self._memory_notice is not None or self._memory_factory is not None):
+            await self._emit_index_line(session, turn, self._memory_notice or INDEX_NOT_REGISTERED_NOTICE)
         if self._route_policy is not None:
             turn.route_binder = self._route_policy.capture(
                 session_id=session_id, turn_seq=turn_seq, deliver_notice=self._blocking_notice(session_id, asyncio.get_running_loop())
@@ -2471,7 +2476,9 @@ class AcpDuplexAdapter:
 
     async def _emit_memory_status(self, session: AcpSpecSession, turn: AcpPromptTurn, memory: Any) -> None:
         """Says where the context index stands when that changes, so a partial build or an outage is never silent. Live-only."""
-        status = await asyncio.to_thread(memory.status)
+        await self._emit_index_line(session, turn, await asyncio.to_thread(memory.status))
+
+    async def _emit_index_line(self, session: AcpSpecSession, turn: AcpPromptTurn, status: str) -> None:
         state = status.split(",", 1)[0]
         if state == session.memory_state_shown or turn.turn_control.transport_abandoned():
             return

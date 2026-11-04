@@ -656,6 +656,58 @@ def test_an_approved_index_is_checked_or_started_and_never_stops_a_launch(monkey
     assert "the context index is unavailable: the container is stopped" in capsys.readouterr().err
 
 
+def _served_kwargs(monkeypatch) -> list[dict]:
+    served: list[dict] = []
+
+    class FakeServer:
+        def serve_ndjson(self, *_a, **_k):
+            async def _noop():
+                return None
+
+            return _noop()
+
+    def factory(**kwargs):
+        served.append(kwargs)
+        return FakeServer()
+
+    _patch_common(monkeypatch, server_factory=factory)
+    return served
+
+
+def test_a_person_in_the_editor_is_told_why_the_index_is_not_in_use(monkeypatch, tmp_path) -> None:
+    _authorize(monkeypatch, tmp_path, _base_env())
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "gateway_memory_index", lambda *a, **k: (tmp_path, "literal"))
+    monkeypatch.setattr(acp_main, "ensure_memory_redis", lambda *a, **k: SimpleNamespace(state="unavailable", detail="the container is stopped"))
+    served = _served_kwargs(monkeypatch)
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)]) == 0
+    assert served[0]["memory_notice"] == "Context index: unavailable (the container is stopped). This session uses today's context."
+    assert "memory_index" not in served[0]
+
+
+def test_set_up_but_not_approved_says_how_to_approve_it(monkeypatch, tmp_path) -> None:
+    _authorize(monkeypatch, tmp_path, _base_env())
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+
+    def not_approved(_root, _approved, *, log):
+        log("optimus-agent: the context index configuration is not the approved one; the Gateway serves no index.")
+        return None, None
+
+    monkeypatch.setattr(acp_main, "gateway_memory_index", not_approved)
+    served = _served_kwargs(monkeypatch)
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)]) == 0
+    assert served[0]["memory_notice"] == acp_main.MEMORY_NOT_APPROVED_NOTICE and "optimus-trust approve" in acp_main.MEMORY_NOT_APPROVED_NOTICE
+
+
+def test_a_machine_that_never_set_it_up_gets_no_notice(monkeypatch, tmp_path) -> None:
+    _authorize(monkeypatch, tmp_path, _base_env())
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "gateway_memory_index", lambda *a, **k: (None, None))
+    served = _served_kwargs(monkeypatch)
+    assert acp_main.main(["--no-auto-start", "--workspace-root", str(tmp_path)]) == 0
+    assert "memory_notice" not in served[0] and "memory_index" not in served[0]
+
+
 def test_check_config_passes_sanitized_environ_to_preflight(monkeypatch, tmp_path) -> None:
     env = _base_env()
     env["ANTHROPIC_API_KEY"] = "sk-ant-real"  # pragma: allowlist secret

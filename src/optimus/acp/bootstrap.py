@@ -200,6 +200,7 @@ def build_configured_server(
     auto_composition: AutoComposition | None = None,
     durable_capture: DurableCapture | None = None,
     memory_index: tuple[Path, Path] | None = None,
+    memory_notice: str | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -361,6 +362,7 @@ def build_configured_server(
             context_attachment=context_attachment,
             session_seeder=session_seeder,
             memory_factory=None if stage_c is not None else memory_factory,
+            memory_notice=None if stage_c is not None else memory_notice,
             failure_telemetry=harness.telemetry_writer,
             auto_router=auto,
             durable_capture=durable_capture,
