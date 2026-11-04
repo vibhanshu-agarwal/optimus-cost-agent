@@ -14,7 +14,14 @@ import pytest
 from context_engine.index_worker import StorageRefusedError, StorageUnavailableError
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context import memory_workspace
-from optimus.context.memory_workspace import EmbedderUnavailableError, FastembedEmbedder, GatewayIndexStorage, current_branch, index_scope
+from optimus.context.memory_workspace import (
+    EmbedderUnavailableError,
+    FastembedEmbedder,
+    GatewayIndexStorage,
+    WorkspaceIndexSource,
+    current_branch,
+    index_scope,
+)
 from optimus.context.project_registry import ProjectRegistration
 from optimus.guardrails import file_policy
 from optimus.guardrails.file_policy import FilePolicy
@@ -181,3 +188,16 @@ def test_a_folder_the_listing_could_not_read_is_counted(tmp_path: Path, monkeypa
     real = os.scandir
     monkeypatch.setattr(file_policy.os, "scandir", lambda path: (_ for _ in ()).throw(PermissionError(path)) if os.path.basename(path) == "locked" else real(path))
     assert [item.path for item in source.files()] == ["b.py"] and source.unreachable() == 1
+
+
+def test_a_revision_reads_no_files_bytes_but_follows_them(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "a.py").write_text("one\n", encoding="utf-8")
+    source = WorkspaceIndexSource(FilePolicy(tmp_path))
+    before = source.revision()
+    (tmp_path / "a.py").write_text("two more\n", encoding="utf-8")
+
+    def refuse(*_args: Any) -> None:
+        raise AssertionError("a file was read")
+
+    monkeypatch.setattr(file_policy, "_read_validated", refuse)
+    assert source.revision() != before

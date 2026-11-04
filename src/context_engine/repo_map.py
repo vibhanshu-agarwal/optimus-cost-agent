@@ -27,6 +27,7 @@ class RepoMap:
     text: str
     files_included: int
     files_total: int
+    paths: tuple[str, ...] = ()  # the files the text names, in its order
 
     @property
     def truncated(self) -> bool:
@@ -100,11 +101,13 @@ def build_repo_map(files: Sequence[MapFile], *, budget_chars: int, focus: Sequen
     named = {path: index for index, path in enumerate(focus)}
     ordered = sorted(files, key=lambda item: (named.get(item.path, len(named)), -round(scores.get(item.path, 0.0), 12), item.path))
     lines: list[str] = []
+    paths: list[str] = []
     used = 0
     for item in ordered:
         line = item.path + (": " + ", ".join(item.symbols) if item.symbols else "")
         if used + len(line) + 1 > budget_chars:
             break
         lines.append(line)
+        paths.append(item.path)
         used += len(line) + 1
-    return RepoMap("\n".join(lines), len(lines), len(files))
+    return RepoMap("\n".join(lines), len(lines), len(files), tuple(paths))

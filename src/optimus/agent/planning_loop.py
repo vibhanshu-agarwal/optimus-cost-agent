@@ -2094,7 +2094,7 @@ class _PlanningIterationRunner:
             self._last_non_progress_kind = "INDEX_TOOL"
             self._index_rounds += 1
             assert self._memory is not None  # this kind is only ever parsed with one
-            ran = run_index_tools(decision.index_requests, self._memory, self._mcp_toolbox, halted=self._halt_requested)
+            ran = run_index_tools(decision.index_requests, self._memory, self._mcp_toolbox, halted=self._halt_requested, event_sink=self._loop_event_sink, run_id=self._run_id, session_id=self._session_id)
             self._mcp_tool_calls.extend(ran.calls)
             self._index_results = keep_newest(self._index_results + ran.envelope)
             self._current_reads = ()  # as for MCP evidence: raw ranges are visible for the turn after they were read

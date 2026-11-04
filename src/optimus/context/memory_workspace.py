@@ -71,25 +71,15 @@ class WorkspaceIndexSource(IndexSource):
     def __init__(self, policy: FilePolicy) -> None:
         self._policy = policy
         self._unreachable = 0
-        self._listing: tuple[str, ...] | None = None
 
     def files(self) -> Iterable[SourceFile]:
         unreachable = 0
-        listed: list[str] = []
         for decision in self._policy.walk(purpose=FilePurpose.INDEX):
             if decision.allowed:
-                listed.append(decision.relative_path)
                 yield SourceFile(decision.relative_path, self._modified(decision.relative_path))
             elif decision.reason == "excluded.unreadable":
                 unreachable += 1
         self._unreachable = unreachable
-        self._listing = tuple(listed)
-
-    def listing(self, *, fresh: bool = False) -> tuple[str, ...]:
-        """The admitted files as of the last whole walk, or a walk now if there has been none or `fresh` asks for one. Paths only."""
-        if fresh or self._listing is None:
-            self._listing = tuple(decision.relative_path for decision in self._policy.walk(purpose=FilePurpose.INDEX) if decision.allowed)
-        return self._listing
 
     def unreachable(self) -> int:
         return self._unreachable
@@ -106,20 +96,21 @@ class WorkspaceIndexSource(IndexSource):
 
     def revision(self) -> tuple[str, bool]:
         """What a pass read, and whether it differs from a commit. Git's status names changed paths, not their contents, so each admitted
-        file's size and modified time go in too; the worker's own check of the bytes is what decides `complete`. Inside a repository Git
+        file's size and modified time go in too; the worker's own check of the bytes is what decides `complete`, so no bytes are read here. Inside a repository Git
         cannot read, including from a folder beneath its root, the answer is new each time, so no pass there is called complete."""
         root = self._policy.root
+        self._policy.forget_ignore_files()
         status = _git(root, "status", "--porcelain=v1", "--untracked-files=normal")
         if status is None and any((folder / ".git").exists() for folder in (root, *root.resolve().parents)):
             return secrets.token_hex(32), True
         head = (_git(root, "rev-parse", "HEAD") or "").strip()
         contents = hashlib.sha256()
-        for item in self.files():
+        for path in self._policy.names()[0]:
             try:
-                facts = os.stat(reachable_path(root / item.path))
+                facts = os.stat(reachable_path(root / path))
             except OSError:
                 continue
-            contents.update(f"{item.path}\0{facts.st_size}\0{facts.st_mtime_ns}\0".encode())
+            contents.update(f"{path}\0{facts.st_size}\0{facts.st_mtime_ns}\0".encode())
         return hashlib.sha256(f"{head}\0{status}\0{contents.hexdigest()}".encode()).hexdigest(), status is None or bool(status.strip())
 
 

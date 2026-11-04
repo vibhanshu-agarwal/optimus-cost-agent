@@ -122,6 +122,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tests/unit/acp/test_main_wiring.py:test_identity_unavailable_at_initial_resolution_never_constructs_store:rglob:launch-audit.ndjson": "Checks that a tmp_path run did not create a launch audit.",
     "tests/integration/context/test_memory_session.py:test_a_turn_writes_no_body_to_its_manifest_or_the_store:rglob:run-1.json": "Finds the manifest the session wrote under the test's tmp_path.",
     "tests/unit/context/test_memory_tools_and_turns.py:test_an_unsaved_buffer_never_reaches_the_manifest:rglob:run-1.json": "Finds the manifest the session wrote beside the test's tmp_path.",
+    "tests/unit/guardrails/test_file_policy.py:test_names_and_a_full_walk_agree_on_ordinary_text:walk:<none>": "The file policy's own walk of the workspace this test wrote under tmp_path.",
     "tests/unit/context/test_memory_tools_and_turns.py:_tools:walk:<none>": "The file policy's own walk of the workspace this test wrote under tmp_path.",
     "tests/unit/context/test_memory_tools_and_turns.py:test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodies:rglob:run-1.json": "Finds the manifest the session wrote under the test's tmp_path.",
     "tests/unit/context/test_memory_setup.py:test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password:rglob:*": "Scans the configuration folder setup wrote under tmp_path for the password.",

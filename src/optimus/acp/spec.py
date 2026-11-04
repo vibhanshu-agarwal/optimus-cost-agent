@@ -168,6 +168,7 @@ ACP_PROTOCOL_VERSION = 1
 # Plan 12.1: ACP mode IDs <-> the canonical per-session ExecutionMode. Internal
 _LIVE_TOOL_NAMES = frozenset({"index_search", "index_outline", "index_symbols", "index_list"})
 BUFFER_READ_SECONDS = 2.0  # an editor answers from memory; a turn's context must not hang on one that does not
+_BUFFER_POLL_SECONDS = 0.05
 # ExecutionMode.PLAN is deliberately not selectable from ACP.
 _MODE_BY_ID: dict[str, ExecutionMode] = {AGENT_MODE_ID: ExecutionMode.AGENT, CHAT_MODE_ID: ExecutionMode.CHAT}
 _ID_BY_MODE: dict[ExecutionMode, str] = {mode: mode_id for mode_id, mode in _MODE_BY_ID.items()}
@@ -1885,7 +1886,7 @@ class AcpDuplexAdapter:
             attached_turn.memory = await asyncio.to_thread(session.memory.turn, cancelled=turn.turn_control.halt_requested)
             attached_turn.memory.on_tool = self._index_tool_cards(session_id, asyncio.get_running_loop())
             if self._client_reads_files:
-                attached_turn.memory.read_buffer = self._buffer_reader(session_id, asyncio.get_running_loop())
+                attached_turn.memory.read_buffer = self._buffer_reader(session_id, asyncio.get_running_loop(), turn.turn_control.halt_requested)
             await self._emit_memory_status(session, turn, attached_turn.memory)
         if self._route_policy is not None:
             turn.route_binder = self._route_policy.capture(
@@ -2430,34 +2431,39 @@ class AcpDuplexAdapter:
             await self._emit_cost_alerts(turn)
         return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
 
-    def _index_tool_cards(self, session_id: str, loop: asyncio.AbstractEventLoop) -> Callable[[str, str, str, str], None]:
-        """Live ACP cards for index tools, sent from the worker thread as each one starts and ends. Cards are informational, so an
-        undelivered one never stops the tool."""
-        ids: dict[tuple[str, str], str] = {}
+    def _index_tool_cards(self, session_id: str, loop: asyncio.AbstractEventLoop) -> Callable[[str, str, str, str, str], None]:
+        """Live ACP cards for index tools, sent from the worker thread as each one starts and ends, under the id its telemetry carries.
+        Cards are informational, so an undelivered one never stops the tool."""
 
-        def card(phase: str, tool: str, argument: str, summary: str) -> None:
-            key = (tool, argument)
+        def card(call_id: str, phase: str, tool: str, argument: str, summary: str) -> None:
             title = f"{tool} {argument[:80]}"
             if phase == "started":
-                ids[key] = new_tool_call_id()
-                payload = build_tool_call_notification(session_id=session_id, tool_call_id=ids[key], title=title, summary="running", kind=tool_kind_for_name(f"index_{tool.lower()}"), status="in_progress")
+                payload = build_tool_call_notification(session_id=session_id, tool_call_id=call_id, title=title, summary="running", kind=tool_kind_for_name(f"index_{tool.lower()}"), status="in_progress")
             else:
-                payload = build_tool_call_update_notification(session_id=session_id, tool_call_id=ids[key], title=title, summary=summary, status=phase)
+                payload = build_tool_call_update_notification(session_id=session_id, tool_call_id=call_id, title=title, summary=summary, status=phase)
             future = asyncio.run_coroutine_threadsafe(self._outbound.notify("session/update", payload), loop)
             future.add_done_callback(lambda done: None if done.cancelled() else done.exception())
 
         return card
 
-    def _buffer_reader(self, session_id: str, loop: asyncio.AbstractEventLoop) -> Callable[[str], str | None]:
-        """The editor's current text of one file, asked from the turn's worker thread. Whatever goes wrong, the turn sees the file on disk."""
+    def _buffer_reader(self, session_id: str, loop: asyncio.AbstractEventLoop, halted: Callable[[], bool]) -> Callable[[str], str | None]:
+        """The editor's current text of one file, asked from the turn's worker thread. Whatever goes wrong, the turn sees the file on disk,
+        and a cancel ends the wait at once. Cancelling the request removes it, so a late reply finds nothing."""
 
         def read(path: str) -> str | None:
             future = asyncio.run_coroutine_threadsafe(self._outbound.request("fs/read_text_file", {"sessionId": session_id, "path": path}), loop)
-            try:
-                reply = future.result(BUFFER_READ_SECONDS)
-            except Exception:  # noqa: BLE001 - a refusal, an absent file or a slow editor all mean disk
-                future.cancel()
-                return None
+            deadline = monotonic() + BUFFER_READ_SECONDS
+            while True:
+                try:
+                    reply = future.result(_BUFFER_POLL_SECONDS)
+                    break
+                except TimeoutError:
+                    if halted() or monotonic() >= deadline:
+                        future.cancel()
+                        return None
+                except Exception:  # noqa: BLE001 - a refusal or an absent file means disk
+                    future.cancel()
+                    return None
             content = reply.get("content") if isinstance(reply, dict) else None
             return content if isinstance(content, str) else None
 

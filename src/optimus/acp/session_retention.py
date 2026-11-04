@@ -306,6 +306,8 @@ class SessionRetentionOwner:
         return result
 
     async def _retire(self, entry: _SessionEntry) -> RetirementResult:
+        if entry.session.memory is not None:
+            entry.session.memory.stop()  # whatever happens to its MCP cleanup, a retiring session stops indexing now
         await entry.quiescent.wait()
         try:
             close = await self._close_session(entry.session, self._states(entry))

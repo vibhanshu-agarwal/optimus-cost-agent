@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from context_engine.code_index import path_id
+from context_engine.index_worker import StorageUnavailableError
 from context_engine.retrieval import Hit, Retriever
 from optimus.agent.directives import IndexToolRequest, parse_index_tool_reply
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
@@ -21,9 +22,10 @@ from optimus.agent.prompts import build_agent_planner_input, build_indexed_chat_
 from optimus.agent.runner import AgentRunner
 from optimus.agent.tools import AgentToolbox
 from optimus.context.index_tools import IndexTools
-from optimus.context.memory_session import GroundingReport, MemorySession, named_symbols
+from optimus.context.memory_session import GroundingReport, MemorySession, _Scope, named_symbols
 from optimus.context.project_registry import ProjectRegistration
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.guardrails import file_policy
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
@@ -287,7 +289,7 @@ def test_a_repeat_is_not_run_again_and_a_reply_of_only_repeats_is_no_progress(wo
 def test_each_tool_gets_a_started_and_an_ended_card(workspace):
     cards = []
     memory = _memory(_tools(workspace, _Storage()))
-    memory.on_tool = lambda phase, tool, argument, summary: cards.append((phase, tool, argument))
+    memory.on_tool = lambda call_id, phase, tool, argument, summary: cards.append((phase, tool, argument))
     run_index_tools((IndexToolRequest("LIST", "."), IndexToolRequest("OUTLINE", "../x")), memory, _toolbox(workspace))
     assert cards == [("started", "LIST", "."), ("completed", "LIST", "."), ("started", "OUTLINE", "../x"), ("failed", "OUTLINE", "../x")]
 
@@ -308,10 +310,12 @@ def test_evidence_keeps_the_newest_whole_blocks():
 
 
 def _session(workspace: Path, storage: _Storage, *, branch="main") -> MemorySession:
-    return MemorySession(
+    session = MemorySession(
         policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False), storage_for=lambda scope: storage,
         embedder_for=lambda: None, embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / f"{workspace.name}-manifests", branch_of=lambda root: branch,
     )
+    session.revision = lambda: "r" * 64  # type: ignore[method-assign]  # the disk matches what the table says was published
+    return session
 
 
 def _assemble(turn, task="how does helper work", **kwargs):
@@ -459,9 +463,9 @@ def test_tools_and_grounding_agree_with_the_buffer_the_turn_saw(workspace):
     assert "unsaved_helper" in turn.tools.run("OUTLINE", "pkg/a.py")
     assert "unsaved needle" in turn.tools.run("SEARCH", '"unsaved needle"')
     searched = turn.tools.run("SYMBOLS", "helper")
-    assert "No matching symbols" in searched and "their files changed" in searched  # the index's record is of the text on disk
-    report = turn.ground("`unsaved_helper` is new and `invented_name` is not.")
-    assert report.resolved == ("unsaved_helper",) and report.unresolved == ("invented_name",)
+    assert "unsaved_helper" in searched and "(unsaved)" in searched and "their files changed" in searched  # the index's record is of the text on disk
+    report = turn.ground("`unsaved_helper` is new and `invented_name` is not, and `helper` was replaced.")
+    assert report.resolved == ("unsaved_helper",) and report.unresolved == ("invented_name", "helper")
 
 
 def test_an_unsaved_buffer_never_reaches_the_manifest(workspace):
@@ -694,3 +698,263 @@ def test_an_agent_without_an_index_has_no_such_grammar(workspace):
     gateway = _Gateway(["REFUSE: done"])
     AgentRunner(gateway_client=gateway, model="m").run(AgentRunRequest(run_id="run-1", session_id="s", task="t", execution_mode=ExecutionMode.AGENT, workspace_root=workspace))
     assert "SEARCH <words>" not in gateway.inputs[0] and "INDEXED_" not in gateway.inputs[0]
+
+
+# --- what review 1 found ----------------------------------------------------------------------------
+
+
+def _ignore(workspace: Path, text: str) -> None:
+    (workspace / ".optimusignore").write_text(text, encoding="utf-8")
+
+
+def _mapped(workspace: Path) -> tuple[MemorySession, _Scope]:
+    records = [_record("x", "pkg/a.py", "helper", _sha(SOURCE), lines=(6, 7)), _record("n", "notes.md", None, _sha("# Title\n\nSome prose.\n"), kind="file")]
+    session = _session(workspace, _Storage(records))
+    return session, session._current_scope()
+
+
+def test_the_map_is_stable_while_nothing_changes(workspace):
+    session, scope = _mapped(workspace)
+    first = session.repo_map(scope)
+    assert "pkg/a.py: helper" in first and "notes.md" in first
+    assert session.repo_map(scope) == first
+
+
+def test_the_map_drops_a_file_the_policy_now_refuses_at_once(workspace):
+    session, scope = _mapped(workspace)
+    session.repo_map(scope)
+    _ignore(workspace, "pkg/\n")
+    assert "pkg/a.py" not in session.repo_map(scope)
+
+
+def test_the_map_drops_a_deleted_file_at_once(workspace):
+    session, scope = _mapped(workspace)
+    session.repo_map(scope)
+    (workspace / "notes.md").unlink()
+    assert "notes.md" not in session.repo_map(scope)
+
+
+def test_a_changed_file_keeps_its_path_and_loses_its_symbols_at_once(workspace):
+    session, scope = _mapped(workspace)
+    session.repo_map(scope)
+    (workspace / "pkg" / "a.py").write_text("def other():\n    return 1\n", encoding="utf-8")
+    text = session.repo_map(scope)
+    assert "pkg/a.py" in text and "helper" not in text
+
+
+def test_a_map_kept_through_an_outage_is_still_checked(workspace):
+    session, scope = _mapped(workspace)
+    session.repo_map(scope)
+    session._map.at = -10_000.0
+
+    def down(op, **fields):
+        raise StorageUnavailableError("gone")
+
+    scope.storage.call = down
+    (workspace / "notes.md").unlink()
+    text = session.repo_map(scope)
+    assert "pkg/a.py" in text and "notes.md" not in text
+
+
+def test_a_policy_change_takes_back_unsaved_text_the_turn_already_holds(workspace):
+    session = _session(workspace, _Storage())
+    turn = session.turn()
+    turn.read_buffer = lambda path: UNSAVED
+    assert "unsaved needle" in _assemble(turn, task="explain pkg/a.py").text
+    _ignore(workspace, "pkg/\n")
+    assert "cannot be read" in turn.tools.run("OUTLINE", "pkg/a.py")
+    assert "unsaved needle" not in turn.tools.run("SEARCH", '"unsaved needle"')
+    assert "unsaved_helper" not in turn.tools.run("SYMBOLS", "unsaved_helper")
+    assert "unsaved_helper" not in turn.ground("`unsaved_helper`").resolved
+
+
+def test_grounding_says_a_symbol_with_two_verified_owners_is_ambiguous(workspace):
+    (workspace / "pkg" / "b.py").write_text(SOURCE, encoding="utf-8", newline="\n")
+    records = [_record("x", "pkg/a.py", "helper", _sha(SOURCE)), _record("y", "pkg/b.py", "helper", _sha(SOURCE))]
+    assert _session(workspace, _Storage(records)).turn().ground("`helper`").ambiguous == ("helper",)
+
+
+def test_a_record_of_changed_text_proves_nothing_either_way(workspace):
+    records = [_record("x", "pkg/a.py", "helper", _sha("older text"))]
+    report = _session(workspace, _Storage(records)).turn().ground("`helper`")
+    assert report.resolved == () and report.unresolved == ()
+
+
+def test_absence_is_not_claimed_from_a_generation_older_than_the_disk(workspace):
+    session = _session(workspace, _Storage())
+    session.revision = lambda: "s" * 64  # a file has changed since this complete generation
+    assert session.turn().ground("`added_since`").unresolved == ()
+
+
+def test_absence_is_not_claimed_where_the_parser_cannot_see(workspace):
+    class Unsupported(_Storage):
+        def call(self, op, **fields):
+            reply = super().call(op, **fields)
+            if op == "coverage":
+                reply["current"]["coverage"]["unsupported"] = 3
+            return reply
+
+    assert _session(workspace, Unsupported()).turn().ground("`written_in_kotlin`").unresolved == ()
+
+
+def test_grounding_asks_for_the_disk_only_once_and_only_if_something_looks_absent(workspace):
+    session = _session(workspace, _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))]))
+    asked = []
+    session.revision = lambda: asked.append(1) or "r" * 64
+    session.turn().ground("`helper`")
+    assert asked == []
+    session.turn().ground("`one_name` and `other_name`")
+    assert asked == [1]
+
+
+def test_a_turn_keeps_its_own_scopes_catalogue_after_a_switch(workspace):
+    stores = {}
+    branch = ["main"]
+
+    def storage_for(scope):
+        return stores.setdefault(scope, _Storage([_record(scope[:6], "pkg/a.py", "helper", _sha(SOURCE))]))
+
+    session = MemorySession(policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False), storage_for=storage_for, embedder_for=lambda: None,
+                            embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "m2", branch_of=lambda root: branch[0])
+    old = session.turn()
+    first = next(iter(stores.values()))
+    branch[0] = "other"
+    session.turn()
+    second = next(store for store in stores.values() if store is not first)
+    second.calls.clear()
+    old._retriever.retrieve("helper")
+    assert second.calls == [], "an old turn read another branch's line with its own epoch number"
+    assert any(op == "catalogue" for op, _fields in first.calls)
+
+
+def test_a_complete_generation_never_reuses_an_older_catalogue(workspace):
+    class Moving(_Storage):
+        epoch = 3
+
+        def call(self, op, **fields):
+            reply = super().call(op, **fields)
+            if op == "coverage":
+                reply["current"]["epoch"] = self.epoch
+            return reply
+
+    storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    storage.epoch = 4
+    session.turn()._retriever.retrieve("helper")
+    assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3, 4]
+
+
+def test_a_build_may_reuse_a_recent_catalogue_since_it_only_suggests_what_to_ask(workspace):
+    class Moving(_Storage):
+        epoch = 3
+
+        def call(self, op, **fields):
+            reply = super().call(op, **fields)
+            if op == "coverage":
+                reply["current"]["epoch"] = self.epoch
+            return reply
+
+    storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=False)
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    storage.epoch = 4
+    assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3]
+    storage.calls.clear()
+    second = session.turn()._retriever.retrieve("helper")
+    assert second.epoch == 4 and not any(op == "catalogue" for op, _fields in storage.calls)
+    assert {fields["epoch"] for op, fields in storage.calls if op == "query"} == {4}  # every record comes from the retrieval's own epoch
+
+
+def test_a_file_too_large_to_index_is_still_listed_searched_and_named(workspace):
+    big = "line of text\n" * 90_000
+    (workspace / "big.txt").write_text(big, encoding="utf-8")
+    session = _session(workspace, _Storage())
+    tools = session.turn().tools
+    assert "big.txt" in tools.run("LIST", ".")
+    assert "big.txt:1:" in tools.run("SEARCH", '"line of text"')
+    assert _assemble(session.turn(), task="explain big.txt").blocking_stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
+
+
+def test_a_quoted_search_counts_only_what_it_read_and_names_what_it_could_not_see(workspace):
+    (workspace / "image.bin").write_bytes(b"a\x00b")
+    tools = _session(workspace, _Storage()).turn().tools
+    answer = tools.run("SEARCH", '"nothing like this"')
+    assert "read 2 of 3 admitted files now." in answer and "1 are binary, empty or could not be read" in answer and "No matches" in answer
+
+
+def test_a_folder_that_cannot_be_listed_is_named_by_the_disk_tools(workspace, monkeypatch):
+    real = file_policy.os.scandir
+
+    def scandir(path):
+        if str(path).endswith("pkg"):
+            raise PermissionError(path)
+        return real(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    tools = _session(workspace, _Storage()).turn().tools
+    assert "1 folders could not be listed" in tools.run("SEARCH", '"needle here"')
+    assert "1 folders could not be listed" in tools.run("LIST", ".")
+
+
+def test_the_turn_lets_the_worker_run_during_its_wait_for_a_repair(workspace, monkeypatch):
+    session = _session(workspace, _Storage([_record("x", "pkg/a.py", "helper", _sha("older"), signature="def old():")]))
+    busy_during_wait = []
+    monkeypatch.setattr("optimus.context.memory_session.time.sleep", lambda seconds: busy_during_wait.append(session._busy.is_set()))
+    busy_during_retrieval = []
+    real = session._read
+
+    def read(path):
+        busy_during_retrieval.append(session._busy.is_set())
+        return real(path)
+
+    session._read = read
+    _assemble(session.turn())
+    assert busy_during_wait == [False, False] and True in busy_during_retrieval and not session._busy.is_set()
+
+
+def test_a_cancel_stops_asking_the_editor(workspace):
+    (workspace / "pkg" / "b.py").write_text("def b():\n    return 2\n", encoding="utf-8")
+    cancelled = [False]
+    asked = []
+
+    def read_buffer(path):
+        asked.append(path)
+        cancelled[0] = True
+        return UNSAVED
+
+    turn = _session(workspace, _Storage()).turn(cancelled=lambda: cancelled[0])
+    turn.read_buffer = read_buffer
+    _assemble(turn, task="explain pkg/a.py and pkg/b.py")
+    assert len(asked) == 1
+
+
+def test_a_tool_call_is_recorded_once_with_its_facts_and_never_its_search_text(workspace):
+    events = []
+    cards = []
+    memory = _memory(_tools(workspace, _Storage()))
+    memory.on_tool = lambda call_id, phase, tool, argument, summary: cards.append(call_id)
+    requests = (IndexToolRequest("SEARCH", "secret words here"), IndexToolRequest("LIST", "."), IndexToolRequest("OUTLINE", "../x"))
+    run_index_tools(requests, memory, _toolbox(workspace), event_sink=events.append, run_id="run-9", session_id="s-9")
+    search, listing, refused = (event.payload for event in events)
+    assert [event.run_id for event in events] == ["run-9"] * 3 and {event.session_id for event in events} == {"s-9"}
+    assert [event.request_id for event in events] == cards[::2] and cards[0] == cards[1] and cards[0] != cards[2]
+    assert search["tool_name"] == "index_search" and search["parameters"]["argument_chars"] == 17 and "secret" not in str(search)
+    assert search["parameters"]["argument_sha256"] == hashlib.sha256(b"secret words here").hexdigest()  # pragma: allowlist secret - the digest of a test string
+    assert search["authorization_outcome"] == "ALLOW" and isinstance(search["latency_ms"], int) and search["policy_reason"]
+    assert listing["parameters"] == {"path": "."}
+    assert refused["authorization_outcome"] == "BLOCK" and refused["policy_reason"]
+
+
+def test_a_halted_turn_records_nothing_further(workspace):
+    events = []
+    state = [False]
+
+    def halted():
+        return state[0]
+
+    tools = _tools(workspace, _Storage())
+    memory = _memory(tools)
+    memory.on_tool = lambda call_id, phase, tool, argument, summary: state.__setitem__(0, phase == "completed")
+    run_index_tools((IndexToolRequest("LIST", "."),), memory, _toolbox(workspace), halted=halted, event_sink=events.append, run_id="r")
+    assert events == []

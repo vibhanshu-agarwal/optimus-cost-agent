@@ -4,13 +4,14 @@ turn handling and its retention are real. What the index itself does is proved i
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from optimus.acp import spec
-from optimus.acp.session_retention import RetirementReason
+from optimus.acp.session_retention import RetirementReason, RetirementStatus, SessionCloseResult
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.context.memory_session import GroundingReport
 from tests.support.contract_doubles import checked_agent_runner
@@ -163,8 +164,8 @@ def test_the_status_line_shows_only_when_the_state_changes(tmp_path: Path) -> No
 
 def test_a_tool_gets_a_started_card_and_its_ending_on_one_id(tmp_path: Path) -> None:
     def during(memory: Any) -> None:
-        memory.on_tool("started", "SEARCH", "first_function", "")
-        memory.on_tool("completed", "SEARCH", "first_function", "3 lines in 4 ms")
+        memory.on_tool("tool-one", "started", "SEARCH", "first_function", "")
+        memory.on_tool("tool-one", "completed", "SEARCH", "first_function", "3 lines in 4 ms")
 
     async def scenario() -> None:
         adapter, outbound = _adapter(tmp_path, lambda workspace: FakeSession(), runner=MemoryRunner(during))
@@ -174,6 +175,7 @@ def test_a_tool_gets_a_started_card_and_its_ending_on_one_id(tmp_path: Path) -> 
         updates = _updates(outbound)
         started = next(update for update in updates if update.get("sessionUpdate") == "tool_call" and update["title"].startswith("SEARCH"))
         ended = next(update for update in updates if update.get("sessionUpdate") == "tool_call_update" and update["toolCallId"] == started["toolCallId"])
+        assert started["toolCallId"] == "tool-one"  # the id its telemetry carries
         assert started["title"] == "SEARCH first_function" and started["status"] == "in_progress" and started["kind"] == "search"
         assert ended["status"] == "completed" and "3 lines in 4 ms" in str(ended["content"])
 
@@ -183,8 +185,8 @@ def test_a_tool_gets_a_started_card_and_its_ending_on_one_id(tmp_path: Path) -> 
 @pytest.mark.parametrize(("tool", "kind"), [("SEARCH", "search"), ("OUTLINE", "read"), ("SYMBOLS", "search"), ("LIST", "read")])
 def test_every_tool_has_a_kind_the_client_knows(tmp_path: Path, tool: str, kind: str) -> None:
     def during(memory: Any) -> None:
-        memory.on_tool("started", tool, "x", "")
-        memory.on_tool("completed", tool, "x", "1 line")
+        memory.on_tool("tool-one", "started", tool, "x", "")
+        memory.on_tool("tool-one", "completed", tool, "x", "1 line")
 
     async def scenario() -> None:
         adapter, outbound = _adapter(tmp_path, lambda workspace: FakeSession(), runner=MemoryRunner(during))
@@ -253,7 +255,7 @@ def test_removing_a_session_pauses_its_index(tmp_path: Path) -> None:
         assert session.stopped == 0
         adapter.retention.request_retire(session_id, reason=RetirementReason.EXPLICIT_REMOVE)
         await adapter.retention.wait_retired(session_id)
-        assert session.stopped == 1
+        assert session.stopped >= 1
 
     asyncio.run(scenario())
 
@@ -318,3 +320,47 @@ def test_a_refusal_means_disk_and_the_turn_goes_on(tmp_path: Path) -> None:
 def test_an_editor_that_never_answers_costs_one_wait_and_means_disk(tmp_path: Path) -> None:
     results, _seen = _reader_scenario(tmp_path, lambda outbound, request: None, seconds=0.05)
     assert results == [None]
+
+
+def test_a_session_whose_cleanup_fails_still_stops_indexing(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        session = FakeSession()
+        adapter, _outbound = _adapter(tmp_path, lambda workspace: session)
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        spec_session = adapter._sessions.get(session_id)
+
+        async def fails(*_args: Any, **_kwargs: Any) -> Any:
+            return SessionCloseResult(("CONTROLLED",), True)
+
+        adapter.retention._close_session = fails
+        adapter.retention.request_retire(session_id, reason=RetirementReason.EXPLICIT_REMOVE)
+        result = await adapter.retention.wait_retired(session_id)
+        assert result.status is RetirementStatus.QUARANTINED and spec_session is not None
+        assert session.stopped == 1, "a quarantined session kept indexing"
+        adapter.retention._entries.clear()
+
+    asyncio.run(scenario())
+
+
+def test_a_cancel_ends_the_wait_for_the_editor_at_once_and_takes_back_the_request(tmp_path: Path) -> None:
+    results: list[Any] = []
+    waited: list[float] = []
+
+    def during(memory: Any) -> None:
+        started = time.monotonic()
+        results.append(memory.read_buffer(str(tmp_path / "a.py")))
+        waited.append(time.monotonic() - started)
+
+    async def scenario() -> None:
+        adapter, outbound = _adapter(tmp_path, lambda workspace: FakeSession(), runner=MemoryRunner(during))
+        await _initialize(adapter, {"fs": {"readTextFile": True}})
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        prompt = asyncio.create_task(_chat(adapter, session_id, "p1"))
+        request = await asyncio.wait_for(outbound.wait_for_request("fs/read_text_file"), timeout=5)
+        await adapter.handle_client_notification({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session_id}})
+        await asyncio.wait_for(prompt, timeout=5)
+        await asyncio.sleep(0)
+        assert outbound._futures[request["id"]].cancelled(), "the request is still waiting for a reply nobody wants"
+
+    asyncio.run(scenario())
+    assert results == [None] and waited[0] < 1.5

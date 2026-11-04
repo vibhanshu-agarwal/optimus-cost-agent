@@ -7,6 +7,7 @@ index keeps today's context and says so. Turns never wait on the worker, beyond 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -24,8 +25,8 @@ from typing import Any, Final
 from context_engine.code_index import PARSER_VERSION, parse_file
 from context_engine.context_pack import Pack, assemble_pack
 from context_engine.index_worker import Embedder, IndexStorage, IndexWorker, StorageRefusedError, StorageUnavailableError, WorkerOutcome
-from context_engine.repo_map import RepoMap
-from context_engine.retrieval import RRF_K, WEIGHTS, CatalogueFile, Retrieval, Retriever, read_catalogue, seed_map
+from context_engine.repo_map import MapFile, RepoMap, build_repo_map
+from context_engine.retrieval import RRF_K, WEIGHTS, CatalogueFile, Retrieval, Retriever, query_terms, read_catalogue, seed_files
 from optimus.acp.trusted_paths import resolve_workspace_identity
 from optimus.agent.workspace_context import (
     DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
@@ -55,13 +56,18 @@ PACK_SHARE: Final = 0.25  # of the route's usable input; history and evidence ke
 PACK_MAX_TOKENS: Final = 16_384  # agent-selected, frozen before evaluation
 MAP_CHARS: Final = 12_000
 RETRY_SECONDS: Final = 30.0
-CATALOGUE_SECONDS: Final = 60.0  # during a build each publication is a new epoch; names barely change between them
+# During a build each publication is a new epoch and names barely change between them. A catalogue only suggests what to ask for, and every
+# record is then asked for at the retrieval's own epoch, so an older one can miss a new file but cannot make a record current.
+CATALOGUE_SECONDS: Final = 60.0
 MAP_SECONDS: Final = 300.0  # the map sits in the cacheable prefix, so a build does not churn it
 _RECONCILE_ATTEMPTS: Final = 2
 _RECONCILE_WAIT_SECONDS: Final = 1.0
 _MANIFESTS_KEPT: Final = 200
 MAX_BUFFER_BYTES: Final = 8 * 1024 * 1024
 MAX_BUFFERS: Final = 8
+_MAP_CHECKS: Final = 4
+_SYMBOL_OWNERS: Final = 8
+BRANCH_MOVED: Final = "BRANCH_MOVED"
 _QUERY_CHARS: Final = 2_000
 _MAX_SYMBOLS: Final = 8
 # A name someone wrote as code: backticked, dotted, or with an inner capital or underscore. Ordinary words are not symbols.
@@ -108,12 +114,35 @@ class _Scope:
     storage: IndexStorage
 
 
+class _BranchPinned:
+    """One pass's storage. Once the worktree has left the branch the pass belongs to, what it reads next is another branch's files, so it
+    may not write them into this line."""
+
+    def __init__(self, inner: IndexStorage, on_branch: Callable[[], bool]) -> None:
+        self._inner = inner
+        self._on_branch = on_branch
+
+    def call(self, op: str, **fields: Any) -> dict[str, Any]:
+        if op in {"batch", "generation"} and not self._on_branch():
+            raise StorageRefusedError(BRANCH_MOVED)
+        return self._inner.call(op, **fields)
+
+
 @dataclass
 class _Cached:
+    identity: str = ""
     epoch: int = 0
     at: float = 0.0
     files: list[CatalogueFile] = field(default_factory=list)
     complete: bool = False
+
+
+@dataclass
+class _CachedMap:
+    identity: str
+    at: float
+    files: list[MapFile]
+    hashes: dict[str, str]
 
 
 class MemorySession:
@@ -129,7 +158,7 @@ class MemorySession:
         self._manifest_root = manifest_root
         self._clock = clock
         self._branch_of = branch_of
-        self._source = WorkspaceIndexSource(policy)
+        self._source = WorkspaceIndexSource(FilePolicy(policy.root))  # the worker's thread has its own, so neither sees the other's ignore files move
         self._embedder: Embedder | None = None
         self._unusable: str | None = None
         self._stop = threading.Event()
@@ -143,7 +172,9 @@ class MemorySession:
         self._indexed_revision: tuple[str, bool] | None = None
         self._scope = self._new_scope()
         self._catalogue = _Cached()
-        self._map: tuple[str, float, RepoMap] | None = None
+        self._map: _CachedMap | None = None
+        self._listed: tuple[str, ...] | None = None
+        self._unlisted = 0
 
     # --- the worker ---------------------------------------------------------------------------------------------------
 
@@ -163,6 +194,9 @@ class MemorySession:
         self.stop()
         if self._thread is not None:
             self._thread.join(10)
+
+    def _on_branch(self, branch: str) -> Callable[[], bool]:
+        return lambda: self._branch_of(self._policy.root) == branch
 
     def _new_scope(self) -> _Scope:
         branch = self._branch_of(self._policy.root)
@@ -207,6 +241,7 @@ class MemorySession:
         while not self._stop.is_set():
             self._wake.wait()
             self._wake.clear()
+            self._current_scope()  # a switch no turn has noticed yet
             with self._lock:  # against stop() and a branch change: a cancel meant for this pass must land on this pass's event
                 if self._stop.is_set():
                     return
@@ -217,9 +252,13 @@ class MemorySession:
                 with self._lock:
                     self._priority = []
                 continue
-            worker = IndexWorker(self._source, self._storage_for(scope.identity), self._embedder, owner=secrets.token_hex(16), priority=self._priorities, foreground_busy=self._busy.is_set)
+            storage = _BranchPinned(self._storage_for(scope.identity), self._on_branch(scope.branch))
+            worker = IndexWorker(self._source, storage, self._embedder, owner=secrets.token_hex(16), priority=self._priorities, foreground_busy=self._busy.is_set)
             outcome = worker.run(self._cancel)
             self._last_outcome = outcome
+            if outcome.detail == BRANCH_MOVED:
+                self._wake.set()
+                continue
             if outcome.state == "complete":
                 with self._lock:
                     self._priority = []
@@ -258,41 +297,89 @@ class MemorySession:
         decision, data = self._policy.read(path, purpose=FilePurpose.AUTOMATIC)
         return data if decision.allowed else None
 
-    def _catalogue_for(self, epoch: int) -> list[CatalogueFile]:
+    def _catalogue_for(self, scope: _Scope, epoch: int, complete: bool) -> list[CatalogueFile]:
         cached = self._catalogue
-        if cached.epoch and (cached.epoch == epoch or (not cached.complete and self._clock() - cached.at < CATALOGUE_SECONDS)):
+        if cached.identity == scope.identity and (cached.epoch == epoch or (not complete and not cached.complete and self._clock() - cached.at < CATALOGUE_SECONDS)):
             return cached.files
-        files = read_catalogue(self._scope.storage, epoch)
-        self._catalogue = _Cached(epoch, self._clock(), files)
+        files = read_catalogue(scope.storage, epoch)
+        self._catalogue = _Cached(scope.identity, epoch, self._clock(), files, complete)
         return files
 
     def turn(self, *, cancelled: Callable[[], bool] = lambda: False) -> MemoryTurn:
+        self._policy.forget_ignore_files()
         scope = self._current_scope()
         self.request_pass()
-        retriever = Retriever(scope.storage, self._embedder, catalogue=self._catalogue_for, cancelled=cancelled)
+        retriever = Retriever(scope.storage, self._embedder, catalogue=lambda epoch, complete: self._catalogue_for(scope, epoch, complete), cancelled=cancelled)
         overlay: dict[str, bytes] = {}
 
         def read(path: str) -> bytes | None:
-            return overlay[path] if path in overlay else self._read(path)
+            """The policy judges now, so unsaved text it has since refused goes as the file on disk would."""
+            disk = self._read(path)
+            if path not in overlay:
+                return disk
+            if disk is None:
+                del overlay[path]
+                return None
+            return overlay[path]
+
+        def unsaved_symbols(name: str) -> list[str]:
+            wanted = set(query_terms(name))
+            parsed = [(path, data) for path in list(overlay) if (data := read(path)) is not None]
+            return [
+                f"{path}:{record.start_line}-{record.end_line} {record.symbol}: {' '.join((record.signature or '').split())[:240]} (unsaved)"
+                for path, data in parsed
+                for record in parse_file(path, data).records
+                if record.symbol and (record.symbol == name or wanted & set(query_terms(record.symbol)))
+            ]
 
         # A tool answers about the disk as it is now: a person or the agent may have just made the file being asked about.
-        tools = IndexTools(retriever=retriever, storage=scope.storage, read=read, listing=lambda: self.listing(fresh=True), cancelled=cancelled, clock=self._clock)
+        tools = IndexTools(retriever=retriever, storage=scope.storage, read=read, listing=lambda: self.listing(fresh=True), cancelled=cancelled, clock=self._clock,
+                           unlisted=lambda: self._unlisted, unsaved_symbols=unsaved_symbols, before_each=self._policy.forget_ignore_files)
         return MemoryTurn(self, scope, retriever, tools, cancelled, overlay, read)
 
     def repo_map(self, scope: _Scope) -> str:
-        """The stable prefix. During a build it changes at most once per `MAP_SECONDS`; a failure gives no map, never a failed turn."""
-        cached = self._map
-        if cached is not None and cached[0] == scope.identity and self._clock() - cached[1] < MAP_SECONDS:
-            return cached[2].text
-        try:
-            current = scope.storage.call("coverage").get("current")
-            if not current:
-                return ""
-            built = seed_map(scope.storage, current["epoch"], self._catalogue_for(current["epoch"]), budget_chars=MAP_CHARS)
-        except (StorageRefusedError, StorageUnavailableError):
-            return cached[2].text if cached is not None and cached[0] == scope.identity else ""
-        self._map = (scope.identity, self._clock(), built)
-        return built.text
+        """The stable prefix. During a build its input is refreshed at most once per `MAP_SECONDS`; a failure gives no map, never a failed
+        turn. What it renders is checked each time, because a cache's age never makes a record true."""
+        self._policy.forget_ignore_files()
+        cached = self._map if self._map is not None and self._map.identity == scope.identity else None
+        if cached is None or self._clock() - cached.at >= MAP_SECONDS:
+            try:
+                current = scope.storage.call("coverage").get("current")
+                if current:
+                    catalogue = self._catalogue_for(scope, current["epoch"], bool(current["coverage"].get("complete")))
+                    cached = _CachedMap(scope.identity, self._clock(), seed_files(scope.storage, current["epoch"], catalogue), {item.path: item.file_hash for item in catalogue})
+                    self._map = cached
+                elif cached is None:
+                    return ""
+            except (StorageRefusedError, StorageUnavailableError):
+                if cached is None:
+                    return ""
+        return self._verified_map(cached).text
+
+    def _verified_map(self, cached: _CachedMap) -> RepoMap:
+        """What the text would name, against the policy and the disk: a file now refused or gone leaves the map, and one that changed keeps
+        its path and loses its symbols. Only rendered files are checked, so this costs the map's size and not the repository's."""
+        files = cached.files
+        admits = self._policy.admitter()
+        for _ in range(_MAP_CHECKS):
+            built = build_repo_map(files, budget_chars=MAP_CHARS)
+            shown = set(built.paths)
+            kept: list[MapFile] = []
+            changed = False
+            for item in files:
+                if item.path not in shown:
+                    kept.append(item)
+                elif not admits(item.path):
+                    changed = True
+                elif item.symbols and (data := self._read(item.path)) is not None and hashlib.sha256(data).hexdigest() != cached.hashes.get(item.path):
+                    kept.append(MapFile(item.path))
+                    changed = True
+                else:
+                    kept.append(item)
+            if not changed:
+                return built
+            files = kept
+        return RepoMap("", 0, len(files))
 
     def write_manifest(self, run_id: str, document: Mapping[str, Any]) -> None:
         """An explanation of one turn's selection, never a historical pack: paths, hashes, symbols, ranks and reasons. Failing to
@@ -312,7 +399,13 @@ class MemorySession:
             return
 
     def listing(self, *, fresh: bool = False) -> Sequence[str]:
-        return self._source.listing(fresh=fresh)
+        """The files disk tools may see, judged by name. Not the index's own eligibility: a file too large to index can still be read or named."""
+        if fresh or self._listed is None:
+            self._listed, self._unlisted = self._policy.names()
+        return self._listed
+
+    def revision(self) -> str:
+        return self._source.revision()[0]
 
     @property
     def policy(self) -> FilePolicy:
@@ -350,17 +443,18 @@ class MemoryTurn:
         answer gives today's context plus a line saying so; required evidence that does not fit is never quietly dropped."""
         self._run_id = run_id
         policy = self._session.policy
+        policy.forget_ignore_files()
         budget = min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
         with self._session.foreground():
             diagnostics = resolve_task_references(selection_text, policy, self._session.listing())
-            if any(item.status is not WorkspaceReferenceStatus.RESOLVED for item in diagnostics):  # the worker's last walk may predate the file
+            if any(item.status is not WorkspaceReferenceStatus.RESOLVED for item in diagnostics):  # the last listing may predate the file
                 diagnostics = resolve_task_references(selection_text, policy, self._session.listing(fresh=True))
             stop_reason, message = blocking_from_diagnostics(diagnostics)
             if stop_reason is not None:
                 return self._blocked(diagnostics, stop_reason, message)
             required = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED))
             self._capture_buffers(required)
-            retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task)
+        retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task)
         if retrieval.state != "ok" or pack is None:
             return self._today(task=selection_text, retrieval=retrieval)
         if not pack.complete:
@@ -381,11 +475,13 @@ class MemoryTurn:
         if self.read_buffer is None:
             return
         for path in required[:MAX_BUFFERS]:
+            if self._cancelled():
+                return
             disk = self._session._read(path)
             if disk is None:
                 continue
             text = self.read_buffer(str(self._session.policy.root / path))
-            if text is None:
+            if text is None or self._cancelled():
                 return
             data = text.encode("utf-8", errors="replace")
             if not _same_text(data, disk) and b"\x00" not in data and len(data) <= MAX_BUFFER_BYTES:
@@ -396,10 +492,12 @@ class MemoryTurn:
         symbols = named_symbols(task)
         pack: Pack | None = None
         for attempt in range(_RECONCILE_ATTEMPTS + 1):
-            retrieval = self._retriever.retrieve(query, named_paths=required, named_symbols=symbols)
-            if retrieval.state != "ok":
-                return retrieval, None
-            pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget)
+            with self._session.foreground():
+                retrieval = self._retriever.retrieve(query, named_paths=required, named_symbols=symbols)
+                if retrieval.state != "ok":
+                    return retrieval, None
+                pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget)
+            # The wait below is outside: the worker gives way to a busy turn, so it could not do this repair while one was waiting for it.
             if not pack.stale_paths or attempt == _RECONCILE_ATTEMPTS or self._cancelled():
                 return retrieval, pack
             self._session.request_pass(pack.stale_paths)
@@ -468,6 +566,7 @@ class MemoryTurn:
 
     def ground(self, answer: str) -> GroundingReport:
         """Check what an answer cited against what exists now. An intended new file is #258's; here it only reads as not found."""
+        self._session.policy.forget_ignore_files()
         references = extract_file_references(answer)
         listed = list(self._session.listing())
         if not {*references} <= {*listed, *(path.rsplit("/", 1)[-1] for path in listed)}:  # this turn may have written it
@@ -488,13 +587,22 @@ class MemoryTurn:
                 ambiguous.setdefault(reference)
             else:
                 unresolved.setdefault(reference)
+        now: list[str] = []  # what the disk is now, asked for at most once a reply and only if something looks absent
+
+        def on_disk_now() -> str:
+            if not now:
+                now.append(self._session.revision())
+            return now[0]
+
         for symbol in dict.fromkeys(_BACKTICKED.findall(answer)):
             if symbol in resolved or symbol in unresolved or symbol in ambiguous:
                 continue
-            found = self._symbol_exists(symbol)
-            if found is True:
+            found = self._symbol_state(symbol, on_disk_now)
+            if found == "found":
                 resolved.setdefault(symbol)
-            elif found is False:
+            elif found == "ambiguous":
+                ambiguous.setdefault(symbol)
+            elif found == "absent":
                 unresolved.setdefault(symbol)
         report = GroundingReport(tuple(resolved), tuple(unresolved), tuple(ambiguous))
         if self.manifest:
@@ -502,21 +610,35 @@ class MemoryTurn:
             self._session.write_manifest(self._run_id, self.manifest)
         return report
 
-    def _symbol_exists(self, symbol: str) -> bool | None:
-        """None when the index cannot say, or is still building and so cannot prove absence."""
-        for path, data in self._overlay.items():
-            if any(record.symbol == symbol for record in parse_file(path, data).records):
-                return True
+    def _symbol_state(self, symbol: str, on_disk_now: Callable[[], str]) -> str | None:
+        """found, ambiguous or absent, judged on verified records and this turn's unsaved text, which replaces what the index holds for its
+        file. None when nothing can be proved: absence takes a complete generation of exactly what is on disk now, with nothing in a language
+        the parser cannot see."""
+        owners: set[str] = set()
+        for path in list(self._overlay):
+            data = self._read(path)
+            if data is not None and any(record.symbol == symbol for record in parse_file(path, data).records):
+                owners.add(path)
+        stale = False
         try:
             current = self._scope.storage.call("coverage").get("current")
-            if not current:
-                return None
-            records = self._scope.storage.call("query", mode="symbol", epoch=current["epoch"], symbol=symbol, k=1)["records"]
+            records = [] if not current else self._scope.storage.call("query", mode="symbol", epoch=current["epoch"], symbol=symbol, k=_SYMBOL_OWNERS)["records"]
         except (StorageRefusedError, StorageUnavailableError):
+            current, records = None, []
+        for record in records:
+            if record["path"] in self._overlay:
+                continue
+            data = self._read(record["path"])
+            if data is not None and hashlib.sha256(data).hexdigest() == record["file_hash"]:
+                owners.add(record["path"])
+            else:
+                stale = True
+        if owners:
+            return "ambiguous" if len(owners) > 1 else "found"
+        if stale or not current:
             return None
-        if records:
-            return True
-        return False if current["coverage"].get("complete") else None
+        coverage = current["coverage"]
+        return "absent" if coverage.get("complete") and not coverage.get("unsupported") and current.get("revision") == on_disk_now() else None
 
 
 def session_factory(*, memory_root: Path, config_root: Path, settings: OptimusGatewaySettings, config: MemoryIndexConfig, artifact_directory: str) -> Callable[[Path], MemorySession | None]:

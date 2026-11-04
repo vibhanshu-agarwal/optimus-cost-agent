@@ -48,7 +48,11 @@ def _where(hit: Hit) -> str:
 
 class IndexTools:
     def __init__(self, *, retriever: Retriever, storage: IndexStorage, read: Callable[[str], bytes | None], listing: Callable[[], Sequence[str]],
-                 cancelled: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.monotonic) -> None:
+                 cancelled: Callable[[], bool] = lambda: False, clock: Callable[[], float] = time.monotonic, unlisted: Callable[[], int] = lambda: 0,
+                 unsaved_symbols: Callable[[str], Sequence[str]] = lambda _name: (), before_each: Callable[[], None] = lambda: None) -> None:
+        self._before_each = before_each
+        self._unlisted = unlisted
+        self._unsaved_symbols = unsaved_symbols
         self._retriever = retriever
         self._storage = storage
         self._read = read
@@ -57,6 +61,7 @@ class IndexTools:
         self._clock = clock
 
     def run(self, tool: str, argument: str) -> str:
+        self._before_each()
         return _bounded({"SEARCH": self.search, "OUTLINE": self.outline, "SYMBOLS": self.symbols, "LIST": self.list}[tool](argument))
 
     def _current(self, hit: Hit, seen: dict[str, str | None]) -> bool:
@@ -105,6 +110,7 @@ class IndexTools:
         paths = list(self._listing())
         found: list[str] = []
         scanned = 0
+        unread = 0
         spent = 0
         started = self._clock()
         why_stopped = ""
@@ -119,14 +125,16 @@ class IndexTools:
                 why_stopped = "the size limit"
                 break
             data = self._read(path)
-            scanned += 1
             if data is None:
+                unread += 1
                 continue
             spent += len(data)
             try:
                 text = data.decode("utf-8")
             except UnicodeDecodeError:
+                unread += 1
                 continue
+            scanned += 1
             if needle not in text:
                 continue
             for number, line in enumerate(text.splitlines(), start=1):
@@ -138,7 +146,14 @@ class IndexTools:
             if why_stopped:
                 break
         scope = f"Scope: read {scanned} of {len(paths)} admitted files now" + (f", stopped by {why_stopped}." if why_stopped else ".")
+        if unread:
+            scope += f" {unread} are binary, empty or could not be read."
+        scope += self._unseen_folders()
         return [scope, *(found or ["No matches in this scope."])]
+
+    def _unseen_folders(self) -> str:
+        count = self._unlisted()
+        return f" {count} folders could not be listed, so what they hold is not covered." if count else ""
 
     def outline(self, path: str) -> list[str]:
         data = self._read(path)
@@ -171,8 +186,10 @@ class IndexTools:
         lines = [f"Scope: index generation {epoch}, {state}, {coverage.get('files_indexed', 0)} of {coverage.get('files_total', 0)} files."]
         seen: dict[str, str | None] = {}
         fresh = [hit for hit in hits if self._current(hit, seen)]
+        unsaved = list(self._unsaved_symbols(name))
+        lines.extend(unsaved)
         lines.extend(f"{_where(hit)} {hit.symbol}: {' '.join((hit.signature or '').split())[:_LINE_CHARS]}" for hit in fresh[:SYMBOL_RESULTS])
-        if not fresh:
+        if not fresh and not unsaved:
             lines.append("No matching symbols in this scope.")
         if len(fresh) < len(hits):
             lines.append(f"{len(hits) - len(fresh)} results were left out because their files changed since they were indexed.")
@@ -194,7 +211,7 @@ class IndexTools:
         if not folders and not files:
             return [f"Nothing the file policy admits is listed under {prefix or '.'}. Excluded files are not shown here."]
         entries = [f"{name}/ ({count} files)" for name, count in sorted(folders.items())] + sorted(files)
-        lines = [f"Scope: {prefix or '.'} as the file policy admits it, {len(entries)} entries. Excluded files are not shown."]
+        lines = [f"Scope: {prefix or '.'} as the file policy admits it, {len(entries)} entries. Excluded files are not shown.{self._unseen_folders()}"]
         lines.extend(entries[:LIST_ENTRIES])
         if len(entries) > LIST_ENTRIES:
             lines.append(f"... {len(entries) - LIST_ENTRIES} more entries left out")

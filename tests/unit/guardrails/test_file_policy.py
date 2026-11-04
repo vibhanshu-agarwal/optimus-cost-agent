@@ -585,3 +585,98 @@ def test_an_excluded_folders_ignore_file_is_never_opened(tmp_path, monkeypatch):
     names = {path.relative_to(tmp_path).as_posix() for path in opened}
     assert "private/.gitignore" not in names and "private/notes.md" not in names
     assert {".gitignore", "sub/.gitignore", "sub/x.txt"} <= names, "an eligible folder's ignore file is read"
+
+
+def test_names_judges_by_name_and_opens_nothing(tmp_path, monkeypatch):
+    _write(tmp_path, "keep.py", SENTINEL)
+    _write(tmp_path, ".env", SENTINEL)
+    _write(tmp_path, "ignored.py", SENTINEL)
+    _write(tmp_path, ".gitignore", "ignored.py\n")
+    (tmp_path / "huge.txt").write_text("x" * (2 * 1024 * 1024), encoding="utf-8")
+
+    real = file_policy._read_validated
+
+    def only_ignore_files(path, target, limit):
+        assert path.name in file_policy.IGNORE_FILE_NAMES, f"{path} was opened"
+        return real(path, target, limit)
+
+    monkeypatch.setattr(file_policy, "_read_validated", only_ignore_files)
+    policy = FilePolicy(tmp_path)
+    names, unlisted = policy.names()
+    assert set(names) == {".gitignore", "huge.txt", "keep.py"} and unlisted == 0
+    admits = policy.admitter()
+    assert admits("keep.py") and not admits(".env") and not admits("ignored.py") and not admits("gone.py")
+
+
+def test_ignore_files_are_read_again_only_when_asked(tmp_path):
+    _write(tmp_path, "keep.py", SENTINEL)
+    policy = FilePolicy(tmp_path)
+    assert policy.decide("keep.py", purpose=AUTO).allowed
+    _write(tmp_path, ".optimusignore", "keep.py\n")
+    assert policy.decide("keep.py", purpose=AUTO).allowed
+    policy.forget_ignore_files()
+    assert policy.decide("keep.py", purpose=AUTO).reason == "ignored.optimusignore"
+
+
+def test_one_folders_verdict_is_shared_within_a_walk_and_its_answers_do_not_change(tmp_path):
+    for name in ("build/a.py", "build/b.py", "src/nested/c.py", "src/nested/d.py"):
+        _write(tmp_path, name, SENTINEL)
+    _write(tmp_path, ".gitignore", "build/\n")
+    policy = FilePolicy(tmp_path)
+    calls = []
+    real = policy._match
+
+    def counting(parts, *, is_dir, folded):
+        calls.append(is_dir)
+        return real(parts, is_dir=is_dir, folded=folded)
+
+    policy._match = counting
+    names = policy.names()[0]
+    assert set(names) == {".gitignore", "src/nested/c.py", "src/nested/d.py"}
+    assert calls.count(True) <= 8, "each folder is judged once in each case mode"
+
+
+def test_names_counts_a_folder_it_cannot_list(tmp_path, monkeypatch):
+    _write(tmp_path, "keep.py", SENTINEL)
+    _write(tmp_path, "locked/hidden.py", SENTINEL)
+    real = os.scandir
+
+    def scandir(path):
+        if str(path).endswith("locked"):
+            raise PermissionError(path)
+        return real(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    assert FilePolicy(tmp_path).names() == (("keep.py",), 1)
+
+
+def test_names_and_a_full_walk_agree_on_ordinary_text(tmp_path):
+    for name in ("a.py", "pkg/b.py", "docs/c.md", ".env", ".git/config"):
+        _write(tmp_path, name, SENTINEL)
+    policy = FilePolicy(tmp_path)
+    assert set(policy.names()[0]) == {decision.relative_path for decision in policy.walk(purpose=AUTO) if decision.allowed}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are a Windows mechanism")
+def test_names_judges_a_junction_out_of_the_workspace_by_its_target(tmp_path):
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    _write(root, "keep.py", SENTINEL)
+    _write(outside, "secret.py", SENTINEL)
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(root / "linked"), str(outside)], check=True, capture_output=True)
+    names = FilePolicy(root).names()[0]
+    assert "keep.py" in names and "linked/secret.py" not in names
+
+
+def test_names_judges_a_symlink_by_its_target(tmp_path):
+    root = tmp_path / "root"
+    _write(root, "keep.py", SENTINEL)
+    _write(root, ".env", SENTINEL)
+    _write(tmp_path, "outside.py", SENTINEL)
+    try:
+        (root / "out.py").symlink_to(tmp_path / "outside.py")
+        (root / "alias.py").symlink_to(root / ".env")
+    except OSError:
+        pytest.skip("this host cannot create symbolic links")
+    names = FilePolicy(root).names()[0]
+    assert names == ("keep.py",)

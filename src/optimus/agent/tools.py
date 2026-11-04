@@ -101,7 +101,7 @@ class AgentToolbox:
     def index_tool_name(request: IndexToolRequest) -> str:
         return f"index_{request.tool.lower()}"
 
-    def index_tool(self, request: IndexToolRequest, tools: Any) -> tuple[str, AgentToolCall]:
+    def index_tool(self, request: IndexToolRequest, tools: Any) -> tuple[str, AgentToolCall, str]:
         """One read-only index tool after the guard allows it, under the same FILE_READ surface as any read. A tool that names a path
         is judged on that path; one that does not is judged on the workspace, and the file policy still decides each file it reads."""
         names_path = request.tool in {"OUTLINE", "LIST"}
@@ -131,7 +131,7 @@ class AgentToolbox:
             tool_name=self.index_tool_name(request),
             summary=f"{request.tool} {request.argument[:80]}: {text.count(chr(10)) + 1} lines in {milliseconds} ms",
             authorization_outcome=result.verdict.value,
-        )
+        ), result.reason
 
     def write_file(
         self,

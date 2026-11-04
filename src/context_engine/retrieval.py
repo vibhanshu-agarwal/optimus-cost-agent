@@ -124,8 +124,12 @@ def read_catalogue(storage: IndexStorage, epoch: int) -> list[CatalogueFile]:
 
 
 def seed_map(storage: IndexStorage, epoch: int, catalogue: Sequence[CatalogueFile], *, budget_chars: int) -> RepoMap:
-    """The repository map: every file ranked by its observed imports, with symbols for the best-ranked. It takes no focus, so it is the
-    same text for every prompt of a generation and belongs in a cacheable prefix."""
+    return build_repo_map(seed_files(storage, epoch, catalogue), budget_chars=budget_chars)
+
+
+def seed_files(storage: IndexStorage, epoch: int, catalogue: Sequence[CatalogueFile]) -> list[MapFile]:
+    """The repository map's input: every file ranked by its observed imports, with symbols for the best-ranked. It takes no focus, so it
+    renders the same text for every prompt of a generation and belongs in a cacheable prefix."""
     bare = [MapFile(item.path, imports_of(item.description)) for item in catalogue]
     scores = rank(bare)
     best = sorted(bare, key=lambda item: (-round(scores.get(item.path, 0.0), 12), item.path))[:MAP_SYMBOL_FILES]
@@ -133,14 +137,14 @@ def seed_map(storage: IndexStorage, epoch: int, catalogue: Sequence[CatalogueFil
     for item in best:
         reply = storage.call("query", mode="path", epoch=epoch, path_id=path_id(item.path), k=MAP_SYMBOLS_PER_FILE, kinds=["symbol"])
         symbols[item.path] = tuple(sorted(record["symbol"] for record in reply["records"] if record.get("symbol")))
-    return build_repo_map([MapFile(item.path, item.imports, symbols.get(item.path, ())) for item in bare], budget_chars=budget_chars)
+    return [MapFile(item.path, item.imports, symbols.get(item.path, ())) for item in bare]
 
 
 class Retriever:
-    def __init__(self, storage: IndexStorage, embedder: Embedder | None, *, catalogue: Callable[[int], Sequence[CatalogueFile]] | None = None, cancelled: Callable[[], bool] = lambda: False) -> None:
+    def __init__(self, storage: IndexStorage, embedder: Embedder | None, *, catalogue: Callable[[int, bool], Sequence[CatalogueFile]] | None = None, cancelled: Callable[[], bool] = lambda: False) -> None:
         self._storage = storage
         self._embedder = embedder
-        self._catalogue = catalogue or (lambda epoch: read_catalogue(storage, epoch))
+        self._catalogue = catalogue or (lambda epoch, _complete: read_catalogue(storage, epoch))  # told whether the generation is complete
         self._cancelled = cancelled
 
     def retrieve(self, text: str, *, named_paths: Sequence[str] = (), named_symbols: Sequence[str] = (), memory: Sequence[Hit] = ()) -> Retrieval:
@@ -159,6 +163,7 @@ class Retriever:
         if not current:
             return Retrieval("unpublished", channels={"all": "nothing has been published"})
         epoch: int = current["epoch"]
+        complete = bool(current["coverage"].get("complete"))
         channels: dict[str, list[Hit]] = {"memory": list(memory)}
         report: dict[str, str] = {"memory": f"{len(memory)} results" if memory else "no authorized source"}
 
@@ -181,8 +186,8 @@ class Retriever:
             report["dense"] = "no embedding artifact"
         else:
             run("dense", lambda: self._dense(text, epoch))
-        run("structure", lambda: self._structure(named_paths, named_symbols, epoch))
-        run("recency", lambda: self._recent(epoch))
+        run("structure", lambda: self._structure(named_paths, named_symbols, epoch, complete))
+        run("recency", lambda: self._recent(epoch, complete))
         ranked = fuse(channels, named=named_paths)
         return Retrieval("ok", epoch, current["coverage"], current.get("revision"), ranked, report)
 
@@ -201,7 +206,7 @@ class Retriever:
             raise StorageUnavailableError("the embedder failed") from exc
         return self._ask(epoch, mode="dense", vector=base64.b64encode(embedded).decode("ascii"), k=CHANNEL_K)
 
-    def _structure(self, named_paths: Sequence[str], named_symbols: Sequence[str], epoch: int) -> list[Hit]:
+    def _structure(self, named_paths: Sequence[str], named_symbols: Sequence[str], epoch: int, complete: bool) -> list[Hit]:
         """Only what was named or observed: the named files, the named symbols, then what the named files import or are imported by."""
         hits: list[Hit] = []
         for symbol in [name for name in named_symbols if len(name) <= MAX_SYMBOL_CHARS][:MAX_NAMED]:
@@ -210,13 +215,13 @@ class Retriever:
         for path in chosen:
             hits.extend(self._ask(epoch, mode="path", path_id=path_id(path), k=CHANNEL_K))
         if chosen:
-            files = [MapFile(item.path, imports_of(item.description)) for item in self._catalogue(epoch)]
+            files = [MapFile(item.path, imports_of(item.description)) for item in self._catalogue(epoch, complete)]
             for path in neighbours(files, chosen)[:MAX_NAMED]:
                 hits.extend(self._ask(epoch, mode="path", path_id=path_id(path), k=MAX_NAMED, kinds=["file", "symbol"]))
         return hits
 
-    def _recent(self, epoch: int) -> list[Hit]:
-        dated = [item for item in self._catalogue(epoch) if item.modified is not None]
+    def _recent(self, epoch: int, complete: bool) -> list[Hit]:
+        dated = [item for item in self._catalogue(epoch, complete) if item.modified is not None]
         dated.sort(key=lambda item: (-(item.modified or 0), item.path))
         hits: list[Hit] = []
         for item in dated[:_RECENT_FILES]:

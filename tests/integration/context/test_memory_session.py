@@ -86,7 +86,7 @@ class _Sessions:
         self.manifests = manifests
         self.opened: list[MemorySession] = []
 
-    def open(self, root: Path, *, embedder: Any = None, wrap: Callable[[Any], Any] = lambda storage: storage, project: str | None = None) -> MemorySession:
+    def open(self, root: Path, *, embedder: Any = None, wrap: Callable[[Any], Any] = lambda storage: storage, project: str | None = None, prepare: Callable[[MemorySession], None] = lambda _session: None) -> MemorySession:
         name = project or f"project-{root.parent.name}"
         session = MemorySession(
             policy=FilePolicy(root), registration=ProjectRegistration(name, 1, f"git:{name}", str(root), created=False),
@@ -94,6 +94,7 @@ class _Sessions:
             embedding_identity=StubEmbedder.identity, parser_version="test", manifest_root=self.manifests,
         )
         self.opened.append(session)
+        prepare(session)
         session.start()
         return session
 
@@ -172,7 +173,7 @@ def test_an_unsaved_buffer_never_reaches_the_store(root: Path, sessions: _Sessio
     assert "unsaved_canary_name" in turn.tools.run("OUTLINE", "first.py")
     session.request_pass()
     _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete")
-    assert "unsaved_canary" not in turn.tools.run("SYMBOLS", "unsaved_canary_name").split("Scope", 1)[0]
+    assert "(unsaved)" in turn.tools.run("SYMBOLS", "unsaved_canary_name")
     keys = list(client.scan_iter(match="oidx:rec:*", count=1000))
     assert keys and not any(b"unsaved_canary" in value for key in keys for value in client.hgetall(key).values())
 
@@ -255,6 +256,31 @@ def test_a_branch_made_at_the_same_commit_as_a_pass_finishes_still_gets_its_own_
     assert "first.py:" in holder["session"].turn().tools.run("SYMBOLS", "first_function")
 
 
+def test_a_switch_before_a_pass_looks_at_the_disk_never_writes_that_branch_into_this_line(root: Path, sessions: _Sessions, settings: OptimusGatewaySettings) -> None:
+    switched = threading.Event()
+
+    def prepare(session: MemorySession) -> None:
+        real = session._source.revision
+
+        def switch_then_look() -> tuple[str, bool]:
+            if not switched.is_set():
+                _git(root, "checkout", "-q", "-b", "feature")
+                (root / "feature_only.py").write_text("def feature_function():\n    return 1\n", encoding="utf-8")
+                switched.set()
+            return real()
+
+        session._source.revision = switch_then_look  # type: ignore[method-assign]
+
+    session = sessions.open(root, prepare=prepare)
+    original = session._scope.identity
+    assert switched.wait(30)
+    _until(lambda: session._scope.identity != original and session.status().startswith("Context index: ready"))
+    assert "feature_only.py:" in session.turn().tools.run("SYMBOLS", "feature_function")
+    with pytest.raises(StorageRefusedError) as refused:  # the pass wrote nothing: its line was never even opened
+        GatewayIndexStorage(settings, scope=original).call("coverage")
+    assert refused.value.code == "SCOPE_UNKNOWN"
+
+
 def test_a_file_made_just_before_the_turn_is_found_when_it_is_named(root: Path, sessions: _Sessions) -> None:
     session = sessions.open(root)
     _ready(session)
@@ -287,7 +313,36 @@ def test_grounding_checks_real_symbols_on_a_complete_index(root: Path, sessions:
     session = sessions.open(root)
     _ready(session)
     report = session.turn().ground("`first_function` is in first.py but `invented_name` is not.")
-    assert set(report.resolved) == {"first.py", "first_function"} and report.unresolved == ("invented_name",)
+    assert set(report.resolved) == {"first.py", "first_function"} and report.unresolved == ("invented_name",)  # the disk is what was published
+
+
+def test_a_symbol_added_since_the_generation_is_not_called_absent(root: Path, sessions: _Sessions) -> None:
+    session = sessions.open(root)
+    _ready(session)
+    (root / "second.py").write_text("def added_since():\n    return 1\n", encoding="utf-8")
+    assert session.turn().ground("`added_since`").unresolved == ()
+
+
+def test_editing_the_ignore_file_mid_session_takes_effect_at_once_and_leaves_the_index(root: Path, sessions: _Sessions) -> None:
+    session = sessions.open(root)
+    _ready(session)
+    turn = session.turn()
+    assert "SecondThing" in turn.tools.run("OUTLINE", "second.py")
+    (root / ".optimusignore").write_text("second.py\n", encoding="utf-8")
+    assert "cannot be read" in turn.tools.run("OUTLINE", "second.py")
+    assert "second.py" not in turn.tools.run("LIST", ".")
+    assert "second.py" not in session.turn().repo_map()
+    assert "SecondThing" not in _assemble(session.turn(), "how does SecondThing work").text
+    _until(lambda: "second.py" not in session._scope.storage.call("catalogue")["files"].__repr__())
+
+
+def test_a_map_on_real_storage_loses_a_deleted_file_at_once(root: Path, sessions: _Sessions) -> None:
+    session = sessions.open(root)
+    _ready(session)
+    scope = session._current_scope()
+    assert "second.py: SecondThing" in session.repo_map(scope)
+    (root / "second.py").unlink()
+    assert "second.py" not in session.repo_map(scope)
 
 
 def test_closing_a_session_stops_its_worker_and_frees_the_line_for_the_next(tmp_path: Path, sessions: _Sessions) -> None:
@@ -321,9 +376,15 @@ def test_a_generation_that_expires_under_a_reader_is_tried_again_and_never_answe
     # A real older epoch that the worker has since pruned, handed out once.
     (root / "first.py").write_text("def edited_function():\n    return 3\n", encoding="utf-8")
     session.request_pass()
-    _until(lambda: storage.call("coverage")["current"]["epoch"] != current["epoch"] and session._last_outcome is not None and session._indexed_revision is not None)
-    with pytest.raises(StorageRefusedError):
-        storage.call("query", mode="lexical", epoch=current["epoch"], terms=["first_function"], k=1)
+
+    def expired() -> bool:
+        try:
+            storage.call("query", mode="lexical", epoch=current["epoch"], terms=["first_function"], k=1)
+        except StorageRefusedError:
+            return True
+        return False
+
+    _until(expired)  # a publish comes first and the prune after it, so this waits for the prune itself
     real_call = storage.call
     first_look = {"pending": True}
 

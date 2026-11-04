@@ -1883,7 +1883,7 @@ class AgentRunner:
                 # No fifth round, and tool syntax is not an answer.
                 return fail(stop_reason="CHAT_SEARCH_LIMIT_REACHED")
             assert memory is not None  # `requests` is only ever parsed with one
-            ran = run_index_tools(requests, memory, toolbox, halted=halt_requested or (lambda: False))
+            ran = run_index_tools(requests, memory, toolbox, halted=halt_requested or (lambda: False), event_sink=self._event_sink, run_id=request.run_id, session_id=request.session_id)
             calls.extend(ran.calls)
             index_results = keep_newest(index_results + ran.envelope)
             # A reply of only repeats has nothing new to look at, so the next call is the final one.
