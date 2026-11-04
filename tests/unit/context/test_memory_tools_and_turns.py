@@ -466,7 +466,7 @@ def test_tools_and_grounding_agree_with_the_buffer_the_turn_saw(workspace):
     searched = turn.tools.run("SYMBOLS", "helper")
     assert "unsaved_helper" in searched and "(unsaved)" in searched and "their files changed" in searched  # the index's record is of the text on disk
     report = turn.ground("`unsaved_helper` is new and `invented_name` is not, and `helper` was replaced.")
-    assert report.resolved == ("unsaved_helper",) and report.not_in_index == ("invented_name", "helper")
+    assert report.resolved == ("unsaved_helper",) and report.not_in_index == ("invented_name",)  # the generation does hold `helper`, so nothing is said of it
 
 
 def test_an_unsaved_buffer_never_reaches_the_manifest(workspace):
@@ -1071,6 +1071,7 @@ def test_absence_needs_each_changed_files_bytes_to_match_the_generation(workspac
     session.dirty_paths = lambda: ("pkg/a.py",)
     storage.held = _sha("what it was before an edit that kept its size and time")
     assert session.turn().ground("`new_name`").not_in_index == ()
+    assert session._priorities() == ("pkg/a.py",), "a proved change gets its pass"
     storage.held = _sha(SOURCE)
     assert session.turn().ground("`new_name`").not_in_index == ("new_name",)
 

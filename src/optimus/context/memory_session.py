@@ -655,6 +655,7 @@ class MemoryTurn:
             except (StorageRefusedError, StorageUnavailableError):
                 return False
             if not records or records[0]["file_hash"] != hashlib.sha256(data).hexdigest():
+                session.request_pass((path,))
                 return False
         return True
 
@@ -675,6 +676,7 @@ class MemoryTurn:
             current, records = None, []
         for record in records:
             if record["path"] in self._overlay:
+                stale = True  # the generation has it and the unsaved text does not, so "not in this generation" would be false
                 continue
             data = self._read(record["path"])
             if data is not None and hashlib.sha256(data).hexdigest() == record["file_hash"]:
