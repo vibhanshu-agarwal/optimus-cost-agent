@@ -279,6 +279,7 @@ class IndexWorker:
         was checked, so the publication keeps the last pass's counts and says it is incomplete; the walk that follows decides the rest."""
         pending: list[IndexRecord] = []
         batch = _Batch()
+        first_out = False
         for path in paths:
             if cancel.is_set():
                 raise _Cancelled([])
@@ -295,8 +296,13 @@ class IndexWorker:
             batch.removals.append({"path_id": path_id(path), "keep_hash": parsed.file_hash})
             pending.extend((*parsed.records[1:], parsed.records[0]))
             self._files_written += 1
-        if not batch.removals:
-            return
+            if not first_out:  # the first change goes out alone, so it never waits on a larger file after it
+                self._publish_early(pending, batch, current)
+                first_out = True
+        if batch.removals:
+            self._publish_early(pending, batch, current)
+
+    def _publish_early(self, pending: list[IndexRecord], batch: _Batch, current: dict[str, Any]) -> None:
         self._flush(pending, batch, force=True)
         self._publish(complete=False, coverage={**current["coverage"], "complete": False})
         self._epoch = self._storage.call("generation", action="begin", token=self._token)["epoch"]

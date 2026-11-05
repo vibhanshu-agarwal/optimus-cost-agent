@@ -223,6 +223,26 @@ def test_a_changed_open_file_is_published_before_the_tree_is_listed_or_the_catal
     assert order.count("batch") == 1  # the walk found the early file already written and the rest unchanged
 
 
+def test_the_first_changed_file_is_queryable_before_the_next_one_is_even_read(index: Index) -> None:
+    index.build()
+    (index.root / "first.py").write_text("def first_function():\n    return 1\n\ndef first_edit():\n    return 2\n", encoding="utf-8")
+    (index.root / "second.py").write_text("class SecondThing:\n    def second_edit(self):\n        return 3\n", encoding="utf-8")
+    index.priority = ["first.py", "second.py"]
+    seen_when_second_was_read: list[list[str]] = []
+    real_read = WorkspaceIndexSource.read
+
+    def read(self: WorkspaceIndexSource, path: str) -> bytes | None:
+        if path == "second.py" and not seen_when_second_was_read:
+            seen_when_second_was_read.append(index.symbols("first_edit"))  # a stalled second file: what can a reader already find?
+        return real_read(self, path)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(WorkspaceIndexSource, "read", read)
+        assert index.build().state == "complete"
+    assert seen_when_second_was_read == [["first_edit"]]
+    assert "SecondThing.second_edit" in index.symbols("second_edit")
+
+
 def test_an_unchanged_open_file_writes_and_publishes_nothing_early(index: Index) -> None:
     index.build()
     index.priority = ["first.py"]

@@ -168,24 +168,45 @@ class _Index:
 
 def edit_visibility(run: Callable[[threading.Event], Any], found: Callable[[], bool], *, limit_seconds: float = 900, poll_seconds: float = 0.1) -> dict[str, Any]:
     """How soon an edit can be queried, while the pass that wrote it may still be reconciling the rest; the whole pass is reported apart."""
+    cancel = threading.Event()
     outcome: list[Any] = []
+    failure: list[str] = []
+
+    def work() -> None:
+        try:
+            outcome.append(run(cancel))
+        except Exception as error:  # noqa: BLE001 - kept in the report; the caller stops on it
+            failure.append(type(error).__name__)
+
     started = time.perf_counter()
-    worker = threading.Thread(target=lambda: outcome.append(run(threading.Event())), daemon=True)
+    worker = threading.Thread(target=work, daemon=True)
     worker.start()
-    visible = None
-    while visible is None and time.perf_counter() - started < limit_seconds:
-        alive = worker.is_alive()
-        if found():
-            visible = round(time.perf_counter() - started, 2)
-        elif not alive:
-            break
-        else:
-            time.sleep(poll_seconds)
-    worker.join(max(0.0, limit_seconds - (time.perf_counter() - started)))
-    whole = round(time.perf_counter() - started, 2)
+    visible, while_running, query_error = None, None, None
+    try:
+        while visible is None and time.perf_counter() - started < limit_seconds:
+            alive = worker.is_alive()
+            if found():
+                visible = round(time.perf_counter() - started, 2)
+                while_running = worker.is_alive()  # the query answered before the pass ended
+            elif not alive:
+                break
+            else:
+                time.sleep(poll_seconds)
+    except Exception as error:  # noqa: BLE001 - a query failure ends the measurement, never the stop below
+        query_error = type(error).__name__
+    finally:
+        if visible is None:
+            cancel.set()
+        worker.join(max(0.0, limit_seconds - (time.perf_counter() - started)))
+        if worker.is_alive():
+            cancel.set()
+            worker.join(120)
+    if worker.is_alive():
+        raise SystemExit("the edit's index pass did not stop; anything measured next would run under its load")
     result = outcome[0] if outcome else None
-    return {"seconds_until_queryable": visible, "new_symbol_found": visible is not None, "whole_pass_seconds": whole if result else None,
-            "state": getattr(result, "state", "no-result"), "records_written": getattr(result, "records_written", None)}
+    return {"seconds_until_queryable": visible, "new_symbol_found": visible is not None, "queryable_before_the_pass_ended": while_running,
+            "whole_pass_seconds": round(time.perf_counter() - started, 2) if result else None, "state": getattr(result, "state", "no-result"),
+            "records_written": getattr(result, "records_written", None), "worker_failure": failure[0] if failure else None, "query_error": query_error}
 
 
 def long_path(path: Path) -> Path:
@@ -531,7 +552,8 @@ def _measure_turn(session: MemorySession, counters: list[_CountingStorage], task
             calls[label] = calls.get(label, 0) + count
     budget = turn.manifest.get("budget", {})
     return {"task": task, "wall_ms": round(wall * 1000, 1), "route_ms": round(sum(counter.seconds for counter in counters) * 1000, 1), "route_calls": sum(calls.values()), "calls": calls,
-            "state": turn.manifest.get("retrieval", {}).get("state"), "pack_tokens": budget.get("tokens"), "budget_tokens": budget.get("budget_tokens"), "blocked": result.blocking_stop_reason}
+            "state": turn.manifest.get("retrieval", {}).get("state"), "channels": dict(turn.manifest.get("retrieval", {}).get("channels", {})),
+            "pack_tokens": budget.get("tokens"), "budget_tokens": budget.get("budget_tokens"), "blocked": result.blocking_stop_reason}
 
 
 def _assembly_summary(turns: Sequence[dict[str, Any]]) -> dict[str, Any]:

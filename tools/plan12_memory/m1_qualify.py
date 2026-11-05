@@ -519,10 +519,33 @@ def _calibrate_assembly(root: Path, settings: Any, embedder: Any, work: Path, *,
         map_text = session.repo_map(scope)
         refresh = {"wall_ms": round((time.perf_counter() - started) * 1000, 1), "route_calls": sum(sum(counter.calls.values()) for counter in counters), "chars": len(map_text)}
         idle = [scale._measure_turn(session, counters, task, f"cal-{round_}-{number}") for round_ in range(5) for number, task in enumerate(_LARGE_TASKS)]
-        return {"state": "CALIBRATION: never a qualification result", "repo_map_on_a_miss": refresh, "idle": {**scale._assembly_summary(idle), **_dense_in_every_turn(idle), "per_turn": idle},
+        session_edit = session_edit_visibility(session, root, scope.storage)
+        return {"state": "CALIBRATION: never a qualification result", "repo_map_on_a_miss": refresh, "session_edit": session_edit, "idle": {**scale._assembly_summary(idle), **_dense_in_every_turn(idle), "per_turn": idle},
                 "during_build": {**scale._assembly_summary(during_build), **_dense_in_every_turn(during_build), "per_turn": during_build} if during_build else None, "coverage": session.status()}
     finally:
         session.close()
+
+
+def session_edit_visibility(session: MemorySession, root: Path, storage: Any, *, limit_seconds: float = 900, poll_seconds: float = 0.1) -> dict[str, Any]:
+    """An edit through the product's own path: the session's thread, its revision check and Git's changed paths, woken as a turn wakes it.
+    This is the measure against the 6 s edit limit; the direct worker measure leaves out the session's revision scan."""
+    target = scale.edit_target(root, ".java")
+    expected = target.relative_to(scale.long_path(root)).as_posix()
+    target.write_text(target.read_text(encoding="utf-8") + "\n\nclass M1SessionAddedClass { void m1SessionAddedMethod() {} }\n", encoding="utf-8")
+    before = session._last_outcome
+    started = time.perf_counter()
+    session.request_pass()
+    visible = None
+    while visible is None and time.perf_counter() - started < limit_seconds:
+        if any(record.get("path") == expected for record in storage.call("query", mode="lexical", terms=["m1sessionaddedmethod"], k=5)["records"]):
+            visible = round(time.perf_counter() - started, 2)
+        else:
+            time.sleep(poll_seconds)
+    while session._last_outcome is before and time.perf_counter() - started < limit_seconds:
+        time.sleep(poll_seconds)
+    ended = session._last_outcome
+    return {"seconds_until_queryable": visible, "new_symbol_found": visible is not None, "pass_state": getattr(ended, "state", None) if ended is not before else "unfinished",
+            "whole_pass_seconds": round(time.perf_counter() - started, 2) if ended is not before else None}
 
 
 def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str) -> list[dict[str, Any]]:
@@ -537,9 +560,12 @@ def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path,
 
 
 def _dense_in_every_turn(turns: list[dict[str, Any]]) -> dict[str, Any]:
-    """Hybrid assembly asks the dense channel each turn. Without it the turns measured lexical-only assembly, which a person never gets."""
-    missing = [turn["task"] for turn in turns if not turn["calls"].get("query:dense")]
-    return {"dense_in_every_turn": not missing, **({"turns_without_dense": missing} if missing else {})}
+    """Hybrid assembly needs the dense channel's answer each turn. A call that was refused or unavailable still leaves retrieval "ok", so the
+    channel's own outcome decides, and any channel that did not answer is named."""
+    missing = [turn["task"] for turn in turns if not str(turn.get("channels", {}).get("dense", "")).endswith(" results")]
+    failed = sorted({f"{name}: {outcome}" for turn in turns for name, outcome in turn.get("channels", {}).items()
+                     if outcome.startswith(("refused", "unavailable", "not asked", "no embedding"))})
+    return {"dense_in_every_turn": not missing, **({"turns_without_dense": missing} if missing else {}), **({"channels_that_did_not_answer": failed} if failed else {})}
 
 
 def _built_with_samples(index: scale._Index, foreground: scale._Index, store: memory_index.IndexStore, *, config: Mapping[str, Any], pids: dict[str, int], turns: Any, during_build: list[dict[str, Any]], assembly: Callable[[], list[dict[str, Any]]]) -> dict[str, Any]:

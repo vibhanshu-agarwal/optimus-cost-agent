@@ -70,6 +70,17 @@
       "physical_erasure_seconds": 120
     }
   },
+  "dispositions": [
+    {
+      "metric": "seconds until the first file is visible, from the start of a cold build",
+      "frozen_limit": 5,
+      "release_b": {"measured": 30.91, "head": "hex:1a7592b753dfc3f7272d440c049147df4a1e1509", "result": "MISSED; retained in qualify.json and not relabelled"},
+      "cause": "A cold build lists and filters the whole tree (27 s at 10,255 files) and reads its revision before its first publish, which carries the honest total. The 5 s limit came from a 50-file pilot.",
+      "revised": {"corpus_b_cold_seconds": 45, "pilot_cold_seconds": 5, "edit_to_queryable_seconds": 6},
+      "scope": "Prospective: the later qualifying run. Cold discovery is separated from edit responsiveness: today's context stays usable during it, and an edit with a publication in place is written before the listing (a67057c).",
+      "approved": "Codex review 24 item 3 on #469 recommended exactly these values. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved."
+    }
+  ],
   "retrieval": {
       "state": "APPROVED",
       "approved": "The operator, Claude chat 2026-11-05, chose: \"B: seal, then tune (Recommended)\". The question gave this gold hash and these floors. Codex recommended option B and the floors in review 21.",

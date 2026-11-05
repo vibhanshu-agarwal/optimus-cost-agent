@@ -168,7 +168,7 @@ def test_an_edit_counts_as_visible_when_it_can_be_queried_not_when_its_pass_ends
     published, release = threading.Event(), threading.Event()
 
     def run(_cancel: threading.Event) -> object:
-        published.set()  # the early publication; the pass then keeps reconciling the rest of the tree
+        published.set()  # the early publication; the pass then keeps reconciling until the query has answered
         release.wait(5)
         return type("Outcome", (), {"state": "complete", "records_written": 3})()
 
@@ -180,16 +180,68 @@ def test_an_edit_counts_as_visible_when_it_can_be_queried_not_when_its_pass_ends
 
     result = m1_scale.edit_visibility(run, found, poll_seconds=0.01)
     assert result["new_symbol_found"] and result["state"] == "complete" and result["records_written"] == 3
+    assert result["queryable_before_the_pass_ended"] is True  # run-then-query would answer only after the pass, and say False
     assert result["seconds_until_queryable"] <= result["whole_pass_seconds"]
     never = m1_scale.edit_visibility(lambda _cancel: type("Outcome", (), {"state": "complete", "records_written": 0})(), lambda: False, poll_seconds=0.01)
     assert never["new_symbol_found"] is False and never["seconds_until_queryable"] is None
 
 
+def test_an_edit_measurement_past_its_deadline_or_a_failed_query_stops_its_worker() -> None:
+    stopped: list[bool] = []
+
+    def endless(cancel: threading.Event) -> object:
+        while not cancel.wait(0.01):
+            pass
+        stopped.append(True)
+        return type("Outcome", (), {"state": "cancelled", "records_written": 0})()
+
+    late = m1_scale.edit_visibility(endless, lambda: False, limit_seconds=0.2, poll_seconds=0.01)
+    assert stopped == [True] and late["state"] == "cancelled" and late["new_symbol_found"] is False
+
+    def broken() -> bool:
+        raise ConnectionError("route gone")
+
+    failed = m1_scale.edit_visibility(endless, broken, poll_seconds=0.01)
+    assert stopped == [True, True] and failed["query_error"] == "ConnectionError"
+    crashed = m1_scale.edit_visibility(lambda _cancel: 1 / 0, lambda: False, poll_seconds=0.01)
+    assert crashed["worker_failure"] == "ZeroDivisionError"
+
+
+def test_a_session_edit_is_timed_from_the_wake_to_the_symbol_in_that_file(tmp_path: Path) -> None:
+    from tools.plan12_memory.m1_qualify import session_edit_visibility
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "A.java").write_bytes(("class A {\n" + "    int field;\n" * 200 + "}\n").encode())
+
+    class Session:
+        _last_outcome: object = None
+
+        def request_pass(self) -> None:
+            threading.Timer(0.05, lambda: setattr(self, "_last_outcome", type("Outcome", (), {"state": "complete"})())).start()
+
+    class Storage:
+        def __init__(self, session: Session) -> None:
+            self.session = session
+
+        def call(self, op: str, **fields: object) -> dict:
+            text = (tmp_path / "src" / "A.java").read_text(encoding="utf-8")
+            hit = self.session._last_outcome is not None and "m1SessionAddedMethod" in text
+            return {"records": [{"path": "elsewhere/B.java"}] + ([{"path": "src/A.java"}] if hit else [])}
+
+    session = Session()
+    result = session_edit_visibility(session, tmp_path, Storage(session), poll_seconds=0.01)  # type: ignore[arg-type]
+    assert result["new_symbol_found"] and result["pass_state"] == "complete" and result["seconds_until_queryable"] <= result["whole_pass_seconds"]
+
+
 def test_assembly_without_the_dense_channel_is_flagged_as_not_what_a_person_gets() -> None:
     from tools.plan12_memory.m1_qualify import _dense_in_every_turn
 
-    assert _dense_in_every_turn([{"task": "a", "calls": {"query:dense": 1, "query:lexical": 1}}]) == {"dense_in_every_turn": True}
-    assert _dense_in_every_turn([{"task": "a", "calls": {"query:lexical": 1}}]) == {"dense_in_every_turn": False, "turns_without_dense": ["a"]}
+    assert _dense_in_every_turn([{"task": "a", "channels": {"dense": "40 results", "lexical": "40 results"}}]) == {"dense_in_every_turn": True}
+    assert _dense_in_every_turn([{"task": "a", "channels": {"dense": "no embedding artifact", "lexical": "40 results"}}]) == {
+        "dense_in_every_turn": False, "turns_without_dense": ["a"], "channels_that_did_not_answer": ["dense: no embedding artifact"]}
+    refused = _dense_in_every_turn([{"task": "b", "channels": {"dense": "refused:INDEX_BUSY", "lexical": "unavailable"}}])
+    assert refused["dense_in_every_turn"] is False  # it was asked, and retrieval still said ok
+    assert refused["channels_that_did_not_answer"] == ["dense: refused:INDEX_BUSY", "lexical: unavailable"]
 
 
 def test_logical_purge_is_timed_at_the_first_refusal_not_the_whole_sweep() -> None:
