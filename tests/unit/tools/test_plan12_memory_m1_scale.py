@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import subprocess
 import threading
 from pathlib import Path
 
@@ -66,3 +69,40 @@ def test_assembly_counts_only_the_turns_own_calls_and_summarises_them():
              {"wall_ms": 20.0, "route_ms": 6.0, "route_calls": 9, "pack_tokens": None, "budget_tokens": None, "state": "unavailable", "blocked": "X"}]
     summary = m1_scale._assembly_summary(turns)
     assert summary["route_calls_max"] == 9 and summary["pack_share_of_token_budget_max"] == 0.5 and summary["states"] == ["ok", "unavailable"] and summary["blocked"] == ["X"]
+
+
+def test_the_k2_admin_user_leaves_the_index_user_alone_and_the_launch_path_still_accepts_the_file(tmp_path: Path) -> None:
+    from optimus_security.memory_index_config import ACL_NAME, CONFIG_NAME, acl_text
+    from tools.plan12_memory.m1_qualify import k2_admin_acl
+
+    original = acl_text("optimus-index", "a" * 64)
+    (tmp_path / ACL_NAME).write_bytes(original.encode("utf-8"))
+    (tmp_path / CONFIG_NAME).write_text(json.dumps({"acl_sha256": "0" * 64, "port": 6393}), encoding="utf-8")
+    k2_admin_acl(tmp_path, "local")
+    data = (tmp_path / ACL_NAME).read_bytes()
+    assert data.decode("utf-8").startswith(original) and b"user k2-admin on #" in data and b"local" not in data
+    document = json.loads((tmp_path / CONFIG_NAME).read_text(encoding="utf-8"))
+    assert document == {"acl_sha256": hashlib.sha256(data).hexdigest(), "port": 6393}
+
+
+def test_a_bound_with_no_measurement_is_neither_met_nor_failed() -> None:
+    from tools.plan12_memory.m1_qualify import within
+
+    assert within(None, 1) is None
+    assert within(2, 2) is True and within(3, 2) is False
+    assert within(3, 2, at_least=True) is True
+
+
+def test_the_large_corpus_must_be_at_the_approved_commit(tmp_path: Path) -> None:
+    from tools.plan12_memory.m1_qualify import clone_large_corpus
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "a.java").write_text("class A {}\n", encoding="utf-8")
+    for args in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "c"]):
+        subprocess.run(["git", "-C", str(source), *args], capture_output=True, check=True)
+    head = subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    with pytest.raises(SystemExit, match="not the approved"):
+        clone_large_corpus(source, tmp_path / "wrong", expected_commit="0" * 40)
+    clone = clone_large_corpus(source, tmp_path / "right", expected_commit=head)
+    assert "**/*Test.java" in (clone / ".optimusignore").read_text(encoding="utf-8")

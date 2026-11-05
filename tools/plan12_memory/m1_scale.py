@@ -1,4 +1,4 @@
-"""Plan 12.10 M1 measurement: `python -m tools.plan12_memory.m1_scale --phase pilot|assembly --config reports/plan12-memory-m1/run-config.json`.
+"""Plan 12.10 M1 measurement: `python -m tools.plan12_memory.m1_scale --phase pilot|assembly|qualify --config reports/plan12-memory-m1/run-config.json`.
 
 Runs against the released dedicated Redis and a real Gateway process, on a throwaway copy of the corpus. Measures, never tunes: it
 reports what the pilot saw so the operator can freeze targets from numbers. No generative or provider call is possible here: the
@@ -386,7 +386,7 @@ def _bulk(index: _Index, store: memory_index.IndexStore, *, batches: int, dimens
             "proxy_seconds": round(proxy_seconds, 3), "native_seconds": round(native_seconds, 3)}
 
 
-def _provision(config: dict[str, Any], repository: Path, work: Path) -> tuple[Path, Any, str, redis.Redis, subprocess.Popen[str], OptimusGatewaySettings, dict[str, Any]]:
+def _provision(config: dict[str, Any], repository: Path, work: Path, *, prepare: Callable[[Path], None] | None = None) -> tuple[Path, Any, str, redis.Redis, subprocess.Popen[str], OptimusGatewaySettings, dict[str, Any]]:
     """The released Redis made the way a real launch makes it, and a real Gateway process in front of it."""
     work.mkdir(parents=True, exist_ok=True)
     container, volume = config["container"], config["volume"]
@@ -414,6 +414,8 @@ def _provision(config: dict[str, Any], repository: Path, work: Path) -> tuple[Pa
     assert memory is not None
     password = keyring.get_password(KEYRING_SERVICE, memory.credential_name)
     assert password is not None
+    if prepare is not None:
+        prepare(root)
     status = local_infra.ensure_memory_redis(root)
     assert status.state == "ready", status
     client = memory_index.connect(memory_index.IndexEndpoint("127.0.0.1", memory.port, memory.user, password, memory.resource))
@@ -673,11 +675,16 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="m1_scale")
-    parser.add_argument("--phase", choices=["pilot", "assembly"], required=True)
+    parser.add_argument("--phase", choices=["pilot", "assembly", "qualify"], required=True)
     parser.add_argument("--config", required=True)
     args = parser.parse_args(argv)
     repository = Path(__file__).resolve().parents[2]
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    if args.phase == "qualify":
+        from tools.plan12_memory.m1_qualify import run_qualify  # it imports this module
+
+        run_qualify(config, repository)
+        return 0
     report = (run_assembly if args.phase == "assembly" else run_pilot)(config, repository)
     out = Path(args.config).with_name(f"{args.phase}.json")
     out.write_text(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")
