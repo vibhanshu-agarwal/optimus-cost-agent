@@ -105,7 +105,9 @@ class AgentToolbox:
         """One read-only index tool after the guard allows it, under the same FILE_READ surface as any read. A tool that names a path
         is judged on that path; one that does not is judged on the workspace, and the file policy still decides each file it reads."""
         names_path = request.tool in {"OUTLINE", "LIST"}
-        target = self._workspace_root / request.argument if names_path else self._workspace_root
+        # The file policy reads a backslash as a separator on every platform, so the guard must judge the same path.
+        named = request.argument.replace("\\", "/")
+        target = self._workspace_root / named if names_path else self._workspace_root
         resolved = resolve_target(target)
         result = self._guard.check(
             PreToolRequest(
@@ -118,7 +120,7 @@ class AgentToolbox:
                 generation_scope=GenerationScope.INLINE_SNIPPET,
                 approval_granted=self._context.approval_granted,
                 approver=self._context.user_approval_id,
-                requested_relative_path=request.argument if names_path and request.argument != "." else None,
+                requested_relative_path=named if names_path and named != "." else None,
                 target_unresolved=resolved is None,
             )
         )

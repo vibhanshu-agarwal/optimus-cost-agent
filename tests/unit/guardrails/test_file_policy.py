@@ -292,6 +292,31 @@ def test_a_workspace_root_that_cannot_be_listed_is_reported(tmp_path, monkeypatc
     assert _reasons(FilePolicy(tmp_path)) == {".": "excluded.unreadable"}
 
 
+def test_a_link_that_loops_is_left_out_and_the_walk_goes_on(tmp_path, monkeypatch):
+    """A real loop needs a symlink privilege Windows accounts often lack, so this one stands in; test_workspace_context has the real one."""
+    _write(tmp_path, "a.py")
+    real_scandir = os.scandir
+
+    class _Loop:
+        name = "loop.txt"
+        path = str(tmp_path / "loop.txt")
+
+        def is_symlink(self):
+            return True
+
+        def is_junction(self):
+            return False
+
+        def is_dir(self, *, follow_symlinks=True):
+            return False
+
+        def is_file(self):
+            raise OSError(40, "Too many levels of symbolic links")
+
+    monkeypatch.setattr(file_policy.os, "scandir", lambda path: [_Loop(), *real_scandir(path)])
+    assert set(_reasons(FilePolicy(tmp_path))) == {"a.py"}
+
+
 def test_a_path_keeps_its_spelling_until_it_nears_the_limit():
     short = str(Path("C:/short/file.txt"))
     assert file_policy.reachable_path(short) == short

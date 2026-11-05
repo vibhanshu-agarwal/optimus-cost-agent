@@ -186,7 +186,12 @@ class FilePolicy:
                 links.add(child)
             if entry.is_dir(follow_symlinks=False):
                 yield from self._listing(entry.path, child, ancestors | {identity}, links)
-            elif entry.is_file():
+                continue
+            try:
+                is_file = entry.is_file()
+            except OSError:  # a symlink loop raises here, where a broken link only answers False
+                continue
+            if is_file:
                 yield child, True
 
     def _gate(self, relative_path: str, folders: dict[tuple[tuple[str, ...], bool], str | None] | None = None) -> FileDecision | tuple[Path, Path, str, tuple[tuple[str, ...], ...]]:
