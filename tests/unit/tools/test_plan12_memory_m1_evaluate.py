@@ -1,0 +1,90 @@
+"""Plan 12.10: the retrieval evaluation's scoring and its held-out gate, on real files. The evaluation itself needs a released Redis."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+import pytest
+
+from context_engine.retrieval import Hit, Ranked
+from tools.plan12_memory import m1_evaluate as ev
+from tools.plan12_memory.contracts import GoldenCase
+
+
+def _case(*requirements: tuple[str, ...]) -> GoldenCase:
+    return GoldenCase.model_validate({
+        "schema": "plan12-memory-case/1", "case_id": "T01-a", "version": 1, "family": "T01", "split": "train", "kind": "localization", "role": "probe", "oracles": ["K2"],
+        "inputs": [{"seq": 0, "actor": "user", "text": "where is it", "attempt": None}], "project_id": "p", "snapshot": "git:abc", "cutoff": "2026-07-22T20:24:58+05:30",
+        "expected_action": "answer", "required_facts": [], "required_evidence": [{"requirement_id": f"R{n}", "any_of": list(items)} for n, items in enumerate(requirements, start=1)],
+        "prohibited_claims": [], "required_events": [], "prohibited_events": [], "expected_memory": [], "expected_rank": [], "expected_cost": None, "verification": "v",
+        "provenance": {"drafted_by": "claude", "verified_by": None, "source": "s"},
+    })
+
+
+def _ranked(path: str, symbol: str | None, *, ranks: dict[str, int] | None = None, kind: str = "symbol", file_hash: str = "0" * 64) -> Ranked:
+    hit = Hit(id=f"{path}{symbol}", kind=kind, path=path, file_hash=file_hash, symbol=symbol, signature=f"def {symbol}()" if symbol else None, start_line=1, end_line=1)
+    return Ranked(hit, 1.0, ranks or {"lexical": 1})
+
+
+def test_recall_counts_only_the_named_symbol_within_k_and_the_file_measure_is_separate() -> None:
+    case = _case(("symbol:a.py::f",), ("symbol:b.py::g", "symbol:b.py::h"), ("path:c.py",))
+    ordered = [_ranked("a.py", "other"), _ranked("b.py", "h"), _ranked("x.py", "x"), _ranked("y.py", "y"), _ranked("z.py", "z"), _ranked("c.py", None, kind="file")]
+    score = ev.score_ranking(case, ordered)
+    assert (score["met_at_k"], score["file_met_at_k"], score["missed_at_k"]) == (1, 2, ["R1", "R3"])  # c.py is sixth; a.py is the right file, wrong symbol
+
+
+def test_a_section_with_a_heading_is_not_a_symbol() -> None:
+    case = _case(("symbol:a.md::Title",))
+    assert ev.score_ranking(case, [_ranked("a.md", "Title", kind="section")])["met_at_k"] == 0
+
+
+def test_a_channels_order_is_its_own_and_leaves_out_what_it_did_not_find() -> None:
+    first, second, neither = _ranked("a.py", "a", ranks={"dense": 2}), _ranked("b.py", "b", ranks={"dense": 1, "lexical": 9}), _ranked("c.py", "c", ranks={"lexical": 1})
+    assert [item.hit.path for item in ev.ablation_order([first, second, neither], "dense")] == ["b.py", "a.py"]
+    assert [item.hit.path for item in ev.ablation_order([first, second, neither], "hybrid")] == ["a.py", "b.py", "c.py"]
+
+
+def test_the_pack_score_separates_what_fits_from_what_is_about_other_files(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    (tmp_path / "other.py").write_text("def g():\n    return 2\n", encoding="utf-8")
+
+    def real(name: str, symbol: str) -> Ranked:
+        return _ranked(name, symbol, file_hash=hashlib.sha256((tmp_path / name).read_bytes()).hexdigest())
+
+    score = ev.score_pack(_case(("symbol:a.py::f",)), [real("a.py", "f"), real("other.py", "g")], lambda path: (tmp_path / path).read_bytes(), 10_000)
+    assert score["required_evidence_met"] == 1
+    assert 0 < score["irrelevant_tokens"] < score["tokens"]
+    assert score["stale_paths"] == 0
+
+
+def test_records_that_do_not_describe_this_tree_are_counted(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_bytes(b"x")
+    right = hashlib.sha256(b"x").hexdigest()
+    assert ev.foreign_hits([_ranked("a.py", "f", file_hash=right)], tmp_path) == 0
+    assert ev.foreign_hits([_ranked("a.py", "f"), _ranked("gone.py", "g", file_hash=right)], tmp_path) == 2
+
+
+def test_each_measure_stays_separate_and_off_has_no_symbol_recall() -> None:
+    row = {"requirements": 2, "met_at_k": 1, "file_met_at_k": 2, "missed_at_k": ["R2"], "pack": {"tokens": 10, "budget_tokens": 16, "required_evidence_met": 2, "irrelevant_tokens": 3, "stale_paths": 0}}
+    off = {**row, "met_at_k": None, "missed_at_k": None}
+    result = ev.aggregate([{"requirements": 2, "foreign_records": 1, "coverage_complete": False, "ablations": {"off": off, "lexical": row, "dense": row, "hybrid": row}}])
+    assert result["hybrid"]["recall_at_5"] == 0.5 and result["hybrid"]["file_recall_at_5"] == 1.0 and result["hybrid"]["required_evidence_in_context"] == 1.0
+    assert result["off"]["recall_at_5"] is None and result["hybrid"]["cases_with_all_required_evidence"] == 1
+    assert (result["wrong_branch_or_stale_records"], result["incomplete_coverage_cases"]) == (1, 1)
+
+
+def _gold(tmp_path: Path) -> Path:
+    (tmp_path / "localization.json").write_text(json.dumps({"cases": []}), encoding="utf-8")
+    return tmp_path
+
+
+def test_held_out_is_refused_until_the_operator_approves_targets_for_this_exact_gold(tmp_path: Path) -> None:
+    gold = _gold(tmp_path)
+    ev.refuse_unapproved_held_out(["train", "development"], {"retrieval": "not yet"}, gold)
+    with pytest.raises(ev.HeldOutRefused, match="not approved"):
+        ev.refuse_unapproved_held_out(["held_out"], {"retrieval": "not yet"}, gold)
+    with pytest.raises(ev.HeldOutRefused, match="not the one"):
+        ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "sealed_gold_sha256": "hex:0"}}, gold)
+    ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "sealed_gold_sha256": ev.gold_digest(gold)}}, gold)
