@@ -165,22 +165,26 @@ def test_the_edit_lands_on_a_file_the_index_admits(tmp_path: Path) -> None:
 
 
 def test_an_edit_counts_as_visible_when_it_can_be_queried_not_when_its_pass_ends() -> None:
-    published, release = threading.Event(), threading.Event()
+    published, release, finished = threading.Event(), threading.Event(), threading.Event()
+    pass_over_when_found: list[bool] = []
 
     def run(_cancel: threading.Event) -> object:
         published.set()  # the early publication; the pass then keeps reconciling until the query has answered
         release.wait(5)
+        finished.set()
         return type("Outcome", (), {"state": "complete", "records_written": 3})()
 
     def found() -> bool:
         if published.is_set():
+            pass_over_when_found.append(finished.is_set())  # observed before reconciliation is let go
             release.set()
             return True
         return False
 
     result = m1_scale.edit_visibility(run, found, poll_seconds=0.01)
     assert result["new_symbol_found"] and result["state"] == "complete" and result["records_written"] == 3
-    assert result["queryable_before_the_pass_ended"] is True  # run-then-query would answer only after the pass, and say False
+    assert pass_over_when_found == [False]  # run-then-query would only ask after the pass had finished
+    assert result["queryable_before_the_pass_ended"] is True
     assert result["seconds_until_queryable"] <= result["whole_pass_seconds"]
     never = m1_scale.edit_visibility(lambda _cancel: type("Outcome", (), {"state": "complete", "records_written": 0})(), lambda: False, poll_seconds=0.01)
     assert never["new_symbol_found"] is False and never["seconds_until_queryable"] is None
@@ -231,6 +235,25 @@ def test_a_session_edit_is_timed_from_the_wake_to_the_symbol_in_that_file(tmp_pa
     session = Session()
     result = session_edit_visibility(session, tmp_path, Storage(session), poll_seconds=0.01)  # type: ignore[arg-type]
     assert result["new_symbol_found"] and result["pass_state"] == "complete" and result["seconds_until_queryable"] <= result["whole_pass_seconds"]
+
+
+def test_a_stalled_session_pass_stops_the_run_before_k2() -> None:
+    from tools.plan12_memory.m1_qualify import close_and_confirm_stopped
+
+    stall = threading.Event()
+
+    class Session:
+        def __init__(self, stops: bool) -> None:
+            self._thread = threading.Thread(target=lambda: stall.wait(0.05 if stops else 5), daemon=True)
+            self._thread.start()
+
+        def close(self) -> None:
+            self._thread.join(0.01)  # like the session's own short join
+
+    close_and_confirm_stopped(Session(stops=True), seconds=2)
+    with pytest.raises(SystemExit, match="did not stop"):
+        close_and_confirm_stopped(Session(stops=False), seconds=0.1)
+    stall.set()
 
 
 def test_assembly_without_the_dense_channel_is_flagged_as_not_what_a_person_gets() -> None:

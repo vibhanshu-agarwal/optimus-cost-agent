@@ -187,7 +187,7 @@ def edit_visibility(run: Callable[[threading.Event], Any], found: Callable[[], b
             alive = worker.is_alive()
             if found():
                 visible = round(time.perf_counter() - started, 2)
-                while_running = worker.is_alive()  # the query answered before the pass ended
+                while_running = alive  # the answering query began before the pass ended
             elif not alive:
                 break
             else:
