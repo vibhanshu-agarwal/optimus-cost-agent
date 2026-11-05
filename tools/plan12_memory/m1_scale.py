@@ -51,7 +51,7 @@ from optimus_gateway.server import serve_gateway
 options = json.loads(sys.stdin.readline())
 client = memory_index.connect(memory_index.IndexEndpoint("127.0.0.1", options["port"], options["user"], options["password"], options["resource"]))
 store = memory_index.IndexStore(client, cursor_key=b"m" * 32)
-config = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=0, shared_secret=options["secret"], provider="openrouter",
+config = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=options["gateway_port"], shared_secret=options["secret"], provider="openrouter",
                               provider_api_key=options["secret"], base_url="http://127.0.0.1:9/api/v1")
 server = serve_gateway(config=replace(config, memory_index=memory_index.IndexService(store)), upstream_client=object())
 print(server.server_address[1], flush=True)
@@ -428,7 +428,7 @@ def _provision(config: dict[str, Any], repository: Path, work: Path) -> tuple[Pa
 
     gateway = subprocess.Popen([sys.executable, "-c", _GATEWAY_SCRIPT], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     assert gateway.stdin is not None and gateway.stdout is not None
-    gateway.stdin.write(json.dumps({"port": memory.port, "user": memory.user, "password": password, "resource": memory.resource, "secret": _SECRET}) + "\n")
+    gateway.stdin.write(json.dumps({"port": memory.port, "user": memory.user, "password": password, "resource": memory.resource, "secret": _SECRET, "gateway_port": config.get("gateway_port", 0)}) + "\n")
     gateway.stdin.flush()
     port = int(gateway.stdout.readline())
     settings = OptimusGatewaySettings.from_env({"OPTIMUS_GATEWAY_URL": f"http://127.0.0.1:{port}", "OPTIMUS_API_KEY": _SECRET})
