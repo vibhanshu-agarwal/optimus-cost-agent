@@ -144,7 +144,6 @@ def test_held_out_is_refused_until_the_operator_approves_targets_for_this_exact_
 def test_a_cutoff_tree_holds_exactly_that_commit_even_past_the_windows_path_limit(tmp_path: Path) -> None:
     source = tmp_path / "source"
     deep = "/".join(["d" * 40] * 7)
-    (source / deep).parent.mkdir(parents=True)
     git = ["git", "-C", str(source), "-c", "core.longpaths=true", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
     subprocess.run(["git", "init", "-q", str(source)], check=True, capture_output=True)
     (m1_scale.long_path(source) / deep).mkdir(parents=True)
@@ -157,7 +156,8 @@ def test_a_cutoff_tree_holds_exactly_that_commit_even_past_the_windows_path_limi
     subprocess.run([*git, "commit", "-q", "-m", "later"], check=True, capture_output=True)
     target = tmp_path / "tree"
     ev.materialize(source, first, target, branch="cutoff")
-    assert (m1_scale.long_path(target) / deep / "old.py").read_bytes() == b"old = 1\n"
+    # git archive applies this checkout's line-ending setting, as a real checkout here would
+    assert (m1_scale.long_path(target) / deep / "old.py").read_bytes().replace(b"\r\n", b"\n") == b"old = 1\n"
     assert not (target / "later.py").exists()
     assert subprocess.run(["git", "-C", str(target), "rev-parse", "--abbrev-ref", "HEAD"], check=True, capture_output=True, text=True).stdout.strip() == "cutoff"
     ev.materialize(source, first, target, branch="cutoff")  # a second run replaces it
