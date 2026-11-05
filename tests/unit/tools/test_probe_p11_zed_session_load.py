@@ -4179,6 +4179,17 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     index_turn_committed = b"from optimus.agent.index_turn import" in head_runner
     if not index_turn_committed:
         expected -= {index_turn_path}
+    # The session's index, which bootstrap imports only when a launch has one, brings five paths.
+    memory_session_paths = {
+        "src/optimus/context/index_tools.py",
+        "src/optimus/context/memory_session.py",
+        "src/optimus/context/memory_workspace.py",
+        "src/optimus/context/project_registry.py",
+        "src/optimus_security/memory_index_contract.py",
+    }
+    memory_session_committed = b"from optimus.context.memory_session import" in probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/bootstrap.py")
+    if not memory_session_committed:
+        expected -= memory_session_paths
     assert (admission_path in closure) is admission_committed
     assert (secret_paths_path in closure) is secret_paths_committed
     assert (file_policy_path in closure) is file_policy_committed
@@ -4214,7 +4225,9 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         2 if loop_committed else 0
     ) + tree_moved + line_endings_committed + edits_committed + auto_committed + contract_committed + hybrid_committed + lifecycle_committed + admission_committed + retention_committed + secret_paths_committed + file_policy_committed + (
         8 if capture_committed else 0
-    ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed
+    ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
+        5 if memory_session_committed else 0
+    )
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
