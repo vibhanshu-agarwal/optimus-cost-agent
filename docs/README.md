@@ -121,7 +121,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
-| [Plan 12.10: memory index, tools and context (M1)](superpowers/plans/2026-11-03-plan-12-10-memory-index-and-context-implementation.md) | #469; hybrid index, four read-only tools and first useful context |
+| [Plan 12.10 v2: memory index, tools and context (M1)](superpowers/plans/2026-11-03-plan-12-10-memory-index-and-context-implementation_v2.md) | #469; hybrid index, four read-only tools and first useful context |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |

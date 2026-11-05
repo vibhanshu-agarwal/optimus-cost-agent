@@ -1,8 +1,8 @@
 # ADR-039: Provider caching marks only the stable start of a request
 
-**Status:** Proposed. The operator chose this mechanism on 2026-11-05 (verbatim below). Still owed: the operator's approval of the Plan 12.10 v2 hash, the operator's acceptance of this record, and the released paid pair that would prove a provider actually reuses the prefix. Delivered under Plan 12.10 ([#469](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/469)). Drafted by Claude; Codex reviewed the code and the plan text in CLI review 17 on #469.
+**Status:** Proposed. The operator chose this mechanism on 2026-11-05 and approved the Plan 12.10 v2 hash the same day (both verbatim below). Still owed: the operator's acceptance of this record and the paid pair that would prove a provider actually reuses the prefix. Delivered under Plan 12.10 ([#469](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/469)). Drafted by Claude; Codex reviewed the code and the plan text in CLI review 17 on #469.
 
-**Relationship:** changes how [ADR-038](ADR-038-context-index-retrieval-tools-and-caching.md)'s opt-in provider caching is delivered for M1, and leaves ADR-038's bytes and its other decisions alone. Plan 12.10 v1, SHA-256 `f136397fe605d51bd6dfee1ab4ed8705e7c3a45d05eb52b6c5cf569a7d02adb1`, specified root `cache_control`, so this needs its `_v2` successor (AGENTS.md); v1 stays in force until v2's hash is approved. Unchanged: alerts, not limits ([ADR-005](ADR-005-cost-alerts-not-limits.md)); models are configuration ([ADR-025](ADR-025-models-are-configuration-per-model-admission.md)), so the measured route is named only in the evidence.
+**Relationship:** changes how [ADR-038](ADR-038-context-index-retrieval-tools-and-caching.md)'s opt-in provider caching is delivered for M1, and leaves ADR-038's bytes and its other decisions alone. Plan 12.10 v1, SHA-256 `f136397fe605d51bd6dfee1ab4ed8705e7c3a45d05eb52b6c5cf569a7d02adb1`, specified root `cache_control`, so this needed its `_v2` successor (AGENTS.md), approved at SHA-256 `73e4df57f1613d0c428a70b3834d056c145be340e232ea40ae6508162940cdb4`. Unchanged: alerts, not limits ([ADR-005](ADR-005-cost-alerts-not-limits.md)); models are configuration ([ADR-025](ADR-025-models-are-configuration-per-model-admission.md)), so the measured route is named only in the evidence.
 
 ## Context
 
@@ -22,7 +22,9 @@ Calculated, not measured: the same request uncached would cost USD 0.0002627, so
 
 Asked "Do you want the prefix-breakpoint fix or repeat-only caching?", the operator answered: "Build the prefix fix".
 
-This authorizes implementation. It does not approve the v2 hash, the paid pair, publication or merge. Later the same day: "I will be going on vacation tomorrow morning, so just get it to a stable checkpoint today, so that when I pick this up later we are not in an inconsistent state".
+This authorized implementation only. Later the same day: "I will be going on vacation tomorrow morning, so just get it to a stable checkpoint today, so that when I pick this up later we are not in an inconsistent state".
+
+Then, given three numbered requests (approve the v2 hash `73e4df57f1613d0c428a70b3834d056c145be340e232ea40ae6508162940cdb4`; confirm Releases A and B still stand; release the cache pair at 2 requests and USD 0.25, and the Zed pair), the operator answered: "Approved. Go ahead. #1 - #3". This approves the hash and those releases. It does not approve publication, merge or this record.
 
 ## Options considered
 
@@ -56,8 +58,8 @@ The option text is as it was put to the operator, with the review's facts added.
 ## Release and approval boundaries
 
 - The diagnostic ran under the operator's Release D: 3 requests, at most 6 physical attempts, USD 0.25. Disclosed: it read the stored provider key through the product's resolver, which the release table did not list. The key was never printed or recorded. Its unused allowance releases nothing further.
-- Releases A and B (index runs, no provider calls) are released and not started. Release C (the paid Zed pair) and the proposed cache pair are not released.
+- Releases A and B (index runs, no provider calls), Release C (the paid Zed pair) and CACHE-PREFIX-PAIR-1 are released; their use is recorded in the plan's reports.
 
 ## Outstanding
 
-Operator approval of the v2 hash and acceptance of this record; the released cold and changed-question pair through the final production path, which alone can qualify reuse (an identical repeat cannot); M1's remaining Task 5 work and CP4. Revert checks of the guards are in the handoff kit (`revert-check-prefix.json`).
+Operator acceptance of this record; the released cold and changed-question pair through the final production path, which alone can qualify reuse (an identical repeat cannot); M1's remaining Task 5 work and CP4. Revert checks of the guards are in the handoff kit (`revert-check-prefix.json`).
