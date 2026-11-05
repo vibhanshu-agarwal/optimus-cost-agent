@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import shutil
 import socket
@@ -15,6 +16,7 @@ from contextvars import copy_context
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from pydantic import SecretStr
@@ -29,6 +31,10 @@ from optimus_model_policy.binding import operator_override, trusted_snapshot
 from optimus_security import gateway_identity
 from optimus_security.accounting_config import AccountingConfigError, accounting_literal, accounting_root, config_literal
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
+from optimus_security.memory_index_config import ACL_NAME as MEMORY_INDEX_ACL_NAME
+from optimus_security.memory_index_config import MemoryIndexConfig, MemoryIndexConfigError, memory_index_literal, memory_index_root
+from optimus_security.memory_index_config import config_literal as memory_index_config_literal
+from optimus_security.memory_index_config import read as read_memory_index_config
 
 # _LOOPBACK_HOSTS reused from optimus.config.gateway (agent-side package, already imported
 # elsewhere in bootstrap.py) rather than src/optimus_gateway/models.py's own separate copy of the
@@ -66,6 +72,8 @@ _REDIS_READY_TIMEOUT_SECONDS = 15.0
 _GATEWAY_READY_TIMEOUT_SECONDS = 10.0
 _POLL_INTERVAL_SECONDS = 0.5
 _DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
+_MEMORY_RESOURCE_LABEL = "optimus.memory.resource"
+_MEMORY_HEADROOM_MB = 512  # room above maxmemory for persistence rewrites (agent-selected)
 DEFAULT_REDIS_URL = _DEFAULT_REDIS_URL
 _DEFAULT_GATEWAY_URL = "http://127.0.0.1:8765"
 _PHOENIX_CONTAINER_NAME = "optimus-phoenix"
@@ -493,6 +501,144 @@ def gateway_accounting(
     return accounting_dir, accounting_literal(accounting_dir, current)
 
 
+def gateway_memory_index(config_root: Path, approved: str | None, *, log: Callable[[str], None] = _noop_log) -> tuple[Path | None, str | None]:
+    """Plan 12.10 (ADR-037): the context index's root and the literal the Gateway's manifest binds, when the configuration
+    found there is the approved one. Otherwise the Gateway serves no index, and the launch keeps today's context."""
+    root = memory_index_root(config_root)
+    try:
+        current = memory_index_config_literal(root)
+    except MemoryIndexConfigError as exc:
+        current = f"unusable:{exc.code}"
+    if current is None and approved is None:
+        return None, None
+    if current != approved:
+        log("optimus-agent: the context index configuration is not the approved one; the Gateway serves no index.")
+        return None, None
+    return root, memory_index_literal(root, current)
+
+
+@dataclass(frozen=True)
+class MemoryRedisStatus:
+    """Where the dedicated index Redis stands. Anything but ready leaves the launch on today's context; nothing is refused."""
+
+    state: str  # "ready", "off", "unavailable" or "conflict"
+    detail: str = ""
+
+
+def _memory_container_view(docker: str, name: str) -> dict[str, Any] | None:
+    try:
+        result = subprocess.run([docker, "inspect", "--type", "container", name], capture_output=True, text=True, check=False, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        view: dict[str, Any] = json.loads(result.stdout)[0]
+    except (ValueError, IndexError, TypeError):
+        return None
+    return view
+
+
+def _memory_server_args(config: MemoryIndexConfig) -> list[str]:
+    return ["redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "everysec",
+            "--save", "300 1", "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction"]
+
+
+def _memory_container_conflict(view: Mapping[str, Any], config: MemoryIndexConfig, acl_path: Path) -> str | None:
+    """Why an existing container is not the one setup described, or None. Optimus never adopts or replaces another's."""
+    settings = view.get("Config") or {}
+    host = view.get("HostConfig") or {}
+    if (settings.get("Labels") or {}).get(_MEMORY_RESOURCE_LABEL) != config.resource:
+        return "it was not created for this configuration"
+    if settings.get("Image") != config.image:
+        return "it runs another image"
+    bindings = (host.get("PortBindings") or {}).get("6379/tcp") or []
+    if [(binding.get("HostIp"), binding.get("HostPort")) for binding in bindings] != [(config.host, str(config.port))]:
+        return "it publishes another port"
+    volumes = [mount.get("Name") for mount in view.get("Mounts") or [] if mount.get("Destination") == "/data"]
+    if volumes != [config.volume]:
+        return "it uses another volume"
+    if host.get("Memory") != (config.maxmemory_mb + _MEMORY_HEADROOM_MB) * 1024 * 1024:
+        return "it has another memory limit"
+    if settings.get("Cmd") != _memory_server_args(config):
+        return "it runs Redis with other settings"
+    acl = [(mount.get("Type"), mount.get("Source"), mount.get("ReadOnly")) for mount in host.get("Mounts") or [] if mount.get("Target") == "/etc/redis/users.acl"]
+    if acl != [("bind", str(acl_path.resolve()), True)]:
+        return "it does not use the configured ACL file"
+    return None
+
+
+def _memory_volume_conflict(docker: str, config: MemoryIndexConfig) -> str | None:
+    """Create the labelled volume, or confirm the one here is ours. Create is idempotent, so concurrent launches agree."""
+    try:
+        subprocess.run([docker, "volume", "create", "--label", f"{_MEMORY_RESOURCE_LABEL}={config.resource}", config.volume],
+                       capture_output=True, text=True, check=False, timeout=15)
+        result = subprocess.run([docker, "volume", "inspect", config.volume], capture_output=True, text=True, check=False, timeout=10)
+        labels = json.loads(result.stdout)[0].get("Labels") or {}
+    except (OSError, subprocess.TimeoutExpired, ValueError, IndexError, TypeError):
+        return "its volume could not be read"
+    return None if labels.get(_MEMORY_RESOURCE_LABEL) == config.resource else "its volume belongs to something else"
+
+
+def ensure_memory_redis(root: Path, *, start: bool = True, log: Callable[[str], None] = _noop_log) -> MemoryRedisStatus:
+    """Plan 12.10 (ADR-037): start or confirm the dedicated index Redis from the approved configuration. It needs no secret and no
+    running Gateway, so any launch under the approval can ensure it, and concurrent launches agree on the one named resource.
+    It refuses an unexpected container or listener and never touches either. `start=False` only checks."""
+    try:
+        _literal, config, refusal = read_memory_index_config(root)
+    except MemoryIndexConfigError as exc:
+        return MemoryRedisStatus("conflict", f"the configuration cannot be read ({exc.code})")
+    if config is None:
+        return MemoryRedisStatus("off" if refusal is None else "conflict", refusal or "")
+    acl_path = root / MEMORY_INDEX_ACL_NAME
+    try:
+        acl_digest = hashlib.sha256(acl_path.read_bytes()).hexdigest()
+    except OSError:
+        return MemoryRedisStatus("conflict", "the ACL file is missing; run optimus-trust memory-setup")
+    if acl_digest != config.acl_sha256:
+        return MemoryRedisStatus("conflict", "the ACL file is not the configured one")
+    docker = shutil.which("docker")
+    if docker is None or not _docker_daemon_reachable(docker):
+        return MemoryRedisStatus("unavailable", "Docker is not reachable")
+
+    view = _memory_container_view(docker, config.container)
+    if view is None and start:
+        if _tcp_reachable(config.host, config.port):
+            return MemoryRedisStatus("conflict", f"something else is listening on {config.host}:{config.port}")
+        volume_conflict = _memory_volume_conflict(docker, config)
+        if volume_conflict is not None:
+            return MemoryRedisStatus("conflict", volume_conflict)
+        log(f"optimus-agent: creating {config.container} for the context index...")
+        run = [docker, "run", "-d", "--name", config.container, "--label", f"{_MEMORY_RESOURCE_LABEL}={config.resource}",
+               "--restart", "no", "-p", f"{config.host}:{config.port}:6379", "--memory", f"{config.maxmemory_mb + _MEMORY_HEADROOM_MB}m",
+               "-v", f"{config.volume}:/data", "--mount", f"type=bind,src={acl_path.resolve()},dst=/etc/redis/users.acl,readonly",
+               config.image, *_memory_server_args(config)]
+        try:
+            subprocess.run(run, capture_output=True, text=True, check=False, timeout=120)
+        except (OSError, subprocess.TimeoutExpired):
+            return MemoryRedisStatus("unavailable", "the container could not be created in time")
+        view = _memory_container_view(docker, config.container)  # a concurrent launch may have won the name; either way it is checked
+    if view is None:
+        return MemoryRedisStatus("unavailable", "the container does not exist")
+    conflict = _memory_container_conflict(view, config, acl_path)
+    if conflict is not None:
+        return MemoryRedisStatus("conflict", f"container {config.container} exists, but {conflict}; Optimus will not change it")
+    if not (view.get("State") or {}).get("Running"):
+        if not start:
+            return MemoryRedisStatus("unavailable", "the container is stopped")
+        try:
+            subprocess.run([docker, "start", config.container], capture_output=True, text=True, check=False, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return MemoryRedisStatus("unavailable", "the container could not be started in time")
+    deadline = time.monotonic() + _REDIS_READY_TIMEOUT_SECONDS
+    while True:
+        if _tcp_reachable(config.host, config.port):
+            return MemoryRedisStatus("ready")
+        if time.monotonic() >= deadline:
+            return MemoryRedisStatus("unavailable", "the container did not become reachable in time")
+        time.sleep(_POLL_INTERVAL_SECONDS)
+
+
 def expected_gateway_identity(
     *,
     gateway_url: str,
@@ -507,6 +653,7 @@ def expected_gateway_identity(
     auto_composition: bool = False,
     usage_accounting: bool = False,
     approved_accounting_config: str | None = None,
+    approved_memory_index: str | None = None,
 ) -> gateway_identity.GatewayIdentity | None:
     """#465 (ADR-036): the identity of the Gateway this launch would start. None when the launch names no local upstream:
     a remote Gateway, or a host given only the Gateway URL and key, whose approval binds no upstream to compare."""
@@ -518,6 +665,7 @@ def expected_gateway_identity(
     accounting = None
     if usage_accounting and config_root is not None:
         accounting = gateway_accounting(config_root, approved_accounting_config)[1]
+    memory_index = None if config_root is None else gateway_memory_index(config_root, approved_memory_index)[1]
     if test_profile is not None:
         composition = gateway_identity.profile_composition(test_profile)
     else:
@@ -531,6 +679,7 @@ def expected_gateway_identity(
         model_registry=model_registry,
         stage_c_envelope=stage_c_envelope,
         accounting=accounting,
+        memory_index=memory_index,
         tool_environ=gateway_tool_environ(config_root, system_env),
         hmac_key=manifest_hmac_key,
     )
@@ -643,6 +792,7 @@ def ensure_local_gateway(
     auto_composition: bool = False,
     usage_accounting: bool = False,
     approved_accounting_config: str | None = None,
+    approved_memory_index: str | None = None,
     api_key: str | None = None,
     expected_identity: gateway_identity.GatewayIdentity | None = None,
 ) -> LocalGatewayProcess | None:
@@ -714,6 +864,7 @@ def ensure_local_gateway(
     accounting_dir = accounting = None
     if usage_accounting and config_root is not None:
         accounting_dir, accounting = gateway_accounting(config_root, approved_accounting_config, log=log)
+    memory_dir, memory_index = (None, None) if config_root is None else gateway_memory_index(config_root, approved_memory_index, log=log)
     manifest = build_gateway_child_manifest(
         workspace_digest=workspace_digest,
         security_snapshot_digest=security_snapshot_digest,
@@ -728,6 +879,7 @@ def ensure_local_gateway(
         model_registry=model_registry,
         stage_c_envelope=stage_c_envelope,
         accounting=accounting,
+        memory_index=memory_index,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 
@@ -762,6 +914,8 @@ def ensure_local_gateway(
                 profile_argv.append("--auto-composition")
             if accounting_dir is not None:
                 profile_argv += ["--accounting-root", str(accounting_dir)]
+            if memory_dir is not None:
+                profile_argv += ["--memory-index-root", str(memory_dir)]
             process = subprocess.Popen(
                 [
                     sys.executable,

@@ -264,6 +264,10 @@ def tool_kind_for_name(tool_name: str) -> str:
         "file_reader": "read",
         "write_file": "edit",
         "test_runner": "execute",
+        "index_search": "search",
+        "index_symbols": "search",
+        "index_outline": "read",
+        "index_list": "read",
     }.get(tool_name, "other")
 
 

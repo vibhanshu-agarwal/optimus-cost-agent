@@ -135,6 +135,7 @@ def _git_sha() -> str:
             [git_executable, "rev-parse", "HEAD"],
             cwd=provenance_root or Path.cwd(),
             check=True,
+            stdin=subprocess.DEVNULL,  # on Windows a child inheriting a pipe with a read pending blocks until the next ACP message
             capture_output=True,
             text=True,
         )

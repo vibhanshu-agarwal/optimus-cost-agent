@@ -1,0 +1,66 @@
+{
+  "schema": "plan12-memory-m1.scale.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "state": "FORECAST_ONLY: Hadoop has been counted and sampled but not indexed. Task 5 qualifies scale against targets.json.",
+  "approved_corpus": {
+    "decision": "D5: the operator approved option B with a 4-hour limit on 2026-11-04.",
+    "repository": "Apache Hadoop rel/release-3.4.3, commit 9d50c68",
+    "scope": "All main Java and documents. Test Java is left out by an .optimusignore in the corpus, using the sample's rule: a path part is test or tests, or the name starts with Test or ends with Test.java or Tests.java. This needs no code change. Task 5 confirms the counts under the ignore file before the run.",
+    "hours_limit": 4,
+    "not_released": "This selects the corpus and its limit. The large run and the 4,608 MiB product Redis it needs still need their own release in Task 5."
+  },
+  "measured_source": "pilot.json, plan12.10-pilot-2026-11-03, at code head 7c26c89 and the corrected 1 GiB container limit, on this repository's Python",
+  "this_repository_src_and_tools": {
+    "files": 392,
+    "parsed_python_loc": 122111,
+    "chunks": 7229,
+    "chunk_chars_mean": 830.9,
+    "chunk_chars_p95": 2785,
+    "read_and_parse_seconds": 5.4
+  },
+  "pilot_end_to_end": {
+    "parsed_python_loc": 10229,
+    "chunks": 760,
+    "cold_seconds": 80.33,
+    "first_file_visible_seconds": 0.85,
+    "embedded_items_per_second": 9.8,
+    "embedding_share_of_build": 0.965,
+    "worker_rss_mb_max": 937.1,
+    "worker_cpu_percent_mean": 203.4,
+    "worker_threads_existing": 31,
+    "worker_threads_doing_work": 2,
+    "gateway_rss_mb_max": 68.3
+  },
+  "rates_seen": {
+    "note": "Different samples of real Python chunks on two threads, so the forecast uses a range rather than the best one.",
+    "items_per_second": {"src_and_tools_length_sorted_sample": 8.7, "pilot_runs": [10.1, 9.2, 9.8]}
+  },
+  "java_corpus": {
+    "evidence": "java-sample.json: Hadoop rel/release-3.4.3 under the real file policy and parser, with 2,000 Java chunks embedded by the production embedder and batching",
+    "parsed_java_loc": {"main": 1438914, "test": 1120627},
+    "embedded_chunks": {"java_main": 107204, "java_test": 61227, "documents_and_python": 5566},
+    "chunks_per_1k_loc": {"java_main": 74.5, "java_test": 54.6},
+    "embedded_items_per_second": 10.74,
+    "parse_error_files": 0,
+    "seconds_for_a_first_read_of_15302_files": 205.7,
+    "seconds_for_a_second_read_and_hash": 74.0
+  },
+  "forecast_by_corpus": {
+    "basis": "Embedding at 10.74 per second, or by characters for main code's shorter chunks, at the pilot's 96.5 percent embedding share. Documents are scaled by their length and are not measured: at 2,292 characters a chunk they are the slowest part. A forecast, not a measurement.",
+    "options": [
+      {"name": "A: main Java and documents of common, hdfs and yarn", "parsed_java_loc": 1081408, "chunks_estimated": 84000, "hours": [2.2, 2.6]},
+      {"name": "B: all main Java and documents", "parsed_java_loc": 1438914, "chunks": 112770, "records": 123812, "hours": [2.9, 3.4], "redis_memory_mb_scaled": 720, "redis_disk_peak_mb_scaled": 610},
+      {"name": "C: everything, with tests", "parsed_java_loc": 2559541, "chunks": 173997, "records": 189299, "hours": [5.0, 5.1], "redis_memory_mb_scaled": 1100, "redis_disk_peak_mb_scaled": 935}
+    ],
+    "unchanged_reconcile": {"seconds_per_1000_files_measured_parts": 18, "seconds_for_all_15302_files_measured_parts": 280, "basis": "first read plus second read and hash, measured on this tree; catalogue calls to the route are additional", "consequence": "a launch on a tree this size spends minutes in the background confirming nothing changed. It parses every file to count coverage, which is what to change if this proves too slow."}
+  },
+  "correction_to_the_plan": "P2's 89-100 items per second came from short synthetic text. Real chunks embed at about 9 to 11 per second on the same two threads, so the plan's 6-12 minute illustration becomes hours.",
+  "finding_from_the_sample": "On Windows with long paths off, the file policy's walk silently missed 3,713 of Hadoop's 15,586 tracked files, including 3,592 Java files. It now reaches them; see ADR-037.",
+  "not_measured_yet": [
+    "A full index of any option above: storage and route costs on real Java records",
+    "Documents' embedding rate on this corpus",
+    "Assembly and fan-out on a large corpus: assembly.json measures a 52-file one",
+    "First-file visible time in a real session: Task 4's Zed proof"
+  ]
+}

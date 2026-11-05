@@ -1,0 +1,300 @@
+{
+  "acpx_turns": {
+    "build_still_running": true,
+    "during_build": {
+      "failures": 0,
+      "max_ms": 8145.105,
+      "mean_ms": 7153.988,
+      "p50_ms": 7059.854,
+      "p95_ms": 7516.83,
+      "samples": 20
+    },
+    "during_build_cancel": {
+      "seconds_to_stop": 2.348,
+      "stop": "cancelled"
+    },
+    "first_turn": {
+      "failures": 0,
+      "max_ms": 11525.607,
+      "mean_ms": 11525.607,
+      "p50_ms": 11525.607,
+      "p95_ms": 11525.607,
+      "samples": 1
+    },
+    "idle": {
+      "failures": 0,
+      "max_ms": 6724.316,
+      "mean_ms": 5591.197,
+      "p50_ms": 5476.459,
+      "p95_ms": 6237.46,
+      "samples": 20
+    },
+    "idle_cancel": {
+      "seconds_to_stop": 2.319,
+      "stop": "cancelled"
+    },
+    "measures": "machine load on a person's turn; this agent's own Gateway, not the measured index route",
+    "queue_owners_recorded": 1,
+    "session_new_exit": "0"
+  },
+  "bulk": {
+    "native_records_per_second": 8689.3,
+    "native_seconds": 0.295,
+    "proxy_records_per_second": 6327.2,
+    "proxy_seconds": 0.405,
+    "records": 2560
+  },
+  "cancel": {
+    "seconds_to_stop": 0.515,
+    "state": "cancelled"
+  },
+  "cold": {
+    "coverage": {
+      "complete": true,
+      "excluded": 0,
+      "files_indexed": 50,
+      "files_total": 50,
+      "parsed_loc": {
+        "python": 10229
+      },
+      "records": 810,
+      "unsupported": 6
+    },
+    "embedded_items": 760,
+    "embedded_items_per_second": 9.8,
+    "embedding_seconds": 77.55,
+    "embedding_share": 0.965,
+    "end_to_end_records_per_second": 10.1,
+    "files_written": 50,
+    "first_file_visible_seconds": 0.85,
+    "processes": {
+      "gateway": {
+        "cpu_percent_max": 6.1,
+        "cpu_percent_mean": 0.3,
+        "rss_mb_max": 68.3,
+        "threads_max": 4,
+        "threads_using_over_5_percent_of_a_cpu": 0
+      },
+      "worker": {
+        "cpu_percent_max": 233.0,
+        "cpu_percent_mean": 203.4,
+        "rss_mb_max": 937.1,
+        "threads_max": 31,
+        "threads_using_over_5_percent_of_a_cpu": 2
+      }
+    },
+    "records_written": 810,
+    "redis": {
+      "disk_kb": 2468,
+      "maxmemory_mb": 512.0,
+      "used_memory_mb": 8.0,
+      "used_memory_peak_mb": 9.1
+    },
+    "seconds": 80.33,
+    "state": "complete"
+  },
+  "config": {
+    "acpx_turns": 20,
+    "authorization": "Operator, Claude chat 2026-11-03: released the CP2 development resources (dedicated test Redis, packages, embedding artifact, isolated keyring, WSL).",
+    "bulk_batches": 20,
+    "container": "p1210-index-test-redis",
+    "corpus_paths": [
+      "src/optimus_gateway",
+      "src/context_engine",
+      "src/optimus_model_policy"
+    ],
+    "embedding_threads": 2,
+    "label": "plan12.10-pilot-2026-11-03",
+    "load_paths": [
+      "src",
+      "tools"
+    ],
+    "maxmemory_mb": 512,
+    "port": 6392,
+    "query_samples": 200,
+    "scale_records": 60000,
+    "volume": "p1210-index-test-data",
+    "work_dir": "tmp/plan12-m1-pilot"
+  },
+  "corpus": {
+    "chunk_chars_mean": 712.4,
+    "chunk_chars_p95": 2362,
+    "embedded_chunks": 760,
+    "excluded": {
+      "deny.skipped_dir": 79
+    },
+    "files": {
+      "java": 0,
+      "markdown": 0,
+      "python": 44,
+      "text": 0,
+      "unsupported": 6
+    },
+    "parse_error_files": 0,
+    "parse_seconds": 0.671,
+    "parsed_lines": {
+      "java": 0,
+      "markdown": 0,
+      "python": 10229,
+      "text": 0,
+      "unsupported": 0
+    },
+    "records": {
+      "java": 0,
+      "markdown": 0,
+      "python": 804,
+      "text": 0,
+      "unsupported": 6
+    }
+  },
+  "host": {
+    "cpus": 12,
+    "memory_gb": 47.8,
+    "platform": "win32",
+    "python": "3.14.4"
+  },
+  "incremental_one_file": {
+    "new_symbol_found": true,
+    "records_written": 6,
+    "seconds": 2.67,
+    "state": "complete"
+  },
+  "load_corpus": {
+    "chunk_chars_mean": 830.9,
+    "chunk_chars_p95": 2785,
+    "embedded_chunks": 7229,
+    "excluded": {
+      "deny.skipped_dir": 456
+    },
+    "files": {
+      "java": 0,
+      "markdown": 0,
+      "python": 378,
+      "text": 0,
+      "unsupported": 14
+    },
+    "parse_error_files": 0,
+    "parse_seconds": 5.408,
+    "parsed_lines": {
+      "java": 0,
+      "markdown": 0,
+      "python": 122111,
+      "text": 0,
+      "unsupported": 0
+    },
+    "records": {
+      "java": 0,
+      "markdown": 0,
+      "python": 7607,
+      "text": 0,
+      "unsupported": 14
+    }
+  },
+  "phase": "pilot",
+  "query_during_cold_build": {
+    "build_still_running": true,
+    "native_dense": {
+      "max_ms": 82.17,
+      "mean_ms": 22.353,
+      "p50_ms": 19.146,
+      "p95_ms": 36.628,
+      "samples": 200
+    },
+    "native_lexical": {
+      "max_ms": 59.924,
+      "mean_ms": 6.294,
+      "p50_ms": 4.893,
+      "p95_ms": 9.114,
+      "samples": 200
+    },
+    "processes": {
+      "gateway": {
+        "cpu_percent_max": 20.8,
+        "cpu_percent_mean": 1.0,
+        "rss_mb_max": 70.3,
+        "threads_max": 4,
+        "threads_using_over_5_percent_of_a_cpu": 0
+      },
+      "worker": {
+        "cpu_percent_max": 237.8,
+        "cpu_percent_mean": 204.1,
+        "rss_mb_max": 955.3,
+        "threads_max": 33,
+        "threads_using_over_5_percent_of_a_cpu": 1
+      }
+    },
+    "proxy_dense": {
+      "max_ms": 79.987,
+      "mean_ms": 28.34,
+      "p50_ms": 25.329,
+      "p95_ms": 48.734,
+      "samples": 200
+    },
+    "proxy_lexical": {
+      "max_ms": 75.956,
+      "mean_ms": 11.733,
+      "p50_ms": 9.964,
+      "p95_ms": 17.513,
+      "samples": 200
+    }
+  },
+  "query_idle": {
+    "native_dense": {
+      "max_ms": 81.91,
+      "mean_ms": 11.479,
+      "p50_ms": 10.537,
+      "p95_ms": 14.329,
+      "samples": 200
+    },
+    "native_lexical": {
+      "max_ms": 9.547,
+      "mean_ms": 3.417,
+      "p50_ms": 3.316,
+      "p95_ms": 4.737,
+      "samples": 200
+    },
+    "proxy_dense": {
+      "max_ms": 29.144,
+      "mean_ms": 14.05,
+      "p50_ms": 13.427,
+      "p95_ms": 16.852,
+      "samples": 200
+    },
+    "proxy_lexical": {
+      "max_ms": 9.374,
+      "mean_ms": 6.576,
+      "p50_ms": 6.434,
+      "p95_ms": 8.089,
+      "samples": 200
+    }
+  },
+  "reconcile_unchanged": {
+    "records_written": 0,
+    "seconds": 1.7,
+    "state": "complete"
+  },
+  "recovery": {
+    "ensure_state": "ready",
+    "records_after": 20,
+    "same_publication": true,
+    "seconds_until_answering": 2.59
+  },
+  "redis_at_scale": {
+    "disk_kb": 144480,
+    "maxmemory_mb": 512.0,
+    "used_memory_mb": 349.3,
+    "used_memory_peak_mb": 350.0
+  },
+  "redis_end": {
+    "disk_kb": 303656,
+    "maxmemory_mb": 512.0,
+    "used_memory_mb": 385.6,
+    "used_memory_peak_mb": 386.0
+  },
+  "scale_load": {
+    "records": 60000,
+    "records_per_second": 5263.9,
+    "seconds": 11.4
+  },
+  "schema": "plan12-memory-m1.pilot.v1"
+}

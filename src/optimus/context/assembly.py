@@ -30,7 +30,7 @@ import re
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from context_engine import (
     STRATEGIES,
@@ -458,6 +458,7 @@ class AttachedTurn:
         self.admitted: AdmittedContext | None = None
         self.candidate: SummaryCheckpoint | None = None
         self.repacks = 0
+        self.memory: Any = None  # Plan 12.10: this turn's context index, set by the host when the session has one
 
     @classmethod
     def capture(
@@ -524,6 +525,14 @@ class AttachedTurn:
     @property
     def model_id(self) -> str:
         return self._attachment.model_id
+
+    @property
+    def estimate_request(self) -> Callable[[str], int]:
+        return self._attachment.estimate_request
+
+    @property
+    def usable_input_tokens(self) -> int:
+        return self._attachment.usable_input_tokens
 
     @property
     def strategy(self) -> str:

@@ -165,10 +165,10 @@
     "rehearsal/attempt-2/stub-other/stub-requests.ndjson": "hex:baa082ca2dda609362cb06be95151d9626b9560868facaee808595e36f9b834a",
     "scenario.json": "hex:9f0fa2b71b74863c6519cbded8fe4020bcf2213bb6b1e752c560e619ca7e860a"
   },
-  "pending": {
-    "pr": null,
-    "linux_ci": null,
-    "merge": null
+  "landing": {
+    "pr": 470,
+    "linux_ci_green_head": "hex:c241af4",
+    "merge": "hex:4a44ead"
   },
   "raw_evidence": "operator-local kit folder optimus-handoff/p465-zed, by artifact policy"
 }

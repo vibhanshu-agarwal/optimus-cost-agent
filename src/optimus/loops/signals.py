@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -131,6 +131,14 @@ def mcp_step(
         novel=results.add(fingerprint, digest),
         subject=f"the MCP call {server}.{tool}" if operation == "call" else f"the MCP tool list of {server}",
     )
+
+
+def index_step(*, requests: Sequence[tuple[str, str]], evidence_envelope: str, results: McpResults) -> LoopStep:
+    """An index tool turn counts like a tool call (Plan 12.10): the same request returning the same result adds nothing."""
+    canonical = json.dumps(list(requests), separators=(",", ":"))
+    fingerprint = "INDEX:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(evidence_envelope.encode("utf-8")).hexdigest()
+    return LoopStep(kind=ActionKind.MCP, fingerprint=fingerprint, result_digest=digest, novel=results.add(fingerprint, digest), subject="the same index search")
 
 
 def parse_failure_step(*, code: str, message: str) -> LoopStep:

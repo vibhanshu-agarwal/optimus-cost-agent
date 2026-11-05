@@ -181,6 +181,150 @@ def test_junction_aliases_to_secret_or_outside_targets_are_denied(tmp_path):
     assert reasons["src-alias/app.py"] == "allowed"
 
 
+def _deep(root: Path) -> str:
+    """A folder whose full path is well past Windows' limit."""
+    return "/".join(["a_folder_named_long_enough_to_add_up"] * 10)
+
+
+def _long_write(root: Path, relative: str, text: str) -> None:
+    path = file_policy._extended(str(root.joinpath(*relative.split("/"))))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
+
+
+@pytest.mark.skipif(not WINDOWS, reason="the path length limit is a Windows mechanism")
+def test_a_file_past_the_windows_path_limit_is_walked_read_and_judged_like_any_other(tmp_path):
+    import _winapi
+
+    root, outside = tmp_path / "ws", tmp_path / "outside"
+    deep = _deep(root)
+    assert len(str(root)) + len(deep) > 300
+    _long_write(root, f"{deep}/App.java", "class App {}\n")
+    _long_write(root, f"{deep}/.env", SENTINEL)
+    _long_write(root, f"{deep}/.gitignore", "skipped.txt\n")
+    _long_write(root, f"{deep}/skipped.txt", SENTINEL)
+    _write(outside, "shared.txt", SENTINEL)
+    link = file_policy._extended(str(root.joinpath(*deep.split("/"), "away")))
+    _winapi.CreateJunction(str(outside), link)
+    try:
+        policy = FilePolicy(root)
+        reasons = _reasons(policy)
+        decision, data = policy.read(f"{deep}/App.java", purpose=AUTO)
+    finally:
+        os.rmdir(link)
+        shutil.rmtree(file_policy._extended(str(root)))
+    assert reasons[f"{deep}/App.java"] == "allowed"
+    assert reasons[f"{deep}/.env"] == "deny.secret"
+    assert reasons[f"{deep}/skipped.txt"] == "ignored.gitignore"
+    assert reasons[f"{deep}/away/shared.txt"] == "deny.outside_workspace"
+    assert decision.allowed and data == b"class App {}\n" and decision.resolved_identity == f"{deep}/App.java"
+
+
+@pytest.mark.skipif(not WINDOWS, reason="NTFS directory junctions are a Windows mechanism")
+def test_a_junction_back_to_its_own_ancestor_ends_the_walk_there(tmp_path):
+    import _winapi
+
+    root = tmp_path / "ws"
+    _write(root, "src/app.py")
+    _winapi.CreateJunction(str(root), str(root / "src" / "loop"))
+    try:
+        reasons = _reasons(FilePolicy(root))
+    finally:
+        os.rmdir(root / "src" / "loop")
+    assert reasons == {"src/app.py": "allowed"}
+
+
+def test_a_folder_that_cannot_be_listed_is_reported_and_not_skipped_in_silence(tmp_path, monkeypatch):
+    _write(tmp_path, "open/a.py")
+    _write(tmp_path, "locked/b.py")
+    real = os.scandir
+
+    def scandir(path):
+        if os.path.basename(path) == "locked":
+            raise PermissionError(path)
+        return real(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    reasons = _reasons(FilePolicy(tmp_path))
+    assert reasons == {"locked": "excluded.unreadable", "open/a.py": "allowed"}
+    assert file_policy.describe("excluded.unreadable") == "a folder that cannot be listed"
+
+
+@pytest.mark.parametrize(
+    ("name", "special"),
+    [(".env ", True), (".env.", True), ("private.key ", True), ("a.txt...", True), ("CON", True), ("nul.txt", True), ("Com1.log", True), ("LPT9", True), ("conin$", True), ("aux .txt", True),
+     (".env", False), ("console.log", False), ("nullable.java", False), ("com10.txt", False), ("a b.txt", False), (".hidden", False)],
+)
+def test_the_names_windows_would_change_or_read_as_a_device(name, special):
+    assert file_policy.windows_special_name(name) is special
+
+
+@pytest.mark.skipif(not WINDOWS, reason="only the Windows extended path form takes these names literally")
+@pytest.mark.parametrize("name", [".env ", "private.key ", ".env.", "CON", "NUL.txt", "notes. "])
+def test_a_name_only_the_extended_form_reaches_is_denied_unopened(tmp_path, monkeypatch, name):
+    root = tmp_path / "ws"
+    deep = _deep(root)
+    _long_write(root, f"{deep}/{name}", SENTINEL)
+    _long_write(root, f"{deep}/control.txt", "ordinary\n")
+    opened = []
+    real_open = open
+    monkeypatch.setattr("builtins.open", lambda path, *a, **k: opened.append(os.fspath(path)) or real_open(path, *a, **k))
+    try:
+        policy = FilePolicy(root)
+        reasons = _reasons(policy)
+        decision, data = policy.read(f"{deep}/{name}", purpose=AUTO)
+    finally:
+        monkeypatch.undo()
+        shutil.rmtree(file_policy._extended(str(root)))
+    assert reasons[f"{deep}/{name}"] == decision.reason == "deny.windows_name" and data is None
+    assert reasons[f"{deep}/control.txt"] == "allowed"
+    assert not [path for path in opened if path.endswith(name)], "denied before anything opened it"
+
+
+def test_a_workspace_root_that_cannot_be_listed_is_reported(tmp_path, monkeypatch):
+    _write(tmp_path, "a.py")
+
+    def scandir(path):
+        raise PermissionError(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    assert _reasons(FilePolicy(tmp_path)) == {".": "excluded.unreadable"}
+
+
+def test_a_link_that_loops_is_left_out_and_the_walk_goes_on(tmp_path, monkeypatch):
+    """A real loop needs a symlink privilege Windows accounts often lack, so this one stands in; test_workspace_context has the real one."""
+    _write(tmp_path, "a.py")
+    real_scandir = os.scandir
+
+    class _Loop:
+        name = "loop.txt"
+        path = str(tmp_path / "loop.txt")
+
+        def is_symlink(self):
+            return True
+
+        def is_junction(self):
+            return False
+
+        def is_dir(self, *, follow_symlinks=True):
+            return False
+
+        def is_file(self):
+            raise OSError(40, "Too many levels of symbolic links")
+
+    monkeypatch.setattr(file_policy.os, "scandir", lambda path: [_Loop(), *real_scandir(path)])
+    assert set(_reasons(FilePolicy(tmp_path))) == {"a.py"}
+
+
+def test_a_path_keeps_its_spelling_until_it_nears_the_limit():
+    short = str(Path("C:/short/file.txt"))
+    assert file_policy.reachable_path(short) == short
+    long = "C:\\" + "x" * 300
+    assert file_policy.reachable_path(long) == (f"\\\\?\\{long}" if WINDOWS else long)
+    assert file_policy._plain("\\\\?\\C:\\x") == "C:\\x" and file_policy._plain("\\\\?\\UNC\\host\\share") == "\\\\host\\share"
+
+
 def test_invalid_paths_are_denied_without_touching_the_filesystem(tmp_path):
     policy = FilePolicy(tmp_path)
 
@@ -466,3 +610,115 @@ def test_an_excluded_folders_ignore_file_is_never_opened(tmp_path, monkeypatch):
     names = {path.relative_to(tmp_path).as_posix() for path in opened}
     assert "private/.gitignore" not in names and "private/notes.md" not in names
     assert {".gitignore", "sub/.gitignore", "sub/x.txt"} <= names, "an eligible folder's ignore file is read"
+
+
+def test_names_judges_by_name_and_opens_nothing(tmp_path, monkeypatch):
+    _write(tmp_path, "keep.py", SENTINEL)
+    _write(tmp_path, ".env", SENTINEL)
+    _write(tmp_path, "ignored.py", SENTINEL)
+    _write(tmp_path, ".gitignore", "ignored.py\n")
+    (tmp_path / "huge.txt").write_text("x" * (2 * 1024 * 1024), encoding="utf-8")
+
+    real = file_policy._read_validated
+
+    def only_ignore_files(path, target, limit):
+        assert path.name in file_policy.IGNORE_FILE_NAMES, f"{path} was opened"
+        return real(path, target, limit)
+
+    monkeypatch.setattr(file_policy, "_read_validated", only_ignore_files)
+    policy = FilePolicy(tmp_path)
+    names, unlisted = policy.names()
+    assert set(names) == {".gitignore", "huge.txt", "keep.py"} and unlisted == 0
+    admits = policy.admitter()
+    assert admits("keep.py") and not admits(".env") and not admits("ignored.py") and not admits("gone.py")
+
+
+def test_ignore_files_are_read_again_only_when_asked(tmp_path):
+    _write(tmp_path, "keep.py", SENTINEL)
+    policy = FilePolicy(tmp_path)
+    assert policy.decide("keep.py", purpose=AUTO).allowed
+    _write(tmp_path, ".optimusignore", "keep.py\n")
+    assert policy.decide("keep.py", purpose=AUTO).allowed
+    policy.forget_ignore_files()
+    assert policy.decide("keep.py", purpose=AUTO).reason == "ignored.optimusignore"
+
+
+def test_one_folders_verdict_is_shared_within_a_walk_and_its_answers_do_not_change(tmp_path):
+    for name in ("build/a.py", "build/b.py", "src/nested/c.py", "src/nested/d.py"):
+        _write(tmp_path, name, SENTINEL)
+    _write(tmp_path, ".gitignore", "build/\n")
+    policy = FilePolicy(tmp_path)
+    calls = []
+    real = policy._match
+
+    def counting(parts, *, is_dir, folded):
+        calls.append(is_dir)
+        return real(parts, is_dir=is_dir, folded=folded)
+
+    policy._match = counting
+    names = policy.names()[0]
+    assert set(names) == {".gitignore", "src/nested/c.py", "src/nested/d.py"}
+    assert calls.count(True) <= 8, "each folder is judged once in each case mode"
+
+
+def test_names_counts_a_folder_it_cannot_list(tmp_path, monkeypatch):
+    _write(tmp_path, "keep.py", SENTINEL)
+    _write(tmp_path, "locked/hidden.py", SENTINEL)
+    real = os.scandir
+
+    def scandir(path):
+        if str(path).endswith("locked"):
+            raise PermissionError(path)
+        return real(path)
+
+    monkeypatch.setattr(file_policy.os, "scandir", scandir)
+    assert FilePolicy(tmp_path).names() == (("keep.py",), 1)
+
+
+def test_names_and_a_full_walk_agree_on_ordinary_text(tmp_path):
+    for name in ("a.py", "pkg/b.py", "docs/c.md", ".env", ".git/config"):
+        _write(tmp_path, name, SENTINEL)
+    policy = FilePolicy(tmp_path)
+    assert set(policy.names()[0]) == {decision.relative_path for decision in policy.walk(purpose=AUTO) if decision.allowed}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="junctions are a Windows mechanism")
+def test_names_judges_a_junction_out_of_the_workspace_by_its_target(tmp_path):
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    _write(root, "keep.py", SENTINEL)
+    _write(outside, "secret.py", SENTINEL)
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(root / "linked"), str(outside)], check=True, capture_output=True)
+    names = FilePolicy(root).names()[0]
+    assert "keep.py" in names and "linked/secret.py" not in names
+
+
+def test_names_judges_a_symlink_by_its_target(tmp_path):
+    root = tmp_path / "root"
+    _write(root, "keep.py", SENTINEL)
+    _write(root, ".env", SENTINEL)
+    _write(tmp_path, "outside.py", SENTINEL)
+    try:
+        (root / "out.py").symlink_to(tmp_path / "outside.py")
+        (root / "alias.py").symlink_to(root / ".env")
+    except OSError:
+        pytest.skip("this host cannot create symbolic links")
+    names = FilePolicy(root).names()[0]
+    assert names == ("keep.py",)
+
+
+def test_names_refuses_what_a_read_would_refuse_for_its_spelling(tmp_path, monkeypatch):
+    _write(tmp_path, "keep.py", SENTINEL)
+    policy = FilePolicy(tmp_path)
+    monkeypatch.setattr(policy, "_listing", lambda *_args: iter([(("keep.py",), True), (("a:b.py",), True), (("c\\d.py",), True)]))
+    assert policy.names()[0] == ("keep.py",)
+    assert not policy.admitter()("a:b.py")
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows cannot create this name")
+def test_names_and_a_read_agree_on_a_real_file_with_a_colon(tmp_path):
+    _write(tmp_path, "keep.py", SENTINEL)
+    (tmp_path / "a:b.py").write_text(SENTINEL, encoding="utf-8")
+    policy = FilePolicy(tmp_path)
+    assert policy.names()[0] == ("keep.py",)
+    assert not policy.read("a:b.py", purpose=AUTO)[0].allowed

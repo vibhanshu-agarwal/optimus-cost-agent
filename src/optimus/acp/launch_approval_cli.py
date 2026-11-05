@@ -41,7 +41,13 @@ from optimus.acp.local_gateway_secrets import (
     resolve_provider_credentials,
     resolve_shared_secret,
 )
-from optimus.acp.local_infra import LocalInfrastructureError, ensure_local_phoenix, gateway_accounting, gateway_tool_environ
+from optimus.acp.local_infra import (
+    LocalInfrastructureError,
+    ensure_local_phoenix,
+    gateway_accounting,
+    gateway_memory_index,
+    gateway_tool_environ,
+)
 from optimus.acp.operator_paths import (
     OperatorPathConfigurationError,
     OperatorPaths,
@@ -90,6 +96,7 @@ from optimus_model_policy.stage_c import (
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTING_LITERAL_NAME
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
+from optimus_security.memory_index_config import SECURITY_LITERAL_NAME as MEMORY_INDEX_LITERAL_NAME
 from optimus_security.sanitization import mask_uri_userinfo
 
 
@@ -165,6 +172,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # setup-credentials
     subparsers.add_parser("setup-credentials", help="Interactively store provider credentials.")
+
+    # memory-setup
+    subparsers.add_parser(
+        "memory-setup",
+        help="One-time opt-in to the context index: download the configured embedding artifact and provision the index password.",
+    )
 
     # run (with optional --elevated-debug)
     run_parser = subparsers.add_parser("run", help="Run a command with an existing durable approval.")
@@ -285,6 +298,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_rotate_key(workspace_root)
         if args.command == "setup-credentials":
             return _cmd_setup_credentials(workspace_root)
+        if args.command == "memory-setup":
+            return _cmd_memory_setup(workspace_root)
         if args.command == "run":
             return _cmd_run(
                 workspace_root,
@@ -865,6 +880,32 @@ def _cmd_rotate_key(workspace_root: Path) -> int:
     return 0
 
 
+def _cmd_memory_setup(workspace_root: Path) -> int:
+    """Plan 12.10 (ADR-037): the one place the artifact is downloaded and the index password created."""
+    _require_tty()
+
+    import keyring as keyring_backend
+
+    from optimus.acp.memory_setup import MemorySetupError, run_setup
+
+    def confirm(description: str) -> bool:
+        print(f"optimus-trust: this opts this machine into the context index:\n{description}")
+        return input("optimus-trust: continue? [y/N]: ").strip().lower() == "y"
+
+    # The same resolution a launch uses, or a launch with OPTIMUS_CONFIG_ROOT never finds what this configured.
+    try:
+        _snapshot, paths = _prepare_candidate_context(workspace_root)
+        path = run_setup(paths.config_root, keyring_backend=keyring_backend, confirm=confirm)
+    except OperatorPathConfigurationError as exc:
+        print(f"optimus-trust: {exc.user_message}", file=sys.stderr)
+        return exc.exit_code
+    except MemorySetupError as exc:
+        print(f"optimus-trust: {exc}", file=sys.stderr)
+        return 2
+    print(f"optimus-trust: the context index is configured at {path}. Approve the launch again to turn it on.")
+    return 0
+
+
 def _cmd_setup_credentials(workspace_root: Path) -> int:
     """Interactive credential setup (delegates to existing flow via trusted roots)."""
     _require_tty()
@@ -1114,6 +1155,12 @@ def _cmd_run_gateway(
         log=lambda msg: print(msg, file=sys.stderr),
     )
 
+    memory_dir, memory_index = gateway_memory_index(
+        operator_paths.config_root,
+        None if approval is None else approval.security_literals.get(MEMORY_INDEX_LITERAL_NAME),
+        log=lambda msg: print(msg, file=sys.stderr),
+    )
+
     manifest = build_gateway_child_manifest(
         workspace_digest=workspace_identity.digest,
         security_snapshot_digest=security_snapshot_digest,
@@ -1128,6 +1175,7 @@ def _cmd_run_gateway(
         # Plan 12.2 Task 5: the Gateway refuses to start unless this matches its own registry.
         model_registry=model_registry,
         accounting=accounting,
+        memory_index=memory_index,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 
@@ -1165,6 +1213,7 @@ def _cmd_run_gateway(
             *([] if registry_override is None else ["--registry-override", str(registry_override)]),
             *(["--auto-composition"] if auto else []),
             *([] if accounting_dir is None else ["--accounting-root", str(accounting_dir)]),
+            *([] if memory_dir is None else ["--memory-index-root", str(memory_dir)]),
         ],
         env=child_env,
         shell=False,

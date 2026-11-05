@@ -39,6 +39,8 @@ from optimus_security.launch_manifest import (
     read_manifest_hmac_key,
     verify_gateway_child_manifest,
 )
+from optimus_security.memory_index_config import memory_index_literal
+from optimus_security.memory_index_config import read as read_memory_index_config
 
 # Plan 9.96, Task 5 Step 4: these names must NEVER be read from the standalone
 # entrypoint's inherited environment. bind_host/bind_port are code-derived
@@ -123,6 +125,14 @@ def main(argv: list[str] | None = None) -> int:
             "approved accounting configuration. The literal is composed here; the signed manifest must bind it."
         ),
     )
+    parser.add_argument(
+        "--memory-index-root",
+        default=None,
+        help=(
+            "The context index's root under the trusted config root (Plan 12.10, ADR-037). The literal is composed here; the "
+            "signed manifest must bind it."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.plan12_stage_c_ledger is not None and args.plan12_test_profile is None:
         parser.error("--plan12-stage-c-ledger needs --plan12-test-profile")
@@ -195,6 +205,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"optimus-local-gateway: accounting configuration is not usable ({exc.code}); refusing to start.", file=sys.stderr)
             return 2
 
+    # Plan 12.10: the same for the context index. A configuration that does not parse serves no index; models still work.
+    memory_dir = None if args.memory_index_root is None else Path(args.memory_index_root)
+    memory_bound = memory_config = None
+    if memory_dir is not None:
+        captured_memory_literal, memory_config, _memory_refusal = read_memory_index_config(memory_dir)
+        memory_bound = memory_index_literal(memory_dir, captured_memory_literal)
+
     try:
         hmac_key = read_manifest_hmac_key(_keyring_module)
         verify_gateway_child_manifest(
@@ -209,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             model_registry=None if registry is None else approval_literal(registry),
             stage_c_envelope=None if envelope is None else envelope.literal,
             accounting=accounting_bound,
+            memory_index=memory_bound,
         )
     except LaunchManifestError as exc:
         print(f"optimus-local-gateway: manifest validation failed ({exc.code}); refusing to start.", file=sys.stderr)
@@ -232,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
                 model_registry=None if registry is None else approval_literal(registry),
                 stage_c_envelope=None if envelope is None else envelope.literal,
                 accounting=accounting_bound,
+                memory_index=memory_bound,
                 tool_environ=environ,
                 hmac_key=hmac_key,
             ),
@@ -272,6 +291,11 @@ def main(argv: list[str] | None = None) -> int:
             log=lambda line: print(line, file=sys.stderr), references=references,
         )  # the configuration verified above, never a second read
         config = replace(config, usage_store=accounting.store)
+
+    if memory_config is not None:
+        from optimus_gateway.memory_index import build_index_service
+
+        config = replace(config, memory_index=build_index_service(memory_config, keyring_backend=_keyring_module, hmac_key=hmac_key))
 
     try:
         server = serve_gateway(config=config)

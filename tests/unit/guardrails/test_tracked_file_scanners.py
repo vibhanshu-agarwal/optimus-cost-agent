@@ -105,6 +105,10 @@ def parameter(project_root):
 # Every surviving filesystem walk needs a reviewed reason. Repository-truth walkers
 # have no place in this map: they must use tracked_repository_files instead.
 ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
+    "tests/integration/context/test_memory_b1_canaries.py:_persisted_files:rglob:*": "Reads the AOF and RDB files copied out of the released test container into tmp_path.",
+    "tests/integration/context/test_memory_b1_canaries.py:test_the_canaries_really_are_in_the_source:rglob:*": "Reads the canary repository this test module wrote under tmp_path.",
+    "tests/integration/context/test_memory_b1_canaries.py:test_the_host_side_writes_no_cache_or_journal_with_source_text:rglob:*": "Scans the test's own config root and canary repository for leaked text and leftovers.",
+    "tests/integration/context/test_memory_native_keyring.py:test_the_real_keyring_holds_the_password_and_no_file_does:rglob:*": "Scans the configuration folder setup wrote under tmp_path for the password.",
     "tests/integration/evidence/test_acpx_capture_live.py:test_acpx_capture_streams_into_redaction_gate_without_raw_transcript:rglob:*": "Walks a tmp_path capture created by this test.",
     "tests/integration/evidence/test_collector_redaction_live.py:test_collector_redaction_live_os_keyring_and_public_gate:rglob:*": "Walks the test-created capture tree.",
     "tests/integration/evidence/test_collector_redaction_live.py:test_collector_redaction_live_os_keyring_and_public_gate:rglob:artifact": "Finds generated artifact directories in the test capture.",
@@ -116,6 +120,12 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tests/investigation/evidence/test_zed_user_data_live.py:_validate_user_data_root:rglob:*": "Validates an operator-supplied Zed user-data tree.",
     "tests/unit/acp/test_main_wiring.py:test_identity_unavailable_at_initial_resolution_never_constructs_store:rglob:debug-acp.ndjson": "Checks that a tmp_path run did not create a debug log.",
     "tests/unit/acp/test_main_wiring.py:test_identity_unavailable_at_initial_resolution_never_constructs_store:rglob:launch-audit.ndjson": "Checks that a tmp_path run did not create a launch audit.",
+    "tests/integration/context/test_memory_session.py:test_a_turn_writes_no_body_to_its_manifest_or_the_store:rglob:run-1.json": "Finds the manifest the session wrote under the test's tmp_path.",
+    "tests/unit/context/test_memory_tools_and_turns.py:test_an_unsaved_buffer_never_reaches_the_manifest:rglob:run-1.json": "Finds the manifest the session wrote beside the test's tmp_path.",
+    "tests/unit/guardrails/test_file_policy.py:test_names_and_a_full_walk_agree_on_ordinary_text:walk:<none>": "The file policy's own walk of the workspace this test wrote under tmp_path.",
+    "tests/unit/context/test_memory_tools_and_turns.py:_tools:walk:<none>": "The file policy's own walk of the workspace this test wrote under tmp_path.",
+    "tests/unit/context/test_memory_tools_and_turns.py:test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodies:rglob:run-1.json": "Finds the manifest the session wrote under the test's tmp_path.",
+    "tests/unit/context/test_memory_setup.py:test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password:rglob:*": "Scans the configuration folder setup wrote under tmp_path for the password.",
     "tests/unit/docs/test_plan_directory_hygiene.py:test_plan_archive_is_flat_and_contains_no_registered_live_plan:glob:*.md": "C-MP1 intentionally observes plan-root worktree state, including untracked files.",
     "tests/unit/docs/test_plan_directory_hygiene.py:test_plan_root_contains_only_governance_and_registered_live_plans:glob:*.md": "C-MP1 intentionally observes plan-root worktree state, including untracked files.",
     "tests/unit/docs/test_plan_directory_hygiene.py:test_separately_named_amendments_cannot_be_live_root_plans:glob:*.md": "C-MP1 intentionally observes plan-root worktree state, including untracked files.",
@@ -179,6 +189,8 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tests/unit/tools/test_run_context_child_sites.py:_census_child:glob:*.jsonl": "Reads the census rows that this test's own child wrote into its tmp_path.",
     "tools/testing/test_main5_runner.py:test_scoped_plugin_contains_publication_failure_and_removes_only_own_temp:glob:.shutdown-probe-*.tmp": "Inspects generated staging files in this test's tmp_path collector attempt to verify publication failure and cleanup containment.",
     "tools/testing/test_main5_runner.py:test_scoped_plugin_review_target_appearing_at_publication_is_preserved:glob:.shutdown-probe-*.tmp": "Checks generated staging files in this test's tmp_path collector attempt after a competing target prevents publication.",
+    "tools/plan12_memory/m1_scale.py:count_corpus:walk:<none>": "Counts the corpus root the manually run measurement tool was given, its own copy under its work folder, not repository truth.",
+    "tools/plan12_memory/m1_scale.py:run_pilot:rglob:*.py": "Lists Python files of the measurement tool's own corpus copy under its work folder.",
 }
 
 

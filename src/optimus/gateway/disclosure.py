@@ -41,7 +41,7 @@ class ContributorDisclosure:
             return RouteBinding(registry_hash=registry_hash, request_id=request_id, output_cap=output_cap)
         # The Gateway's upstream request is one user message holding the final flattened input.
         messages = (Message(role="user", content=input_text),)
-        payload = payload_digest(model_id, messages, output_cap, reasoning=entry.default_reasoning)
+        payload = payload_digest(model_id, messages, output_cap, reasoning=entry.default_reasoning, prompt_cache=entry.route.prompt_cache)
         route = route_digest(model_id, entry)
         identity = (request_id, route, payload)
         if identity not in self._noticed:

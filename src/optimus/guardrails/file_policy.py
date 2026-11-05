@@ -12,6 +12,13 @@ empty, binary and, for indexing only, oversized files. A denial can never be neg
 Content is read only from the validated target, through a handle whose file identity must equal the one validated,
 and the target is rechecked after reading, so an alias swapped or a file replaced meanwhile is refused. Decisions carry
 a rule id, never content, and the policy revision binds the ignore files that judged them.
+
+Windows refuses a path near its length limit unless told not to normalize it, so such a path gets the extended form for
+its I/O alone. Every path here is built from validated parts under the resolved root, and every check still sees the plain
+spelling. That form also turns off Windows' own normalization, which could let `.env ` past a check that knows `.env`, so a
+name Windows would normalize or treat as a device is denied, on the spelling and the target, before anything is opened. A
+folder that cannot be listed, the root included, is reported and never skipped in silence, because what is missing must not
+look like what was excluded.
 """
 
 from __future__ import annotations
@@ -19,10 +26,11 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
+from typing import Final
 
 import pathspec
 
@@ -37,10 +45,14 @@ _MAX_IGNORE_FILE_BYTES = 1024 * 1024
 # NTFS and APFS treat names case-insensitively, and Git's core.ignorecase there depends on the repository. A file is
 # ignored if either the exact or the case-folded rules ignore it, so neither reading can make more files eligible.
 _CASE_INSENSITIVE = sys.platform in ("win32", "darwin")
+_WINDOWS_PATH_ROOM: Final = 240  # below MAX_PATH, and below the shorter limit on folders
+_EXTENDED: Final = "\\\\?\\"
+_WINDOWS_DEVICES: Final = frozenset({"con", "prn", "aux", "nul", "conin$", "conout$", *(f"{port}{n}" for port in ("com", "lpt") for n in "123456789¹²³")})
 
 ALLOWED = "allowed"
 REASON_TEXT = {
     "deny.invalid_path": "not a workspace-relative path",
+    "deny.windows_name": "a name Windows would normalize or treat as a device",
     "deny.skipped_dir": "inside a skipped tool folder",
     "deny.runtime_tree": "inside the Optimus runtime folder",
     "deny.secret": "a secret or credential file",  # pragma: allowlist secret - a reason label
@@ -55,6 +67,7 @@ REASON_TEXT = {
     "excluded.empty": "empty",
     "excluded.binary": "not UTF-8 text",
     "excluded.too_large": "larger than the indexing file limit",
+    "excluded.unreadable": "a folder that cannot be listed",
 }
 
 
@@ -91,6 +104,10 @@ class FilePolicy:
     def root(self) -> Path:
         return self._root
 
+    @property
+    def max_index_file_bytes(self) -> int:
+        return self._max_index_file_bytes
+
     def revision(self) -> str:
         """The policy version bound to every ignore file consulted so far."""
         entries = sorted(
@@ -114,39 +131,104 @@ class FilePolicy:
         """Decide and read in one validated step; content comes back only for an allowed, unchanged file."""
         return self._evaluate(relative_path, purpose)
 
-    def walk(self, *, purpose: FilePurpose) -> Iterator[FileDecision]:
-        """Every file under the workspace in sorted order, with its decision (exclusions are coverage)."""
-        for path in sorted(self._root.rglob("*")):
-            if path.is_file():
-                yield self.decide(path.relative_to(self._root).as_posix(), purpose=purpose)
+    def forget_ignore_files(self) -> None:
+        """They are read once and then kept, so anything that lives longer than one operation says when to look at them again."""
+        self._ignore_files = {}
 
-    def _evaluate(self, relative_path: str, purpose: FilePurpose) -> tuple[FileDecision, bytes | None]:
+    def admitter(self) -> Callable[[str], bool]:
+        """Whether the path, exclusions, links and ignore files admit a file, for many files at one moment. Nothing is opened, so what only
+        its bytes can decide is open. Files of one folder share its verdicts, which a large repository's ignore rules would otherwise spend
+        most of a walk repeating."""
+        folders: dict[tuple[tuple[str, ...], bool], str | None] = {}
+        return lambda relative_path: not isinstance(self._gate(relative_path, folders), FileDecision)
+
+    def names(self) -> tuple[tuple[str, ...], int]:
+        """Every file an `admitter` admits, and how many folders could not be listed. A full `walk` reads every file, which takes most of a
+        minute on a large repository; this is for what must look at the tree during a person's turn. A path with no link on the way cannot
+        resolve anywhere else, so only one with a link needs resolving, and it gets the whole gate."""
+        links: set[tuple[str, ...]] = set()
+        entries = list(self._listing(_extended(str(self._root)), (), frozenset(), links))
+        folders: dict[tuple[tuple[str, ...], bool], str | None] = {}
+        admits = self.admitter()
+        kept: list[str] = []
+        for parts in sorted(parts for parts, listed in entries if listed):
+            if links and any(parts[:end] in links for end in range(1, len(parts) + 1)):
+                admitted = admits("/".join(parts))
+            else:
+                admitted = _relative_parts("/".join(parts)) == parts and _parts_denial(parts) is None and self._ignored(parts, folders) is None
+            if admitted:
+                kept.append("/".join(parts))
+        return tuple(kept), sum(1 for _parts, listed in entries if not listed)
+
+    def walk(self, *, purpose: FilePurpose) -> Iterator[FileDecision]:
+        """Every file under the workspace in sorted order, with its decision (exclusions are coverage). A folder that cannot
+        be listed has a decision of its own."""
+        found = {self._root.joinpath(*parts): listed for parts, listed in self._listing(_extended(str(self._root)), (), frozenset())}
+        for path in sorted(found):
+            relative = path.relative_to(self._root).as_posix()
+            yield self.decide(relative, purpose=purpose) if found[path] else self._decision(relative, "excluded.unreadable", ())
+
+    def _listing(self, folder: str, parts: tuple[str, ...], ancestors: frozenset[tuple[int, int]], links: set[tuple[str, ...]] | None = None) -> Iterator[tuple[tuple[str, ...], bool]]:
+        """(parts, True) for each file and (parts, False) for each folder that cannot be listed. A junction is followed, so what
+        it reaches is judged by its real target, and one leading back to its own ancestor ends here: no path limit stops it now."""
+        try:
+            facts = os.stat(folder)
+            identity = (facts.st_dev, facts.st_ino)
+            if identity in ancestors:
+                return
+            entries = list(os.scandir(folder))
+        except OSError:
+            yield parts, False
+            return
+        for entry in entries:
+            child = (*parts, entry.name)
+            if links is not None and (entry.is_symlink() or entry.is_junction()):
+                links.add(child)
+            if entry.is_dir(follow_symlinks=False):
+                yield from self._listing(entry.path, child, ancestors | {identity}, links)
+                continue
+            try:
+                is_file = entry.is_file()
+            except OSError:  # a symlink loop raises here, where a broken link only answers False
+                continue
+            if is_file:
+                yield child, True
+
+    def _gate(self, relative_path: str, folders: dict[tuple[tuple[str, ...], bool], str | None] | None = None) -> FileDecision | tuple[Path, Path, str, tuple[tuple[str, ...], ...]]:
+        """Everything decided before a file is opened: a refusal, or what reading it needs."""
         parts = _relative_parts(relative_path)
         if parts is None:
-            return self._decision(relative_path, "deny.invalid_path", ()), None
+            return self._decision(relative_path, "deny.invalid_path", ())
         denial = _parts_denial(parts)
         if denial is not None:
-            return self._decision(relative_path, denial, ()), None
+            return self._decision(relative_path, denial, ())
         path = self._root.joinpath(*parts)
-        if not path.is_file():
-            return self._decision(relative_path, "excluded.not_found", ()), None
-        target = resolve_target(path)
+        if not os.path.isfile(reachable_path(path)):
+            return self._decision(relative_path, "excluded.not_found", ())
+        target = _resolved(path)
         if target is None:
-            return self._decision(relative_path, "deny.unresolvable", ()), None
+            return self._decision(relative_path, "deny.unresolvable", ())
         identity = _relative_identity(target, self._root)
         if identity is None:
             outside = "deny.runtime_tree" if target_reserved(target, self._root) else None
             outside = outside or ("deny.secret" if target_secret(target, self._root) else "deny.outside_workspace")
-            return self._decision(relative_path, outside, ()), None
+            return self._decision(relative_path, outside, ())
         target_parts = tuple(identity.split("/"))
         denial = _parts_denial(target_parts)
         if denial is not None:
-            return self._decision(relative_path, denial, ()), None
+            return self._decision(relative_path, denial, ())
         chains = (parts, target_parts)
-        for chain in chains:
-            ignored = self._ignored(chain)
+        for chain in dict.fromkeys(chains):
+            ignored = self._ignored(chain, {} if folders is None else folders)
             if ignored is not None:
-                return self._decision(relative_path, ignored, chains), None
+                return self._decision(relative_path, ignored, chains)
+        return path, target, identity, chains
+
+    def _evaluate(self, relative_path: str, purpose: FilePurpose) -> tuple[FileDecision, bytes | None]:
+        gate = self._gate(relative_path)
+        if isinstance(gate, FileDecision):
+            return gate, None
+        path, target, identity, chains = gate
         limit = self._max_index_file_bytes if purpose is FilePurpose.INDEX else None
         outcome, data = _read_validated(path, target, limit)
         if outcome != ALLOWED:
@@ -181,13 +263,16 @@ class FilePolicy:
         digest = hashlib.sha256(repr(entries).encode("utf-8")).hexdigest()[:16]
         return f"{POLICY_VERSION}:{digest}"
 
-    def _ignored(self, parts: tuple[str, ...]) -> str | None:
+    def _ignored(self, parts: tuple[str, ...], folders: dict[tuple[tuple[str, ...], bool], str | None]) -> str | None:
         modes = (False, True) if _CASE_INSENSITIVE else (False,)
         # Git: nothing under an excluded folder is re-included. Each folder is judged by its ancestors' rules before
         # its own ignore files are opened, so an excluded folder's ignore files are never read.
         for end in range(len(parts)):
             for folded in modes if end else ():
-                verdict = self._match(parts[:end], is_dir=True, folded=folded)
+                key = (parts[:end], folded)
+                if key not in folders:
+                    folders[key] = self._match(parts[:end], is_dir=True, folded=folded)
+                verdict = folders[key]
                 if verdict is not None:
                     return verdict
             if self._load(parts[:end]) is None:
@@ -237,11 +322,12 @@ class FilePolicy:
         """("absent", None), ("present", bytes), or ("unavailable", None) when it exists but cannot be evaluated: an
         alias (Git does not follow one either), a denied target, unreadable or over the size cap."""
         path = self._root.joinpath(*folder, name)
-        if not os.path.lexists(path):
+        spelled = reachable_path(path)
+        if not os.path.lexists(spelled):
             return "absent", None
-        parent = resolve_target(path.parent)
-        target = resolve_target(path)
-        if path.is_symlink() or not path.is_file() or parent is None or target is None or target != parent / name:
+        parent = _resolved(path.parent)
+        target = _resolved(path)
+        if os.path.islink(spelled) or not os.path.isfile(spelled) or parent is None or target is None or target != parent / name:
             return "unavailable", None
         identity = _relative_identity(target, self._root)
         if identity is None or _parts_denial(tuple(identity.split("/"))) is not None:
@@ -252,11 +338,45 @@ class FilePolicy:
         return "present", data
 
 
+def reachable_path(path: Path | str) -> str:
+    """The spelling to open a path with: itself, or the extended form on Windows once it nears the length limit."""
+    text = os.fspath(path)
+    return _extended(text) if sys.platform == "win32" and len(text) >= _WINDOWS_PATH_ROOM else text
+
+
+def _extended(text: str) -> str:
+    if sys.platform != "win32" or text.startswith(_EXTENDED):
+        return text
+    return f"{_EXTENDED}UNC\\{text[2:]}" if text.startswith("\\\\") else f"{_EXTENDED}{text}"
+
+
+def _plain(text: str) -> str:
+    if text.startswith(f"{_EXTENDED}UNC\\"):
+        return "\\\\" + text[8:]
+    return text.removeprefix(_EXTENDED)
+
+
+def _resolved(path: Path) -> Path | None:
+    """`resolve_target` that can see past the length limit, so a link deep in a long path is followed rather than taken at its word."""
+    spelled = reachable_path(path)
+    if spelled == os.fspath(path):
+        return resolve_target(path)
+    target = resolve_target(Path(spelled))
+    return None if target is None else Path(_plain(os.fspath(target)))
+
+
 def describe(reason: str) -> str:
     return REASON_TEXT.get(reason, reason)
 
 
+def windows_special_name(name: str) -> bool:
+    """A name Windows would change or read as a device through an ordinary path, but which the extended form takes literally."""
+    return name != name.rstrip(" .") or name.split(".", 1)[0].rstrip(" ").casefold() in _WINDOWS_DEVICES
+
+
 def _parts_denial(parts: tuple[str, ...]) -> str | None:
+    if sys.platform == "win32" and any(windows_special_name(part) for part in parts):
+        return "deny.windows_name"
     names = tuple(part.casefold() for part in parts) if _CASE_INSENSITIVE else parts
     if any(name in SKIP_DIR_NAMES for name in names):
         return "deny.skipped_dir"
@@ -274,11 +394,12 @@ def _read_validated(path: Path, target: Path, limit: int | None) -> tuple[str, b
     the file be unchanged. ``limit``: the size cap, if any. Where the OS cannot report the handle's path (a filesystem
     without final-path support, a platform _handle_path does not cover), nothing is read: identity checks alone cannot
     rule out a swapped folder."""
+    spelled = reachable_path(target)
     try:
-        before = os.stat(target)
+        before = os.stat(spelled)
         if limit is not None and before.st_size > limit:
             return "excluded.too_large", None
-        with open(target, "rb") as handle:
+        with open(spelled, "rb") as handle:
             real = _handle_path(handle.fileno())
             if real is None:
                 return "deny.unverifiable", None
@@ -288,7 +409,7 @@ def _read_validated(path: Path, target: Path, limit: int | None) -> tuple[str, b
             if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
                 return "deny.identity_changed", None  # replaced after validation: nothing is read
             data = handle.read() if limit is None else handle.read(limit + 1)
-        after = os.stat(target)
+        after = os.stat(spelled)
     except OSError:
         return "excluded.not_found", None
     if limit is not None and len(data) > limit:
@@ -296,7 +417,7 @@ def _read_validated(path: Path, target: Path, limit: int | None) -> tuple[str, b
     unchanged = (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns) == (
         before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns,
     )
-    if not unchanged or resolve_target(path) != target:
+    if not unchanged or _resolved(path) != target:
         return "deny.identity_changed", None
     return ALLOWED, data
 
@@ -316,10 +437,7 @@ def _handle_path(fd: int) -> str | None:
             length = get_final_path(msvcrt.get_osfhandle(fd), buffer, len(buffer), 0)
             if not 0 < length < len(buffer):
                 return None
-            text = buffer.value
-            if text.startswith("\\\\?\\UNC\\"):
-                return "\\\\" + text[8:]
-            return text[4:] if text.startswith("\\\\?\\") else text
+            return _plain(buffer.value)
         if sys.platform == "darwin":
             import fcntl
 

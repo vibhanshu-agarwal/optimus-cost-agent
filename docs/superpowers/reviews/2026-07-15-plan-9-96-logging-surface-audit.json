@@ -1,6 +1,22 @@
 {
   "surfaces": [
     {
+      "key": "context_engine.index_worker:IndexWorker._release:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds or sends only the wire record, whose schema excludes source bodies; embedding text stays in RAM and reaches only the local embedder.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "context_engine.index_worker:IndexWorker.run:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds or sends only the wire record, whose schema excludes source bodies; embedding text stays in RAM and reaches only the local embedder.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "evidence_handoff.collector.bundles:_atomic_write_json:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: opens a sibling temporary JSON stage file only to publish digest-bound portable run/bundle documents; no diagnostic body retention.",
@@ -609,6 +625,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approval_cli:_cmd_memory_setup:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the setup description and outcome: resource names and a config path; the password never reaches this function.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_memory_setup:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the setup description and outcome: resource names and a config path; the password never reaches this function.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:confirm:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: shows the setup description: resource names and a digest; the password does not exist yet.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.local_infra:record_gateway_refusal:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: appends one JSON line with a typed refusal code and a fixed message naming a loopback address (never the configured URL's path or query) and configuration labels to the launch's own Gateway log; fingerprints and values stay out.",
@@ -633,11 +673,67 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.memory_setup:_atomic_write:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.memory_setup:_atomic_write:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.memory_setup:run_setup:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file; the password goes only to the keyring.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.memory_setup:run_setup:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret configuration and hash-only ACL file; the password goes only to the keyring.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.server:StdioNdjsonLineWriter.write_bytes:text_write",
       "policy": "protocol-only",
       "rationale": "Functional protocol write at optimus.acp.server:StdioNdjsonLineWriter.write_bytes:text_write emits already-encoded ACP NDJSON bytes to the peer transport; it is not diagnostic retention.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
       "test_node": "tests/unit/acp/test_stdio_ndjson.py::test_stdio_ndjson_line_writer_writes_bytes_to_bytesio",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._prepare_memory:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: logs a fixed phrase or an exception's type name, never its text, a path or file contents; the status line it sends is a fixed line or counts.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_memory_wiring.py::test_an_index_that_fails_while_preparing_never_fails_a_turn",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:AcpDuplexAdapter.card:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a live tool card: the tool's name, the model's argument and a line and timing count, sent only to this session's own client.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_each_tool_gets_a_started_and_an_ended_card",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.spec:_in_own_thread:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: hands a call's result or exception to the waiter on the event loop; nothing is written anywhere.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_memory_wiring.py::test_an_index_that_fails_while_preparing_never_fails_a_turn",
       "evidence_tier": "unit"
     },
     {
@@ -1129,6 +1225,110 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_session:MemorySession._current_scope:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_search_drops_a_record_the_file_policy_now_refuses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession._foreground:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_search_drops_a_record_the_file_policy_now_refuses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession._loop:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: logs only the exception's type name, never its text, a path or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_worker_that_fails_says_so_rather_than_building_forever",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession._passes:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_worker_that_fails_says_so_rather_than_building_forever",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession.request_pass:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_search_drops_a_record_the_file_policy_now_refuses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession.status:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the route's refusal or outage code and an exception's type name; the route's codes are fixed strings with no path or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_status_that_cannot_be_read_says_so_and_logs_why",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession.status:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the route's refusal or outage code and an exception's type name; the route's codes are fixed strings with no path or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_status_that_cannot_be_read_says_so_and_logs_why",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession.stop:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_search_drops_a_record_the_file_policy_now_refuses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession.write_manifest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: paths, hashes, symbols, ranks and reasons; the pack's bodies are not in this document and the pack holds them only in RAM.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodies",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:open_session:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the registry's and the workspace identity's own codes and fixed details, their probe diagnostics (names, counts, error numbers), or another error's type name only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_workspace_that_cannot_be_registered_logs_why",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:open_session:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the registry's and the workspace identity's own codes and fixed details, their probe diagnostics (names, counts, error numbers), or another error's type name only.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_workspace_that_cannot_be_registered_logs_why",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_workspace:GatewayIndexStorage.call:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds or sends only the wire record, whose schema excludes source bodies; embedding text stays in RAM and reaches only the local embedder.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_workspace:index_scope:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds or sends only the wire record, whose schema excludes source bodies; embedding text stays in RAM and reaches only the local embedder.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context_engine/test_code_index.py::test_nothing_from_a_body_comment_or_literal_leaves_the_engine",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.gates.fitness:FitnessGateRunner.run:logger_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.gates.fitness:FitnessGateRunner.run:logger_export is an AST-overmatch with no sink call in its scoped body.",
@@ -1246,6 +1446,14 @@
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.loops.ledger:JsonlProgressLedger.entries:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.loops.signals:index_step:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: hashes the tool names and arguments into a loop fingerprint; only the digest is kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_repeat_is_not_run_again_and_a_reply_of_only_repeats_is_no_progress",
       "evidence_tier": "unit"
     },
     {
@@ -1481,6 +1689,102 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.memory_index:IndexStore._begin:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore._ensure_search_index:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore._op_lease:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore._reply:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: sizes a schema-limited record; nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_the_endpoint_never_shows_its_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore._seal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a cursor of an epoch and a hex id, sealed for this scope.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_the_endpoint_never_shows_its_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.publish:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.publish:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.step:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:IndexStore.write:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:verify_resource:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_index:verify_resource:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: stores or reads only what the contract's closed schema admits: identifiers, hashes, counts, vectors and allowed prose; a field that could carry a source body is refused before this runs.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_a_record_cannot_carry_a_body_field",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.observability:_coerce_attribute_value:json_serialization",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus_gateway.observability:_coerce_attribute_value:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback. `_coerce_attribute_value` only runs on the already-`sanitize_for_persistence`-processed value returned by `_redact_field` in `_apply_redacted_attributes`; it never receives raw untrusted content directly.",
@@ -1502,6 +1806,14 @@
       "rationale": "Plan 12.4 Task 1: the decision envelope's validation errors are fixed texts that echo no request content, and each still passes the shared sanitizer (sanitize_error_message) before the 400 reply; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/optimus_gateway/test_decisions.py::test_a_malformed_envelope_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._handle_index:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a fixed event, the path and the status code; never a request body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_index.py::test_the_endpoint_never_shows_its_password",
       "evidence_tier": "unit"
     },
     {
@@ -1678,6 +1990,22 @@
       "rationale": "Inspection: serialize_gateway_child_manifest emits the fixed child-manifest schema with provider/shared-secret fingerprints rather than credential literals.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/security/test_launch_manifest.py::test_manifest_contains_no_raw_secret",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.memory_index_config:artifact_digest:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the artifact to hash it; nothing is written or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.memory_index_config:memory_index_literal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes a path and a digest for the signed manifest.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
       "evidence_tier": "unit"
     },
     {
@@ -2182,6 +2510,94 @@
       "rationale": "Inspection: AST overmatch on threading.Event.set() inside run_relay; no Redis client or hash write exists in the opaque relay.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan117_custody_relay.py::test_empty_streams_produce_eof_and_empty_bins",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_Sampler.__exit__:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_direct:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_note:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_provision:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_provision:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:_redis_facts:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:run_pilot:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:run_pilot:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m1_scale:run_pilot:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement's counts, timings and hashes on a throwaway corpus; no record content is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_the_corpus_count_is_per_language_with_exclusions",
       "evidence_tier": "unit"
     },
     {

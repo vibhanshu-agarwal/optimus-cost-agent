@@ -37,7 +37,9 @@ from optimus.acp.local_infra import (
     ensure_local_gateway,
     ensure_local_phoenix,
     ensure_local_redis,
+    ensure_memory_redis,
     expected_gateway_identity,
+    gateway_memory_index,
     record_gateway_refusal,
 )
 from optimus.acp.operator_paths import OperatorPathConfigurationError, resolve_authorized_operator_paths
@@ -73,6 +75,7 @@ from optimus_model_policy import RegistryError, binding
 from optimus_model_policy.binding import APPROVAL_LITERAL_NAME, COMPOSITION_LITERAL_NAME, BindingError
 from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTING_LITERAL_NAME
+from optimus_security.memory_index_config import SECURITY_LITERAL_NAME as MEMORY_INDEX_LITERAL_NAME
 
 _OWNED_READER_TYPES = (StdioByteReader, StdioNdjsonLineReader)
 _FRAMED_WRITER_TYPE = StdioByteWriter
@@ -81,6 +84,10 @@ if TYPE_CHECKING:
     from optimus.acp.stage_c import StageCLaunch
     from optimus.acp.test_composition import TestComposition
     from optimus.usage.durable_capture import DurableCapture
+
+
+MEMORY_NOT_APPROVED_NOTICE = "Context index: set up, but this launch has not approved it. Run optimus-trust approve to use it. This session uses today's context."
+MEMORY_SETUP_REQUIRED_NOTICE = "Context index: setup required. Run optimus-trust memory-setup to use it. This session uses today's context."
 
 
 class _BuildServerKwargs(TypedDict):
@@ -94,6 +101,8 @@ class _BuildServerKwargs(TypedDict):
     stage_c: NotRequired[StageCLaunch]
     auto_composition: NotRequired[AutoComposition]
     durable_capture: NotRequired[DurableCapture]
+    memory_index: NotRequired[tuple[Path, Path]]
+    memory_notice: NotRequired[str]
 
 
 
@@ -860,10 +869,35 @@ def main(argv: list[str] | None = None) -> int:
         print(f"optimus-agent: {exc.code}", file=sys.stderr)
         return 2
 
+    memory_index_ready: list[Path] = []
+    memory_notices: list[str] = []  # the panel's copy of why not: a person in the editor never sees this launch's log
+
+    def _ensure_memory_index(*, start: bool) -> None:
+        """Plan 12.10: the approved context index's dedicated Redis. Anything short of ready says why and keeps today's context."""
+
+        def not_approved(line: str) -> None:
+            _print_log(line)
+            memory_notices.append(MEMORY_NOT_APPROVED_NOTICE)
+
+        memory_dir = gateway_memory_index(
+            candidate.operator_paths.config_root, candidate.security_literals.get(MEMORY_INDEX_LITERAL_NAME), log=not_approved
+        )[0]
+        if memory_dir is None:
+            if not memory_notices:
+                memory_notices.append(MEMORY_SETUP_REQUIRED_NOTICE)
+            return
+        status = ensure_memory_redis(memory_dir, start=start, log=_print_log)
+        if status.state != "ready":
+            _print_log(f"optimus-agent: the context index is {status.state}: {status.detail}. This launch keeps today's context.")
+            memory_notices.append(f"Context index: {status.state} ({status.detail}). This session uses today's context.")
+            return
+        memory_index_ready.append(memory_dir)
+
     def _start_local_dependencies() -> tuple[str | None, int | None]:
         """Start Redis (+ optional Phoenix). Returns (otlp_endpoint, error_exit)."""
         try:
             ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
+            _ensure_memory_index(start=True)
             if args.with_local_phoenix:
                 return ensure_local_phoenix(log=_print_log), None
         except LocalInfrastructureError as exc:
@@ -886,6 +920,7 @@ def main(argv: list[str] | None = None) -> int:
         auto_composition=auto_composition is not None,
         usage_accounting=True,  # Plan 12.8
         approved_accounting_config=candidate.security_literals.get(ACCOUNTING_LITERAL_NAME),
+        approved_memory_index=candidate.security_literals.get(MEMORY_INDEX_LITERAL_NAME),
     )
     if expected_identity is not None:
         agent_environ[GATEWAY_IDENTITY_ENVIRON] = expected_identity.digest
@@ -923,6 +958,7 @@ def main(argv: list[str] | None = None) -> int:
             stage_c_ledger=None if stage_c_launch is None else stage_c_launch.ledger,
             usage_accounting=True,  # Plan 12.8
             approved_accounting_config=candidate.security_literals.get(ACCOUNTING_LITERAL_NAME),
+            approved_memory_index=candidate.security_literals.get(MEMORY_INDEX_LITERAL_NAME),
         )
 
     lifecycle = ProcessLifecycle(report=_report_shutdown)
@@ -984,8 +1020,10 @@ def main(argv: list[str] | None = None) -> int:
                     # the Gateway path that receives OTLP configuration.
                     if args.strict or args.with_local_phoenix:
                         gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
-                elif args.strict:
-                    _confirm_running_gateway()  # strict pre-flight sends a model request
+                else:
+                    _ensure_memory_index(start=False)
+                    if args.strict:
+                        _confirm_running_gateway()  # strict pre-flight sends a model request
                 try:
                     run_preflight(
                         agent_environ,
@@ -1044,6 +1082,7 @@ def main(argv: list[str] | None = None) -> int:
                     # Plan 12.9: the first prompt must not beat the answer. A loopback request, bounded by CAPABILITIES_SECONDS.
                     delivery.negotiate()
             else:
+                _ensure_memory_index(start=False)
                 try:
                     _confirm_running_gateway()
                 except LocalInfrastructureError as exc:
@@ -1075,6 +1114,10 @@ def main(argv: list[str] | None = None) -> int:
                     build_server_kwargs["stage_c"] = stage_c_launch
                 if auto_composition is not None:
                     build_server_kwargs["auto_composition"] = auto_composition
+                if memory_index_ready:
+                    build_server_kwargs["memory_index"] = (memory_index_ready[-1], candidate.operator_paths.config_root)
+                elif memory_notices:
+                    build_server_kwargs["memory_notice"] = memory_notices[-1]
                 server = build_configured_server(**build_server_kwargs)
                 configured_server = server
             except StartupConfigurationError as exc:

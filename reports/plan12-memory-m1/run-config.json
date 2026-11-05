@@ -1,0 +1,19 @@
+{
+  "label": "plan12.10-pilot-2026-11-03",
+  "authorization": "Operator, Claude chat 2026-11-03: released the CP2 development resources (dedicated test Redis, packages, embedding artifact, isolated keyring, WSL).",
+  "container": "p1210-index-test-redis",
+  "volume": "p1210-index-test-data",
+  "port": 6392,
+  "maxmemory_mb": 512,
+  "work_dir": "tmp/plan12-m1-pilot",
+  "artifact_cache": "tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+  "corpus_paths": ["src/optimus_gateway", "src/context_engine", "src/optimus_model_policy"],
+  "scale_records": 60000,
+  "embedding_threads": 2,
+  "query_samples": 200,
+  "acpx_turns": 20,
+  "load_paths": ["src", "tools"],
+  "bulk_batches": 20,
+  "assembly_corpus_paths": ["src/optimus_gateway", "src/context_engine", "src/optimus_model_policy"],
+  "assembly_rounds": 10
+}

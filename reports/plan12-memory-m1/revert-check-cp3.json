@@ -1,0 +1,1264 @@
+{
+ "schema": "plan12-memory-m1.revert-check.v1",
+ "plan": "12.10",
+ "issue": 469,
+ "checkpoint": "CP3",
+ "head": "hex:c54b30cfc8910b10b5e732fddf6f6bc0ff6bb56e",
+ "rule": "A case counts only if pytest exits 1 with exactly one failed node, no collection error, and that node is the one named for the guard.",
+ "not_covered": "The cancel-event lock in MemorySession is a race with no deterministic test; it is checked by inspection and named in the review brief.",
+ "cases": 125,
+ "caught": 125,
+ "not_caught": [],
+ "results": [
+  {
+   "guard": "Chat: the question moves ahead of the history",
+   "file": "src/optimus/agent/prompts.py",
+   "file_sha256": "hex:355615cca11da2e34581627ac8c1d0376e10623a01ac81fd5f7a3298e0548606",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_indexed_chat_layout_keeps_what_changes_last",
+   "failure": "E   AssertionError: assert 1503 < 625"
+  },
+  {
+   "guard": "Chat: the map moves after the history",
+   "file": "src/optimus/agent/prompts.py",
+   "file_sha256": "hex:355615cca11da2e34581627ac8c1d0376e10623a01ac81fd5f7a3298e0548606",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_indexed_chat_layout_keeps_what_changes_last",
+   "failure": "E   AssertionError: assert 1250 < 1148"
+  },
+  {
+   "guard": "Agent: the task moves ahead of the map",
+   "file": "src/optimus/agent/prompts.py",
+   "file_sha256": "hex:355615cca11da2e34581627ac8c1d0376e10623a01ac81fd5f7a3298e0548606",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_indexed_planner_layout_moves_task_and_turn_lines_last",
+   "failure": "E   AssertionError: assert 4627 < 4213"
+  },
+  {
+   "guard": "the route's setting never reaches admission",
+   "file": "src/optimus_gateway/model_policy.py",
+   "file_sha256": "hex:f84f440b2c986d4133e4e5083b771664d11f762d706cfee6c49e93033d716f4b",
+   "test_file": "tests/unit/optimus_gateway/test_prompt_cache.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_prompt_cache.py::test_top_level_adds_only_the_root_control_after_flattening[responses]",
+   "failure": "E   AssertionError: assert {'model': 'cn...': True}, ...} == {'model': 'cn... 'high'}, ...}"
+  },
+  {
+   "guard": "admission's setting never reaches the client",
+   "file": "src/optimus_gateway/responses.py",
+   "file_sha256": "hex:3abfe4df6df7bdb21c9e1ae9a596f60cdea606ba8d21e961c9178acf356ad9f9",
+   "test_file": "tests/unit/optimus_gateway/test_prompt_cache.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_prompt_cache.py::test_top_level_adds_only_the_root_control_after_flattening[responses]",
+   "failure": "E   AssertionError: assert {'model': 'cn...': True}, ...} == {'model': 'cn... 'high'}, ...}"
+  },
+  {
+   "guard": "implicit caching changes the wire",
+   "file": "src/optimus_gateway/upstream_client.py",
+   "file_sha256": "hex:f4d6135b179256d43658a0126203611de2093ca84733ca46a104e7980016497d",
+   "test_file": "tests/unit/optimus_gateway/test_prompt_cache.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_prompt_cache.py::test_the_client_itself_adds_nothing_for_any_other_setting[none]",
+   "failure": "E   AssertionError: assert 'cache_control' not in {'model': 'cn/alpha', 'messages': [{'role': 'user', 'content': 'hi'}], 'max_tokens': 16384, 'provider': {}, ...}"
+  },
+  {
+   "guard": "the payload digest ignores the control",
+   "file": "src/optimus_model_policy/binding.py",
+   "file_sha256": "hex:9477dfb383086297db23298adc33975ca2fd96916a3db4d16a92b3282b83487c",
+   "test_file": "tests/unit/optimus_gateway/test_prompt_cache.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_prompt_cache.py::test_only_top_level_changes_the_payload_identity",
+   "failure": "E   AssertionError: assert '<hex>' != '<hex>'"
+  },
+  {
+   "guard": "a disclosure signs a different payload",
+   "file": "src/optimus/gateway/disclosure.py",
+   "file_sha256": "hex:9842b1b6bd07925249bca4e877921bc2982545962466cf68e33db2842a31f1d8",
+   "test_file": "tests/unit/optimus_gateway/test_prompt_cache.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_prompt_cache.py::test_the_hosts_own_disclosure_is_accepted_for_a_cached_route",
+   "failure": "E   assert (400 == 200)"
+  },
+  {
+   "guard": "an absent setting changes every approved identity",
+   "file": "src/optimus_model_policy/registry.py",
+   "file_sha256": "hex:cd6d6ac20b52e8dcb01fb382de89a65397d8ad4b2f658dc3f00d322835e92795",
+   "test_file": "tests/unit/optimus_gateway/test_prompt_cache.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/optimus_gateway/test_prompt_cache.py::test_a_registry_that_says_nothing_keeps_every_approved_identity",
+   "failure": "E   AssertionError: assert 'prompt_cache' not in {'estimator': 'half', 'endpoints': [{'provider': 'alpha-cloud/fp8', 'quantization': 'fp8', 'context_window_tokens': 30...t_window_tokens': 400000, 'max_output_tokens': 200"
+  },
+  {
+   "guard": "Chat gets a fifth round",
+   "file": "src/optimus/agent/runner.py",
+   "file_sha256": "hex:b275e7645c0e246154c9d79f8d8ee2401883661d716cdaecd688708454dafd4e",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_chat_stops_at_four_rounds_then_one_call_with_tools_withdrawn",
+   "failure": "E   assert (True and 'SEARCH <words>' not in 'INDEXED_CHA...es it work\\n'"
+  },
+  {
+   "guard": "tool syntax after the limit counts as an answer",
+   "file": "src/optimus/agent/runner.py",
+   "file_sha256": "hex:b275e7645c0e246154c9d79f8d8ee2401883661d716cdaecd688708454dafd4e",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_there_is_no_fifth_round_even_if_the_model_keeps_asking",
+   "failure": "E   AssertionError: assert (None == 'CHAT_SEARCH_LIMIT_REACHED')"
+  },
+  {
+   "guard": "repeats keep the rounds going",
+   "file": "src/optimus/agent/runner.py",
+   "file_sha256": "hex:b275e7645c0e246154c9d79f8d8ee2401883661d716cdaecd688708454dafd4e",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_repeating_itself_ends_the_search_rounds_early",
+   "failure": "E   assert (3 == 3 and 1 == 1 and 'SEARCH <words>' not in 'INDEXED_CHA...es it work\\n'"
+  },
+  {
+   "guard": "Agent's rounds have no bound",
+   "file": "src/optimus/agent/planning_loop.py",
+   "file_sha256": "hex:5188a4868727218f82cdd53950cb4fc2853a6a886531cfcd5c8c40e59b32e72a",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_agent_search_rounds_are_on_top_of_its_planning_turns",
+   "failure": "E   assert 'SEARCH <words>' not in 'INDEXED_PLA...inutes: 30\\n'"
+  },
+  {
+   "guard": "a repeated request runs again",
+   "file": "src/optimus/agent/index_turn.py",
+   "file_sha256": "hex:a4575fe32cc9ed506f645a087ce2d781eb9d8a0597bb3f93e0f04d4ed870e8f7",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_repeat_is_not_run_again_and_a_reply_of_only_repeats_is_no_progress",
+   "failure": "E   AssertionError: assert (True and not True)"
+  },
+  {
+   "guard": "a tool skips the guard",
+   "file": "src/optimus/agent/tools.py",
+   "file_sha256": "hex:f5d0822a357a82dfd296c1e5e569e144a7191d3645d3460334b058ae23b38e17",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_guard_refuses_a_path_outside_the_workspace[../outside.py]",
+   "failure": "E   AssertionError: assert 'HOLD' == 'BLOCK'"
+  },
+  {
+   "guard": "a pack shows a changed file",
+   "file": "src/context_engine/context_pack.py",
+   "file_sha256": "hex:2ddd20918965ddd0c24faa7492c21b4909569e2acef5fa3952139eed3b66e057",
+   "test_file": "tests/unit/context_engine/test_retrieval_and_pack.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context_engine/test_retrieval_and_pack.py::test_a_changed_file_gives_neither_body_nor_signature_and_is_reported_stale",
+   "failure": "E   AssertionError: assert ('--- relevant...n    return 1' == ''"
+  },
+  {
+   "guard": "a tool shows a changed file",
+   "file": "src/optimus/context/index_tools.py",
+   "file_sha256": "hex:423661341bddac544123fabc3da54f6c37c49af4ec45840f67714209c7d4bb86",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_search_drops_a_record_whose_file_changed_and_never_shows_its_signature",
+   "failure": "E   AssertionError: assert ('old_name' not in 'Scope: inde... old_name():'"
+  },
+  {
+   "guard": "a long name refuses the structure channel",
+   "file": "src/context_engine/retrieval.py",
+   "file_sha256": "hex:c07cdcf15ba92767c447d8a0129f167701725b510722985ca9aa9ec9b050b75f",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_term_or_name_the_route_would_refuse_is_left_out_before_it_gets_there",
+   "failure": "E   AssertionError: assert ['bbbbbbbbbbb..., 'kept_name'] == ['kept_name']"
+  },
+  {
+   "guard": "a long name reads as an outage in SYMBOLS",
+   "file": "src/optimus/context/index_tools.py",
+   "file_sha256": "hex:423661341bddac544123fabc3da54f6c37c49af4ec45840f67714209c7d4bb86",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_term_or_name_the_route_would_refuse_is_left_out_before_it_gets_there",
+   "failure": "E   assert not True"
+  },
+  {
+   "guard": "an embedder failure fails the turn",
+   "file": "src/context_engine/retrieval.py",
+   "file_sha256": "hex:c07cdcf15ba92767c447d8a0129f167701725b510722985ca9aa9ec9b050b75f",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_model_that_fails_is_a_search_that_did_not_answer_and_never_a_failed_turn",
+   "failure": "E   RuntimeError: native failure"
+  },
+  {
+   "guard": "a silent channel reads as no matches",
+   "file": "src/optimus/context/index_tools.py",
+   "file_sha256": "hex:423661341bddac544123fabc3da54f6c37c49af4ec45840f67714209c7d4bb86",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_search_never_reads_a_search_that_did_not_answer_as_no_matches",
+   "failure": "E   AssertionError: assert ('No matches in this scope.' in 'Scope: index generation 3, complete, 2 of 2 files. Not finding something covers only this scope.\\nNo matches in this scope.' and 'did not answer' in 'Scope: ind"
+  },
+  {
+   "guard": "a worker failure leaves a status that says building",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_worker_that_fails_says_so_rather_than_building_forever",
+   "failure": "E   AssertionError: assert False"
+  },
+  {
+   "guard": "a new branch keeps the old branch's scope",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_an_older_branch_answer_never_undoes_a_newer_one",
+   "failure": "E   AssertionError: assert ('main' == 'feature'"
+  },
+  {
+   "guard": "a pass vouches for a line it did not build",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/integration/context/test_memory_session.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_session.py::test_a_branch_made_at_the_same_commit_as_a_pass_finishes_still_gets_its_own_line",
+   "failure": "E   AssertionError: the condition never held"
+  },
+  {
+   "guard": "a new file named in the task is refused",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/integration/context/test_memory_session.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_session.py::test_a_file_made_just_before_the_turn_is_found_when_it_is_named",
+   "failure": "E   assert ('WORKSPACE_REFERENCE_NOT_READABLE' is None)"
+  },
+  {
+   "guard": "a file written this turn reads as missing",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/integration/context/test_memory_session.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_session.py::test_a_file_written_during_a_turn_is_not_reported_as_missing",
+   "failure": "E   AssertionError: assert ('written_now.py' in ())"
+  },
+  {
+   "guard": "a tool answers from the last walk",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/integration/context/test_memory_session.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_session.py::test_a_tool_sees_a_file_made_after_the_last_walk",
+   "failure": "E   AssertionError: assert 'just_made.py' in 'Scope: . as the file policy admits it, 3 entries. Excluded files are not shown.\\nfirst.py\\nnotes.md\\nsecond.py'"
+  },
+  {
+   "guard": "the map keeps an old ignore file",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_map_drops_a_file_the_policy_now_refuses_at_once",
+   "failure": "E   AssertionError: assert 'pkg/a.py' not in 'notes.md\\npkg/a.py: helper'"
+  },
+  {
+   "guard": "grounding keeps an old ignore file",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_grounding_on_one_turn_sees_an_ignore_file_change_by_itself",
+   "failure": "E   AssertionError: assert () == ('pkg/a.py',)"
+  },
+  {
+   "guard": "the worker keeps an old ignore file",
+   "file": "src/optimus/context/memory_workspace.py",
+   "file_sha256": "hex:33f3590e706e83e0e8542ce1a4fefed498f54cac0d0afe6d845b91e33d9900a2",
+   "test_file": "tests/unit/context/test_memory_workspace.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_workspace.py::test_a_workers_source_sees_an_ignore_file_change_at_its_next_revision",
+   "failure": "E   AssertionError: assert 'a.py' not in ['.optimusignore', 'a.py']"
+  },
+  {
+   "guard": "a listing admits a link without resolving it",
+   "file": "src/optimus/guardrails/file_policy.py",
+   "file_sha256": "hex:3b7414721b466bc21e0b0434fec1fa33b8f24529f31a9c1f482b87bc0cb3bbf5",
+   "test_file": "tests/unit/guardrails/test_file_policy.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/guardrails/test_file_policy.py::test_names_judges_a_junction_out_of_the_workspace_by_its_target",
+   "failure": "E   AssertionError: assert ('keep.py' in ('keep.py', 'linked/secret.py') and 'linked/secret.py' not in ('keep.py', 'linked/secret.py'))"
+  },
+  {
+   "guard": "an old turn reads the new branch's catalogue",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_turn_keeps_its_own_scopes_catalogue_after_a_switch",
+   "failure": "E   AssertionError: an old turn read another branch's line with its own epoch number"
+  },
+  {
+   "guard": "only a turn notices a branch switch",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/integration/context/test_memory_session.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_session.py::test_a_switch_before_a_pass_looks_at_the_disk_never_writes_that_branch_into_this_line",
+   "failure": "E   AssertionError: the condition never held"
+  },
+  {
+   "guard": "an expired generation answers in part",
+   "file": "src/context_engine/retrieval.py",
+   "file_sha256": "hex:c07cdcf15ba92767c447d8a0129f167701725b510722985ca9aa9ec9b050b75f",
+   "test_file": "tests/integration/context/test_memory_session.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_session.py::test_a_generation_that_expires_under_a_reader_is_tried_again_and_never_answered_partly",
+   "failure": "E   AssertionError: assert ('ok' == 'ok'"
+  },
+  {
+   "guard": "absence is claimed during a build",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_grounding_reports_what_is_not_there_and_never_claims_absence_during_a_build",
+   "failure": "E   AssertionError: assert ('missing_name',) == ()"
+  },
+  {
+   "guard": "any number of changed files is checked",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_absence_is_not_claimed_outside_git_or_past_too_many_changes",
+   "failure": "E   AssertionError: assert ('any_name',) == ()"
+  },
+  {
+   "guard": "a root file settles a shared name",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_root_files_name_is_still_ambiguous_once_a_second_file_has_it",
+   "failure": "E   AssertionError: assert () == ('root.py',)"
+  },
+  {
+   "guard": "a symbol's report goes back to being about the disk",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_tools_and_grounding_agree_with_the_buffer_the_turn_saw",
+   "failure": "E   AssertionError: assert (('unsaved_helper',) == ('unsaved_helper',)"
+  },
+  {
+   "guard": "the real channel keeps a cancelled request",
+   "file": "src/optimus/acp/server.py",
+   "file_sha256": "hex:9b9b82facd3679324d72216cdbb8b746179f9f9fbdef6049064f6c644da4636a",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_on_the_real_channel_a_cancel_clears_the_request_and_a_late_reply_finds_nothing",
+   "failure": "E   assert {10000: <Future cancelled>} == {}"
+  },
+  {
+   "guard": "git runs under the session's lock",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_stalled_branch_discovery_holds_no_lock_a_person_or_the_event_loop_waits_on",
+   "failure": "E   AssertionError: <bound method MemorySession.stop of <optimus.context.memory_session.MemorySession object at 0x<hex>>>"
+  },
+  {
+   "guard": "an older branch answer undoes a newer one",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_an_older_branch_answer_never_undoes_a_newer_one",
+   "failure": "E   AssertionError: assert (_Scope(identity='<hex>', branch='main', storage=<tests.unit.context.test_memory_tools_and_turns._Storage object at 0x<hex>>) is _Scope(identity='<hex>', branch='feature', storage=<tests.unit.c"
+  },
+  {
+   "guard": "a new branch keeps the old cache",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_new_branch_still_gets_its_own_scope_and_clears_what_the_old_one_cached",
+   "failure": "E   assert (<object object at 0x<hex>> is None)"
+  },
+  {
+   "guard": "a turn waits on the index without a limit",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_blocked_index_never_holds_a_turn_and_its_late_answer_is_dropped[turn]",
+   "failure": "E   asyncio.exceptions.CancelledError"
+  },
+  {
+   "guard": "a second call starts while the first is out",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_blocked_index_never_holds_a_turn_and_its_late_answer_is_dropped[turn]",
+   "failure": "E   assert (2 == 1)"
+  },
+  {
+   "guard": "a late answer is used",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_the_status_line_shows_only_when_the_state_changes",
+   "failure": "E   assert [\"Context ind...context.\\n\\n\"] == [\"Context ind...9 files.\\n\\n']"
+  },
+  {
+   "guard": "a preparing failure fails the turn",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_an_index_that_fails_while_preparing_never_fails_a_turn",
+   "failure": "E   RuntimeError: a native model has no error contract"
+  },
+  {
+   "guard": "preparing runs outside the turn's cleanup",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_cancel_while_waiting_on_the_index_still_closes_the_turn",
+   "failure": "E   AssertionError: assert ('session-<hex>' not in {} and 0 == 1)"
+  },
+  {
+   "guard": "the status line never leaves nothing published",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_the_status_line_shows_only_when_the_state_changes",
+   "failure": "E   assert [\"Context ind...9 files.\\n\\n'] == [\"Context ind...9 files.\\n\\n']"
+  },
+  {
+   "guard": "a new scope reads as unreachable",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_status_that_cannot_be_read_says_so_and_logs_why",
+   "failure": "E   assert 'nothing published' in \"Context index: cannot be reached right now. This turn uses today's context.\""
+  },
+  {
+   "guard": "every refusal reads as building",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_status_that_cannot_be_read_says_so_and_logs_why",
+   "failure": "E   assert 'cannot be reached' in \"Context index: building, nothing published yet. This turn uses today's context.\""
+  },
+  {
+   "guard": "an unanswered status logs nothing",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_status_that_cannot_be_read_says_so_and_logs_why",
+   "failure": "E   AssertionError: assert 'INDEX_UNAVAILABLE' in 'WARNING  optimus.context.memory_session:memory_session.py:303 context index: the route refused: SCOPE_DROPPING\\n'"
+  },
+  {
+   "guard": "a failed registration logs nothing",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_workspace_that_cannot_be_registered_logs_why",
+   "failure": "E   AssertionError: assert ('WORKSPACE_IDENTITY_UNAVAILABLE' in '')"
+  },
+  {
+   "guard": "a failed registration logs a path",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_workspace_that_cannot_be_registered_logs_why",
+   "failure": "E   AssertionError: assert ('PermissionError' in 'WARNING  optimus.context.memory_session:memory_session.py:721 context index: this workspace cannot be registered: C:/private/folder is denied ()\\n')"
+  },
+  {
+   "guard": "identity's git inherits the ACP stdin",
+   "file": "src/optimus/acp/trusted_paths.py",
+   "file_sha256": "hex:4a4ad265d82b43c30fc88417e3cc431b8f7bbb75b0c4caa6bd42ce171c6e6b23",
+   "test_file": "tests/unit/context/test_memory_workspace.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_workspace.py::test_git_answers_while_the_acp_reader_is_waiting_on_stdin",
+   "failure": "E   AssertionError: []"
+  },
+  {
+   "guard": "the workspace's git inherits the ACP stdin",
+   "file": "src/optimus/context/memory_workspace.py",
+   "file_sha256": "hex:33f3590e706e83e0e8542ce1a4fefed498f54cac0d0afe6d845b91e33d9900a2",
+   "test_file": "tests/unit/context/test_memory_workspace.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_workspace.py::test_git_answers_while_the_acp_reader_is_waiting_on_stdin",
+   "failure": "E   AssertionError: []"
+  },
+  {
+   "guard": "the provenance git inherits the ACP stdin",
+   "file": "src/optimus/acp/debug_trace.py",
+   "file_sha256": "hex:3c5a931ce60f4859c61c200a5b78d2471e13b2eb7ca834afa87fd9170f2b79c9",
+   "test_file": "tests/unit/context/test_memory_workspace.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_workspace.py::test_git_answers_while_the_acp_reader_is_waiting_on_stdin",
+   "failure": "E   AssertionError: []"
+  },
+  {
+   "guard": "setup ignores OPTIMUS_CONFIG_ROOT",
+   "file": "src/optimus/acp/launch_approval_cli.py",
+   "file_sha256": "hex:c23dbb934643c0cc9a695bde5c9b5b6b8cf03080a5bcebb19850275f56ed4e60",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_where_a_launch_with_the_same_environment_reads",
+   "failure": "E   AssertionError: assert ([WindowsPath(...-cost-agent')] == [WindowsPath(...rate-config')]"
+  },
+  {
+   "guard": "a refused config folder is a traceback",
+   "file": "src/optimus/acp/launch_approval_cli.py",
+   "file_sha256": "hex:c23dbb934643c0cc9a695bde5c9b5b6b8cf03080a5bcebb19850275f56ed4e60",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_setup_writes_where_a_launch_with_the_same_environment_reads",
+   "failure": "E   optimus.acp.operator_paths.OperatorPathConfigurationError: Refusing to load local gateway configuration from C:\\Users\\pc\\AppData\\Local\\Temp\\pytest-of-pc\\pytest-24776\\test_setup_writes_where_a_laun0\\workspace\\inside b"
+  },
+  {
+   "guard": "an earlier attempt's files are hashed",
+   "file": "src/optimus/acp/memory_setup.py",
+   "file_sha256": "hex:99a1d606b6b35ff0be6781834e84a277b53f54b53b990a9c9c8c60eba621499f",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_a_rejected_download_leaves_nothing_and_the_next_attempt_is_not_hashed_with_it",
+   "failure": "E   optimus.acp.memory_setup.MemorySetupError: The downloaded artifact's digest is <hex>, not the configured one; nothing was configured."
+  },
+  {
+   "guard": "a rejected download stays on disk",
+   "file": "src/optimus/acp/memory_setup.py",
+   "file_sha256": "hex:99a1d606b6b35ff0be6781834e84a277b53f54b53b990a9c9c8c60eba621499f",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_a_rejected_download_leaves_nothing_and_the_next_attempt_is_not_hashed_with_it",
+   "failure": "E   AssertionError: assert not True"
+  },
+  {
+   "guard": "the prompt hides the folder",
+   "file": "src/optimus/acp/memory_setup.py",
+   "file_sha256": "hex:99a1d606b6b35ff0be6781834e84a277b53f54b53b990a9c9c8c60eba621499f",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_the_description_names_what_will_happen_before_any_download",
+   "failure": "E   AssertionError: assert 'C:\\\\Users\\\\pc\\\\AppData\\\\Local\\\\Temp\\\\pytest-of-pc\\\\pytest-24779\\\\test_the_description_names_wha0\\\\memory-index' in '  Download once: test/model from test at revision abc, licence MIT, about 1 "
+  },
+  {
+   "guard": "the download fetches files outside the digest",
+   "file": "src/optimus/acp/memory_setup.py",
+   "file_sha256": "hex:99a1d606b6b35ff0be6781834e84a277b53f54b53b990a9c9c8c60eba621499f",
+   "test_file": "tests/unit/context/test_memory_setup.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_setup.py::test_the_real_download_asks_for_exactly_the_files_the_digest_covers",
+   "failure": "E   AssertionError: assert set() == {'config.json..._config.json'}"
+  },
+  {
+   "guard": "a machine without setup is not told",
+   "file": "src/optimus/acp/__main__.py",
+   "file_sha256": "hex:63eb3685fb6a6d2adf8ddb90620ffe5b6bab8463d436be562f6c53d7a9b74c1f",
+   "test_file": "tests/unit/acp/test_main_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_main_wiring.py::test_a_machine_that_never_set_it_up_is_told_setup_is_required_and_gets_no_index",
+   "failure": "E   KeyError: 'memory_notice'"
+  },
+  {
+   "guard": "the panel never hears why the index is not in use",
+   "file": "src/optimus/acp/__main__.py",
+   "file_sha256": "hex:63eb3685fb6a6d2adf8ddb90620ffe5b6bab8463d436be562f6c53d7a9b74c1f",
+   "test_file": "tests/unit/acp/test_main_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_main_wiring.py::test_a_person_in_the_editor_is_told_why_the_index_is_not_in_use",
+   "failure": "E   KeyError: 'memory_notice'"
+  },
+  {
+   "guard": "not approved goes unsaid",
+   "file": "src/optimus/acp/__main__.py",
+   "file_sha256": "hex:63eb3685fb6a6d2adf8ddb90620ffe5b6bab8463d436be562f6c53d7a9b74c1f",
+   "test_file": "tests/unit/acp/test_main_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_main_wiring.py::test_set_up_but_not_approved_says_how_to_approve_it",
+   "failure": "E   assert (\"Context inde...ay's context.\" == \"Context inde...ay's context.\""
+  },
+  {
+   "guard": "the host drops the launch's notice",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_launch_that_could_not_use_its_index_says_why_once_a_session",
+   "failure": "E   AssertionError: assert [] == ['Context ind...pproved.\\n\\n']"
+  },
+  {
+   "guard": "a machine that never opted in gets a line",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_machine_that_never_opted_in_sees_nothing",
+   "failure": "E   assert not True"
+  },
+  {
+   "guard": "line endings read as an unsaved edit",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_saved_crlf_file_is_not_an_unsaved_edit_because_the_editor_shows_lf",
+   "failure": "E   AssertionError: assert 'unsaved' not in '--- require...s scope. ---'"
+  },
+  {
+   "guard": "an editor that gives nothing is asked again",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_an_editor_that_gives_nothing_means_disk_and_is_not_asked_again",
+   "failure": "E   AssertionError: assert (2 == 1)"
+  },
+  {
+   "guard": "the fallback's tools still see the buffer",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_when_the_index_cannot_answer_nothing_this_turn_sees_the_buffer",
+   "failure": "E   AssertionError: assert 'unsaved_helper' not in 'pkg/a.py: r...ved_helper()'"
+  },
+  {
+   "guard": "a binary buffer is used",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_buffer_this_turn_could_not_use_means_disk[binary]",
+   "failure": "E   assert \"'needle here'\" in \"--- required files ---\\n--- pkg/a.py ---\\na\\x00b\\n--- scope: index generation 3, complete, 2 of 2 files; 0 in languag...m the editor's unsaved text, which differs from disk: pkg/a.py. Sayin"
+  },
+  {
+   "guard": "an oversized buffer is used",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_buffer_this_turn_could_not_use_means_disk[too large]",
+   "failure": "E   assert \"'needle here'\" in ''"
+  },
+  {
+   "guard": "grounding ignores the buffer",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_tools_and_grounding_agree_with_the_buffer_the_turn_saw",
+   "failure": "E   AssertionError: assert (() == ('unsaved_helper',)"
+  },
+  {
+   "guard": "the coverage line hides the buffer",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_dirty_buffer_is_what_the_turn_sees_and_it_says_so",
+   "failure": "E   assert \"shown from the editor's unsaved text, which differs from disk: pkg/a.py\" in '--- required files ---\\n--- pkg/a.py ---\\nclass Parser:\\n    def parse(self, text):\\n        return text\\n\\n\\ndef uns...y no author"
+  },
+  {
+   "guard": "a client that did not advertise is asked",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_client_that_did_not_advertise_reading_is_never_asked[None]",
+   "failure": "E   assert <function AcpDuplexAdapter._buffer_reader.<locals>.read at 0x<hex>> is None"
+  },
+  {
+   "guard": "a truthy capability counts as advertised",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_client_that_did_not_advertise_reading_is_never_asked[capabilities4]",
+   "failure": "E   assert <function AcpDuplexAdapter._buffer_reader.<locals>.read at 0x<hex>> is None"
+  },
+  {
+   "guard": "a refusal fails the turn",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_refusal_means_disk_and_the_turn_goes_on",
+   "failure": "E   RuntimeError: refused"
+  },
+  {
+   "guard": "a malformed reply is used",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_malformed_reply_means_disk[reply1]",
+   "failure": "E   assert [3] == [None]"
+  },
+  {
+   "guard": "a running tool's card says completed",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_tool_gets_a_started_card_and_its_ending_on_one_id",
+   "failure": "E   AssertionError: assert ('SEARCH first_function' == 'SEARCH first_function'"
+  },
+  {
+   "guard": "the status repeats every turn",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_the_status_line_shows_only_when_the_state_changes",
+   "failure": "E   assert [\"Context ind...9 files.\\n\\n'] == [\"Context ind...9 files.\\n\\n']"
+  },
+  {
+   "guard": "a retiring session keeps indexing",
+   "file": "src/optimus/acp/session_retention.py",
+   "file_sha256": "hex:c502f6a49c969b3ffba0c10de885898fd5cd7e44fb592f5db101b10207d4d466",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_session_whose_cleanup_fails_still_stops_indexing",
+   "failure": "E   AssertionError: a quarantined session kept indexing"
+  },
+  {
+   "guard": "the map is not checked",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_map_drops_a_file_the_policy_now_refuses_at_once",
+   "failure": "E   AssertionError: assert 'pkg/a.py' not in 'notes.md\\npkg/a.py: helper'"
+  },
+  {
+   "guard": "the map checks symbols against another epoch's hashes",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_map_reads_its_hashes_from_its_own_epoch_even_during_a_build",
+   "failure": "E   assert [3] == [3, 4]"
+  },
+  {
+   "guard": "an unreadable file keeps its symbols in the map",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_file_that_can_no_longer_be_read_keeps_no_symbols_in_the_map[emptied]",
+   "failure": "E   AssertionError: assert ('helper' not in 'notes.md\\npkg/a.py: helper'"
+  },
+  {
+   "guard": "a cached listing vouches for a deleted path",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_grounding_does_not_trust_a_listing_that_predates_a_deletion_or_an_exclusion",
+   "failure": "E   AssertionError: assert () == ('pkg/a.py',)"
+  },
+  {
+   "guard": "a cached listing settles a root file's bare name",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_root_files_name_is_still_ambiguous_once_a_second_file_has_it",
+   "failure": "E   AssertionError: assert () == ('root.py',)"
+  },
+  {
+   "guard": "absence trusts size and time",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_absence_needs_each_changed_files_bytes_to_match_the_generation",
+   "failure": "E   AssertionError: assert ('new_name',) == ()"
+  },
+  {
+   "guard": "a proved change waits for size and time to move",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/integration/context/test_memory_session.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_session.py::test_a_change_a_turn_proved_gets_its_pass_even_if_size_and_time_say_nothing_moved",
+   "failure": "E   AssertionError: the condition never held"
+  },
+  {
+   "guard": "absence is claimed past a file too large to parse",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_absence_is_not_claimed_when_a_file_was_too_large_to_parse",
+   "failure": "E   AssertionError: assert ('defined_in_the_big_file',) == ()"
+  },
+  {
+   "guard": "synchronous retirement keeps indexing",
+   "file": "src/optimus/acp/session_retention.py",
+   "file_sha256": "hex:c502f6a49c969b3ffba0c10de885898fd5cd7e44fb592f5db101b10207d4d466",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_session_removed_synchronously_with_failing_cleanup_still_stops_indexing",
+   "failure": "E   AssertionError: a quarantined session kept indexing"
+  },
+  {
+   "guard": "an empty LIST hides a folder it could not see",
+   "file": "src/optimus/context/index_tools.py",
+   "file_sha256": "hex:423661341bddac544123fabc3da54f6c37c49af4ec45840f67714209c7d4bb86",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_an_empty_list_still_says_what_it_could_not_see",
+   "failure": "E   AssertionError: assert ('Nothing the file policy admits' in 'Nothing the file policy admits is listed under pkg/. Excluded files are not shown here.' and '1 folders could not be listed' in 'Nothing the file policy ad"
+  },
+  {
+   "guard": "the fast path skips the spelling check",
+   "file": "src/optimus/guardrails/file_policy.py",
+   "file_sha256": "hex:3b7414721b466bc21e0b0434fec1fa33b8f24529f31a9c1f482b87bc0cb3bbf5",
+   "test_file": "tests/unit/guardrails/test_file_policy.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/guardrails/test_file_policy.py::test_names_refuses_what_a_read_would_refuse_for_its_spelling",
+   "failure": "E   AssertionError: assert ('a:b.py', 'c...y', 'keep.py') == ('keep.py',)"
+  },
+  {
+   "guard": "a path is cut short in telemetry",
+   "file": "src/optimus/agent/index_turn.py",
+   "file_sha256": "hex:a4575fe32cc9ed506f645a087ce2d781eb9d8a0597bb3f93e0f04d4ed870e8f7",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_long_path_argument_is_recorded_whole",
+   "failure": "E   AssertionError: assert {'path': 'a/a...a/a/a/a/a/a/'} == {'path': 'a/a...a/a/a/a/b.py'}"
+  },
+  {
+   "guard": "a refused file stays in the map",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_map_drops_a_file_the_policy_now_refuses_at_once",
+   "failure": "E   AssertionError: assert 'pkg/a.py' not in 'notes.md\\npkg/a.py'"
+  },
+  {
+   "guard": "a changed file keeps its symbols in the map",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_changed_file_keeps_its_path_and_loses_its_symbols_at_once",
+   "failure": "E   AssertionError: assert ('pkg/a.py' in 'notes.md\\npkg/a.py: helper' and 'helper' not in 'notes.md\\npkg/a.py: helper'"
+  },
+  {
+   "guard": "what was proved for one generation vouches for the next",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_what_was_proved_for_one_generation_says_nothing_about_the_next",
+   "failure": "E   AssertionError: assert (('first_name', 'second_name') == ('first_name',)"
+  },
+  {
+   "guard": "a symbol's absence reads as a claim about the disk",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_grounding_reports_what_is_not_there_and_never_claims_absence_during_a_build",
+   "failure": "E   AssertionError: assert 'no definition in index generation 3, and the disk was not exhaustively checked: missing_name' in (('not found in the inspected scope: pkg/gone.py; not found in the inspected scope: missing_nam"
+  },
+  {
+   "guard": "unsaved text makes a false claim about a generation",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_tools_and_grounding_agree_with_the_buffer_the_turn_saw",
+   "failure": "E   AssertionError: assert (('unsaved_helper',) == ('unsaved_helper',)"
+  },
+  {
+   "guard": "the proof's discovery asks for no repair",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_absence_needs_each_changed_files_bytes_to_match_the_generation",
+   "failure": "E   AssertionError: a proved change gets its pass"
+  },
+  {
+   "guard": "a tool's discovery asks for no repair",
+   "file": "src/optimus/context/index_tools.py",
+   "file_sha256": "hex:423661341bddac544123fabc3da54f6c37c49af4ec45840f67714209c7d4bb86",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_tool_that_finds_a_changed_file_asks_for_its_repair[SEARCH]",
+   "failure": "E   AssertionError: assert () == ('pkg/a.py',)"
+  },
+  {
+   "guard": "unsaved text asks for a repair",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_unsaved_text_is_no_reason_to_repair_the_index[SEARCH]",
+   "failure": "E   AssertionError: assert ('pkg/a.py',) == ()"
+  },
+  {
+   "guard": "the map's discovery asks for no repair",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_map_asks_for_the_repair_and_rereads_the_generation_next_time",
+   "failure": "E   AssertionError: assert () == ('pkg/a.py',)"
+  },
+  {
+   "guard": "the map keeps asking until it ages out",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_map_asks_for_the_repair_and_rereads_the_generation_next_time",
+   "failure": "E   AssertionError: assert 237159.1373128 == -inf"
+  },
+  {
+   "guard": "grounding's discovery asks for no repair",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_record_of_changed_text_proves_nothing_either_way",
+   "failure": "E   AssertionError: a proved change gets its pass"
+  },
+  {
+   "guard": "a pass writes another branch into its line",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/integration/context/test_memory_session.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/integration/context/test_memory_session.py::test_a_switch_before_a_pass_looks_at_the_disk_never_writes_that_branch_into_this_line",
+   "failure": "E   AssertionError: the condition never held"
+  },
+  {
+   "guard": "unsaved text survives a new refusal",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_policy_change_takes_back_unsaved_text_the_turn_already_holds",
+   "failure": "E   AssertionError: assert 'cannot be read' in 'pkg/a.py: read now, language python, 3 entries.\\n1-3 Parser: class Parser\\n2-3 Parser.parse: def parse(self, text)\\n6-7 unsaved_helper: def unsaved_helper()'"
+  },
+  {
+   "guard": "a session never sees its ignore file change",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_policy_change_takes_back_unsaved_text_the_turn_already_holds",
+   "failure": "E   AssertionError: assert 'cannot be read' in 'pkg/a.py: read now, language python, 3 entries.\\n1-3 Parser: class Parser\\n2-3 Parser.parse: def parse(self, text)\\n6-7 unsaved_helper: def unsaved_helper()'"
+  },
+  {
+   "guard": "a record of changed text counts as found",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_record_of_changed_text_proves_nothing_either_way",
+   "failure": "E   AssertionError: assert (('helper',) == ()"
+  },
+  {
+   "guard": "two owners read as one",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_grounding_says_a_symbol_with_two_verified_owners_is_ambiguous",
+   "failure": "E   AssertionError: assert () == ('helper',)"
+  },
+  {
+   "guard": "absence is claimed from an older generation",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_absence_is_not_claimed_from_a_generation_older_than_the_disk",
+   "failure": "E   AssertionError: assert ('added_since',) == ()"
+  },
+  {
+   "guard": "absence is claimed where the parser cannot see",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_absence_is_not_claimed_where_the_parser_cannot_see",
+   "failure": "E   AssertionError: assert ('written_in_kotlin',) == ()"
+  },
+  {
+   "guard": "the catalogue ignores whose scope it is",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_turn_keeps_its_own_scopes_catalogue_after_a_switch",
+   "failure": "E   AssertionError: a turn was given another branch's catalogue"
+  },
+  {
+   "guard": "a complete generation reuses an older catalogue",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_complete_generation_never_reuses_an_older_catalogue",
+   "failure": "E   assert [3] == [3, 4]"
+  },
+  {
+   "guard": "disk tools inherit the index's limit",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_file_too_large_to_index_is_still_listed_searched_and_named",
+   "failure": "E   AssertionError: assert 'big.txt' in 'Scope: . as the file policy admits it, 2 entries. Excluded files are not shown.\\npkg/ (1 files)\\nnotes.md'"
+  },
+  {
+   "guard": "a failed read counts as searched",
+   "file": "src/optimus/context/index_tools.py",
+   "file_sha256": "hex:423661341bddac544123fabc3da54f6c37c49af4ec45840f67714209c7d4bb86",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_quoted_search_counts_only_what_it_read_and_names_what_it_could_not_see",
+   "failure": "E   AssertionError: assert ('read 2 of 3 admitted files now.' in 'Scope: read 3 of 3 admitted files now. 1 are binary, empty or could not be read.\\nNo matches in this scope.')"
+  },
+  {
+   "guard": "an unlisted folder goes unsaid",
+   "file": "src/optimus/context/index_tools.py",
+   "file_sha256": "hex:423661341bddac544123fabc3da54f6c37c49af4ec45840f67714209c7d4bb86",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_folder_that_cannot_be_listed_is_named_by_the_disk_tools",
+   "failure": "E   assert '1 folders could not be listed' in 'Scope: read 1 of 1 admitted files now.\\nNo matches in this scope.'"
+  },
+  {
+   "guard": "the wait for a repair holds off the repair",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_the_turn_lets_the_worker_run_during_its_wait_for_a_repair",
+   "failure": "E   assert ([True, True] == [False, False]"
+  },
+  {
+   "guard": "a cancel does not stop asking the editor",
+   "file": "src/optimus/context/memory_session.py",
+   "file_sha256": "hex:5f000e68f52fa8686bff6e80bb7c9a0496f2cced5b16414d2f2c7c4958148baa",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_cancel_stops_asking_the_editor",
+   "failure": "E   AssertionError: assert 2 == 1"
+  },
+  {
+   "guard": "a cancel does not end the wait for the editor",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_cancel_ends_the_wait_for_the_editor_at_once_and_takes_back_the_request",
+   "failure": "E   assert ([None] == [None]"
+  },
+  {
+   "guard": "a tool call goes unrecorded",
+   "file": "src/optimus/agent/index_turn.py",
+   "file_sha256": "hex:a4575fe32cc9ed506f645a087ce2d781eb9d8a0597bb3f93e0f04d4ed870e8f7",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_tool_call_is_recorded_once_with_its_facts_and_never_its_search_text",
+   "failure": "E   ValueError: not enough values to unpack (expected 3, got 0)"
+  },
+  {
+   "guard": "search text reaches telemetry",
+   "file": "src/optimus/agent/index_turn.py",
+   "file_sha256": "hex:a4575fe32cc9ed506f645a087ce2d781eb9d8a0597bb3f93e0f04d4ed870e8f7",
+   "test_file": "tests/unit/context/test_memory_tools_and_turns.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_tool_call_is_recorded_once_with_its_facts_and_never_its_search_text",
+   "failure": "E   KeyError: 'argument_chars'"
+  },
+  {
+   "guard": "a card has a different id from its record",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_tool_gets_a_started_card_and_its_ending_on_one_id",
+   "failure": "E   StopIteration"
+  },
+  {
+   "guard": "listing opens every file",
+   "file": "src/optimus/context/memory_workspace.py",
+   "file_sha256": "hex:33f3590e706e83e0e8542ce1a4fefed498f54cac0d0afe6d845b91e33d9900a2",
+   "test_file": "tests/unit/context/test_memory_workspace.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/context/test_memory_workspace.py::test_a_revision_reads_no_files_bytes_but_follows_them",
+   "failure": "E   AssertionError: a file was read"
+  },
+  {
+   "guard": "one folder is judged again for every file",
+   "file": "src/optimus/guardrails/file_policy.py",
+   "file_sha256": "hex:3b7414721b466bc21e0b0434fec1fa33b8f24529f31a9c1f482b87bc0cb3bbf5",
+   "test_file": "tests/unit/guardrails/test_file_policy.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/guardrails/test_file_policy.py::test_one_folders_verdict_is_shared_within_a_walk_and_its_answers_do_not_change",
+   "failure": "E   AssertionError: each folder is judged once in each case mode"
+  },
+  {
+   "guard": "a turn gets no index",
+   "file": "src/optimus/acp/spec.py",
+   "file_sha256": "hex:383f3f056897154e6855ccdf8327521d34ef87134fa498ae706176b1bf93fb4e",
+   "test_file": "tests/unit/acp/test_memory_wiring.py",
+   "result": "caught",
+   "exit": 1,
+   "failing_node": "tests/unit/acp/test_memory_wiring.py::test_a_turn_reaches_the_runner_with_its_index_and_cancel",
+   "failure": "E   assert True is False"
+  }
+ ]
+}

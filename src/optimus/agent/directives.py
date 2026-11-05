@@ -24,6 +24,8 @@ _TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 _MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST[ \t]+(\S+)[ \t]*$")
 _MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\{.*\})[ \t]*$")
 _MCP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_INDEX_TOOL_LINE = re.compile(r"^(?:(SEARCH)[ \t]+(\S.*?)|(OUTLINE|SYMBOLS|LIST)[ \t]+(\S+))[ \t]*$")
+MAX_INDEX_TOOL_LINES = 4
 _SHELL_METACHARACTERS = re.compile(r"[;|&`$<>]|&&|\|\||\$\(")
 _ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]|^/")
 
@@ -76,6 +78,28 @@ class AgentMcpCallDirective:
     server: str
     tool: str
     arguments: dict[str, object]
+
+
+@dataclass(frozen=True)
+class IndexToolRequest:
+    """One read-only index tool request (Plan 12.10): SEARCH, OUTLINE, SYMBOLS or LIST."""
+
+    tool: str
+    argument: str
+
+
+def parse_index_tool_reply(text: str) -> tuple[IndexToolRequest, ...] | None:
+    """The requests when a whole reply is nothing but tool lines; otherwise None, because a line inside prose or a plan is not a request."""
+    lines = [line for line in (directive_text(item) for item in plan_lines(_unwrap_markdown_code_fence(text))) if line]
+    if not lines or len(lines) > MAX_INDEX_TOOL_LINES:
+        return None
+    requests: list[IndexToolRequest] = []
+    for line in lines:
+        match = _INDEX_TOOL_LINE.match(line)
+        if match is None:
+            return None
+        requests.append(IndexToolRequest(match.group(1) or match.group(3), match.group(2) or match.group(4)))
+    return tuple(requests)
 
 
 def parse_canonical_json_object(text: str) -> dict[str, object]:

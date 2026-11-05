@@ -82,6 +82,9 @@ from optimus_model_policy.stage_c import (
 from optimus_model_policy.test_profiles import TEST_PROFILE_LITERAL_NAME, compose_test_profile_snapshot
 from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTING_LITERAL_NAME
 from optimus_security.accounting_config import AccountingConfigError, accounting_root, config_literal
+from optimus_security.memory_index_config import SECURITY_LITERAL_NAME as MEMORY_INDEX_LITERAL_NAME
+from optimus_security.memory_index_config import MemoryIndexConfigError, memory_index_root
+from optimus_security.memory_index_config import config_literal as memory_index_config_literal
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -758,6 +761,15 @@ def resolve_launch_candidate(
     if accounting_literal is not None:
         security_literals[ACCOUNTING_LITERAL_NAME] = accounting_literal
 
+    # 2g. Plan 12.10 (ADR-037): the context index's configuration, the same way. Its digests cover the ACL file and the
+    # embedding artifact. Without the file the feature is off and existing approvals stay valid.
+    try:
+        memory_index_literal = memory_index_config_literal(memory_index_root(operator_paths.config_root))
+    except MemoryIndexConfigError as exc:
+        raise LaunchGateError(code="MEMORY_INDEX_CONFIG_INVALID", detail=exc.code) from exc
+    if memory_index_literal is not None:
+        security_literals[MEMORY_INDEX_LITERAL_NAME] = memory_index_literal
+
     # 3. Compute security snapshot digest using the SINGLE shared function
     # also used by build_approval_record(). This is required — using two
     # independent hash computations (even with equivalent inputs) produces
@@ -798,6 +810,16 @@ def resolve_launch_candidate(
                 tier=LaunchVariableTier.SECURITY,
                 source_class="accounting-configuration",
                 display_value=accounting_literal,
+                decision="requires exact approval",
+            )
+        )
+    if memory_index_literal is not None:
+        display_rows.append(
+            LaunchDisplayRow(
+                name=MEMORY_INDEX_LITERAL_NAME,
+                tier=LaunchVariableTier.SECURITY,
+                source_class="memory-index-configuration",
+                display_value=memory_index_literal,
                 decision="requires exact approval",
             )
         )

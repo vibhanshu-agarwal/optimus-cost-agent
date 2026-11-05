@@ -507,6 +507,7 @@ def resolve_git_context(
                 argv,
                 cwd=str(workspace),
                 env=env,
+                stdin=subprocess.DEVNULL,  # on Windows a child inheriting a pipe with a read pending blocks until the next ACP message
                 capture_output=True,
                 text=True,
                 check=False,

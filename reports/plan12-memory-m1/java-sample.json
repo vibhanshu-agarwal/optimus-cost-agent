@@ -1,0 +1,150 @@
+{
+  "schema": "plan12-memory-m1.java-sample.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "release": "Operator, Claude chat 2026-11-04: shallow clone of rel/release-3.4.3 under a 2 GiB cap, an eligible count and an embedding sample. No index was built and no model or provider was called.",
+  "corpus": {
+    "repository": "apache/hadoop",
+    "tag": "rel/release-3.4.3",
+    "commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+    "bytes_on_disk": 247049704,
+    "code_head": "hex:9665c09"
+  },
+  "test_rule": "A Java file is a test if a path part is test or tests, or its name starts with Test or ends with Test.java or Tests.java.",
+  "counts": {
+    "java_main": {
+      "files": 7781,
+      "parsed_lines": 1438914,
+      "records": 114985,
+      "embedded_chunks": 107204,
+      "chunk_chars_mean": 560.6,
+      "chunk_chars_p50": 354,
+      "chunk_chars_p95": 1593
+    },
+    "java_test": {
+      "files": 4260,
+      "parsed_lines": 1120627,
+      "records": 65487,
+      "embedded_chunks": 61227,
+      "chunk_chars_mean": 896.4,
+      "chunk_chars_p50": 559,
+      "chunk_chars_p95": 2670
+    },
+    "markdown": {
+      "files": 524,
+      "parsed_lines": 123546,
+      "records": 5888,
+      "embedded_chunks": 5364,
+      "chunk_chars_mean": 2292.5
+    },
+    "text": {
+      "files": 173,
+      "parsed_lines": 6773,
+      "records": 356,
+      "embedded_chunks": 183,
+      "chunk_chars_mean": 2012.3
+    },
+    "python": {
+      "files": 4,
+      "parsed_lines": 499,
+      "records": 23,
+      "embedded_chunks": 19,
+      "chunk_chars_mean": 780.0
+    },
+    "unsupported": {
+      "files": 2560,
+      "parsed_lines": 0,
+      "records": 2560,
+      "embedded_chunks": 0,
+      "chars": 0,
+      "chunk_chars_mean": null
+    }
+  },
+  "java_parsed_lines_by_top_folder": {
+    "hadoop-client-modules": {
+      "main": 0,
+      "test": 232
+    },
+    "hadoop-cloud-storage-project": {
+      "main": 13769,
+      "test": 1921
+    },
+    "hadoop-common-project": {
+      "main": 250333,
+      "test": 178024
+    },
+    "hadoop-hdfs-project": {
+      "main": 332520,
+      "test": 317571
+    },
+    "hadoop-mapreduce-project": {
+      "main": 155082,
+      "test": 128353
+    },
+    "hadoop-maven-plugins": {
+      "main": 1396,
+      "test": 366
+    },
+    "hadoop-tools": {
+      "main": 187259,
+      "test": 150496
+    },
+    "hadoop-yarn-project": {
+      "main": 498555,
+      "test": 343664
+    }
+  },
+  "excluded_by_policy": {
+    "deny.skipped_dir": 25,
+    "excluded.too_large": 48,
+    "ignored.gitignore": 12,
+    "deny.secret": 75,
+    "excluded.binary": 142,
+    "excluded.empty": 7
+  },
+  "unsupported_by_suffix_top": {
+    "js": 520,
+    "xml": 469,
+    "h": 264,
+    "cc": 236,
+    "c": 148,
+    "sh": 95,
+    "json": 94,
+    "hbs": 90,
+    "properties": 82,
+    "proto": 79,
+    "(none)": 76,
+    "html": 53,
+    "css": 52,
+    "bats": 47,
+    "cmd": 26
+  },
+  "parse_error_files": {
+    "java_main": 0,
+    "java_test": 0
+  },
+  "first_read": {
+    "files": 15302,
+    "seconds": 205.7,
+    "read_seconds": 38.9,
+    "parse_seconds": 82.6
+  },
+  "second_read_and_hash_seconds": 74.0,
+  "embedding_sample": {
+    "chunks": 2000,
+    "seed": 1210,
+    "threads": 2,
+    "window": 128,
+    "batch": 16,
+    "seconds": 186.3,
+    "items_per_second": 10.74,
+    "window_rate_p50": 11.0,
+    "window_rate_min": 9.49,
+    "window_rate_max": 12.95,
+    "chunk_chars_mean": 679.2,
+    "chunk_chars_p95": 2031,
+    "process_cpu_percent_mean": 197.5,
+    "process_rss_mb_max": 1067.5,
+    "note": "Random Java chunks in proportion to main and test, with production's window and batch sizes. It excludes parsing and storage, and main code's shorter chunks should embed faster than this mix."
+  }
+}

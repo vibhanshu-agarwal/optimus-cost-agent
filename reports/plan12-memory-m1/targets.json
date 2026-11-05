@@ -1,0 +1,74 @@
+{
+  "schema": "plan12-memory-m1.targets.v1",
+  "plan": "12.10",
+  "issue": 469,
+  "state": "FROZEN: approved by the operator on 2026-11-04 (D6), unchanged from the proposal, before any qualification. Nothing has been evaluated against them. A later calibration run would be identified as one and could not silently move a frozen limit; changing a limit needs the operator.",
+  "frozen_at": "2026-11-04, proposal at code head b9b4154",
+  "basis": "Limits sit about twice above the latest pilot, because latency moved up to 1.8 times between runs on this machine; those runs differ in more than noise, so this is a judgement and not a measured tolerance. K2 keeps the earlier probe's bounds and scales only its size.",
+  "zero_tolerance": ["critical B1 failures", "authority failures", "wrong-branch evidence", "stale evidence"],
+  "foreground": [
+    {"metric": "proxy dense query p95, idle, ms", "runs": [14.5, 25.8, 16.9], "limit": 50},
+    {"metric": "proxy lexical query p95, idle, ms", "runs": [7.3, 12.0, 8.1], "limit": 25},
+    {"metric": "proxy dense query p95, during a cold build, ms", "runs": [37.0, 57.0, 48.7], "limit": 110},
+    {"metric": "proxy lexical query p95, during a cold build, ms", "runs": [13.4, 21.6, 17.5], "limit": 45},
+    {"metric": "acpx turn p50 during a build, as a multiple of idle p50, at least 20 matched turns each", "runs": [1.31, 1.29], "limit": 1.5},
+    {"metric": "acpx turn p95 during a build, as a multiple of idle p95, at least 20 matched turns each", "runs": [1.18, 1.21], "limit": 1.5},
+    {"metric": "acpx turn failures during a build", "latest": 0, "limit": 0},
+    {"metric": "seconds for a person's cancel to stop a turn, during a build", "runs": [2.47, 2.1, 2.35], "limit": 5}
+  ],
+  "indexing": [
+    {"metric": "embedded chunks per second on two threads", "runs": [10.1, 9.2, 9.8], "java_sample": 10.74, "limit_at_least": 7},
+    {"metric": "proxy bulk records per second", "runs": [4815, 4601, 5264], "limit_at_least": 3000},
+    {"metric": "seconds until the first file is visible, from the start of a cold build", "runs": [0.96, 0.85], "limit": 5},
+    {"metric": "hours per 1M eligible parsed LOC", "forecast": "2.0-2.4 for the recommended corpus", "limit": 4, "note": "The operator approved 4 hours in total for corpus B, recorded in scale.json."},
+    {"metric": "seconds from an edit to its symbol being queryable, one file", "runs": [2.39, 2.96, 2.67], "limit": 6},
+    {"metric": "seconds per 1000 files to reconcile an unchanged tree", "runs": [32, 34], "limit": 60, "note": "Measured on 50 files end to end. On Hadoop its read and parse parts come to 18 per 1000 files; the catalogue's cost is added in Task 5."},
+    {"metric": "seconds to stop a build on cancel", "runs": [1.08, 0.23, 0.52], "limit": 3},
+    {"metric": "seconds until answering after a Redis kill, same publication", "runs": [2.4, 2.67, 2.59], "limit": 10}
+  ],
+  "resources": [
+    {"metric": "worker RSS, MB", "latest": 1067.5, "limit": 1500},
+    {"metric": "worker mean CPU during a build, percent of one core", "latest": 204.1, "limit": 250},
+    {"metric": "native embedding threads, as configured", "latest": 2, "limit": 2},
+    {"metric": "process threads doing work during a build (over 5 percent of a core), including orchestration; a coarse check, not proof of the line above", "latest": 2, "limit": 3},
+    {"metric": "Gateway RSS, MB", "latest": 70.3, "limit": 150},
+    {"metric": "Redis memory in the shipped configuration, MB", "latest": "349 of a 512 test limit, at 60000 records", "limit": 3072, "envelope": "maxmemory 4096 less a 1024 reserve, in a 4608 container. Nothing in the product enforces the reserve; a run over it fails."},
+    {"metric": "index disk at the run's record count, MB, at its peak", "latest": "296 peak, with 60000 scale records; about 610 scaled to corpus B", "limit": 2048}
+  ],
+  "task_4_gates": [
+    "Assembly's share of its budget and query fan-out are measured when assembly exists, and their limits are approved before Task 5.",
+    "First-file visibility in a real Zed session is shown there; the limit above is the worker's."
+  ],
+  "assembly": {
+    "state": "Approved by the operator on 2026-11-05, as the Task 4 gate above requires, with Codex concurring (review 13 on #469). Measured at code head ab0dde4 in assembly.json.",
+    "scope": "The 52-file pilot corpus, this host and this method. This is not large-corpus qualification; limits for the large corpus need the operator's approval before it is qualified.",
+    "limits": [
+      {"metric": "assembly wall time p95 during a build, ms", "during_build": 419, "idle": 274, "limit": 750},
+      {"metric": "route calls per complete assembly invocation, including reconciliation retries", "during_build_max": 21, "idle_max": 20, "limit": 30},
+      {"metric": "route calls for one repo-map refresh, reported apart from the line above", "idle_observation": 50, "limit": 75},
+      {"metric": "wall time of one repo-map refresh, ms, reported apart from assembly", "idle_observation": 480, "limit": 1000},
+      {"metric": "pack size as a share of min(25 percent of usable input, 16384 tokens)", "during_build_max": 1.0, "idle_max": 0.999, "limit": 1.0}
+    ],
+    "note": "The map refresh interval is 300 s, which is not a guaranteed rate limit."
+  },
+  "k2_second_run": {
+    "items": 125000,
+    "items_why": "the approved corpus B's real records, rounded up",
+    "vector_dimensions": 384,
+    "records": "production adapters and real records",
+    "concurrency": "four concurrent clients through the real route, served by its two workers and queue of eight",
+    "must_be_zero": ["INDEX_BUSY responses at this nominal load", "lost items", "conflicting items", "unacknowledged items"],
+    "maxmemory_mb": 4096,
+    "reserve": {"mb": 1024, "enforcement": "Nothing in the product enforces it. The run fails if used memory exceeds 3072 MB."},
+    "physical_ram_mb": {"limit": 4608, "why": "the container's own limit: maxmemory plus 512 MB of headroom"},
+    "disk_mb": 8192,
+    "unchanged_from_the_first_probe": {
+      "ack_latency_p95_ms": 1500,
+      "projection_latency_p95_ms": 250,
+      "restart_to_usable_seconds": 60,
+      "logical_purge_seconds": 1,
+      "physical_erasure_seconds": 120
+    }
+  },
+  "retrieval": "Recall, required-evidence, irrelevant-token and coverage targets are set from context-off and lexical baselines before the held-out set is opened, in Task 5, and need their own approval. No number is proposed here because nothing has measured them."
+}

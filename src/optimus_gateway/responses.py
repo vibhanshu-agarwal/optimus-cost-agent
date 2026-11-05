@@ -203,6 +203,7 @@ def _run_enforced_completion(
                 max_tokens=admitted.output_cap,
                 provider_controls=admitted.provider_controls,
                 reasoning=admitted.reasoning,
+                **({"prompt_cache": admitted.prompt_cache} if admitted.prompt_cache == "top_level" else {}),
             )
         except UpstreamAttemptFailure as failure:
             if admission is not None and guard is not None:  # an admission exists only from a guard

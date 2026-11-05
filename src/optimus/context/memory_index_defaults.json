@@ -1,0 +1,21 @@
+{
+  "image": "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5",
+  "container": "optimus-memory-redis",
+  "volume": "optimus-memory-redis-data",
+  "host": "127.0.0.1",
+  "port": 6393,
+  "user": "optimus-index",
+  "maxmemory_mb": 4096,
+  "artifact_megabytes": 70,
+  "embedding": {
+    "model": "BAAI/bge-small-en-v1.5",
+    "source": "huggingface",
+    "repository": "Qdrant/bge-small-en-v1.5-onnx-Q",
+    "revision": "hex:aa8f8b060edb00e03bfdd08813a2949946c8ba55",
+    "licence": "MIT",
+    "dimensions": 384,
+    "max_input_tokens": 512,
+    "artifact_directory": "bge-small-en-v1.5-onnx-q",
+    "artifact_sha256": "hex:7b7f88b3e493cb8adb2c519fc05f0518364676e3f200ea3598550f02636fe0de"
+  }
+}

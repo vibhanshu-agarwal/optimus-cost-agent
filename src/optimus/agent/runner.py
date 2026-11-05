@@ -12,11 +12,12 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from optimus.agent.directives import AgentDirectiveParseError, AgentEditDirective, bind_edit_base, parse_agent_plan
+from optimus.agent.directives import AgentDirectiveParseError, AgentEditDirective, bind_edit_base, parse_agent_plan, parse_index_tool_reply
 from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failure_text
+from optimus.agent.index_turn import LIMIT_NOTICE, LIMIT_OBSERVATION, MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import TEST_STOP_REASONS, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
-from optimus.agent.prompts import build_agent_planner_input
+from optimus.agent.prompts import build_agent_planner_input, build_indexed_chat_input
 from optimus.agent.state_store import (
     AgentPlanRecord,
     AgentStateStore,
@@ -73,8 +74,35 @@ ProviderAttemptObserver = Callable[..., None]
 _OVERSIZED_REQUIRED_CONTEXT_TRIGGER = "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
 
 # Plan 12.1: visible corrective text for Chat's single-call terminal failures.
+@dataclass(frozen=True)
+class _ChatReply:
+    answer: str
+    cost_usd: Decimal
+    unknown: int
+
+
+def _chat_builder(request: AgentRunRequest, files: str, *, memory: Any, repo_map: str, index_results: str, tools_open: bool) -> Callable[[str], str]:
+    """Renders one Chat request around a history view. Without a context index it is the Plan 12.1 prompt, byte for byte."""
+
+    def build(conversation_envelope: str) -> str:
+        if memory is None:
+            return build_agent_planner_input(request.task, workspace_context=files, conversation_envelope=conversation_envelope, advisory=True)
+        return build_indexed_chat_input(
+            request.task,
+            workspace_context=files,
+            conversation_envelope=conversation_envelope,
+            repo_map=repo_map,
+            index_results=index_results,
+            tools_enabled=tools_open,
+            limit_observation="" if tools_open else LIMIT_OBSERVATION,
+        )
+
+    return build
+
+
 CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "CHAT_EMPTY_ANSWER": "Chat received an empty answer from the model. Please rephrase the question or try again.",
+    "CHAT_SEARCH_LIMIT_REACHED": "Chat stopped: the model kept asking to search after its limit of search rounds and gave no answer. Please narrow the question.",
     "CHAT_GATEWAY_FAILURE": "Chat could not get an answer: the model gateway reported a failure. Please try again.",
     "CHAT_GATEWAY_COST_UNKNOWN": (
         "Chat stopped because the model gateway failed without reporting the call's cost. Please try again."
@@ -452,14 +480,12 @@ class AgentRunner:
                 request=request,
                 scope=scope,
                 context=context,
+                toolbox=toolbox,
                 halt_requested=halt_requested,
                 operation_control=operation_control,
                 context_packer=context_packer,
             )
-        workspace_context = assemble_workspace_context_for_prompt(
-            request.workspace_root,
-            task=_selection_text(request),
-        )
+        workspace_context = self._turn_context(request, _selection_text(request), context_packer)
         if self._workspace_context_observer is not None:
             self._workspace_context_observer(request, workspace_context)
         if workspace_context.blocking_stop_reason is not None:
@@ -638,7 +664,8 @@ class AgentRunner:
             allowed_network_hosts=(),
         )
         policy = PlanningLoopPolicy(
-            max_planning_turns=request.max_planning_turns,
+            # A search round is a planning turn, so it must not eat the turns planning had before.
+            max_planning_turns=request.max_planning_turns + (MAX_INDEX_ROUNDS if getattr(context_packer, "memory", None) is not None else 0),
             max_wall_clock_minutes=request.planning_wall_clock_minutes,
         )
 
@@ -1758,11 +1785,13 @@ class AgentRunner:
         request: AgentRunRequest,
         scope: _RunScope,
         context: RuntimeContext,
+        toolbox: AgentToolbox,
         halt_requested: Callable[[], bool] | None = None,
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
     ) -> AgentRunResult:
-        """Plan 12.1 Chat: one Gateway call, a prose answer, no directive execution.
+        """Plan 12.1 Chat: one Gateway call, a prose answer, no directive execution. With a context index (Plan 12.10) the model
+        may first spend up to four read-only search rounds, then gets one more call with tools withdrawn, and nothing else runs.
 
         Workspace-file selection sees the prior conversation plus the current
         prompt (as Agent's does), while the model input carries the current
@@ -1782,7 +1811,8 @@ class AgentRunner:
             selection_text = (
                 f"{request.conversation_envelope}\n{request.task}" if request.conversation_envelope else request.task
             )
-        workspace_context = assemble_workspace_context_for_prompt(request.workspace_root, task=selection_text)
+        memory = getattr(context_packer, "memory", None)  # Plan 12.10: the turn's context index, when it has one
+        workspace_context = self._turn_context(request, selection_text, context_packer)
         if self._workspace_context_observer is not None:
             self._workspace_context_observer(request, workspace_context)
         if workspace_context.blocking_stop_reason is not None:
@@ -1791,44 +1821,133 @@ class AgentRunner:
                 stop_reason=workspace_context.blocking_stop_reason,
                 output_text=workspace_context.blocking_message or "Workspace context could not be assembled.",
             )
+        repo_map = "" if memory is None else memory.repo_map()
+        calls: list[AgentToolCall] = []
+        index_results = ""
+        rounds = 0
+        spent = Decimal("0")
+        unknown_so_far = 0
 
-        def build(conversation_envelope: str) -> str:
-            return build_agent_planner_input(
-                request.task,
-                workspace_context=workspace_context.text,
-                conversation_envelope=conversation_envelope,
-                advisory=True,
+        def fail(
+            *,
+            stop_reason: str,
+            output_text: str | None = None,
+            status: AgentRunStatus = AgentRunStatus.FAILED,
+            total_cost_usd: Decimal = Decimal("0"),
+            cost_complete: bool = True,
+            unknown_cost_attempt_count: int | None = None,
+        ) -> AgentRunResult:
+            # An earlier search round's cost and tool calls stay part of the turn however it ends.
+            unknown = unknown_cost_attempt_count if unknown_cost_attempt_count is not None else 0 if cost_complete else 1
+            return self._chat_failure(
+                request,
+                stop_reason=stop_reason,
+                output_text=output_text,
+                status=status,
+                total_cost_usd=spent + total_cost_usd,
+                cost_complete=cost_complete and not unknown_so_far,
+                unknown_cost_attempt_count=unknown + unknown_so_far,
+                tool_calls=tuple(calls),
             )
 
-        if context_packer is None:
-            chat_input = build(request.conversation_envelope)
-        else:
-            fitted = context_packer.fit(build)
-            if fitted is None:
-                if halt_requested is not None and halt_requested():
-                    return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
-                # A summary this turn may have stopped the shared route (#400; Codex round 41). Packers that
-                # predate the fact (test doubles) have none.
-                stopped_text = CHAT_ROUTE_STOPPED_MESSAGES["CHAT_CONTEXT_CAPACITY_EXCEEDED"] if getattr(context_packer, "route_stopped", False) is True else None
-                return self._chat_failure(request, stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED", output_text=stopped_text)
-            chat_input = fitted
-        if halt_requested is not None and halt_requested():
-            return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
+        while True:
+            tools_open = memory is not None and rounds < MAX_INDEX_ROUNDS
+            build = _chat_builder(
+                request, workspace_context.text, memory=memory, repo_map=repo_map, index_results=index_results, tools_open=tools_open
+            )
+            if context_packer is None:
+                chat_input = build(request.conversation_envelope)
+            else:
+                fitted = context_packer.fit(build)
+                if fitted is None:
+                    if halt_requested is not None and halt_requested():
+                        return fail(stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
+                    # A summary this turn may have stopped the shared route (#400; Codex round 41). Packers that
+                    # predate the fact (test doubles) have none.
+                    stopped_text = CHAT_ROUTE_STOPPED_MESSAGES["CHAT_CONTEXT_CAPACITY_EXCEEDED"] if getattr(context_packer, "route_stopped", False) is True else None
+                    return fail(stop_reason="CHAT_CONTEXT_CAPACITY_EXCEEDED", output_text=stopped_text)
+                chat_input = fitted
+            if halt_requested is not None and halt_requested():
+                return fail(stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
+            reply = self._chat_call(
+                request=request, scope=scope, chat_input=chat_input, ordinal=rounds + 1, prior_cost=spent, operation_control=operation_control, context_packer=context_packer, fail=fail
+            )
+            if isinstance(reply, AgentRunResult):
+                return reply
+            spent += reply.cost_usd
+            unknown_so_far += reply.unknown
+            requests = None if memory is None else parse_index_tool_reply(reply.answer)
+            if requests is None:
+                break
+            if not tools_open:
+                # No fifth round, and tool syntax is not an answer.
+                return fail(stop_reason="CHAT_SEARCH_LIMIT_REACHED")
+            assert memory is not None  # `requests` is only ever parsed with one
+            ran = run_index_tools(requests, memory, toolbox, halted=halt_requested or (lambda: False), event_sink=self._event_sink, run_id=request.run_id, session_id=request.session_id)
+            calls.extend(ran.calls)
+            index_results = keep_newest(index_results + ran.envelope)
+            # A reply of only repeats has nothing new to look at, so the next call is the final one.
+            rounds = rounds + 1 if ran.novel else MAX_INDEX_ROUNDS
+        answer = reply.answer
+        if memory is not None and rounds >= MAX_INDEX_ROUNDS:
+            answer = f"{answer}\n\n{LIMIT_NOTICE}"
+        # Plan 2's validated path for a non-AGENT result: PLANNING -> PLAN_READY -> CHAT_ONLY.
+        context = self._transition(context, AgentState.PLAN_READY)
+        self._transition(context, AgentState.CHAT_ONLY)
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.COMPLETED,
+            final_state="CHAT_ONLY",
+            output_text=answer,
+            tool_calls=tuple(calls),
+            total_cost_usd=spent,
+            cost_complete=not unknown_so_far,
+            unknown_cost_attempt_count=unknown_so_far,
+        )
+
+    def _turn_context(self, request: AgentRunRequest, selection_text: str, context_packer: ContextPacker | None) -> WorkspaceContextResult:
+        """Today's selection, or with a context index its ranked pack, sized by this route's own estimator and usable input."""
+        memory = getattr(context_packer, "memory", None)
+        if memory is None:
+            return assemble_workspace_context_for_prompt(request.workspace_root, task=selection_text)
+        result: WorkspaceContextResult = memory.assemble(
+            run_id=request.run_id,
+            task=request.task,
+            selection_text=selection_text,
+            model_id=context_packer.model_id,  # type: ignore[union-attr]
+            estimate=context_packer.estimate_request,  # type: ignore[union-attr]
+            usable_input_tokens=context_packer.usable_input_tokens,  # type: ignore[union-attr]
+        )
+        return result
+
+    def _chat_call(
+        self,
+        *,
+        request: AgentRunRequest,
+        scope: _RunScope,
+        chat_input: str,
+        ordinal: int,
+        prior_cost: Decimal,
+        operation_control: TurnOperationControl | None,
+        context_packer: ContextPacker | None,
+        fail: Callable[..., AgentRunResult],
+    ) -> _ChatReply | AgentRunResult:
+        """One Gateway call of a Chat turn; `ordinal` is 1 unless the turn has search rounds. A reply that cannot be an answer fails the turn."""
         bound = None
         if scope.route is not None:
             # Bound before the Gateway lease, so a request whose notice was not delivered is never a
             # started provider attempt.
             bound = scope.route.bind(stage="answer", input_text=chat_input)
             if bound is None:
-                self._report_attempts(request, scope, settled_turn=1, wire_attempt=1, attempts=(_NOT_SENT,), identity=scope.route.identity)
-                return self._chat_failure(request, stop_reason="CHAT_NOTICE_UNDELIVERED")
+                self._report_attempts(request, scope, settled_turn=ordinal, wire_attempt=1, attempts=(_NOT_SENT,), identity=scope.route.identity)
+                return fail(stop_reason="CHAT_NOTICE_UNDELIVERED")
         from optimus.acp.lifecycle import DirectiveKind
 
-        op_id = "gateway:1:1"
+        op_id = f"gateway:{ordinal}:1"
         if operation_control is not None:
             operation_control.register_operations([(DirectiveKind.GATEWAY, op_id)])
             if not operation_control.try_start(DirectiveKind.GATEWAY, op_id).granted:
-                return self._chat_failure(request, stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
+                return fail(stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
 
         def complete(terminal_state: str) -> None:
             if operation_control is not None:
@@ -1842,7 +1961,7 @@ class AgentRunner:
             scope.route.record_dispatch(chat_input)
         identity = _identity(bound)
         try:
-            with capturing(CaptureIntent(request.run_id, f"{request.run_id}:answer:1:1", "answer", requested_model=scope.model)):
+            with capturing(CaptureIntent(request.run_id, f"{request.run_id}:answer:{ordinal}:1", "answer", requested_model=scope.model)):
                 response = self._gateway_client.create_response(
                     model=scope.model,
                     input_text=chat_input,
@@ -1863,7 +1982,7 @@ class AgentRunner:
             # accounting-integrity error propagates out of the turn once everything was recorded.
             try:
                 attempts = self._account(
-                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=identity, failure=exc
+                    request, scope, usage=getattr(exc, "gateway_usage", None), classify=_failure_classifier(exc), identity=identity, settled_turn=ordinal, failure=exc
                 )
             except Exception:
                 complete("cost_unknown")
@@ -1878,8 +1997,7 @@ class AgentRunner:
                 return CHAT_ROUTE_STOPPED_MESSAGES[stop_reason] if stopped else None
 
             if unknown:
-                return self._chat_failure(
-                    request,
+                return fail(
                     stop_reason="CHAT_GATEWAY_COST_UNKNOWN",
                     output_text=text("CHAT_GATEWAY_COST_UNKNOWN"),
                     total_cost_usd=known,
@@ -1887,24 +2005,24 @@ class AgentRunner:
                     unknown_cost_attempt_count=unknown,
                 )
             if is_input_capacity_refusal(exc):
-                return self._chat_failure(request, stop_reason="CHAT_INPUT_CAPACITY_EXCEEDED")
+                return fail(stop_reason="CHAT_INPUT_CAPACITY_EXCEEDED")
             if is_gateway_registry_mismatch(exc):
                 mismatch = gateway_registry_mismatch_text("CHAT_GATEWAY_REGISTRY_MISMATCH", request.workspace_root)
-                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REGISTRY_MISMATCH", output_text=mismatch)
+                return fail(stop_reason="CHAT_GATEWAY_REGISTRY_MISMATCH", output_text=mismatch)
             if is_preflight_refusal(exc):
-                return self._chat_failure(request, stop_reason="CHAT_GATEWAY_REFUSED", output_text=text("CHAT_GATEWAY_REFUSED"))
-            return self._chat_failure(request, stop_reason="CHAT_GATEWAY_FAILURE", output_text=text("CHAT_GATEWAY_FAILURE"), total_cost_usd=known)
+                return fail(stop_reason="CHAT_GATEWAY_REFUSED", output_text=text("CHAT_GATEWAY_REFUSED"))
+            return fail(stop_reason="CHAT_GATEWAY_FAILURE", output_text=text("CHAT_GATEWAY_FAILURE"), total_cost_usd=known)
 
         complete("succeeded")
-        attempts = self._account(request, scope, usage=response.gateway_usage, classify=lambda: attempts_from_response(response), identity=identity)
+        attempts = self._account(request, scope, usage=response.gateway_usage, classify=lambda: attempts_from_response(response), identity=identity, settled_turn=ordinal)
         total_cost_usd = response.gateway_usage.cost_usd
+        overall_cost = prior_cost + total_cost_usd
         # A routed success can follow an earlier attempt whose cost is unknown; it stays unknown.
         unknown = sum(1 for attempt in attempts if attempt.cost_usd is None)
         # Plan 12.2 Task 11: a product answer above the former $0.05 is delivered; only an evaluation
         # caller's explicit cap withholds it.
-        if request.max_cost_usd is not None and total_cost_usd > request.max_cost_usd:
-            return self._chat_failure(
-                request,
+        if request.max_cost_usd is not None and overall_cost > request.max_cost_usd:
+            return fail(
                 stop_reason="BUDGET_EXHAUSTED",
                 status=AgentRunStatus.TERMINATED,
                 total_cost_usd=total_cost_usd,
@@ -1915,8 +2033,7 @@ class AgentRunner:
         if response.length_limited:
             # Shown, but never reported as a complete successful answer (Plan 12.2 Task 5).
             notice = CHAT_FAILURE_MESSAGES["CHAT_OUTPUT_TRUNCATED"]
-            return self._chat_failure(
-                request,
+            return fail(
                 stop_reason="CHAT_OUTPUT_TRUNCATED",
                 output_text=f"{answer}\n\n{notice}" if answer else notice,
                 total_cost_usd=total_cost_usd,
@@ -1926,26 +2043,14 @@ class AgentRunner:
         if response.stopped_unfinished:
             # Ended by a content filter or provider error: not shown as an answer at all (operator
             # decision 2026-10-02, Claude and Codex concurring). The receipt above is kept.
-            return self._chat_failure(
-                request, stop_reason="CHAT_OUTPUT_UNFINISHED", total_cost_usd=total_cost_usd, cost_complete=not unknown, unknown_cost_attempt_count=unknown
+            return fail(
+                stop_reason="CHAT_OUTPUT_UNFINISHED", total_cost_usd=total_cost_usd, cost_complete=not unknown, unknown_cost_attempt_count=unknown
             )
         if not answer:
-            return self._chat_failure(
-                request, stop_reason="CHAT_EMPTY_ANSWER", total_cost_usd=total_cost_usd, cost_complete=not unknown, unknown_cost_attempt_count=unknown
+            return fail(
+                stop_reason="CHAT_EMPTY_ANSWER", total_cost_usd=total_cost_usd, cost_complete=not unknown, unknown_cost_attempt_count=unknown
             )
-        # Plan 2's validated path for a non-AGENT result: PLANNING -> PLAN_READY -> CHAT_ONLY.
-        context = self._transition(context, AgentState.PLAN_READY)
-        self._transition(context, AgentState.CHAT_ONLY)
-        return self._build_result(
-            request=request,
-            status=AgentRunStatus.COMPLETED,
-            final_state="CHAT_ONLY",
-            output_text=answer,
-            tool_calls=(),
-            total_cost_usd=total_cost_usd,
-            cost_complete=not unknown,
-            unknown_cost_attempt_count=unknown,
-        )
+        return _ChatReply(answer, total_cost_usd, unknown)
 
     def _chat_failure(
         self,
@@ -1957,13 +2062,14 @@ class AgentRunner:
         total_cost_usd: Decimal = Decimal("0"),
         cost_complete: bool = True,
         unknown_cost_attempt_count: int | None = None,
+        tool_calls: tuple[AgentToolCall, ...] = (),
     ) -> AgentRunResult:
         return self._build_result(
             request=request,
             status=status,
             final_state=status.value.upper(),
             output_text=output_text or CHAT_FAILURE_MESSAGES[stop_reason],
-            tool_calls=(),
+            tool_calls=tool_calls,
             total_cost_usd=total_cost_usd,
             stop_reason=stop_reason,
             cost_complete=cost_complete,
