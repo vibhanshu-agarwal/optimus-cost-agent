@@ -2,7 +2,7 @@
  "schema": "plan12-memory-m1.prompt-cache.v1",
  "plan": "12.10",
  "issue": 469,
- "status": "The top_level diagnostic is complete. The prefix mode's released pair has not run, so the plan's caching claim is still open.",
+ "status": "The top_level diagnostic and the prefix pair are complete: a changed question reuses the prefix on the pinned route. Enabling the mode on a route, and any claim about production savings, are still open.",
  "top_level_diagnostic": {
   "release": "Operator 2026-11-05 (Release D): 3 requests, 6 physical attempts, USD 0.25, input at most 8,000 tokens, output 1,024",
   "commit": "6e5478a",
@@ -80,6 +80,126 @@
   },
   "conclusion": "A changed question reads nothing and writes everything, so top_level must not be used for real turns. One changed-question sample supports choosing a mechanism; it does not establish production hit rates."
  },
- "prefix_pair": null,
- "capture_note": "M1's durable capture still records cache_write_tokens as not_captured; the figures above come from the provider's reply as the diagnostic saw it."
+ "prefix_pair": {
+  "release": "Operator 2026-11-05 CACHE-PREFIX-PAIR-1: 2 requests, 4 physical attempts, USD 0.25, input estimate at most 32768, output 1024 (operator 2026-11-05: \"Approved. Go ahead. #1 - #3\")",
+  "commit": "hex:eb9727387cb07bb36447a4b29f0e4a5f8c7c7711",
+  "tree_clean": true,
+  "when": "2026-11-05T15:05:01.846705+00:00",
+  "model": "anthropic/claude-haiku-5.5",
+  "registry_effective_hash": "hex:2e9a5181f23a59bb65e1a4d338822b2a2dbfd88be61a5ff4280697af9a60b663",
+  "mode": "prefix, by an override file; no shipped route sets it",
+  "route": "pinned to the anthropic endpoint, no fallbacks",
+  "path": "A real index on Release A (52 files of this repository), the real map and packs, build_indexed_chat_input, indexed_chat_prefix, TurnRouteBinder.bind, GatewayClient and a real Gateway on port 8775. Output cap 1,024, the release's cap, in place of the route's 32,768, which is not part of the prefix.",
+  "physical_attempts": 2,
+  "settled_reported_usd": "0.00296866",
+  "output_note": "Both replies stopped at the 1,024 output cap, so output is a large share of each cost. Nothing was graded on the replies.",
+  "prefix_chars": 11146,
+  "prefix_bytes": 11148,
+  "prefix_sha256": "hex:0669c879d825edd8ad18df651acbf5dcb88a8c1718af185a54295de0942bda45",
+  "map_chars": 9989,
+  "prompt_chars": [
+   27995,
+   28021
+  ],
+  "first_block_equal": true,
+  "bodies_differ": true,
+  "index_status": "Context index: ready, 52 of 52 files.",
+  "requests": [
+   {
+    "label": "cold",
+    "status": 200,
+    "attempts": 1,
+    "selected_provider": [
+     "Anthropic"
+    ],
+    "admitted_input_estimate": 28271,
+    "prompt_tokens": 11299,
+    "estimate_covers_reported_prompt": true,
+    "completion_tokens": 1024,
+    "cached_tokens": 0,
+    "cache_write_tokens_in_the_providers_reply": 4876,
+    "cache_write_tokens": null,
+    "cache_write_capture": "not_captured",
+    "reported_cost_usd_gateway": "0.0017638",
+    "reported_cost_usd_provider": "0.0017638",
+    "seconds": 6.496,
+    "seconds_since_first_request": 0.0,
+    "blocks": [
+     {
+      "type": "text",
+      "chars": 11146,
+      "cache_control": {
+       "type": "ephemeral"
+      }
+     },
+     {
+      "type": "text",
+      "chars": 16849,
+      "cache_control": null
+     }
+    ],
+    "root_cache_control": null,
+    "first_block_sha256": "hex:0669c879d825edd8ad18df651acbf5dcb88a8c1718af185a54295de0942bda45",
+    "body_sha256": "hex:45522577368aa46ff3363cd40612bffceccf32329f7504bf6143a9b80a6a9989",
+    "gateway_request_id": "gw-bec6a58c17dd42149e2ec24dd2467485",
+    "host_capture_request_id": "pair:1:962552de3331",
+    "calculated_uncached_usd": "0.0016419",
+    "calculated_change_from_uncached_percent": "7.42"
+   },
+   {
+    "label": "changed_question",
+    "status": 200,
+    "attempts": 1,
+    "selected_provider": [
+     "Anthropic"
+    ],
+    "admitted_input_estimate": 28297,
+    "prompt_tokens": 11317,
+    "estimate_covers_reported_prompt": true,
+    "completion_tokens": 1024,
+    "cached_tokens": 4876,
+    "cache_write_tokens_in_the_providers_reply": 0,
+    "cache_write_tokens": null,
+    "cache_write_capture": "not_captured",
+    "reported_cost_usd_gateway": "0.00120486",
+    "reported_cost_usd_provider": "0.00120486",
+    "seconds": 5.647,
+    "seconds_since_first_request": 6.496,
+    "blocks": [
+     {
+      "type": "text",
+      "chars": 11146,
+      "cache_control": {
+       "type": "ephemeral"
+      }
+     },
+     {
+      "type": "text",
+      "chars": 16875,
+      "cache_control": null
+     }
+    ],
+    "root_cache_control": null,
+    "first_block_sha256": "hex:0669c879d825edd8ad18df651acbf5dcb88a8c1718af185a54295de0942bda45",
+    "body_sha256": "hex:0cff1df69082ccb92846d2bf064908f6c6b05b47babf881edd1140dd05863a48",
+    "gateway_request_id": "gw-903e3e7fce6e4f4793de89465f14bb96",
+    "host_capture_request_id": "pair:2:4726099e3711",
+    "calculated_uncached_usd": "0.0016437",
+    "calculated_change_from_uncached_percent": "-26.70"
+   }
+  ],
+  "prices_rechecked_before_sending_per_million_under_100k_prompt_tokens": {
+   "input": "0.10",
+   "output": "0.50",
+   "cache_write": "0.125",
+   "cache_read": "0.01"
+  },
+  "provenance": {
+   "raw_record_sha256": "hex:b090a9c261d23938646c6a23a953ec2e4d547f1c7187522c5b4ef8a5fad0e1bd",
+   "script_sha256": "hex:e4d53ca186db0a4f7b63e9fae2d3a33bbdbdbccd02c0a3e13ba3bbb2df23e5ff",
+   "note": "Raw record, script, dry runs and the capture streams are in the local handoff kit. The provider key was read by the product's resolver and never recorded. The capture streams were written by the real writers to an isolated folder and were not drained into a usage store."
+  },
+  "conclusion": "The changed question read the whole prefix the cold request wrote, so the prefix mechanism works on this route at this size. One pair proves reuse is possible; it does not establish production hit rates or a saving on a real session."
+ },
+ "capture_note": "M1's durable capture still records cache_write_tokens as not_captured; the write counts above come from the provider's reply as each script saw it."
 }
