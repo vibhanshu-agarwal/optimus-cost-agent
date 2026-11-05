@@ -1048,6 +1048,7 @@ LABEL_SPECS = {
         ("kind:plan", "Tracking issue for a repository implementation plan", "0052cc"),
         ("kind:track", "Hardening child-plan track", "5319e7"),
         ("kind:candidate", "Reviewed candidate awaiting its own plan", "c5def5"),
+        ("kind:bug", "Observed or source-supported defect in existing product, tooling, tests or integration behavior", "d73a4a"),
         ("kind:follow-up", "Deferred follow-up with its own acceptance criteria", "006b75"),
         ("kind:obligation", "Audit obligation retaining its owning feature custody", "7057ff"),
         ("kind:item", "Work item owned by a track or feature", "bfdadc"),

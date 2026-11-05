@@ -98,6 +98,11 @@ relevant records before proposing a change in their area.
 
 ## Planning
 
+| Document | What it is |
+|---|---|
+| [Plan 11.32: work-status Bugs table](superpowers/plans/2026-11-03-plan-11-32-work-status-bugs.md) | Approved scope for #354 |
+| [Issue #354 classification and validation](superpowers/reports/2026-11-03-issue354-work-status-bugs.md) | Dated classification proposal, authority and evidence |
+
 Status, priority and ownership live in the record's GitHub issue; the transitional backlog holds them only for records not yet marked `Moved` and takes no new work entries (a new plan's issue-only registry pointer row excepted). Plans do not declare their own status.
 
 | Document | What it is |
@@ -109,6 +114,7 @@ Status, priority and ownership live in the record's GitHub issue; the transition
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
 | [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |
 | [Hardening: CI guardrail truthfulness](superpowers/plans/hardening-ci-guardrail-truthfulness-implementation.md) | CI guardrail enforcement contract |
+| [Hardening: audit-tool integrity and typing](superpowers/plans/hardening-audit-tool-integrity-and-typing-implementation.md) | Inventory re-derivation guard and audit-tool typing contract |
 
 Live plans (each listed in the backlog's live plan registry):
 

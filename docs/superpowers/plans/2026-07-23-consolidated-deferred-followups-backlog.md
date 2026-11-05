@@ -71,6 +71,7 @@ unchanged, to [Archived moved plans](#archived-moved-plans).
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
+| [Plan 11.32 — work-status Bugs table](2026-11-03-plan-11-32-work-status-bugs.md) | — | — | [#354](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/354) |
 | [Plan 12.10 memory index, tools and context (M1)](2026-11-03-plan-12-10-memory-index-and-context-implementation.md) | — | — | [#469](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/469) |
 | [Idle client-MCP lifetime v3](2026-10-26-idle-mcp-suspension-main-port_v3.md) | — | — | [#427](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/427) |
 | [Ordering/lifecycle/signals and queue](2026-10-27-ordering-lifecycle-signals-queue-plan.md) | — | — | [#302](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/302) |

@@ -1438,6 +1438,10 @@ def test_source_markers_follow_the_pilot(record_id: str, marker: str) -> None:
 
 
 def test_label_specs_match_the_pilot_and_the_page_vocabulary() -> None:
+    assert gwt.LABEL_SPECS["kind:bug"] == gwt.LabelSpec(
+        "kind:bug", "Observed or source-supported defect in existing product, tooling, tests or integration behavior", "d73a4a"
+    )
+    assert gwt._valid_label("kind:bug")
     for name, (description, color) in PILOT_LABELS.items():
         assert gwt.LABEL_SPECS[name] == gwt.LabelSpec(name, description, color)
     vocabulary = gwt.page_vocabulary()
