@@ -19,5 +19,9 @@
   "bulk_batches": 20,
   "k2_rounds": 100,
   "out": "reports/plan12-memory-m1/qualify.json",
-  "k2_out": "reports/plan12-memory-m1/k2.json"
+  "k2_out": "reports/plan12-memory-m1/k2.json",
+  "repo_paths": [
+    "."
+  ],
+  "peak_sample_seconds": 30
 }

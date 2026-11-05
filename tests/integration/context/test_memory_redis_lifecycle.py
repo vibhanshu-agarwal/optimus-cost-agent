@@ -150,7 +150,7 @@ def test_a_lookalike_container_is_refused_and_left_alone(provisioned: Provisione
     docker("volume", "create", "--label", f"optimus.memory.resource={config.resource}", config.volume, check=True)
     mount = ["--mount", f"type=bind,src={acl.resolve()},dst=/etc/redis/users.acl,readonly"] if override.get("acl", True) else []
     args = override.get("args", ["redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "everysec", "--save", "300 1",
-                                 "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction"])
+                                 "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction", "--search-on-oom", "IGNORE"])
     docker("run", "-d", "--name", config.container, "--label", f"optimus.memory.resource={config.resource}", "-p", f"{config.host}:{config.port}:6379",
            "--memory", override.get("memory", f"{config.maxmemory_mb + 512}m"), "-v", f"{config.volume}:/data", *mount, config.image, *args, check=True)
     lookalike = _container_id()

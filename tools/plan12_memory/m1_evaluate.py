@@ -118,22 +118,26 @@ def score_off(case: GoldenCase, root: Path, *, query: str) -> dict[str, Any]:
     files = list(result.file_sha256s)
     relevant = gold_paths(case)
     met = [requirement.requirement_id for requirement in case.required_evidence if any(parse_evidence(evidence)[0] in files for evidence in requirement.any_of)]
-    irrelevant = sum(estimate(block) for path, block in _blocks(result.text, files) if path not in relevant)
+    irrelevant = sum(estimate(block) for path, block in _blocks(result.text, files, lambda path: (m1_scale.long_path(root) / path).read_bytes()) if path not in relevant)
     first = set(files[:K])
     file_met = [requirement.requirement_id for requirement in case.required_evidence if any(parse_evidence(evidence)[0] in first for evidence in requirement.any_of)]
     return {"requirements": len(case.required_evidence), "met_at_k": None, "file_met_at_k": len(file_met), "missed_at_k": None,
             "pack": {"tokens": estimate(result.text), "budget_tokens": None, "required_evidence_met": None, "required_file_met": len(met), "irrelevant_tokens": irrelevant, "stale_paths": 0}, "files": len(files)}
 
 
-def _blocks(text: str, files: Sequence[str]) -> list[tuple[str, str]]:
-    """Each shown file's text, found in the order the result named them, so a header quoted inside a file cannot start a block of its own."""
-    starts: list[int] = []
+def _blocks(text: str, files: Sequence[str], read: Callable[[str], bytes]) -> list[tuple[str, str]]:
+    """Each shown file's text, stepped by its real length, so a header quoted inside one file cannot start another's block. Only the last can be truncated."""
+    blocks: list[tuple[str, str]] = []
     position = 0
     for path in files:
-        position = text.index(f"--- {path} ---", position)
-        starts.append(position)
-        position += 1
-    return [(path, text[start: starts[index + 1] if index + 1 < len(starts) else len(text)]) for index, (path, start) in enumerate(zip(files, starts, strict=True))]
+        header = f"--- {path} ---\n"
+        if not text.startswith(header, position):
+            raise ValueError(f"the context did not show {path} where its result said")
+        whole = header + read(path).decode("utf-8")
+        end = position + len(whole) if text.startswith(whole, position) else len(text)
+        blocks.append((path, text[position:end]))
+        position = end + 1
+    return blocks
 
 
 def stale_or_missing_hits(ranked: Sequence[Ranked], root: Path) -> int:
@@ -144,7 +148,7 @@ def stale_or_missing_hits(ranked: Sequence[Ranked], root: Path) -> int:
     for item in ranked:
         path = item.hit.path
         if path not in known:
-            file = root / path
+            file = m1_scale.long_path(root) / path
             known[path] = hashlib.sha256(file.read_bytes()).hexdigest() if file.is_file() else None
         wrong += known[path] != item.hit.file_hash
     return wrong
@@ -237,11 +241,11 @@ class CachedEmbedder:
 def materialize(repository: Path, revision: str, target: Path, *, branch: str) -> None:
     """Exactly the cutoff tree, as its own repository, so a later commit cannot leak in and the real policy and worker see an ordinary checkout."""
     if target.exists():
-        shutil.rmtree(target, onexc=m1_scale._clear_read_only)
+        shutil.rmtree(m1_scale.long_path(target), onexc=m1_scale._clear_read_only)
     target.mkdir(parents=True)
     tar = subprocess.run(["git", "-C", str(repository), "archive", "--format=tar", revision], capture_output=True, check=True).stdout
     with tarfile.open(fileobj=io.BytesIO(tar)) as archive:
-        archive.extractall(target, filter="data")
+        archive.extractall(m1_scale.long_path(target), filter="data")
     m1_scale._git(target, "init", "-q", "-b", branch)
     m1_scale._git(target, "add", "-A")
     m1_scale._git(target, "commit", "-q", "-m", f"cutoff tree {revision[:12]}")
@@ -287,7 +291,7 @@ def evaluate_case(case: GoldenCase, index: m1_scale._Index, retriever: Retriever
     query = next(item.text for item in case.inputs if item.actor == "user" and item.text)
 
     def read(path: str) -> bytes | None:
-        file = root / path
+        file = m1_scale.long_path(root) / path
         return file.read_bytes() if file.is_file() else None
 
     started = time.perf_counter()
@@ -341,7 +345,7 @@ def run(config: Mapping[str, Any], repository: Path, splits: Sequence[str]) -> d
             old = work / "trees"
             for leftover in old.iterdir():
                 if leftover != tree:
-                    shutil.rmtree(leftover, onexc=m1_scale._clear_read_only)
+                    shutil.rmtree(m1_scale.long_path(leftover), onexc=m1_scale._clear_read_only)
             report["redis"] = m1_scale._redis_facts(client, config["container"])
             write_report(report, repository, config)  # kept current: a stopped run still shows what it measured
         report["results"] = {name: {split: aggregate([row for row in rows if row["split"] == split]) for split in splits} for name, rows in report["cases"].items()}

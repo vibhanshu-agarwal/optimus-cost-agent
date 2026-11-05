@@ -164,8 +164,13 @@ class _Index:
         return IndexWorker(WorkspaceIndexSource(FilePolicy(self.root)), self.storage, self.embedder, owner=self.owner, cold_admission=False)
 
 
+def long_path(path: Path) -> Path:
+    """Real trees hold paths past Windows's 260 characters, which plain file calls refuse while the product's own policy reaches them."""
+    return Path("\\\\?\\" + str(path.resolve())) if sys.platform == "win32" else path
+
+
 def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(root), "-c", "user.name=m1", "-c", "user.email=m1@example.invalid", *args], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(root), "-c", "core.longpaths=true", "-c", "user.name=m1", "-c", "user.email=m1@example.invalid", *args], capture_output=True, check=True)
 
 
 def _clear_read_only(remove: Callable[[str], None], path: str, _error: BaseException) -> None:
@@ -177,13 +182,13 @@ def _clear_read_only(remove: Callable[[str], None], path: str, _error: BaseExcep
 def _corpus_copy(source: Path, target: Path, paths: Sequence[str]) -> Path:
     """A throwaway copy of the corpus's tracked files, so the measurement can edit it and no checkout changes."""
     if target.exists():
-        shutil.rmtree(target, onexc=_clear_read_only)
+        shutil.rmtree(long_path(target), onexc=_clear_read_only)
     target.mkdir(parents=True)
     tracked = subprocess.run(["git", "-C", str(source), "ls-files", "-z", "--", *paths], capture_output=True, check=True).stdout.decode("utf-8").split("\0")
     for relative in filter(None, tracked):
-        origin = source / relative
+        origin = long_path(source) / relative
         if origin.is_file():
-            destination = target / relative
+            destination = long_path(target) / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(origin, destination)
     _git(target, "init", "-q", "-b", "pilot")
@@ -276,12 +281,12 @@ class _AcpxTurns:
     """Real acpx turns against a real approved agent whose upstream is a local stub, so a person's turn is measured, idle and during a
     cold build. The folder comes only from P1210_ACPX_KIT, because its launch approvals belong to that folder; without it this reports UNRUN."""
 
-    def __init__(self, kit: Path, evidence: Path) -> None:
+    def __init__(self, kit: Path, evidence: Path, *, stub_seconds: int = 1800) -> None:
         self._kit = kit
         self._acpx = shutil.which("acpx") or "acpx"
         self._common = ["--format", "json", "--deny-all", "--ttl", "900", "--timeout", "120", "--cwd", str(kit / "workspace-a"), "--agent", f"'{kit / 'run-a.cmd'}'"]
         evidence.mkdir(parents=True, exist_ok=True)
-        self._stub = subprocess.Popen([sys.executable, "-I", str(kit / "stub_provider.py"), str(kit / "scenario.json"), str(evidence), "18791", "1800"],
+        self._stub = subprocess.Popen([sys.executable, "-I", str(kit / "stub_provider.py"), str(kit / "scenario.json"), str(evidence), "18791", str(stub_seconds)],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self._before = set(psutil.pids())
         self._owners: list[tuple[int, float]] = []

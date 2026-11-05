@@ -84,10 +84,21 @@ def test_a_signature_only_item_counts_its_line_alone(tmp_path: Path) -> None:
 
 
 def test_off_uses_what_the_result_says_it_showed_not_headers_quoted_in_a_file(tmp_path: Path) -> None:
-    (tmp_path / "shown.py").write_text("# --- target.py ---\n", encoding="utf-8")
-    text = "--- shown.py ---\n# --- target.py ---\n"
-    assert ev._blocks(text, ["shown.py"]) == [("shown.py", text)]
-    assert [path for path, _block in ev._blocks("--- a.py ---\nx\n--- b.py ---\ny\n", ["a.py", "b.py"])] == ["a.py", "b.py"]
+    files = {"a.py": "# --- b.py ---\nx\n", "b.py": "y\n"}
+    read = lambda path: files[path].encode("utf-8")  # noqa: E731
+    first, second = "--- a.py ---\n# --- b.py ---\nx\n", "--- b.py ---\ny\n"
+    assert ev._blocks(f"{first}\n{second}", ["a.py", "b.py"], read) == [("a.py", first), ("b.py", second)]  # both shown, and a quotes b's header
+    assert ev._blocks("--- a.py ---\n# --- b.py", ["a.py"], read) == [("a.py", "--- a.py ---\n# --- b.py")]  # truncated
+    with pytest.raises(ValueError, match="did not show"):
+        ev._blocks("something else", ["a.py"], read)
+
+
+def test_off_scores_the_real_selection_when_a_file_quotes_anothers_header(tmp_path: Path) -> None:
+    (tmp_path / "alpha.py").write_bytes(b"# --- beta.py ---\nvalue = 1\n")
+    (tmp_path / "beta.py").write_bytes(b"value = 2\n")
+    score = ev.score_off(_case(("path:beta.py",)), tmp_path, query="compare alpha.py and beta.py")
+    assert score["files"] == 2 and score["met_at_k"] is None and score["pack"]["required_evidence_met"] is None and score["pack"]["required_file_met"] == 1
+    assert score["pack"]["irrelevant_tokens"] == ev.estimate("--- alpha.py ---\n# --- beta.py ---\nvalue = 1\n")
 
 
 def test_records_that_do_not_describe_this_tree_are_counted(tmp_path: Path) -> None:

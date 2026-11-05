@@ -106,3 +106,32 @@ def test_the_large_corpus_must_be_at_the_approved_commit(tmp_path: Path) -> None
         clone_large_corpus(source, tmp_path / "wrong", expected_commit="0" * 40)
     clone = clone_large_corpus(source, tmp_path / "right", expected_commit=head)
     assert "**/*Test.java" in (clone / ".optimusignore").read_text(encoding="utf-8")
+
+
+def test_survival_is_by_identity_and_payload_not_by_count() -> None:
+    from tools.plan12_memory.m1_qualify import compare_acknowledged
+
+    assert compare_acknowledged({"a": "1", "b": "2"}, {"a": "1", "b": "2", "c": "3"}) == {"acknowledged": 2, "missing": 0, "conflicting": 0}
+    assert compare_acknowledged({"a": "1", "b": "2"}, {"a": "9", "c": "3"}) == {"acknowledged": 2, "missing": 1, "conflicting": 1}  # same count as stored would hide this
+
+
+def test_every_canary_request_passes_the_routes_own_contract() -> None:
+    from optimus_security import memory_index_contract as mic
+    from tools.plan12_memory.m1_qualify import _ANY_REVISION, _ONE_FILE, _record, owner_id
+
+    scope = "0" * 64
+    owner = owner_id("k2owner0")
+    name = "canaryabcdx1"
+    for body in (
+        {"op": "generation", "action": "open", "embedding": "e", "dimensions": 4, "schema_version": 1},
+        {"op": "lease", "action": "acquire", "owner": owner, "ttl_ms": 60000, "kind": "scope"},
+        {"op": "lease", "action": "renew", "owner": owner, "ttl_ms": 60000, "kind": "scope", "token": 1},
+        {"op": "generation", "action": "begin", "token": 1},
+        {"op": "batch", "token": 1, "epoch": 1, "records": [_record(name, 4)]},
+        {"op": "generation", "action": "publish", "token": 1, "epoch": 1, "revision": _ANY_REVISION, "dirty": False, "coverage": _ONE_FILE},
+        {"op": "query", "mode": "lexical", "terms": [name], "k": 1},
+        {"op": "cleanup", "action": "drop", "token": 1},
+        {"op": "lease", "action": "release", "owner": owner, "kind": "scope", "token": 1},
+    ):
+        mic.parse_request(json.dumps({"scope": scope, **body}).encode("utf-8"))
+
