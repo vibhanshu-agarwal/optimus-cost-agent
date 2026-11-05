@@ -161,12 +161,43 @@ class _Index:
         self.owner = hashlib.sha256(f"{project}{root}".encode()).hexdigest()[:32]
 
     def worker(self) -> IndexWorker:
-        return IndexWorker(WorkspaceIndexSource(FilePolicy(self.root)), self.storage, self.embedder, owner=self.owner, cold_admission=False)
+        """As the session runs it: what Git calls changed goes first."""
+        source = WorkspaceIndexSource(FilePolicy(self.root))
+        return IndexWorker(source, self.storage, self.embedder, owner=self.owner, cold_admission=False, priority=lambda: source.dirty_paths() or ())
+
+
+def edit_visibility(run: Callable[[threading.Event], Any], found: Callable[[], bool], *, limit_seconds: float = 900, poll_seconds: float = 0.1) -> dict[str, Any]:
+    """How soon an edit can be queried, while the pass that wrote it may still be reconciling the rest; the whole pass is reported apart."""
+    outcome: list[Any] = []
+    started = time.perf_counter()
+    worker = threading.Thread(target=lambda: outcome.append(run(threading.Event())), daemon=True)
+    worker.start()
+    visible = None
+    while visible is None and time.perf_counter() - started < limit_seconds:
+        alive = worker.is_alive()
+        if found():
+            visible = round(time.perf_counter() - started, 2)
+        elif not alive:
+            break
+        else:
+            time.sleep(poll_seconds)
+    worker.join(max(0.0, limit_seconds - (time.perf_counter() - started)))
+    whole = round(time.perf_counter() - started, 2)
+    result = outcome[0] if outcome else None
+    return {"seconds_until_queryable": visible, "new_symbol_found": visible is not None, "whole_pass_seconds": whole if result else None,
+            "state": getattr(result, "state", "no-result"), "records_written": getattr(result, "records_written", None)}
 
 
 def long_path(path: Path) -> Path:
     """Real trees hold paths past Windows's 260 characters, which plain file calls refuse while the product's own policy reaches them."""
     return Path("\\\\?\\" + str(path.resolve())) if sys.platform == "win32" else path
+
+
+def _symbol_at(index: _Index, symbol: str, root: Path, target: Path) -> bool:
+    """The new symbol, in the edited file: a match elsewhere proves nothing about this edit."""
+    expected = target.relative_to(long_path(root) if str(target).startswith("\\\\?\\") else root).as_posix()
+    records = index.storage.call("query", mode="lexical", terms=[symbol.lower()], k=5)["records"]
+    return any(record.get("path") == expected for record in records)
 
 
 def edit_target(root: Path, suffix: str) -> Path:
@@ -611,11 +642,7 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
 
         target = edit_target(corpus, ".py")
         target.write_text(target.read_text(encoding="utf-8") + "\n\ndef m1_pilot_added_function():\n    return 1\n", encoding="utf-8")
-        started = time.perf_counter()
-        edited = _required(index.worker().run(threading.Event()))
-        report["incremental_one_file"] = {"state": edited.state, "seconds": round(time.perf_counter() - started, 2), "records_written": edited.records_written}
-        found = index.storage.call("query", mode="lexical", terms=["m1_pilot_added_function"], k=5)["records"]
-        report["incremental_one_file"]["new_symbol_found"] = bool(found)
+        report["incremental_one_file"] = edit_visibility(lambda cancel: index.worker().run(cancel), lambda: _symbol_at(index, "m1_pilot_added_function", corpus, target))
 
         _note("loading scale records")
         report["scale_load"] = _load_scale_records(index, total=config["scale_records"], dimensions=memory.embedding.dimensions)

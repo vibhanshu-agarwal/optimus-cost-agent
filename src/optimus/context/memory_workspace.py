@@ -78,7 +78,7 @@ class WorkspaceIndexSource(IndexSource):
         unreachable = 0
         for decision in self._policy.walk(purpose=FilePurpose.INDEX):
             if decision.allowed:
-                yield SourceFile(decision.relative_path, self._modified(decision.relative_path))
+                yield SourceFile(decision.relative_path, self.modified(decision.relative_path))
             elif decision.reason == "excluded.unreadable":
                 unreachable += 1
         self._unreachable = unreachable
@@ -86,7 +86,7 @@ class WorkspaceIndexSource(IndexSource):
     def unreachable(self) -> int:
         return self._unreachable
 
-    def _modified(self, path: str) -> int | None:
+    def modified(self, path: str) -> int | None:
         try:
             return int(os.stat(reachable_path(self._policy.root / path)).st_mtime)
         except OSError:

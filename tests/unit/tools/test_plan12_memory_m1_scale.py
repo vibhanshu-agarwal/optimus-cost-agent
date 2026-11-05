@@ -164,6 +164,34 @@ def test_the_edit_lands_on_a_file_the_index_admits(tmp_path: Path) -> None:
         m1_scale.edit_target(tmp_path, ".java")
 
 
+def test_an_edit_counts_as_visible_when_it_can_be_queried_not_when_its_pass_ends() -> None:
+    published, release = threading.Event(), threading.Event()
+
+    def run(_cancel: threading.Event) -> object:
+        published.set()  # the early publication; the pass then keeps reconciling the rest of the tree
+        release.wait(5)
+        return type("Outcome", (), {"state": "complete", "records_written": 3})()
+
+    def found() -> bool:
+        if published.is_set():
+            release.set()
+            return True
+        return False
+
+    result = m1_scale.edit_visibility(run, found, poll_seconds=0.01)
+    assert result["new_symbol_found"] and result["state"] == "complete" and result["records_written"] == 3
+    assert result["seconds_until_queryable"] <= result["whole_pass_seconds"]
+    never = m1_scale.edit_visibility(lambda _cancel: type("Outcome", (), {"state": "complete", "records_written": 0})(), lambda: False, poll_seconds=0.01)
+    assert never["new_symbol_found"] is False and never["seconds_until_queryable"] is None
+
+
+def test_assembly_without_the_dense_channel_is_flagged_as_not_what_a_person_gets() -> None:
+    from tools.plan12_memory.m1_qualify import _dense_in_every_turn
+
+    assert _dense_in_every_turn([{"task": "a", "calls": {"query:dense": 1, "query:lexical": 1}}]) == {"dense_in_every_turn": True}
+    assert _dense_in_every_turn([{"task": "a", "calls": {"query:lexical": 1}}]) == {"dense_in_every_turn": False, "turns_without_dense": ["a"]}
+
+
 def test_logical_purge_is_timed_at_the_first_refusal_not_the_whole_sweep() -> None:
     from context_engine.index_worker import StorageRefusedError
     from tools.plan12_memory.m1_qualify import drop_and_time

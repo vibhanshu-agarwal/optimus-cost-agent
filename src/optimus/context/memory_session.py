@@ -238,6 +238,10 @@ class MemorySession:
         with self._lock:
             return tuple(self._priority)
 
+    def _priorities_and_changes(self) -> Sequence[str]:
+        """What a person is looking at, then what Git says they changed, so an edit is written before the tree is walked."""
+        return (*self._priorities(), *(self._source.dirty_paths() or ()))
+
     def _loop(self) -> None:
         """A failure here must not leave a thread dead behind a status that still says building, so it ends indexing and says why."""
         try:
@@ -266,7 +270,7 @@ class MemorySession:
             if revision == self._indexed_revision and not self._priorities():
                 continue
             storage = _BranchPinned(self._storage_for(scope.identity), self._on_branch(scope.branch))
-            worker = IndexWorker(self._source, storage, self._embedder, owner=secrets.token_hex(16), priority=self._priorities, foreground_busy=self._busy.is_set)
+            worker = IndexWorker(self._source, storage, self._embedder, owner=secrets.token_hex(16), priority=self._priorities_and_changes, foreground_busy=self._busy.is_set)
             outcome = worker.run(self._cancel)
             self._last_outcome = outcome
             if outcome.detail == BRANCH_MOVED:
@@ -380,6 +384,7 @@ class MemorySession:
                 current = scope.storage.call("coverage").get("current")
                 if current:
                     catalogue = read_catalogue(scope.storage, current["epoch"])  # exactly this epoch: its hashes are what the symbols below are checked against
+                    self._catalogue = _Cached(scope.identity, current["epoch"], self._clock(), catalogue, bool(current["coverage"].get("complete")))  # the turn's retrieval needs the same pages
                     cached = _CachedMap(scope.identity, self._clock(), seed_files(scope.storage, current["epoch"], catalogue), {item.path: item.file_hash for item in catalogue})
                     self._map = cached
                 elif cached is None:

@@ -519,8 +519,8 @@ def _calibrate_assembly(root: Path, settings: Any, embedder: Any, work: Path, *,
         map_text = session.repo_map(scope)
         refresh = {"wall_ms": round((time.perf_counter() - started) * 1000, 1), "route_calls": sum(sum(counter.calls.values()) for counter in counters), "chars": len(map_text)}
         idle = [scale._measure_turn(session, counters, task, f"cal-{round_}-{number}") for round_ in range(5) for number, task in enumerate(_LARGE_TASKS)]
-        return {"state": "CALIBRATION: never a qualification result", "repo_map_on_a_miss": refresh, "idle": {**scale._assembly_summary(idle), "per_task": idle[-len(_LARGE_TASKS):]},
-                "during_build": {**scale._assembly_summary(during_build), "per_task": during_build[:len(_LARGE_TASKS)]} if during_build else None, "coverage": session.status()}
+        return {"state": "CALIBRATION: never a qualification result", "repo_map_on_a_miss": refresh, "idle": {**scale._assembly_summary(idle), **_dense_in_every_turn(idle), "per_turn": idle},
+                "during_build": {**scale._assembly_summary(during_build), **_dense_in_every_turn(during_build), "per_turn": during_build} if during_build else None, "coverage": session.status()}
     finally:
         session.close()
 
@@ -529,10 +529,17 @@ def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path,
     """The turn a person would get while the large line builds, on that line's published part. This session runs no worker: the build already holds the line."""
     counters, storage_for = _counted(settings)
     session = _session(root, embedder, work, project=project, parser_version=parser_version, storage_for=storage_for)
+    session._embedder = embedder  # start() would load it, and also start a second worker on the line the build holds
     try:
         return [scale._measure_turn(session, counters, task, f"build-{number}") for number, task in enumerate(_LARGE_TASKS)]
     finally:
         session.close()
+
+
+def _dense_in_every_turn(turns: list[dict[str, Any]]) -> dict[str, Any]:
+    """Hybrid assembly asks the dense channel each turn. Without it the turns measured lexical-only assembly, which a person never gets."""
+    missing = [turn["task"] for turn in turns if not turn["calls"].get("query:dense")]
+    return {"dense_in_every_turn": not missing, **({"turns_without_dense": missing} if missing else {})}
 
 
 def _built_with_samples(index: scale._Index, foreground: scale._Index, store: memory_index.IndexStore, *, config: Mapping[str, Any], pids: dict[str, int], turns: Any, during_build: list[dict[str, Any]], assembly: Callable[[], list[dict[str, Any]]]) -> dict[str, Any]:
@@ -682,10 +689,7 @@ def run_qualify(config: dict[str, Any], repository: Path) -> dict[str, Any]:
             report["large"]["reconcile_unchanged"] = {"state": unchanged.state, "seconds": round(elapsed, 1), "seconds_per_1000_files": round(elapsed / max(files, 1) * 1000, 1), "records_written": unchanged.records_written}
             target = scale.edit_target(large, ".java")
             target.write_text(target.read_text(encoding="utf-8") + "\n\nclass M1QualifyAddedClass { void m1QualifyAddedMethod() {} }\n", encoding="utf-8")
-            started = time.perf_counter()
-            edited = index.worker().run(threading.Event())
-            found = index.storage.call("query", mode="lexical", terms=["m1qualifyaddedmethod"], k=5)["records"]
-            report["large"]["incremental_one_file"] = {"state": edited.state, "seconds": round(time.perf_counter() - started, 2), "records_written": edited.records_written, "new_symbol_found": bool(found)}
+            report["large"]["incremental_one_file"] = scale.edit_visibility(lambda cancel: index.worker().run(cancel), lambda: scale._symbol_at(index, "m1QualifyAddedMethod", large, target))
             vector = mic.encode_vector(embedder.embed(["how does the namenode place a block"])[0])
             report["large"]["query_idle"] = scale._query_load(index, store, samples=config["query_samples"], terms=["block", "namenode", "container", "token", "replica", "lease", "scheduler", "rpc"], vector=vector)
             report["large"]["bulk"] = scale._bulk(index, store, batches=config["bulk_batches"], dimensions=memory.embedding.dimensions)

@@ -87,6 +87,23 @@ def score_ranking(case: GoldenCase, ordered: Sequence[Ranked]) -> dict[str, Any]
     return {"requirements": len(case.required_evidence), "met_at_k": len(met), "file_met_at_k": len(files), "missed_at_k": [requirement.requirement_id for requirement in case.required_evidence if requirement.requirement_id not in met]}
 
 
+def candidate_ranks(case: GoldenCase, ranked: Sequence[Ranked]) -> list[dict[str, Any]]:
+    """Per requirement: where its best accepted locus sits in the fused order and in each channel's own order, or that no channel returned it.
+    Weights can move a candidate up; they cannot bring back one no channel found."""
+    rows = []
+    for requirement in case.required_evidence:
+        hits = [(position, item) for position, item in enumerate(ranked, start=1)
+                if any(meets(evidence, item.hit.path, item.hit.symbol if item.hit.kind == "symbol" else None) for evidence in requirement.any_of)]
+        channels: dict[str, int] = {}
+        for _position, item in hits:
+            for channel, rank in item.ranks.items():
+                channels[channel] = min(rank, channels.get(channel, rank))
+        files = {parse_evidence(evidence)[0] for evidence in requirement.any_of}
+        rows.append({"requirement": requirement.requirement_id, "fused_rank": hits[0][0] if hits else None, "channel_ranks": channels,
+                     "file_fused_rank": next((position for position, item in enumerate(ranked, start=1) if item.hit.path in files), None)})
+    return rows
+
+
 def _shown_tokens(item: Selected, ranked_by_id: Mapping[tuple[str, str | None, int | None], Ranked], contents: Callable[[str], bytes | None], signature_lines: set[str]) -> int:
     """Everything rendered for this item. An item shown as a body can also have its signature line shown."""
     source = ranked_by_id.get((item.path, item.symbol, item.start_line))
@@ -315,7 +332,8 @@ def evaluate_case(case: GoldenCase, index: m1_scale._Index, retriever: Retriever
         ordered = ablation_order(retrieval.ranked, ablation)
         ablations[ablation] = {**score_ranking(case, ordered), "pack": score_pack(case, ordered, read, budget)}
     return {"case_id": case.case_id, "version": case.version, "split": case.split, "snapshot": f"hex:{case.snapshot.removeprefix('git:')}", "cutoff": case.cutoff.isoformat(), "requirements": len(case.required_evidence),
-            "retrieve_seconds": round(seconds, 3), "channels": dict(retrieval.channels), "coverage": dict(retrieval.coverage), "stale_or_missing_records": stale_or_missing_hits(retrieval.ranked, root), "ablations": ablations}
+            "retrieve_seconds": round(seconds, 3), "channels": dict(retrieval.channels), "coverage": dict(retrieval.coverage), "stale_or_missing_records": stale_or_missing_hits(retrieval.ranked, root), "ablations": ablations,
+            "candidates": candidate_ranks(case, retrieval.ranked)}
 
 
 def run(config: Mapping[str, Any], repository: Path, splits: Sequence[str]) -> dict[str, Any]:

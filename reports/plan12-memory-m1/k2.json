@@ -260,6 +260,22 @@
    {
     "direction": "at most",
     "group": "k2",
+    "limit": 250,
+    "measured": 51.071,
+    "met": true,
+    "metric": "projection latency p95 under slow persistence (appendfsync always), ms"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 8192,
+    "measured": 872.0,
+    "met": true,
+    "metric": "disk at its peak during K2, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
     "limit": 60,
     "measured": 11.734,
     "met": true,

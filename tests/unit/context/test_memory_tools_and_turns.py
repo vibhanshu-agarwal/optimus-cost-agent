@@ -1100,6 +1100,15 @@ def test_the_map_reads_its_hashes_from_its_own_epoch_even_during_a_build(workspa
     assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3, 4]
 
 
+def test_the_catalogue_the_map_read_serves_the_turns_retrieval(workspace):
+    storage = _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    turn = session.turn()
+    turn.repo_map()
+    turn._retriever.retrieve("helper")
+    assert [op for op, _fields in storage.calls].count("catalogue") == 1  # 41 pages each at 10,255 files, read twice on a first turn
+
+
 @pytest.mark.parametrize("damage", ["emptied", "binary"])
 def test_a_file_that_can_no_longer_be_read_keeps_no_symbols_in_the_map(workspace, damage):
     session, scope = _mapped(workspace)

@@ -673,7 +673,7 @@
     "measured": null,
     "met": null,
     "metric": "seconds from an edit to its symbol being queryable, one file",
-    "note": "NOT MEASURED: harness defect. The harness edited the sorted-first large Java file, hadoop-client-integration-tests/src/test/java/.../ITUseHadoopCodecs.java, which the approved test rule excludes, so 0 records and no symbol were the product's correct answer. Fixed (m1_scale.edit_target picks a file the index admits; unit test). Expected to miss at this size: the edit run took 223.0 s, the same as an unchanged reconcile, and every worker run begins with the 27 s listing above."
+    "note": "NOT MEASURED: harness defects. The harness edited the sorted-first large Java file, hadoop-client-integration-tests/src/test/java/.../ITUseHadoopCodecs.java, which the approved test rule excludes, so 0 records and no symbol were the product's correct answer; and it queried only after the whole pass, so its 223.0 s is the pass, not visibility (Codex review 23). Fixed: m1_scale.edit_target picks a file the index admits, and m1_scale.edit_visibility times the first successful query of the new symbol in that file while the pass runs. At 1a7592b every pass began with the 27 s listing above, so this would have missed 6 s; the product now writes changed and open files before the listing (see the later run)."
    },
    {
     "direction": "at most",
@@ -699,6 +699,14 @@
     "met": true,
     "metric": "seconds until answering after a Redis kill, same publication",
     "note": "Met with little room: 9.3 of 10. K2's own bound for this is 60."
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 2,
+    "measured": 2,
+    "met": true,
+    "metric": "native embedding threads, as configured"
    },
    {
     "direction": "at most",
@@ -756,8 +764,8 @@
    "seconds from an edit to its symbol being queryable, one file"
   ],
   "other_observations": [
-   "One assembly task during the build packed 0 tokens (delegation tokens, at 76 s, lexical only while the index was partial; coverage said so). Idle, the same task packed 13,986.",
-   "Idle assembly had one outlier turn of 52 route calls and 14.8 s route time, alongside a repo-map refresh on a miss of 90 calls and 15.7 s; the pilot limits were 30 calls and 1,000 ms for a refresh.",
+   "During-build assembly was lexical-only because of the harness, not the index: its session was never started, so it had no embedder (Codex review 23). One task packed 0 tokens there. Fixed: the session is given the embedder without a second worker, and each calibration records dense_in_every_turn. Idle assembly did query dense.",
+   "Idle assembly had one outlier turn of 52 route calls and 14.8 s route time. Cause: the repo map read the 41-page catalogue (10,255 files at 256 a page) without sharing it with retrieval's cache, so the first turn read it again: 41 + 11 = 52. Fixed in the session with a unit test. A repo-map refresh on a miss cost 90 calls and 15.7 s; the pilot limits were 30 calls and 1,000 ms for a refresh. Every idle turn is now kept, not the last four.",
    "Release B's first acpx turn took 13.2 s against an idle p50 of 6.3 s; that is the stub agent's start, not the index."
   ],
   "state": "One frozen limit MISSED, one NOT MEASURED (harness defect), the rest met. The operator's disposition is owed; nothing was retuned or rerun."

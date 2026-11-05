@@ -37,6 +37,15 @@ def test_recall_counts_only_the_named_symbol_within_k_and_the_file_measure_is_se
     assert (score["met_at_k"], score["file_met_at_k"], score["missed_at_k"]) == (1, 2, ["R1", "R3"])  # c.py is sixth; a.py is the right file, wrong symbol
 
 
+def test_a_requirement_is_found_low_in_the_order_or_by_no_channel_at_all() -> None:
+    case = _case(("symbol:a.py::f",), ("symbol:b.py::g",))
+    ordered = [_ranked("x.py", "x"), _ranked("b.py", "other"), _ranked("a.py", "f", ranks={"dense": 12, "lexical": 30})]
+    assert ev.candidate_ranks(case, ordered) == [
+        {"requirement": "R1", "fused_rank": 3, "channel_ranks": {"dense": 12, "lexical": 30}, "file_fused_rank": 3},
+        {"requirement": "R2", "fused_rank": None, "channel_ranks": {}, "file_fused_rank": 2},  # the file was found, the symbol by no channel
+    ]
+
+
 def test_a_section_with_a_heading_is_not_a_symbol() -> None:
     case = _case(("symbol:a.md::Title",))
     assert ev.score_ranking(case, [_ranked("a.md", "Title", kind="section")])["met_at_k"] == 0
