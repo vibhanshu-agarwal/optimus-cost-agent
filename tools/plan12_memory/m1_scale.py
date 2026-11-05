@@ -204,7 +204,7 @@ def edit_visibility(run: Callable[[threading.Event], Any], found: Callable[[], b
     if worker.is_alive():
         raise SystemExit("the edit's index pass did not stop; anything measured next would run under its load")
     result = outcome[0] if outcome else None
-    return {"seconds_until_queryable": visible, "new_symbol_found": visible is not None, "queryable_before_the_pass_ended": while_running,
+    return {"seconds_until_queryable": visible, "new_symbol_found": visible is not None, "pass_running_before_successful_probe": while_running,
             "whole_pass_seconds": round(time.perf_counter() - started, 2) if result else None, "state": getattr(result, "state", "no-result"),
             "records_written": getattr(result, "records_written", None), "worker_failure": failure[0] if failure else None, "query_error": query_error}
 

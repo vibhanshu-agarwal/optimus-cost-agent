@@ -160,6 +160,20 @@ def test_held_out_is_refused_until_the_operator_approves_targets_for_this_exact_
     ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "limits": limits, "sealed_gold_sha256": ev.gold_digest(gold)}}, gold)
 
 
+def test_a_second_held_out_set_opens_only_under_its_own_sealed_section(tmp_path: Path) -> None:
+    first, fresh = tmp_path / "first", tmp_path / "fresh"
+    for directory, marker in ((first, "first"), (fresh, "fresh")):
+        directory.mkdir()
+        (directory / "localization.json").write_text(json.dumps({"cases": [], "set": marker}), encoding="utf-8")
+    limits = [{"metric": "m", "limit": 9}]
+    old = {"state": "APPROVED", "limits": limits, "sealed_gold_sha256": ev.gold_digest(first)}
+    with pytest.raises(ev.HeldOutRefused, match="not the one"):  # the earlier approval never opens another set
+        ev.refuse_unapproved_held_out(["held_out"], {"retrieval": old}, fresh)
+    with pytest.raises(ev.HeldOutRefused, match="not approved"):
+        ev.refuse_unapproved_held_out(["held_out"], {"retrieval": old, "retrieval_fresh": {"state": "DRAFT", "limits": limits, "sealed_gold_sha256": ev.gold_digest(fresh)}}, fresh)
+    ev.refuse_unapproved_held_out(["held_out"], {"retrieval": old, "retrieval_fresh": {"state": "APPROVED", "limits": limits, "sealed_gold_sha256": ev.gold_digest(fresh)}}, fresh)
+
+
 def test_a_cutoff_tree_holds_exactly_that_commit_even_past_the_windows_path_limit(tmp_path: Path) -> None:
     source = tmp_path / "source"
     deep = "/".join(["d" * 40] * 7)

@@ -184,7 +184,7 @@ def test_an_edit_counts_as_visible_when_it_can_be_queried_not_when_its_pass_ends
     result = m1_scale.edit_visibility(run, found, poll_seconds=0.01)
     assert result["new_symbol_found"] and result["state"] == "complete" and result["records_written"] == 3
     assert pass_over_when_found == [False]  # run-then-query would only ask after the pass had finished
-    assert result["queryable_before_the_pass_ended"] is True
+    assert result["pass_running_before_successful_probe"] is True
     assert result["seconds_until_queryable"] <= result["whole_pass_seconds"]
     never = m1_scale.edit_visibility(lambda _cancel: type("Outcome", (), {"state": "complete", "records_written": 0})(), lambda: False, poll_seconds=0.01)
     assert never["new_symbol_found"] is False and never["seconds_until_queryable"] is None

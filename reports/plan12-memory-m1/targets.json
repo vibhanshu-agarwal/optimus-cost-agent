@@ -81,6 +81,24 @@
       "approved": "Codex review 24 item 3 on #469 recommended exactly these values. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved."
     }
   ],
+  "retrieval_fresh": {
+    "state": "APPROVED",
+    "approved": "Codex review 26 on #469 verified each case and gave the corrections applied here verbatim (#439 restored, #402 out, three queries reworded), and agreed these counts for N = 30. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved.",
+    "sealed_gold_sha256": "hex:caf1aefa78796438b073f5dae7acff96c691ce978ed7f5ca472f6e21b46e82a0",
+    "gold": "tests/fixtures/plan12_memory_m1_fresh",
+    "selection": "The rule fixed in Codex review 25: fix commits inside merged PRs at main 6e5478a, after the seed development cutoff, the 12 newest PRs; handoff kit m1_fresh_select.py and m1_fresh_build.py. Pre-merge snapshots.",
+    "sealed_before": "Any further tuning. The earlier held-out set and its failed result stay in `retrieval` and retrieval-held-out.json.",
+    "what_they_are": "Floors carrying the stricter M1 proportions to N = 30: ceil(3N/11) and ceil(2N/11). MF10 has requirements of 13 and 23 alternatives under the one-requirement-per-file method; finding one locus per file does not show each of its eleven findings localized.",
+    "limits": [
+      {"metric": "Fresh held-out, 30 requirements: hybrid required evidence in context, count", "limit": 9, "direction": "at least"},
+      {"metric": "Fresh held-out: hybrid symbol recall at 5, count", "limit": 6, "direction": "at least"},
+      {"metric": "Fresh held-out: hybrid file recall at 5, count", "limit": 6, "direction": "at least"},
+      {"metric": "Fresh held-out: mean irrelevant estimated tokens", "limit": 16000, "direction": "at most"},
+      {"metric": "Incomplete coverage cases", "limit": 0, "direction": "at most"},
+      {"metric": "Stale or missing-file records", "limit": 0, "direction": "at most"},
+      {"metric": "Wrong-branch records, with the positive control found", "limit": 0, "direction": "at most"}
+    ]
+  },
   "retrieval": {
       "state": "APPROVED",
       "approved": "The operator, Claude chat 2026-11-05, chose: \"B: seal, then tune (Recommended)\". The question gave this gold hash and these floors. Codex recommended option B and the floors in review 21.",

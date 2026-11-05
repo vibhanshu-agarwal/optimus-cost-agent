@@ -216,11 +216,13 @@ def refuse_unapproved_held_out(splits: Sequence[str], targets: Mapping[str, Any]
     """Targets are set from the baselines before the held-out set is opened, and they bind the exact gold the operator sealed."""
     if "held_out" not in splits:
         return
-    retrieval = targets.get("retrieval")
-    if not isinstance(retrieval, dict) or retrieval.get("state") != "APPROVED" or not _numeric_limits(retrieval.get("limits")):
+    sections = [section for key, section in targets.items() if key.startswith("retrieval") and isinstance(section, dict)]
+    matching = [section for section in sections if section.get("sealed_gold_sha256") == gold_digest(m1_gold)]
+    if not matching:  # never another set's approval: each held-out set is opened only under the section that sealed it
+        approved = any(section.get("state") == "APPROVED" for section in sections)
+        raise HeldOutRefused("held-out refused: the gold is not the one the operator sealed" if approved else "held-out refused: the operator has not approved retrieval targets")
+    if not all(section.get("state") == "APPROVED" and _numeric_limits(section.get("limits")) for section in matching):
         raise HeldOutRefused("held-out refused: the operator has not approved retrieval targets")
-    if retrieval.get("sealed_gold_sha256") != gold_digest(m1_gold):
-        raise HeldOutRefused("held-out refused: the gold is not the one the operator sealed")
 
 
 class CachedEmbedder:
@@ -339,7 +341,7 @@ def evaluate_case(case: GoldenCase, index: m1_scale._Index, retriever: Retriever
 def run(config: Mapping[str, Any], repository: Path, splits: Sequence[str]) -> dict[str, Any]:
     gold = {name: repository / path for name, path in config["gold"].items()}
     targets = json.loads((repository / "reports/plan12-memory-m1/targets.json").read_text(encoding="utf-8"))
-    refuse_unapproved_held_out(splits, targets, gold["m1"])
+    refuse_unapproved_held_out(splits, targets, gold[config.get("held_out_gold", "m1")])  # the fresh set's config names its own gold
     work = repository / config["work_dir"]
     root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)
     head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()

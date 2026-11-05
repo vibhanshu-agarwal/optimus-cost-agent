@@ -53,7 +53,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit c4fc03e3697616ed6bb86ffc855c3d66a00ffdf1 inside merged PR #401 (merge 8a22e22d7be0a8c89bbe0b0302e38d879242d003), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
@@ -62,63 +62,6 @@
    "case_id": "MF02-a",
    "version": 1,
    "family": "MF02",
-   "split": "held_out",
-   "kind": "localization",
-   "role": "probe",
-   "oracles": [
-    "K2"
-   ],
-   "inputs": [
-    {
-     "seq": 0,
-     "actor": "user",
-     "text": "When a context summary has already shown that the shared experimental route is stopped, planning and chat still answer an oversized prompt with advice to shorten it or start a new thread, which cannot help. Where do planning and chat handle a turn whose context does not fit, and where does the attached turn expose its maintenance facts?",
-     "attempt": null
-    }
-   ],
-   "project_id": "optimus-cost-agent",
-   "snapshot": "git:8974d3f1b80de9e837610fc7f996a7078963bbb2",
-   "cutoff": "2026-10-23T17:00:11+05:30",
-   "expected_action": "answer",
-   "required_facts": [],
-   "required_evidence": [
-    {
-     "requirement_id": "R1",
-     "any_of": [
-      "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.run_iteration"
-     ]
-    },
-    {
-     "requirement_id": "R2",
-     "any_of": [
-      "symbol:src/optimus/agent/runner.py::AgentRunner._run_chat_answer"
-     ]
-    },
-    {
-     "requirement_id": "R3",
-     "any_of": [
-      "symbol:src/optimus/context/assembly.py::AttachedTurn"
-     ]
-    }
-   ],
-   "prohibited_claims": [],
-   "required_events": [],
-   "prohibited_events": [],
-   "expected_memory": [],
-   "expected_rank": [],
-   "expected_cost": null,
-   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
-   "provenance": {
-    "drafted_by": "claude",
-    "verified_by": null,
-    "source": "fix commit 58ea8f523bdb70fd7f3c11e4433f5a59b77dc7b5 inside merged PR #402 (merge dfab8b2102e4a05e3bb4681660631e3616a934ac), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
-   }
-  },
-  {
-   "schema": "plan12-memory-case/1",
-   "case_id": "MF03-a",
-   "version": 1,
-   "family": "MF03",
    "split": "held_out",
    "kind": "localization",
    "role": "probe",
@@ -169,15 +112,15 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit 1f62e849a1bb26aaa05451c068de2d2769aea4a7 inside merged PR #411 (merge d13fd34bde86a656188f6f7b5b3b6f6703ff9dac), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
   {
    "schema": "plan12-memory-case/1",
-   "case_id": "MF04-a",
+   "case_id": "MF03-a",
    "version": 1,
-   "family": "MF04",
+   "family": "MF03",
    "split": "held_out",
    "kind": "localization",
    "role": "probe",
@@ -225,15 +168,15 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit d80de892192bd8d5e57faac6ff4b308acb412e2e inside merged PR #413 (merge 159a712b31eda0eb023cb9ede4d44eb5a8a60d2a), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
   {
    "schema": "plan12-memory-case/1",
-   "case_id": "MF05-a",
+   "case_id": "MF04-a",
    "version": 1,
-   "family": "MF05",
+   "family": "MF04",
    "split": "held_out",
    "kind": "localization",
    "role": "probe",
@@ -244,7 +187,7 @@
     {
      "seq": 0,
      "actor": "user",
-     "text": "When a client tool server fails to shut down or the teardown is cancelled, the agent server stops its cleanup early and the original failure is lost, and releasing a peer also gives up the retained listener it should keep. Where does the server tear down a connection's tool servers, and where are owned tool-server candidates retired?",
+     "text": "When a client tool server fails during shutdown, or teardown is cancelled, connection cleanup can stop early and obscure the original failure. Retiring a peer can also be reported as failed because a shared listener is still stopping, although that listener remains separately owned. Where are connection shutdown and peer retirement handled?",
      "attempt": null
     }
    ],
@@ -277,15 +220,15 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit 43421d90267558e9f7eb06b282956c34a19634ff inside merged PR #429 (merge 8713dcbfbc05f9372619dfe655f83b247dc3751a), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
   {
    "schema": "plan12-memory-case/1",
-   "case_id": "MF06-a",
+   "case_id": "MF05-a",
    "version": 1,
-   "family": "MF06",
+   "family": "MF05",
    "split": "held_out",
    "kind": "localization",
    "role": "probe",
@@ -330,15 +273,15 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit 3420eb24c6f0294b5a6789f1256d91f188ceddaf inside merged PR #428 (merge bf440cba5c184f8bca7ed8af0a0ae6bb824f14f1), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
   {
    "schema": "plan12-memory-case/1",
-   "case_id": "MF07-a",
+   "case_id": "MF06-a",
    "version": 1,
-   "family": "MF07",
+   "family": "MF06",
    "split": "held_out",
    "kind": "localization",
    "role": "probe",
@@ -382,15 +325,15 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit 32e67f56f30c1ec3c5fe6fc6feba2cfed87d9971 inside merged PR #437 (merge 5977155c2bce9728156ee5898ff9e17d0ae08750), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
   {
    "schema": "plan12-memory-case/1",
-   "case_id": "MF08-a",
+   "case_id": "MF07-a",
    "version": 1,
-   "family": "MF08",
+   "family": "MF07",
    "split": "held_out",
    "kind": "localization",
    "role": "probe",
@@ -434,8 +377,53 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit 1667eb4e9c70d57d1f3d79205447b185abc98473 inside merged PR #434 (merge 35263daa97524f28dad98e11d2fef21a332652ee), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF08-a",
+   "version": 1,
+   "family": "MF08",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "The source-bound queue inventory fails to recognize both queues' dequeue and requeue operations, although scheduling behavior is unchanged. Where are those queue operations expressed?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:d119ce5ca210323476ce8a2e4bade7ddbdbb7129",
+   "cutoff": "2026-10-30T01:30:04+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/server.py::AcpStreamServer._serve_ndjson"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "source": "fix commit d9ec3900b5d6c82b56cd9016f2a8b70a78fbeca6 inside merged PR #439 (merge ba490e5df982e50450a9eb91a2196ccd66476cca), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
   {
@@ -495,7 +483,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit 9448aa5b795f50f79a3e0af80dad4b9dcf0e73b0 inside merged PR #446 (merge efa1235975d693a723eedec05fe23e4cc5b0e53f), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
@@ -599,7 +587,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit 927beadd30f4a929843f40b0c9cb029e030d307c inside merged PR #456 (merge f1e3bac9581a18f4ea670d85790176240c9b1349), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
@@ -651,7 +639,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit b4d26218313f75e6d585ad0c8604d461666c55ba inside merged PR #462 (merge a88fde86a2ddf382a9bb39a6e2c1a74a1db20498), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   },
@@ -670,7 +658,7 @@
     {
      "seq": 0,
      "actor": "user",
-     "text": "A local Gateway address without a port is started and confirmed on the wrong port, the gateway command does not serve the agent's tool composition, diagnostic output bypasses the writer that shutdown owns so a blocked client write goes unseen, the upstream fingerprint ignores path, query and fragment, and refusal text can echo a configured address's path or query. Where is the local Gateway started, verified and identified, and where are refusals and outbound messages written?",
+     "text": "A local Gateway address without an explicit port is started or confirmed on the wrong port; the launch command omits part of the agent's tool configuration; blocked refusal output can escape the shutdown-owned writer; upstream identity normalizes some distinct configured addresses to the same value; and refusal text can expose an address's path or query. Where are local Gateway startup, identity checks, refusal messages and outbound writes handled?",
      "attempt": null
     }
    ],
@@ -725,7 +713,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "fix commit 120e21a8369fabdf46f10816ba09300d5d1353a4 inside merged PR #470 (merge 4a44ead7a1580151a866d194f52d6846f155f774), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
    }
   }
