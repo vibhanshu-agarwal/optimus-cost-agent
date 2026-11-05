@@ -150,3 +150,41 @@ def test_a_failed_resource_sample_makes_the_bound_unknown_unless_the_outage_was_
     assert peaks.bound("index", "disk_mb", 20) is None
     assert peaks.bound("k2", "disk_mb", 20) is None  # nothing seen is not a pass
 
+
+def test_the_edit_lands_on_a_file_the_index_admits(tmp_path: Path) -> None:
+    body = "class A {\n" + "    int field;\n" * 200 + "}\n"
+    for name in ("a/src/test/java/ATest.java", "b/src/main/java/B.java"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True)
+        path.write_bytes(body.encode())
+    (tmp_path / ".optimusignore").write_bytes(b"**/test/\n")
+    assert m1_scale.edit_target(tmp_path, ".java").name == "B.java"  # the sorted-first file is ignored, which measured nothing on 2026-11-06
+    (tmp_path / ".optimusignore").write_bytes(b"**/test/\n**/main/\n")
+    with pytest.raises(SystemExit, match="no indexed"):
+        m1_scale.edit_target(tmp_path, ".java")
+
+
+def test_logical_purge_is_timed_at_the_first_refusal_not_the_whole_sweep() -> None:
+    from context_engine.index_worker import StorageRefusedError
+    from tools.plan12_memory.m1_qualify import drop_and_time
+
+    class Storage:
+        steps = 0
+
+        def call(self, op: str, **body: object) -> dict:
+            if op == "cleanup":
+                self.steps += 1
+                return {"cursor": "next" if self.steps < 3 else None}
+            if self.steps:
+                raise StorageRefusedError("SCOPE_UNKNOWN")
+            return {"records": [{"id": "marker"}]}
+
+    times = iter([0.0, 0.2, 5.0])
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("tools.plan12_memory.m1_qualify.time.monotonic", lambda: next(times))
+        result = drop_and_time(Storage(), 1, "marker")
+    assert result["logical_purge_seconds"] == 0.2
+    assert result["whole_drop_seconds"] == 5.0
+    assert result["route_denies_after_drop"] is True
+    assert result["answer_after_first_step"] == "SCOPE_UNKNOWN"
+

@@ -359,21 +359,8 @@ def _purge(admin: redis.Redis, settings: Any, embedding: str, dimensions: int, c
     if reached is None:
         return {"marker_seen_on_disk": False, "note": "the positive control failed, so erasure was not measured", "logical_within": None, "physical_within": None}
     purge_started = time.monotonic()
-    cursor = None
-    while True:
-        reply = storage.call("cleanup", action="drop", token=token, **({} if cursor is None else {"cursor": cursor}))
-        cursor = reply.get("cursor")
-        if cursor is None:
-            break
-    denied: bool | None
-    try:
-        denied = not storage.call("query", mode="lexical", terms=[marker], k=1)["records"]
-        denial = "no records"
-    except StorageRefusedError as error:  # the expected answer: this line no longer exists
-        denied, denial = error.code in {"SCOPE_UNKNOWN", "NOT_PUBLISHED"}, error.code
-    except Exception as error:  # noqa: BLE001 - a transport failure says nothing either way
-        denied, denial = None, type(error).__name__
-    logical = round(time.monotonic() - purge_started, 3)
+    dropped = drop_and_time(storage, token, marker)
+    denied, logical = dropped["route_denies_after_drop"], dropped["logical_purge_seconds"]
     admin.bgrewriteaof()
     _wait_flag(admin, "aof_rewrite_in_progress")
     admin.bgsave()
@@ -384,8 +371,34 @@ def _purge(admin: redis.Redis, settings: Any, embedding: str, dimensions: int, c
             erased = round(time.monotonic() - purge_started, 3)
             break
         time.sleep(0.5)
-    return {"marker_sha256": f"hex:{hashlib.sha256(marker.encode()).hexdigest()}", "marker_seen_on_disk": True, "seconds_until_seen": reached, "route_denies_after_drop": denied, "route_answer": denial, "logical_purge_seconds": logical, "physical_erasure_seconds": erased,
+    return {"marker_sha256": f"hex:{hashlib.sha256(marker.encode()).hexdigest()}", "marker_seen_on_disk": True, "seconds_until_seen": reached, **dropped, "physical_erasure_seconds": erased,
             "logical_within": None if denied is None else denied and within(logical, fixed["logical_purge_seconds"]), "physical_within": within(erased, fixed["physical_erasure_seconds"])}
+
+
+def _denied(storage: Any, marker: str) -> tuple[bool | None, str]:
+    try:
+        return not storage.call("query", mode="lexical", terms=[marker], k=1)["records"], "no records"
+    except StorageRefusedError as error:  # the expected answer: this line no longer exists
+        return error.code in {"SCOPE_UNKNOWN", "NOT_PUBLISHED"}, error.code
+    except Exception as error:  # noqa: BLE001 - a transport failure says nothing either way
+        return None, type(error).__name__
+
+
+def drop_and_time(storage: Any, token: int, marker: str) -> dict[str, Any]:
+    """Logical purge is how soon a reader is refused. The drop's first step takes the line out of service; the remaining steps only sweep the
+    keyspace, so the whole drop is reported apart from the bound."""
+    started = time.monotonic()
+    cursor, first = None, None
+    while True:
+        cursor = storage.call("cleanup", action="drop", token=token, **({} if cursor is None else {"cursor": cursor})).get("cursor")
+        if first is None:
+            first = (*_denied(storage, marker), round(time.monotonic() - started, 3))
+        if cursor is None:
+            break
+    swept = round(time.monotonic() - started, 3)
+    denied, answer = _denied(storage, marker)
+    return {"denied_after_first_step": first[0], "answer_after_first_step": first[1], "logical_purge_seconds": first[2], "whole_drop_seconds": swept,
+            "route_denies_after_drop": None if denied is None or first[0] is None else denied and first[0], "route_answer": answer}
 
 
 def run_k2(*, targets: Mapping[str, Any], config: Mapping[str, Any], memory: Any, connect: Callable[[], redis.Redis], settings: Any, large: Any, real_records: int, peaks: _Peaks, write: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
@@ -667,7 +680,7 @@ def run_qualify(config: dict[str, Any], repository: Path) -> dict[str, Any]:
             elapsed = time.perf_counter() - started
             files = sum(count["files"].values())
             report["large"]["reconcile_unchanged"] = {"state": unchanged.state, "seconds": round(elapsed, 1), "seconds_per_1000_files": round(elapsed / max(files, 1) * 1000, 1), "records_written": unchanged.records_written}
-            target = next(path for path in sorted(scale.long_path(large).rglob("*.java")) if path.stat().st_size > 2000)
+            target = scale.edit_target(large, ".java")
             target.write_text(target.read_text(encoding="utf-8") + "\n\nclass M1QualifyAddedClass { void m1QualifyAddedMethod() {} }\n", encoding="utf-8")
             started = time.perf_counter()
             edited = index.worker().run(threading.Event())

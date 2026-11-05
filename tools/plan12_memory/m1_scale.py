@@ -169,6 +169,15 @@ def long_path(path: Path) -> Path:
     return Path("\\\\?\\" + str(path.resolve())) if sys.platform == "win32" else path
 
 
+def edit_target(root: Path, suffix: str) -> Path:
+    """The first sizeable file of this kind the index admits. An ignored file is never picked up, so editing one measures nothing."""
+    policy, base = FilePolicy(root), long_path(root)
+    for path in sorted(base.rglob(f"*{suffix}")):
+        if path.stat().st_size > 2000 and policy.read(path.relative_to(base).as_posix(), purpose=FilePurpose.INDEX)[0].allowed:
+            return path
+    raise SystemExit(f"no indexed {suffix} file over 2000 bytes under {root}")
+
+
 def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", "-C", str(root), "-c", "core.longpaths=true", "-c", "user.name=m1", "-c", "user.email=m1@example.invalid", *args], capture_output=True, check=True)
 
@@ -600,7 +609,7 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
         idle = _required(index.worker().run(threading.Event()))
         report["reconcile_unchanged"] = {"state": idle.state, "seconds": round(time.perf_counter() - started, 2), "records_written": idle.records_written}
 
-        target = next(path for path in sorted(corpus.rglob("*.py")) if path.stat().st_size > 2000)
+        target = edit_target(corpus, ".py")
         target.write_text(target.read_text(encoding="utf-8") + "\n\ndef m1_pilot_added_function():\n    return 1\n", encoding="utf-8")
         started = time.perf_counter()
         edited = _required(index.worker().run(threading.Event()))
