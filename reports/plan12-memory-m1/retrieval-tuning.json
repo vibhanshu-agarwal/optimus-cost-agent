@@ -121,12 +121,12 @@
    "symbol_recall_at_5": 3
   }
  },
- "chosen": "Stop words dropped from the lexical channel; weights unchanged. This is a defect fix more than a tuning: a lexical channel that ORs 'where' and 'the' is noise. Alone it improved symbol recall 2 to 3, file recall 3 to 7, required files in context 7 to 14. In hybrid, required files in context 15 to 17, evidence 13 to 14, file recall 6 to 8, irrelevant tokens down about 300, and symbol recall 5 to 4, one requirement. Changing weights moved evidence and required files by one requirement more, which is not supporting evidence.",
+ "chosen": "A selected baseline adjustment despite the failed criterion, not a result that passed it: stop words dropped from the lexical channel, weights unchanged. A lexical channel that ORs 'where' and 'the' is noise. Alone it improved symbol recall 2 to 3, file recall 3 to 7, required files in context 7 to 14. In hybrid, within this pass, required files in context 15 to 17, evidence 13 to 14, file recall 6 to 8, irrelevant tokens down about 300, and symbol recall fell 5 to 4. The results are mixed and small. Changing weights moved evidence and required files by one requirement more, which is not supporting evidence.",
  "criterion_result": "NOT MET by any candidate: the best hybrid symbol recall is 5 of 35 against dense's 8. All differences are one to three requirements out of 35, which is too few to separate the weights.",
  "criterion_stated_before_running": "Hybrid symbol recall at 5, pooled, at least dense's, with required evidence in context no worse than the baseline's 13 of 35.",
  "head": "hex:b7efee4f7a14835f9b45068767e5962ac741c894",
  "issue": 469,
- "not_fixed": "Hybrid still ranks below its dense channel in the first five. RRF rewards agreement between channels at middling ranks. Better fusion or reranking is #242/#243/#245's. In a filled 16,384-token pack the model sees far more than five items, which is why evidence in context is much higher than recall at 5.",
+ "not_fixed": "Hybrid still ranks below its dense channel in the first five, because RRF rewards agreement between channels at middling ranks. Reranking and refinements belong to #242/#243/#245. Baseline fusion stays M1's, so any fusion work needed to meet an approved M1 gate would be done here. The approved held-out floors do not require parity with dense. In a filled 16,384-token pack the model sees far more than five items, which is why evidence in context is much higher than recall at 5.",
  "plan": "12.10",
  "raw_record_sha256": "hex:6b5984a822d7fc61350db47f124b35746e8c43b93dc27085696212eaf263a3d9",
  "release": "The operator's option B: one bounded pass on train and development after sealing the gold. Held-out was not read.",

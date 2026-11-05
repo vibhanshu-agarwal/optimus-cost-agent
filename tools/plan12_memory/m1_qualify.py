@@ -634,9 +634,14 @@ def run_qualify(config: dict[str, Any], repository: Path) -> dict[str, Any]:
             embedder = scale._TimedEmbedder(inner)
             index = scale._Index(large, settings, embedder, project="qualify-large", parser_version="qualify")
             if kit:
-                turns = scale._AcpxTurns(Path(kit), work / "acpx-stub", stub_seconds=int(config["hours_limit"] * 3600) + 3600)
-                turns.open()
+                turns = scale._AcpxTurns(Path(kit).resolve(), work / "acpx-stub", stub_seconds=int(config["hours_limit"] * 3600) + 3600)
+                opened = turns.open()
                 first_turn = turns.turns(1)
+                if opened != "0" or first_turn["failures"]:  # before the build, or a broken launch costs hours and leaves no foreground evidence
+                    report["acpx"] = {"session_new_exit": opened, "first_turn": first_turn}
+                    report["stopped"] = "the acpx agent did not start, so the build was not begun"
+                    save()
+                    return report
                 report["acpx"] = {"first_turn": first_turn, "queue_owners_recorded": turns.record_owner(), "idle": turns.turns(config["acpx_turns"]), "idle_cancel": turns.cancel_during_a_turn(), "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line"}
             else:
                 report["acpx"] = {"state": "UNRUN", "reason": "P1210_ACPX_KIT names no approved stub agent"}
