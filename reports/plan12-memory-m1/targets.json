@@ -39,6 +39,18 @@
     "Assembly's share of its budget and query fan-out are measured when assembly exists, and their limits are approved before Task 5.",
     "First-file visibility in a real Zed session is shown there; the limit above is the worker's."
   ],
+  "assembly": {
+    "state": "Approved by the operator on 2026-11-05, as the Task 4 gate above requires, with Codex concurring (review 13 on #469). Measured at code head ab0dde4 in assembly.json.",
+    "scope": "The 52-file pilot corpus, this host and this method. This is not large-corpus qualification; limits for the large corpus need the operator's approval before it is qualified.",
+    "limits": [
+      {"metric": "assembly wall time p95 during a build, ms", "during_build": 419, "idle": 274, "limit": 750},
+      {"metric": "route calls per complete assembly invocation, including reconciliation retries", "during_build_max": 21, "idle_max": 20, "limit": 30},
+      {"metric": "route calls for one repo-map refresh, reported apart from the line above", "idle_observation": 50, "limit": 75},
+      {"metric": "wall time of one repo-map refresh, ms, reported apart from assembly", "idle_observation": 480, "limit": 1000},
+      {"metric": "pack size as a share of min(25 percent of usable input, 16384 tokens)", "during_build_max": 1.0, "idle_max": 0.999, "limit": 1.0}
+    ],
+    "note": "The map refresh interval is 300 s, which is not a guaranteed rate limit."
+  },
   "k2_second_run": {
     "items": 125000,
     "items_why": "the approved corpus B's real records, rounded up",
