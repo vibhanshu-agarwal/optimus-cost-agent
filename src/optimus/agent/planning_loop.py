@@ -31,7 +31,7 @@ from optimus.agent.directives import (
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
-from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope
+from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope, indexed_planner_prefix
 from optimus.agent.tools import AgentToolbox
 from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
 from optimus.gateway.attempts import (
@@ -1615,6 +1615,7 @@ class _PlanningIterationRunner:
         *,
         planning_turn: int,
         prompt: str,
+        stable_prefix: str = "",
     ) -> tuple[GatewayResponse, Decimal]:
         from optimus.retry.policy import PermanentGatewayError as _PermanentStop
 
@@ -1654,7 +1655,7 @@ class _PlanningIterationRunner:
                 # transport retry reuses it with its own attempt identity (Codex CP3 ruling R4).
                 if self._halt_requested():
                     raise _PermanentStop("gateway attempt suppressed by turn control")
-                bound = self._route_binder.bind(stage="planning", input_text=prompt)
+                bound = self._route_binder.bind(stage="planning", input_text=prompt, stable_prefix=stable_prefix)
                 if bound is None:
                     ended["unsent"] = True
                     binder = self._route_binder
@@ -1834,6 +1835,7 @@ class _PlanningIterationRunner:
         # Captured once per turn, so every repack and wire retry of this turn carries the same notice (#403).
         correction_notice = _correction_notice(self._parse_failure_code)
         repo_map = "" if self._memory is None else self._memory.repo_map()
+        evidence_limits = (PLANNING_OBSERVATION_MAX_BYTES, PLANNING_NEW_READ_MAX_BYTES, DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES)
 
         def build(conversation_envelope: str) -> str:
             return build_multi_turn_planner_input(
@@ -1856,11 +1858,7 @@ class _PlanningIterationRunner:
                 ),
                 # Metadata of files no turn showed in full: every ranged read is sized from it.
                 required_file_sizes=self._required_file_sizes,
-                evidence_limits=(
-                    PLANNING_OBSERVATION_MAX_BYTES,
-                    PLANNING_NEW_READ_MAX_BYTES,
-                    DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
-                ),
+                evidence_limits=evidence_limits,
                 conversation_envelope=conversation_envelope,
                 correction_notice=correction_notice,
             )
@@ -1894,7 +1892,8 @@ class _PlanningIterationRunner:
         if self._nudge is not None:
             self._nudge, self._nudged = None, True  # one nudge per episode, carried by this request
         try:
-            response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt)
+            stable_prefix = "" if self._memory is None else indexed_planner_prefix(repo_map=repo_map, tools_enabled=self._index_tools_open(), evidence_limits=evidence_limits)
+            response, attempt_cost = self._invoke_planning_gateway(planning_turn=planning_turn, prompt=prompt, stable_prefix=stable_prefix)
         except _PlanningGatewayInvocationError as exc:
             self._last_non_progress_kind = "GATEWAY_FAILURE"
             return self._typed_planning_failure(

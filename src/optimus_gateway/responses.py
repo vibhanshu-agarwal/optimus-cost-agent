@@ -203,7 +203,7 @@ def _run_enforced_completion(
                 max_tokens=admitted.output_cap,
                 provider_controls=admitted.provider_controls,
                 reasoning=admitted.reasoning,
-                **({"prompt_cache": admitted.prompt_cache} if admitted.prompt_cache == "top_level" else {}),
+                **_cache_arguments(admitted),
             )
         except UpstreamAttemptFailure as failure:
             if admission is not None and guard is not None:  # an admission exists only from a guard
@@ -268,6 +268,15 @@ def _run_enforced_completion(
         status, body = policy_refusal(exc)
         return status, {**body, **correlation, "gateway_usage": gateway_usage}
     return 200, {**build_success(provider_result=provider_result, gateway_usage=gateway_usage), "route_attempts": attempts}
+
+
+def _cache_arguments(admitted: AdmittedRequest) -> dict[str, Any]:
+    """Only a setting that changes the wire reaches the client."""
+    if admitted.prompt_cache == "top_level":
+        return {"prompt_cache": "top_level"}
+    if admitted.cache_prefix_chars is not None:
+        return {"cache_prefix_chars": admitted.cache_prefix_chars}
+    return {}
 
 
 def _attempt_reservation(policy: GatewayModelPolicy, admitted: AdmittedRequest) -> Decimal:

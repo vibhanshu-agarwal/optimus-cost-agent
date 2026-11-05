@@ -21,7 +21,13 @@ from optimus.acp.trusted_paths import TrustedPathError
 from optimus.agent.directives import IndexToolRequest, parse_index_tool_reply
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentRunRequest, AgentRunStatus
-from optimus.agent.prompts import build_agent_planner_input, build_indexed_chat_input, build_multi_turn_planner_input
+from optimus.agent.prompts import (
+    build_agent_planner_input,
+    build_indexed_chat_input,
+    build_multi_turn_planner_input,
+    indexed_chat_prefix,
+    indexed_planner_prefix,
+)
 from optimus.agent.runner import AgentRunner
 from optimus.agent.tools import AgentToolbox
 from optimus.context import memory_session
@@ -29,10 +35,13 @@ from optimus.context.index_tools import IndexTools
 from optimus.context.memory_session import GroundingReport, MemorySession, _Scope, named_symbols, session_factory
 from optimus.context.project_registry import ProjectRegistration
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.gateway.route_binding import RoutePolicy
 from optimus.guardrails import file_policy
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
+from optimus_model_policy.binding import disclosure_key
+from tests.unit.optimus_gateway.model_policy_support import CAP, SHARED_SECRET, VERIFIED_POLICY, verified_snapshot
 
 SOURCE = "class Parser:\n    def parse(self, text):\n        return text\n\n\ndef helper():\n    return 'needle here'\n"
 
@@ -1266,3 +1275,79 @@ def test_grounding_on_one_turn_sees_an_ignore_file_change_by_itself(workspace):
     assert turn.ground("See pkg/a.py.").resolved == ("pkg/a.py",)
     _ignore(workspace, "pkg/\n")
     assert turn.ground("See pkg/a.py.").unresolved == ("pkg/a.py",)  # the same turn, with no tool or new turn between
+
+
+# --- ADR-039: what each indexed request names as its cacheable prefix ---------------------------------
+
+
+def test_the_prefix_is_the_request_through_the_map_and_no_further():
+    for tools in (True, False):
+        prefix = indexed_chat_prefix(repo_map="MAP", tools_enabled=tools)
+        text = build_indexed_chat_input("the question", workspace_context="PACK", conversation_envelope="HISTORY", repo_map="MAP", index_results="RESULTS", tools_enabled=tools)
+        assert text.startswith(prefix) and "MAP" in prefix
+        assert not any(later in prefix for later in ("HISTORY", "PACK", "RESULTS", "the question"))
+    limits = (1, 2, 3)
+    prefix = indexed_planner_prefix(repo_map="MAP", tools_enabled=True, evidence_limits=limits)
+    text = build_multi_turn_planner_input(
+        "THE TASK", planning_turn=2, max_planning_turns=7, remaining_wall_clock_minutes=30, conversation_envelope="HISTORY", initial_workspace_context="PACK",
+        evidence_limits=limits, repo_map="MAP", index_results="RESULTS", index_tools_enabled=True,
+    )  # fmt: skip
+    assert text.startswith(prefix) and "MAP" in prefix
+    assert not any(later in prefix for later in ("HISTORY", "PACK", "RESULTS", "THE TASK", "Planning turn"))
+
+
+class _BoundGateway(_Gateway):
+    def __init__(self, replies):
+        super().__init__(replies)
+        self.bindings: list[Any] = []
+
+    def create_response(self, *, model, input_text, metadata=None, route_binding=None):
+        self.bindings.append(route_binding)
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def _route(tmp_path: Path, cache: str) -> RoutePolicy:
+    (tmp_path / "registry").mkdir()
+    policy = VERIFIED_POLICY.replace("    route:\n      estimator: half\n", f"    route:\n      prompt_cache: {cache}\n      estimator: half\n", 1)
+    return RoutePolicy(snapshot=verified_snapshot(tmp_path / "registry", policy), disclosure_key=disclosure_key(SHARED_SECRET), model_id="cn/alpha", role="medium", output_cap=CAP)
+
+
+def _bound_run(tmp_path: Path, workspace: Path, mode: ExecutionMode, replies, cache: str = "prefix") -> _BoundGateway:
+    route = _route(tmp_path, cache)
+    gateway = _BoundGateway(replies)
+    packer = _Packer(_session(workspace, _Storage()).turn())
+    packer.model_id = "cn/alpha"
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="how does it work", execution_mode=mode, workspace_root=workspace)
+    AgentRunner(gateway_client=gateway, model="cn/alpha").run(request, context_packer=packer, route_binder=route.capture(session_id="s", turn_seq=1, deliver_notice=lambda _notice: True))
+    return gateway
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_each_indexed_request_names_the_same_prefix_as_rounds_change_what_follows(tmp_path, workspace, mode):
+    gateway = _bound_run(tmp_path, workspace, mode, ["LIST .", "SEARCH more", "REFUSE: done"])
+    assert len(gateway.inputs) == 3 and all(binding.cache_prefix_chars for binding in gateway.bindings)
+    assert len({text[: binding.cache_prefix_chars] for text, binding in zip(gateway.inputs, gateway.bindings, strict=True)}) == 1
+    assert "how does it work" not in gateway.inputs[0][: gateway.bindings[0].cache_prefix_chars]
+    assert gateway.inputs[0] != gateway.inputs[1]
+
+
+def test_withdrawing_the_tools_is_a_new_prefix_and_it_is_still_named(tmp_path, workspace):
+    replies = [f"SEARCH round {i}" for i in range(MAX_INDEX_ROUNDS)] + ["Here is what I found."]
+    gateway = _bound_run(tmp_path, workspace, ExecutionMode.CHAT, replies)
+    assert all(binding.cache_prefix_chars for binding in gateway.bindings)
+    prefixes = [text[: binding.cache_prefix_chars] for text, binding in zip(gateway.inputs, gateway.bindings, strict=True)]
+    assert len(set(prefixes[:4])) == 1 and prefixes[4] != prefixes[0] and "SEARCH <words>" not in prefixes[4]
+
+
+def test_an_indexed_request_names_no_prefix_on_a_route_not_approved_for_one(tmp_path, workspace):
+    gateway = _bound_run(tmp_path, workspace, ExecutionMode.CHAT, ["An answer."], cache="top_level")
+    assert gateway.bindings[0].cache_prefix_chars is None
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_a_turn_without_an_index_names_no_prefix_even_on_a_prefix_route(tmp_path, workspace, mode):
+    gateway = _BoundGateway(["REFUSE: done"])
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="t", execution_mode=mode, workspace_root=workspace)
+    binder = _route(tmp_path, "prefix").capture(session_id="s", turn_seq=1, deliver_notice=lambda _notice: True)
+    AgentRunner(gateway_client=gateway, model="cn/alpha").run(request, route_binder=binder)
+    assert gateway.bindings[0].cache_prefix_chars is None
