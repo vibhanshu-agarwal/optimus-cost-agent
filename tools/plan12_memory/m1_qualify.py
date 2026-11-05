@@ -281,22 +281,11 @@ def _reachable(call: Callable[[], Any], started: float, seconds: float) -> float
 
 
 def _noeviction(admin: redis.Redis, canaries: _Canaries, query: Callable[[], Any], memory: Any) -> dict[str, Any]:
-    """At the ceiling: a real OOM refusal, canaries refused rather than anything evicted, and existing evidence still readable while full."""
+    """Held over the ceiling, so every write meets it: real OOM refusals, nothing evicted, and existing evidence still readable while full."""
     before_keys = int(admin.dbsize())
-    admin.config_set("maxmemory", int(admin.info("memory")["used_memory"]) + 1024 * 1024)
-    refused = False
-    written = 0
     result: dict[str, Any] = {}
+    admin.config_set("maxmemory", max(int(admin.info("memory")["used_memory"]) - 1024 * 1024, 1024 * 1024))
     try:
-        filler = "x" * 1_000_000
-        for number in range(64):
-            try:
-                admin.set(f"oidx:k2:fill{number}", filler)
-                written += 1
-            except redis.RedisError as error:
-                refused = is_oom_refusal(error)
-                result["filler_error"] = type(error).__name__
-                break
         appends_refused = 0
         for number in range(12):
             try:
@@ -310,12 +299,10 @@ def _noeviction(admin: redis.Redis, canaries: _Canaries, query: Callable[[], Any
         except Exception as error:  # noqa: BLE001 - the measure
             result["readable_while_full"] = False
             result["read_error"] = getattr(error, "code", type(error).__name__)
-        result["no_keys_evicted"] = int(admin.dbsize()) >= before_keys + written
+        result["no_keys_evicted"] = int(admin.dbsize()) >= before_keys
     finally:
         admin.config_set("maxmemory", memory.maxmemory_mb * 1024 * 1024)
-        for number in range(64):
-            admin.delete(f"oidx:k2:fill{number}")
-    result["oom_refusal_seen"] = refused
+    result["oom_refusal_seen"] = result["appends_refused_while_full"]["refused_by_the_ceiling"] == 12
     result["canaries_after_room"] = canaries.run(rounds=3, pause=0)
     return result
 
