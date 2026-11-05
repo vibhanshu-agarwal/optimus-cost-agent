@@ -30,6 +30,11 @@ _CATALOGUE_PAGE: Final = 256
 _ATTEMPTS: Final = 2  # an epoch can expire while it is read; a second try sees the newer one
 _MOVED: Final = frozenset({"EPOCH_EXPIRED", "NOT_PUBLISHED"})
 _KIND_ORDER: Final = {"symbol": 0, "section": 1, "file": 2}
+# The lexical channel ORs its terms, and "where" or "the" match nearly everything. Chosen on train and development (retrieval-tuning.json).
+STOP_WORDS: Final = frozenset(
+    "a an and are as at be but by can could do does for from had has have how if in instead into is it its may more no not of on only or should so such than that the "
+    "their them then there these they this those to was were what when where which while who why will with would you your".split()
+)
 
 
 @dataclass(frozen=True)
@@ -89,6 +94,12 @@ def query_terms(text: str) -> list[str]:
         for term in split_terms([word]).split():
             seen.setdefault(term)
     return list(seen)[:MAX_TERMS]
+
+
+def lexical_terms(text: str) -> list[str]:
+    """The lexical channel's terms: the words that can tell one record from another, unless a question has nothing else."""
+    terms = query_terms(text)
+    return [term for term in terms if term not in STOP_WORDS] or terms
 
 
 def fuse(channels: Mapping[str, Sequence[Hit]], *, named: Iterable[str] = (), weights: Mapping[str, float] = WEIGHTS, k: int = RRF_K) -> tuple[Ranked, ...]:
@@ -195,7 +206,7 @@ class Retriever:
         return [Hit.from_wire(record) for record in self._storage.call("query", epoch=epoch, **query)["records"]]
 
     def _lexical(self, text: str, epoch: int) -> list[Hit]:
-        terms = query_terms(text)
+        terms = lexical_terms(text)
         return self._ask(epoch, mode="lexical", terms=terms, k=CHANNEL_K) if terms else []
 
     def _dense(self, text: str, epoch: int) -> list[Hit]:

@@ -281,3 +281,13 @@ def test_the_manifest_side_never_holds_a_body():
     hit = _hit("f", "a.py", symbol="a", file_hash=_sha(SOURCE), lines=(1, 2), signature="def a()")
     pack = assemble_pack(required=(), ranked=[_ranked(hit)], read=_read({"a.py": SOURCE}), estimate=_estimate, budget_tokens=10_000)
     assert "return 1" not in repr(pack.selected)
+
+
+def test_the_lexical_channel_leaves_out_words_that_match_everything_and_keeps_what_tells_records_apart():
+    from context_engine.retrieval import lexical_terms
+
+    assert lexical_terms("Where are the sessions removed") == ["sessions", "removed"]
+    assert lexical_terms("is it") == ["is", "it"]  # nothing else to search for
+    assert "is_ready" in lexical_terms("where is is_ready") and "ready" in lexical_terms("where is is_ready")
+    assert "where" in query_terms("where is it")  # the tools' own name matching still sees every word
+
