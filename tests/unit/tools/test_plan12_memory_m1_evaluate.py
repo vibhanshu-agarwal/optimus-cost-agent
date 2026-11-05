@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from context_engine.retrieval import Hit, Ranked
 from tools.plan12_memory import m1_evaluate as ev
+from tools.plan12_memory import m1_scale
 from tools.plan12_memory.contracts import GoldenCase
 
 
@@ -137,3 +139,26 @@ def test_held_out_is_refused_until_the_operator_approves_targets_for_this_exact_
     with pytest.raises(ev.HeldOutRefused, match="not the one"):
         ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "limits": limits, "sealed_gold_sha256": "hex:0"}}, gold)
     ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "limits": limits, "sealed_gold_sha256": ev.gold_digest(gold)}}, gold)
+
+
+def test_a_cutoff_tree_holds_exactly_that_commit_even_past_the_windows_path_limit(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    deep = "/".join(["d" * 40] * 7)
+    (source / deep).parent.mkdir(parents=True)
+    git = ["git", "-C", str(source), "-c", "core.longpaths=true", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run(["git", "init", "-q", str(source)], check=True, capture_output=True)
+    (m1_scale.long_path(source) / deep).mkdir(parents=True)
+    (m1_scale.long_path(source) / deep / "old.py").write_bytes(b"old = 1\n")
+    subprocess.run([*git, "add", "-A"], check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-q", "-m", "first"], check=True, capture_output=True)
+    first = subprocess.run([*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    (m1_scale.long_path(source) / "later.py").write_bytes(b"later = 1\n")
+    subprocess.run([*git, "add", "-A"], check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-q", "-m", "later"], check=True, capture_output=True)
+    target = tmp_path / "tree"
+    ev.materialize(source, first, target, branch="cutoff")
+    assert (m1_scale.long_path(target) / deep / "old.py").read_bytes() == b"old = 1\n"
+    assert not (target / "later.py").exists()
+    assert subprocess.run(["git", "-C", str(target), "rev-parse", "--abbrev-ref", "HEAD"], check=True, capture_output=True, text=True).stdout.strip() == "cutoff"
+    ev.materialize(source, first, target, branch="cutoff")  # a second run replaces it
+

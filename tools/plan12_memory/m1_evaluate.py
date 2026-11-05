@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -244,8 +245,18 @@ def materialize(repository: Path, revision: str, target: Path, *, branch: str) -
         shutil.rmtree(m1_scale.long_path(target), onexc=m1_scale._clear_read_only)
     target.mkdir(parents=True)
     tar = subprocess.run(["git", "-C", str(repository), "archive", "--format=tar", revision], capture_output=True, check=True).stdout
+    base = m1_scale.long_path(target)
     with tarfile.open(fileobj=io.BytesIO(tar)) as archive:
-        archive.extractall(m1_scale.long_path(target), filter="data")
+        for member in archive:  # by hand: tarfile's own extraction cannot walk a long-path prefix, and it is this repository's own archive
+            source = archive.extractfile(member) if member.isfile() else None
+            if source is None:
+                continue
+            if member.name.startswith("/") or ".." in member.name.split("/"):
+                raise ValueError(f"an archive member outside the tree: {member.name}")
+            destination = base / member.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(source.read())
+            os.utime(destination, (member.mtime, member.mtime))
     m1_scale._git(target, "init", "-q", "-b", branch)
     m1_scale._git(target, "add", "-A")
     m1_scale._git(target, "commit", "-q", "-m", f"cutoff tree {revision[:12]}")
