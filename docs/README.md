@@ -77,6 +77,7 @@ relevant records before proposing a change in their area.
 | [ADR-036: Local Gateway attach identity](decisions/ADR-036-local-gateway-attach-identity.md) | A launch reuses a local Gateway only when it proves this launch's configuration, and otherwise says why in the Agent Panel (#465) |
 | [ADR-037: Context index storage, setup and worker](decisions/ADR-037-context-index-storage-setup-and-worker.md) | The context index lives behind a Gateway route on a dedicated Redis set up once in a terminal. |
 | [ADR-038: Context index retrieval, tools and caching](decisions/ADR-038-context-index-retrieval-tools-and-caching.md) | A turn gets ranked context verified against disk, four read-only tools, opt-in provider caching and the named files' unsaved text in that turn's memory only. |
+| [ADR-039: Cache the stable start of a request](decisions/ADR-039-provider-cache-breakpoint-after-the-map.md) | A measured changed question reads nothing under root caching, so an opt-in mode caches only the start of a request through the repository map. |
 | [Ordering/lifecycle/signals and queue decision](decisions/2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Exact operator authority, accepted proposals, alternatives and scoped ADR-027 supersession |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 

@@ -279,14 +279,20 @@ def _cache_arguments(admitted: AdmittedRequest) -> dict[str, Any]:
     return {}
 
 
+_CACHE_WRITE_INPUT_MULTIPLIER = Decimal("1.25")
+"""A five-minute cache write costs this many times ordinary input, by the qualified provider's documentation."""
+
+
 def _attempt_reservation(policy: GatewayModelPolicy, admitted: AdmittedRequest) -> Decimal:
     """One attempt's full Stage C reservation: the final admitted input estimate and the bound output cap
-    (which also bounds reasoning output) at the registry's conservative prices."""
+    (which also bounds reasoning output) at the registry's conservative prices. A request that can write the
+    cache reserves its whole input at the write price, covering the documented write premium under the configured input estimate and prices."""
     prices = policy.snapshot.policy.models[admitted.model_id].prices
+    can_write = admitted.prompt_cache == "top_level" or admitted.cache_prefix_chars is not None
     return reservation_usd(
         input_tokens=admitted.decision.input_tokens,
         output_tokens=admitted.output_cap,
-        input_usd_per_million=prices.input_usd_per_million,
+        input_usd_per_million=prices.input_usd_per_million * (_CACHE_WRITE_INPUT_MULTIPLIER if can_write else 1),
         output_usd_per_million=prices.output_usd_per_million,
     )
 

@@ -1,0 +1,85 @@
+{
+ "schema": "plan12-memory-m1.prompt-cache.v1",
+ "plan": "12.10",
+ "issue": 469,
+ "status": "The top_level diagnostic is complete. The prefix mode's released pair has not run, so the plan's caching claim is still open.",
+ "top_level_diagnostic": {
+  "release": "Operator 2026-11-05 (Release D): 3 requests, 6 physical attempts, USD 0.25, input at most 8,000 tokens, output 1,024",
+  "commit": "6e5478a",
+  "when": "2026-11-05T09:21:49.631134+00:00",
+  "model": "anthropic/claude-haiku-5.5",
+  "mode": "top_level, by an override file; no shipped route sets it",
+  "physical_attempts": 3,
+  "settled_reported_usd": "0.00068458",
+  "prefix_bytes": 7568,
+  "prompt_bytes": [
+   7610,
+   7610,
+   7610
+  ],
+  "prefix_sha256": "hex:4f4b76a2c52d5fc79eaaa4f2fc06db5aa3aa565d3e34463028b88cfa1fe0ea27",
+  "requests": [
+   {
+    "label": "cold",
+    "status": 200,
+    "attempts": 1,
+    "selected_provider": [
+     "Anthropic"
+    ],
+    "prompt_tokens": 2592,
+    "completion_tokens": 7,
+    "cached_tokens": 0,
+    "cache_write_tokens": 2588,
+    "reported_cost_usd": "0.0003274",
+    "seconds": 1.937
+   },
+   {
+    "label": "identical_repeat",
+    "status": 200,
+    "attempts": 1,
+    "selected_provider": [
+     "Anthropic"
+    ],
+    "prompt_tokens": 2592,
+    "completion_tokens": 7,
+    "cached_tokens": 2588,
+    "cache_write_tokens": 0,
+    "reported_cost_usd": "2.978e-05",
+    "seconds": 1.524
+   },
+   {
+    "label": "changed_question",
+    "status": 200,
+    "attempts": 1,
+    "selected_provider": [
+     "Anthropic"
+    ],
+    "prompt_tokens": 2592,
+    "completion_tokens": 7,
+    "cached_tokens": 0,
+    "cache_write_tokens": 2588,
+    "reported_cost_usd": "0.0003274",
+    "seconds": 1.173
+   }
+  ],
+  "calculated_not_measured": {
+   "uncached_changed_question_usd": "0.0002627",
+   "changed_question_over_uncached_percent": "24.63",
+   "repeat_under_cold_percent": "90.90",
+   "prices_per_million_under_100k_prompt_tokens": {
+    "input": "0.10",
+    "output": "0.50",
+    "cache_write": "0.125",
+    "cache_read": "0.01"
+   }
+  },
+  "provenance": {
+   "raw_record_sha256": "hex:955c034bec16724cbfddd487d2da0c13ffc699b4f6305ed6a0e99cbbc7c02f17",
+   "script_sha256": "hex:169cbbf3b1188c74fb6b6465df049c8877867fa3ff2237b9821f6f2471044fe5",
+   "note": "Raw record and script are held in the local handoff kit, not a project dependency. The provider key was read by the product's resolver and never recorded."
+  },
+  "conclusion": "A changed question reads nothing and writes everything, so top_level must not be used for real turns. One changed-question sample supports choosing a mechanism; it does not establish production hit rates."
+ },
+ "prefix_pair": null,
+ "capture_note": "M1's durable capture still records cache_write_tokens as not_captured; the figures above come from the provider's reply as the diagnostic saw it."
+}
