@@ -1,0 +1,733 @@
+{
+ "schema": "plan12-memory-fixtures/1",
+ "cases": [
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF01-a",
+   "version": 1,
+   "family": "MF01",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When a command cannot be placed under process containment, the report says it was not run although it may have started, and a stopped test counts as confirmed before its whole process group has stopped. A waiting refusal also loses the explanation of a check-in that could not be answered. Where are commands contained and run with a time bound, and where does planning record its check-ins?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:4c78884484934693d1457fd85b540fe0a9921972",
+   "cutoff": "2026-10-23T16:03:17+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.__init__",
+      "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.record_checkin",
+      "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.to_planning_result"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/runtime/process_tree.py::ContainmentError",
+      "symbol:src/optimus/runtime/process_tree.py::_kernel32",
+      "symbol:src/optimus/runtime/process_tree.py::popen",
+      "symbol:src/optimus/runtime/process_tree.py::run_bounded"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit c4fc03e3697616ed6bb86ffc855c3d66a00ffdf1 inside merged PR #401 (merge 8a22e22d7be0a8c89bbe0b0302e38d879242d003), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF02-a",
+   "version": 1,
+   "family": "MF02",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When a context summary has already shown that the shared experimental route is stopped, planning and chat still answer an oversized prompt with advice to shorten it or start a new thread, which cannot help. Where do planning and chat handle a turn whose context does not fit, and where does the attached turn expose its maintenance facts?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:8974d3f1b80de9e837610fc7f996a7078963bbb2",
+   "cutoff": "2026-10-23T17:00:11+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.run_iteration"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/agent/runner.py::AgentRunner._run_chat_answer"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/context/assembly.py::AttachedTurn"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 58ea8f523bdb70fd7f3c11e4433f5a59b77dc7b5 inside merged PR #402 (merge dfab8b2102e4a05e3bb4681660631e3616a934ac), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF03-a",
+   "version": 1,
+   "family": "MF03",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "An agent edit plan splits its old and new text at unusual separators such as form feed or vertical tab, so they stop being content; a read of the edit's own target that is not valid text fails the read instead of letting the edit report it; and replacing a file's only line with an empty line drops its byte-order mark. Where are edit plans parsed, edits applied, and read directives executed?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:d6675cacfbdf929fe844722a830afec79cb448df",
+   "cutoff": "2026-10-24T09:12:29+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/agent/directives.py::_unwrap_markdown_code_fence",
+      "symbol:src/optimus/agent/directives.py::bind_edit_base",
+      "symbol:src/optimus/agent/directives.py::parse_agent_plan"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/agent/edits.py::apply_edit_blocks"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/agent/runner.py::AgentRunner._execute_read_directives"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 1f62e849a1bb26aaa05451c068de2d2769aea4a7 inside merged PR #411 (merge d13fd34bde86a656188f6f7b5b3b6f6703ff9dac), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF04-a",
+   "version": 1,
+   "family": "MF04",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "A vertical tab or similar separator at the start of a line inside a planned file body is stripped, so the line is taken for a test directive and the body is cut short, and multi-turn planning splits on such separators and reports mixed directives before the final plan is parsed. Where are plan lines split and recognized as directives?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:e5eb9258d8a9abec8eedccaf60d230555776c5bb",
+   "cutoff": "2026-10-24T12:46:57+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/agent/directives.py::_normalize_directive_line",
+      "symbol:src/optimus/agent/directives.py::_plan_lines",
+      "symbol:src/optimus/agent/directives.py::_unwrap_markdown_code_fence",
+      "symbol:src/optimus/agent/directives.py::parse_agent_plan"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/agent/planning_loop.py::_directive_surface_lines",
+      "symbol:src/optimus/agent/planning_loop.py::_normalize_directive_surface_line",
+      "symbol:src/optimus/agent/planning_loop.py::_try_parse_mcp_turn"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit d80de892192bd8d5e57faac6ff4b308acb412e2e inside merged PR #413 (merge 159a712b31eda0eb023cb9ede4d44eb5a8a60d2a), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF05-a",
+   "version": 1,
+   "family": "MF05",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When a client tool server fails to shut down or the teardown is cancelled, the agent server stops its cleanup early and the original failure is lost, and releasing a peer also gives up the retained listener it should keep. Where does the server tear down a connection's tool servers, and where are owned tool-server candidates retired?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:6b49a7f3a05230b2714d3ae11baa44d91899d73f",
+   "cutoff": "2026-10-26T23:50:39+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/server.py::AcpStreamServer._serve_ndjson",
+      "symbol:src/optimus/acp/server.py::AcpStreamServer._serve_ndjson.shutdown_mcp"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/mcp/client_disposition.py::ClientMcpDisposition._own_candidates.retire"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 43421d90267558e9f7eb06b282956c34a19634ff inside merged PR #429 (merge 8713dcbfbc05f9372619dfe655f83b247dc3751a), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF06-a",
+   "version": 1,
+   "family": "MF06",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "A routing classifier reply whose choice is a list or an object raises a type error instead of counting as unreadable, so the possibly billed call is not recorded as uncertain and the route stays in use; and a prompt turn cancelled during classification or while its notice waits leaves no record. Where are decision replies parsed, and where are automatically routed turns recorded?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:27daf66b15aed758e38d49aa9563c083a7831a61",
+   "cutoff": "2026-10-27T06:49:57+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._handle_session_prompt",
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._record_auto_turn",
+      "symbol:src/optimus/acp/spec.py::AcpPromptTurn"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus_gateway/upstream_client.py::parse_decision_response"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 3420eb24c6f0294b5a6789f1256d91f188ceddaf inside merged PR #428 (merge bf440cba5c184f8bca7ed8af0a0ae6bb824f14f1), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF07-a",
+   "version": 1,
+   "family": "MF07",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When preparing an escalation to a stronger model fails, whether on its target, its binding or its notice text, the failure escapes instead of being recorded with its exception class and returned as a failed escalation. Where is an escalation prepared, and where are automatic routing outcomes logged?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:d4a2f50fc4e5e3bf767300cf630dcf6b6604ae07",
+   "cutoff": "2026-10-28T00:02:18+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/debug_trace.py::log_auto_route",
+      "symbol:src/optimus/acp/debug_trace.py::log_auto_route.data"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._recovery_escalation_for.recovery_escalation"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 32e67f56f30c1ec3c5fe6fc6feba2cfed87d9971 inside merged PR #437 (merge 5977155c2bce9728156ee5898ff9e17d0ae08750), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF08-a",
+   "version": 1,
+   "family": "MF08",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "A cancelled prompt turn can skip its final accounting and its commit record when draining its progress updates fails, progress is finalized before its sends have settled, and the process exits successfully even though cleanup failures were recorded. Where is a prompt turn finalized, its progress settled, and the process exit code decided?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:151dc5139786928c563680ffa2b1ccbff67753a6",
+   "cutoff": "2026-10-28T12:57:25+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/process_lifecycle.py::ProcessLifecycle.exit_code"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._handle_session_prompt",
+      "symbol:src/optimus/acp/spec.py::ProgressLane.settle"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 1667eb4e9c70d57d1f3d79205447b185abc98473 inside merged PR #434 (merge 35263daa97524f28dad98e11d2fef21a332652ee), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF09-a",
+   "version": 1,
+   "family": "MF09",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Automatic workspace context packs secret files, such as environment files, into the planner's prompt, and secret-file names with an extra suffix pass every secret-path check. Where are secret paths recognized for reads, writes, permission denials and workspace context?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:1c9cac7d26887f7182b95160413b30886b1c9efe",
+   "cutoff": "2026-10-30T17:38:53+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/agent/workspace_context.py::_should_skip_relative_path",
+      "symbol:src/optimus/agent/workspace_context.py::_target_excluded"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/guardrails/path_safety.py::PathSafetyValidator.validate_read",
+      "symbol:src/optimus/guardrails/path_safety.py::PathSafetyValidator.validate_write",
+      "symbol:src/optimus/guardrails/path_safety.py::_is_secret_path"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/guardrails/permissions.py::_looks_like_secret_path",
+      "symbol:src/optimus/guardrails/permissions.py::_user_deny_decision"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 9448aa5b795f50f79a3e0af80dad4b9dcf0e73b0 inside merged PR #446 (merge efa1235975d693a723eedec05fe23e4cc5b0e53f), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF10-a",
+   "version": 1,
+   "family": "MF10",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Durable usage capture can trust an orphaned stream's unverified last record, truncate before validating a gap, accept acknowledgements that move backwards or name records it does not hold, compact away damaged segments, close an epoch while workers are pending, stay unusable after a failed directory sync, and fingerprint receipts in a way that breaks replay equality. Where are capture batches built and parsed, receipts fingerprinted, the outbox written and compacted, and capture epochs closed?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:3fc13f038c415ab3e494ad85efb1c22fbd93d5a3",
+   "cutoff": "2026-10-31T08:33:12+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/usage/capture_events.py::_jsonable",
+      "symbol:src/optimus/usage/capture_events.py::digest",
+      "symbol:src/optimus/usage/capture_events.py::purpose_for",
+      "symbol:src/optimus/usage/capture_events.py::receipt_payload"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture.__init__",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture._epoch",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture._submit",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture.close",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture.integrity_failure",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture.intent",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture.invocation_ended",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture.invocation_opened",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture.receipt",
+      "symbol:src/optimus/usage/durable_capture.py::DurableCapture.stop",
+      "symbol:src/optimus/usage/durable_capture.py::_Epoch",
+      "symbol:src/optimus/usage/durable_capture.py::_without_kind"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus_security/durable_outbox.py::Damage",
+      "symbol:src/optimus_security/durable_outbox.py::OutboxError",
+      "symbol:src/optimus_security/durable_outbox.py::OutboxWriter",
+      "symbol:src/optimus_security/durable_outbox.py::OutboxWriter.__init__",
+      "symbol:src/optimus_security/durable_outbox.py::OutboxWriter._ensure_thread",
+      "symbol:src/optimus_security/durable_outbox.py::OutboxWriter._run",
+      "symbol:src/optimus_security/durable_outbox.py::OutboxWriter.close",
+      "symbol:src/optimus_security/durable_outbox.py::OutboxWriter.stats",
+      "symbol:src/optimus_security/durable_outbox.py::OutboxWriter.submit",
+      "symbol:src/optimus_security/durable_outbox.py::StreamScan",
+      "symbol:src/optimus_security/durable_outbox.py::StreamWriter._open",
+      "symbol:src/optimus_security/durable_outbox.py::StreamWriter._roll",
+      "symbol:src/optimus_security/durable_outbox.py::StreamWriter._write",
+      "symbol:src/optimus_security/durable_outbox.py::StreamWriter.append",
+      "symbol:src/optimus_security/durable_outbox.py::Ticket",
+      "symbol:src/optimus_security/durable_outbox.py::_place",
+      "symbol:src/optimus_security/durable_outbox.py::_scan",
+      "symbol:src/optimus_security/durable_outbox.py::compact",
+      "symbol:src/optimus_security/durable_outbox.py::parse_line",
+      "symbol:src/optimus_security/durable_outbox.py::read_ack",
+      "symbol:src/optimus_security/durable_outbox.py::scan_stream",
+      "symbol:src/optimus_security/durable_outbox.py::stream_dirs",
+      "symbol:src/optimus_security/durable_outbox.py::write_ack"
+     ]
+    },
+    {
+     "requirement_id": "R4",
+     "any_of": [
+      "symbol:src/optimus_security/usage_capture_contract.py::CaptureBatch",
+      "symbol:src/optimus_security/usage_capture_contract.py::ContractError",
+      "symbol:src/optimus_security/usage_capture_contract.py::build_batch",
+      "symbol:src/optimus_security/usage_capture_contract.py::parse_ack",
+      "symbol:src/optimus_security/usage_capture_contract.py::parse_batch"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 927beadd30f4a929843f40b0c9cb029e030d307c inside merged PR #456 (merge f1e3bac9581a18f4ea670d85790176240c9b1349), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF11-a",
+   "version": 1,
+   "family": "MF11",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "The cost-savings report treats an empty frontier as proof, counts a frontier stream without a ledger cursor as committed, and returns an invalid response for a benchmark without a source locator. Where are the report's facts gathered and its body built?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:7d9c609b64be5ef466917159fa2af462db44db2b",
+   "cutoff": "2026-11-01T20:45:08+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus_gateway/usage_report.py::report_body"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus_gateway/usage_store.py::ReportFacts",
+      "symbol:src/optimus_gateway/usage_store.py::UsageStore._report_facts"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit b4d26218313f75e6d585ad0c8604d461666c55ba inside merged PR #462 (merge a88fde86a2ddf382a9bb39a6e2c1a74a1db20498), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "MF12-a",
+   "version": 1,
+   "family": "MF12",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "A local Gateway address without a port is started and confirmed on the wrong port, the gateway command does not serve the agent's tool composition, diagnostic output bypasses the writer that shutdown owns so a blocked client write goes unseen, the upstream fingerprint ignores path, query and fragment, and refusal text can echo a configured address's path or query. Where is the local Gateway started, verified and identified, and where are refusals and outbound messages written?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:2579ffbce04d5bde1f1dbd8668d3c1024a54b11f",
+   "cutoff": "2026-11-03T11:31:35+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/gateway_refusal.py::GatewayRefusalServer.serve",
+      "symbol:src/optimus/acp/gateway_refusal.py::GatewayRefusalServer.serve_ndjson"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/launch_approval_cli.py::_cmd_run_gateway"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/acp/local_infra.py::_gateway_tool_environ",
+      "symbol:src/optimus/acp/local_infra.py::confirm_running_gateway",
+      "symbol:src/optimus/acp/local_infra.py::ensure_local_gateway",
+      "symbol:src/optimus/acp/local_infra.py::expected_gateway_identity",
+      "symbol:src/optimus/acp/local_infra.py::verify_local_gateway"
+     ]
+    },
+    {
+     "requirement_id": "R4",
+     "any_of": [
+      "symbol:src/optimus/acp/server.py::NdjsonOutboundChannel"
+     ]
+    },
+    {
+     "requirement_id": "R5",
+     "any_of": [
+      "symbol:src/optimus_security/gateway_identity.py::_normal_url"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": null,
+    "source": "fix commit 120e21a8369fabdf46f10816ba09300d5d1353a4 inside merged PR #470 (merge 4a44ead7a1580151a866d194f52d6846f155f774), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  }
+ ]
+}
