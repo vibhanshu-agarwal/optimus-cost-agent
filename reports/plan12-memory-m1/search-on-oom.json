@@ -17,15 +17,28 @@
  },
  "change": "src/optimus/acp/local_infra.py _memory_server_args adds --search-on-oom IGNORE. Codex review 21 agreed with IGNORE over FAIL: writes are still refused and searches keep answering. It does not guarantee adequate RAM or latency at scale; Release B's K2 measures those.",
  "proof_at_smoke_scale": {
-  "before": "readable_while_full false",
+  "source": "hex:da12b6534b858657f19765a54ce60509ed6d254d",
+  "source_clean_when_run": "Yes. The only uncommitted file was retrieval.json, which another run was writing.",
+  "before": "An earlier smoke, on the default setting, read readable_while_full false; it was not kept as a clean record, so the probe below is the evidence for the default's behaviour.",
   "after": {
    "readable_while_full": true,
-   "appends_refused_by_the_ceiling": "12 of 12",
-   "route_writes_while_full": "12 of 12 refused, reported to the client as storage unavailable",
+   "appends_refused_by_the_ceiling": {
+    "refused_by_the_ceiling": 12,
+    "tried": 12
+   },
+   "route_writes_while_full": {
+    "refused_appends": 12,
+    "route_errors": {
+     "project:StorageUnavailableError": 12
+    },
+    "unprojected": 12
+   },
    "no_keys_evicted": true,
-   "canaries_after_room": "complete, no errors"
+   "canaries_after_room_complete": true
   },
-  "note": "Smoke scale only: a few records. Raw records are in the local handoff kit. The real run is k2.json."
+  "note": "Smoke scale only: a few records. The real run is k2.json.",
+  "raw_record_sha256": "hex:2f4a9009d995db33b4624fa9277b0d5e80bfb1653e7ed462ce768fad35a31ef9",
+  "probe_script_sha256": "hex:0931a3afb9ff64ecdc71a35637e7e9b382f616ea9bbf84bc00186370c7c85886"
  },
  "upgrade_consequence": "A container created before this change has the old arguments and now fails the launch's configuration check with 'it runs Redis with other settings'; restarting it does not change them. It needs removing and recreating, which rebuilds nothing but its own data, since the index is rebuildable. The only such container was removed at CP3's end."
 }
