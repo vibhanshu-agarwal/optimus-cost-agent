@@ -523,7 +523,17 @@ def _calibrate_assembly(root: Path, settings: Any, embedder: Any, work: Path, *,
         return {"state": "CALIBRATION: never a qualification result", "repo_map_on_a_miss": refresh, "session_edit": session_edit, "idle": {**scale._assembly_summary(idle), **_dense_in_every_turn(idle), "per_turn": idle},
                 "during_build": {**scale._assembly_summary(during_build), **_dense_in_every_turn(during_build), "per_turn": during_build} if during_build else None, "coverage": session.status()}
     finally:
-        session.close()
+        close_and_confirm_stopped(session)
+
+
+def close_and_confirm_stopped(session: Any, *, seconds: float = 120) -> None:
+    """The session's own close waits 10 s. A pass stalled in a listing or an embedding can outlive that, and K2 must not run under it."""
+    session.close()
+    thread = getattr(session, "_thread", None)
+    if thread is not None:
+        thread.join(seconds)
+        if thread.is_alive():
+            raise SystemExit("the calibration session's index pass did not stop; K2 would run under its load")
 
 
 def session_edit_visibility(session: MemorySession, root: Path, storage: Any, *, limit_seconds: float = 900, poll_seconds: float = 0.1) -> dict[str, Any]:
