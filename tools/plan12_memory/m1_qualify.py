@@ -25,7 +25,7 @@ from typing import Any
 import psutil
 import redis
 
-from context_engine.index_worker import SCHEMA_VERSION
+from context_engine.index_worker import SCHEMA_VERSION, StorageRefusedError
 from optimus.acp import local_infra
 from optimus.context.memory_session import MemorySession
 from optimus.context.memory_workspace import FastembedEmbedder, GatewayIndexStorage, index_scope
@@ -120,8 +120,8 @@ class _Canaries:
         self._lock = threading.Lock()
         self.acknowledged: dict[str, str] = {}
 
-    def _storage(self, client_number: int) -> GatewayIndexStorage:
-        registration = ProjectRegistration(f"k2-{client_number}", 1, f"git:k2-{client_number}", f"k2/{client_number}", created=False)
+    def _storage(self, client_number: int, tag: str) -> GatewayIndexStorage:
+        registration = ProjectRegistration(f"{tag}-{client_number}", 1, f"git:{tag}-{client_number}", f"{tag}/{client_number}", created=False)
         return GatewayIndexStorage(self._settings, scope=index_scope(registration, branch="k2", embedding=self._embedding, parser_version="k2"))
 
     def _note_error(self, out: dict[str, Any], stage: str, error: BaseException) -> None:
@@ -147,14 +147,17 @@ class _Canaries:
                 out["unprojected"] += 1
             self._note_error(out, "project", error)
 
-    def _client(self, client_number: int, rounds: int, pause: float, out: dict[str, Any]) -> None:
-        owner = owner_id(f"k2owner{client_number}")
+    def _client(self, client_number: int, rounds: int, pause: float, out: dict[str, Any], tag: str, ready: threading.Barrier | None, go: threading.Barrier | None) -> None:
+        owner = owner_id(f"{tag}owner{client_number}")
         token = None
-        storage = self._storage(client_number)
+        storage = self._storage(client_number, tag)
         connection = self._connect().client()  # WAITAOF speaks for its own connection, so append and wait must share one
         try:
             storage.call("generation", action="open", embedding=self._embedding, dimensions=self._dimensions, schema_version=SCHEMA_VERSION)
             token = storage.call("lease", action="acquire", owner=owner, ttl_ms=_LEASE_MS, kind="scope")["token"]
+            if ready is not None and go is not None:  # ready before any pressure, so the writes under it are what is tested
+                ready.wait(120)
+                go.wait(120)
             renewed = time.monotonic()
             for _ in range(rounds):
                 name = f"canary{self._run}x{next(self._sequence)}"
@@ -168,6 +171,8 @@ class _Canaries:
                     if is_oom_refusal(error):
                         with self._lock:
                             out["refused_oom"] += 1
+                        if ready is not None:  # under pressure the route's own write path is the point, whatever the append did
+                            self._project(storage, token, name, time.perf_counter(), out)
                     else:
                         self._note_error(out, "append", error)
                     continue
@@ -184,6 +189,9 @@ class _Canaries:
                     time.sleep(pause)
         except Exception as error:  # noqa: BLE001 - a client that never started must show, or four dead clients would read as no errors
             self._note_error(out, "setup", error)
+            for barrier in (ready, go):
+                if barrier is not None:
+                    barrier.abort()
         finally:
             try:
                 if token is not None:
@@ -192,11 +200,22 @@ class _Canaries:
                 self._note_error(out, "release", error)
             connection.close()
 
-    def run(self, *, rounds: int, pause: float, during: Callable[[], Any] | None = None) -> dict[str, Any]:
+    def run(self, *, rounds: int, pause: float, during: Callable[[], Any] | None = None, pressure: Callable[[], None] | None = None, tag: str = "k2") -> dict[str, Any]:
+        """`pressure` runs once every client has its line and lease, and before any of them writes."""
         out: dict[str, Any] = {"acks": [], "projections": [], "unconfirmed": 0, "unprojected": 0, "refused_oom": 0, "errors": {}}
-        threads = [threading.Thread(target=self._client, args=(number, rounds, pause, out), daemon=True) for number in range(4)]
+        ready = threading.Barrier(5) if pressure is not None else None
+        go = threading.Barrier(5) if pressure is not None else None
+        threads = [threading.Thread(target=self._client, args=(number, rounds, pause, out, tag, ready, go), daemon=True) for number in range(4)]
         for thread in threads:
             thread.start()
+        if ready is not None and go is not None and pressure is not None:
+            try:
+                ready.wait(120)
+                pressure()
+                go.wait(120)
+            except threading.BrokenBarrierError:
+                out["errors"]["setup:not every client got ready"] = 1
+                pressure()
         if during is not None:
             during()
         for thread in threads:
@@ -228,19 +247,21 @@ def _marker_state(container: str, marker: str) -> str:
 
 
 class _Peaks:
-    """Maxima kept across restarts by sampling, per phase, so a restart cannot erase a peak. A measurement that failed stays unknown; it never reads as zero."""
+    """Maxima kept across restarts by sampling, per phase, so a restart cannot erase a peak. A sample that failed outside a planned outage makes that phase's bound unknown;
+    it never reads as zero, and the surviving samples cannot vouch for what was missed."""
 
     def __init__(self, container: str, connect: Callable[[], redis.Redis], *, interval: float = 30.0) -> None:
         self._container, self._connect, self._interval = container, connect, interval
         self._stop = threading.Event()
         self.phase = "index"
+        self.in_outage = False  # the instance is down on purpose, so a failed sample is no finding
         self.peaks: dict[str, dict[str, Any]] = {}
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def _bump(self, name: str, value: float | None) -> None:
         phase = self.peaks.setdefault(self.phase, {"used_memory_mb": None, "disk_mb": None, "container_memory_mb": None, "failed_samples": 0})
         if value is None:
-            phase["failed_samples"] += 1
+            phase["failed_samples"] += not self.in_outage
         elif phase[name] is None or value > phase[name]:
             phase[name] = round(value, 1)
 
@@ -254,6 +275,10 @@ class _Peaks:
         self._bump("disk_mb", int(disk) / 1024 if disk.isdigit() else None)
         peak = subprocess.run(["docker", "exec", self._container, "cat", "/sys/fs/cgroup/memory.peak"], capture_output=True, text=True, check=False).stdout.strip()
         self._bump("container_memory_mb", int(peak) / 1048576 if peak.isdigit() else None)
+
+    def bound(self, phase: str, name: str, limit: float) -> bool | None:
+        seen = self.peaks.get(phase, {})
+        return None if seen.get("failed_samples") else within(seen.get(name), limit)
 
     def _run(self) -> None:
         while not self._stop.wait(self._interval):
@@ -281,11 +306,16 @@ def _reachable(call: Callable[[], Any], started: float, seconds: float) -> float
 
 
 def _noeviction(admin: redis.Redis, canaries: _Canaries, query: Callable[[], Any], memory: Any) -> dict[str, Any]:
-    """Held over the ceiling, so every write meets it: real OOM refusals, nothing evicted, and existing evidence still readable while full."""
+    """Held over the ceiling, so every write meets it: real OOM refusals on appends and on the route's writes from clients that were ready before it,
+    nothing evicted, and existing evidence still readable while full. Then room again, on those same lines' neighbours."""
     before_keys = int(admin.dbsize())
     result: dict[str, Any] = {}
-    admin.config_set("maxmemory", max(int(admin.info("memory")["used_memory"]) - 1024 * 1024, 1024 * 1024))
+
+    def press() -> None:
+        admin.config_set("maxmemory", max(int(admin.info("memory")["used_memory"]) - 1024 * 1024, 1024 * 1024))
+
     try:
+        result["route_while_full"] = canaries.run(rounds=3, pause=0, pressure=press, tag="full")
         appends_refused = 0
         for number in range(12):
             try:
@@ -293,7 +323,6 @@ def _noeviction(admin: redis.Redis, canaries: _Canaries, query: Callable[[], Any
             except redis.RedisError as error:
                 appends_refused += is_oom_refusal(error)
         result["appends_refused_while_full"] = {"tried": 12, "refused_by_the_ceiling": appends_refused}
-        result["route_writes_while_full"] = canaries.run(rounds=3, pause=0)
         try:
             result["readable_while_full"] = bool(query())
         except Exception as error:  # noqa: BLE001 - the measure
@@ -336,11 +365,14 @@ def _purge(admin: redis.Redis, settings: Any, embedding: str, dimensions: int, c
         cursor = reply.get("cursor")
         if cursor is None:
             break
+    denied: bool | None
     try:
         denied = not storage.call("query", mode="lexical", terms=[marker], k=1)["records"]
         denial = "no records"
-    except Exception as error:  # noqa: BLE001 - a refusal is the expected answer
-        denied, denial = True, str(getattr(error, "code", type(error).__name__))
+    except StorageRefusedError as error:  # the expected answer: this line no longer exists
+        denied, denial = error.code in {"SCOPE_UNKNOWN", "NOT_PUBLISHED"}, error.code
+    except Exception as error:  # noqa: BLE001 - a transport failure says nothing either way
+        denied, denial = None, type(error).__name__
     logical = round(time.monotonic() - purge_started, 3)
     admin.bgrewriteaof()
     _wait_flag(admin, "aof_rewrite_in_progress")
@@ -353,7 +385,7 @@ def _purge(admin: redis.Redis, settings: Any, embedding: str, dimensions: int, c
             break
         time.sleep(0.5)
     return {"marker_sha256": f"hex:{hashlib.sha256(marker.encode()).hexdigest()}", "marker_seen_on_disk": True, "seconds_until_seen": reached, "route_denies_after_drop": denied, "route_answer": denial, "logical_purge_seconds": logical, "physical_erasure_seconds": erased,
-            "logical_within": denied and within(logical, fixed["logical_purge_seconds"]), "physical_within": within(erased, fixed["physical_erasure_seconds"])}
+            "logical_within": None if denied is None else denied and within(logical, fixed["logical_purge_seconds"]), "physical_within": within(erased, fixed["physical_erasure_seconds"])}
 
 
 def run_k2(*, targets: Mapping[str, Any], config: Mapping[str, Any], memory: Any, connect: Callable[[], redis.Redis], settings: Any, large: Any, real_records: int, peaks: _Peaks, write: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
@@ -390,9 +422,12 @@ def run_k2(*, targets: Mapping[str, Any], config: Mapping[str, Any], memory: Any
 
     # Restart: same container and volume. Timed from before the command, and the publication is read before anything can repair it.
     published = large.storage.call("coverage")["current"]
+    peaks.sample()  # the container's own peak counter resets with it
+    peaks.in_outage = True
     started = time.monotonic()
     restarted = subprocess.run(["docker", "restart", container], capture_output=True, check=False).returncode == 0
     usable = _reachable(query, started, 300)
+    peaks.in_outage = False
     report["restart"] = {"command_succeeded": restarted, "seconds_until_usable": usable, "within": within(usable, fixed["restart_to_usable_seconds"])}
     write(report)
     if usable is None:
@@ -405,10 +440,13 @@ def run_k2(*, targets: Mapping[str, Any], config: Mapping[str, Any], memory: Any
     # Crash: killed, started by the real lifecycle, timed from the kill. Survival and publication are read before the worker repairs anything.
     report["before_crash"] = canaries.run(rounds=5, pause=0)
     published = large.storage.call("coverage")["current"]
+    peaks.sample()
+    peaks.in_outage = True
     started = time.monotonic()
     subprocess.run(["docker", "kill", container], capture_output=True, check=False)
     status = local_infra.ensure_memory_redis(memory_index_root(Path(config["_config_root"])))
     usable = _reachable(query, started, 300)
+    peaks.in_outage = False
     report["crash"] = {"ensure_state": status.state, "seconds_until_usable": usable, "within": within(usable, fixed["restart_to_usable_seconds"])}
     write(report)
     if usable is None:
@@ -423,9 +461,8 @@ def run_k2(*, targets: Mapping[str, Any], config: Mapping[str, Any], memory: Any
 
     report["purge"] = _purge(connect(), settings, large.embedder.identity, memory.embedding.dimensions, container, fixed)
     peaks.sample()
-    phase = peaks.peaks.get("k2", {})
-    report["resources"] = {"peaks_by_phase": peaks.peaks, "used_within_limit": within(phase.get("used_memory_mb"), bounds["maxmemory_mb"] - bounds["reserve"]["mb"]),
-                           "physical_within": within(phase.get("container_memory_mb"), bounds["physical_ram_mb"]["limit"]), "k2_disk_within": within(phase.get("disk_mb"), bounds["disk_mb"])}
+    report["resources"] = {"peaks_by_phase": peaks.peaks, "used_within_limit": peaks.bound("k2", "used_memory_mb", bounds["maxmemory_mb"] - bounds["reserve"]["mb"]),
+                           "physical_within": peaks.bound("k2", "container_memory_mb", bounds["physical_ram_mb"]["limit"]), "k2_disk_within": peaks.bound("k2", "disk_mb", bounds["disk_mb"])}
     nominal = report["nominal"]
     report["checks"] = {"items_at_least_target": real_records >= bounds["items"], "nominal_complete": nominal["complete"], "no_busy_at_nominal": not any("INDEX_BUSY" in name for name in nominal["errors"]), "no_errors_at_nominal": not nominal["errors"], "no_unprojected_at_nominal": nominal["unprojected"] == 0, "no_unconfirmed_at_nominal": nominal["unconfirmed"] == 0,
                         "ack_p95_within": within(nominal["ack_p95_ms"], fixed["ack_latency_p95_ms"]), "projection_p95_within": within(nominal["projection_p95_ms"], fixed["projection_latency_p95_ms"]),
@@ -612,7 +649,7 @@ def run_qualify(config: dict[str, Any], repository: Path) -> dict[str, Any]:
             report["large"]["cold"]["redis"] = scale._redis_facts(client, config["container"])
             peaks.sample()
             report["large"]["cold"]["peaks"] = dict(peaks.peaks.get("index", {}))
-            report["large"]["cold"]["index_disk_within_2048"] = within(report["large"]["cold"]["peaks"].get("disk_mb"), 2048)
+            report["large"]["cold"]["index_disk_within_2048"] = peaks.bound("index", "disk_mb", 2048)
             save()
 
             if report["large"]["cold"]["state"] != "complete":

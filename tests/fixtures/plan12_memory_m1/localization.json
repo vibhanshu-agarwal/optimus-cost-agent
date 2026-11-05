@@ -68,7 +68,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #66; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -132,7 +132,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #135; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -181,7 +181,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #150; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -228,7 +228,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #195; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -274,7 +274,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #197; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -334,7 +334,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #199; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -403,7 +403,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #200; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -480,7 +480,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #201; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -549,7 +549,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #352; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -603,7 +603,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #393; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -663,7 +663,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #404; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   },
@@ -745,7 +745,7 @@
    "verification": "retrieval localization: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change) within the first k=5 retrieved items",
    "provenance": {
     "drafted_by": "claude",
-    "verified_by": null,
+    "verified_by": "codex",
     "source": "merged fix PR #445; gold = its changed src paths and symbols, AST-unchanged files left out"
    }
   }

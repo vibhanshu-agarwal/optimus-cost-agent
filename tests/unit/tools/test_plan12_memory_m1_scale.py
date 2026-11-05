@@ -135,3 +135,18 @@ def test_every_canary_request_passes_the_routes_own_contract() -> None:
     ):
         mic.parse_request(json.dumps({"scope": scope, **body}).encode("utf-8"))
 
+
+def test_a_failed_resource_sample_makes_the_bound_unknown_unless_the_outage_was_planned() -> None:
+    from tools.plan12_memory.m1_qualify import _Peaks
+
+    peaks = _Peaks("none", lambda: None)  # type: ignore[arg-type, return-value]
+    peaks._bump("disk_mb", 10.0)
+    assert peaks.bound("index", "disk_mb", 20) is True
+    peaks.in_outage = True
+    peaks._bump("disk_mb", None)
+    assert peaks.bound("index", "disk_mb", 20) is True
+    peaks.in_outage = False
+    peaks._bump("disk_mb", None)
+    assert peaks.bound("index", "disk_mb", 20) is None
+    assert peaks.bound("k2", "disk_mb", 20) is None  # nothing seen is not a pass
+

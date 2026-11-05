@@ -119,7 +119,8 @@ def score_off(case: GoldenCase, root: Path, *, query: str) -> dict[str, Any]:
     files = list(result.file_sha256s)
     relevant = gold_paths(case)
     met = [requirement.requirement_id for requirement in case.required_evidence if any(parse_evidence(evidence)[0] in files for evidence in requirement.any_of)]
-    irrelevant = sum(estimate(block) for path, block in _blocks(result.text, files, lambda path: (m1_scale.long_path(root) / path).read_bytes()) if path not in relevant)
+    # Everything that is not a required file counts, including a list of omitted files: a context of only that is not an efficient one.
+    irrelevant = estimate(result.text) - sum(estimate(block) for path, block in _blocks(result.text, files, lambda path: (m1_scale.long_path(root) / path).read_bytes()) if path in relevant)
     first = set(files[:K])
     file_met = [requirement.requirement_id for requirement in case.required_evidence if any(parse_evidence(evidence)[0] in first for evidence in requirement.any_of)]
     return {"requirements": len(case.required_evidence), "met_at_k": None, "file_met_at_k": len(file_met), "missed_at_k": None,

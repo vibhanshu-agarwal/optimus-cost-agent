@@ -100,7 +100,17 @@ def test_off_scores_the_real_selection_when_a_file_quotes_anothers_header(tmp_pa
     (tmp_path / "beta.py").write_bytes(b"value = 2\n")
     score = ev.score_off(_case(("path:beta.py",)), tmp_path, query="compare alpha.py and beta.py")
     assert score["files"] == 2 and score["met_at_k"] is None and score["pack"]["required_evidence_met"] is None and score["pack"]["required_file_met"] == 1
-    assert score["pack"]["irrelevant_tokens"] == ev.estimate("--- alpha.py ---\n# --- beta.py ---\nvalue = 1\n")
+    shown = ev.assemble_workspace_context_for_prompt(tmp_path, task="compare alpha.py and beta.py").text
+    assert score["pack"]["tokens"] == ev.estimate(shown)
+    assert score["pack"]["irrelevant_tokens"] == ev.estimate(shown) - ev.estimate("--- beta.py ---\nvalue = 2\n")
+
+
+def test_a_context_of_only_an_omission_list_is_all_irrelevant(tmp_path: Path) -> None:
+    (tmp_path / "wanted.py").write_bytes(b"value = 1\n" * 40_000)
+    score = ev.score_off(_case(("path:wanted.py",)), tmp_path, query="compare wanted.py")
+    assert score["pack"]["required_file_met"] == 0 or score["pack"]["irrelevant_tokens"] < score["pack"]["tokens"]
+    if score["files"] == 0:
+        assert score["pack"]["irrelevant_tokens"] == score["pack"]["tokens"]
 
 
 def test_records_that_do_not_describe_this_tree_are_counted(tmp_path: Path) -> None:
