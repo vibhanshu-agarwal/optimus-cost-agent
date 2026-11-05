@@ -70,5 +70,71 @@
       "physical_erasure_seconds": 120
     }
   },
-  "retrieval": "Recall, required-evidence, irrelevant-token and coverage targets are set from context-off and lexical baselines before the held-out set is opened, in Task 5, and need their own approval. No number is proposed here because nothing has measured them."
+  "retrieval": {
+      "state": "APPROVED",
+      "approved": "The operator, Claude chat 2026-11-05, chose: \"B: seal, then tune (Recommended)\". The question gave this gold hash and these floors. Codex recommended option B and the floors in review 21.",
+      "sealed_gold_sha256": "hex:4254408ded16fb4fdc8f0902b1735689f57ffe571a92b8eee377e1f033ed9688",
+      "gold_before_verification_sha256": "hex:50d513ff24e2b438ef7c03dc2bc1360585ba7507930c83f8bcbf879c6eb8a1ae",
+      "gold_change": "Only provenance.verified_by, set to codex after reviews 19 and 21. The first baseline, retrieval-baseline-4607ff7.json, ran against the earlier hash and is not relabelled.",
+      "splits": "Chronological 4/4/4; tests/fixtures/plan12_memory_m1/splits.json, SHA-256 hex:41f6bb757ebbe1b6326edf593ec21bfbc740b38f54ec9b6a661828479ee02485",
+      "what_they_are": "Modest qualification floors, stated as counts because each set is small. They are not evidence of broad retrieval reliability. One bounded tuning pass on train and development is released before held-out opens.",
+      "limits": [
+          {
+              "metric": "M1 held-out, 11 requirements: hybrid required evidence in context, count",
+              "limit": 3,
+              "direction": "at least"
+          },
+          {
+              "metric": "M1 held-out: hybrid symbol recall at 5, count",
+              "limit": 2,
+              "direction": "at least"
+          },
+          {
+              "metric": "M1 held-out: hybrid file recall at 5, count",
+              "limit": 2,
+              "direction": "at least"
+          },
+          {
+              "metric": "M1 held-out: mean irrelevant estimated tokens",
+              "limit": 16000,
+              "direction": "at most"
+          },
+          {
+              "metric": "Seed held-out, 12 requirements: hybrid required evidence in context, count",
+              "limit": 3,
+              "direction": "at least"
+          },
+          {
+              "metric": "Seed held-out: hybrid symbol recall at 5, count",
+              "limit": 2,
+              "direction": "at least"
+          },
+          {
+              "metric": "Seed held-out: hybrid file recall at 5, count",
+              "limit": 2,
+              "direction": "at least"
+          },
+          {
+              "metric": "Seed held-out: mean irrelevant estimated tokens",
+              "limit": 16000,
+              "direction": "at most"
+          },
+          {
+              "metric": "Incomplete coverage cases",
+              "limit": 0,
+              "direction": "at most"
+          },
+          {
+              "metric": "Stale or missing-file records",
+              "limit": 0,
+              "direction": "at most"
+          },
+          {
+              "metric": "Wrong-branch records, with the positive control found",
+              "limit": 0,
+              "direction": "at most"
+          }
+      ],
+      "compared_with_off": "File-level on both arms: hybrid required files against off's. Off's unavailable symbol measure is not a zero."
+  }
 }
