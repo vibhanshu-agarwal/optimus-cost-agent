@@ -12,7 +12,6 @@ import argparse
 import hashlib
 import io
 import json
-import re
 import shutil
 import sqlite3
 import subprocess
@@ -23,7 +22,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from context_engine.context_pack import Selected, _excerpt, _signature_line, _where, assemble_pack
+from context_engine.context_pack import SECTION_BODIES, Selected, _excerpt, _signature_line, _where, assemble_pack
 from context_engine.retrieval import Ranked, Retriever
 from optimus.agent.workspace_context import assemble_workspace_context_for_prompt
 from optimus.context.memory_session import PACK_MAX_TOKENS, PACK_SHARE
@@ -35,7 +34,6 @@ from tools.plan12_memory.contracts import GoldenCase
 K = 5
 ABLATIONS = ("off", "lexical", "dense", "hybrid")
 RETRIEVED = ("lexical", "dense", "hybrid")
-_FILE_HEADER = re.compile(r"^--- (?!omitted )(.+?) ---$", re.M)
 
 
 class HeldOutRefused(SystemExit):
@@ -67,6 +65,11 @@ def gold_paths(case: GoldenCase) -> set[str]:
     return {parse_evidence(evidence)[0] for requirement in case.required_evidence for evidence in requirement.any_of}
 
 
+def _accepted(case: GoldenCase, path: str, symbol: str | None) -> bool:
+    """An accepted locus. Another symbol in a gold file is not one, so it counts as irrelevant."""
+    return any(meets(evidence, path, symbol) for requirement in case.required_evidence for evidence in requirement.any_of)
+
+
 def ablation_order(ranked: Sequence[Ranked], ablation: str) -> list[Ranked]:
     """The hybrid order is production's. A single channel's order is the position that channel itself reported, so no extra query can differ."""
     if ablation == "hybrid":
@@ -83,14 +86,17 @@ def score_ranking(case: GoldenCase, ordered: Sequence[Ranked]) -> dict[str, Any]
     return {"requirements": len(case.required_evidence), "met_at_k": len(met), "file_met_at_k": len(files), "missed_at_k": [requirement.requirement_id for requirement in case.required_evidence if requirement.requirement_id not in met]}
 
 
-def _shown_tokens(item: Selected, ranked_by_id: Mapping[tuple[str, str | None, int | None], Ranked], contents: Callable[[str], bytes | None]) -> int:
+def _shown_tokens(item: Selected, ranked_by_id: Mapping[tuple[str, str | None, int | None], Ranked], contents: Callable[[str], bytes | None], signature_lines: set[str]) -> int:
+    """Everything rendered for this item. An item shown as a body can also have its signature line shown."""
     source = ranked_by_id.get((item.path, item.symbol, item.start_line))
     if source is None:
         return 0
-    if item.disclosure == "signature":
-        return estimate(_signature_line(source.hit) or "")
-    excerpt = _excerpt(contents(item.path) or b"", source.hit)
-    return estimate(f"--- {_where(source.hit)} ---\n{excerpt}") if excerpt else 0
+    line = _signature_line(source.hit)
+    tokens = estimate(line) if line in signature_lines else 0
+    if item.disclosure == "body":
+        excerpt = _excerpt(contents(item.path) or b"", source.hit)
+        tokens += estimate(f"--- {_where(source.hit)} ---\n{excerpt}") if excerpt else 0
+    return tokens
 
 
 def score_pack(case: GoldenCase, ordered: Sequence[Ranked], read: Callable[[str], bytes | None], budget: int) -> dict[str, Any]:
@@ -98,32 +104,41 @@ def score_pack(case: GoldenCase, ordered: Sequence[Ranked], read: Callable[[str]
     pack = assemble_pack(required=(), ranked=ordered, read=read, estimate=estimate, budget_tokens=budget)
     shown = [item for item in pack.selected if item.disclosure in {"body", "signature"}]
     met = [requirement.requirement_id for requirement in case.required_evidence if any(meets(evidence, item.path, item.symbol if item.kind == "symbol" else None) for evidence in requirement.any_of for item in shown)]
-    relevant = gold_paths(case)
+    files = {item.path for item in shown}
+    file_met = [requirement.requirement_id for requirement in case.required_evidence if any(parse_evidence(evidence)[0] in files for evidence in requirement.any_of)]
     by_id = {(entry.hit.path, entry.hit.symbol, entry.hit.start_line): entry for entry in ordered}
-    irrelevant = sum(_shown_tokens(item, by_id, read) for item in shown if item.path not in relevant)
-    return {"tokens": pack.tokens, "budget_tokens": budget, "required_evidence_met": len(met), "irrelevant_tokens": irrelevant, "stale_paths": len(pack.stale_paths)}
+    signature_lines = set(pack.text.split(SECTION_BODIES, 1)[0].splitlines())
+    irrelevant = sum(_shown_tokens(item, by_id, read, signature_lines) for item in shown if not _accepted(case, item.path, item.symbol if item.kind == "symbol" else None))
+    return {"tokens": pack.tokens, "budget_tokens": budget, "required_evidence_met": len(met), "required_file_met": len(file_met), "irrelevant_tokens": irrelevant, "stale_paths": len(pack.stale_paths)}
 
 
 def score_off(case: GoldenCase, root: Path, *, query: str) -> dict[str, Any]:
-    """Today's context, with the same question: whole files, so a requirement counts when its file is among them."""
+    """Today's context, with the same question. It shows files, some truncated, and says which, so its measures are file-level only."""
     result = assemble_workspace_context_for_prompt(root, task=query)
-    files = list(dict.fromkeys(_FILE_HEADER.findall(result.text)))
+    files = list(result.file_sha256s)
     relevant = gold_paths(case)
     met = [requirement.requirement_id for requirement in case.required_evidence if any(parse_evidence(evidence)[0] in files for evidence in requirement.any_of)]
-    irrelevant = sum(estimate(block) for path, block in _blocks(result.text) if path not in relevant)
+    irrelevant = sum(estimate(block) for path, block in _blocks(result.text, files) if path not in relevant)
     first = set(files[:K])
     file_met = [requirement.requirement_id for requirement in case.required_evidence if any(parse_evidence(evidence)[0] in first for evidence in requirement.any_of)]
     return {"requirements": len(case.required_evidence), "met_at_k": None, "file_met_at_k": len(file_met), "missed_at_k": None,
-            "pack": {"tokens": estimate(result.text), "budget_tokens": None, "required_evidence_met": len(met), "irrelevant_tokens": irrelevant, "stale_paths": 0}, "files": len(files)}
+            "pack": {"tokens": estimate(result.text), "budget_tokens": None, "required_evidence_met": None, "required_file_met": len(met), "irrelevant_tokens": irrelevant, "stale_paths": 0}, "files": len(files)}
 
 
-def _blocks(text: str) -> list[tuple[str, str]]:
-    marks = list(_FILE_HEADER.finditer(text))
-    return [(mark[1], text[mark.start(): marks[index + 1].start() if index + 1 < len(marks) else len(text)]) for index, mark in enumerate(marks)]
+def _blocks(text: str, files: Sequence[str]) -> list[tuple[str, str]]:
+    """Each shown file's text, found in the order the result named them, so a header quoted inside a file cannot start a block of its own."""
+    starts: list[int] = []
+    position = 0
+    for path in files:
+        position = text.index(f"--- {path} ---", position)
+        starts.append(position)
+        position += 1
+    return [(path, text[start: starts[index + 1] if index + 1 < len(starts) else len(text)]) for index, (path, start) in enumerate(zip(files, starts, strict=True))]
 
 
-def foreign_hits(ranked: Sequence[Ranked], root: Path) -> int:
-    """Records that do not describe this tree: wrong-branch or stale evidence, whichever put them there. Zero tolerance in targets.json."""
+def stale_or_missing_hits(ranked: Sequence[Ranked], root: Path) -> int:
+    """Records whose file is gone or has other bytes in this tree. Zero tolerance in targets.json. Equal bytes on another branch would pass here,
+    so wrong-branch evidence has its own control, `wrong_branch_control`."""
     wrong = 0
     known: dict[str, str | None] = {}
     for item in ranked:
@@ -143,17 +158,21 @@ def aggregate(cases: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         total = sum(row["requirements"] for row in rows)
         met = [row["met_at_k"] for row in rows if row["met_at_k"] is not None]
         packs = [row["pack"] for row in rows]
+        evidence = [pack["required_evidence_met"] for pack in packs if pack["required_evidence_met"] is not None]
         out[ablation] = {
             "recall_at_5": round(sum(met) / total, 4) if len(met) == len(rows) and total else None,
             "file_recall_at_5": round(sum(row["file_met_at_k"] for row in rows) / total, 4) if total else None,
-            "required_evidence_in_context": round(sum(pack["required_evidence_met"] for pack in packs) / total, 4) if total else None,
-            "cases_with_all_required_evidence": sum(pack["required_evidence_met"] == row["requirements"] for pack, row in zip(packs, rows, strict=True)),
+            "required_evidence_in_context": round(sum(evidence) / total, 4) if len(evidence) == len(rows) and total else None,
+            "required_file_in_context": round(sum(pack["required_file_met"] for pack in packs) / total, 4) if total else None,
+            "cases_with_all_required_evidence": sum(pack["required_evidence_met"] == row["requirements"] for pack, row in zip(packs, rows, strict=True)) if len(evidence) == len(rows) else None,
             "mean_context_tokens": round(sum(pack["tokens"] for pack in packs) / len(packs), 1) if packs else None,
             "mean_irrelevant_tokens": round(sum(pack["irrelevant_tokens"] for pack in packs) / len(packs), 1) if packs else None,
             "stale_paths": sum(pack["stale_paths"] for pack in packs),
         }
-    out["wrong_branch_or_stale_records"] = sum(case["foreign_records"] for case in cases)
-    out["incomplete_coverage_cases"] = sum(not case["coverage_complete"] for case in cases)
+    out["stale_or_missing_file_records"] = sum(case["stale_or_missing_records"] for case in cases)
+    coverage = [case["coverage"] for case in cases]
+    out["coverage"] = {"incomplete_cases": sum(not item.get("complete") for item in coverage), "files_indexed": sum(item.get("files_indexed", 0) for item in coverage), "files_total": sum(item.get("files_total", 0) for item in coverage),
+                       "unsupported": sum(item.get("unsupported", 0) for item in coverage), "excluded": sum(item.get("excluded", 0) for item in coverage)}
     return out
 
 
@@ -166,13 +185,16 @@ def gold_digest(directory: Path) -> str:
     return "hex:" + hashlib.sha256((directory / "localization.json").read_bytes()).hexdigest()
 
 
+def _numeric_limits(limits: Any) -> bool:
+    return isinstance(limits, list) and bool(limits) and all(isinstance(item, dict) and isinstance(item.get("metric"), str) and isinstance(item.get("limit"), int | float) and not isinstance(item.get("limit"), bool) for item in limits)
+
+
 def refuse_unapproved_held_out(splits: Sequence[str], targets: Mapping[str, Any], m1_gold: Path) -> None:
     """Targets are set from the baselines before the held-out set is opened, and they bind the exact gold the operator sealed."""
     if "held_out" not in splits:
         return
     retrieval = targets.get("retrieval")
-    approved = isinstance(retrieval, dict) and str(retrieval.get("state", "")).startswith("APPROVED")
-    if not approved:
+    if not isinstance(retrieval, dict) or retrieval.get("state") != "APPROVED" or not _numeric_limits(retrieval.get("limits")):
         raise HeldOutRefused("held-out refused: the operator has not approved retrieval targets")
     if retrieval.get("sealed_gold_sha256") != gold_digest(m1_gold):
         raise HeldOutRefused("held-out refused: the gold is not the one the operator sealed")
@@ -222,7 +244,7 @@ def materialize(repository: Path, revision: str, target: Path, *, branch: str) -
         archive.extractall(target, filter="data")
     m1_scale._git(target, "init", "-q", "-b", branch)
     m1_scale._git(target, "add", "-A")
-    m1_scale._git(target, "commit", "-q", "--no-verify", "-m", f"cutoff tree {revision[:12]}")
+    m1_scale._git(target, "commit", "-q", "-m", f"cutoff tree {revision[:12]}")
 
 
 def _drop(index: m1_scale._Index) -> None:
@@ -233,6 +255,32 @@ def _drop(index: m1_scale._Index) -> None:
         cursor = reply.get("cursor")
         if cursor is None:
             return
+
+
+def wrong_branch_control(work: Path, settings: Any, embedder: Any) -> dict[str, Any]:
+    """The real route and worker on one checkout and two branches: a symbol only on the other branch must not reach this branch's line, and must reach its own, or the control proved nothing."""
+    root = work / "wrong-branch-control"
+    if root.exists():
+        shutil.rmtree(root, onexc=m1_scale._clear_read_only)
+    root.mkdir(parents=True)
+    (root / "base.py").write_text("def base_function():\n    return 1\n", encoding="utf-8")
+    m1_scale._git(root, "init", "-q", "-b", "evaluated")
+    m1_scale._git(root, "add", "-A")
+    m1_scale._git(root, "commit", "-q", "-m", "base")
+    evaluated = m1_scale._Index(root, settings, embedder, project="m1-control", parser_version="m1-eval")
+    m1_scale._required(evaluated.worker().run(threading.Event()))
+    m1_scale._git(root, "checkout", "-q", "-b", "other")
+    (root / "base.py").write_text("def base_function():\n    return 1\n\n\ndef m1otherbranchcanary():\n    return 2\n", encoding="utf-8")
+    m1_scale._git(root, "add", "-A")
+    m1_scale._git(root, "commit", "-q", "-m", "other")
+    other = m1_scale._Index(root, settings, embedder, project="m1-control", parser_version="m1-eval")
+    m1_scale._required(other.worker().run(threading.Event()))
+    assert other.scope != evaluated.scope
+    terms = ["m1otherbranchcanary"]
+    result = {"hits_on_the_evaluated_branch": len(evaluated.storage.call("query", mode="lexical", terms=terms, k=5)["records"]), "hits_on_its_own_branch": len(other.storage.call("query", mode="lexical", terms=terms, k=5)["records"])}
+    _drop(evaluated)
+    _drop(other)
+    return {**result, "wrong_branch_records": result["hits_on_the_evaluated_branch"], "positive_control_found_it": result["hits_on_its_own_branch"] > 0}
 
 
 def evaluate_case(case: GoldenCase, index: m1_scale._Index, retriever: Retriever, root: Path, *, budget: int) -> dict[str, Any]:
@@ -251,7 +299,7 @@ def evaluate_case(case: GoldenCase, index: m1_scale._Index, retriever: Retriever
         ordered = ablation_order(retrieval.ranked, ablation)
         ablations[ablation] = {**score_ranking(case, ordered), "pack": score_pack(case, ordered, read, budget)}
     return {"case_id": case.case_id, "version": case.version, "split": case.split, "snapshot": f"hex:{case.snapshot.removeprefix('git:')}", "cutoff": case.cutoff.isoformat(), "requirements": len(case.required_evidence),
-            "retrieve_seconds": round(seconds, 3), "channels": dict(retrieval.channels), "coverage_complete": bool(retrieval.coverage.get("complete")), "foreign_records": foreign_hits(retrieval.ranked, root), "ablations": ablations}
+            "retrieve_seconds": round(seconds, 3), "channels": dict(retrieval.channels), "coverage": dict(retrieval.coverage), "stale_or_missing_records": stale_or_missing_hits(retrieval.ranked, root), "ablations": ablations}
 
 
 def run(config: Mapping[str, Any], repository: Path, splits: Sequence[str]) -> dict[str, Any]:
@@ -271,6 +319,7 @@ def run(config: Mapping[str, Any], repository: Path, splits: Sequence[str]) -> d
                               "limits": ["Recency sees commit-time file dates in these copies, so it is noise here, not evidence of its value.", "A cutoff tree's index holds only that tree, so future leakage is excluded by construction."], "cases": {}, "trees": []}
     previous: m1_scale._Index | None = None
     try:
+        report["wrong_branch_control"] = wrong_branch_control(work, settings, embedder)
         snapshots: dict[str, list[tuple[str, GoldenCase]]] = {}
         for name, case in cases:
             snapshots.setdefault(case.snapshot.removeprefix("git:"), []).append((name, case))
@@ -282,11 +331,11 @@ def run(config: Mapping[str, Any], repository: Path, splits: Sequence[str]) -> d
             started = time.perf_counter()
             m1_scale._note(f"tree {number}/{len(snapshots)} {revision[:12]}: indexing")
             outcome = m1_scale._required(index.worker().run(threading.Event()))
-            report["trees"].append({"revision": f"hex:{revision}", "seconds": round(time.perf_counter() - started, 1), "records": outcome.records_written, "files": outcome.files_written, "embedded_now": embedder.embedded - before})
+            report["trees"].append({"revision": f"hex:{revision}", "seconds": round(time.perf_counter() - started, 1), "records": outcome.records_written, "files": outcome.files_written, "embedded_now": embedder.embedded - before, "coverage": outcome.coverage})
             retriever = Retriever(index.storage, embedder)
             for name, case in group:
                 report["cases"].setdefault(name, []).append(evaluate_case(case, index, retriever, tree, budget=budget))
-            if previous is not None:  # the previous line stays until now, so wrong-branch evidence had somewhere to come from
+            if previous is not None:  # the previous line stays until now, so a stale record had somewhere to come from
                 _drop(previous)
             previous = index
             old = work / "trees"

@@ -1,6 +1,6 @@
 # ADR-039: Provider caching marks only the stable start of a request
 
-**Status:** Proposed. The operator chose this mechanism on 2026-11-05 and approved the Plan 12.10 v2 hash the same day (both verbatim below). Still owed: the operator's acceptance of this record and the paid pair that would prove a provider actually reuses the prefix. Delivered under Plan 12.10 ([#469](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/469)). Drafted by Claude; Codex reviewed the code and the plan text in CLI review 17 on #469.
+**Status:** Proposed. The operator chose this mechanism on 2026-11-05 and approved the Plan 12.10 v2 hash the same day (both verbatim below). Still owed: the operator's acceptance of this record. The released paid pair ran on 2026-11-05 and showed a changed question reusing the prefix on the qualified route ([`prompt-cache.json`](../../reports/plan12-memory-m1/prompt-cache.json)); that establishes neither production hit rates nor savings. Delivered under Plan 12.10 ([#469](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/469)). Drafted by Claude; Codex reviewed the code and the plan text in CLI review 17 on #469.
 
 **Relationship:** changes how [ADR-038](ADR-038-context-index-retrieval-tools-and-caching.md)'s opt-in provider caching is delivered for M1, and leaves ADR-038's bytes and its other decisions alone. Plan 12.10 v1, SHA-256 `f136397fe605d51bd6dfee1ab4ed8705e7c3a45d05eb52b6c5cf569a7d02adb1`, specified root `cache_control`, so this needed its `_v2` successor (AGENTS.md), approved at SHA-256 `73e4df57f1613d0c428a70b3834d056c145be340e232ea40ae6508162940cdb4`. Unchanged: alerts, not limits ([ADR-005](ADR-005-cost-alerts-not-limits.md)); models are configuration ([ADR-025](ADR-025-models-are-configuration-per-model-admission.md)), so the measured route is named only in the evidence.
 
@@ -62,4 +62,4 @@ The option text is as it was put to the operator, with the review's facts added.
 
 ## Outstanding
 
-Operator acceptance of this record; the released cold and changed-question pair through the final production path, which alone can qualify reuse (an identical repeat cannot); M1's remaining Task 5 work and CP4. Revert checks of the guards are in the handoff kit (`revert-check-prefix.json`).
+Operator acceptance of this record; M1's remaining Task 5 work and CP4. The cold and changed-question pair through the final production path is done: the cold request wrote 4,876 tokens, the changed question read all of them, 2 physical attempts, USD 0.00296866 reported. One pair proves reuse is possible, and says nothing about production hit rates or savings. Revert checks of the guards are in the handoff kit (`revert-check-prefix.json`).

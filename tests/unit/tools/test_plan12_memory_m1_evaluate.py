@@ -54,25 +54,59 @@ def test_the_pack_score_separates_what_fits_from_what_is_about_other_files(tmp_p
         return _ranked(name, symbol, file_hash=hashlib.sha256((tmp_path / name).read_bytes()).hexdigest())
 
     score = ev.score_pack(_case(("symbol:a.py::f",)), [real("a.py", "f"), real("other.py", "g")], lambda path: (tmp_path / path).read_bytes(), 10_000)
-    assert score["required_evidence_met"] == 1
+    assert score["required_evidence_met"] == 1 and score["required_file_met"] == 1
     assert 0 < score["irrelevant_tokens"] < score["tokens"]
     assert score["stale_paths"] == 0
+
+
+def _real(root: Path, name: str, symbol: str) -> Ranked:
+    return _ranked(name, symbol, file_hash=hashlib.sha256((root / name).read_bytes()).hexdigest())
+
+
+def test_another_symbol_in_a_gold_file_is_irrelevant_and_counts_exactly(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    other = _real(tmp_path, "a.py", "other")
+    read = lambda path: (tmp_path / path).read_bytes()  # noqa: E731
+    only_other = ev.score_pack(_case(("symbol:a.py::f",)), [other], read, 10_000)
+    line = ev._signature_line(other.hit)
+    excerpt = ev._excerpt(read("a.py"), other.hit)
+    assert only_other["required_evidence_met"] == 0 and only_other["required_file_met"] == 1
+    assert only_other["irrelevant_tokens"] == ev.estimate(line) + ev.estimate(f"--- {ev._where(other.hit)} ---\n{excerpt}")  # signature and body are both rendered
+
+
+def test_a_signature_only_item_counts_its_line_alone(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("def g():\n    return 2\n", encoding="utf-8")
+    item = _real(tmp_path, "a.py", "g")
+    line = ev._signature_line(item.hit)
+    selected = ev.Selected("a.py", "symbol", "g", "0", 1, 1, "signature")
+    assert ev._shown_tokens(selected, {("a.py", "g", 1): item}, lambda _path: None, {line}) == ev.estimate(line)
+    assert ev._shown_tokens(selected, {("a.py", "g", 1): item}, lambda _path: None, set()) == 0
+
+
+def test_off_uses_what_the_result_says_it_showed_not_headers_quoted_in_a_file(tmp_path: Path) -> None:
+    (tmp_path / "shown.py").write_text("# --- target.py ---\n", encoding="utf-8")
+    text = "--- shown.py ---\n# --- target.py ---\n"
+    assert ev._blocks(text, ["shown.py"]) == [("shown.py", text)]
+    assert [path for path, _block in ev._blocks("--- a.py ---\nx\n--- b.py ---\ny\n", ["a.py", "b.py"])] == ["a.py", "b.py"]
 
 
 def test_records_that_do_not_describe_this_tree_are_counted(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_bytes(b"x")
     right = hashlib.sha256(b"x").hexdigest()
-    assert ev.foreign_hits([_ranked("a.py", "f", file_hash=right)], tmp_path) == 0
-    assert ev.foreign_hits([_ranked("a.py", "f"), _ranked("gone.py", "g", file_hash=right)], tmp_path) == 2
+    assert ev.stale_or_missing_hits([_ranked("a.py", "f", file_hash=right)], tmp_path) == 0
+    assert ev.stale_or_missing_hits([_ranked("a.py", "f"), _ranked("gone.py", "g", file_hash=right)], tmp_path) == 2
 
 
 def test_each_measure_stays_separate_and_off_has_no_symbol_recall() -> None:
-    row = {"requirements": 2, "met_at_k": 1, "file_met_at_k": 2, "missed_at_k": ["R2"], "pack": {"tokens": 10, "budget_tokens": 16, "required_evidence_met": 2, "irrelevant_tokens": 3, "stale_paths": 0}}
-    off = {**row, "met_at_k": None, "missed_at_k": None}
-    result = ev.aggregate([{"requirements": 2, "foreign_records": 1, "coverage_complete": False, "ablations": {"off": off, "lexical": row, "dense": row, "hybrid": row}}])
+    row = {"requirements": 2, "met_at_k": 1, "file_met_at_k": 2, "missed_at_k": ["R2"], "pack": {"tokens": 10, "budget_tokens": 16, "required_evidence_met": 2, "required_file_met": 2, "irrelevant_tokens": 3, "stale_paths": 0}}
+    off = {**row, "met_at_k": None, "missed_at_k": None, "pack": {**row["pack"], "required_evidence_met": None}}
+    coverage = {"complete": False, "files_indexed": 3, "files_total": 4, "unsupported": 1, "excluded": 2}
+    result = ev.aggregate([{"requirements": 2, "stale_or_missing_records": 1, "coverage": coverage, "ablations": {"off": off, "lexical": row, "dense": row, "hybrid": row}}])
     assert result["hybrid"]["recall_at_5"] == 0.5 and result["hybrid"]["file_recall_at_5"] == 1.0 and result["hybrid"]["required_evidence_in_context"] == 1.0
-    assert result["off"]["recall_at_5"] is None and result["hybrid"]["cases_with_all_required_evidence"] == 1
-    assert (result["wrong_branch_or_stale_records"], result["incomplete_coverage_cases"]) == (1, 1)
+    assert result["off"]["recall_at_5"] is None and result["off"]["required_evidence_in_context"] is None and result["off"]["required_file_in_context"] == 1.0 and result["off"]["cases_with_all_required_evidence"] is None
+    assert result["hybrid"]["cases_with_all_required_evidence"] == 1
+    assert result["stale_or_missing_file_records"] == 1
+    assert result["coverage"] == {"incomplete_cases": 1, "files_indexed": 3, "files_total": 4, "unsupported": 1, "excluded": 2}
 
 
 def _gold(tmp_path: Path) -> Path:
@@ -85,6 +119,10 @@ def test_held_out_is_refused_until_the_operator_approves_targets_for_this_exact_
     ev.refuse_unapproved_held_out(["train", "development"], {"retrieval": "not yet"}, gold)
     with pytest.raises(ev.HeldOutRefused, match="not approved"):
         ev.refuse_unapproved_held_out(["held_out"], {"retrieval": "not yet"}, gold)
+    limits = [{"metric": "hybrid recall at 5", "limit": 0.5}]
+    for wrong in ({"state": "APPROVED_PENDING", "limits": limits}, {"state": "APPROVED"}, {"state": "APPROVED", "limits": []}, {"state": "APPROVED", "limits": [{"metric": "m", "limit": True}]}, {"state": "APPROVED", "limits": [{"metric": "m"}]}):
+        with pytest.raises(ev.HeldOutRefused, match="not approved"):
+            ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {**wrong, "sealed_gold_sha256": ev.gold_digest(gold)}}, gold)
     with pytest.raises(ev.HeldOutRefused, match="not the one"):
-        ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "sealed_gold_sha256": "hex:0"}}, gold)
-    ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "sealed_gold_sha256": ev.gold_digest(gold)}}, gold)
+        ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "limits": limits, "sealed_gold_sha256": "hex:0"}}, gold)
+    ev.refuse_unapproved_held_out(["held_out"], {"retrieval": {"state": "APPROVED", "limits": limits, "sealed_gold_sha256": ev.gold_digest(gold)}}, gold)
