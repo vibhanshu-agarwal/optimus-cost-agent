@@ -291,3 +291,10 @@ def test_the_lexical_channel_leaves_out_words_that_match_everything_and_keeps_wh
     assert "is_ready" in lexical_terms("where is is_ready") and "ready" in lexical_terms("where is is_ready")
     assert "where" in query_terms("where is it")  # the tools' own name matching still sees every word
 
+
+
+def test_each_channel_asks_for_as_many_results_as_the_route_allows():
+    from context_engine.retrieval import CHANNEL_K
+    from optimus_security.memory_index_contract import MAX_QUERY_RESULTS
+
+    assert CHANNEL_K == MAX_QUERY_RESULTS  # 40 left 16 of 35 required symbols unfound on train and development; 100 left 11

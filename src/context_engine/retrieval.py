@@ -19,7 +19,9 @@ from .repo_map import MapFile, RepoMap, build_repo_map, imports_of, neighbours, 
 RRF_K: Final = 60
 # Agent-selected and frozen before evaluation. Structure means the person or the task named it, so it counts most; recency only nudges.
 WEIGHTS: Final = {"lexical": 1.0, "dense": 1.0, "structure": 1.5, "recency": 0.25, "memory": 1.0}
-CHANNEL_K: Final = 40
+# The route's own maximum. On train and development, 40 left 16 of 35 required symbols in no channel's results and 100 left 11
+# (reports/plan12-memory-m1/retrieval-experiments.json); the deeper lists also raised recall at 5 from 4 to 5 and evidence in context from 14 to 16.
+CHANNEL_K: Final = 100
 MAX_TERMS: Final = 64
 MAX_SYMBOL_CHARS: Final = 256  # the route's limit, and no real symbol is longer
 MAX_NAMED: Final = 8
