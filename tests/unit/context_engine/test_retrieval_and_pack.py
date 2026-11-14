@@ -69,9 +69,42 @@ def test_query_terms_fold_like_records_and_stay_inside_the_route_limit():
 def test_fusion_rewards_agreement_and_is_a_stable_order():
     both, lexical_only, dense_only = _hit("both"), _hit("lex"), _hit("den")
     first = fuse({"lexical": [lexical_only, both], "dense": [dense_only, both]})
-    assert first[0].hit.id == "both"
-    assert first[0].ranks == {"dense": 2, "lexical": 2}
+    best = max(first, key=lambda item: item.score)
+    assert best.hit.id == "both" and best.ranks == {"dense": 2, "lexical": 2}
     assert fuse({"dense": [dense_only, both], "lexical": [lexical_only, both]}) == first
+
+
+def test_the_quota_places_each_channels_top_two_first_without_backfill_then_the_rrf_order():
+    """Plan v3: dense-1, lexical-1, dense-2, lexical-2; a duplicate takes no place; then every other hit in RRF order."""
+    a, b, c, d, e = (_hit(name, f"{name}.py") for name in "abcde")
+    channels = {"dense": [a, b, d], "lexical": [a, c, e, d], "recency": [e]}
+    order = fuse(channels)
+    assert [item.hit.id for item in order][:3] == ["a", "b", "c"]  # lexical-1 repeats a, so only three places are taken
+    base = fuse({**channels, "structure": [_hit("s", "s.py")]})  # the same scores, with the quota off
+    rest = [item.hit.id for item in base if item.hit.id in {"d", "e"}]
+    assert [item.hit.id for item in order][3:] == rest, "after the quota, the RRF order"
+    scores = {item.hit.id: (item.score, dict(item.ranks)) for item in order}
+    assert scores == {item.hit.id: (item.score, dict(item.ranks)) for item in base if item.hit.id != "s"}, "every hit keeps its score and channel ranks"
+
+
+def test_a_named_path_or_a_structural_hit_keeps_the_rrf_order_exactly():
+    a, b, c = _hit("a", "a.py"), _hit("b", "b.py"), _hit("c", "c.py")
+    channels = {"lexical": [b, c], "dense": [c, a, b]}
+    rrf = sorted(fuse(channels, named=["zz.py"]), key=lambda item: (-round(item.score, 12), item.hit.path))
+    assert list(fuse(channels, named=["zz.py"])) == rrf, "a named path that matches nothing still turns the quota off"
+    structural = {**channels, "structure": [a]}
+    assert [item.hit.id for item in fuse(structural)] == [item.hit.id for item in sorted(fuse(structural, named=["a.py"]), key=lambda item: -item.score)]
+    assert fuse({**channels, "structure": []})[0].hit.id == "c", "an empty structure channel does not turn the quota off"
+
+
+def test_missing_or_short_channels_take_no_quota_places():
+    a, b = _hit("a", "a.py"), _hit("b", "b.py")
+    # No dense channel: lexical-1 and lexical-2 take their places, although recency gives a the higher RRF score.
+    with_recency = fuse({"lexical": [b, a], "recency": [a]})
+    assert max(with_recency, key=lambda item: item.score).hit.id == "a" and [item.hit.id for item in with_recency] == ["b", "a"]
+    assert [item.hit.id for item in fuse({"dense": [b]})] == ["b"]
+    assert fuse({"dense": [], "lexical": []}) == ()
+    assert [item.hit.id for item in fuse({"recency": [a, b]})] == ["a", "b"]  # no quota channel answered: the RRF order
 
 
 def test_fusion_ties_prefer_a_named_file_then_symbols_then_path():

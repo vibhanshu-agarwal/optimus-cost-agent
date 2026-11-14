@@ -22,6 +22,9 @@ WEIGHTS: Final = {"lexical": 1.0, "dense": 1.0, "structure": 1.5, "recency": 0.2
 # The route's own maximum. On train and development, 40 left 16 of 35 required symbols in no channel's results and 100 left 11
 # (reports/plan12-memory-m1/retrieval-experiments.json); the deeper lists also raised recall at 5 from 4 to 5 and evidence in context from 14 to 16.
 CHANNEL_K: Final = 100
+# Plan v3: the first places go to dense-1, lexical-1, dense-2, lexical-2. Fusing alone pushed some of a channel's own top five out of the top
+# five; on train and development this took symbol hits at 5 from 6 to 7 with no other measure lower (reports/plan12-memory-m1/retrieval-fusion-forms.json).
+QUOTA: Final = (("dense", 0), ("lexical", 0), ("dense", 1), ("lexical", 1))
 MAX_TERMS: Final = 64
 MAX_SYMBOL_CHARS: Final = 256  # the route's limit, and no real symbol is longer
 MAX_NAMED: Final = 8
@@ -105,8 +108,8 @@ def lexical_terms(text: str) -> list[str]:
 
 
 def fuse(channels: Mapping[str, Sequence[Hit]], *, named: Iterable[str] = (), weights: Mapping[str, float] = WEIGHTS, k: int = RRF_K) -> tuple[Ranked, ...]:
-    """Reciprocal rank fusion. Ties go to a named file, then to symbols over sections over files, then path and line, so the same input
-    always gives the same order."""
+    """Reciprocal rank fusion, then the dense and lexical quota unless a path was named or structure answered. Ties go to a named file, then
+    to symbols over sections over files, then path and line, so the same input always gives the same order. Every hit keeps its score and ranks."""
     chosen = set(named)
     hits: dict[str, Hit] = {}
     scores: dict[str, float] = {}
@@ -121,7 +124,16 @@ def fuse(channels: Mapping[str, Sequence[Hit]], *, named: Iterable[str] = (), we
         hit = hits[identity]
         return (-round(scores[identity], 12), hit.path not in chosen, _KIND_ORDER.get(hit.kind, 3), hit.path, hit.start_line or 0, identity)
 
-    return tuple(Ranked(hits[identity], scores[identity], ranks[identity]) for identity in sorted(hits, key=order))
+    base = tuple(Ranked(hits[identity], scores[identity], ranks[identity]) for identity in sorted(hits, key=order))
+    if chosen or channels.get("structure"):  # a named path or a structural hit keeps the base order (plan v3)
+        return base
+    first: dict[str, None] = {}
+    for channel, position in QUOTA:
+        listed = channels.get(channel) or ()
+        if position < len(listed):
+            first.setdefault(listed[position].id)  # a duplicate takes no place and nothing backfills it
+    by_id = {item.hit.id: item for item in base}
+    return (*(by_id[identity] for identity in first), *(item for item in base if item.hit.id not in first))
 
 
 def read_catalogue(storage: IndexStorage, epoch: int) -> list[CatalogueFile]:
