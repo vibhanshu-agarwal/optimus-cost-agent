@@ -1,6 +1,6 @@
 {
   "label": "plan12.10-qualify-3-2026-11-14",
-  "authorization": "PENDING Codex review 28: restart of the review 27 release, interrupted 2026-11-06 by an operator shutdown",
+  "authorization": "Codex review 28 on #469 (comment 6878745056): RELEASED anew, one cold attempt at 8461b62, with removal of the container and volume before provisioning and after evidence is kept; the operator standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex release sufficient. Same resources and bounds as Release B.",
   "container": "p1210-qualify-redis",
   "volume": "p1210-qualify-data",
   "port": 6393,
