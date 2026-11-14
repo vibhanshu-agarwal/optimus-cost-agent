@@ -341,7 +341,10 @@ def evaluate_case(case: GoldenCase, index: m1_scale._Index, retriever: Retriever
 def run(config: Mapping[str, Any], repository: Path, splits: Sequence[str]) -> dict[str, Any]:
     gold = {name: repository / path for name, path in config["gold"].items()}
     targets = json.loads((repository / "reports/plan12-memory-m1/targets.json").read_text(encoding="utf-8"))
-    refuse_unapproved_held_out(splits, targets, gold[config.get("held_out_gold", "m1")])  # the fresh set's config names its own gold
+    selected = config.get("held_out_gold", "m1")  # the fresh set's config names its own gold
+    if "held_out" in splits and set(gold) != {selected}:  # every configured set is loaded, so a held-out run may configure only the sealed one
+        raise HeldOutRefused(f"held-out refused: a held-out run loads only its sealed gold {selected!r}, but the config names {sorted(gold)}")
+    refuse_unapproved_held_out(splits, targets, gold[selected])
     work = repository / config["work_dir"]
     root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)
     head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()

@@ -174,6 +174,26 @@ def test_a_second_held_out_set_opens_only_under_its_own_sealed_section(tmp_path:
     ev.refuse_unapproved_held_out(["held_out"], {"retrieval": old, "retrieval_fresh": {"state": "APPROVED", "limits": limits, "sealed_gold_sha256": ev.gold_digest(fresh)}}, fresh)
 
 
+def test_a_held_out_run_refuses_any_configured_set_besides_its_sealed_one_before_provisioning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("fresh", "unsealed"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "localization.json").write_text(json.dumps({"cases": [], "set": name}), encoding="utf-8")
+    (tmp_path / "reports/plan12-memory-m1").mkdir(parents=True)
+    sealed = {"state": "APPROVED", "limits": [{"metric": "m", "limit": 9}], "sealed_gold_sha256": ev.gold_digest(tmp_path / "fresh")}
+    (tmp_path / "reports/plan12-memory-m1/targets.json").write_text(json.dumps({"retrieval_fresh": sealed}), encoding="utf-8")
+
+    def reached(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("provisioned or loaded cases before refusing")
+
+    monkeypatch.setattr(m1_scale, "_provision", reached)
+    monkeypatch.setattr(ev, "load_cases", reached)
+    for gold in ({"fresh": "fresh", "unsealed": "unsealed"}, {"unsealed": "unsealed"}):
+        with pytest.raises(ev.HeldOutRefused, match="loads only its sealed gold"):
+            ev.run({"gold": gold, "held_out_gold": "fresh", "work_dir": "work"}, tmp_path, ["held_out"])
+    with pytest.raises(AssertionError, match="provisioned"):  # the sealed set alone passes the gate and goes on to provision
+        ev.run({"gold": {"fresh": "fresh"}, "held_out_gold": "fresh", "work_dir": "work"}, tmp_path, ["held_out"])
+
+
 def test_a_cutoff_tree_holds_exactly_that_commit_even_past_the_windows_path_limit(tmp_path: Path) -> None:
     source = tmp_path / "source"
     deep = "/".join(["d" * 40] * 7)
