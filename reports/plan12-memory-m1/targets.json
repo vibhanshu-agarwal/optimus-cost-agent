@@ -51,6 +51,19 @@
     ],
     "note": "The map refresh interval is 300 s, which is not a guaranteed rate limit."
   },
+  "assembly_corpus_b": {
+    "state": "APPROVED, prospective: Codex review 30 item 5 on #469 (comment 6882669502) agreed these ceilings; the operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved. Not yet qualified.",
+    "basis": "About twice attempt 4's corrected calibration (qualify-4.json, dense in every turn): idle wall p95 2,121 ms, during-build p95 3,623 ms over 4 turns, route calls at most 12, a repo-map refresh on a miss 90 calls and 17.4 s. That calibration stays CALIBRATION and is never relabelled.",
+    "qualification": "On a LATER cold-build run, with at least 20 assembly turns per condition, the during-build turns spread across early, middle and late build progress; that run may also measure the warm session edit, after the retrieval changes are frozen.",
+    "limits": [
+      {"metric": "assembly wall time p95, idle, ms", "limit": 7500},
+      {"metric": "assembly wall time p95, during a cold build, ms", "limit": 7500},
+      {"metric": "route calls per complete assembly invocation, including retries", "limit": 30},
+      {"metric": "route calls for one repo-map refresh on a miss, reported apart", "limit": 150},
+      {"metric": "wall time of one repo-map refresh on a miss, ms, reported apart", "limit": 35000},
+      {"metric": "pack size as a share of min(25 percent of usable input, 16384 tokens), a budget invariant", "limit": 1.0}
+    ]
+  },
   "k2_second_run": {
     "items": 125000,
     "items_why": "the approved corpus B's real records, rounded up",

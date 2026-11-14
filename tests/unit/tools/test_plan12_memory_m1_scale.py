@@ -293,6 +293,54 @@ def test_logical_purge_is_timed_at_the_first_refusal_not_the_whole_sweep() -> No
 
 
 
+@pytest.mark.parametrize(("running_polls", "acks_per_poll", "status", "proven"), [
+    (3, 2, "ok", True),  # writes acknowledged while the rewrite ran
+    (0, 2, "ok", False),  # Codex review 30: the rewrite ended before the watch began, so nothing overlapped it
+    (3, 0, "ok", False),  # it ran, but nothing was acknowledged under it
+    (3, 2, "err", False),  # writes overlapped a rewrite that failed
+])
+def test_a_rewrite_phase_counts_only_writes_acknowledged_while_the_rewrite_was_seen_running(running_polls: int, acks_per_poll: int, status: str, proven: bool) -> None:
+    from tools.plan12_memory.m1_qualify import rewrite_under_writes
+
+    order: list[str] = []
+
+    class Canaries:
+        acknowledged: dict[str, str] = {"earlier phase": "x"}
+
+        def run(self, *, rounds: int, pause: float, pressure, during) -> dict:
+            assert rounds == 5 and pause == 0
+            order.append("clients ready")
+            pressure()
+            during()
+            self.acknowledged["after the rewrite"] = "x"  # acknowledged once the watch saw it end: not overlap
+            return {"acknowledged": 20}
+
+    canaries = Canaries()
+
+    class Admin:
+        polls = 0
+
+        def bgrewriteaof(self) -> None:
+            order.append("rewrite")
+
+        def info(self, section: str) -> dict:
+            assert section == "persistence"
+            self.polls += 1
+            if self.polls <= running_polls:
+                for number in range(acks_per_poll):
+                    canaries.acknowledged[f"p{self.polls}n{number}"] = "x"
+                return {"aof_rewrite_in_progress": 1}
+            return {"aof_rewrite_in_progress": 0, "aof_rewrite_scheduled": 0, "aof_last_bgrewrite_status": status}
+
+    result = rewrite_under_writes(Admin(), canaries, rounds=5, poll_seconds=0)
+    assert order == ["clients ready", "rewrite"], "the rewrite starts only once every client holds its line"
+    rewrite = result["rewrite"]
+    assert rewrite["overlap_proven"] is proven
+    assert rewrite["seen_running"] is (running_polls > 0)
+    assert rewrite["acknowledged_while_running"] == running_polls * acks_per_poll
+    assert result["acknowledged"] == 20 and rewrite["last_status"] == status
+
+
 def test_a_failed_acpx_start_or_turn_keeps_its_own_output_so_a_stopped_run_records_why(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     turns = object.__new__(m1_scale._AcpxTurns)
     turns._acpx, turns._common = "acpx", []

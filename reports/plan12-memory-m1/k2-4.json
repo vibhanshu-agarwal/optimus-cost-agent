@@ -345,6 +345,12 @@
    "no_keys_evicted": true,
    "readable_while_full": true
   },
-  "state": "All K2 bounds met, including logical purge measured as the bound means. Zero lost, conflicting or unacknowledged items across restart and crash. At the ceiling writes were refused and reads kept answering."
+  "not_proven": [
+   {
+    "phase": "during_aof_rewrite",
+    "reason": "Codex review 30 item 1 (#469 comment 6882669502): the harness starts BGREWRITEAOF before the four clients are ready (m1_qualify.py, canaries.run with during= has no readiness barrier) and reads aof_rewrite_in_progress only after every canary has finished, so rewrite_seconds 0.001 is the wait left over, and nothing shows an append or projection overlapped the rewrite. Its 400 acknowledged and projected canaries and their latencies are kept as measured; they are not evidence of behaviour during a rewrite."
+   }
+  ],
+  "state": "Every measured K2 bound met, including logical purge measured as the bound means; the during-AOF-rewrite phase is NOT PROVEN (no observed overlap; harness defect, Codex review 30). Zero lost, conflicting or unacknowledged items across restart and crash. At the ceiling writes were refused and reads kept answering."
  }
 }

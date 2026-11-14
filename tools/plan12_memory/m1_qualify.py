@@ -230,6 +230,34 @@ class _Canaries:
         return compare_acknowledged(self.acknowledged, stored)
 
 
+def rewrite_under_writes(admin: Any, canaries: Any, *, rounds: int, poll_seconds: float = 0.05, limit_seconds: float = 900) -> dict[str, Any]:
+    """BGREWRITEAOF once every client holds its line and lease, then writes under it. Only acknowledgements counted at a poll that still saw the
+    rewrite running are overlap, so a rewrite that ends before any write proves nothing and says so (Codex review 30)."""
+    marks: dict[str, Any] = {"seen_running": False, "acknowledged_while_running": 0}
+
+    def start() -> None:
+        marks["acknowledged_before"] = len(canaries.acknowledged)
+        admin.bgrewriteaof()
+        marks["started"] = time.monotonic()
+
+    def watch() -> None:
+        while time.monotonic() - marks["started"] < limit_seconds:
+            info = admin.info("persistence")
+            if not (int(info["aof_rewrite_in_progress"]) or int(info.get("aof_rewrite_scheduled", 0))):
+                marks["ended"], marks["last_status"] = time.monotonic(), info.get("aof_last_bgrewrite_status")
+                return
+            marks["seen_running"] = True
+            marks["acknowledged_while_running"] = len(canaries.acknowledged) - marks["acknowledged_before"]
+            time.sleep(poll_seconds)
+
+    result = canaries.run(rounds=rounds, pause=0, pressure=start, during=watch)
+    ended = marks.get("ended")
+    result["rewrite"] = {"seconds": None if ended is None else round(ended - marks["started"], 3), "seen_running": marks["seen_running"], "last_status": marks.get("last_status"),
+                         "acknowledged_while_running": marks["acknowledged_while_running"],
+                         "overlap_proven": ended is not None and marks["seen_running"] and marks.get("last_status") == "ok" and marks["acknowledged_while_running"] > 0}
+    return result
+
+
 def _wait_flag(admin: redis.Redis, flag: str, seconds: float = 900) -> float | None:
     started = time.monotonic()
     while time.monotonic() - started < seconds:
@@ -419,8 +447,7 @@ def run_k2(*, targets: Mapping[str, Any], config: Mapping[str, Any], memory: Any
     write(report)
     report["burst"] = canaries.run(rounds=rounds, pause=0)
     write(report)
-    report["during_aof_rewrite"] = canaries.run(rounds=rounds, pause=0, during=admin.bgrewriteaof)
-    report["during_aof_rewrite"]["rewrite_seconds"] = _wait_flag(admin, "aof_rewrite_in_progress")
+    report["during_aof_rewrite"] = rewrite_under_writes(admin, canaries, rounds=rounds)
     admin.bgsave()
     report["rdb_save_seconds"] = _wait_flag(admin, "rdb_bgsave_in_progress")
     write(report)
@@ -479,7 +506,8 @@ def run_k2(*, targets: Mapping[str, Any], config: Mapping[str, Any], memory: Any
     nominal = report["nominal"]
     report["checks"] = {"items_at_least_target": real_records >= bounds["items"], "nominal_complete": nominal["complete"], "no_busy_at_nominal": not any("INDEX_BUSY" in name for name in nominal["errors"]), "no_errors_at_nominal": not nominal["errors"], "no_unprojected_at_nominal": nominal["unprojected"] == 0, "no_unconfirmed_at_nominal": nominal["unconfirmed"] == 0,
                         "ack_p95_within": within(nominal["ack_p95_ms"], fixed["ack_latency_p95_ms"]), "projection_p95_within": within(nominal["projection_p95_ms"], fixed["projection_latency_p95_ms"]),
-                        "nothing_acknowledged_lost_or_conflicting_after_crash": report["crash"]["acknowledged_after"]["missing"] == 0 and report["crash"]["acknowledged_after"]["conflicting"] == 0}
+                        "nothing_acknowledged_lost_or_conflicting_after_crash": report["crash"]["acknowledged_after"]["missing"] == 0 and report["crash"]["acknowledged_after"]["conflicting"] == 0,
+                        "rewrite_overlap_proven": report["during_aof_rewrite"]["rewrite"]["overlap_proven"]}
     write(report)
     return report
 
