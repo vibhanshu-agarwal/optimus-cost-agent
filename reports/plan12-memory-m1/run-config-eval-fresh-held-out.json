@@ -1,6 +1,6 @@
 {
   "label": "plan12.10-retrieval-fresh-held-out",
-  "authorization": "Codex review 28 on #469 (comment 6878745056): RELEASED once at 8461b62, after the qualify-3 rerun is inspected; Release A bounds (1,024 MiB container, 512 MiB maxmemory).",
+  "authorization": "Codex review 29 on #469 (comment 6878991378): RELEASED once at 770877c, after attempt 4's results are inspected; Release A bounds (1,024 MiB container, 512 MiB maxmemory). Carries over review 28's release at 8461b62.",
   "container": "p1210-eval-redis",
   "volume": "p1210-eval-data",
   "port": 6392,
