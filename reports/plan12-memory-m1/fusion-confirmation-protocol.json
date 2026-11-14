@@ -1,0 +1,9 @@
+{
+ "schema": "plan12-memory-m1.fusion-confirmation-protocol.v1",
+ "state": "PRE-REGISTERED: committed before any confirmation run",
+ "recommended_by": "Codex review 34 on #469 (comment 6883957835), item 2: option C with controlled pairing",
+ "script": "handoff kit m1_fusion_confirm.py",
+ "script_sha256": "hex:874d3a15fdd761e33b73ad8bbd80fc26c41828a1082385b148380480b5ae0909",
+ "protocol": "(review 34 item 2, verbatim in substance):\n- exactly three repetitions, each on a fresh container and the same 16 train and development cases;\n- in each, retrieve once per case, capture the ordered channel inputs that production fuse receives, and apply both the frozen setting\n  (RRF k 60, dense weight 1.0) and the candidate (RRF k 10, dense weight 2.0) to those identical inputs with production fuse;\n- adopt the candidate only if its worst symbol-hits-at-5 count over the three repetitions exceeds the frozen setting's best, and in every\n  repetition it has no fewer file hits at 5, required evidence in context or required files in context, and its mean irrelevant tokens stay\n  at most 16,000; otherwise keep the frozen code and report no demonstrated robust improvement;\n- every repetition is kept; an incomplete one makes the result inconclusive; none is replaced, and the experiment is not extended.\nA paused worker is resumed up to three times, as the product's session does; each pause, and a stop, is written to the report before cleanup.",
+ "exploratory_grid": "retrieval-fusion-experiments.json stays exploratory evidence; its pick is the candidate here."
+}
