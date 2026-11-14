@@ -293,13 +293,21 @@ def test_logical_purge_is_timed_at_the_first_refusal_not_the_whole_sweep() -> No
 
 
 
-@pytest.mark.parametrize(("running_polls", "acks_per_poll", "status", "proven"), [
-    (3, 2, "ok", True),  # writes acknowledged while the rewrite ran
-    (0, 2, "ok", False),  # Codex review 30: the rewrite ended before the watch began, so nothing overlapped it
-    (3, 0, "ok", False),  # it ran, but nothing was acknowledged under it
-    (3, 2, "err", False),  # writes overlapped a rewrite that failed
+_RUN, _WAIT, _DONE = "running", "scheduled", "ended"
+
+
+@pytest.mark.parametrize(("polls", "status", "counted", "proven"), [
+    # Each poll: what the rewrite was when asked, how many acknowledgements landed just before that answer, and how many just after it.
+    ([(_RUN, 0, 0), (_RUN, 2, 0), (_RUN, 2, 0), (_DONE, 0, 0)], "ok", 2, True),  # the 2 before the third running answer are vouched for
+    ([(_DONE, 0, 0)], "ok", 0, False),  # ended before the watch began
+    ([(_RUN, 0, 0), (_RUN, 0, 0), (_DONE, 0, 0)], "ok", 0, False),  # ran, nothing acknowledged under it
+    ([(_RUN, 0, 0), (_RUN, 2, 0), (_RUN, 2, 0), (_DONE, 0, 0)], "err", 2, False),  # writes under a rewrite that failed
+    ([(_WAIT, 2, 0), (_WAIT, 2, 0), (_RUN, 0, 0), (_DONE, 0, 0)], "ok", 0, False),  # Codex review 31: writes while only scheduled are not overlap
+    ([(_RUN, 0, 0), (_RUN, 0, 3), (_DONE, 0, 0)], "ok", 0, False),  # Codex review 31: acknowledged after its last running answer, as it ended
+    ([(_RUN, 0, 0), (_RUN, 0, 0), (_DONE, 3, 0)], "ok", 0, False),  # acknowledged as it ended
+    ([(_RUN, 0, 0), (_RUN, 1, 0), (_DONE, 0, 0)], "ok", 0, False),  # landed before a running answer no later poll confirmed: undercounted, by design
 ])
-def test_a_rewrite_phase_counts_only_writes_acknowledged_while_the_rewrite_was_seen_running(running_polls: int, acks_per_poll: int, status: str, proven: bool) -> None:
+def test_a_rewrite_phase_counts_only_writes_a_later_poll_saw_the_rewrite_still_running_after(polls: list, status: str, counted: int, proven: bool) -> None:
     from tools.plan12_memory.m1_qualify import rewrite_under_writes
 
     order: list[str] = []
@@ -312,32 +320,35 @@ def test_a_rewrite_phase_counts_only_writes_acknowledged_while_the_rewrite_was_s
             order.append("clients ready")
             pressure()
             during()
-            self.acknowledged["after the rewrite"] = "x"  # acknowledged once the watch saw it end: not overlap
+            self.acknowledged["after the watch"] = "x"
             return {"acknowledged": 20}
 
     canaries = Canaries()
+    script = iter(polls)
 
     class Admin:
-        polls = 0
-
         def bgrewriteaof(self) -> None:
             order.append("rewrite")
 
         def info(self, section: str) -> dict:
             assert section == "persistence"
-            self.polls += 1
-            if self.polls <= running_polls:
-                for number in range(acks_per_poll):
-                    canaries.acknowledged[f"p{self.polls}n{number}"] = "x"
-                return {"aof_rewrite_in_progress": 1}
-            return {"aof_rewrite_in_progress": 0, "aof_rewrite_scheduled": 0, "aof_last_bgrewrite_status": status}
+            state, before, after = next(script)
+            self.land(before)
+            answer = ({"aof_rewrite_in_progress": 0, "aof_rewrite_scheduled": 0, "aof_last_bgrewrite_status": status} if state == _DONE
+                      else {"aof_rewrite_in_progress": int(state == _RUN), "aof_rewrite_scheduled": int(state == _WAIT)})
+            self.land(after)  # once the answer is fixed, before the caller reads anything else
+            return answer
+
+        @staticmethod
+        def land(count: int) -> None:
+            for _ in range(count):
+                canaries.acknowledged[f"a{len(canaries.acknowledged)}"] = "x"
 
     result = rewrite_under_writes(Admin(), canaries, rounds=5, poll_seconds=0)
     assert order == ["clients ready", "rewrite"], "the rewrite starts only once every client holds its line"
     rewrite = result["rewrite"]
-    assert rewrite["overlap_proven"] is proven
-    assert rewrite["seen_running"] is (running_polls > 0)
-    assert rewrite["acknowledged_while_running"] == running_polls * acks_per_poll
+    assert (rewrite["acknowledged_while_running"], rewrite["overlap_proven"]) == (counted, proven)
+    assert rewrite["seen_running"] is any(state == _RUN for state, _before, _after in polls)
     assert result["acknowledged"] == 20 and rewrite["last_status"] == status
 
 

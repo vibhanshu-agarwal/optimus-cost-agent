@@ -231,23 +231,29 @@ class _Canaries:
 
 
 def rewrite_under_writes(admin: Any, canaries: Any, *, rounds: int, poll_seconds: float = 0.05, limit_seconds: float = 900) -> dict[str, Any]:
-    """BGREWRITEAOF once every client holds its line and lease, then writes under it. Only acknowledgements counted at a poll that still saw the
-    rewrite running are overlap, so a rewrite that ends before any write proves nothing and says so (Codex review 30)."""
+    """BGREWRITEAOF once every client holds its line and lease, then writes under it. Overlap is counted conservatively (Codex reviews 30 and 31):
+    a scheduled rewrite is not a running one; the baseline is taken just after the rewrite is first seen running; and an acknowledgement counts
+    only if a later poll, made after the count was read, still saw it running. A rewrite that ends before any write proves nothing and says so."""
     marks: dict[str, Any] = {"seen_running": False, "acknowledged_while_running": 0}
 
     def start() -> None:
-        marks["acknowledged_before"] = len(canaries.acknowledged)
         admin.bgrewriteaof()
         marks["started"] = time.monotonic()
 
     def watch() -> None:
+        baseline: int | None = None
         while time.monotonic() - marks["started"] < limit_seconds:
+            count = len(canaries.acknowledged)  # read before the status, so a running answer vouches for every acknowledgement in it
             info = admin.info("persistence")
-            if not (int(info["aof_rewrite_in_progress"]) or int(info.get("aof_rewrite_scheduled", 0))):
+            if int(info["aof_rewrite_in_progress"]):
+                marks["seen_running"] = True
+                if baseline is None:
+                    baseline = len(canaries.acknowledged)
+                else:
+                    marks["acknowledged_while_running"] = max(marks["acknowledged_while_running"], count - baseline)
+            elif not int(info.get("aof_rewrite_scheduled", 0)):
                 marks["ended"], marks["last_status"] = time.monotonic(), info.get("aof_last_bgrewrite_status")
                 return
-            marks["seen_running"] = True
-            marks["acknowledged_while_running"] = len(canaries.acknowledged) - marks["acknowledged_before"]
             time.sleep(poll_seconds)
 
     result = canaries.run(rounds=rounds, pause=0, pressure=start, during=watch)
