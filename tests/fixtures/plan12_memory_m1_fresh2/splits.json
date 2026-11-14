@@ -1,0 +1,40 @@
+{
+ "schema": "plan12-memory-splits/1",
+ "version": 1,
+ "families": {
+  "train": [],
+  "development": [],
+  "held_out": [
+   "MG01",
+   "MG02",
+   "MG03",
+   "MG04",
+   "MG05",
+   "MG06",
+   "MG07",
+   "MG08",
+   "MG09",
+   "MG10",
+   "MG11",
+   "MG12",
+   "MG13",
+   "MG14",
+   "MG15",
+   "MG16",
+   "MG17",
+   "MG18",
+   "MG19",
+   "MG20",
+   "MG21",
+   "MG22",
+   "MG23",
+   "MG24"
+  ]
+ },
+ "expected_family_counts": {
+  "localization": 24
+ },
+ "chronological_kinds": [
+  "localization"
+ ]
+}
