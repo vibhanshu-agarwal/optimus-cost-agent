@@ -534,8 +534,8 @@ def _counted(settings: Any) -> tuple[list[scale._CountingStorage], Callable[[str
     return counters, storage_for
 
 
-def _calibrate_assembly(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str, during_build: list[dict[str, Any]]) -> dict[str, Any]:
-    """Labelled calibration: the operator approves large-corpus limits from this and they are qualified on a later run, never this one."""
+def _calibrate_assembly(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str, during_build: list[dict[str, Any]], qualifying: bool = False) -> dict[str, Any]:
+    """Calibration unless the run is configured to qualify: limits are approved from a calibration and qualified on a later run, never the same one."""
     counters, storage_for = _counted(settings)
     session = _session(root, embedder, work, project=project, parser_version=parser_version, storage_for=storage_for)
     session.start()
@@ -552,10 +552,11 @@ def _calibrate_assembly(root: Path, settings: Any, embedder: Any, work: Path, *,
         started = time.perf_counter()
         map_text = session.repo_map(scope)
         refresh = {"wall_ms": round((time.perf_counter() - started) * 1000, 1), "route_calls": sum(sum(counter.calls.values()) for counter in counters), "chars": len(map_text)}
-        idle = [scale._measure_turn(session, counters, task, f"cal-{round_}-{number}") for round_ in range(5) for number, task in enumerate(_LARGE_TASKS)]
+        idle = [_turn_or_error(session, counters, task, f"cal-{round_}-{number}") for round_ in range(5) for number, task in enumerate(_LARGE_TASKS)]
         session_edit = session_edit_visibility(session, root, scope.storage)
-        return {"state": "CALIBRATION: never a qualification result", "repo_map_on_a_miss": refresh, "session_edit": session_edit, "idle": {**scale._assembly_summary(idle), **_dense_in_every_turn(idle), "per_turn": idle},
-                "during_build": {**scale._assembly_summary(during_build), **_dense_in_every_turn(during_build), "per_turn": during_build} if during_build else None, "coverage": session.status()}
+        state = "QUALIFICATION: judged against targets.json assembly_corpus_b" if qualifying else "CALIBRATION: never a qualification result"
+        return {"state": state, "repo_map_on_a_miss": refresh, "session_edit": session_edit, "idle": _assembly_condition(idle, spread=False),
+                "during_build": _assembly_condition(during_build, spread=True), "coverage": session.status()}
     finally:
         close_and_confirm_stopped(session)
 
@@ -592,15 +593,70 @@ def session_edit_visibility(session: MemorySession, root: Path, storage: Any, *,
             "whole_pass_seconds": round(time.perf_counter() - started, 2) if ended is not before else None}
 
 
-def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str) -> list[dict[str, Any]]:
-    """The turn a person would get while the large line builds, on that line's published part. This session runs no worker: the build already holds the line."""
+def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str, progress: float | None) -> list[dict[str, Any]]:
+    """The turn a person would get while the large line builds, on that line's published part, with how far the build had got. This session runs
+    no worker: the build already holds the line."""
     counters, storage_for = _counted(settings)
     session = _session(root, embedder, work, project=project, parser_version=parser_version, storage_for=storage_for)
     session._embedder = embedder  # start() would load it, and also start a second worker on the line the build holds
     try:
-        return [scale._measure_turn(session, counters, task, f"build-{number}") for number, task in enumerate(_LARGE_TASKS)]
+        return [{**_turn_or_error(session, counters, task, f"build-{progress}-{number}"), "build_progress": progress} for number, task in enumerate(_LARGE_TASKS)]
     finally:
         session.close()
+
+
+_ASSEMBLY_MINIMUM_TURNS = 20  # per condition before an assembly limit can be qualified (Codex review 30)
+
+
+def _turn_or_error(session: MemorySession, counters: list[scale._CountingStorage], task: str, run_id: str) -> dict[str, Any]:
+    """Every turn is kept: one that raised is a finding, never dropped, and it cannot count toward the minimum."""
+    try:
+        return scale._measure_turn(session, counters, task, run_id)
+    except Exception as error:  # noqa: BLE001 - kept in the report; this is the measure
+        return {"task": task, "error": f"{type(error).__name__}: {str(error)[:200]}"}
+
+
+def _build_third(progress: float | None) -> str | None:
+    if progress is None:
+        return None
+    return "early" if progress < 1 / 3 else "middle" if progress < 2 / 3 else "late"
+
+
+def _assembly_condition(turns: list[dict[str, Any]], *, spread: bool) -> dict[str, Any] | None:
+    """One condition's turns, summarised over those that completed, and whether they are enough to qualify a limit: the minimum count, the dense
+    channel in every turn, no turn that raised and, during a build, samples in its early, middle and late thirds."""
+    if not turns:
+        return None
+    valid = [turn for turn in turns if "error" not in turn]
+    errors = [turn["error"] for turn in turns if "error" in turn]
+    out: dict[str, Any] = {**scale._assembly_summary(valid), **_dense_in_every_turn(turns), "errors": errors, "per_turn": turns}
+    short: list[str] = []
+    if len(valid) < _ASSEMBLY_MINIMUM_TURNS:
+        short.append(f"{len(valid)} completed turns, fewer than {_ASSEMBLY_MINIMUM_TURNS}")
+    if not out["dense_in_every_turn"]:
+        short.append("a turn without the dense channel's answer")
+    if errors:
+        short.append(f"{len(errors)} turns raised")
+    if spread:
+        sampled = {_build_third(turn.get("build_progress")) for turn in valid}
+        out["build_thirds_sampled"] = [third for third in ("early", "middle", "late") if third in sampled]
+        missing = [third for third in ("early", "middle", "late") if third not in sampled]
+        if missing:
+            short.append(f"no sample in the {', '.join(missing)} third of the build")
+    out["enough_to_qualify"] = not short
+    if short:
+        out["not_enough_because"] = short
+    return out
+
+
+def _build_progress(call: Callable[..., dict[str, Any]]) -> float | None:
+    """How far a cold build has got, from its own latest publication: files indexed over the honest total. None if it cannot be read."""
+    try:
+        coverage = (call("coverage").get("current") or {}).get("coverage") or {}
+    except Exception:  # noqa: BLE001 - an unread progress leaves the sample unplaced, so it cannot fill a third
+        return None
+    total = coverage.get("files_total")
+    return round(coverage.get("files_indexed", 0) / total, 3) if total else None
 
 
 def _dense_in_every_turn(turns: list[dict[str, Any]]) -> dict[str, Any]:
@@ -612,7 +668,7 @@ def _dense_in_every_turn(turns: list[dict[str, Any]]) -> dict[str, Any]:
     return {"dense_in_every_turn": not missing, **({"turns_without_dense": missing} if missing else {}), **({"channels_that_did_not_answer": failed} if failed else {})}
 
 
-def _built_with_samples(index: scale._Index, foreground: scale._Index, store: memory_index.IndexStore, *, config: Mapping[str, Any], pids: dict[str, int], turns: Any, during_build: list[dict[str, Any]], assembly: Callable[[], list[dict[str, Any]]]) -> dict[str, Any]:
+def _built_with_samples(index: scale._Index, foreground: scale._Index, store: memory_index.IndexStore, *, config: Mapping[str, Any], pids: dict[str, int], turns: Any, during_build: list[dict[str, Any]], assembly: Callable[[float | None], list[dict[str, Any]]]) -> dict[str, Any]:
     """The cold build under its limit, with foreground work on the finished line while it runs: what a person's turn meets. A timer of its own holds the limit, and the
     worker stamps its own finish, so a foreground sample cannot postpone the cancel or lengthen the measured build."""
     cancel = threading.Event()
@@ -652,12 +708,18 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
             build.start()
             timer.start()
             next_sample = time.monotonic() + config.get("first_sample_seconds", 60)
+            next_assembly: float | None = None
             while build.is_alive():
+                # Assembly on its own cadence from the first publish, so its turns spread across the build's early, middle and late thirds.
+                if first_publish and (next_assembly is None or time.monotonic() >= next_assembly):
+                    try:
+                        during_build.extend(assembly(_build_progress(real_call)))
+                    except Exception as error:  # noqa: BLE001 - a finding; it never stops the build
+                        foreground_errors.append(f"assembly {type(error).__name__}: {str(error)[:200]}")
+                    next_assembly = time.monotonic() + config.get("assembly_sample_seconds", 1800)
                 if time.monotonic() >= next_sample:
                     try:
                         samples.append({"at_seconds": round(time.perf_counter() - started), **scale._query_load(foreground, store, samples=config["query_samples"], terms=terms, vector=vector)})
-                        if not during_build and first_publish:
-                            during_build.extend(assembly())
                         if turns is not None and not turn_samples:
                             turn_samples.append({"at_seconds": round(time.perf_counter() - started), "turns": turns.turns(config["acpx_turns"]), "cancel": turns.cancel_during_a_turn(), "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line"})
                     except Exception as error:  # noqa: BLE001 - foreground failures are findings and never stop the build
@@ -739,7 +801,7 @@ def run_qualify(config: dict[str, Any], repository: Path) -> dict[str, Any]:
             scale._note(f"large corpus: {count['embedded_chunks']} chunks")
             during_build: list[dict[str, Any]] = []
             report["large"]["cold"] = _built_with_samples(index, repo_index, store, config=config, pids=pids, turns=turns, during_build=during_build,
-                                                          assembly=lambda: _assembly_during_build(large, settings, embedder, work, project="qualify-large", parser_version="qualify"))
+                                                          assembly=lambda progress: _assembly_during_build(large, settings, embedder, work, project="qualify-large", parser_version="qualify", progress=progress))
             report["large"]["cold"]["embedded_items_per_second"] = round(embedder.items / embedder.seconds, 1) if embedder.seconds else None
             report["large"]["cold"]["redis"] = scale._redis_facts(client, config["container"])
             peaks.sample()
@@ -778,7 +840,8 @@ def run_qualify(config: dict[str, Any], repository: Path) -> dict[str, Any]:
             save()
 
             scale._note("assembly calibration")
-            report["large"]["assembly_calibration"] = _calibrate_assembly(large, settings, embedder, work, project="qualify-large", parser_version="qualify", during_build=during_build)
+            report["large"]["assembly_calibration"] = _calibrate_assembly(large, settings, embedder, work, project="qualify-large", parser_version="qualify", during_build=during_build,
+                                                                         qualifying=bool(config.get("assembly_qualifies")))
             report["redis_before_k2"] = scale._redis_facts(client, config["container"])
             save()
 

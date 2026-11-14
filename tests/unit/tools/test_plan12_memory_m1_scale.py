@@ -352,6 +352,55 @@ def test_a_rewrite_phase_counts_only_writes_a_later_poll_saw_the_rewrite_still_r
     assert result["acknowledged"] == 20 and rewrite["last_status"] == status
 
 
+def _assembly_turn(progress: float | None = None, dense: str = "100 results") -> dict:
+    turn = {"task": "t", "wall_ms": 1000.0, "route_ms": 100.0, "route_calls": 11, "calls": {}, "state": "ok", "channels": {"dense": dense, "lexical": "3 results"},
+            "pack_tokens": 16000, "budget_tokens": 16384, "blocked": None}
+    return turn if progress is None else {**turn, "build_progress": progress}
+
+
+def test_assembly_qualifies_only_with_twenty_completed_turns_dense_in_each_and_every_third_of_the_build() -> None:
+    """Codex reviews 30 and 31: four early turns cannot qualify; every turn is kept; a missing dense answer or a raised turn cannot qualify."""
+    from tools.plan12_memory.m1_qualify import _assembly_condition
+
+    spread = [_assembly_turn(progress) for progress in (0.05, 0.4, 0.8) for _ in range(7)]
+    enough = _assembly_condition(spread, spread=True)
+    assert enough is not None and enough["enough_to_qualify"] is True and enough["build_thirds_sampled"] == ["early", "middle", "late"]
+    assert len(enough["per_turn"]) == 21 and enough["turns"] == 21
+
+    early_only = _assembly_condition([_assembly_turn(0.01) for _ in range(24)], spread=True)
+    assert early_only is not None and early_only["not_enough_because"] == ["no sample in the middle, late third of the build"]
+    assert _assembly_condition([_assembly_turn(0.01) for _ in range(4)], spread=False)["not_enough_because"] == ["4 completed turns, fewer than 20"]  # type: ignore[index]
+
+    without_dense = _assembly_condition([*[_assembly_turn() for _ in range(20)], _assembly_turn(dense="unavailable: INDEX_DOWN")], spread=False)
+    assert without_dense is not None and without_dense["enough_to_qualify"] is False and without_dense["turns"] == 21
+
+    raised = _assembly_condition([*[_assembly_turn() for _ in range(20)], {"task": "t", "error": "TimeoutError: slow"}], spread=False)
+    assert raised is not None and raised["errors"] == ["TimeoutError: slow"] and raised["turns"] == 20 and len(raised["per_turn"]) == 21
+    assert raised["not_enough_because"] == ["a turn without the dense channel's answer", "1 turns raised"]
+
+    unplaced = _assembly_condition([_assembly_turn(None) for _ in range(21)], spread=True)
+    assert unplaced is not None and unplaced["build_thirds_sampled"] == []
+    assert _assembly_condition([], spread=True) is None
+
+
+def test_build_progress_is_the_publications_own_share_and_unknown_when_unread() -> None:
+    from tools.plan12_memory.m1_qualify import _build_progress, _turn_or_error
+
+    assert _build_progress(lambda op: {"current": {"coverage": {"files_indexed": 2564, "files_total": 10255}}}) == 0.25
+    assert _build_progress(lambda op: {"current": None}) is None
+
+    def down(op: str) -> dict:
+        raise ConnectionError("route down")
+
+    assert _build_progress(down) is None
+
+    class Session:
+        def turn(self):
+            raise TimeoutError("route stalled")
+
+    assert _turn_or_error(Session(), [], "t", "r") == {"task": "t", "error": "TimeoutError: route stalled"}  # type: ignore[arg-type]
+
+
 def test_a_failed_acpx_start_or_turn_keeps_its_own_output_so_a_stopped_run_records_why(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     turns = object.__new__(m1_scale._AcpxTurns)
     turns._acpx, turns._common = "acpx", []
