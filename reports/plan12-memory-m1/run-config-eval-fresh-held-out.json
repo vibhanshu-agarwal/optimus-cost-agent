@@ -1,0 +1,16 @@
+{
+  "label": "plan12.10-retrieval-fresh-held-out",
+  "authorization": "PENDING Codex review 28 release; Release A resources.",
+  "container": "p1210-eval-redis",
+  "volume": "p1210-eval-data",
+  "port": 6392,
+  "gateway_port": 8772,
+  "maxmemory_mb": 512,
+  "work_dir": "tmp/plan12-m1-eval",
+  "artifact_cache": "tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+  "embedding_threads": 2,
+  "fixed_route": "anthropic/claude-haiku-5.5",
+  "gold": {"fresh": "tests/fixtures/plan12_memory_m1_fresh"},
+  "held_out_gold": "fresh",
+  "out": "reports/plan12-memory-m1/retrieval-fresh-held-out.json"
+}
