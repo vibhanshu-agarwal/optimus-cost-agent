@@ -352,10 +352,12 @@ def test_a_rewrite_phase_counts_only_writes_a_later_poll_saw_the_rewrite_still_r
     assert result["acknowledged"] == 20 and rewrite["last_status"] == status
 
 
-def _assembly_turn(progress: float | None = None, dense: str = "100 results") -> dict:
+def _assembly_turn(progress: float | None = None, dense: str = "100 results", *, during: bool | None = None) -> dict:
     turn = {"task": "t", "wall_ms": 1000.0, "route_ms": 100.0, "route_calls": 11, "calls": {}, "state": "ok", "channels": {"dense": dense, "lexical": "3 results"},
             "pack_tokens": 16000, "budget_tokens": 16384, "blocked": None}
-    return turn if progress is None else {**turn, "build_progress": progress}
+    if progress is not None or during is not None:
+        turn |= {"build_progress": progress, "during_build": True if during is None else during}
+    return turn
 
 
 def test_assembly_qualifies_only_with_twenty_completed_turns_dense_in_each_and_every_third_of_the_build() -> None:
@@ -378,9 +380,29 @@ def test_assembly_qualifies_only_with_twenty_completed_turns_dense_in_each_and_e
     assert raised is not None and raised["errors"] == ["TimeoutError: slow"] and raised["turns"] == 20 and len(raised["per_turn"]) == 21
     assert raised["not_enough_because"] == ["a turn without the dense channel's answer", "1 turns raised"]
 
-    unplaced = _assembly_condition([_assembly_turn(None) for _ in range(21)], spread=True)
-    assert unplaced is not None and unplaced["build_thirds_sampled"] == []
+    unplaced = _assembly_condition([_assembly_turn(None, during=True) for _ in range(21)], spread=True)
+    assert unplaced is not None and unplaced["turns"] == 21 and unplaced["build_thirds_sampled"] == []
     assert _assembly_condition([], spread=True) is None
+
+
+def test_a_batch_that_crosses_the_builds_end_keeps_its_idle_turns_but_never_counts_them() -> None:
+    """Codex review 32: 16 build turns, then a late batch whose first turn ends before the worker's finish and whose other three end after it."""
+    from tools.plan12_memory.m1_qualify import _assembly_condition, mark_during_build
+
+    build_ended = 1000.0
+    turns = [{**_assembly_turn(), "build_progress": progress, "ended_at": ended}
+             for progress, ended in [*[(p, e) for p, e in ((0.05, 100.0), (0.4, 400.0), (0.6, 600.0), (0.75, 800.0)) for _ in range(4)],
+                                     (0.97, 999.0), (0.99, 1000.5), (1.0, 1002.0), (1.0, 1003.5)]]
+    mark_during_build(turns, build_ended)
+    assert [turn["during_build"] for turn in turns[-4:]] == [True, False, False, False]
+    assert turns[-1]["seconds_before_build_end"] == -3.5 and "ended_at" not in turns[-1]
+    late = _assembly_condition(turns, spread=True)
+    assert late is not None and late["turns"] == 17 and late["turns_after_the_build_ended"] == 3 and len(late["per_turn"]) == 20
+    assert late["enough_to_qualify"] is False and late["not_enough_because"] == ["17 completed turns, fewer than 20"]
+
+    unfinished = [{**_assembly_turn(), "build_progress": 0.5, "ended_at": 5.0}]
+    mark_during_build(unfinished, None)  # no recorded finish vouches for no turn
+    assert unfinished[0]["during_build"] is False and unfinished[0]["seconds_before_build_end"] is None
 
 
 def test_build_progress_is_the_publications_own_share_and_unknown_when_unread() -> None:

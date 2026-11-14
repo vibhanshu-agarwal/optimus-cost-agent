@@ -593,14 +593,19 @@ def session_edit_visibility(session: MemorySession, root: Path, storage: Any, *,
             "whole_pass_seconds": round(time.perf_counter() - started, 2) if ended is not before else None}
 
 
-def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str, progress: float | None) -> list[dict[str, Any]]:
-    """The turn a person would get while the large line builds, on that line's published part, with how far the build had got. This session runs
-    no worker: the build already holds the line."""
+def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str, progress: Callable[[], float | None]) -> list[dict[str, Any]]:
+    """The turn a person would get while the large line builds, on that line's published part, with how far the build had got when that turn
+    began and when it ended. This session runs no worker: the build already holds the line."""
     counters, storage_for = _counted(settings)
     session = _session(root, embedder, work, project=project, parser_version=parser_version, storage_for=storage_for)
     session._embedder = embedder  # start() would load it, and also start a second worker on the line the build holds
     try:
-        return [{**_turn_or_error(session, counters, task, f"build-{progress}-{number}"), "build_progress": progress} for number, task in enumerate(_LARGE_TASKS)]
+        turns = []
+        for number, task in enumerate(_LARGE_TASKS):
+            at = progress()
+            turn = _turn_or_error(session, counters, task, f"build-{at}-{number}")
+            turns.append({**turn, "build_progress": at, "ended_at": time.perf_counter()})
+        return turns
     finally:
         session.close()
 
@@ -627,9 +632,12 @@ def _assembly_condition(turns: list[dict[str, Any]], *, spread: bool) -> dict[st
     channel in every turn, no turn that raised and, during a build, samples in its early, middle and late thirds."""
     if not turns:
         return None
-    valid = [turn for turn in turns if "error" not in turn]
-    errors = [turn["error"] for turn in turns if "error" in turn]
-    out: dict[str, Any] = {**scale._assembly_summary(valid), **_dense_in_every_turn(turns), "errors": errors, "per_turn": turns}
+    counted = [turn for turn in turns if turn.get("during_build") is True] if spread else turns  # turns after the build ended are kept, not counted
+    valid = [turn for turn in counted if "error" not in turn]
+    errors = [turn["error"] for turn in counted if "error" in turn]
+    out: dict[str, Any] = {**scale._assembly_summary(valid), **_dense_in_every_turn(counted), "errors": errors, "per_turn": turns}
+    if spread:
+        out["turns_after_the_build_ended"] = len(turns) - len(counted)
     short: list[str] = []
     if len(valid) < _ASSEMBLY_MINIMUM_TURNS:
         short.append(f"{len(valid)} completed turns, fewer than {_ASSEMBLY_MINIMUM_TURNS}")
@@ -647,6 +655,15 @@ def _assembly_condition(turns: list[dict[str, Any]], *, spread: bool) -> dict[st
     if short:
         out["not_enough_because"] = short
     return out
+
+
+def mark_during_build(turns: list[dict[str, Any]], build_ended: float | None) -> None:
+    """A turn counts as during the build only if it ended before the worker's own finish; a batch can cross it. A build with no recorded finish
+    vouches for no turn. Each turn keeps how long before the finish it ended, negative once the build was over."""
+    for turn in turns:
+        ended = turn.pop("ended_at", None)
+        turn["during_build"] = build_ended is not None and ended is not None and ended <= build_ended
+        turn["seconds_before_build_end"] = None if build_ended is None or ended is None else round(build_ended - ended, 1)
 
 
 def _build_progress(call: Callable[..., dict[str, Any]]) -> float | None:
@@ -668,7 +685,7 @@ def _dense_in_every_turn(turns: list[dict[str, Any]]) -> dict[str, Any]:
     return {"dense_in_every_turn": not missing, **({"turns_without_dense": missing} if missing else {}), **({"channels_that_did_not_answer": failed} if failed else {})}
 
 
-def _built_with_samples(index: scale._Index, foreground: scale._Index, store: memory_index.IndexStore, *, config: Mapping[str, Any], pids: dict[str, int], turns: Any, during_build: list[dict[str, Any]], assembly: Callable[[float | None], list[dict[str, Any]]]) -> dict[str, Any]:
+def _built_with_samples(index: scale._Index, foreground: scale._Index, store: memory_index.IndexStore, *, config: Mapping[str, Any], pids: dict[str, int], turns: Any, during_build: list[dict[str, Any]], assembly: Callable[[Callable[[], float | None]], list[dict[str, Any]]]) -> dict[str, Any]:
     """The cold build under its limit, with foreground work on the finished line while it runs: what a person's turn meets. A timer of its own holds the limit, and the
     worker stamps its own finish, so a foreground sample cannot postpone the cancel or lengthen the measured build."""
     cancel = threading.Event()
@@ -713,7 +730,7 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
                 # Assembly on its own cadence from the first publish, so its turns spread across the build's early, middle and late thirds.
                 if first_publish and (next_assembly is None or time.monotonic() >= next_assembly):
                     try:
-                        during_build.extend(assembly(_build_progress(real_call)))
+                        during_build.extend(assembly(lambda: _build_progress(real_call)))
                     except Exception as error:  # noqa: BLE001 - a finding; it never stops the build
                         foreground_errors.append(f"assembly {type(error).__name__}: {str(error)[:200]}")
                     next_assembly = time.monotonic() + config.get("assembly_sample_seconds", 1800)
@@ -733,6 +750,7 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
             cancel.set()
             build.join(300)
         index.storage.call = real_call  # type: ignore[method-assign]
+    mark_during_build(during_build, finished[0] if finished else None)
     seconds = (finished[0] if finished else time.perf_counter()) - started
     outcome = done[0] if done else None
     return {"state": getattr(outcome, "state", "no-result"), "detail": getattr(outcome, "detail", None), "failure": failure, "hours": round(seconds / 3600, 3), "within_the_hours_limit": seconds <= limit, "seconds": round(seconds, 1), "files_written": getattr(outcome, "files_written", None), "records_written": getattr(outcome, "records_written", None),
