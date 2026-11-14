@@ -12,6 +12,7 @@ import hashlib
 import itertools
 import json
 import os
+import re
 import secrets
 import shutil
 import struct
@@ -34,6 +35,7 @@ from optimus.guardrails.file_policy import FilePolicy
 from optimus_gateway import memory_index
 from optimus_security import memory_index_contract as mic
 from optimus_security.memory_index_config import ACL_NAME, memory_index_root
+from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, sanitize_for_persistence
 from tools.plan12_memory import m1_scale as scale
 from tools.plan12_memory.m1_evaluate import CachedEmbedder
 from tools.plan12_memory.redis_probe import is_oom_refusal
@@ -610,6 +612,17 @@ def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path,
         session.close()
 
 
+# A drive or UNC path, its separators doubled or not, or a POSIX path of two or more parts; never a URL's scheme or a ratio.
+_ABSOLUTE_PATH = re.compile(r"(?<![\w/])(?:[A-Za-z]:[\\/]+|\\\\+)[^'\"\s]*|(?<![\w.:/])/(?:[^/'\"\s]+/)+[^/'\"\s]*")
+
+
+def _error_text(error: BaseException) -> str:
+    """A failure kept in a report that is committed: its type, and its text with every absolute path replaced and then through the shared
+    evidence sanitizer, bounded. Exception text names local paths (a missing file, a long-path prefix), which never belong in a report."""
+    text = _ABSOLUTE_PATH.sub("<path>", str(error))
+    return f"{type(error).__name__}: {str(sanitize_for_persistence(text, policy=EVIDENCE_REDACTION_POLICY).value)[:200]}"
+
+
 _ASSEMBLY_MINIMUM_TURNS = 20  # per condition before an assembly limit can be qualified (Codex review 30)
 
 
@@ -618,7 +631,7 @@ def _turn_or_error(session: MemorySession, counters: list[scale._CountingStorage
     try:
         return scale._measure_turn(session, counters, task, run_id)
     except Exception as error:  # noqa: BLE001 - kept in the report; this is the measure
-        return {"task": task, "error": f"{type(error).__name__}: {str(error)[:200]}"}
+        return {"task": task, "error": _error_text(error)}
 
 
 def _build_third(progress: float | None) -> str | None:
@@ -732,7 +745,7 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
                     try:
                         during_build.extend(assembly(lambda: _build_progress(real_call)))
                     except Exception as error:  # noqa: BLE001 - a finding; it never stops the build
-                        foreground_errors.append(f"assembly {type(error).__name__}: {str(error)[:200]}")
+                        foreground_errors.append(f"assembly {_error_text(error)}")
                     next_assembly = time.monotonic() + config.get("assembly_sample_seconds", 1800)
                 if time.monotonic() >= next_sample:
                     try:
@@ -740,7 +753,7 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
                         if turns is not None and not turn_samples:
                             turn_samples.append({"at_seconds": round(time.perf_counter() - started), "turns": turns.turns(config["acpx_turns"]), "cancel": turns.cancel_during_a_turn(), "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line"})
                     except Exception as error:  # noqa: BLE001 - foreground failures are findings and never stop the build
-                        foreground_errors.append(f"{type(error).__name__}: {str(error)[:200]}")
+                        foreground_errors.append(_error_text(error))
                     next_sample = time.monotonic() + config["foreground_sample_seconds"]
                 time.sleep(1)
             build.join()

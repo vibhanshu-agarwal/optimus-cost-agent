@@ -405,6 +405,21 @@ def test_a_batch_that_crosses_the_builds_end_keeps_its_idle_turns_but_never_coun
     assert unfinished[0]["during_build"] is False and unfinished[0]["seconds_before_build_end"] is None
 
 
+@pytest.mark.parametrize(("error", "expected"), [
+    (TimeoutError("route stalled"), "TimeoutError: route stalled"),
+    (FileNotFoundError(2, "No such file", str(Path.home() / "private" / "x.txt")), "FileNotFoundError: [Errno 2] No such file: '<path>'"),
+    (OSError("cannot open /home/someone/x/y.txt here"), "OSError: cannot open <path> here"),
+    (OSError(r"share \\server\share\x failed"), "OSError: share <path> failed"),
+    (ValueError("ratio 1/2 at 12:30, see http://127.0.0.1:8772/v1/memory"), "ValueError: ratio 1/2 at 12:30, see http://127.0.0.1:8772/v1/memory"),
+    (RuntimeError("token sk-or-v1-" + "a" * 48 + " refused"), "RuntimeError: token ********** refused"),
+])
+def test_a_failure_kept_in_a_committed_report_names_no_local_path_or_secret(error: BaseException, expected: str) -> None:
+    from tools.plan12_memory.m1_qualify import _error_text
+
+    assert _error_text(error) == expected
+    assert len(_error_text(RuntimeError("x" * 500))) <= len("RuntimeError: ") + 200
+
+
 def test_build_progress_is_the_publications_own_share_and_unknown_when_unread() -> None:
     from tools.plan12_memory.m1_qualify import _build_progress, _turn_or_error
 
