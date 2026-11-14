@@ -420,6 +420,51 @@ def test_a_failure_kept_in_a_committed_report_names_no_local_path_or_secret(erro
     assert len(_error_text(RuntimeError("x" * 500))) <= len("RuntimeError: ") + 200
 
 
+def test_a_paused_build_resumes_under_its_own_clock_and_keeps_every_pause() -> None:
+    """Codex review 36: one 4 h clock across pauses and resumptions, and every pause kept."""
+    from types import SimpleNamespace
+
+    from tools.plan12_memory.m1_qualify import _BUILD_RESUMES, build_with_resumes
+
+    def outcomes(*states: str):
+        script = iter(states)
+        return lambda: SimpleNamespace(state=next(script), detail="the index route cannot be reached", files_written=3, records_written=30)
+
+    pauses: list = []
+    passes = build_with_resumes(outcomes("paused", "paused", "complete"), threading.Event(), pauses, lambda: 12.0, wait_seconds=0)
+    assert [item.state for item in passes] == ["paused", "paused", "complete"] and len(pauses) == 2
+    assert pauses[0] == {"at_seconds": 12.0, "detail": "the index route cannot be reached", "files_written": 3, "records_written": 30}
+
+    stopped = threading.Event()
+    stopped.set()  # the build's own limit has passed: no resumption
+    assert [item.state for item in build_with_resumes(outcomes("paused"), stopped, [], lambda: 0.0, wait_seconds=0)] == ["paused"]
+
+    capped: list = []
+    forever = build_with_resumes(outcomes(*["paused"] * (_BUILD_RESUMES + 3)), threading.Event(), capped, lambda: 0.0, wait_seconds=0)
+    assert len(forever) == _BUILD_RESUMES + 1 and len(capped) == _BUILD_RESUMES and forever[-1].state == "paused"
+    assert [item.state for item in build_with_resumes(outcomes("cancelled"), threading.Event(), [], lambda: 0.0, wait_seconds=0)] == ["cancelled"]
+
+
+def test_an_unreachable_route_call_keeps_its_transport_cause_and_still_raises() -> None:
+    from context_engine.index_worker import StorageUnavailableError
+    from tools.plan12_memory.m1_qualify import recording_unavailable
+
+    def call(op: str, **fields: object) -> dict:
+        if op == "batch":
+            try:
+                raise TimeoutError("timed out")
+            except TimeoutError as exc:
+                raise StorageUnavailableError("the index route cannot be reached") from exc
+        return {"ok": True}
+
+    failures: list = []
+    recorded = recording_unavailable(call, failures, iter([5.0, 12.0]).__next__)
+    with pytest.raises(StorageUnavailableError):
+        recorded("batch", records=[])
+    assert failures == [{"at_seconds": 5.0, "op": "batch", "seconds": 7.0, "error": "StorageUnavailableError: the index route cannot be reached", "cause": "TimeoutError: timed out"}]
+    assert recording_unavailable(call, failures, lambda: 0.0)("coverage") == {"ok": True} and len(failures) == 1
+
+
 def test_build_progress_is_the_publications_own_share_and_unknown_when_unread() -> None:
     from tools.plan12_memory.m1_qualify import _build_progress, _turn_or_error
 

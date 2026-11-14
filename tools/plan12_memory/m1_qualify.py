@@ -26,7 +26,7 @@ from typing import Any
 import psutil
 import redis
 
-from context_engine.index_worker import SCHEMA_VERSION, StorageRefusedError
+from context_engine.index_worker import SCHEMA_VERSION, StorageRefusedError, StorageUnavailableError
 from optimus.acp import local_infra
 from optimus.context.memory_session import MemorySession
 from optimus.context.memory_workspace import FastembedEmbedder, GatewayIndexStorage, index_scope
@@ -698,6 +698,38 @@ def _dense_in_every_turn(turns: list[dict[str, Any]]) -> dict[str, Any]:
     return {"dense_in_every_turn": not missing, **({"turns_without_dense": missing} if missing else {}), **({"channels_that_did_not_answer": failed} if failed else {})}
 
 
+_BUILD_RESUMES = 5  # a paused pass resumes, as the product's session does, but never past the build's own clock
+
+
+def build_with_resumes(run: Callable[[], Any], cancel: threading.Event, pauses: list[dict[str, Any]], clock: Callable[[], float], *, wait_seconds: float = 10) -> list[Any]:
+    """Every pass of one cold build, in order. A paused pass is resumed after a short wait, at most _BUILD_RESUMES times; the caller's timer
+    sets cancel at the limit, so resumptions share one clock. Each pause is kept with when it happened and what that pass had written."""
+    outcomes = [run()]
+    while outcomes[-1].state == "paused" and not cancel.is_set() and len(pauses) < _BUILD_RESUMES:
+        last = outcomes[-1]
+        pauses.append({"at_seconds": round(clock(), 1), "detail": last.detail, "files_written": last.files_written, "records_written": last.records_written})
+        if cancel.wait(wait_seconds):
+            break
+        outcomes.append(run())
+    return outcomes
+
+
+def recording_unavailable(call: Callable[..., dict[str, Any]], failures: list[dict[str, Any]], clock: Callable[[], float]) -> Callable[..., dict[str, Any]]:
+    """The route call, keeping the transport cause of each call that could not reach the route: without it a paused build says only that."""
+
+    def recorded(op: str, **fields: Any) -> dict[str, Any]:
+        started = clock()
+        try:
+            return call(op, **fields)
+        except StorageUnavailableError as error:
+            cause = error.__cause__
+            failures.append({"at_seconds": round(started, 1), "op": op, "seconds": round(clock() - started, 2), "error": _error_text(error),
+                             "cause": _error_text(cause) if isinstance(cause, BaseException) else None})
+            raise
+
+    return recorded
+
+
 def _built_with_samples(index: scale._Index, foreground: scale._Index, store: memory_index.IndexStore, *, config: Mapping[str, Any], pids: dict[str, int], turns: Any, during_build: list[dict[str, Any]], assembly: Callable[[Callable[[], float | None]], list[dict[str, Any]]]) -> dict[str, Any]:
     """The cold build under its limit, with foreground work on the finished line while it runs: what a person's turn meets. A timer of its own holds the limit, and the
     worker stamps its own finish, so a foreground sample cannot postpone the cancel or lengthen the measured build."""
@@ -707,16 +739,20 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
     finished: list[float] = []
     done: list[Any] = []
     failure: list[str] = []
+    pauses: list[dict[str, Any]] = []
+    transport: list[dict[str, Any]] = []
+    since: list[float] = []
+    reachable = recording_unavailable(real_call, transport, lambda: time.perf_counter() - (since[0] if since else time.perf_counter()))
 
     def watching(op: str, **fields: Any) -> dict[str, Any]:
-        reply = real_call(op, **fields)
+        reply = reachable(op, **fields)
         if op == "generation" and fields.get("action") == "publish" and not first_publish:
             first_publish.append(time.perf_counter())
         return reply
 
     def build_it() -> None:
         try:
-            done.append(index.worker().run(cancel))
+            done.extend(build_with_resumes(lambda: index.worker().run(cancel), cancel, pauses, lambda: time.perf_counter() - started))
         except Exception as error:  # noqa: BLE001 - kept in the report; the run stops at its own check
             failure.append(type(error).__name__)
         finally:
@@ -725,6 +761,7 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
     limit = config["hours_limit"] * 3600
     index.storage.call = watching  # type: ignore[method-assign]
     started = time.perf_counter()
+    since.append(started)
     build = threading.Thread(target=build_it, daemon=True)
     timer = threading.Timer(limit, cancel.set)
     timer.daemon = True
@@ -765,8 +802,13 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
         index.storage.call = real_call  # type: ignore[method-assign]
     mark_during_build(during_build, finished[0] if finished else None)
     seconds = (finished[0] if finished else time.perf_counter()) - started
-    outcome = done[0] if done else None
-    return {"state": getattr(outcome, "state", "no-result"), "detail": getattr(outcome, "detail", None), "failure": failure, "hours": round(seconds / 3600, 3), "within_the_hours_limit": seconds <= limit, "seconds": round(seconds, 1), "files_written": getattr(outcome, "files_written", None), "records_written": getattr(outcome, "records_written", None),
+    outcome = done[-1] if done else None  # the last pass says how the build ended; the counts are every pass's
+
+    def total(name: str) -> int | None:
+        return sum(getattr(item, name) or 0 for item in done) if done else None
+
+    return {"state": getattr(outcome, "state", "no-result"), "detail": getattr(outcome, "detail", None), "failure": failure, "hours": round(seconds / 3600, 3), "within_the_hours_limit": seconds <= limit, "seconds": round(seconds, 1), "files_written": total("files_written"), "records_written": total("records_written"),
+            "passes": len(done), "pauses": pauses, "transport_failures": transport,
             "coverage": getattr(outcome, "coverage", None), "first_file_visible_seconds": round(first_publish[0] - started, 2) if first_publish else None, "processes": sampler.report(), "foreground_during_build": samples, "foreground_errors": foreground_errors, "acpx_during_build": turn_samples}
 
 
@@ -885,6 +927,8 @@ def run_qualify(config: dict[str, Any], repository: Path) -> dict[str, Any]:
             run_k2(targets=targets, config=config, memory=memory, connect=connect, settings=settings, large=index, real_records=real, peaks=peaks, write=write_k2)
             client.close()
     finally:
+        logs = subprocess.run(["docker", "logs", "--tail", "300", config["container"]], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+        report["redis_log_tail"] = (logs.stdout + logs.stderr).splitlines()[-300:]  # kept before anything is removed: Redis's own account of a stall
         save()
         if turns is not None:
             turns.close()
