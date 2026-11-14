@@ -115,6 +115,22 @@ class WorkspaceIndexSource(IndexSource):
                 paths.append(field[3 + len(lead):])
         return tuple(paths)
 
+    def changed_facts(self) -> tuple[tuple[str, int, int], ...] | None:
+        """Git's changed files with their size and modified time, so an edit is seen without revision()'s stat of every admitted file.
+        A changed file that is gone reads as size and time -1. None outside Git."""
+        paths = self.dirty_paths()
+        if paths is None:
+            return None
+        facts: list[tuple[str, int, int]] = []
+        for path in paths:
+            try:
+                stat = os.stat(reachable_path(self._policy.root / path))
+            except OSError:
+                facts.append((path, -1, -1))
+                continue
+            facts.append((path, stat.st_size, stat.st_mtime_ns))
+        return tuple(sorted(facts))
+
     def disk_facts(self) -> tuple[str, int]:
         """The revision a pass would publish now, and how many admitted files are over the index's size limit."""
         return self.revision()[0], self._too_large

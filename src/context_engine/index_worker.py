@@ -143,6 +143,11 @@ class IndexWorker:
         self._files_written = 0
         self._records_written = 0
 
+    @property
+    def revision(self) -> tuple[str, bool]:
+        """The revision this pass read before it began; a complete pass found it unchanged at the end."""
+        return self._revision
+
     def run(self, cancel: threading.Event) -> WorkerOutcome:
         self._cancel = cancel
         try:

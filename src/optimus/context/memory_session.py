@@ -175,6 +175,7 @@ class MemorySession:
         self._thread: threading.Thread | None = None
         self._last_outcome: WorkerOutcome | None = None
         self._indexed_revision: tuple[str, bool] | None = None
+        self._indexed_changes: tuple[tuple[str, int, int], ...] | None = None  # Git's changed files at the last complete pass
         self._branch_asks = 0
         self._branch_answered = 0
         self._scope = self._new_scope(self._branch_of(policy.root))
@@ -265,9 +266,11 @@ class MemorySession:
                     return
                 self._cancel = threading.Event()
                 scope = self._scope
-            revision = self._source.revision()
-            # Size and time are a hint. A file a turn proved has changed gets its pass even if they say nothing moved.
-            if revision == self._indexed_revision and not self._priorities():
+            # Size and time are a hint. A file a turn proved has changed gets its pass even if they say nothing moved. A named file, or a
+            # Git change not seen at the last complete pass, goes straight to the worker, which takes the revision itself: scanning it here
+            # as well put a whole-tree stat (3 s on 10,255 files) before the edit was written.
+            changed = self._source.changed_facts()
+            if not self._priorities() and changed == self._indexed_changes and self._source.revision() == self._indexed_revision:
                 continue
             storage = _BranchPinned(self._storage_for(scope.identity), self._on_branch(scope.branch))
             worker = IndexWorker(self._source, storage, self._embedder, owner=secrets.token_hex(16), priority=self._priorities_and_changes, foreground_busy=self._busy.is_set)
@@ -280,7 +283,7 @@ class MemorySession:
                 with self._lock:
                     self._priority = []
                     if scope is self._scope:  # two branches at one commit read as one revision, so this must not vouch for the new line
-                        self._indexed_revision = revision
+                        self._indexed_revision, self._indexed_changes = worker.revision, changed
             elif outcome.state in {"paused", "held", "refused"} and not self._stop.is_set():
                 self._wake.wait(RETRY_SECONDS)
                 self._wake.set()

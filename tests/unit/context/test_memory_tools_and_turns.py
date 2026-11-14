@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -456,6 +457,97 @@ def test_a_new_branch_still_gets_its_own_scope_and_clears_what_the_old_one_cache
     assert session._map is None and session._indexed_revision is None and session._wake.is_set() and session._cancel.is_set()
     same = session._scope
     assert session._current_scope() is same  # an unchanged branch keeps its scope
+
+
+class _PassSource:
+    """Counts the whole-tree scans the session makes; the test sets Git's changed files and the tree's revision."""
+
+    def __init__(self) -> None:
+        self.changed: tuple[tuple[str, int, int], ...] = ()
+        self.tree = ("r1", False)
+        self.scans = 0
+
+    def changed_facts(self):
+        return self.changed
+
+    def dirty_paths(self):
+        return tuple(path for path, _size, _time in self.changed)
+
+    def revision(self):
+        self.scans += 1
+        return self.tree
+
+
+def _passes_with(session: MemorySession, source: _PassSource, monkeypatch) -> tuple[list[tuple[int, tuple[str, ...]]], threading.Thread]:
+    """The session's own pass loop with a stand-in worker, which records how many scans came before it and what it was asked to write first."""
+    runs: list[tuple[int, tuple[str, ...]]] = []
+
+    class Worker:
+        def __init__(self, _source, _storage, _embedder, *, priority, **_options) -> None:
+            self._priority = priority
+
+        @property
+        def revision(self):
+            return source.tree
+
+        def run(self, _cancel):
+            runs.append((source.scans, tuple(self._priority())))
+            return memory_session.WorkerOutcome("complete")
+
+    monkeypatch.setattr(memory_session, "IndexWorker", Worker)
+    session._source = source  # type: ignore[assignment]
+    session._embedder = object()  # type: ignore[assignment]
+    thread = threading.Thread(target=session._passes, daemon=True)
+    thread.start()
+    return runs, thread
+
+
+def _until(condition, seconds=10.0):
+    deadline = time.monotonic() + seconds
+    while not condition():
+        assert time.monotonic() < deadline, "the condition never held"
+        time.sleep(0.01)
+
+
+def test_a_named_or_git_changed_file_reaches_the_worker_without_a_whole_tree_scan_first(workspace, monkeypatch):
+    """Attempt 4 on corpus B: the session's revision scan (3 s on 10,255 files) came before the worker's, so an edit took 7.53 s against 6."""
+    session, source = _session(workspace, _Storage()), _PassSource()
+    runs, thread = _passes_with(session, source, monkeypatch)
+    try:
+        _until(lambda: len(runs) == 1)
+        session.request_pass(["open.py"])
+        _until(lambda: len(runs) == 2)
+        source.changed = (("edited.py", 10, 1),)
+        session.request_pass()
+        _until(lambda: len(runs) == 3)
+        assert runs == [(0, ()), (0, ("open.py",)), (0, ("edited.py",))], "no pass may scan the tree before its worker writes what was named or changed"
+    finally:
+        session.stop()
+        thread.join(10)
+
+
+def test_an_already_indexed_dirty_file_does_not_start_a_pass_on_every_wake(workspace, monkeypatch):
+    """Codex review 30: Git's changed paths alone must not mean a full reconcile each time a turn wakes the worker."""
+    session, source = _session(workspace, _Storage()), _PassSource()
+    source.changed = (("edited.py", 10, 1),)
+    runs, thread = _passes_with(session, source, monkeypatch)
+    try:
+        _until(lambda: len(runs) == 1)
+        for wake in range(1, 4):
+            session.request_pass()
+            _until(lambda wake=wake: source.scans == wake)  # each wake is checked against the tree, and finds nothing new
+        assert len(runs) == 1
+        source.changed = (("edited.py", 10, 2),)  # edited again
+        session.request_pass()
+        _until(lambda: len(runs) == 2)
+        assert runs[1] == (3, ("edited.py",))
+        source.tree = ("r2", False)  # a change Git's paths do not show, such as an ignored file's rule
+        session.request_pass()
+        _until(lambda: len(runs) == 3)
+        assert runs[2][0] == 4, "only that whole-tree check finds it"
+    finally:
+        session.stop()
+        thread.join(10)
 
 
 def test_status_is_one_content_free_line(workspace):
