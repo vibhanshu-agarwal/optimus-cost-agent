@@ -356,8 +356,16 @@ class _AcpxTurns:
     def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run([self._acpx, *self._common, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=180)
 
+    failure: str | None = None  # the last failed call's own output, so a stopped run records why
+
+    def _keep_failure(self, result: subprocess.CompletedProcess[str]) -> None:
+        self.failure = (result.stdout + result.stderr).strip()[-2000:]
+
     def open(self) -> str:
-        return str(self._run("sessions", "new").returncode)
+        result = self._run("sessions", "new")
+        if result.returncode:
+            self._keep_failure(result)
+        return str(result.returncode)
 
     def turns(self, count: int) -> dict[str, Any]:
         times, failures = [], 0
@@ -365,7 +373,9 @@ class _AcpxTurns:
             started = time.perf_counter()
             result = self._run("prompt", "Explain in one line what the docstring in notes.py says. [p129:T1]")
             times.append((time.perf_counter() - started) * 1000)
-            failures += '"stopReason":"end_turn"' not in result.stdout.replace(" ", "")
+            if '"stopReason":"end_turn"' not in result.stdout.replace(" ", ""):
+                failures += 1
+                self._keep_failure(result)
         return {**_summary(times), "failures": failures}
 
     def cancel_during_a_turn(self) -> dict[str, Any]:

@@ -694,7 +694,7 @@ def run_qualify(config: dict[str, Any], repository: Path) -> dict[str, Any]:
                 opened = turns.open()
                 first_turn = turns.turns(1)
                 if opened != "0" or first_turn["failures"]:  # before the build, or a broken launch costs hours and leaves no foreground evidence
-                    report["acpx"] = {"session_new_exit": opened, "first_turn": first_turn}
+                    report["acpx"] = {"session_new_exit": opened, "first_turn": first_turn, "failure_output": turns.failure}
                     report["stopped"] = "the acpx agent did not start, so the build was not begun"
                     save()
                     return report

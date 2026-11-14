@@ -1,0 +1,17 @@
+{
+  "attempt": "plan12.10-qualify-3-2026-11-14",
+  "state": "STOPPED_BEFORE_BUILD",
+  "claims": "none: the harness's own pre-build check stopped it, so there is no large-corpus build, edit, purge, calibration or K2 result",
+  "head": "df4ecba (source and tests equal to the released 8461b62)",
+  "authorization": "Codex review 28 on #469 (comment 6878745056)",
+  "started": "2026-11-14T19:56:10+05:30",
+  "stopped": "the acpx agent did not start, so the build was not begun",
+  "cause": "acpx sessions new exited 1: the stub kit's optimus-agent refused to start because no launch approval was found for workspace-a. The workspace identity is unchanged (digest 2d21015d... authorized on 2026-11-06 per the kit's launch audit), but its durable record is absent from the Windows credential store. It was removed between 2026-11-06 and 2026-11-14, not by this lane.",
+  "harness_gap": "the stop path recorded only the exit code; a later commit keeps the failed call's own output in the report",
+  "retained_in_kit": {
+    "optimus-handoff/p465-cp1/qualify-3-stopped.json": "hex:e51a53974fa4075a3a8c459073590cc3e69af49b0870bf2b04e2861e65500972",
+    "optimus-handoff/p465-cp1/m1-qualify-3.log": "hex:f822c8d06cf4ab62006931991596f40716f71ef3cf058285318b7443539a3524",
+    "optimus-handoff/p465-cp1/acpx-sessions-new-diag.txt": "hex:8b7cf404c5d376c6ecf4fa171b34934110775800b8d3935e432c2185718b8836",
+    "optimus-handoff/p465-cp1/run-config-qualify-3.json": "hex:0726ef7bfe31124f3f6135b6b354675cdd8cc74856766a9997f98d77c470567b"
+  }
+}

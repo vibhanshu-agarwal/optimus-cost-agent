@@ -291,3 +291,15 @@ def test_logical_purge_is_timed_at_the_first_refusal_not_the_whole_sweep() -> No
     assert result["route_denies_after_drop"] is True
     assert result["answer_after_first_step"] == "SCOPE_UNKNOWN"
 
+
+
+def test_a_failed_acpx_start_or_turn_keeps_its_own_output_so_a_stopped_run_records_why(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    turns = object.__new__(m1_scale._AcpxTurns)
+    turns._acpx, turns._common = "acpx", []
+    refusal = '{"error":{"message":"ACP agent exited before initialize completed: no launch approval found for this workspace"}}'
+    answers = iter([subprocess.CompletedProcess([], 1, refusal, ""), subprocess.CompletedProcess([], 0, '{"stopReason":"cancelled"}', "turn stderr")])
+    monkeypatch.setattr(m1_scale.subprocess, "run", lambda *_args, **_kwargs: next(answers))
+    assert turns.open() == "1"
+    assert turns.failure is not None and "no launch approval found" in turns.failure
+    assert turns.turns(1)["failures"] == 1
+    assert turns.failure == '{"stopReason":"cancelled"}turn stderr'
