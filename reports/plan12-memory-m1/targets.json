@@ -94,6 +94,26 @@
       "approved": "Codex review 24 item 3 on #469 recommended exactly these values. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved."
     }
   ],
+  "retrieval_fresh2": {
+    "state": "APPROVED",
+    "approved": "Codex review 33 on #469 (comment 6883230811) verified each case, removed the duplicate #30 and gave five query corrections, applied here verbatim, and agreed these floors at N = 44. The selection rule is review 32's option A. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved.",
+    "sealed_gold_sha256": "hex:eaaabf131ae9c17e499ebd71a4237d7a0d9d8589781b2c6bf15c7129d0a6b2b0",
+    "splits_sha256": "hex:ac925bd534c7b0d45255af16d84392d1891db25946c1c0f042dc35f025f3b1af",
+    "gold": "tests/fixtures/plan12_memory_m1_fresh2",
+    "selection": "Codex review 32 option A: universe main 6e5478a; every PR in the M1, seed and first fresh golds excluded, plus #475; first-parent fix commits inside each PR, subject fix/fixes/fixed/repair/correct, 1 to 6 src Python files, NO development-date cutoff; old-side extraction; first fix per PR; every eligible PR (24), less #30, the same stable patch as #29 (review 33). Handoff kit m1_fresh2_select.py and m1_fresh2_build.py.",
+    "what_it_is": "A historical holdout, not evidence of forward-time generalization: 22 of its 23 fixes predate the seed development cutoff (only #402 follows it), most from older, smaller trees of July 2026.",
+    "sealed_before": "Any further retrieval change. The two consumed held-out sets and their failed results stay as they are: retrieval-held-out.json and retrieval-fresh-held-out.json.",
+    "what_they_are": "Floors carrying the M1 proportions to N = 44: ceil(3N/11) and ceil(2N/11).",
+    "limits": [
+      {"metric": "Fresh2 held-out, 44 requirements: hybrid required evidence in context, count", "limit": 12, "direction": "at least"},
+      {"metric": "Fresh2 held-out: hybrid symbol recall at 5, count", "limit": 8, "direction": "at least"},
+      {"metric": "Fresh2 held-out: hybrid file recall at 5, count", "limit": 8, "direction": "at least"},
+      {"metric": "Fresh2 held-out: mean irrelevant estimated tokens", "limit": 16000, "direction": "at most"},
+      {"metric": "Incomplete coverage cases", "limit": 0, "direction": "at most"},
+      {"metric": "Stale or missing-file records", "limit": 0, "direction": "at most"},
+      {"metric": "Wrong-branch records, with the positive control found", "limit": 0, "direction": "at most"}
+    ]
+  },
   "retrieval_fresh": {
     "state": "APPROVED",
     "approved": "Codex review 26 on #469 verified each case and gave the corrections applied here verbatim (#439 restored, #402 out, three queries reworded), and agreed these counts for N = 30. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved.",

@@ -27,14 +27,16 @@
    "MG20",
    "MG21",
    "MG22",
-   "MG23",
-   "MG24"
+   "MG23"
   ]
  },
  "expected_family_counts": {
-  "localization": 24
+  "localization": 23
  },
  "chronological_kinds": [
   "localization"
- ]
+ ],
+ "deduplicated_prs": {
+  "30": "same stable patch id as #29's fix commit, 96b556ce42aa331dc1b2677c330ca149d53b9978 (Codex review 33)"
+ }
 }
