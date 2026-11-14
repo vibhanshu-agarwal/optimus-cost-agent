@@ -612,14 +612,16 @@ def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path,
         session.close()
 
 
-# A drive or UNC path, its separators doubled or not, or a POSIX path of two or more parts; never a URL's scheme or a ratio.
-_ABSOLUTE_PATH = re.compile(r"(?<![\w/])(?:[A-Za-z]:[\\/]+|\\\\+)[^'\"\s]*|(?<![\w.:/])/(?:[^/'\"\s]+/)+[^/'\"\s]*")
+# A quoted absolute path is replaced whole, spaces and all, before any unquoted one: a drive or UNC path, its separators doubled or not, or a
+# POSIX path of one or more parts. Never a URL's scheme, a ratio or a relative path.
+_QUOTED_PATH = re.compile(r"""(['"])(?:[A-Za-z]:[\\/]|\\\\|/)(?:(?!\1).)*\1""")
+_ABSOLUTE_PATH = re.compile(r"(?<![\w/])(?:[A-Za-z]:[\\/]+|\\\\+)[^'\"\s]*|(?<![\w.:/])/[^/'\"\s]+(?:/[^/'\"\s]*)*")
 
 
 def _error_text(error: BaseException) -> str:
     """A failure kept in a report that is committed: its type, and its text with every absolute path replaced and then through the shared
     evidence sanitizer, bounded. Exception text names local paths (a missing file, a long-path prefix), which never belong in a report."""
-    text = _ABSOLUTE_PATH.sub("<path>", str(error))
+    text = _ABSOLUTE_PATH.sub("<path>", _QUOTED_PATH.sub(lambda match: f"{match.group(1)}<path>{match.group(1)}", str(error)))
     return f"{type(error).__name__}: {str(sanitize_for_persistence(text, policy=EVIDENCE_REDACTION_POLICY).value)[:200]}"
 
 
@@ -701,17 +703,18 @@ def _dense_in_every_turn(turns: list[dict[str, Any]]) -> dict[str, Any]:
 _BUILD_RESUMES = 5  # a paused pass resumes, as the product's session does, but never past the build's own clock
 
 
-def build_with_resumes(run: Callable[[], Any], cancel: threading.Event, pauses: list[dict[str, Any]], clock: Callable[[], float], *, wait_seconds: float = 10) -> list[Any]:
-    """Every pass of one cold build, in order. A paused pass is resumed after a short wait, at most _BUILD_RESUMES times; the caller's timer
-    sets cancel at the limit, so resumptions share one clock. Each pause is kept with when it happened and what that pass had written."""
-    outcomes = [run()]
-    while outcomes[-1].state == "paused" and not cancel.is_set() and len(pauses) < _BUILD_RESUMES:
-        last = outcomes[-1]
-        pauses.append({"at_seconds": round(clock(), 1), "detail": last.detail, "files_written": last.files_written, "records_written": last.records_written})
-        if cancel.wait(wait_seconds):
-            break
-        outcomes.append(run())
-    return outcomes
+def build_with_resumes(run: Callable[[], Any], cancel: threading.Event, pauses: list[dict[str, Any]], clock: Callable[[], float], *, outcomes: list[Any], wait_seconds: float = 10) -> list[Any]:
+    """Every pass of one cold build, each appended to the caller's list as it returns, so a later pass that raises loses none. Every paused
+    outcome is recorded first; only then is it decided whether to resume: at most _BUILD_RESUMES resumptions, and never once the caller's
+    timer has set cancel at the limit, so resumptions share one clock."""
+    while True:
+        outcome = run()
+        outcomes.append(outcome)
+        if outcome.state != "paused":
+            return outcomes
+        pauses.append({"at_seconds": round(clock(), 1), "detail": outcome.detail, "files_written": outcome.files_written, "records_written": outcome.records_written})
+        if cancel.is_set() or len(pauses) > _BUILD_RESUMES or cancel.wait(wait_seconds):
+            return outcomes
 
 
 def recording_unavailable(call: Callable[..., dict[str, Any]], failures: list[dict[str, Any]], clock: Callable[[], float]) -> Callable[..., dict[str, Any]]:
@@ -752,7 +755,7 @@ def _built_with_samples(index: scale._Index, foreground: scale._Index, store: me
 
     def build_it() -> None:
         try:
-            done.extend(build_with_resumes(lambda: index.worker().run(cancel), cancel, pauses, lambda: time.perf_counter() - started))
+            build_with_resumes(lambda: index.worker().run(cancel), cancel, pauses, lambda: time.perf_counter() - started, outcomes=done)
         except Exception as error:  # noqa: BLE001 - kept in the report; the run stops at its own check
             failure.append(type(error).__name__)
         finally:

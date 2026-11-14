@@ -6139,7 +6139,7 @@
     {
       "key": "tools.plan12_memory.m1_qualify:run_k2:text_write",
       "policy": "safe-by-construction",
-      "rationale": "AST overmatch: the call is the run's own write(report) closure, which saves the K2 report of counts, timings and identities; no record body or exception text.",
+      "rationale": "AST overmatch: the call is the run's own write(report) closure, which saves the K2 report of counts, timings and identities; no record body; failure kinds are exception type names, and any failure text enters only through m1_qualify._error_text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_logical_purge_is_timed_at_the_first_refusal_not_the_whole_sweep",
       "evidence_tier": "unit"
@@ -6163,7 +6163,7 @@
     {
       "key": "tools.plan12_memory.m1_qualify:run_qualify:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body, credential or exception text. It also appends one fixed synthetic class to a throwaway corpus file to time an edit.",
+      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body or credential; any failure text enters only through m1_qualify._error_text, which replaces absolute paths and redacts secrets. It also appends one fixed synthetic class to a throwaway corpus file to time an edit.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_a_failed_acpx_start_or_turn_keeps_its_own_output_so_a_stopped_run_records_why",
       "evidence_tier": "unit"
@@ -6171,7 +6171,7 @@
     {
       "key": "tools.plan12_memory.m1_qualify:save:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body, credential or exception text.",
+      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body or credential; any failure text enters only through m1_qualify._error_text, which replaces absolute paths and redacts secrets.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_a_failed_acpx_start_or_turn_keeps_its_own_output_so_a_stopped_run_records_why",
       "evidence_tier": "unit"
@@ -6179,7 +6179,7 @@
     {
       "key": "tools.plan12_memory.m1_qualify:save:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body, credential or exception text.",
+      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body or credential; any failure text enters only through m1_qualify._error_text, which replaces absolute paths and redacts secrets.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_a_failed_acpx_start_or_turn_keeps_its_own_output_so_a_stopped_run_records_why",
       "evidence_tier": "unit"
@@ -6203,7 +6203,7 @@
     {
       "key": "tools.plan12_memory.m1_qualify:write_k2:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body, credential or exception text.",
+      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body or credential; any failure text enters only through m1_qualify._error_text, which replaces absolute paths and redacts secrets.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_survival_is_by_identity_and_payload_not_by_count",
       "evidence_tier": "unit"
@@ -6211,7 +6211,7 @@
     {
       "key": "tools.plan12_memory.m1_qualify:write_k2:text_file_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body, credential or exception text.",
+      "rationale": "Inspection: writes a measurement report of counts, timings, ranks, hashes, case ids and repository-relative paths; no record body or credential; any failure text enters only through m1_qualify._error_text, which replaces absolute paths and redacts secrets.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_survival_is_by_identity_and_payload_not_by_count",
       "evidence_tier": "unit"

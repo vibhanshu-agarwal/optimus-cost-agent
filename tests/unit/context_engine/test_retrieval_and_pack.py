@@ -89,12 +89,11 @@ def test_the_quota_places_each_channels_top_two_first_without_backfill_then_the_
 
 def test_a_named_path_or_a_structural_hit_keeps_the_rrf_order_exactly():
     a, b, c = _hit("a", "a.py"), _hit("b", "b.py"), _hit("c", "c.py")
-    channels = {"lexical": [b, c], "dense": [c, a, b]}
-    rrf = sorted(fuse(channels, named=["zz.py"]), key=lambda item: (-round(item.score, 12), item.hit.path))
-    assert list(fuse(channels, named=["zz.py"])) == rrf, "a named path that matches nothing still turns the quota off"
+    channels = {"dense": [c, a], "lexical": [b, a]}  # review 37: base order a, b, c; quota order c, b, a
+    assert [item.hit.id for item in fuse(channels, named=["zz.py"])] == ["a", "b", "c"], "a named path that matches nothing still turns the quota off"
+    assert [item.hit.id for item in fuse({**channels, "structure": []})] == ["c", "b", "a"], "an empty structure channel does not turn the quota off"
     structural = {**channels, "structure": [a]}
     assert [item.hit.id for item in fuse(structural)] == [item.hit.id for item in sorted(fuse(structural, named=["a.py"]), key=lambda item: -item.score)]
-    assert fuse({**channels, "structure": []})[0].hit.id == "c", "an empty structure channel does not turn the quota off"
 
 
 def test_missing_or_short_channels_take_no_quota_places():

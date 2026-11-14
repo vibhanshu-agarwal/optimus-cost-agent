@@ -412,6 +412,12 @@ def test_a_batch_that_crosses_the_builds_end_keeps_its_idle_turns_but_never_coun
     (OSError(r"share \\server\share\x failed"), "OSError: share <path> failed"),
     (ValueError("ratio 1/2 at 12:30, see http://127.0.0.1:8772/v1/memory"), "ValueError: ratio 1/2 at 12:30, see http://127.0.0.1:8772/v1/memory"),
     (RuntimeError("token sk-or-v1-" + "a" * 48 + " refused"), "RuntimeError: token ********** refused"),
+    # review 37: a quoted path is replaced whole, spaces and all, and a one-part POSIX path is a path
+    (FileNotFoundError(2, "No such file", r"C:\Users\Jane Doe\private.txt"), "FileNotFoundError: [Errno 2] No such file: '<path>'"),
+    (OSError(r"cannot open '\\server\share name\x.txt' now"), "OSError: cannot open '<path>' now"),
+    (OSError('cannot open "/home/jane doe/x.txt" now'), 'OSError: cannot open "<path>" now'),
+    (OSError("cannot open /private.txt or '/private.txt'"), "OSError: cannot open <path> or '<path>'"),
+    (OSError("a relative src/x.py and and/or stay"), "OSError: a relative src/x.py and and/or stay"),
 ])
 def test_a_failure_kept_in_a_committed_report_names_no_local_path_or_secret(error: BaseException, expected: str) -> None:
     from tools.plan12_memory.m1_qualify import _error_text
@@ -421,28 +427,46 @@ def test_a_failure_kept_in_a_committed_report_names_no_local_path_or_secret(erro
 
 
 def test_a_paused_build_resumes_under_its_own_clock_and_keeps_every_pause() -> None:
-    """Codex review 36: one 4 h clock across pauses and resumptions, and every pause kept."""
+    """Codex reviews 36 and 37: one 4 h clock across resumptions; every paused outcome is recorded, the last included; each pass is kept as
+    it returns, so a later pass that raises loses none."""
     from types import SimpleNamespace
 
     from tools.plan12_memory.m1_qualify import _BUILD_RESUMES, build_with_resumes
 
     def outcomes(*states: str):
         script = iter(states)
-        return lambda: SimpleNamespace(state=next(script), detail="the index route cannot be reached", files_written=3, records_written=30)
+
+        def run():
+            state = next(script)
+            if state == "raise":
+                raise TimeoutError("route stalled")
+            return SimpleNamespace(state=state, detail="the index route cannot be reached", files_written=3, records_written=30)
+
+        return run
+
+    def build(states, cancel=None, pauses=None, kept=None):
+        kept = [] if kept is None else kept
+        build_with_resumes(outcomes(*states), cancel or threading.Event(), [] if pauses is None else pauses, lambda: 12.0, outcomes=kept, wait_seconds=0)
+        return kept
 
     pauses: list = []
-    passes = build_with_resumes(outcomes("paused", "paused", "complete"), threading.Event(), pauses, lambda: 12.0, wait_seconds=0)
-    assert [item.state for item in passes] == ["paused", "paused", "complete"] and len(pauses) == 2
+    assert [item.state for item in build(["paused", "paused", "complete"], pauses=pauses)] == ["paused", "paused", "complete"] and len(pauses) == 2
     assert pauses[0] == {"at_seconds": 12.0, "detail": "the index route cannot be reached", "files_written": 3, "records_written": 30}
 
     stopped = threading.Event()
-    stopped.set()  # the build's own limit has passed: no resumption
-    assert [item.state for item in build_with_resumes(outcomes("paused"), stopped, [], lambda: 0.0, wait_seconds=0)] == ["paused"]
+    stopped.set()  # the build's own limit has passed: the pause is still recorded, and nothing resumes
+    late: list = []
+    assert [item.state for item in build(["paused", "complete"], cancel=stopped, pauses=late)] == ["paused"] and len(late) == 1
 
     capped: list = []
-    forever = build_with_resumes(outcomes(*["paused"] * (_BUILD_RESUMES + 3)), threading.Event(), capped, lambda: 0.0, wait_seconds=0)
-    assert len(forever) == _BUILD_RESUMES + 1 and len(capped) == _BUILD_RESUMES and forever[-1].state == "paused"
-    assert [item.state for item in build_with_resumes(outcomes("cancelled"), threading.Event(), [], lambda: 0.0, wait_seconds=0)] == ["cancelled"]
+    forever = build(["paused"] * (_BUILD_RESUMES + 3), pauses=capped)
+    assert len(forever) == _BUILD_RESUMES + 1 and len(capped) == _BUILD_RESUMES + 1, "five resumptions, six paused outcomes, six pauses"
+    assert [item.state for item in build(["cancelled"])] == ["cancelled"]
+
+    kept: list = []
+    with pytest.raises(TimeoutError):
+        build(["paused", "raise"], kept=kept)
+    assert [item.state for item in kept] == ["paused"], "the pass before the one that raised is kept"
 
 
 def test_an_unreachable_route_call_keeps_its_transport_cause_and_still_raises() -> None:
