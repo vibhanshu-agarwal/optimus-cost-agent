@@ -1862,7 +1862,7 @@
     "measured": 5.38,
     "met": true,
     "metric": "seconds from an edit to its symbol being queryable, one file, the product's session path",
-    "note": "Attempt 4 MISSED this at 7.53 s; 7c04340 skips the whole-tree revision() when nothing changed and Git's dirty facts are unchanged. Attempt 4's miss is retained."
+    "note": "7c04340 bypasses the session\u2019s preliminary whole-tree revision() when a file is named or Git\u2019s changed facts differ from the last complete pass; the worker still reads the revision. Attempt 4\u2019s 7.53 s miss is retained. (Wording: Codex review 39 item 2.)"
    },
    {
     "direction": "at most",
