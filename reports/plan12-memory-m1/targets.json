@@ -91,7 +91,24 @@
       "cause": "A cold build lists and filters the whole tree (27 s at 10,255 files) and reads its revision before its first publish, which carries the honest total. The 5 s limit came from a 50-file pilot.",
       "revised": {"corpus_b_cold_seconds": 45, "pilot_cold_seconds": 5, "edit_to_queryable_seconds": 6},
       "scope": "Prospective: the later qualifying run. Cold discovery is separated from edit responsiveness: today's context stays usable during it, and an edit with a publication in place is written before the listing (a67057c).",
-      "approved": "Codex review 24 item 3 on #469 recommended exactly these values. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved."
+      "approved": "Codex review 24 item 3 on #469 recommended exactly these values. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved.",
+      "operator_acceptance": "Retained: the Release B miss stays MISSED in qualify.json. Attempt 6 met the revised 45 s corpus-B limit (27.4 s, qualify-6.json); the pilot stays at 5 s; no further relaxation. Codex review 44 item 3a on #469 (comment 6890496149) recommended this; the operator accepted it explicitly on 2026-11-15 (\"Accept all four\")."
+    },
+    {
+      "metric": "held-out retrieval floors: retrieval-held-out.json (3 floors missed) and retrieval-fresh-held-out.json (2 floors missed)",
+      "result": "MISSED; both reports retained with their verdicts and not relabelled",
+      "operator_acceptance": "Accepted as retained misses. Final retrieval qualification rests only on the sealed fresh2 set (retrieval-fresh2-held-out.json, all 7 floors met), a historical holdout that does not establish forward-time quality; the later pass does not turn the earlier results into passes. Codex review 44 item 3a on #469 (comment 6890496149) recommended this; the operator accepted it explicitly on 2026-11-15 (\"Accept all four\")."
+    },
+    {
+      "metric": "session edit path, seconds until an edit is queryable",
+      "frozen_limit": 6,
+      "result": "attempt 4 MISSED (7.53 s, qualify-4.json); retained",
+      "operator_acceptance": "Remediated: verified by attempt 6 at 5.59 s against the unchanged 6 s limit (qualify-6.json). Codex review 44 item 3a on #469 (comment 6890496149) recommended this; the operator accepted it explicitly on 2026-11-15 (\"Accept all four\")."
+    },
+    {
+      "metric": "assembly_corpus_b: during-build wall p95 and route calls",
+      "result": "attempt 5 MISSED 2 of 6 (14,763 ms against 7,500; 46 calls against 30, qualify-5.json); retained",
+      "operator_acceptance": "Remediated: verified by attempt 6 against the unchanged corpus-B ceilings, 6 of 6 met (4,696.9 ms p95, at most 11 calls, qualify-6.json). Codex review 44 item 3a on #469 (comment 6890496149) recommended this; the operator accepted it explicitly on 2026-11-15 (\"Accept all four\")."
     }
   ],
   "retrieval_fresh2": {
