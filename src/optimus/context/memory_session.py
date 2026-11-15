@@ -355,7 +355,11 @@ class MemorySession:
         if cached.identity == scope.identity and (cached.epoch == epoch or (not complete and not cached.complete and self._clock() - cached.at < CATALOGUE_SECONDS)):
             return cached.files
         with self._lock:  # a stopped session's refresh asks for nothing: its storage refuses first
-            self._catalogue_wanted = (scope, epoch, complete)
+            if scope is not self._scope:  # a retired line never displaces the current one's want
+                return None
+            wanted = self._catalogue_wanted
+            if wanted is None or wanted[0] is not scope or epoch > wanted[1]:  # nor an older epoch a newer one
+                self._catalogue_wanted = (scope, epoch, complete)
             if self._catalogue_thread is None:
                 self._catalogue_idle.clear()
                 self._catalogue_thread = threading.Thread(target=self._refresh_catalogues, name=CATALOGUE_THREAD, daemon=True)

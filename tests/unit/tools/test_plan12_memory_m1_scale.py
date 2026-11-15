@@ -406,10 +406,31 @@ def test_background_catalogue_reads_are_counted_apart_and_never_taken_from_a_tur
 
     turns = [_assembly_turn() for _ in range(20)]
     turns[0]["session_background"] = {"settled": True, "calls": 41, "seconds": 15.5}
-    turns[-1]["session_background"] = {"settled": False, "calls": 3, "seconds": 1.0}
+    turns[-1]["session_background"] = {"settled": False, "incomplete_so_far": {"calls": 3, "seconds": 1.0}}
     condition = _assembly_condition(turns, spread=False)
-    assert condition is not None and condition["background_catalogue"] == {"sessions": 2, "calls": 44, "seconds": 16.5, "sessions_not_settled": 1}
-    assert condition["route_calls_max"] == 11  # unchanged by the background reads
+    assert condition is not None and condition["route_calls_max"] == 11  # unchanged by the background reads
+    background = condition["background_catalogue"]
+    assert (background["calls"], background["seconds"], background["sessions_not_settled"], background["complete"]) == (41, 15.5, 1, False)  # no partial cost counted as whole
+    del turns[-1]["session_background"]
+    assert _assembly_condition(turns, spread=False)["background_catalogue"]["complete"] is True  # type: ignore[index]
+
+
+def test_a_background_read_still_running_is_reported_as_incomplete_never_as_its_cost() -> None:
+    from tools.plan12_memory.m1_qualify import _session_background
+
+    class Counter:
+        background = {"catalogue": 3}
+        background_seconds = 1.25
+
+    class Session:
+        def __init__(self, settles: bool) -> None:
+            self.settles = settles
+
+        def wait_for_catalogue(self, seconds: float) -> bool:
+            return self.settles
+
+    assert _session_background(Session(True), [Counter()]) == {"settled": True, "calls": 3, "seconds": 1.25}  # type: ignore[arg-type]
+    assert _session_background(Session(False), [Counter()]) == {"settled": False, "incomplete_so_far": {"calls": 3, "seconds": 1.25}}  # type: ignore[arg-type]
 
 
 def test_an_unprimed_first_turn_is_each_in_its_own_session_and_its_background_read_finishes_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

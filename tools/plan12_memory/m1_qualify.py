@@ -635,7 +635,9 @@ def _first_turns_unprimed(root: Path, settings: Any, embedder: Any, work: Path, 
 def _session_background(session: MemorySession, counters: list[scale._CountingStorage], *, seconds: float = 300) -> dict[str, Any]:
     """What the session's background catalogue reads cost, counted apart from every turn's own calls, once they have finished."""
     settled = session.wait_for_catalogue(seconds)
-    return {"settled": settled, "calls": sum(sum(counter.background.values()) for counter in counters), "seconds": round(sum(counter.background_seconds for counter in counters), 3)}
+    cost = {"calls": sum(sum(counter.background.values()) for counter in counters), "seconds": round(sum(counter.background_seconds for counter in counters), 3)}
+    # Codex review 40: a read still running is not a full cost, so what it had spent is kept under its own name.
+    return {"settled": True, **cost} if settled else {"settled": False, "incomplete_so_far": cost}
 
 
 # A quoted absolute path is replaced whole, spaces and all, before any unquoted one: a drive or UNC path, its separators doubled or not, or a
@@ -679,8 +681,10 @@ def _assembly_condition(turns: list[dict[str, Any]], *, spread: bool) -> dict[st
     out: dict[str, Any] = {**scale._assembly_summary(valid), **_dense_in_every_turn(counted), "errors": errors, "per_turn": turns}
     sessions = [turn["session_background"] for turn in turns if "session_background" in turn]
     if sessions:  # reported apart; no turn's own calls or time are moved into it
-        out["background_catalogue"] = {"sessions": len(sessions), "calls": sum(item["calls"] for item in sessions), "seconds": round(sum(item["seconds"] for item in sessions), 3),
-                                       "sessions_not_settled": sum(not item["settled"] for item in sessions)}
+        settled = [item for item in sessions if item["settled"]]
+        out["background_catalogue"] = {"sessions": len(sessions), "settled_sessions": len(settled), "calls": sum(item["calls"] for item in settled),
+                                       "seconds": round(sum(item["seconds"] for item in settled), 3), "sessions_not_settled": len(sessions) - len(settled),
+                                       **({"complete": False, "why": "a read had not finished: its cost so far is in its turn's session_background, not in these totals"} if len(settled) < len(sessions) else {"complete": True})}
     if spread:
         out["turns_after_the_build_ended"] = len(turns) - len(counted)
     short: list[str] = []

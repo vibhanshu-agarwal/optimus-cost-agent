@@ -194,12 +194,15 @@ class Retriever:
         channels: dict[str, list[Hit]] = {"memory": list(memory)}
         report: dict[str, str] = {"memory": f"{len(memory)} results" if memory else "no authorized source"}
 
+        taken: list[Sequence[CatalogueFile] | None] = []
+
         def catalogue() -> Sequence[CatalogueFile]:
-            files = self._catalogue(epoch, complete)
-            if files is None:
-                report["catalogue"] = "not ready: it is being read in the background, so recency and import neighbours were not suggested"
-                return ()
-            return files
+            """One answer per retrieval, so its channels and its report agree even if a background read lands between them."""
+            if not taken:
+                taken.append(self._catalogue(epoch, complete))
+                if taken[0] is None:
+                    report["catalogue"] = "not ready: it is being read in the background, so recency and import neighbours were not suggested"
+            return taken[0] or ()
 
         def run(name: str, ask: Callable[[], list[Hit]]) -> None:
             if self._cancelled():

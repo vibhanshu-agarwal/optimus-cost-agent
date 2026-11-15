@@ -17,7 +17,7 @@ import pytest
 
 from context_engine.code_index import path_id
 from context_engine.index_worker import StorageRefusedError, StorageUnavailableError
-from context_engine.retrieval import Hit, Retriever
+from context_engine.retrieval import CatalogueFile, Hit, Retriever
 from optimus.acp.trusted_paths import TrustedPathError
 from optimus.agent.directives import IndexToolRequest, parse_index_tool_reply
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
@@ -1155,6 +1155,59 @@ def test_a_refresh_for_a_retired_branch_stops_paging_and_is_never_published(work
     assert session.wait_for_catalogue(5)
     assert old.threads == [memory_session.CATALOGUE_THREAD], "the retired line's second page was asked for"
     assert session._catalogue.identity != retired
+
+
+@pytest.mark.parametrize("old_asks_last", [True, False])
+def test_a_retired_lines_request_never_displaces_the_current_lines_pending_one(workspace, old_asks_last):
+    """Codex review 40: while the old line's read is blocked, the new line asks, and a turn begun on the old line asks too, in either order."""
+    stores: dict[str, _Gated] = {}
+    branch = ["main"]
+    session = MemorySession(policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False),
+                            storage_for=lambda scope: stores.setdefault(scope, _Gated([_record(scope[:6], "pkg/a.py", "helper", _sha(SOURCE))])), embedder_for=lambda: None,
+                            embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "m4", branch_of=lambda root: branch[0])
+    old_turn = session.turn()
+    old_turn._retriever.retrieve("helper")
+    old = stores[session._scope.identity]
+    assert old.entered.wait(5)
+    branch[0] = "other"
+    new_turn = session.turn()
+    new = stores[session._scope.identity]
+    new.gate.set()
+    asks = [lambda: old_turn._retriever.retrieve("helper"), lambda: new_turn._retriever.retrieve("helper")]
+    for ask in (asks[1], asks[0]) if old_asks_last else asks:
+        ask()
+    old.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert session._catalogue.identity == session._scope.identity, "the current line's catalogue was never read"
+    assert new.threads == [memory_session.CATALOGUE_THREAD] * 2
+
+
+@pytest.mark.parametrize("asked", [(9, 8), (8, 9)])
+def test_an_older_epochs_request_never_displaces_a_newer_pending_one(workspace, asked):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    scope = session._current_scope()
+    for epoch in asked:  # a retrieval that read coverage earlier can ask after one that read it later
+        session._catalogue_for(scope, epoch, True)
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue" and not fields.get("cursor")] == [3, 9]
+
+
+def test_one_retrieval_uses_one_catalogue_answer_so_its_report_matches_its_channels():
+    """Codex review 40: with a named path, structure and recency both want the catalogue; a read that lands between them must not split them."""
+    answers = iter([None, [CatalogueFile("pkg/a.py", _sha(SOURCE), "python", 100, "import pkg.b")]])
+    asked = []
+
+    def catalogue(epoch, complete):
+        asked.append(epoch)
+        return next(answers)
+
+    retrieval = Retriever(_Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))]), None, catalogue=catalogue).retrieve("helper", named_paths=("pkg/a.py",))
+    assert asked == [3]
+    assert "not ready" in retrieval.channels["catalogue"] and retrieval.channels["recency"] == "0 results"
 
 
 def test_an_older_refresh_never_replaces_a_newer_catalogue(workspace):
