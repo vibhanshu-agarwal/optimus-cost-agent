@@ -2049,6 +2049,54 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.evidence_gather:_handle_collect_plan117_v5:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_collect_plan117_v5:json_serialization serializes a content-free collect summary (run ID and observation/artifact counts); artifact bodies, paths and credentials are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather_plan117_v5.py::test_full_pipeline_collects_once_and_never_appends",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_collect_plan117_v5:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_collect_plan117_v5:stdout_export prints only the content-free collect summary JSON; no prompt, transcript, path or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather_plan117_v5.py::test_full_pipeline_collects_once_and_never_appends",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_redact_plan117_v5:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_redact_plan117_v5:json_serialization serializes a schema-limited redact-result document (run ID, staging status and the gate's fixed disposition/reason codes); paths, keys and artifact bodies are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather_plan117_v5.py::test_redact_stages_then_promotes_only_with_an_accepting_receipt",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_handle_redact_plan117_v5:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_handle_redact_plan117_v5:stdout_export prints only the run ID, staging status and fixed gate codes; no path, key or artifact body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather_plan117_v5.py::test_redact_stages_then_promotes_only_with_an_accepting_receipt",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_prepare_plan117_v5:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_prepare_plan117_v5:json_serialization serializes only the bound run ID and the keyed private-root commitments (HMAC digests); the private key and every path are omitted.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather_plan117_v5.py::test_prepare_uses_the_bound_run_id_and_creates_the_private_key_once",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather:_prepare_plan117_v5:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: tools.evidence_gather:_prepare_plan117_v5:stdout_export prints only the bound run ID and keyed private-root commitments; no path, key or credential is printed.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_evidence_gather_plan117_v5.py::test_prepare_uses_the_bound_run_id_and_creates_the_private_key_once",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.evidence_gather:_handle_inspect:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.evidence_gather:_handle_inspect:json_serialization serializes only a body-free inspect summary (schema, scenario/run ids, outcome, report digest, promoted count, and relative artifact locators) with no artifact bodies, credentials, or host authorization objects.",
@@ -6038,6 +6086,38 @@
       "rationale": "Inspection (Plan 12.8, ADR-032; Codex Checkpoint C finding 1): opens the copy directory's empty lock file to serialize the per-user Gateways' appends; nothing is written to it.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_current_client_contract:canonical_json_bytes:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this deterministic in-memory serializer returns UTF-8 bytes for contract hashing and caller-owned acquisition/redaction builders; it performs no file write, logging or diagnostic export. It is not a sanitizer, and caller privacy gates remain required.",
+      "sanitizer": "not a sanitizer; in-memory canonical representation only, with caller-owned privacy gates",
+      "test_node": "tests/unit/tools/test_plan117_current_client_contract.py::test_canonical_json_is_sorted_compact_and_rejects_non_finite",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan117_v5_current_client_evidence:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes and prints only the verifier-created integrity/disposition/reachability enums and fixed failure/reason codes; manifest values, paths, artifact bodies and raw exceptions are not echoed.",
+      "sanitizer": "schema-limited verifier verdict and fixed codes; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan117_v5_current_client_evidence.py::test_promoted_accepted_bundle_verifies_with_private_roots_absent",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan117_v5_current_client_evidence:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: main serializes and prints only the verifier-created integrity/disposition/reachability enums and fixed failure/reason codes; manifest values, paths, artifact bodies and raw exceptions are not echoed.",
+      "sanitizer": "schema-limited verifier verdict and fixed codes; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_verify_plan117_v5_current_client_evidence.py::test_promoted_accepted_bundle_verifies_with_private_roots_absent",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_plan117_v5_current_client_evidence:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the VerificationAbort handler prints only its locally selected fixed failure code, never an exception message, path or document value.",
+      "sanitizer": "fixed locally selected failure codes only",
+      "test_node": "tests/unit/tools/test_verify_plan117_v5_current_client_evidence.py::test_an_unreadable_manifest_aborts_without_a_disposition",
       "evidence_tier": "unit"
     }
   ]

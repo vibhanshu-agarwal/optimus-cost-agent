@@ -1,0 +1,93 @@
+{
+  "schema": "plan-11-7-v5-first-refusal-descriptors-v1",
+  "source_path": "src/optimus/acp/spec.py",
+  "descriptors": [
+    {
+      "descriptor_id": "r_end_turn",
+      "wire_class": "result_stop_reason",
+      "stop_reason": "end_turn",
+      "error_code_name": null,
+      "error_code": null,
+      "error_message": null,
+      "notice_source": "optimus.acp.spec:CAPACITY_REFUSAL_TEXT",
+      "notice_text": "This conversation has reached its context limit, so this prompt was refused. Please start a new thread to continue."
+    },
+    {
+      "descriptor_id": "r_refusal",
+      "wire_class": "result_stop_reason",
+      "stop_reason": "refusal",
+      "error_code_name": null,
+      "error_code": null,
+      "error_message": null,
+      "notice_source": "literal:_refuse_prompt",
+      "notice_text": "This prompt was refused."
+    },
+    {
+      "descriptor_id": "r_cancelled",
+      "wire_class": "result_stop_reason",
+      "stop_reason": "cancelled",
+      "error_code_name": null,
+      "error_code": null,
+      "error_message": null,
+      "notice_source": null,
+      "notice_text": null
+    },
+    {
+      "descriptor_id": "r_invalid_request",
+      "wire_class": "error",
+      "stop_reason": null,
+      "error_code_name": "INVALID_REQUEST",
+      "error_code": -32600,
+      "error_message": "empty prompt",
+      "notice_source": null,
+      "notice_text": null
+    },
+    {
+      "descriptor_id": "r_request_cancelled",
+      "wire_class": "error",
+      "stop_reason": null,
+      "error_code_name": "REQUEST_CANCELLED",
+      "error_code": -32800,
+      "error_message": "a turn is already in progress",
+      "notice_source": null,
+      "notice_text": null
+    },
+    {
+      "descriptor_id": "r_internal_error",
+      "wire_class": "error",
+      "stop_reason": null,
+      "error_code_name": "INTERNAL_ERROR",
+      "error_code": -32603,
+      "error_message": "the usage report could not be delivered",
+      "notice_source": null,
+      "notice_text": null
+    }
+  ],
+  "census": [
+    {"function": "handle_client_request", "site": "error:INVALID_REQUEST:unknown session", "prior_idle": false, "count": 1, "disposition": "negative_control", "descriptor_id": null},
+    {"function": "_handle_client_request", "site": "error:INVALID_REQUEST:invalid request", "prior_idle": false, "count": 1, "disposition": "negative_control", "descriptor_id": null},
+    {"function": "_handle_client_request", "site": "error:METHOD_NOT_FOUND:*", "prior_idle": false, "count": 2, "disposition": "negative_control", "descriptor_id": null},
+    {"function": "_handle_savings", "site": "error:INTERNAL_ERROR:the usage report could not be delivered", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_internal_error"},
+    {"function": "_handle_savings", "site": "stop_reason:cancelled", "prior_idle": false, "count": 3, "disposition": "descriptor", "descriptor_id": "r_cancelled"},
+    {"function": "_handle_savings", "site": "stop_reason:end_turn", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_end_turn"},
+    {"function": "_handle_session_prompt", "site": "error:INVALID_REQUEST:empty prompt", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_invalid_request"},
+    {"function": "_handle_session_prompt", "site": "error:INVALID_REQUEST:invalid request", "prior_idle": false, "count": 2, "disposition": "negative_control", "descriptor_id": null},
+    {"function": "_handle_session_prompt", "site": "error:INVALID_REQUEST:unknown session", "prior_idle": false, "count": 1, "disposition": "negative_control", "descriptor_id": null},
+    {"function": "_handle_session_prompt", "site": "error:REQUEST_CANCELLED:a turn is already in progress", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_request_cancelled"},
+    {"function": "_handle_session_prompt", "site": "mcp_refusal:mcp_cleanup_uncertain", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_request_cancelled"},
+    {"function": "_handle_session_prompt", "site": "mcp_refusal:mcp_closing", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_request_cancelled"},
+    {"function": "_handle_session_prompt", "site": "mcp_refusal:mcp_closing", "prior_idle": true, "count": 1, "disposition": "requires_prior_idle", "descriptor_id": null},
+    {"function": "_handle_session_prompt", "site": "mcp_refusal:mcp_reopen_in_progress", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_request_cancelled"},
+    {"function": "_handle_session_prompt", "site": "mcp_refusal:mcp_reopen_refused", "prior_idle": true, "count": 2, "disposition": "requires_prior_idle", "descriptor_id": null},
+    {"function": "_handle_session_prompt", "site": "refuse_prompt", "prior_idle": false, "count": 1, "disposition": "dispatch", "descriptor_id": null},
+    {"function": "_handle_session_prompt", "site": "refuse_prompt", "prior_idle": true, "count": 1, "disposition": "requires_prior_idle", "descriptor_id": null},
+    {"function": "_handle_session_prompt", "site": "savings", "prior_idle": false, "count": 1, "disposition": "dispatch", "descriptor_id": null},
+    {"function": "_handle_session_prompt", "site": "stop_reason:cancelled", "prior_idle": true, "count": 2, "disposition": "requires_prior_idle", "descriptor_id": null},
+    {"function": "_mcp_refusal", "site": "error:code:*", "prior_idle": false, "count": 1, "disposition": "dispatch", "descriptor_id": null},
+    {"function": "_refuse_prompt", "site": "stop_reason:end_turn", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_end_turn"},
+    {"function": "_refuse_prompt", "site": "stop_reason:refusal", "prior_idle": false, "count": 1, "disposition": "descriptor", "descriptor_id": "r_refusal"}
+  ],
+  "excluded_classes": [
+    {"error_code_name": "MCP_REOPEN_REFUSED", "error_code": -32912, "requires": "prior_idle_suspension", "owner": "resumed-session refusal test (P3/P4), never counted as INTERNAL_ERROR coverage"}
+  ]
+}

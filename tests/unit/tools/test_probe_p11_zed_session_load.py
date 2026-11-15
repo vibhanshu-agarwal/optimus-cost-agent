@@ -4732,4 +4732,22 @@ def test_launch_timeout_kills_every_descendant_of_the_launched_process(
         started = time.monotonic()
         result = _launch_zed_once([sys.executable, "-c", code], env=dict(os.environ), cwd=tmp_path, timeout_s=timeout)
         assert result["returncode"] != 0
+        assert result["timed_out"] is True
         assert_descendants_killed(recorder, roles, deadline=started + timeout + 10.0, what=f"launch timeout ({shape})")
+
+
+def test_launch_that_exits_by_itself_reports_no_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Plan 11.7 v5 records clean exit versus forced kill from this flag; no process is started here."""
+    from tools import process_tree
+    from tools.probe_p11_zed_session_load import _launch_zed_once
+
+    class _Exited:
+        pid = 4321
+
+        def wait(self, timeout=None):
+            return 0
+
+    monkeypatch.setattr(process_tree, "popen", lambda *_a, **_k: _Exited())
+    monkeypatch.delenv("PYTEST_CURRENT_TEST")
+    result = _launch_zed_once(["zed"], env={}, cwd=tmp_path, timeout_s=5.0)
+    assert result == {"pid": 4321, "returncode": 0, "log_path": None, "timed_out": False}
