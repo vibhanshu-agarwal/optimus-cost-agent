@@ -1026,55 +1026,202 @@ def test_a_turn_keeps_its_own_scopes_catalogue_after_a_switch(workspace):
     session = MemorySession(policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False), storage_for=storage_for, embedder_for=lambda: None,
                             embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "m2", branch_of=lambda root: branch[0])
     old = session.turn()
+    old._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     first = next(iter(stores.values()))
     branch[0] = "other"
     session.turn()
     second = next(store for store in stores.values() if store is not first)
     second.calls.clear()
     old._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     assert second.calls == [], "an old turn read another branch's line with its own epoch number"
     assert any(op == "catalogue" for op, _fields in first.calls)
     session.turn()._retriever.retrieve("helper")  # both lines happen to be at epoch 3, and the old turn's catalogue is the one in the cache
+    assert session.wait_for_catalogue(5)
     assert any(op == "catalogue" for op, _fields in second.calls), "a turn was given another branch's catalogue"
 
 
-def test_a_complete_generation_never_reuses_an_older_catalogue(workspace):
-    class Moving(_Storage):
-        epoch = 3
+class _Moving(_Storage):
+    epoch = 3
 
-        def call(self, op, **fields):
+    def call(self, op, **fields):
+        reply = super().call(op, **fields)
+        if op == "coverage" and reply["current"]:
+            reply["current"]["epoch"] = self.epoch
+        return reply
+
+
+class _Gated(_Moving):
+    """The background refresh waits at each catalogue page until `gate` opens; any other thread's read goes straight through."""
+
+    def __init__(self, *args, pages=2, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pages = pages
+        self.gate = threading.Event()
+        self.entered = threading.Event()
+        self.threads: list[str] = []
+
+    def call(self, op, **fields):
+        if op == "catalogue":
+            self.threads.append(threading.current_thread().name)
+            if threading.current_thread().name == memory_session.CATALOGUE_THREAD:
+                self.entered.set()
+                assert self.gate.wait(10)
             reply = super().call(op, **fields)
-            if op == "coverage":
-                reply["current"]["epoch"] = self.epoch
-            return reply
+            return {**reply, "cursor": None if fields.get("cursor") or self.pages == 1 else "page-2"}
+        return super().call(op, **fields)
 
-    storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+
+def test_a_complete_generation_never_reuses_an_older_catalogue(workspace):
+    storage = _Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
     session = _session(workspace, storage)
     session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     storage.epoch = 4
-    session.turn()._retriever.retrieve("helper")
+    moved = session.turn()._retriever.retrieve("helper")
+    assert "not ready" in moved.channels["catalogue"]  # epoch 3's catalogue is never offered for epoch 4
+    assert session.wait_for_catalogue(5)
     assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3, 4]
+    assert "catalogue" not in session.turn()._retriever.retrieve("helper").channels
 
 
 def test_a_build_may_reuse_a_recent_catalogue_since_it_only_suggests_what_to_ask(workspace):
-    class Moving(_Storage):
-        epoch = 3
-
-        def call(self, op, **fields):
-            reply = super().call(op, **fields)
-            if op == "coverage":
-                reply["current"]["epoch"] = self.epoch
-            return reply
-
-    storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=False)
+    storage = _Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=False)
     session = _session(workspace, storage)
     session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     storage.epoch = 4
     assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3]
     storage.calls.clear()
     second = session.turn()._retriever.retrieve("helper")
-    assert second.epoch == 4 and not any(op == "catalogue" for op, _fields in storage.calls)
+    assert second.epoch == 4 and not any(op == "catalogue" for op, _fields in storage.calls) and "catalogue" not in second.channels
     assert {fields["epoch"] for op, fields in storage.calls if op == "query"} == {4}  # every record comes from the retrieval's own epoch
+
+
+def test_a_turn_never_reads_the_catalogue_itself_and_says_when_its_suggestions_are_missing(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    storage.gate.set()
+    session = _session(workspace, storage)
+    first = session.turn()._retriever.retrieve("helper")
+    assert first.state == "ok" and "not ready" in first.channels["catalogue"]
+    assert first.channels["lexical"] == "1 results"  # the other channels and their checks go on
+    assert session.wait_for_catalogue(5)
+    assert storage.threads == [memory_session.CATALOGUE_THREAD] * 2
+    second = session.turn()._retriever.retrieve("helper")
+    assert "catalogue" not in second.channels and len(storage.threads) == 2
+
+
+def test_a_turn_does_not_wait_behind_a_catalogue_refresh(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    started = time.monotonic()
+    again = session.turn()._retriever.retrieve("helper")
+    assert time.monotonic() - started < 2 and "not ready" in again.channels["catalogue"]
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+
+
+def test_catalogue_refreshes_coalesce_to_the_newest_wanted(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    for epoch in (4, 5, 6, 7, 8):
+        storage.epoch = epoch
+        session.turn()._retriever.retrieve("helper")
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue" and not fields.get("cursor")] == [3, 8]
+    assert session._catalogue.epoch == 8
+
+
+@pytest.mark.parametrize("pages", [1, 2])
+def test_a_refresh_for_a_retired_branch_stops_paging_and_is_never_published(workspace, pages):
+    stores: dict[str, _Gated] = {}
+    branch = ["main"]
+    session = MemorySession(policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False),
+                            storage_for=lambda scope: stores.setdefault(scope, _Gated([_record(scope[:6], "pkg/a.py", "helper", _sha(SOURCE))], pages=pages)), embedder_for=lambda: None,
+                            embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "m3", branch_of=lambda root: branch[0])
+    retired = session._current_scope().identity
+    session.turn()._retriever.retrieve("helper")
+    old = stores[retired]
+    assert old.entered.wait(5)
+    branch[0] = "other"
+    session._current_scope()
+    old.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert old.threads == [memory_session.CATALOGUE_THREAD], "the retired line's second page was asked for"
+    assert session._catalogue.identity != retired
+
+
+def test_an_older_refresh_never_replaces_a_newer_catalogue(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    storage.epoch = 4
+    session.repo_map(session._current_scope())  # the map reads epoch 4 itself, on this thread
+    assert session._catalogue.epoch == 4
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert session._catalogue.epoch == 4, "epoch 3's late refresh replaced epoch 4"
+
+
+def test_stopping_the_session_stops_a_catalogue_refresh_between_pages(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    session.stop()
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert storage.threads == [memory_session.CATALOGUE_THREAD] and session._catalogue.identity == ""
+    assert "not ready" in session.turn()._retriever.retrieve("helper").channels["catalogue"]  # a stopped session starts no refresh
+    assert session.wait_for_catalogue(1) and storage.threads == [memory_session.CATALOGUE_THREAD]
+
+
+@pytest.mark.parametrize("failure", [StorageRefusedError("EPOCH_EXPIRED"), StorageUnavailableError("C:\\Users\\someone\\private\\route.txt unreachable")])
+def test_a_catalogue_that_cannot_be_read_logs_only_its_code_and_the_next_turn_asks_again(workspace, caplog, failure):
+    class Failing(_Storage):
+        fail = True
+
+        def call(self, op, **fields):
+            if op == "catalogue" and self.fail:
+                raise failure
+            return super().call(op, **fields)
+
+    storage = Failing([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    with caplog.at_level("INFO", logger=memory_session.__name__):
+        assert session.turn()._retriever.retrieve("helper").state == "ok"
+        assert session.wait_for_catalogue(5)
+    assert getattr(failure, "code", type(failure).__name__) in caplog.text and "private" not in caplog.text
+    storage.fail = False
+    session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5) and session._catalogue.epoch == 3
+
+
+def test_a_ready_catalogue_gives_exactly_the_retrieval_the_turn_used_to_read_for_itself(workspace):
+    class Dated(_Storage):
+        def call(self, op, **fields):
+            reply = super().call(op, **fields)
+            if op == "catalogue":
+                reply["files"] = [{**item, "modified": 100 + index, "description": "import pkg.a"} for index, item in enumerate(reply["files"])]
+            return reply
+
+    records = [_record("x", "pkg/a.py", "helper", _sha(SOURCE)), _record("y", "notes.md", None, _sha("notes"), kind="file"), _record("z", "pkg/b.py", "Parser", _sha("b"))]
+    storage = Dated(records)
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
+    for asked in ({}, {"named_paths": ("pkg/a.py",)}, {"named_symbols": ("helper",)}):
+        ready = session.turn()._retriever.retrieve("helper parser", **asked)
+        inline = Retriever(storage, None).retrieve("helper parser", **asked)  # the catalogue read inside the turn, as before
+        assert ready == inline, asked
+        assert ready.channels["recency"] != "0 results"
 
 
 def test_a_file_too_large_to_index_is_still_listed_searched_and_named(workspace):
@@ -1187,6 +1334,7 @@ def test_the_map_reads_its_hashes_from_its_own_epoch_even_during_a_build(workspa
     storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=False)
     session = _session(workspace, storage)
     session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     storage.epoch = 4
     session.repo_map(session._current_scope())
     assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3, 4]

@@ -59,6 +59,7 @@ RETRY_SECONDS: Final = 30.0
 # During a build each publication is a new epoch and names barely change between them. A catalogue only suggests what to ask for, and every
 # record is then asked for at the retrieval's own epoch, so an older one can miss a new file but cannot make a record current.
 CATALOGUE_SECONDS: Final = 60.0
+CATALOGUE_THREAD: Final = "context-catalogue"  # reads one page per 256 files, so never on a turn's thread
 MAP_SECONDS: Final = 300.0  # the map sits in the cacheable prefix, so a build does not churn it
 _RECONCILE_ATTEMPTS: Final = 2
 _RECONCILE_WAIT_SECONDS: Final = 1.0
@@ -133,6 +134,23 @@ class _BranchPinned:
         return self._inner.call(op, **fields)
 
 
+class _RefreshCancelled(Exception):
+    """A catalogue refresh's line was retired, or its session stopped, between two pages."""
+
+
+class _Cancellable:
+    """A refresh's storage: once its line is retired it asks for nothing more."""
+
+    def __init__(self, inner: IndexStorage, cancelled: Callable[[], bool]) -> None:
+        self._inner = inner
+        self._cancelled = cancelled
+
+    def call(self, op: str, **fields: Any) -> dict[str, Any]:
+        if self._cancelled():
+            raise _RefreshCancelled
+        return self._inner.call(op, **fields)
+
+
 @dataclass
 class _Cached:
     identity: str = ""
@@ -180,6 +198,10 @@ class MemorySession:
         self._branch_answered = 0
         self._scope = self._new_scope(self._branch_of(policy.root))
         self._catalogue = _Cached()
+        self._catalogue_wanted: tuple[_Scope, int, bool] | None = None
+        self._catalogue_thread: threading.Thread | None = None
+        self._catalogue_idle = threading.Event()
+        self._catalogue_idle.set()
         self._map: _CachedMap | None = None
         self._listed: tuple[str, ...] | None = None
         self._unlisted = 0
@@ -202,6 +224,7 @@ class MemorySession:
         self.stop()
         if self._thread is not None:
             self._thread.join(10)
+        self._catalogue_idle.wait(10)  # a refresh stops at its next page
 
     def _on_branch(self, branch: str) -> Callable[[], bool]:
         return lambda: self._branch_of(self._policy.root) == branch
@@ -284,6 +307,8 @@ class MemorySession:
                     self._priority = []
                     if scope is self._scope:  # two branches at one commit read as one revision, so this must not vouch for the new line
                         self._indexed_revision, self._indexed_changes = worker.revision, changed
+                if outcome.epoch is not None:  # the next turn's suggestions, read now rather than when it asks
+                    self._catalogue_for(scope, outcome.epoch, True)
             elif outcome.state in {"paused", "held", "refused"} and not self._stop.is_set():
                 self._wake.wait(RETRY_SECONDS)
                 self._wake.set()
@@ -323,13 +348,50 @@ class MemorySession:
         decision, data = self._policy.read(path, purpose=FilePurpose.AUTOMATIC)
         return data if decision.allowed else None
 
-    def _catalogue_for(self, scope: _Scope, epoch: int, complete: bool) -> list[CatalogueFile]:
+    def _catalogue_for(self, scope: _Scope, epoch: int, complete: bool) -> list[CatalogueFile] | None:
+        """A turn's suggestions, or None. A turn never pages the catalogue or waits for it: without one it may use, it asks for one in
+        the background and goes without, and its retrieval says so."""
         cached = self._catalogue
         if cached.identity == scope.identity and (cached.epoch == epoch or (not complete and not cached.complete and self._clock() - cached.at < CATALOGUE_SECONDS)):
             return cached.files
-        files = read_catalogue(scope.storage, epoch)
-        self._catalogue = _Cached(scope.identity, epoch, self._clock(), files, complete)
-        return files
+        with self._lock:  # a stopped session's refresh asks for nothing: its storage refuses first
+            self._catalogue_wanted = (scope, epoch, complete)
+            if self._catalogue_thread is None:
+                self._catalogue_idle.clear()
+                self._catalogue_thread = threading.Thread(target=self._refresh_catalogues, name=CATALOGUE_THREAD, daemon=True)
+                self._catalogue_thread.start()
+        return None
+
+    def _refresh_catalogues(self) -> None:
+        """One read at a time; wants that arrive meanwhile collapse into the newest."""
+        while True:
+            with self._lock:
+                wanted, self._catalogue_wanted = self._catalogue_wanted, None
+                if wanted is None:
+                    self._catalogue_thread = None
+                    self._catalogue_idle.set()
+                    return
+            scope, epoch, complete = wanted
+            started = self._clock()
+            try:
+                files = read_catalogue(_Cancellable(scope.storage, lambda: self._stop.is_set() or scope is not self._scope), epoch)  # noqa: B023 - used before the next loop
+            except _RefreshCancelled:
+                continue
+            except Exception as exc:  # a turn's suggestions are optional; the next turn asks again
+                _LOG.info("context index catalogue not read: %s", getattr(exc, "code", type(exc).__name__))
+                continue
+            self._publish_catalogue(scope, epoch, started, files, complete)
+
+    def _publish_catalogue(self, scope: _Scope, epoch: int, at: float, files: list[CatalogueFile], complete: bool) -> None:
+        """Only the current line's, and never an older epoch over a newer one."""
+        with self._lock:
+            held = self._catalogue
+            if scope is self._scope and (held.identity != scope.identity or epoch >= held.epoch):
+                self._catalogue = _Cached(scope.identity, epoch, at, files, complete)
+
+    def wait_for_catalogue(self, timeout: float) -> bool:
+        """True once no catalogue read is wanted or running. For measurement and tests: a turn never waits for one."""
+        return self._catalogue_idle.wait(timeout)
 
     def turn(self, *, cancelled: Callable[[], bool] = lambda: False) -> MemoryTurn:
         self._policy.forget_ignore_files()
@@ -387,7 +449,7 @@ class MemorySession:
                 current = scope.storage.call("coverage").get("current")
                 if current:
                     catalogue = read_catalogue(scope.storage, current["epoch"])  # exactly this epoch: its hashes are what the symbols below are checked against
-                    self._catalogue = _Cached(scope.identity, current["epoch"], self._clock(), catalogue, bool(current["coverage"].get("complete")))  # the turn's retrieval needs the same pages
+                    self._publish_catalogue(scope, current["epoch"], self._clock(), catalogue, bool(current["coverage"].get("complete")))  # the turn's retrieval needs the same pages
                     cached = _CachedMap(scope.identity, self._clock(), seed_files(scope.storage, current["epoch"], catalogue), {item.path: item.file_hash for item in catalogue})
                     self._map = cached
                 elif cached is None:

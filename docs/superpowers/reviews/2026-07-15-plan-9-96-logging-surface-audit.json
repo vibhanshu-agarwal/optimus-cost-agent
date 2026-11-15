@@ -1297,6 +1297,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_session:MemorySession.__init__:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_turn_never_reads_the_catalogue_itself_and_says_when_its_suggestions_are_missing",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession._refresh_catalogues:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: logs only the route's refusal code or the exception's type name, never its text, a path or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_a_catalogue_that_cannot_be_read_logs_only_its_code_and_the_next_turn_asks_again",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession._refresh_catalogues:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_stopping_the_session_stops_a_catalogue_refresh_between_pages",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_session:open_session:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: the registry's and the workspace identity's own codes and fixed details, their probe diagnostics (names, counts, error numbers), or another error's type name only.",

@@ -385,6 +385,58 @@ def test_assembly_qualifies_only_with_twenty_completed_turns_dense_in_each_and_e
     assert _assembly_condition([], spread=True) is None
 
 
+def test_background_catalogue_reads_are_counted_apart_and_never_taken_from_a_turns_own_calls() -> None:
+    """Codex review 39: the session's background reads are reported apart, and no foreground call or time is moved out of a turn."""
+    from optimus.context.memory_session import CATALOGUE_THREAD
+    from tools.plan12_memory.m1_qualify import _assembly_condition
+
+    class Inner:
+        def call(self, op, **fields):
+            return {"op": op}
+
+    counting = m1_scale._CountingStorage(Inner(), threading.get_ident())
+    counting.call("catalogue", epoch=3)
+    for name in (CATALOGUE_THREAD, "context-index"):
+        reader = threading.Thread(target=counting.call, args=("catalogue",), kwargs={"epoch": 3}, name=name)
+        reader.start()
+        reader.join()
+    assert counting.calls == {"catalogue": 1} and counting.background == {"catalogue": 1}  # the worker's own read is neither
+    counting.calls.clear()  # what each measured turn does first
+    assert counting.background == {"catalogue": 1}
+
+    turns = [_assembly_turn() for _ in range(20)]
+    turns[0]["session_background"] = {"settled": True, "calls": 41, "seconds": 15.5}
+    turns[-1]["session_background"] = {"settled": False, "calls": 3, "seconds": 1.0}
+    condition = _assembly_condition(turns, spread=False)
+    assert condition is not None and condition["background_catalogue"] == {"sessions": 2, "calls": 44, "seconds": 16.5, "sessions_not_settled": 1}
+    assert condition["route_calls_max"] == 11  # unchanged by the background reads
+
+
+def test_an_unprimed_first_turn_is_each_in_its_own_session_and_its_background_read_finishes_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from tools.plan12_memory import m1_qualify
+
+    events: list[str] = []
+
+    class Session:
+        def __init__(self) -> None:
+            self.number = len([event for event in events if event == "open"])
+            events.append("open")
+
+        def wait_for_catalogue(self, seconds: float) -> bool:
+            events.append(f"settle {self.number}")
+            return True
+
+        def close(self) -> None:
+            events.append(f"close {self.number}")
+
+    monkeypatch.setattr(m1_qualify, "_session", lambda *args, **kwargs: Session())
+    monkeypatch.setattr(m1_qualify, "_turn_or_error", lambda session, counters, task, run_id: events.append(f"turn {session.number}") or {"task": task, "run_id": run_id})
+    turns = m1_qualify._first_turns_unprimed(tmp_path, None, "embedder", tmp_path, project="p", parser_version="v", rounds=2)
+    assert len(turns) == 2 * len(m1_qualify._LARGE_TASKS) and all(turn["session_background"]["settled"] for turn in turns)
+    assert events[:8] == ["open", "turn 0", "settle 0", "close 0", "open", "turn 1", "settle 1", "close 1"]
+    assert len({turn["run_id"] for turn in turns}) == len(turns)
+
+
 def test_a_batch_that_crosses_the_builds_end_keeps_its_idle_turns_but_never_counts_them() -> None:
     """Codex review 32: 16 build turns, then a late batch whose first turn ends before the worker's finish and whose other three end after it."""
     from tools.plan12_memory.m1_qualify import _assembly_condition, mark_during_build

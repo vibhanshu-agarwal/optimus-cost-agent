@@ -32,7 +32,7 @@ from context_engine.index_worker import IndexWorker
 from optimus.acp import local_infra
 from optimus.acp.memory_setup import run_setup
 from optimus.config.gateway import OptimusGatewaySettings
-from optimus.context.memory_session import PACK_MAX_TOKENS, MemorySession
+from optimus.context.memory_session import CATALOGUE_THREAD, PACK_MAX_TOKENS, MemorySession
 from optimus.context.memory_workspace import FastembedEmbedder, GatewayIndexStorage, WorkspaceIndexSource, current_branch, index_scope
 from optimus.context.project_registry import ProjectRegistration
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
@@ -528,15 +528,25 @@ def _bytes_estimate(text: str) -> int:
 
 
 class _CountingStorage:
-    """The real storage port, counting one thread's calls and their time; the worker's own calls go uncounted."""
+    """The real storage port, counting one thread's calls and their time; the worker's own calls go uncounted. The session's background
+    catalogue reads are counted apart, in `background`, and a turn's own count never clears them."""
 
     def __init__(self, inner: Any, thread: int) -> None:
         self._inner = inner
         self._thread = thread
         self.calls: dict[str, int] = {}
         self.seconds = 0.0
+        self.background: dict[str, int] = {}
+        self.background_seconds = 0.0
 
     def call(self, op: str, **fields: Any) -> dict[str, Any]:
+        if threading.current_thread().name == CATALOGUE_THREAD:
+            self.background[op] = self.background.get(op, 0) + 1
+            started = time.perf_counter()
+            try:
+                return self._inner.call(op, **fields)
+            finally:
+                self.background_seconds += time.perf_counter() - started
         if threading.get_ident() != self._thread:
             return self._inner.call(op, **fields)
         label = f"{op}:{fields['mode']}" if op == "query" else op

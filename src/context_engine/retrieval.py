@@ -166,10 +166,12 @@ def seed_files(storage: IndexStorage, epoch: int, catalogue: Sequence[CatalogueF
 
 
 class Retriever:
-    def __init__(self, storage: IndexStorage, embedder: Embedder | None, *, catalogue: Callable[[int, bool], Sequence[CatalogueFile]] | None = None, cancelled: Callable[[], bool] = lambda: False) -> None:
+    def __init__(self, storage: IndexStorage, embedder: Embedder | None, *, catalogue: Callable[[int, bool], Sequence[CatalogueFile] | None] | None = None,
+                 cancelled: Callable[[], bool] = lambda: False) -> None:
         self._storage = storage
         self._embedder = embedder
-        self._catalogue = catalogue or (lambda epoch, _complete: read_catalogue(storage, epoch))  # told whether the generation is complete
+        # Told whether the generation is complete. None means none is ready for it: recency and neighbours are then not suggested.
+        self._catalogue = catalogue or (lambda epoch, _complete: read_catalogue(storage, epoch))
         self._cancelled = cancelled
 
     def retrieve(self, text: str, *, named_paths: Sequence[str] = (), named_symbols: Sequence[str] = (), memory: Sequence[Hit] = ()) -> Retrieval:
@@ -192,6 +194,13 @@ class Retriever:
         channels: dict[str, list[Hit]] = {"memory": list(memory)}
         report: dict[str, str] = {"memory": f"{len(memory)} results" if memory else "no authorized source"}
 
+        def catalogue() -> Sequence[CatalogueFile]:
+            files = self._catalogue(epoch, complete)
+            if files is None:
+                report["catalogue"] = "not ready: it is being read in the background, so recency and import neighbours were not suggested"
+                return ()
+            return files
+
         def run(name: str, ask: Callable[[], list[Hit]]) -> None:
             if self._cancelled():
                 report[name] = "not asked: the turn was cancelled"
@@ -211,8 +220,8 @@ class Retriever:
             report["dense"] = "no embedding artifact"
         else:
             run("dense", lambda: self._dense(text, epoch))
-        run("structure", lambda: self._structure(named_paths, named_symbols, epoch, complete))
-        run("recency", lambda: self._recent(epoch, complete))
+        run("structure", lambda: self._structure(named_paths, named_symbols, epoch, catalogue))
+        run("recency", lambda: self._recent(epoch, catalogue))
         ranked = fuse(channels, named=named_paths)
         return Retrieval("ok", epoch, current["coverage"], current.get("revision"), ranked, report)
 
@@ -231,7 +240,7 @@ class Retriever:
             raise StorageUnavailableError("the embedder failed") from exc
         return self._ask(epoch, mode="dense", vector=base64.b64encode(embedded).decode("ascii"), k=CHANNEL_K)
 
-    def _structure(self, named_paths: Sequence[str], named_symbols: Sequence[str], epoch: int, complete: bool) -> list[Hit]:
+    def _structure(self, named_paths: Sequence[str], named_symbols: Sequence[str], epoch: int, catalogue: Callable[[], Sequence[CatalogueFile]]) -> list[Hit]:
         """Only what was named or observed: the named files, the named symbols, then what the named files import or are imported by."""
         hits: list[Hit] = []
         for symbol in [name for name in named_symbols if len(name) <= MAX_SYMBOL_CHARS][:MAX_NAMED]:
@@ -240,13 +249,13 @@ class Retriever:
         for path in chosen:
             hits.extend(self._ask(epoch, mode="path", path_id=path_id(path), k=CHANNEL_K))
         if chosen:
-            files = [MapFile(item.path, imports_of(item.description)) for item in self._catalogue(epoch, complete)]
+            files = [MapFile(item.path, imports_of(item.description)) for item in catalogue()]
             for path in neighbours(files, chosen)[:MAX_NAMED]:
                 hits.extend(self._ask(epoch, mode="path", path_id=path_id(path), k=MAX_NAMED, kinds=["file", "symbol"]))
         return hits
 
-    def _recent(self, epoch: int, complete: bool) -> list[Hit]:
-        dated = [item for item in self._catalogue(epoch, complete) if item.modified is not None]
+    def _recent(self, epoch: int, catalogue: Callable[[], Sequence[CatalogueFile]]) -> list[Hit]:
+        dated = [item for item in catalogue() if item.modified is not None]
         dated.sort(key=lambda item: (-(item.modified or 0), item.path))
         hits: list[Hit] = []
         for item in dated[:_RECENT_FILES]:

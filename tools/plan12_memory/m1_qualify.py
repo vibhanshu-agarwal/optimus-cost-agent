@@ -538,6 +538,7 @@ def _counted(settings: Any) -> tuple[list[scale._CountingStorage], Callable[[str
 
 def _calibrate_assembly(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str, during_build: list[dict[str, Any]], qualifying: bool = False) -> dict[str, Any]:
     """Calibration unless the run is configured to qualify: limits are approved from a calibration and qualified on a later run, never the same one."""
+    unprimed = _first_turns_unprimed(root, settings, embedder, work, project=project, parser_version=parser_version)  # before any session here has read the catalogue
     counters, storage_for = _counted(settings)
     session = _session(root, embedder, work, project=project, parser_version=parser_version, storage_for=storage_for)
     session.start()
@@ -555,9 +556,11 @@ def _calibrate_assembly(root: Path, settings: Any, embedder: Any, work: Path, *,
         map_text = session.repo_map(scope)
         refresh = {"wall_ms": round((time.perf_counter() - started) * 1000, 1), "route_calls": sum(sum(counter.calls.values()) for counter in counters), "chars": len(map_text)}
         idle = [_turn_or_error(session, counters, task, f"cal-{round_}-{number}") for round_ in range(5) for number, task in enumerate(_LARGE_TASKS)]
+        idle[-1]["session_background"] = _session_background(session, counters)
         session_edit = session_edit_visibility(session, root, scope.storage)
         state = "QUALIFICATION: judged against targets.json assembly_corpus_b" if qualifying else "CALIBRATION: never a qualification result"
         return {"state": state, "repo_map_on_a_miss": refresh, "session_edit": session_edit, "idle": _assembly_condition(idle, spread=False),
+                "first_turn_idle_unprimed": _assembly_condition(unprimed, spread=False),
                 "during_build": _assembly_condition(during_build, spread=True), "coverage": session.status()}
     finally:
         close_and_confirm_stopped(session)
@@ -607,9 +610,32 @@ def _assembly_during_build(root: Path, settings: Any, embedder: Any, work: Path,
             at = progress()
             turn = _turn_or_error(session, counters, task, f"build-{at}-{number}")
             turns.append({**turn, "build_progress": at, "ended_at": time.perf_counter()})
+        turns[-1]["session_background"] = _session_background(session, counters)
         return turns
     finally:
         session.close()
+
+
+def _first_turns_unprimed(root: Path, settings: Any, embedder: Any, work: Path, *, project: str, parser_version: str, rounds: int = 5) -> list[dict[str, Any]]:
+    """A person's first turn in a new session at idle: nothing has read the catalogue for it yet. Each turn is its own session, which
+    runs no worker, and its background read is let finish and counted before the next one starts."""
+    turns = []
+    for round_ in range(rounds):
+        for number, task in enumerate(_LARGE_TASKS):
+            counters, storage_for = _counted(settings)
+            session = _session(root, embedder, work, project=project, parser_version=parser_version, storage_for=storage_for)
+            session._embedder = embedder  # start() would also start a worker
+            try:
+                turns.append({**_turn_or_error(session, counters, task, f"first-{round_}-{number}"), "session_background": _session_background(session, counters)})
+            finally:
+                session.close()
+    return turns
+
+
+def _session_background(session: MemorySession, counters: list[scale._CountingStorage], *, seconds: float = 300) -> dict[str, Any]:
+    """What the session's background catalogue reads cost, counted apart from every turn's own calls, once they have finished."""
+    settled = session.wait_for_catalogue(seconds)
+    return {"settled": settled, "calls": sum(sum(counter.background.values()) for counter in counters), "seconds": round(sum(counter.background_seconds for counter in counters), 3)}
 
 
 # A quoted absolute path is replaced whole, spaces and all, before any unquoted one: a drive or UNC path, its separators doubled or not, or a
@@ -651,6 +677,10 @@ def _assembly_condition(turns: list[dict[str, Any]], *, spread: bool) -> dict[st
     valid = [turn for turn in counted if "error" not in turn]
     errors = [turn["error"] for turn in counted if "error" in turn]
     out: dict[str, Any] = {**scale._assembly_summary(valid), **_dense_in_every_turn(counted), "errors": errors, "per_turn": turns}
+    sessions = [turn["session_background"] for turn in turns if "session_background" in turn]
+    if sessions:  # reported apart; no turn's own calls or time are moved into it
+        out["background_catalogue"] = {"sessions": len(sessions), "calls": sum(item["calls"] for item in sessions), "seconds": round(sum(item["seconds"] for item in sessions), 3),
+                                       "sessions_not_settled": sum(not item["settled"] for item in sessions)}
     if spread:
         out["turns_after_the_build_ended"] = len(turns) - len(counted)
     short: list[str] = []

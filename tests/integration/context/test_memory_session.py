@@ -215,6 +215,16 @@ def test_a_partial_build_is_usable_and_says_so_and_a_turn_does_not_wait_for_the_
     _ready(session)
 
 
+def test_a_complete_pass_reads_its_catalogue_before_any_turn_asks_for_it(root: Path, sessions: _Sessions) -> None:
+    """Review 39: a turn never pages the catalogue itself, so the session reads the one each complete pass publishes."""
+    session = sessions.open(root)
+    _ready(session)
+    _until(lambda: session._catalogue.identity == session._current_scope().identity, seconds=10)
+    assert session.wait_for_catalogue(30)
+    retrieval = session.turn()._retriever.retrieve("how does first_function work")
+    assert retrieval.state == "ok" and "catalogue" not in retrieval.channels and retrieval.channels["recency"] != "0 results"
+
+
 def test_an_edit_is_reconciled_and_the_old_body_is_never_shown(root: Path, sessions: _Sessions) -> None:
     session = sessions.open(root)
     _ready(session)
