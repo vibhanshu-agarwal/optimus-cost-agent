@@ -13,6 +13,7 @@ from context_engine.retrieval import Hit, Ranked
 from tools.plan12_memory import m1_evaluate as ev
 from tools.plan12_memory import m1_scale
 from tools.plan12_memory.contracts import GoldenCase
+from tools.plan12_memory.evaluate import validate_cases
 
 
 def _case(*requirements: tuple[str, ...]) -> GoldenCase:
@@ -229,6 +230,7 @@ def test_every_sealed_gold_loads_every_case_through_the_case_schema() -> None:
     for digest in sealed:
         payload = json.loads((golds[digest] / "localization.json").read_text(encoding="utf-8"))
         assert len(ev.load_cases(golds[digest], ["train", "development", "held_out"])) == len(payload["cases"]) > 0
+        assert validate_cases(golds[digest]).errors == ()  # the whole directory, split manifest included (Codex review 44 item 3)
 
 
 def _sealed_fresh(tmp_path: Path, cases: list[object]) -> None:

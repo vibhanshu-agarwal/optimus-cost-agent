@@ -337,6 +337,7 @@ class SplitManifest(_Record):
     families: dict[Literal["train", "development", "held_out"], tuple[Id, ...]]
     expected_family_counts: dict[Literal["lifecycle", "localization", "accounting"], int]
     chronological_kinds: tuple[Literal["lifecycle", "localization", "accounting"], ...]
+    deduplicated_prs: dict[str, str] = Field(default_factory=dict)  # PR number -> why it was left out; the sealed fresh2 manifest records #30
 
 
 class ValidationReport(_Record):
