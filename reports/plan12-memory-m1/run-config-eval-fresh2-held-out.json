@@ -1,0 +1,18 @@
+{
+  "label": "plan12.10-retrieval-fresh2-held-out",
+  "authorization": "Codex review 43 on #469 (comment 6890283995): RELEASED once at 6f7b2a3, --splits held_out; Release A bounds (1,024 MiB container, 512 MiB maxmemory), ports 6392/8772, no paid calls. The first attempt (review 42 release at 6f2a25c) failed at loading before evaluation; the opening is not spent (review 43 item 1).",
+  "container": "p1210-eval-redis",
+  "volume": "p1210-eval-data",
+  "port": 6392,
+  "gateway_port": 8772,
+  "maxmemory_mb": 512,
+  "work_dir": "tmp/plan12-m1-eval",
+  "artifact_cache": "tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+  "embedding_threads": 2,
+  "fixed_route": "anthropic/claude-haiku-5.5",
+  "gold": {
+    "fresh2": "tests/fixtures/plan12_memory_m1_fresh2"
+  },
+  "held_out_gold": "fresh2",
+  "out": "reports/plan12-memory-m1/retrieval-fresh2-held-out.json"
+}
