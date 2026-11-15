@@ -590,3 +590,18 @@ def test_a_failed_acpx_start_or_turn_keeps_its_own_output_so_a_stopped_run_recor
     assert turns.failure is not None and "no launch approval found" in turns.failure
     assert turns.turns(1)["failures"] == 1
     assert turns.failure == '{"stopReason":"cancelled"}turn stderr'
+
+
+def test_the_assembly_phase_reads_its_head_before_provisioning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Everything between provisioning and the cleanup block can leak the container, volume and Gateway when it fails (Codex review 43 item 2)."""
+
+    def reached(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("provisioned before the head was read")
+
+    def no_git(command: list[str], **_kwargs: object) -> None:
+        raise subprocess.CalledProcessError(128, command)
+
+    monkeypatch.setattr(m1_scale, "_provision", reached)
+    monkeypatch.setattr(m1_scale.subprocess, "run", no_git)
+    with pytest.raises(subprocess.CalledProcessError):
+        m1_scale.run_assembly({"work_dir": "work"}, tmp_path)

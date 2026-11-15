@@ -586,8 +586,8 @@ def _assembly_summary(turns: Sequence[dict[str, Any]]) -> dict[str, Any]:
 def run_assembly(config: dict[str, Any], repository: Path) -> dict[str, Any]:
     """A real session on the real artifact and route: what one turn's context costs while the worker builds, and after. No model is called."""
     work = repository / config["work_dir"] / "assembly"
+    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()  # before provisioning: a failure here leaves nothing running
     root, memory, _password, client, gateway, settings, settings_file = _provision(config, repository, work)
-    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     report: dict[str, Any] = {"schema": "plan12-memory-m1.assembly.v1", "phase": "assembly", "head": f"hex:{head}", "config": {k: v for k, v in config.items() if k != "artifact_cache"}, "estimator": "utf8 bytes / 4",
                               "pack_max_tokens": PACK_MAX_TOKENS, "tasks": list(ASSEMBLY_TASKS)}
     report["host"] = {"cpus": psutil.cpu_count(), "memory_gb": round(psutil.virtual_memory().total / 2**30, 1), "python": sys.version.split()[0], "platform": sys.platform}
