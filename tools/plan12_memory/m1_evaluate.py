@@ -345,19 +345,19 @@ def run(config: Mapping[str, Any], repository: Path, splits: Sequence[str]) -> d
     if "held_out" in splits and set(gold) != {selected}:  # every configured set is loaded, so a held-out run may configure only the sealed one
         raise HeldOutRefused(f"held-out refused: a held-out run loads only its sealed gold {selected!r}, but the config names {sorted(gold)}")
     refuse_unapproved_held_out(splits, targets, gold[selected])
-    work = repository / config["work_dir"]
-    root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)
-    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
-    cases = [(name, case) for name, directory in gold.items() for case in load_cases(directory, splits)]
+    cases = [(name, case) for name, directory in gold.items() for case in load_cases(directory, splits)]  # before provisioning: a gold that fails to load leaves nothing running
     cases.sort(key=lambda pair: pair[1].cutoff)
-    embedder = CachedEmbedder(FastembedEmbedder(root, memory.embedding, directory=settings_file["embedding"]["artifact_directory"], threads=config["embedding_threads"]), work / "embedding-cache.sqlite")
+    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     route = load_registry(repository / "src/optimus_model_policy/defaults.yaml").policy.models[config["fixed_route"]].route
     budget = min(int(route.endpoints[0].context_window_tokens * PACK_SHARE), PACK_MAX_TOKENS)
     report: dict[str, Any] = {"schema": "plan12-memory-m1.retrieval.v1", "head": f"hex:{head}", "splits": list(splits), "k": K, "estimator": "one token per UTF-8 byte", "budget_tokens": budget, "fixed_route": config["fixed_route"],
                               "gold": {name: {"directory": str(directory.relative_to(repository)).replace("\\", "/"), "sha256": gold_digest(directory)} for name, directory in gold.items()},
                               "limits": ["Recency sees commit-time file dates in these copies, so it is noise here, not evidence of its value.", "A cutoff tree's index holds only that tree, so future leakage is excluded by construction."], "cases": {}, "trees": []}
     previous: m1_scale._Index | None = None
-    try:
+    work = repository / config["work_dir"]
+    root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)
+    try:  # from here every failure still removes what was provisioned
+        embedder = CachedEmbedder(FastembedEmbedder(root, memory.embedding, directory=settings_file["embedding"]["artifact_directory"], threads=config["embedding_threads"]), work / "embedding-cache.sqlite")
         report["wrong_branch_control"] = wrong_branch_control(work, settings, embedder)
         snapshots: dict[str, list[tuple[str, GoldenCase]]] = {}
         for name, case in cases:

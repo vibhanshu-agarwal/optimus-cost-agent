@@ -215,3 +215,67 @@ def test_a_cutoff_tree_holds_exactly_that_commit_even_past_the_windows_path_limi
     assert subprocess.run(["git", "-C", str(target), "rev-parse", "--abbrev-ref", "HEAD"], check=True, capture_output=True, text=True).stdout.strip() == "cutoff"
     ev.materialize(source, first, target, branch="cutoff")  # a second run replaces it
 
+
+
+REPOSITORY = Path(__file__).resolve().parents[3]
+
+
+def test_every_sealed_gold_loads_every_case_through_the_case_schema() -> None:
+    """A seal binds bytes, not loadability: the fresh2 gold was sealed with a provenance field the schema refused, and its released run failed at loading."""
+    targets = json.loads((REPOSITORY / "reports/plan12-memory-m1/targets.json").read_text(encoding="utf-8"))
+    sealed = {section["sealed_gold_sha256"] for key, section in targets.items() if key.startswith("retrieval") and isinstance(section, dict) and "sealed_gold_sha256" in section}
+    golds = {ev.gold_digest(directory): directory for directory in (REPOSITORY / "tests/fixtures").glob("plan12_memory_m1*") if (directory / "localization.json").exists()}
+    assert len(sealed) == 3 and sealed <= set(golds)
+    for digest in sealed:
+        payload = json.loads((golds[digest] / "localization.json").read_text(encoding="utf-8"))
+        assert len(ev.load_cases(golds[digest], ["train", "development", "held_out"])) == len(payload["cases"]) > 0
+
+
+def _sealed_fresh(tmp_path: Path, cases: list[object]) -> None:
+    (tmp_path / "fresh").mkdir()
+    (tmp_path / "fresh" / "localization.json").write_text(json.dumps({"cases": cases}), encoding="utf-8")
+    (tmp_path / "reports/plan12-memory-m1").mkdir(parents=True)
+    sealed = {"state": "APPROVED", "limits": [{"metric": "m", "limit": 9}], "sealed_gold_sha256": ev.gold_digest(tmp_path / "fresh")}
+    (tmp_path / "reports/plan12-memory-m1/targets.json").write_text(json.dumps({"retrieval_fresh": sealed}), encoding="utf-8")
+
+
+def test_a_gold_that_fails_to_load_provisions_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    case = _case(("path:a.py",)).model_dump(mode="json", by_alias=True) | {"split": "held_out"}
+    case["provenance"] = case["provenance"] | {"unknown": "x"}
+    _sealed_fresh(tmp_path, [case])
+
+    def reached(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("provisioned before the gold loaded")
+
+    monkeypatch.setattr(m1_scale, "_provision", reached)
+    with pytest.raises(ValueError, match="unknown"):  # pydantic's ValidationError is a ValueError
+        ev.run({"gold": {"fresh": "fresh"}, "held_out_gold": "fresh", "work_dir": "work", "fixed_route": "r"}, tmp_path, ["held_out"])
+
+
+def test_a_failure_after_provisioning_still_removes_the_container_volume_and_gateway(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    _sealed_fresh(tmp_path, [_case(("path:a.py",)).model_dump(mode="json", by_alias=True) | {"split": "held_out"}])
+    closed: list[str] = []
+    client = SimpleNamespace(close=lambda: closed.append("client"))
+    gateway = SimpleNamespace(kill=lambda: closed.append("gateway"), wait=lambda _timeout: 0)
+    memory = SimpleNamespace(embedding=None)
+    monkeypatch.setattr(m1_scale, "_provision", lambda *_a, **_k: (tmp_path, memory, "", client, gateway, None, {"embedding": {"artifact_directory": "d"}}))
+    route = SimpleNamespace(endpoints=[SimpleNamespace(context_window_tokens=100_000)])
+    monkeypatch.setattr(ev, "load_registry", lambda _path: SimpleNamespace(policy=SimpleNamespace(models={"r": SimpleNamespace(route=route)})))
+
+    def no_model(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("model load failed")
+
+    monkeypatch.setattr(ev, "FastembedEmbedder", no_model)
+    commands: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "abc\n", "")
+
+    monkeypatch.setattr(ev.subprocess, "run", run)
+    with pytest.raises(RuntimeError, match="model load failed"):
+        ev.run({"gold": {"fresh": "fresh"}, "held_out_gold": "fresh", "work_dir": "work", "fixed_route": "r", "container": "p1210-c", "volume": "p1210-v", "embedding_threads": 2}, tmp_path, ["held_out"])
+    assert closed == ["client", "gateway"]
+    assert ["docker", "rm", "-f", "p1210-c"] in commands and ["docker", "volume", "rm", "-f", "p1210-v"] in commands

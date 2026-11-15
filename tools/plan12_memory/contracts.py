@@ -42,6 +42,7 @@ class Provenance(_Record):
     drafted_by: Id
     verified_by: Id | None
     source: str = Field(min_length=1)
+    holdout: str | None = None  # how a held-out set was held out; the sealed fresh2 gold says "historical, not forward-time"
 
 
 class ExpectedSavings(_Record):
