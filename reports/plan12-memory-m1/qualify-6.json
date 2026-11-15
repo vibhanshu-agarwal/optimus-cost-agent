@@ -2707,7 +2707,7 @@
    "4 during-build turns at build progress 0.0, just after the first file was visible, packed nothing: the index had nothing matching yet. They are counted in the p95 as measured.",
    "Background catalogue reads, with no ceiling: idle 41 calls, 17.178 s over 1 sessions; during_build 185 calls, 83.826 s over 5 sessions; first_turn_idle_unprimed 820 calls, 273.664 s over 20 sessions. They run on the context-catalogue thread and are not counted in any turn.",
    "Unprimed first turns took 3 foreground calls (coverage, dense, lexical) and packed without recency or import-neighbour suggestions, which wait for the background catalogue; the turn records that in its report. Primed idle turns took 11 calls.",
-   "The repo-map refresh on a miss took 90 calls and 18087.8 ms idle, within its reported-apart limits; the during-build catalogue re-reads above are the turn's retrieval, not that refresh.",
+   "The repo-map refresh on a miss took 90 foreground calls and 18087.8 ms idle, within its reported-apart limits. During-build catalogue reads ran separately in the background and are reported above.",
    "The first acpx turn took 17714.734 ms against an idle p50 of 9408.053 ms: the stub agent's start, not the index.",
    "Attempt 5's assembly misses, attempt 4's session-edit miss, attempts 2 (INTERRUPTED) and 3 (STOPPED_BEFORE_BUILD) and Release B's misses are retained in their own reports."
   ]
