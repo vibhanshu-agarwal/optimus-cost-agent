@@ -1,0 +1,363 @@
+{
+ "before_crash": {
+  "ack_p50_ms": 971.291,
+  "ack_p95_ms": 1182.715,
+  "acknowledged": 20,
+  "complete": true,
+  "errors": {},
+  "expected": 20,
+  "projected": 20,
+  "projection_p50_ms": 36.059,
+  "projection_p95_ms": 50.17,
+  "refused_oom": 0,
+  "unconfirmed": 0,
+  "unfinished_clients": 0,
+  "unprojected": 0
+ },
+ "bounds": {
+  "concurrency": "four concurrent clients through the real route, served by its two workers and queue of eight",
+  "disk_mb": 8192,
+  "items": 125000,
+  "items_why": "the approved corpus B's real records, rounded up",
+  "maxmemory_mb": 4096,
+  "must_be_zero": [
+   "INDEX_BUSY responses at this nominal load",
+   "lost items",
+   "conflicting items",
+   "unacknowledged items"
+  ],
+  "physical_ram_mb": {
+   "limit": 4608,
+   "why": "the container's own limit: maxmemory plus 512 MB of headroom"
+  },
+  "records": "production adapters and real records",
+  "reserve": {
+   "enforcement": "Nothing in the product enforces it. The run fails if used memory exceeds 3072 MB.",
+   "mb": 1024
+  },
+  "unchanged_from_the_first_probe": {
+   "ack_latency_p95_ms": 1500,
+   "logical_purge_seconds": 1,
+   "physical_erasure_seconds": 120,
+   "projection_latency_p95_ms": 250,
+   "restart_to_usable_seconds": 60
+  },
+  "vector_dimensions": 384
+ },
+ "burst": {
+  "ack_p50_ms": 972.45,
+  "ack_p95_ms": 978.922,
+  "acknowledged": 400,
+  "complete": true,
+  "errors": {},
+  "expected": 400,
+  "projected": 400,
+  "projection_p50_ms": 35.564,
+  "projection_p95_ms": 43.367,
+  "refused_oom": 0,
+  "unconfirmed": 0,
+  "unfinished_clients": 0,
+  "unprojected": 0
+ },
+ "checks": {
+  "ack_p95_within": true,
+  "items_at_least_target": true,
+  "no_busy_at_nominal": true,
+  "no_errors_at_nominal": true,
+  "no_unconfirmed_at_nominal": true,
+  "no_unprojected_at_nominal": true,
+  "nominal_complete": true,
+  "nothing_acknowledged_lost_or_conflicting_after_crash": true,
+  "projection_p95_within": true,
+  "rewrite_overlap_proven": true
+ },
+ "crash": {
+  "acknowledged_after": {
+   "acknowledged": 1632,
+   "conflicting": 0,
+   "missing": 0
+  },
+  "ensure_state": "ready",
+  "repair": {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 10255,
+    "files_total": 10255,
+    "parsed_loc": {
+     "java": 1438916,
+     "markdown": 121476,
+     "python": 499,
+     "text": 5788
+    },
+    "records": 122876,
+    "unsupported": 1816
+   },
+   "records_written": 0,
+   "seconds": 204.9,
+   "state": "complete"
+  },
+  "same_publication": true,
+  "seconds_until_usable": 8.529,
+  "within": true
+ },
+ "during_aof_rewrite": {
+  "ack_p50_ms": 973.289,
+  "ack_p95_ms": 981.398,
+  "acknowledged": 400,
+  "complete": true,
+  "errors": {},
+  "expected": 400,
+  "projected": 400,
+  "projection_p50_ms": 35.377,
+  "projection_p95_ms": 45.072,
+  "refused_oom": 0,
+  "rewrite": {
+   "acknowledged_while_running": 8,
+   "last_status": "ok",
+   "overlap_proven": true,
+   "seconds": 2.637,
+   "seen_running": true
+  },
+  "unconfirmed": 0,
+  "unfinished_clients": 0,
+  "unprojected": 0
+ },
+ "head": "hex:f38d2a4cf61e5dbded28c1936e30e256da44b5dd",
+ "items_target": 125000,
+ "limits": [
+  "A prototype append is not the production Gate, notice or erasure workflow, which are M3's.",
+  "One instance: the topology stays provisional if a bound fails.",
+  "The user k2-admin exists for this run only, for WAITAOF, rewrites and memory changes; the index itself ran as its least-privilege user.",
+  "Slow persistence is appendfsync always; the disk itself was not throttled."
+ ],
+ "noeviction": {
+  "appends_refused_while_full": {
+   "refused_by_the_ceiling": 12,
+   "tried": 12
+  },
+  "canaries_after_room": {
+   "ack_p50_ms": 974.763,
+   "ack_p95_ms": 1048.143,
+   "acknowledged": 12,
+   "complete": true,
+   "errors": {},
+   "expected": 12,
+   "projected": 12,
+   "projection_p50_ms": 33.244,
+   "projection_p95_ms": 37.094,
+   "refused_oom": 0,
+   "unconfirmed": 0,
+   "unfinished_clients": 0,
+   "unprojected": 0
+  },
+  "no_keys_evicted": true,
+  "oom_refusal_seen": true,
+  "readable_while_full": true,
+  "route_while_full": {
+   "ack_p50_ms": null,
+   "ack_p95_ms": null,
+   "acknowledged": 0,
+   "complete": false,
+   "errors": {
+    "project:StorageUnavailableError": 12
+   },
+   "expected": 12,
+   "projected": 0,
+   "projection_p50_ms": null,
+   "projection_p95_ms": null,
+   "refused_oom": 12,
+   "unconfirmed": 0,
+   "unfinished_clients": 0,
+   "unprojected": 12
+  }
+ },
+ "nominal": {
+  "ack_p50_ms": 922.215,
+  "ack_p95_ms": 928.625,
+  "acknowledged": 400,
+  "complete": true,
+  "errors": {},
+  "expected": 400,
+  "projected": 400,
+  "projection_p50_ms": 35.049,
+  "projection_p95_ms": 44.474,
+  "refused_oom": 0,
+  "unconfirmed": 0,
+  "unfinished_clients": 0,
+  "unprojected": 0
+ },
+ "purge": {
+  "answer_after_first_step": "NOT_PUBLISHED",
+  "denied_after_first_step": true,
+  "logical_purge_seconds": 0.014,
+  "logical_within": true,
+  "marker_seen_on_disk": true,
+  "marker_sha256": "hex:6aa9f7b6032ca35b194408f03fde452ab6d8a8ca2f901ad0c9147437fa846e9b",
+  "physical_erasure_seconds": 8.112,
+  "physical_within": true,
+  "route_answer": "SCOPE_UNKNOWN",
+  "route_denies_after_drop": true,
+  "seconds_until_seen": 0.905,
+  "whole_drop_seconds": 2.049
+ },
+ "rdb_save_seconds": 2.516,
+ "real_records_indexed": 153471,
+ "resources": {
+  "k2_disk_within": true,
+  "peaks_by_phase": {
+   "index": {
+    "container_memory_mb": 1076.4,
+    "disk_mb": 871.2,
+    "failed_samples": 0,
+    "used_memory_mb": 1053.2
+   },
+   "k2": {
+    "container_memory_mb": 1876.3,
+    "disk_mb": 1032.5,
+    "failed_samples": 0,
+    "used_memory_mb": 1053.2
+   }
+  },
+  "physical_within": true,
+  "used_within_limit": true
+ },
+ "restart": {
+  "acknowledged_after": {
+   "acknowledged": 1612,
+   "conflicting": 0,
+   "missing": 0
+  },
+  "command_succeeded": true,
+  "same_publication": true,
+  "seconds_until_usable": 10.5,
+  "within": true
+ },
+ "schema": "plan12-memory-m1.k2.v2",
+ "slow_persistence_appendfsync_always": {
+  "ack_p50_ms": 2.26,
+  "ack_p95_ms": 2.983,
+  "acknowledged": 400,
+  "complete": true,
+  "errors": {},
+  "expected": 400,
+  "projected": 400,
+  "projection_p50_ms": 37.255,
+  "projection_p95_ms": 44.078,
+  "refused_oom": 0,
+  "unconfirmed": 0,
+  "unfinished_clients": 0,
+  "unprojected": 0
+ },
+ "verdict": {
+  "state": "Every K2 bound met, and the during-AOF-rewrite phase is PROVEN this time (attempt 4's NOT PROVEN is retained). Zero lost, conflicting or unacknowledged items across restart and crash. At the ceiling writes were refused and reads kept answering.",
+  "limits": [
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 1500,
+    "measured": 1182.715,
+    "met": true,
+    "metric": "ack latency p95, ms, worst nominal phase"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 250,
+    "measured": 50.17,
+    "met": true,
+    "metric": "projection latency p95, ms, worst nominal phase"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 250,
+    "measured": 44.078,
+    "met": true,
+    "metric": "projection latency p95 under slow persistence (appendfsync always), ms"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 8192,
+    "measured": 1032.5,
+    "met": true,
+    "metric": "disk at its peak during K2, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 60,
+    "measured": 10.5,
+    "met": true,
+    "metric": "restart to usable, seconds"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 60,
+    "measured": 8.529,
+    "met": true,
+    "metric": "crash to usable, seconds"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 1,
+    "measured": 0.014,
+    "met": true,
+    "metric": "logical purge, seconds, the first refusal after the first drop step",
+    "note": "The route refused after the first step; the whole drop took 2.049 s and is reported apart."
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 120,
+    "measured": 8.112,
+    "met": true,
+    "metric": "physical erasure across AOF and RDB, seconds"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 3072,
+    "measured": 1053.2,
+    "met": true,
+    "metric": "Redis used memory, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "k2",
+    "limit": 4608,
+    "measured": 1876.3,
+    "met": true,
+    "metric": "container memory, MB"
+   }
+  ],
+  "must_be_zero": {
+   "ack_p95_within": true,
+   "items_at_least_target": true,
+   "no_busy_at_nominal": true,
+   "no_errors_at_nominal": true,
+   "no_unconfirmed_at_nominal": true,
+   "no_unprojected_at_nominal": true,
+   "nominal_complete": true,
+   "nothing_acknowledged_lost_or_conflicting_after_crash": true,
+   "projection_p95_within": true
+  },
+  "rewrite_overlap": {
+   "proven": true,
+   "acknowledged_while_running": 8,
+   "rewrite_seconds": 2.637,
+   "last_status": "ok"
+  },
+  "noeviction": {
+   "appends_refused_while_full": {
+    "refused_by_the_ceiling": 12,
+    "tried": 12
+   },
+   "no_keys_evicted": true,
+   "readable_while_full": true
+  }
+ }
+}
