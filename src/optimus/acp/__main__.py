@@ -33,6 +33,7 @@ from optimus.acp.local_infra import (
     LocalGatewayProcess,
     LocalInfrastructureError,
     apply_local_defaults,
+    confirm_local_redis,
     confirm_running_gateway,
     ensure_local_gateway,
     ensure_local_phoenix,
@@ -893,17 +894,11 @@ def main(argv: list[str] | None = None) -> int:
             return
         memory_index_ready.append(memory_dir)
 
-    def _start_local_dependencies() -> tuple[str | None, int | None]:
-        """Start Redis (+ optional Phoenix). Returns (otlp_endpoint, error_exit)."""
-        try:
-            ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
-            _ensure_memory_index(start=True)
-            if args.with_local_phoenix:
-                return ensure_local_phoenix(log=_print_log), None
-        except LocalInfrastructureError as exc:
-            print(f"optimus-agent: {exc.user_message}", file=sys.stderr)
-            return None, 2
-        return None, None
+    def _start_local_dependencies() -> str | None:
+        """Start Redis (+ optional Phoenix) and return the OTLP endpoint. A refusal raises `LocalInfrastructureError`."""
+        ensure_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""), log=_print_log)
+        _ensure_memory_index(start=True)
+        return ensure_local_phoenix(log=_print_log) if args.with_local_phoenix else None
 
     # #465 (ADR-036): what this launch would serve, known before any request, so every request from here on names it and
     # a Gateway serving anything else refuses it before dispatch.
@@ -1013,15 +1008,14 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 otlp_endpoint = None
                 if not args.no_auto_start:
-                    otlp_endpoint, error_exit = _start_local_dependencies()
-                    if error_exit is not None:
-                        return error_exit
+                    otlp_endpoint = _start_local_dependencies()
                     # Strict check-config (and Phoenix, which requires strict) must exercise
                     # the Gateway path that receives OTLP configuration.
                     if args.strict or args.with_local_phoenix:
                         gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
                 else:
                     _ensure_memory_index(start=False)
+                    confirm_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""))  # #480: pre-flight connects to it
                     if args.strict:
                         _confirm_running_gateway()  # strict pre-flight sends a model request
                 try:
@@ -1061,11 +1055,9 @@ def main(argv: list[str] | None = None) -> int:
         # other exception — stops it exactly once.
         try:
             if not args.no_auto_start:
-                otlp_endpoint, error_exit = _start_local_dependencies()
-                if error_exit is not None:
-                    return error_exit
                 try:
-                    gateway_process = _start_gateway(otlp_endpoint=otlp_endpoint)
+                    # #480/#481: a Redis or Phoenix that does not prove itself is refused in the panel, as a Gateway is.
+                    gateway_process = _start_gateway(otlp_endpoint=_start_local_dependencies())
                 except LocalInfrastructureError as exc:
                     return _serve_gateway_refusal(exc)
                 if test_composition is not None and gateway_process is None:
@@ -1084,6 +1076,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 _ensure_memory_index(start=False)
                 try:
+                    confirm_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""))  # #480: as one started here would
                     _confirm_running_gateway()
                 except LocalInfrastructureError as exc:
                     return _serve_gateway_refusal(exc)

@@ -157,29 +157,28 @@ Stop Terminal A with Ctrl-C only after Gateway / `acpx` / direct-client evidence
 
 ---
 
-## 9. Default-port conflict diagnosis
+## 9. A Redis already listening must prove it is this setup's (#480)
 
-When the default Redis URL `redis://127.0.0.1:6379/0` is already reachable, Optimus probes Docker publish ownership:
+When a loopback `OPTIMUS_REDIS_URL` is already reachable, on the default port or any other, Optimus reuses it only when
+it is the `optimus-redis` container itself: the `run_id` the listener reports (a random value per server start) equals
+the one read inside the container with `docker exec optimus-redis redis-cli INFO server`. Both reads are read-only. A
+launch with `--no-auto-start`, which starts nothing, checks the same way, and so does a launch that has just started the
+container.
 
-```powershell
-docker ps --filter publish=6379 --format "{{.Names}}`t{{.Image}}"
-```
+Anything else, including a native Redis, a different container, or any listener when Docker is not available, refuses
+with `REDIS_IDENTITY_UNCONFIRMED`. The Agent Panel shows the reason on the first prompt, and `--check-config` prints it
+and exits 2. `OPTIMUS_REDIS_URL` carries no credentials, so a native Redis has nothing it could prove itself with.
 
-- Exact owner `optimus-redis` / `redis:8` → reuse.
-- Different Docker name/image → typed `REDIS_PORT_CONFLICT` (fail closed; no Gateway start).
-- Reachable with no Docker owner (native Redis / operator-managed) → log and continue.
-- Docker missing/unreachable with a conflicting publish probe path → follow the typed error text.
-
-**Optimus never stops or deletes the conflicting container.**
+**Optimus never stops, deletes or changes the listener it refused.**
 
 ---
 
 ## 10. Non-destructive recovery
 
-If you see `REDIS_PORT_CONFLICT` (or Phoenix port/image conflict):
+If you see `REDIS_IDENTITY_UNCONFIRMED` (or a Phoenix port/image conflict):
 
-1. Stop or reconfigure the unrelated project **yourself**, then retry; or
-2. Explicitly configure a custom `OPTIMUS_REDIS_URL` (non-default port), re-run durable approval if the launch policy snapshot requires it, and retry.
+1. Stop or reconfigure the unrelated service **yourself**, so Optimus can start `optimus-redis` there, then retry; or
+2. Set `OPTIMUS_REDIS_URL` to the port `optimus-redis` publishes, re-run durable approval, and retry.
 
 Do not ask Optimus to kill foreign containers.
 
