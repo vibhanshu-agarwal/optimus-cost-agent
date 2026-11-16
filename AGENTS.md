@@ -122,7 +122,7 @@
 
 ## Operator-directed review cadence (2026-10-02)
 - Plan three or four sensible implementation checkpoints per plan, at most four; do not add per-task
-  Codex reviews or reviews between checkpoints. Each checkpoint is reviewed by Fable 5.1 first,
+  Codex reviews or reviews between checkpoints. Each checkpoint is reviewed by Fable 5.2 first,
   followed by one consolidated Codex review. Claude implements and resolves the findings.
 - Keep focused test cycles and local task commits between checkpoints; reviewer approval is a
   checkpoint gate, not a gate on each local task commit. Routine mechanics do not add review steps.
