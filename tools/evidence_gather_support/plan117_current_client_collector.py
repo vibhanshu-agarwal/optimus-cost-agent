@@ -802,11 +802,22 @@ def _preflight(inputs: CollectInputs, actions: HostActions, run_key: bytes) -> t
     return base_spec, source
 
 
+def _failure_code(exc: Exception) -> str:
+    """A HostError's own fixed code, else host_action_failed: live probe errors (ProbeError is a RuntimeError) carry
+    messages that can embed private paths, so no message ever reaches a record or the CLI."""
+    return exc.code if isinstance(exc, HostError) and _LOWER_TOKEN.fullmatch(exc.code) else "host_action_failed"
+
+
 def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> CollectionBatch:
     context, spec = inputs.context, inputs.run_spec
     emit = _Emitter(context, actions)
     run_key = load_run_key(emit.run_dir)
-    base_spec, source = _preflight(inputs, actions, run_key)
+    try:
+        base_spec, source = _preflight(inputs, actions, run_key)
+    except (HostError, contract.ContractError):
+        raise
+    except Exception as exc:
+        raise HostError("host_action_failed") from exc
     normal_root = Path(inputs.normal_source_root)
     run_root = Path(inputs.scratch_parent) / f"p117v5-{context.run_id}"
     if run_root.exists():
@@ -867,38 +878,53 @@ def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> 
                 identities.append(capture_path_identity(f"{leaf}:{arm_id}", directory, "directory"))
         if not all(is_beneath(item["canonical_path"], run_root_text) for item in identities if item["role"].split(":")[0] in {"isolated_source", "launcher", "profile", "workspace"}):
             raise HostError("root_escape")
-    except (HostError, OSError, ValueError):
+    except Exception as exc:
         # Refused before any launch: leave no scratch behind (the run directory keeps what was recorded).
         try:
             actions.remove_tree(run_root)
         except OSError:
             pass
-        raise
+        if isinstance(exc, (HostError, contract.ContractError)):
+            raise
+        raise HostError("host_action_failed") from exc
 
     aborted = None
     try:
         for arm_id in contract.ARM_IDS:
             for launch_id in launch_ids_for(arm_id):
                 _collect_launch(emit, actions, inputs.fixture, run_root, sources, arm_id, launch_id, identities)
-    except (HostError, OSError, ValueError, sqlite3.Error) as exc:
-        code = exc.code if isinstance(exc, HostError) and _LOWER_TOKEN.fullmatch(exc.code) else "host_action_failed"
-        aborted = {"reason_code": code, "stage": "launch"}
+    except Exception as exc:  # any host-action failure after the first launch is an aborted run; BaseException propagates
+        aborted = {"reason_code": _failure_code(exc), "stage": "launch"}
 
-    emit.document("path_custody", "plan117_v5_path_custody", "artifacts/plan117/path-custody.json", {
-        "captured_monotonic_ns": actions.monotonic_ns(), "identities": sorted(identities, key=lambda item: item["role"])})
-    emit.document("restoration", "plan117_v5_restoration", "artifacts/plan117/restoration.json", {
-        "normal_source_sha256_after": actions.normal_source_digest(normal_root)})
-    started = actions.monotonic_ns()
+    def tail_record(kind: str, body: dict[str, Any]) -> None:
+        try:
+            emit.document(kind, f"plan117_v5_{kind}", f"artifacts/plan117/{kind.replace('_', '-')}.json", body)
+        except OSError:
+            # An unstorable record is absent from the batch, so derivation is INVALID (a captured STOP still wins);
+            # cleanup and the remaining records still follow, and the storage error's message never escapes.
+            pass
+
     try:
-        actions.remove_tree(run_root)
-        removed = True
-    except OSError:
-        removed = False
-    emit.document("cleanup", "plan117_v5_cleanup", "artifacts/plan117/cleanup.json", {
+        tail_record("path_custody", {
+            "captured_monotonic_ns": actions.monotonic_ns(), "identities": sorted(identities, key=lambda item: item["role"])})
+        try:
+            restored: str | None = actions.normal_source_digest(normal_root)
+        except Exception as exc:
+            # Never claim a restoration that was not observed; cleanup and the captured evidence still follow.
+            restored = None
+            aborted = aborted or {"reason_code": _failure_code(exc), "stage": "restoration"}
+        tail_record("restoration", {"normal_source_sha256_after": restored})
+    finally:
+        started = actions.monotonic_ns()
+        try:
+            actions.remove_tree(run_root)
+            removed = True
+        except OSError:
+            removed = False
+    tail_record("cleanup", {
         "started_monotonic_ns": started, "ended_monotonic_ns": actions.monotonic_ns(),
         "targets": [{"role": "run_root", "removed": removed, "absent_after": not run_root.exists()}]})
-    emit.document("run_end", "plan117_v5_run_end", "artifacts/plan117/run-end.json", {
-        "wall_ended_at": actions.wall_now(), "monotonic_ended_ns": actions.monotonic_ns(), "aborted": aborted})
+    tail_record("run_end", {"wall_ended_at": actions.wall_now(), "monotonic_ended_ns": actions.monotonic_ns(), "aborted": aborted})
     return CollectionBatch(collector_id=COLLECTOR_ID, contract_version=CONTRACT_VERSION,observations=tuple(emit.observations), artifacts=tuple(emit.artifacts))
 
 

@@ -176,6 +176,98 @@ def test_repeated_scenario_flag_is_refused_for_routing(tmp_path, monkeypatch, ca
     assert _out(capsys)[1].strip() == "repeated_scenario_flag"
 
 
+# The exact-flag router cannot see argparse abbreviations (--scen, --scena=...), so the legacy collect/redact handlers
+# must refuse a v5 scenario themselves, before any directory, file, acpx resolution or spawn.
+
+
+def _legacy_argv(command: str, tmp_path: Path, scenario_args: tuple[str, ...], capture: Path, bind: tuple[str, ...]) -> list[str]:
+    workspace = tmp_path / "legacy-workspace"
+    if command == "collect":
+        agent = tmp_path / "legacy-agent.exe"
+        return ["collect", *scenario_args, "--capture-root", str(capture), *bind, "--workspace-root", str(workspace),
+                "--agent-executable", str(agent), "--prompt", "hi", "--timeout-seconds", "1", "--correlate-session-id", "auto",
+                "--correlate-request-id", "auto", "--correlate-run-id", "auto", "--debug-session-id", "auto"]
+    out = tmp_path / "legacy-out"
+    return ["redact", *scenario_args, "--workspace-root", str(workspace), "--user-data-root", str(tmp_path / "legacy-user-data"),
+            "--capture-root", str(capture), "--result", str(out / "result.json"), "--staging-root", str(out / "staging"),
+            "--quarantine-root", str(out / "quarantine"), "--sanitized-root", str(out / "sanitized"), "--report", str(out / "report.json"), *bind]
+
+
+def _legacy_inputs(tmp_path: Path) -> None:
+    (tmp_path / "legacy-workspace").mkdir()
+    (tmp_path / "legacy-user-data").mkdir()
+    (tmp_path / "legacy-agent.exe").write_bytes(b"")
+
+
+def _tree(tmp_path: Path, capture: Path) -> list[list[str]]:
+    """Entries of every root the legacy handlers write into: their output roots, the workspace's .optimus, the run dir."""
+    roots = (tmp_path, tmp_path / "legacy-workspace", capture, capture / RUN_ID)
+    return [sorted(path.name for path in root.iterdir()) for root in roots]
+
+
+def _forbid_spawn(monkeypatch) -> list[str]:
+    calls: list[str] = []
+
+    def forbidden(name):
+        def action(*args, **kwargs):
+            calls.append(name)
+            raise gather.HostError("test_spawn_forbidden")
+
+        return action
+
+    monkeypatch.setattr(gather.acp_mod, "resolve_acpx", forbidden("resolve_acpx"))
+    monkeypatch.setattr(gather.acp_mod, "spawn_acpx", forbidden("spawn_acpx"))
+    return calls
+
+
+def _abbreviated(form: str, scenario: Path) -> tuple[str, ...]:
+    return (f"{form}{scenario}",) if form.endswith("=") else (form, str(scenario))
+
+
+@pytest.mark.parametrize("command", ["collect", "redact"])
+@pytest.mark.parametrize("form", ["--scen", "--scenari", "--scena="])
+def test_an_abbreviated_scenario_flag_cannot_route_v5_into_the_legacy_handlers(tmp_path, monkeypatch, capsys, windows_shaped_paths, command, form):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    _legacy_inputs(tmp_path)
+    calls = _forbid_spawn(monkeypatch)
+    before = _tree(tmp_path, pipeline.capture)
+    capsys.readouterr()
+    argv = _legacy_argv(command, tmp_path, _abbreviated(form, pipeline.scenario), pipeline.capture, pipeline.bind())
+    assert gather.main(argv) == 2
+    assert _out(capsys)[1].strip() == "plan117_v5_legacy_route_refused"
+    assert calls == [] and _tree(tmp_path, pipeline.capture) == before and pipeline.host.launches == []
+
+
+@pytest.mark.parametrize("command", ["collect", "redact"])
+def test_an_abbreviated_copied_v5_scenario_still_fails_closed(tmp_path, monkeypatch, capsys, windows_shaped_paths, command):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    _legacy_inputs(tmp_path)
+    copy = tmp_path / "elsewhere.toml"
+    shutil.copyfile(pipeline.scenario, copy)
+    calls = _forbid_spawn(monkeypatch)
+    before = _tree(tmp_path, pipeline.capture)
+    capsys.readouterr()
+    assert gather.main(_legacy_argv(command, tmp_path, ("--scen", str(copy)), pipeline.capture, pipeline.bind())) == 2
+    assert _out(capsys)[1].strip() == "plan117_v5_scenario_unregistered"
+    assert calls == [] and _tree(tmp_path, pipeline.capture) == before
+
+
+@pytest.mark.parametrize("command,code", [("collect", "run_dir_missing"), ("redact", "run_dir_missing")])
+@pytest.mark.parametrize("form", ["--scenario", "--scen"])
+def test_legacy_scenarios_keep_abbreviated_flags_on_the_legacy_handlers(tmp_path, monkeypatch, capsys, command, code, form):
+    legacy = REPO / "tests" / "fixtures" / "evidence" / "scenarios" / "plan117-server-custody.toml"
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    _legacy_inputs(tmp_path)
+    calls = _forbid_spawn(monkeypatch)
+    capsys.readouterr()
+    assert gather.main(_legacy_argv(command, tmp_path, (form, str(legacy)), capture, ("--bind", "model=test-model"))) == 2
+    assert _out(capsys)[1].strip() == code
+    assert calls == []
+
+
 # --------------------------------------------------------------------------- prepare / check / collect
 
 
@@ -233,6 +325,40 @@ def test_collect_requires_the_reviewed_invocation_record(tmp_path, monkeypatch, 
     assert pipeline.collect() == 2
     assert _out(capsys)[1].strip() == code
     assert pipeline.host.launches == []
+
+
+def test_a_probe_failure_before_launch_reports_only_a_fixed_code(tmp_path, monkeypatch, capsys, windows_shaped_paths):
+    from tools.probe_p11_zed_session_load import ProbeError
+
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    pipeline.register_run()
+
+    def prepare_source(request):
+        raise ProbeError("copy_sources", "PermissionError: C:\\Users\\operator-private-p117v5\\src")
+
+    monkeypatch.setattr(pipeline.host, "prepare_source", prepare_source)
+    capsys.readouterr()
+    assert pipeline.collect() == 2
+    out, err = _out(capsys)
+    assert err.strip() == "host_action_failed" and "operator-private" not in out + err
+    assert list(pipeline.scratch.iterdir()) == [] and pipeline.host.launches == []
+
+
+def test_an_unwritable_raw_bundle_reports_only_a_fixed_code_after_cleanup(tmp_path, monkeypatch, capsys, windows_shaped_paths):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    pipeline.register_run()
+
+    def write_raw_bundle(**kwargs):
+        raise OSError(28, "No space left on device: C:\\Users\\operator-private-p117v5\\raw-bundle.json")
+
+    monkeypatch.setattr(gather, "write_raw_bundle", write_raw_bundle)
+    capsys.readouterr()
+    assert pipeline.collect() == 2
+    out, err = _out(capsys)
+    assert err.strip() == "raw_bundle_write_failed" and "operator-private" not in out + err
+    assert list(pipeline.scratch.iterdir()) == [] and not (pipeline.capture / RUN_ID / "raw-bundle.json").exists()
 
 
 def test_bundle_cannot_register_itself(tmp_path, monkeypatch, capsys, windows_shaped_paths):

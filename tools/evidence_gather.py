@@ -311,8 +311,15 @@ def _handle_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _refuse_plan117_v5_on_legacy_route(scenario_path: Path) -> None:
+    """main routes v5 on the exact --scenario flag only; an argparse abbreviation (--scen) lands here instead."""
+    if _authorize_plan117_v5(scenario_path):
+        raise HostError("plan117_v5_legacy_route_refused")
+
+
 def _handle_collect(args: argparse.Namespace) -> int:
     scenario_path = require_existing_file(Path(args.scenario))
+    _refuse_plan117_v5_on_legacy_route(scenario_path)
     capture_root = require_directory(Path(args.capture_root), create=False)
     workspace_root = require_absolute_path(Path(args.workspace_root)).resolve()
     agent_executable = require_absolute_path(Path(args.agent_executable)).resolve()
@@ -667,6 +674,7 @@ def _stability_interval_ns(scenario) -> int:
 
 def _handle_redact(args: argparse.Namespace) -> int:
     scenario_path = require_existing_file(Path(args.scenario))
+    _refuse_plan117_v5_on_legacy_route(scenario_path)
     workspace_root = require_absolute_path(Path(args.workspace_root)).resolve()
     capture_root = require_directory(Path(args.capture_root), create=False)
     staging_root = require_directory(Path(args.staging_root), create=True)
@@ -822,7 +830,10 @@ def _handle_collect_plan117_v5(args: argparse.Namespace) -> int:
     fixture, fixture_sha = plan117_mod.load_descriptor_fixture(checkout)
     inputs = plan117_mod.CollectInputs(context, spec, fixture, fixture_sha, require_absolute_path(Path(args.normal_source_root)).resolve(), scratch)
     batch = plan117_mod.collect_current_client_gate(inputs, PLAN117_V5_HOST_ACTIONS_FACTORY(checkout))
-    write_raw_bundle(context=context, batches=(batch,))
+    try:
+        write_raw_bundle(context=context, batches=(batch,))
+    except OSError:
+        raise HostError("raw_bundle_write_failed") from None  # a storage error's message can carry private paths
     print(json.dumps({"run_id": context.run_id, "observations": len(batch.observations), "artifacts": len(batch.artifacts)}, separators=(",", ":"), sort_keys=True))
     return 0
 

@@ -791,6 +791,156 @@ def test_abort_with_a_positive_signal_is_still_stop(tmp_path, windows_shaped_pat
     assert run.gate().disposition is D.ZERO_ENTRY_REACHABLE_STOP
 
 
+# The live seam's probe primitives raise ProbeError (a RuntimeError, not a HostError); its message can carry
+# private paths, so it must never reach a record or the CLI.
+_PRIVATE_TEXT = "operator-private-p117v5"
+
+
+def _probe_error():
+    from tools.probe_p11_zed_session_load import ProbeError
+
+    return ProbeError("launch_zed", f"FileNotFoundError: C:\\Users\\{_PRIVATE_TEXT}\\zed.exe")
+
+
+def _raise(exc):
+    def action(*args):
+        raise exc
+
+    return action
+
+
+def _fail_launch_at(run, monkeypatch, key, exc):
+    original = run.host.launch
+
+    def launch(request):
+        if (request.arm_id, request.launch_id) == key:
+            run.host.launches.append(key)
+            raise exc
+        return original(request)
+
+    monkeypatch.setattr(run.host, "launch", launch)
+
+
+def _record_bytes(run, batch):
+    records = [run.run_dir.joinpath(*item.relative_locator.split("/")) for item in batch.artifacts]
+    return b"".join(path.read_bytes() for path in (*records, run.run_dir / "raw-bundle.json", run.run_dir / "provisional-result.json"))
+
+
+def test_a_runtime_error_mid_run_is_preserved_as_an_aborted_bundle_and_still_cleans_up(tmp_path, windows_shaped_paths, monkeypatch):
+    run = Run(tmp_path)
+    _fail_launch_at(run, monkeypatch, ("r_cancelled", "reopen"), _probe_error())
+    batch = run.collect()
+    assert list(run.scratch.iterdir()) == []
+    raw = run.raw()
+    assert raw["aborted"] == {"reason_code": "host_action_failed", "stage": "launch"}
+    assert [arm["arm_id"] for arm in raw["arms"]] == ["a_prime", "r_end_turn", "r_refusal", "r_cancelled"]
+    assert raw["custody"]["cleanup"]["targets"] == [{"role": "run_root", "removed": True, "absent_after": True}]
+    assert c.reduce_document(raw, layer="raw").disposition is D.INDETERMINATE_CURRENT_CLIENT_GATE
+    assert _PRIVATE_TEXT.encode() not in _record_bytes(run, batch)
+
+
+def test_a_runtime_error_abort_after_a_positive_signal_is_still_stop(tmp_path, windows_shaped_paths, monkeypatch):
+    run = Run(tmp_path, run_options(reopen_load_arm="a_prime"))
+    _fail_launch_at(run, monkeypatch, ("r_end_turn", "first"), _probe_error())
+    run.collect()
+    assert list(run.scratch.iterdir()) == []
+    result = run.gate()
+    assert (result.disposition, result.primary.subject) == (D.ZERO_ENTRY_REACHABLE_STOP, "a_prime")
+
+
+@pytest.mark.parametrize("hook", ["base_spec_bytes", "zed_identity", "prepare_source"])
+def test_a_runtime_error_before_any_launch_leaves_no_scratch_and_a_fixed_code(tmp_path, windows_shaped_paths, monkeypatch, hook):
+    run = Run(tmp_path)
+    monkeypatch.setattr(run.host, hook, _raise(_probe_error()))
+    with pytest.raises(HostError) as excinfo:
+        run.collect()
+    assert excinfo.value.code == "host_action_failed"
+    assert _PRIVATE_TEXT not in str(excinfo.value)
+    assert list(run.scratch.iterdir()) == [] and run.host.launches == []
+
+
+@pytest.mark.parametrize("options,disposition", [({}, D.INVALID_CURRENT_CLIENT_GATE), ({"reopen_load_arm": "a_prime"}, D.ZERO_ENTRY_REACHABLE_STOP)])
+def test_a_restoration_check_failure_still_cleans_up_and_never_claims_restoration(tmp_path, windows_shaped_paths, monkeypatch, options, disposition):
+    run = Run(tmp_path, run_options(**options))
+    original = run.host.normal_source_digest
+    calls = []
+
+    def digest(root):
+        calls.append(root)
+        if len(calls) > 1:
+            raise _probe_error()
+        return original(root)
+
+    monkeypatch.setattr(run.host, "normal_source_digest", digest)
+    batch = run.collect()
+    assert list(run.scratch.iterdir()) == []
+    raw = run.raw()
+    assert raw["source"]["normal_source_sha256_after"] is None
+    assert raw["aborted"] == {"reason_code": "host_action_failed", "stage": "restoration"}
+    assert raw["custody"]["cleanup"]["targets"] == [{"role": "run_root", "removed": True, "absent_after": True}]
+    assert c.reduce_document(raw, layer="raw").disposition is disposition
+    assert _PRIVATE_TEXT.encode() not in _record_bytes(run, batch)
+
+
+_TAIL_RECORDS = ("path-custody.json", "restoration.json", "cleanup.json", "run-end.json")
+
+
+def _fail_tail_writes(monkeypatch, names):
+    """A real storage fault inside the emitter's write after every launch completed; the message carries a private path."""
+    original = Path.write_bytes
+
+    def write_bytes(self, data):
+        if self.parent.name == "plan117" and self.name in names:
+            raise OSError(28, f"No space left on device: C:\\Users\\{_PRIVATE_TEXT}\\{self.name}")
+        return original(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", write_bytes)
+
+
+@pytest.mark.parametrize(
+    "options,names,disposition",
+    [
+        ({}, ("path-custody.json",), D.INVALID_CURRENT_CLIENT_GATE),
+        ({"reopen_load_arm": "a_prime"}, ("path-custody.json",), D.ZERO_ENTRY_REACHABLE_STOP),
+        ({}, ("cleanup.json",), D.INVALID_CURRENT_CLIENT_GATE),
+        ({"reopen_load_arm": "r_refusal"}, _TAIL_RECORDS, D.ZERO_ENTRY_REACHABLE_STOP),
+        ({}, _TAIL_RECORDS, D.INVALID_CURRENT_CLIENT_GATE),
+    ],
+)
+def test_a_tail_record_storage_fault_still_cleans_up_and_keeps_the_captured_evidence(tmp_path, windows_shaped_paths, monkeypatch, options, names, disposition):
+    run = Run(tmp_path, run_options(**options))
+    _fail_tail_writes(monkeypatch, names)
+    batch = run.collect()
+    assert run.host.launches == _launch_order()
+    assert list(run.scratch.iterdir()) == [], "cleanup must not depend on the tail records being writable"
+    roles = {item.role for item in batch.artifacts}
+    assert not {f"plan117_v5_{name.removesuffix('.json').replace('-', '_')}" for name in names} & roles
+    assert all(not (run.run_dir / "artifacts" / "plan117" / name).exists() for name in names)
+    assert c.reduce_document(run.raw(), layer="raw").disposition is disposition
+    assert _PRIVATE_TEXT.encode() not in _record_bytes(run, batch)
+
+
+@pytest.mark.parametrize("hook", ["prepare_source", "launch", "normal_source_digest"])
+def test_an_interrupt_is_never_swallowed_as_a_host_failure(tmp_path, windows_shaped_paths, monkeypatch, hook):
+    run = Run(tmp_path)
+    if hook == "normal_source_digest":
+        original = run.host.normal_source_digest
+        calls = []
+
+        def digest(root):
+            calls.append(root)
+            if len(calls) > 1:
+                raise KeyboardInterrupt
+            return original(root)
+
+        monkeypatch.setattr(run.host, hook, digest)
+    else:
+        monkeypatch.setattr(run.host, hook, _raise(KeyboardInterrupt()))
+    with pytest.raises(KeyboardInterrupt):
+        run.collect()
+    assert not (run.run_dir / "artifacts" / "plan117" / "run-end.json").exists()
+
+
 def test_patched_source_substitution_is_refused_before_any_launch(tmp_path, windows_shaped_paths):
     run = Run(tmp_path, run_options(tamper_spec_kind="refusal_stub:r_refusal"))
     with pytest.raises(HostError) as excinfo:
