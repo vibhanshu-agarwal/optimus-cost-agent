@@ -21,6 +21,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import IO
@@ -32,6 +33,9 @@ MAX_MEMBERS = 4096
 MAX_STREAM_BYTES = 32 * 1024 * 1024
 MAX_OTHER_RUNS = 64
 MAX_RUN_FOLDERS = 2000
+# #477: Windows refuses to replace a file another handle has open, as a reader of the record does for the moment its
+# read takes (Python opens without FILE_SHARE_DELETE). Three attempts, waiting 50 ms then 200 ms, outlast such a read.
+_REPLACE_WAITS = (0.05, 0.2)
 REJECTED = "TEST_RUN_CONTEXT_RECORD_REJECTED"
 TOO_LARGE = "TEST_RUN_CONTEXT_RECORD_TOO_LARGE"
 # How a registry read went: fully listed and read; no registry folder at all; the folder could not be
@@ -340,7 +344,13 @@ def _persist(target: Path, record: dict[str, object]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + f".{os.getpid()}.tmp")
     temporary.write_text(body, encoding="utf-8")
-    os.replace(temporary, target)
+    for wait in _REPLACE_WAITS:
+        try:
+            os.replace(temporary, target)
+            return
+        except PermissionError:
+            time.sleep(wait)
+    os.replace(temporary, target)  # the last attempt's failure is the caller's to record
 
 
 def read_record(source: Path) -> dict[str, object] | None:
