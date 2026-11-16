@@ -283,3 +283,15 @@ def test_a_failure_after_provisioning_still_removes_the_container_volume_and_gat
         ev.run({"gold": {"fresh": "fresh"}, "held_out_gold": "fresh", "work_dir": "work", "fixed_route": "r", "container": "p1210-c", "volume": "p1210-v", "embedding_threads": 2}, tmp_path, ["held_out"])
     assert closed == ["client", "gateway"]
     assert ["docker", "rm", "-f", "p1210-c"] in commands and ["docker", "volume", "rm", "-f", "p1210-v"] in commands
+
+
+@pytest.mark.parametrize("phase", ["run_assembly", "run_pilot"])
+def test_a_measuring_phase_without_psutil_provisions_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str) -> None:
+    """psutil is optional at import (a clean environment collects this module); a phase that needs it refuses before Redis or a Gateway exists (Codex review 46)."""
+    provisioned: list[object] = []
+    monkeypatch.setattr(m1_scale, "psutil", None)
+    monkeypatch.setattr(m1_scale, "_provision", lambda *args, **kwargs: provisioned.append(args) or pytest.fail("provisioned without psutil"))
+    monkeypatch.setattr(m1_scale.subprocess, "run", lambda *args, **kwargs: pytest.fail("launched a child without psutil"))
+    with pytest.raises(RuntimeError, match="needs psutil"):
+        getattr(m1_scale, phase)({"work_dir": "work", "container": "p1210-c"}, tmp_path)
+    assert provisioned == []

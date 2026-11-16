@@ -587,8 +587,15 @@ def _assembly_summary(turns: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "pack_share_of_token_budget_max": round(max(used), 3) if used else None, "states": sorted({str(turn["state"]) for turn in turns}), "blocked": sorted({turn["blocked"] for turn in turns if turn["blocked"]})}
 
 
+def _require_psutil() -> None:
+    """The measuring phases need psutil; refuse before anything is provisioned, so nothing is left running (Codex review 46)."""
+    if psutil is None:
+        raise RuntimeError("this phase measures processes and needs psutil, which is measurement-only and not a project dependency; install it in this environment")
+
+
 def run_assembly(config: dict[str, Any], repository: Path) -> dict[str, Any]:
     """A real session on the real artifact and route: what one turn's context costs while the worker builds, and after. No model is called."""
+    _require_psutil()
     work = repository / config["work_dir"] / "assembly"
     head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()  # before provisioning: a failure here leaves nothing running
     root, memory, _password, client, gateway, settings, settings_file = _provision(config, repository, work)
@@ -646,6 +653,7 @@ def run_assembly(config: dict[str, Any], repository: Path) -> dict[str, Any]:
 
 
 def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
+    _require_psutil()
     work = repository / config["work_dir"]
     container = config["container"]
     root, memory, _password, client, gateway, settings, settings_file = _provision(config, repository, work)
