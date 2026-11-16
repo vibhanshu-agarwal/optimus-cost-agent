@@ -41,6 +41,10 @@ from optimus_security.memory_index_config import ACL_NAME as MEMORY_INDEX_ACL_NA
 from optimus_security.memory_index_config import MemoryIndexConfig, MemoryIndexConfigError, memory_index_literal, memory_index_root
 from optimus_security.memory_index_config import config_literal as memory_index_config_literal
 from optimus_security.memory_index_config import read as read_memory_index_config
+from optimus_security.memory_store_config import ACL_NAME as MEMORY_STORE_ACL_NAME
+from optimus_security.memory_store_config import MemoryStoreConfig, MemoryStoreConfigError, memory_store_literal, memory_store_root
+from optimus_security.memory_store_config import config_literal as memory_store_config_literal
+from optimus_security.memory_store_config import read as read_memory_store_config
 
 # _LOOPBACK_HOSTS reused from optimus.config.gateway (agent-side package, already imported
 # elsewhere in bootstrap.py) rather than src/optimus_gateway/models.py's own separate copy of the
@@ -625,9 +629,29 @@ def gateway_memory_index(config_root: Path, approved: str | None, *, log: Callab
     return root, memory_index_literal(root, current)
 
 
+def gateway_memory_store(config_root: Path, approved: str | None, *, log: Callable[[str], None] = _noop_log) -> tuple[Path | None, str | None]:
+    """Plan 12.11 (ADR-042): the memory store's root and the literal the Gateway's manifest binds, when the configuration found
+    there is the approved one. Otherwise the Gateway serves no memory store, and the launch runs without memory."""
+    root = memory_store_root(config_root)
+    try:
+        current = memory_store_config_literal(root)
+    except MemoryStoreConfigError as exc:
+        current = f"unusable:{exc.code}"
+    if current is None and approved is None:
+        return None, None
+    if current != approved:
+        log("optimus-agent: the memory store configuration is not the approved one; the Gateway serves no memory store.")
+        return None, None
+    return root, memory_store_literal(root, current)
+
+
+_DedicatedRedisConfig = MemoryIndexConfig | MemoryStoreConfig
+
+
 @dataclass(frozen=True)
 class MemoryRedisStatus:
-    """Where the dedicated index Redis stands. Anything but ready leaves the launch on today's context; nothing is refused."""
+    """Where a dedicated Redis (the index's or the memory store's) stands. Anything but ready leaves the launch without that
+    feature; nothing is refused."""
 
     state: str  # "ready", "off", "unavailable" or "conflict"
     detail: str = ""
@@ -653,7 +677,13 @@ def _memory_server_args(config: MemoryIndexConfig) -> list[str]:
             "--save", "300 1", "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction", "--search-on-oom", "IGNORE"]
 
 
-def _memory_container_conflict(view: Mapping[str, Any], config: MemoryIndexConfig, acl_path: Path) -> str | None:
+def _memory_store_server_args(config: MemoryStoreConfig) -> list[str]:
+    # Accepted memory is never evicted: at maxmemory writes are refused, and the Gateway stops new saves before that.
+    return ["redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "everysec",
+            "--save", "300 1", "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction"]
+
+
+def _memory_container_conflict(view: Mapping[str, Any], config: _DedicatedRedisConfig, acl_path: Path, server_args: list[str]) -> str | None:
     """Why an existing container is not the one setup described, or None. Optimus never adopts or replaces another's."""
     settings = view.get("Config") or {}
     host = view.get("HostConfig") or {}
@@ -669,7 +699,7 @@ def _memory_container_conflict(view: Mapping[str, Any], config: MemoryIndexConfi
         return "it uses another volume"
     if host.get("Memory") != (config.maxmemory_mb + _MEMORY_HEADROOM_MB) * 1024 * 1024:
         return "it has another memory limit"
-    if settings.get("Cmd") != _memory_server_args(config):
+    if settings.get("Cmd") != server_args:
         return "it runs Redis with other settings"
     acl = [(mount.get("Type"), mount.get("Source"), mount.get("ReadOnly")) for mount in host.get("Mounts") or [] if mount.get("Target") == "/etc/redis/users.acl"]
     if acl != [("bind", str(acl_path.resolve()), True)]:
@@ -677,7 +707,7 @@ def _memory_container_conflict(view: Mapping[str, Any], config: MemoryIndexConfi
     return None
 
 
-def _memory_volume_conflict(docker: str, config: MemoryIndexConfig) -> str | None:
+def _memory_volume_conflict(docker: str, config: _DedicatedRedisConfig) -> str | None:
     """Create the labelled volume, or confirm the one here is ours. Create is idempotent, so concurrent launches agree."""
     try:
         subprocess.run([docker, "volume", "create", "--label", f"{_MEMORY_RESOURCE_LABEL}={config.resource}", config.volume],
@@ -699,7 +729,23 @@ def ensure_memory_redis(root: Path, *, start: bool = True, log: Callable[[str], 
         return MemoryRedisStatus("conflict", f"the configuration cannot be read ({exc.code})")
     if config is None:
         return MemoryRedisStatus("off" if refusal is None else "conflict", refusal or "")
-    acl_path = root / MEMORY_INDEX_ACL_NAME
+    return _ensure_dedicated_redis(config, root / MEMORY_INDEX_ACL_NAME, _memory_server_args(config), "the context index", start=start, log=log)
+
+
+def ensure_memory_store_redis(root: Path, *, start: bool = True, log: Callable[[str], None] = _noop_log) -> MemoryRedisStatus:
+    """Plan 12.11 (ADR-042): the same for the memory store's own dedicated Redis, from its approved configuration."""
+    try:
+        _literal, config, refusal = read_memory_store_config(root)
+    except MemoryStoreConfigError as exc:
+        return MemoryRedisStatus("conflict", f"the configuration cannot be read ({exc.code})")
+    if config is None:
+        return MemoryRedisStatus("off" if refusal is None else "conflict", refusal or "")
+    return _ensure_dedicated_redis(config, root / MEMORY_STORE_ACL_NAME, _memory_store_server_args(config), "the memory store", start=start, log=log)
+
+
+def _ensure_dedicated_redis(
+    config: _DedicatedRedisConfig, acl_path: Path, server_args: list[str], feature: str, *, start: bool, log: Callable[[str], None]
+) -> MemoryRedisStatus:
     try:
         acl_digest = hashlib.sha256(acl_path.read_bytes()).hexdigest()
     except OSError:
@@ -717,11 +763,11 @@ def ensure_memory_redis(root: Path, *, start: bool = True, log: Callable[[str], 
         volume_conflict = _memory_volume_conflict(docker, config)
         if volume_conflict is not None:
             return MemoryRedisStatus("conflict", volume_conflict)
-        log(f"optimus-agent: creating {config.container} for the context index...")
+        log(f"optimus-agent: creating {config.container} for {feature}...")
         run = [docker, "run", "-d", "--name", config.container, "--label", f"{_MEMORY_RESOURCE_LABEL}={config.resource}",
                "--restart", "no", "-p", f"{config.host}:{config.port}:6379", "--memory", f"{config.maxmemory_mb + _MEMORY_HEADROOM_MB}m",
                "-v", f"{config.volume}:/data", "--mount", f"type=bind,src={acl_path.resolve()},dst=/etc/redis/users.acl,readonly",
-               config.image, *_memory_server_args(config)]
+               config.image, *server_args]
         try:
             subprocess.run(run, capture_output=True, text=True, check=False, timeout=120)
         except (OSError, subprocess.TimeoutExpired):
@@ -729,7 +775,7 @@ def ensure_memory_redis(root: Path, *, start: bool = True, log: Callable[[str], 
         view = _memory_container_view(docker, config.container)  # a concurrent launch may have won the name; either way it is checked
     if view is None:
         return MemoryRedisStatus("unavailable", "the container does not exist")
-    conflict = _memory_container_conflict(view, config, acl_path)
+    conflict = _memory_container_conflict(view, config, acl_path, server_args)
     if conflict is not None:
         return MemoryRedisStatus("conflict", f"container {config.container} exists, but {conflict}; Optimus will not change it")
     if not (view.get("State") or {}).get("Running"):
@@ -763,6 +809,7 @@ def expected_gateway_identity(
     usage_accounting: bool = False,
     approved_accounting_config: str | None = None,
     approved_memory_index: str | None = None,
+    approved_memory_store: str | None = None,
 ) -> gateway_identity.GatewayIdentity | None:
     """#465 (ADR-036): the identity of the Gateway this launch would start. None when the launch names no local upstream:
     a remote Gateway, or a host given only the Gateway URL and key, whose approval binds no upstream to compare."""
@@ -775,6 +822,7 @@ def expected_gateway_identity(
     if usage_accounting and config_root is not None:
         accounting = gateway_accounting(config_root, approved_accounting_config)[1]
     memory_index = None if config_root is None else gateway_memory_index(config_root, approved_memory_index)[1]
+    memory_store = None if config_root is None else gateway_memory_store(config_root, approved_memory_store)[1]
     if test_profile is not None:
         composition = gateway_identity.profile_composition(test_profile)
     else:
@@ -789,6 +837,7 @@ def expected_gateway_identity(
         stage_c_envelope=stage_c_envelope,
         accounting=accounting,
         memory_index=memory_index,
+        memory_store=memory_store,
         tool_environ=gateway_tool_environ(config_root, system_env),
         hmac_key=manifest_hmac_key,
     )
@@ -902,6 +951,7 @@ def ensure_local_gateway(
     usage_accounting: bool = False,
     approved_accounting_config: str | None = None,
     approved_memory_index: str | None = None,
+    approved_memory_store: str | None = None,
     api_key: str | None = None,
     expected_identity: gateway_identity.GatewayIdentity | None = None,
 ) -> LocalGatewayProcess | None:
@@ -974,6 +1024,7 @@ def ensure_local_gateway(
     if usage_accounting and config_root is not None:
         accounting_dir, accounting = gateway_accounting(config_root, approved_accounting_config, log=log)
     memory_dir, memory_index = (None, None) if config_root is None else gateway_memory_index(config_root, approved_memory_index, log=log)
+    store_dir, memory_store = (None, None) if config_root is None else gateway_memory_store(config_root, approved_memory_store, log=log)
     manifest = build_gateway_child_manifest(
         workspace_digest=workspace_digest,
         security_snapshot_digest=security_snapshot_digest,
@@ -989,6 +1040,7 @@ def ensure_local_gateway(
         stage_c_envelope=stage_c_envelope,
         accounting=accounting,
         memory_index=memory_index,
+        memory_store=memory_store,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 
@@ -1025,6 +1077,8 @@ def ensure_local_gateway(
                 profile_argv += ["--accounting-root", str(accounting_dir)]
             if memory_dir is not None:
                 profile_argv += ["--memory-index-root", str(memory_dir)]
+            if store_dir is not None:
+                profile_argv += ["--memory-store-root", str(store_dir)]
             process = subprocess.Popen(
                 [
                     sys.executable,

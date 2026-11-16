@@ -80,6 +80,7 @@ relevant records before proposing a change in their area.
 | [ADR-039: Cache the stable start of a request](decisions/ADR-039-provider-cache-breakpoint-after-the-map.md) | A measured changed question reads nothing under root caching, so an opt-in mode caches only the start of a request through the repository map; accepted by ADR-040; on by default since ADR-041 |
 | [ADR-040: Accepts ADR-036 to ADR-039](decisions/ADR-040-accepts-adr-036-to-039-plan-12-10-memory-m1.md) | Accepts the Plan 12.10 memory M1 decisions as merged, with their disclosed limits; operator acceptance (source S20) |
 | [ADR-041: Prefix prompt caching on by default](decisions/ADR-041-prefix-prompt-caching-on-by-default.md) | The shipped Haiku 5.5 route sets `prompt_cache: prefix`; launches re-approve the new registry hash once (#485) |
+| [ADR-042: Memory store topology, commit and recovery](decisions/ADR-042-memory-store-topology-commit-and-recovery.md) | Accepted memory lives in one fenced stream per project on its own durable Redis, served only once fsync is confirmed on the appending connection; Proposed under Plan 12.11 (#490) |
 | [Ordering/lifecycle/signals and queue decision](decisions/2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Exact operator authority, accepted proposals, alternatives and scoped ADR-027 supersession |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 

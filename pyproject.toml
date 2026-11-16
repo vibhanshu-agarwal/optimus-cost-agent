@@ -62,7 +62,7 @@ addopts = [
   "--strict-markers",
   "--import-mode=importlib",
   "-m",
-  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_os_keyring_write and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service and not requires_real_agents and not requires_plan12_probe_redis and not requires_plan12_capture_postgres and not requires_plan12_index_redis",
+  "not requires_redis and not requires_gateway and not requires_mcp_http and not requires_mcp_stdio and not e2e and not requires_live_gateway and not requires_phoenix and not requires_os_keyring and not requires_os_keyring_write and not requires_acpx and not requires_zed and not requires_windows_desktop and not evidence_investigation and not requires_evidence_handoff_postgres and not requires_evidence_handoff_service and not requires_real_agents and not requires_plan12_probe_redis and not requires_plan12_capture_postgres and not requires_plan12_index_redis and not requires_plan12_memory_redis",
 ]
 markers = [
   "requires_redis: integration test that needs a live TimeSeries-capable Redis server",
@@ -73,7 +73,7 @@ markers = [
   "requires_live_gateway: integration test that needs the local Optimus Gateway service process and Anthropic API key on that process only",
   "requires_phoenix: integration test that needs a live Phoenix trace collector reachable via the Gateway-only OTLP endpoint",
   "requires_os_keyring: integration test that reads existing operator-approved credentials from the real OS credential store without writing or deleting them",
-  "requires_os_keyring_write: integration test that may create, overwrite, or delete evidence-handoff ledger signing-key or launch-approval entries in the real OS credential store under an isolated test service name",
+  "requires_os_keyring_write: integration test that may create, overwrite, or delete evidence-handoff ledger signing-key or launch-approval or memory credential entries in the real OS credential store under an isolated test service name",
   "requires_acpx: requires independently authored acpx and a real agent process",
   "requires_zed: requires a real supported Zed instance and its real logs",
   "requires_windows_desktop: requires an interactive Windows desktop and real DWM",
@@ -81,6 +81,7 @@ markers = [
   "requires_evidence_handoff_postgres: integration test that needs real PostgreSQL started via Docker Desktop on loopback",
   "requires_evidence_handoff_service: integration test that needs real Docker Desktop PostgreSQL on loopback plus a real evidence-handoff Streamable HTTP service subprocess",
   "requires_real_agents: end-to-end evidence that needs real native Claude Code, Codex, and Cursor clients with distinct credentials",
+  "requires_plan12_memory_redis: Plan 12.11 memory store on the released dedicated Redis p1211-memory-test-redis, enabled by P1211_MEMORY_DOCKER_RELEASED; never the shared test Redis, the index Redis or the product store",
   "requires_plan12_index_redis: Plan 12.10 context index on a released dedicated Redis named by P1210_INDEX_REDIS_URL; never the shared test Redis",
   "requires_plan12_probe_redis: Plan 12.7 synthetic K2 load on a released dedicated Redis named by OPTIMUS_PLAN12_PROBE_CONFIG; never the shared test Redis",
   "requires_plan12_capture_postgres: Plan 12.8 K3 on a released disposable Postgres named by P128_CAPTURE_K3_CONFIG; never another plan's database",
@@ -99,7 +100,7 @@ fail_under = 80
 where = ["src"]
 
 [tool.setuptools.package-data]
-"optimus.context" = ["memory_index_defaults.json"]
+"optimus.context" = ["memory_index_defaults.json", "memory_store_defaults.json"]
 optimus_model_policy = ["defaults.yaml", "savings_references.yaml", "test_profile_qualification.yaml", "test_profile_attached.yaml", "test_profile_evaluation.yaml", "auto_overlay.yaml"]
 
 [tool.ruff]

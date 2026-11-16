@@ -5569,6 +5569,30 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m3_notice_probe:Probe.record:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Plan 12.11 Z0 probe appends its own JSONL journal at the operator-released path; rows are the ACP messages it exchanged, all built from fixed synthetic text, and the prompts the operator typed for the run.",
+      "sanitizer": "event names and synthetic ACP messages only",
+      "test_node": "tests/unit/acp/test_memory_notices.py::test_the_probe_answers_without_a_network_and_emits_the_real_cards",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_notice_probe:Probe.record:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the journal rows described for Probe.record:file_open with ensure_ascii.",
+      "sanitizer": "event names and synthetic ACP messages only",
+      "test_node": "tests/unit/acp/test_memory_notices.py::test_the_probe_answers_without_a_network_and_emits_the_real_cards",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_notice_probe:Probe.record:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the journal rows described for Probe.record:file_open; no secret, buffer text or model output exists in the probe.",
+      "sanitizer": "event names and synthetic ACP messages only",
+      "test_node": "tests/unit/acp/test_memory_notices.py::test_the_probe_answers_without_a_network_and_emits_the_real_cards",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.probe_child:_write_cursor:file_open",
       "policy": "safe-by-construction",
       "rationale": "Inspection: the P2 feasibility cursor holds the model name, item and batch counts, the next batch index and a running SHA-256 chain; the synthetic corpus is generated in RAM and never written.",
@@ -6246,6 +6270,94 @@
       "rationale": "AST overmatch: the call is threading.Event.set(); nothing is written to Redis or any sink.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m1_scale.py::test_an_edit_counts_as_visible_when_it_can_be_queried_not_when_its_pass_ends",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.memory_setup:run_store_setup:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret store configuration and hash-only ACL file; the password goes only to the keyring.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_store_setup.py::test_store_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.memory_setup:run_store_setup:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the non-secret store configuration and hash-only ACL file; the password goes only to the keyring.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_store_setup.py::test_store_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:MemoryStore._append:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes the validated event or checkpoint into its own stream entry; the shape is closed by memory_store_contract, and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_contract.py::test_anything_else_is_refused_before_the_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: hashes the validated change for idempotency; only the digest is kept, and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_contract.py::test_anything_else_is_refused_before_the_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:MemoryStore._op_lease:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes a fence number and the host-asserted owner id, both validated opaque identities; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_contract.py::test_anything_else_is_refused_before_the_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:MemoryStore._advance_watermark:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes a Redis stream id only; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_contract.py::test_anything_else_is_refused_before_the_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:MemoryStore._used:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: Redis INFO is read for used memory; the reply carries counts and flags only, and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store.py::test_capabilities_reports_only_counts_and_flags",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:verify_resource:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: Redis INFO is read to check persistence and eviction; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store.py::test_the_endpoint_never_shows_its_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:verify_resource:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes only the provisioned resource identity, a non-secret name, and only into an empty instance.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store.py::test_the_endpoint_never_shows_its_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.server:OptimusGatewayHandler._handle_memory:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a fixed event, the path and the status code; never a request body.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store.py::test_the_endpoint_never_shows_its_password",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.memory_store_config:memory_store_literal:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes a path and a digest for the signed manifest.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_store_setup.py::test_store_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
       "evidence_tier": "unit"
     }
   ]

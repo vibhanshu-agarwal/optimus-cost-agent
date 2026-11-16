@@ -1,4 +1,5 @@
 """`optimus-trust memory-setup` (Plan 12.10 Task 2; ADR-037): the one-time terminal step that opts a machine into the context index.
+`--store` (Plan 12.11; ADR-042) does the same for the memory store: a separate resource, password and approval.
 
 It is the only place the embedding artifact is downloaded and the index password is created: never an agent launch, never a
 startup prompt. The password goes straight to the Gateway's keyring namespace and only its hash reaches a file. Nothing here starts
@@ -28,6 +29,12 @@ from optimus_security.memory_index_config import (
     memory_index_root,
     read,
 )
+from optimus_security.memory_store_config import ACL_NAME as STORE_ACL_NAME
+from optimus_security.memory_store_config import CONFIG_NAME as STORE_CONFIG_NAME
+from optimus_security.memory_store_config import KEYRING_SERVICE as STORE_KEYRING_SERVICE
+from optimus_security.memory_store_config import MemoryStoreConfigError, memory_store_root
+from optimus_security.memory_store_config import acl_text as store_acl_text
+from optimus_security.memory_store_config import read as read_store
 
 _DEFAULTS = "memory_index_defaults.json"
 _CREDENTIAL_NAME = "redis-password"
@@ -134,6 +141,75 @@ def run_setup(
     }
     _atomic_write(root / CONFIG_NAME, json.dumps(config, indent=2, sort_keys=True).encode("utf-8"), mode=0o600)
     return root / CONFIG_NAME
+
+
+_STORE_DEFAULTS = "memory_store_defaults.json"
+
+
+def shipped_store_defaults() -> dict[str, Any]:
+    """The memory store's configured resource (Plan 12.11, ADR-042)."""
+    data: dict[str, Any] = json.loads(resources.files("optimus.context").joinpath(_STORE_DEFAULTS).read_text(encoding="utf-8"))
+    return data
+
+
+def describe_store(defaults: dict[str, Any], root: Path) -> str:
+    return (
+        f"  Folder: {root}.\n"
+        f"  Keyring: one generated password in {STORE_KEYRING_SERVICE}.\n"
+        f"  Docker, at the next approved launch: container {defaults['container']}, volume {defaults['volume']}, "
+        f"{defaults['host']}:{defaults['port']}, up to {defaults['maxmemory_mb']} MB (new saves stop at "
+        f"{defaults['admission_ceiling_mb']} MB), image {defaults['image']}.\n"
+        "  Memory lives only in that volume until the recovery export is on; losing the volume loses it.\n"
+        "  Nothing is downloaded and no model is called. Nothing runs until you approve the launch again."
+    )
+
+
+def run_store_setup(
+    config_root: Path,
+    *,
+    keyring_backend: Any,
+    confirm: Callable[[str], bool],
+    defaults: dict[str, Any] | None = None,
+) -> Path:
+    """`memory-setup --store`: write the memory store's configuration, or return it when one is already here. The index's
+    configuration is untouched. A rerun never replaces a working password, so accepted memory stays readable."""
+    root = memory_store_root(config_root)
+    try:
+        literal, _config, refusal = read_store(root)
+    except MemoryStoreConfigError as exc:
+        raise MemorySetupError(f"The existing memory store configuration cannot be read ({exc.code}). Move it aside and run this again.") from exc
+    if refusal is not None:
+        raise MemorySetupError(f"The existing memory store configuration is not usable ({refusal}). Move it aside and run this again.")
+    if literal is not None:
+        return root / STORE_CONFIG_NAME
+    settings = shipped_store_defaults() if defaults is None else defaults
+    if not confirm(describe_store(settings, root)):
+        raise MemorySetupError("Setup was not confirmed; nothing was changed.")
+
+    root.mkdir(parents=True, exist_ok=True)
+    password = secrets.token_urlsafe(32)
+    try:
+        keyring_backend.set_password(STORE_KEYRING_SERVICE, _CREDENTIAL_NAME, password)
+    except Exception as exc:  # noqa: BLE001 - any backend failure stops setup before a file claims a credential exists
+        raise MemorySetupError(f"The OS keyring refused the password ({type(exc).__name__}); nothing was configured.") from None
+    acl = store_acl_text(settings["user"], hashlib.sha256(password.encode("utf-8")).hexdigest()).encode("utf-8")
+    _atomic_write(root / STORE_ACL_NAME, acl, mode=0o644)  # read by the container's user; it holds only the hash
+    config = {
+        "schema_version": 1,
+        "resource": f"optimus-memory-store-{secrets.token_hex(8)}",
+        "image": settings["image"],
+        "container": settings["container"],
+        "volume": settings["volume"],
+        "host": settings["host"],
+        "port": settings["port"],
+        "user": settings["user"],
+        "credential_name": _CREDENTIAL_NAME,
+        "maxmemory_mb": settings["maxmemory_mb"],
+        "admission_ceiling_mb": settings["admission_ceiling_mb"],
+        "acl_sha256": hashlib.sha256(acl).hexdigest(),
+    }
+    _atomic_write(root / STORE_CONFIG_NAME, json.dumps(config, indent=2, sort_keys=True).encode("utf-8"), mode=0o600)
+    return root / STORE_CONFIG_NAME
 
 
 def _content_only(artifact: Path) -> Path:

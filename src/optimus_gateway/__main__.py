@@ -41,6 +41,8 @@ from optimus_security.launch_manifest import (
 )
 from optimus_security.memory_index_config import memory_index_literal
 from optimus_security.memory_index_config import read as read_memory_index_config
+from optimus_security.memory_store_config import memory_store_literal
+from optimus_security.memory_store_config import read as read_memory_store_config
 
 # Plan 9.96, Task 5 Step 4: these names must NEVER be read from the standalone
 # entrypoint's inherited environment. bind_host/bind_port are code-derived
@@ -133,6 +135,14 @@ def main(argv: list[str] | None = None) -> int:
             "signed manifest must bind it."
         ),
     )
+    parser.add_argument(
+        "--memory-store-root",
+        default=None,
+        help=(
+            "The memory store's root under the trusted config root (Plan 12.11, ADR-042). The literal is composed here; the "
+            "signed manifest must bind it."
+        ),
+    )
     args = parser.parse_args(argv)
     if args.plan12_stage_c_ledger is not None and args.plan12_test_profile is None:
         parser.error("--plan12-stage-c-ledger needs --plan12-test-profile")
@@ -212,6 +222,13 @@ def main(argv: list[str] | None = None) -> int:
         captured_memory_literal, memory_config, _memory_refusal = read_memory_index_config(memory_dir)
         memory_bound = memory_index_literal(memory_dir, captured_memory_literal)
 
+    # Plan 12.11: the same for the memory store. A configuration that does not parse serves no memory; models still work.
+    store_dir = None if args.memory_store_root is None else Path(args.memory_store_root)
+    store_bound = store_config = None
+    if store_dir is not None:
+        captured_store_literal, store_config, _store_refusal = read_memory_store_config(store_dir)
+        store_bound = memory_store_literal(store_dir, captured_store_literal)
+
     try:
         hmac_key = read_manifest_hmac_key(_keyring_module)
         verify_gateway_child_manifest(
@@ -227,6 +244,7 @@ def main(argv: list[str] | None = None) -> int:
             stage_c_envelope=None if envelope is None else envelope.literal,
             accounting=accounting_bound,
             memory_index=memory_bound,
+            memory_store=store_bound,
         )
     except LaunchManifestError as exc:
         print(f"optimus-local-gateway: manifest validation failed ({exc.code}); refusing to start.", file=sys.stderr)
@@ -251,6 +269,7 @@ def main(argv: list[str] | None = None) -> int:
                 stage_c_envelope=None if envelope is None else envelope.literal,
                 accounting=accounting_bound,
                 memory_index=memory_bound,
+                memory_store=store_bound,
                 tool_environ=environ,
                 hmac_key=hmac_key,
             ),
@@ -296,6 +315,11 @@ def main(argv: list[str] | None = None) -> int:
         from optimus_gateway.memory_index import build_index_service
 
         config = replace(config, memory_index=build_index_service(memory_config, keyring_backend=_keyring_module, hmac_key=hmac_key))
+
+    if store_config is not None:
+        from optimus_gateway.memory_store import build_memory_store_service
+
+        config = replace(config, memory_store=build_memory_store_service(store_config, keyring_backend=_keyring_module, hmac_key=hmac_key))
 
     try:
         server = serve_gateway(config=config)

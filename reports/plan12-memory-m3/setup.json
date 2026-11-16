@@ -1,0 +1,32 @@
+{
+  "schema": "plan12-memory-m3.setup.v1",
+  "plan": "12.11",
+  "issue": 490,
+  "release": "Operator, Claude chat 2026-11-16: \"Release all three\": test Redis p1211-memory-test-redis / p1211-memory-test-data on 127.0.0.1:6396 with maxmemory 512 MiB and a 1 GiB container, removed when checkpoint 1 closes; the isolated keyring service optimus-p1211-test; one Z0 zero-paid Zed session. Real Optimus keyring entries, optimus-redis, the index's Redis and every other container were not touched.",
+  "image": "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5",
+  "product_defaults": {"container": "optimus-memory-store-redis", "volume": "optimus-memory-store-data", "port": 6394, "user": "optimus-memory",
+                       "maxmemory_mb": 512, "admission_ceiling_mb": 384, "container_memory_mib": 1024, "persistence": "AOF everysec, noeviction"},
+  "runs": {
+    "dedicated_store": {"command": "P1211_MEMORY_DOCKER_RELEASED=1 pytest -m requires_plan12_memory_redis tests/integration/memory/test_store.py",
+                        "run": "20261116T195504-63412-a332ff", "result": "27 passed"},
+    "native_keyring": {"command": "pytest -m requires_os_keyring_write tests/integration/memory/test_native_keyring.py",
+                       "run": "20261116T195547-9036-c61623", "result": "3 passed", "residue": "none: keyring.get_password('optimus-p1211-test', 'redis-password') is None after the run"}
+  },
+  "covered": [
+    "setup writes only the non-secret configuration and a hash-only ACL; the password is only in the keyring, never in a file or the container's arguments",
+    "the container is created from the approved configuration with a 1 GiB cap, AOF on and noeviction; one with other settings is never adopted",
+    "without the password nothing can be read; the memory user cannot run administrative commands or touch keys outside omem:*",
+    "the Gateway marks an empty store as its resource, refuses another resource and refuses unmarked data",
+    "a confirmed write survives a container kill",
+    "leases fence an old holder; versions move one at a time; a retry appends nothing; a different change under one key conflicts",
+    "an event whose fsync was never confirmed is not served until a later confirmed one covers it",
+    "list cursors work only for the project, scope and key that issued them; any holder of the Gateway key can name any project (pinned residual)",
+    "checkpoints are kept once and served newest first; the writer is one connection without retries"
+  ],
+  "revert_checks": {
+    "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_cp1.py (each mutant against its named real-store test; the file is always restored)",
+    "killed": ["serve the head instead of the confirmed watermark", "skip the fence check", "replay ignores the digest", "cursor not bound to its project"],
+    "survived": []
+  },
+  "not_covered_here": "Competing writers, disconnections around the append, fsync timeout, AOF-off and OOM at runtime, purge and capacity under load are Task 2 (checkpoint 2)."
+}

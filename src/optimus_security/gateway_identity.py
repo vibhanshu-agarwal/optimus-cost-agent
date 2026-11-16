@@ -13,6 +13,7 @@ Each field says what goes wrong if two launches differ on it:
 - ``stage_c``: the released test envelope, which an ordinary Gateway does not enforce.
 - ``accounting``: where capture lands, and how it is read.
 - ``memory_index``: which dedicated index this Gateway serves (Plan 12.10).
+- ``memory_store``: which dedicated memory store this Gateway serves (Plan 12.11).
 - ``tool_policy``: which web and package upstreams the tool routes call, with which keys and limits.
 
 Workspace, branch, security snapshot, session, nonce and expiry stay out: they authorize a host, not shared upstream
@@ -62,6 +63,7 @@ TOOL_POLICY_NAMES = (
 FIELD_LABELS: Mapping[str, str] = {
     "accounting": "usage accounting",
     "memory_index": "context index",
+    "memory_store": "memory store",
     "composition": "composition (ordinary, Auto or test)",
     "gateway_key": "Gateway key",
     "provider": "provider",
@@ -123,10 +125,12 @@ def compose_identity(
     tool_environ: Mapping[str, str],
     hmac_key: bytes,
     memory_index: str | None = None,
+    memory_store: str | None = None,
 ) -> GatewayIdentity:
     values = {
         "accounting": accounting or "",
         "memory_index": memory_index or "",
+        "memory_store": memory_store or "",
         "composition": composition,
         "gateway_key": shared_secret,
         "provider": provider,
