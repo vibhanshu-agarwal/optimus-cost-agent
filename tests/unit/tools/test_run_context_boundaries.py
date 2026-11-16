@@ -15,6 +15,7 @@ import os
 import secrets
 import subprocess
 import sys
+import threading
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -567,3 +568,61 @@ def test_a_forged_registry_entry_never_reaches_a_record_or_the_terminal(request:
     if sys.platform == "win32":
         assert child["parent_run"] == {"status": "parent", "run_id": context.run_id, "method": "validated_process_ancestry"}
         assert f"parent={context.run_id}" in output
+
+
+# --- #477: a reader holding a record open does not cost the write ---------------------------------------------------
+
+
+def _start_payload(request: pytest.FixtureRequest, tmp_path: Path) -> dict[str, object]:
+    real = _context(request)
+    copy = run_context.RunContext(
+        run_id=real.run_id, mode=real.mode, reason=real.reason, record_dir=tmp_path, started_utc=real.started_utc,
+        worktree=real.worktree, branch=real.branch, head=real.head, declared_agent=real.declared_agent, root=real.root,
+        parent_run=real.parent_run, native=real.native, guard_mode=real.guard_mode,
+    )
+    return run_context._payload(copy, checkpoint="start")  # noqa: SLF001
+
+
+def test_a_refused_replace_is_retried_within_its_bound(request: pytest.FixtureRequest, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    payload, real_replace, attempts, waits = _start_payload(request, tmp_path), os.replace, [], []
+
+    def refused(times: int):
+        def replace(source: object, target: object) -> None:
+            attempts.append(target)
+            if len(attempts) <= times:
+                raise PermissionError(13, "Access is denied")
+            real_replace(source, target)  # type: ignore[arg-type]
+        return replace
+
+    monkeypatch.setattr(run_context_records.time, "sleep", waits.append)
+    monkeypatch.setattr(run_context_records.os, "replace", refused(2))
+    run_context_records.write_record(tmp_path / "run.json", payload)
+    assert len(attempts) == 3 and waits == [0.05, 0.2]
+    assert run_context_records.read_record(tmp_path / "run.json") == {"schema": run_context_records.SCHEMA, **payload}
+
+    attempts.clear()
+    monkeypatch.setattr(run_context_records.os, "replace", refused(3))
+    with pytest.raises(PermissionError):  # bounded: the third refusal is the caller's, which records it as INVALID
+        run_context_records.write_record(tmp_path / "other.json", payload)
+    assert len(attempts) == 3
+
+
+@_windows
+def test_a_record_a_reader_holds_open_is_still_replaced(request: pytest.FixtureRequest, tmp_path: Path) -> None:
+    """The real Windows refusal: a record open for reading cannot be replaced (WinError 5) until the reader closes it."""
+    payload, target = _start_payload(request, tmp_path), tmp_path / "run.json"
+    run_context_records.write_record(target, payload)
+    held = target.open(encoding="utf-8")
+    try:
+        with pytest.raises(PermissionError):
+            os.replace(_write(tmp_path / "probe.tmp"), target)  # the refusal this test is about, shown first
+        threading.Timer(0.1, held.close).start()
+        run_context_records.write_record(target, {**payload, "session_index": 2})
+    finally:
+        held.close()
+    assert run_context_records.read_record(target) == {"schema": run_context_records.SCHEMA, **payload, "session_index": 2}
+
+
+def _write(path: Path) -> Path:
+    path.write_text("{}", encoding="utf-8")
+    return path

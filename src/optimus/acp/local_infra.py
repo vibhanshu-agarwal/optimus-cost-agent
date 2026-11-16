@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import ipaddress
 import json
 import shutil
 import socket
@@ -19,7 +20,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import redis
 from pydantic import SecretStr
+from redis.asyncio.connection import SSLConnection as RedisSSLConnection
+from redis.asyncio.connection import parse_url as parse_redis_url
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 from optimus.acp.launch_policy import project_gateway_tool_child_env
 from optimus.acp.local_gateway_secrets import ProviderCredentialResolution, _parse_env_gateway_file
@@ -69,6 +75,7 @@ _AGENT_ENVIRON_EXCLUDED_KEYS = LOCAL_PROVIDER_KEY_NAMES | {
 _REDIS_CONTAINER_NAME = "optimus-redis"
 _REDIS_IMAGE = "redis:8"
 _REDIS_READY_TIMEOUT_SECONDS = 15.0
+_REDIS_PROBE_SECONDS = 2.0
 _GATEWAY_READY_TIMEOUT_SECONDS = 10.0
 _POLL_INTERVAL_SECONDS = 0.5
 _DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
@@ -193,24 +200,6 @@ def _container_exists(docker: str, name: str, *, host: str | None = None) -> boo
     return name in result.stdout.split()
 
 
-def _is_established_default_redis_url(redis_url: str) -> bool:
-    parsed = urlparse(redis_url)
-    host = (parsed.hostname or "127.0.0.1").lower()
-    if host == "localhost":
-        host = "127.0.0.1"
-    port = parsed.port or 6379
-    path = parsed.path or "/0"
-    if path in ("", "/"):
-        path = "/0"
-    return (
-        host == "127.0.0.1"
-        and port == 6379
-        and path == "/0"
-        and not parsed.username
-        and not parsed.password
-    )
-
-
 def _docker_published_port_owners(docker: str, port: int, *, host: str | None = None) -> list[tuple[str, str]]:
     """Return exact (name, image) pairs publishing ``port`` on the Docker host."""
     try:
@@ -234,46 +223,100 @@ def _docker_published_port_owners(docker: str, port: int, *, host: str | None = 
     return owners
 
 
-def _assert_default_redis_port_owner(*, docker: str | None, port: int, log: Callable[[str], None]) -> None:
-    """Fail closed only when Docker reports a non-optimus-redis owner of the default port."""
-    if docker is None:
-        log(
-            "optimus-agent: Docker not available; treating reachable Redis on the default port "
-            "as a native/operator-managed listener and leaving TimeSeries preflight to decide."
+def _container_redis_run_id(docker: str) -> str | None:
+    """The run_id the optimus-redis container's server reports from inside the container, or None."""
+    try:
+        result = subprocess.run(
+            [docker, "exec", _REDIS_CONTAINER_NAME, "redis-cli", "INFO", "server"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
         )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        key, _, value = line.strip().partition(":")
+        if key == "run_id" and value:
+            return value
+    return None
+
+
+def _redis_run_id(host: str, port: int, *, tls: bool) -> str | None:
+    """The run_id the server at ``host:port`` reports, from one attempt within the probe's bound; None for anything that
+    is not a Redis answering INFO. Built from the address only, so no URL option can lengthen or retry it."""
+    client = redis.Redis(host=host, port=port, ssl=tls, socket_timeout=_REDIS_PROBE_SECONDS,
+                         socket_connect_timeout=_REDIS_PROBE_SECONDS, retry=Retry(NoBackoff(), 0), decode_responses=True)
+    try:
+        run_id = client.info("server").get("run_id")
+    except Exception:  # noqa: BLE001 - a refused, stalled or malformed reply proves nothing; the caller refuses
+        return None
+    finally:
+        client.close()
+    return run_id if isinstance(run_id, str) and run_id else None
+
+
+def _confirm_redis_identity(host: str, port: int, *, tls: bool) -> None:
+    """#480: reuse a listening Redis only when it is the optimus-redis container itself: the run_id it reports, a random
+    value per server start, equals the one read inside the container. Anything else refuses, and the listener is never
+    stopped or changed. (OPTIMUS_REDIS_URL carries no credentials, so no authenticated identity is available to prove.)"""
+    run_id = _redis_run_id(host, port, tls=tls)
+    docker = shutil.which("docker")
+    if run_id is not None and docker is not None and run_id == _container_redis_run_id(docker):
         return
-    owners = _docker_published_port_owners(docker, port)
-    if not owners:
-        log(
-            "optimus-agent: no Docker container owns the default Redis port; treating the "
-            "reachable listener as native/operator-managed and leaving TimeSeries preflight to decide."
-        )
-        return
-    names = [name for name, _image in owners]
-    if names and all(name == _REDIS_CONTAINER_NAME for name in names):
-        return
-    observed = ", ".join(names)
     raise LocalInfrastructureError(
-        code="REDIS_PORT_CONFLICT",
+        code="REDIS_IDENTITY_UNCONFIRMED",
         user_message=(
-            f"Default Redis port {port} is owned by Docker container {observed}, "
-            f"not {_REDIS_CONTAINER_NAME}. Stop or reconfigure that container yourself, "
-            "or set an explicit OPTIMUS_REDIS_URL and re-approve; Optimus will not stop "
-            "or delete the conflicting container."
+            f"Something is listening at {host}:{port}, but it did not prove it is this setup's Redis, the "
+            f"{_REDIS_CONTAINER_NAME} container. Optimus will not use it, and will not stop or change it. Stop that "
+            f"listener yourself so Optimus can start {_REDIS_CONTAINER_NAME} there, or set OPTIMUS_REDIS_URL to the port "
+            f"{_REDIS_CONTAINER_NAME} publishes, and approve the launch again."
         ),
     )
 
 
+def _redis_endpoint(redis_url: str) -> tuple[str, int, bool] | None:
+    """Where the runtime connects for this URL, and whether over TLS, read with the parser its pool uses: a `?port=`
+    option and a percent-encoded host count, so what is checked is what is used. None for a URL that parser refuses,
+    which pre-flight then refuses too."""
+    try:
+        options = parse_redis_url(redis_url)
+        return str(options.get("host", "localhost")), int(options.get("port", 6379)), options.get("connection_class") is RedisSSLConnection
+    except (ValueError, TypeError):
+        return None
+
+
+def _redis_host_is_local(host: str, port: int) -> bool:
+    """Whether the runtime's connection to ``host`` lands on this machine: any loopback address (all of 127.0.0.0/8 and
+    ::1), or a name such as `localhost` that resolves to one. Anything else is a remote Redis, left to pre-flight."""
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        pass
+    try:
+        addresses = {str(info[4][0]).split("%")[0] for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)}
+        return any(ipaddress.ip_address(address).is_loopback for address in addresses)
+    except (OSError, ValueError):
+        return False
+
+
+def confirm_local_redis(redis_url: str) -> None:
+    """For a launch that starts nothing (`--no-auto-start`): a loopback Redis that answers must prove itself as one this
+    launch would start must. A remote Redis, or none at all, is left to pre-flight."""
+    endpoint = _redis_endpoint(redis_url)
+    if endpoint is not None and _redis_host_is_local(endpoint[0], endpoint[1]) and _tcp_reachable(endpoint[0], endpoint[1]):
+        _confirm_redis_identity(endpoint[0], endpoint[1], tls=endpoint[2])
+
+
 def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log) -> None:
-    parsed = urlparse(redis_url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 6379
-    if not _is_loopback(host):
+    endpoint = _redis_endpoint(redis_url)
+    if endpoint is None or not _redis_host_is_local(endpoint[0], endpoint[1]):
         return
+    host, port, tls = endpoint
     if _tcp_reachable(host, port):
-        if _is_established_default_redis_url(redis_url):
-            docker = shutil.which("docker")
-            _assert_default_redis_port_owner(docker=docker, port=port, log=log)
+        _confirm_redis_identity(host, port, tls=tls)
         return
 
     docker = shutil.which("docker")
@@ -299,6 +342,7 @@ def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log
     deadline = time.monotonic() + _REDIS_READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         if _tcp_reachable(host, port):
+            _confirm_redis_identity(host, port, tls=tls)  # another listener may have taken the port first
             return
         time.sleep(_POLL_INTERVAL_SECONDS)
     log(f"optimus-agent: {_REDIS_CONTAINER_NAME} did not become reachable in time; leaving pre-flight to fail closed.")

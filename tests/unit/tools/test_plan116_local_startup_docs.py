@@ -31,9 +31,9 @@ def test_operator_runbook_documents_single_local_startup_sequence() -> None:
     assert "run-gateway --with-local-phoenix" in runbook
     assert "--check-config --strict" in runbook
     assert "--with-local-phoenix" in runbook
-    assert "REDIS_PORT_CONFLICT" in runbook
-    assert "docker ps --filter publish=6379" in runbook
-    assert "Optimus never stops or deletes the conflicting container" in runbook
+    assert "REDIS_IDENTITY_UNCONFIRMED" in runbook  # #480 replaced Plan 11.6's Docker-name ownership probe
+    assert "docker exec optimus-redis redis-cli INFO server" in runbook
+    assert "Optimus never stops, deletes or changes the listener it refused" in runbook
     assert "--no-auto-start" in runbook
     assert "acpx" in runbook
 

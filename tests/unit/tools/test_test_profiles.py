@@ -374,6 +374,8 @@ def test_the_effective_audit_depth_and_budget_are_in_the_terminal_record_and_sum
     assert found is not None, output
     record = run_context_records.read_record(_ROOT / "tmp" / "test-runs" / found["run"] / "run.json")
     assert record is not None and record["checkpoint"] == "terminal", output
+    # #477: an INVALID child record has no audit fields; say that, not that a field is missing.
+    assert record.get("completeness") != "INVALID", f"the child's run record is INVALID ({record.get('terminal_failure')})"
     assert record["audit_depth"] == depth
     expected = [] if budgets is None else [{
         "entry": "h5.shutdown_schedule", "depth": depth, "repeats": budgets, "full_repeats": 100,

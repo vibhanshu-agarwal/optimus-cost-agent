@@ -70,6 +70,7 @@ def launch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, list[An
 
     monkeypatch.setattr(acp_main, "_run_serving_process", serving)
     monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *_a, **_k: None)
+    monkeypatch.setattr(acp_main, "confirm_local_redis", lambda *_a, **_k: None)
     monkeypatch.setattr(acp_main, "build_configured_server", lambda **kwargs: seen["built"].append(kwargs) or object())
     monkeypatch.setattr(acp_main, "run_preflight", lambda *_a, **_k: seen["preflight"].append(True))
     monkeypatch.setattr("optimus.usage.capture_delivery.CaptureDelivery", Delivery)
@@ -107,6 +108,40 @@ def test_strict_check_config_refuses_with_the_reason_before_its_model_probe(laun
     assert acp_main.main([*flags, "--workspace-root", str(tmp_path)]) == 2
     assert launch["preflight"] == [] and launch["served"] == []
     assert "the stated reason" in capsys.readouterr().err
+
+
+def test_a_local_service_that_does_not_prove_itself_is_refused_in_the_panel(launch, monkeypatch, tmp_path, capsys) -> None:
+    """#480/#481: a Redis or Phoenix refusal reaches the person in the editor the way a Gateway refusal does."""
+    started: list[object] = []
+    refusal = LocalInfrastructureError(code="REDIS_IDENTITY_UNCONFIRMED", user_message="the listener's reason")
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *_a, **_k: (_ for _ in ()).throw(refusal))
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **kwargs: started.append(kwargs))
+    assert acp_main.main(["--workspace-root", str(tmp_path)]) == 0
+    assert isinstance(launch["served"][0], GatewayRefusalServer)
+    assert started == [] and launch["built"] == [] and launch["delivery"] == []
+    assert acp_main.main(["--check-config", "--workspace-root", str(tmp_path)]) == 2
+    assert "REDIS_IDENTITY_UNCONFIRMED: the listener's reason" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flags", [[], ["--check-config"], ["--check-config", "--strict"]], ids=["serve", "check", "strict"])
+def test_a_launch_that_starts_nothing_confirms_its_redis_first(launch, monkeypatch, tmp_path, capsys, flags) -> None:
+    """Codex #480 review item 3: `--no-auto-start` reuses whatever Redis listens, so it must prove itself the same way."""
+    refusal = LocalInfrastructureError(code="REDIS_IDENTITY_UNCONFIRMED", user_message="the listener's reason")
+    confirmed: list[str] = []
+
+    def refuse(url: str) -> None:
+        confirmed.append(url)
+        raise refusal
+
+    monkeypatch.setattr(acp_main, "confirm_local_redis", refuse)
+    monkeypatch.setattr(acp_main, "confirm_running_gateway", lambda *_a, **_k: confirmed.append("gateway"))
+    code = acp_main.main([*flags, "--no-auto-start", "--workspace-root", str(tmp_path)])
+    assert confirmed == [_ENV["OPTIMUS_REDIS_URL"]] and launch["preflight"] == [] and launch["built"] == []
+    if flags:
+        assert code == 2 and launch["served"] == []
+        assert "REDIS_IDENTITY_UNCONFIRMED: the listener's reason" in capsys.readouterr().err
+    else:
+        assert code == 0 and isinstance(launch["served"][0], GatewayRefusalServer)
 
 
 def test_plain_check_config_makes_no_request_so_it_needs_no_confirmation(launch, monkeypatch, tmp_path) -> None:
