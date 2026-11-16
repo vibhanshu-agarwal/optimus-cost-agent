@@ -96,7 +96,8 @@ created, and every attempt to establish it, failed or not, is a new generation, 
 finds a closed socket at checkout. Any new generation since the last verification makes the store suspect before the next command runs or result
 is returned. Verification establishes both connections first and refuses a proof if either changes while it is collected, and checks both reach
 the same resource. While a connection is in use, its connect timeout, its socket timeout and its parser's cached timeout are the request's
-remaining budget, refreshed before each command, and a watchdog shuts its socket at the absolute deadline, so no handshake, fragmented reply or
+remaining budget, refreshed before each command; a watchdog closes its socket at the absolute deadline, and after the deadline the connection
+neither connects nor sends, redis-py's own cleanup included, so no handshake, fragmented reply or
 sequence of commands outlasts the request. Past the deadline nothing new starts; a write already sent stays uncertain, and the cut connection is
 a new generation that must be verified.
 

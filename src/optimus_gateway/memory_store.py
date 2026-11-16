@@ -74,6 +74,7 @@ class Link:
     def __init__(self) -> None:
         self.connection: Any = None
         self.connects = 0
+        self.deadline: float | None = None  # the holding request's absolute deadline, on time.monotonic()
 
     def established(self, connection: Any) -> None:
         self.connects += 1  # counted before the handshake: a half-finished attempt is still another connection
@@ -88,14 +89,35 @@ class Link:
                 sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
+            sock.close()  # on Windows only closing ends a recv blocked in another thread; shutdown alone waits out its timeout
+
+
+class DeadlinePassed(RedisConnectionError):
+    """Raised instead of connecting or sending once the holding request's deadline has passed. A connection error, so redis-py's
+    own cleanup (a pipeline's UNWATCH after a cut, say) treats it as a dead connection rather than reconnecting."""
 
 
 class _TrackedConnection(redis.Connection):
-    """A redis-py connection that hands itself to its `Link` as soon as it exists."""
+    """A redis-py connection that hands itself to its `Link` as soon as it exists, and refuses to connect or send after the
+    holding request's deadline, so nothing, redis-py's own cleanup included, reconnects or talks past it."""
 
     def __init__(self, *args: Any, optimus_link: Link, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        self._optimus_link = optimus_link
         optimus_link.connection = self
+
+    def _within_deadline(self) -> None:
+        deadline = self._optimus_link.deadline
+        if deadline is not None and time.monotonic() >= deadline:
+            raise DeadlinePassed("the memory request's deadline has passed")
+
+    def connect(self, *args: Any, **kwargs: Any) -> None:
+        self._within_deadline()
+        super().connect(*args, **kwargs)
+
+    def send_packed_command(self, *args: Any, **kwargs: Any) -> None:
+        self._within_deadline()
+        super().send_packed_command(*args, **kwargs)
 
 
 def connect(endpoint: MemoryStoreEndpoint) -> redis.Redis:
@@ -121,6 +143,7 @@ def set_budget(client: Any, seconds: float) -> None:
     if not isinstance(link, Link):  # an in-memory stand-in
         return
     seconds = max(_MIN_SOCKET_SECONDS, seconds)
+    client.connection_pool.timeout = seconds  # how long a checkout waits for the pool's one connection
     client.connection_pool.connection_kwargs.update(socket_timeout=seconds, socket_connect_timeout=min(_CONNECT_SECONDS, seconds))
     connection = link.connection
     if connection is None:  # not connected yet: the pool's settings above apply to the first connection
@@ -130,7 +153,10 @@ def set_budget(client: Any, seconds: float) -> None:
     # shortcut: redis-py 8 keeps the live socket and the parser's cached timeout in private fields; re-check them on upgrade
     sock = getattr(connection, "_sock", None)
     if sock is not None:
-        sock.settimeout(seconds)
+        try:
+            sock.settimeout(seconds)
+        except OSError:
+            pass  # cut at a deadline: the next use reconnects, a new generation that must be verified
     buffer = getattr(getattr(connection, "_parser", None), "_buffer", None)
     if buffer is not None:
         buffer.socket_timeout = seconds
@@ -321,15 +347,19 @@ class MemoryStore:
         self._local.held = (*held, client)
         set_budget(client, self._remaining())
         link = getattr(client, "optimus_link", None)
-        watchdog = threading.Timer(max(0.0, self._remaining()), link.cut) if isinstance(link, Link) else None
-        if watchdog is not None:
+        watchdog = None
+        if isinstance(link, Link):
+            link.deadline = time.monotonic() + self._remaining()
+            watchdog = threading.Timer(max(0.0, self._remaining()), link.cut)
             watchdog.daemon = True
             watchdog.start()
         try:
             yield
         finally:
-            if watchdog is not None:
+            if watchdog is not None and isinstance(link, Link):
                 watchdog.cancel()
+                watchdog.join()  # a cut already under way finishes on this request's connection, before the lock is released
+                link.deadline = None
             self._local.held = held
             set_budget(client, msc.DEADLINE_SECONDS)
 
@@ -348,9 +378,11 @@ class MemoryStore:
         self._local.verifying = True
         try:
             self._prove(resource)
-        except (RedisError, OSError) as exc:  # a cut at the deadline included
+        except (RedisError, OSError, MemoryStoreStartupError) as exc:  # a cut at the deadline included, however it was wrapped
             if self._remaining() <= 0:
                 raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503) from None
+            if isinstance(exc, MemoryStoreStartupError):
+                raise
             raise MemoryStoreStartupError("MEMORY_STORE_UNREACHABLE") from exc
         finally:
             self._local.deadline = None
@@ -390,6 +422,9 @@ class MemoryStore:
         """A WatchError is either another writer, which is retried, or redis-py reporting a lost connection. A new connection id
         means the latter: nothing cached is trusted and nothing more runs until the resource is verified again. Whether a
         transaction already sent took effect is uncertain; a retry under the same key reconciles it."""
+        if self._remaining() <= 0:  # past the deadline nothing reconnects, not even to ask which connection this is
+            self._connection_lost()
+            raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503)
         if int(self._writer.client_id()) != connection:
             self._connection_lost()
             raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)

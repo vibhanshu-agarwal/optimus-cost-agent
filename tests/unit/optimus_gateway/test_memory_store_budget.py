@@ -107,6 +107,18 @@ class FakeRedis:
                         return
                 elif mode == "fast":
                     conn.sendall(reply)
+                elif mode == "stall-info":  # verification connects and pings, then INFO never answers
+                    if name == b"INFO":
+                        self.stop.wait(10)
+                        return
+                    conn.sendall(reply)
+                elif mode == "stall-get-slow-auth":  # a GET never answers, and every handshake reply takes 300 ms
+                    if name == b"GET":
+                        self.stop.wait(10)
+                        return
+                    if name in (b"AUTH", b"CLIENT", b"HELLO"):
+                        self.stop.wait(0.3)
+                    conn.sendall(reply)
                 elif name == b"PING":
                     self.stop.wait(2)
                     conn.sendall(b"+PONG\r\n")
@@ -237,3 +249,103 @@ def test_a_slow_handshake_is_cut_at_the_deadline(fake: Callable[[str], FakeRedis
     with pytest.raises((msc.MemoryRequestError, memory_store.MemoryStoreStartupError)):
         store.verify(endpoint.resource, deadline=time.monotonic() + 0.25)
     assert time.monotonic() - started < 0.4
+
+
+def test_a_stalled_verification_command_is_a_timeout_not_an_unreachable_store(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("stall-info")
+    store, endpoint = _store(server)
+    started = time.monotonic()
+    with pytest.raises(msc.MemoryRequestError) as stopped:
+        store.verify(endpoint.resource, deadline=time.monotonic() + 0.3)
+    assert stopped.value.code == "MEMORY_TIMEOUT" and time.monotonic() - started < 0.5
+
+
+def test_nothing_reconnects_after_the_deadline_not_even_redis_py_cleanup(fake: Callable[[str], FakeRedis]) -> None:
+    """A lease's WATCH is followed by a GET that never answers; the watchdog cuts it. redis-py's cleanup would then reconnect
+    (three slow handshake replies) to send UNWATCH, and the store would ask CLIENT ID: neither may happen past the deadline."""
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    server.mode = "stall-get-slow-auth"
+    connects = store._writer.optimus_link.connects
+    started = time.monotonic()
+    with pytest.raises(msc.MemoryRequestError) as stopped:
+        store.dispatch({"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000},
+                       deadline=time.monotonic() + 0.5)
+    assert stopped.value.code == "MEMORY_TIMEOUT" and time.monotonic() - started < 0.7
+    assert store._writer.optimus_link.connects == connects  # no reconnect was attempted after the cut
+    assert store.suspect is True
+
+
+def test_a_watchdog_already_cutting_finishes_before_the_next_request_takes_the_connection(
+        fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch) -> None:
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    started, release, order = threading.Event(), threading.Event(), []
+    real_cut = memory_store.Link.cut
+
+    def slow_cut(link: memory_store.Link) -> None:
+        started.set()
+        release.wait(5)  # the callback is under way while its request leaves
+        real_cut(link)
+        order.append("cut done")
+
+    monkeypatch.setattr(memory_store.Link, "cut", slow_cut)
+
+    def request_a() -> None:
+        store._local.deadline = time.monotonic() + 0.05
+        with store._writing():
+            started.wait(5)  # the watchdog has fired
+        order.append("A released")
+
+    def request_b() -> None:
+        store._local.deadline = time.monotonic() + 5
+        started.wait(5)
+        with store._write_lock:
+            order.append("B took the lock")
+
+    a, b = threading.Thread(target=request_a), threading.Thread(target=request_b)
+    a.start()
+    b.start()
+    started.wait(5)
+    time.sleep(0.2)  # A is now waiting in its exit for the callback, and B for the lock
+    assert order == []
+    release.set()
+    a.join(5)
+    b.join(5)
+    assert order.index("cut done") < order.index("A released") and order.index("cut done") < order.index("B took the lock")
+
+
+def test_a_pool_checkout_wait_is_bounded_by_the_budget(fake: Callable[[str], FakeRedis]) -> None:
+    """Path 12: should anything else hold the pool's one connection, a request waits only for what is left of its budget."""
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    pool = store._writer.connection_pool
+    taken = pool.get_connection()  # the only connection, held outside the store
+    try:
+        service = memory_store.MemoryStoreService(store)
+        started = time.monotonic()
+        body = {"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000}
+        status, _reply = service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 0.3)
+        assert status == 503 and time.monotonic() - started < 0.5
+    finally:
+        pool.release(taken)
+
+
+def test_a_tracked_connection_neither_connects_nor_sends_after_its_deadline(fake: Callable[[str], FakeRedis]) -> None:
+    """Path 16: the guard redis-py's own cleanup runs into."""
+    server = fake("fast")
+    client = memory_store.connect(_endpoint(server.port))
+    client.ping()
+    link = client.optimus_link
+    link.deadline = time.monotonic() - 0.01
+    with pytest.raises(memory_store.DeadlinePassed):
+        link.connection.send_command("PING")
+    link.connection.disconnect()
+    with pytest.raises(memory_store.DeadlinePassed):
+        link.connection.connect()
+    assert link.connects == 1  # the refused connect never reached the handshake
+    link.deadline = None
+    assert client.ping() is True and link.connects == 2
