@@ -49,11 +49,20 @@ roles: {}
 
 def test_enforcement_ships_active_on_the_reviewed_attached_snapshot() -> None:
     """Plan 12.2 closure plan v3 (operator approval, #237 6249169293): the shipped defaults are enforced, and they
-    compose to exactly the snapshot Stage C's attached cases ran on."""
+    compose to exactly the attached profile's snapshot. Stage C's attached cases ran on its hash before ADR-041."""
     assert ENFORCEMENT_ACTIVE is True
     snapshot = trusted_snapshot()
     assert snapshot is not None and snapshot.effective_hash == SHIPPED_DEFAULTS_HASH == HAIKU_ATTACHED_HASH
     assert trusted_approval_literal() == f"optimus-model-registry-v1:{HAIKU_ATTACHED_HASH}"
+
+
+def test_the_shipped_haiku_route_caches_the_prefix_the_paid_pair_ran_on() -> None:
+    """ADR-041 (#485): prefix caching is on by default, and the shipped defaults compose to exactly the registry the
+    released paid pair used (reports/plan12-memory-m1/prompt-cache.json, prefix_pair.registry_effective_hash)."""
+    snapshot = trusted_snapshot()
+    assert snapshot is not None
+    assert snapshot.policy.models["anthropic/claude-haiku-5.5"].route.prompt_cache == "prefix"
+    assert snapshot.effective_hash == "2e9a5181f23a59bb65e1a4d338822b2a2dbfd88be61a5ff4280697af9a60b663"  # pragma: allowlist secret - registry identity
 
 
 def test_activation_composes_the_packaged_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
