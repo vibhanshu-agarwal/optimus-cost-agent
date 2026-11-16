@@ -1,0 +1,773 @@
+{
+ "acpx": {
+  "first_turn": {
+   "failures": 0,
+   "max_ms": 13162.781,
+   "mean_ms": 13162.781,
+   "p50_ms": 13162.781,
+   "p95_ms": 13162.781,
+   "samples": 1
+  },
+  "idle": {
+   "failures": 0,
+   "max_ms": 6848.702,
+   "mean_ms": 6367.39,
+   "p50_ms": 6347.247,
+   "p95_ms": 6830.063,
+   "samples": 20
+  },
+  "idle_cancel": {
+   "seconds_to_stop": 2.173,
+   "stop": "cancelled"
+  },
+  "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line",
+  "queue_owners_recorded": 1
+ },
+ "config": {
+  "acpx_turns": 20,
+  "authorization": "Operator, Claude chat 2026-11-05 (Release B): \"Yes, release all three\", reconfirmed \"Approved. Go ahead. #1 - #3\".",
+  "bulk_batches": 20,
+  "container": "p1210-qualify-redis",
+  "embedding_cache": "tmp/plan12-m1-eval/embedding-cache.sqlite",
+  "embedding_threads": 2,
+  "foreground_sample_seconds": 3600,
+  "gateway_port": 8773,
+  "hours_limit": 4,
+  "k2_out": "reports/plan12-memory-m1/k2.json",
+  "k2_rounds": 100,
+  "label": "plan12.10-qualify-2026-11-05",
+  "large_commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+  "large_corpus": "tmp/plan12-m1-corpus/hadoop",
+  "maxmemory_mb": 4096,
+  "out": "reports/plan12-memory-m1/qualify.json",
+  "peak_sample_seconds": 30,
+  "port": 6393,
+  "query_samples": 200,
+  "repo_paths": [
+   "."
+  ],
+  "volume": "p1210-qualify-data",
+  "work_dir": "tmp/plan12-m1-qualify"
+ },
+ "head": "hex:1a7592b753dfc3f7272d440c049147df4a1e1509",
+ "host": {
+  "cpus": 12,
+  "memory_gb": 47.8
+ },
+ "large": {
+  "assembly_calibration": {
+   "coverage": "Context index: ready, 10255 of 10255 files.",
+   "during_build": {
+    "blocked": [],
+    "pack_share_of_token_budget_max": 0.769,
+    "per_task": [
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "catalogue": 1,
+       "coverage": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "pack_tokens": 7763,
+      "route_calls": 11,
+      "route_ms": 291.7,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 3153.6
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "pack_tokens": 12600,
+      "route_calls": 10,
+      "route_ms": 84.0,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 792.6
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "pack_tokens": 6637,
+      "route_calls": 10,
+      "route_ms": 96.0,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 803.1
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "pack_tokens": 0,
+      "route_calls": 10,
+      "route_ms": 117.2,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 804.8
+     }
+    ],
+    "route_calls_max": 11,
+    "route_calls_median": 10.0,
+    "route_ms": {
+     "max_ms": 291.7,
+     "mean_ms": 147.225,
+     "p50_ms": 96.0,
+     "p95_ms": 291.7,
+     "samples": 4
+    },
+    "states": [
+     "ok"
+    ],
+    "turns": 4,
+    "wall_ms": {
+     "max_ms": 3153.6,
+     "mean_ms": 1388.525,
+     "p50_ms": 803.1,
+     "p95_ms": 3153.6,
+     "samples": 4
+    }
+   },
+   "idle": {
+    "blocked": [],
+    "pack_share_of_token_budget_max": 1.0,
+    "per_task": [
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "pack_tokens": 15926,
+      "route_calls": 11,
+      "route_ms": 165.9,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 1559.1
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "pack_tokens": 16383,
+      "route_calls": 11,
+      "route_ms": 153.8,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1340.8
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "pack_tokens": 16364,
+      "route_calls": 11,
+      "route_ms": 119.1,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 928.3
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "pack_tokens": 13986,
+      "route_calls": 11,
+      "route_ms": 109.8,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 827.9
+     }
+    ],
+    "route_calls_max": 52,
+    "route_calls_median": 11.0,
+    "route_ms": {
+     "max_ms": 14806.6,
+     "mean_ms": 859.415,
+     "p50_ms": 119.1,
+     "p95_ms": 167.1,
+     "samples": 20
+    },
+    "states": [
+     "ok"
+    ],
+    "turns": 20,
+    "wall_ms": {
+     "max_ms": 17489.4,
+     "mean_ms": 1879.79,
+     "p50_ms": 894.2,
+     "p95_ms": 1559.1,
+     "samples": 20
+    }
+   },
+   "repo_map_on_a_miss": {
+    "chars": 11901,
+    "route_calls": 90,
+    "wall_ms": 15704.1
+   },
+   "state": "CALIBRATION: never a qualification result"
+  },
+  "bulk": {
+   "native_records_per_second": 7595.2,
+   "native_seconds": 0.337,
+   "proxy_records_per_second": 6392.6,
+   "proxy_seconds": 0.4,
+   "records": 2560
+  },
+  "cancel": {
+   "seconds_to_stop": 0.11,
+   "state": "cancelled"
+  },
+  "cold": {
+   "acpx_during_build": [
+    {
+     "at_seconds": 76,
+     "cancel": {
+      "seconds_to_stop": 2.778,
+      "stop": "cancelled"
+     },
+     "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line",
+     "turns": {
+      "failures": 0,
+      "max_ms": 8142.389,
+      "mean_ms": 7854.997,
+      "p50_ms": 7818.502,
+      "p95_ms": 8029.671,
+      "samples": 20
+     }
+    }
+   ],
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 10255,
+    "files_total": 10255,
+    "parsed_loc": {
+     "java": 1438914,
+     "markdown": 121476,
+     "python": 499,
+     "text": 5788
+    },
+    "records": 122872,
+    "unsupported": 1816
+   },
+   "detail": "",
+   "embedded_items_per_second": 12.9,
+   "failure": [],
+   "files_written": 10255,
+   "first_file_visible_seconds": 30.91,
+   "foreground_during_build": [
+    {
+     "at_seconds": 61,
+     "native_dense": {
+      "max_ms": 57.798,
+      "mean_ms": 13.505,
+      "p50_ms": 11.264,
+      "p95_ms": 19.99,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 31.438,
+      "mean_ms": 6.685,
+      "p50_ms": 6.22,
+      "p95_ms": 9.552,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 72.915,
+      "mean_ms": 17.54,
+      "p50_ms": 15.651,
+      "p95_ms": 25.559,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 39.138,
+      "mean_ms": 11.842,
+      "p50_ms": 10.713,
+      "p95_ms": 16.767,
+      "samples": 200
+     }
+    },
+    {
+     "at_seconds": 3838,
+     "native_dense": {
+      "max_ms": 54.549,
+      "mean_ms": 19.797,
+      "p50_ms": 17.408,
+      "p95_ms": 31.864,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 40.573,
+      "mean_ms": 6.811,
+      "p50_ms": 6.159,
+      "p95_ms": 9.485,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 55.912,
+      "mean_ms": 24.11,
+      "p50_ms": 21.945,
+      "p95_ms": 36.364,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 57.32,
+      "mean_ms": 11.842,
+      "p50_ms": 10.676,
+      "p95_ms": 16.258,
+      "samples": 200
+     }
+    },
+    {
+     "at_seconds": 7451,
+     "native_dense": {
+      "max_ms": 47.691,
+      "mean_ms": 19.99,
+      "p50_ms": 18.131,
+      "p95_ms": 31.376,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 44.468,
+      "mean_ms": 7.156,
+      "p50_ms": 6.079,
+      "p95_ms": 11.159,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 80.304,
+      "mean_ms": 24.525,
+      "p50_ms": 22.672,
+      "p95_ms": 36.957,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 50.875,
+      "mean_ms": 11.827,
+      "p50_ms": 10.368,
+      "p95_ms": 17.201,
+      "samples": 200
+     }
+    }
+   ],
+   "foreground_errors": [],
+   "hours": 2.489,
+   "index_disk_within_2048": true,
+   "peaks": {
+    "container_memory_mb": 1054.0,
+    "disk_mb": 1225.7,
+    "failed_samples": 0,
+    "used_memory_mb": 1039.9
+   },
+   "processes": {
+    "gateway": {
+     "cpu_percent_max": 42.0,
+     "cpu_percent_mean": 0.4,
+     "rss_mb_max": 73.1,
+     "threads_max": 3,
+     "threads_using_over_5_percent_of_a_cpu": 0
+    },
+    "worker": {
+     "cpu_percent_max": 300.9,
+     "cpu_percent_mean": 201.8,
+     "rss_mb_max": 1118.6,
+     "threads_max": 35,
+     "threads_using_over_5_percent_of_a_cpu": 1
+    }
+   },
+   "records_written": 122872,
+   "redis": {
+    "disk_kb": 872668,
+    "maxmemory_mb": 4096.0,
+    "used_memory_mb": 1025.3,
+    "used_memory_peak_mb": 1039.9
+   },
+   "seconds": 8960.5,
+   "state": "complete",
+   "within_the_hours_limit": true
+  },
+  "commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+  "count": {
+   "chunk_chars_mean": 644.5,
+   "chunk_chars_p95": 1869,
+   "embedded_chunks": 112617,
+   "excluded": {
+    "deny.secret": 75,
+    "deny.skipped_dir": 25,
+    "excluded.binary": 94,
+    "excluded.too_large": 48,
+    "ignored.gitignore": 11,
+    "ignored.optimusignore": 5104
+   },
+   "files": {
+    "java": 7781,
+    "markdown": 521,
+    "python": 4,
+    "text": 133,
+    "unsupported": 1816
+   },
+   "parse_error_files": 0,
+   "parse_seconds": 118.294,
+   "parsed_lines": {
+    "java": 1438914,
+    "markdown": 121476,
+    "python": 499,
+    "text": 5788,
+    "unsupported": 0
+   },
+   "records": {
+    "java": 114985,
+    "markdown": 5776,
+    "python": 23,
+    "text": 272,
+    "unsupported": 1816
+   }
+  },
+  "incremental_one_file": {
+   "new_symbol_found": false,
+   "records_written": 0,
+   "seconds": 223.0,
+   "state": "complete"
+  },
+  "parsed_java_at_least_1m": true,
+  "query_idle": {
+   "native_dense": {
+    "max_ms": 35.832,
+    "mean_ms": 22.439,
+    "p50_ms": 22.128,
+    "p95_ms": 25.364,
+    "samples": 200
+   },
+   "native_lexical": {
+    "max_ms": 9.99,
+    "mean_ms": 6.155,
+    "p50_ms": 6.189,
+    "p95_ms": 8.189,
+    "samples": 200
+   },
+   "proxy_dense": {
+    "max_ms": 52.322,
+    "mean_ms": 25.492,
+    "p50_ms": 25.036,
+    "p95_ms": 27.926,
+    "samples": 200
+   },
+   "proxy_lexical": {
+    "max_ms": 13.053,
+    "mean_ms": 9.445,
+    "p50_ms": 9.413,
+    "p95_ms": 11.56,
+    "samples": 200
+   }
+  },
+  "reconcile_unchanged": {
+   "records_written": 0,
+   "seconds": 223.3,
+   "seconds_per_1000_files": 21.8,
+   "state": "complete"
+  }
+ },
+ "phase": "qualify",
+ "redis_before_k2": {
+  "disk_kb": 891820,
+  "maxmemory_mb": 4096.0,
+  "used_memory_mb": 1024.8,
+  "used_memory_peak_mb": 1054.6
+ },
+ "repository": {
+  "count": {
+   "chunk_chars_mean": 1016.5,
+   "chunk_chars_p95": 3339,
+   "embedded_chunks": 28669,
+   "excluded": {
+    "deny.secret": 2,
+    "deny.skipped_dir": 2068,
+    "excluded.binary": 54,
+    "excluded.empty": 6,
+    "excluded.too_large": 32
+   },
+   "files": {
+    "java": 0,
+    "markdown": 544,
+    "python": 934,
+    "text": 22,
+    "unsupported": 282
+   },
+   "parse_error_files": 0,
+   "parse_seconds": 22.694,
+   "parsed_lines": {
+    "java": 0,
+    "markdown": 119522,
+    "python": 300797,
+    "text": 344,
+    "unsupported": 0
+   },
+   "records": {
+    "java": 0,
+    "markdown": 7148,
+    "python": 22977,
+    "text": 44,
+    "unsupported": 282
+   }
+  },
+  "coverage": {
+   "complete": true,
+   "excluded": 0,
+   "files_indexed": 1782,
+   "files_total": 1782,
+   "parsed_loc": {
+    "markdown": 119522,
+    "python": 300797,
+    "text": 344
+   },
+   "records": 30451,
+   "unsupported": 282
+  },
+  "embedded_now": 3601,
+  "note": "Embeddings reused, so this time is not a build forecast.",
+  "records_written": 30451,
+  "seconds": 423.0,
+  "state": "complete"
+ },
+ "schema": "plan12-memory-m1.qualify.v2",
+ "verdict": {
+  "assembly": "CALIBRATION only, as planned: large-corpus assembly limits are the operator's to approve from it and are qualified on a later run.",
+  "limits": [
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 50,
+    "measured": 27.926,
+    "met": true,
+    "metric": "proxy dense query p95, idle, ms"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 25,
+    "measured": 11.56,
+    "met": true,
+    "metric": "proxy lexical query p95, idle, ms"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 110,
+    "measured": 36.957,
+    "met": true,
+    "metric": "proxy dense query p95, during a cold build, ms, worst of 3 samples"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 45,
+    "measured": 17.201,
+    "met": true,
+    "metric": "proxy lexical query p95, during a cold build, ms, worst of 3 samples"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 1.5,
+    "measured": 1.232,
+    "met": true,
+    "metric": "acpx turn p50 during a build / idle p50, 20 turns each"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 1.5,
+    "measured": 1.176,
+    "met": true,
+    "metric": "acpx turn p95 during a build / idle p95, 20 turns each"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 0,
+    "measured": 0,
+    "met": true,
+    "metric": "acpx turn failures during a build"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 5,
+    "measured": 2.778,
+    "met": true,
+    "metric": "seconds for a person's cancel to stop a turn, during a build"
+   },
+   {
+    "direction": "at least",
+    "group": "indexing",
+    "limit": 7,
+    "measured": 12.9,
+    "met": true,
+    "metric": "embedded chunks per second on two threads"
+   },
+   {
+    "direction": "at least",
+    "group": "indexing",
+    "limit": 3000,
+    "measured": 6392.6,
+    "met": true,
+    "metric": "proxy bulk records per second"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 5,
+    "measured": 30.91,
+    "met": false,
+    "metric": "seconds until the first file is visible, from the start of a cold build",
+    "note": "MISSED. Root cause, measured apart on the same tree on 2026-11-06: the product's listing of 10,255 files (FilePolicy walk) takes 27.1-27.4 s and revision() 2.1-2.2 s, both before any file is published. The limit came from a 50-file pilot (0.85, 0.96 s), so it did not scale with tree size."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 4,
+    "measured": 1.589,
+    "met": true,
+    "metric": "hours per 1M eligible parsed LOC",
+    "note": "2.489 h for 1566677 parsed LOC; also inside the approved 4 h total."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 6,
+    "measured": null,
+    "met": null,
+    "metric": "seconds from an edit to its symbol being queryable, one file",
+    "note": "NOT MEASURED: harness defects. The harness edited the sorted-first large Java file, hadoop-client-integration-tests/src/test/java/.../ITUseHadoopCodecs.java, which the approved test rule excludes, so 0 records and no symbol were the product's correct answer; and it queried only after the whole pass, so its 223.0 s is the pass, not visibility (Codex review 23). Fixed: m1_scale.edit_target picks a file the index admits, and m1_scale.edit_visibility times the first successful query of the new symbol in that file while the pass runs. At 1a7592b every pass began with the 27 s listing above, so this would have missed 6 s; the product now writes changed and open files before the listing (see the later run)."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 60,
+    "measured": 21.8,
+    "met": true,
+    "metric": "seconds per 1000 files to reconcile an unchanged tree"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 3,
+    "measured": 0.11,
+    "met": true,
+    "metric": "seconds to stop a build on cancel"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 10,
+    "measured": 9.298,
+    "met": true,
+    "metric": "seconds until answering after a Redis kill, same publication",
+    "note": "Met with little room: 9.3 of 10. K2's own bound for this is 60."
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 2,
+    "measured": 2,
+    "met": true,
+    "metric": "native embedding threads, as configured"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 1500,
+    "measured": 1118.6,
+    "met": true,
+    "metric": "worker RSS, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 250,
+    "measured": 201.8,
+    "met": true,
+    "metric": "worker mean CPU during a build, percent of one core"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 3,
+    "measured": 1,
+    "met": true,
+    "metric": "process threads doing work during a build (over 5 percent of a core)"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 150,
+    "measured": 73.1,
+    "met": true,
+    "metric": "Gateway RSS, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 3072,
+    "measured": 1054.6,
+    "met": true,
+    "metric": "Redis used memory peak, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 2048,
+    "measured": 1225.7,
+    "met": true,
+    "metric": "index disk at the run's record count, MB, at its peak"
+   }
+  ],
+  "missed": [
+   "seconds until the first file is visible, from the start of a cold build"
+  ],
+  "not_measured": [
+   "seconds from an edit to its symbol being queryable, one file"
+  ],
+  "other_observations": [
+   "During-build assembly was lexical-only because of the harness, not the index: its session was never started, so it had no embedder (Codex review 23). One task packed 0 tokens there. Fixed: the session is given the embedder without a second worker, and each calibration records dense_in_every_turn. Idle assembly did query dense.",
+   "Idle assembly had one outlier turn of 52 route calls and 14.8 s route time. Cause: the repo map read the 41-page catalogue (10,255 files at 256 a page) without sharing it with retrieval's cache, so the first turn read it again: 41 + 11 = 52. Fixed in the session with a unit test. A repo-map refresh on a miss cost 90 calls and 15.7 s; the pilot limits were 30 calls and 1,000 ms for a refresh. Every idle turn is now kept, not the last four.",
+   "Release B's first acpx turn took 13.2 s against an idle p50 of 6.3 s; that is the stub agent's start, not the index."
+  ],
+  "state": "One frozen limit MISSED, one NOT MEASURED (harness defect), the rest met. The operator's disposition is owed; nothing was retuned or rerun."
+ }
+}

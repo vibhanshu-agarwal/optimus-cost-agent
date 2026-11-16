@@ -77,6 +77,7 @@ relevant records before proposing a change in their area.
 | [ADR-036: Local Gateway attach identity](decisions/ADR-036-local-gateway-attach-identity.md) | A launch reuses a local Gateway only when it proves this launch's configuration, and otherwise says why in the Agent Panel (#465) |
 | [ADR-037: Context index storage, setup and worker](decisions/ADR-037-context-index-storage-setup-and-worker.md) | The context index lives behind a Gateway route on a dedicated Redis set up once in a terminal. |
 | [ADR-038: Context index retrieval, tools and caching](decisions/ADR-038-context-index-retrieval-tools-and-caching.md) | A turn gets ranked context verified against disk, four read-only tools, opt-in provider caching and the named files' unsaved text in that turn's memory only. |
+| [ADR-039: Cache the stable start of a request](decisions/ADR-039-provider-cache-breakpoint-after-the-map.md) | A measured changed question reads nothing under root caching, so an opt-in mode caches only the start of a request through the repository map. |
 | [Ordering/lifecycle/signals and queue decision](decisions/2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Exact operator authority, accepted proposals, alternatives and scoped ADR-027 supersession |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
@@ -120,7 +121,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
-| [Plan 12.10: memory index, tools and context (M1)](superpowers/plans/2026-11-03-plan-12-10-memory-index-and-context-implementation.md) | #469; hybrid index, four read-only tools and first useful context |
+| [Plan 12.10 v3: memory index, tools and context (M1)](superpowers/plans/2026-11-03-plan-12-10-memory-index-and-context-implementation_v3.md) | #469; hybrid index, four read-only tools and first useful context |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |

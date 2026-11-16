@@ -246,6 +246,7 @@ class UpstreamClient(Protocol):
         provider_controls: Mapping[str, Any],
         reasoning: str | None,
         prompt_cache: str | None = None,
+        cache_prefix_chars: int | None = None,
     ) -> ProviderMessageResult:
         """One provider attempt under an enforced model policy; raises UpstreamAttemptFailure."""
 
@@ -436,6 +437,7 @@ class UrllibOpenAICompatibleClient:
         provider_controls: Mapping[str, Any],
         reasoning: str | None,
         prompt_cache: str | None = None,
+        cache_prefix_chars: int | None = None,
     ) -> ProviderMessageResult:
         """Exactly one provider attempt under an enforced model policy (Plan 12.2 Task 5).
 
@@ -445,11 +447,18 @@ class UrllibOpenAICompatibleClient:
 
         Wire mapping v1: the output cap is OpenRouter's ``max_tokens``, the approved endpoints are its
         ``provider`` routing object, and the approved reasoning level is ``reasoning.effort``. A route
-        approved for ``top_level`` caching adds the root ``cache_control``, beside and never inside ``provider``.
+        approved for ``top_level`` caching adds the root ``cache_control``, beside and never inside ``provider``. An admitted
+        ``cache_prefix_chars`` sends the same text as two blocks and marks only the first.
         """
+        content: str | list[dict[str, Any]] = input_text
+        if cache_prefix_chars is not None:
+            content = [
+                {"type": "text", "text": input_text[:cache_prefix_chars], "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": input_text[cache_prefix_chars:]},
+            ]
         payload: dict[str, Any] = {
             "model": model,
-            "messages": [{"role": "user", "content": input_text}],
+            "messages": [{"role": "user", "content": content}],
             "max_tokens": max_tokens,
             "provider": json.loads(json.dumps(dict(provider_controls))),
         }

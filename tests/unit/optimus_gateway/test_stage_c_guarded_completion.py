@@ -32,11 +32,13 @@ from optimus_model_policy.binding import (
     ATTEMPT_UNCERTAIN,
     GATEWAY_REQUEST_BUDGET_SECONDS,
     UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
+    RouteBinding,
 )
 from optimus_model_policy.stage_c import StageCGuard
 from tests.unit.optimus_gateway.model_policy_support import (
     AUTH,
     CAP,
+    VERIFIED_POLICY,
     RecordingUpstream,
     binding,
     gateway_config,
@@ -232,3 +234,77 @@ def test_an_attempt_refused_at_dispatch_releases_its_reservation_as_unbilled(gua
     assert upstream.calls == []
     assert [r["result"] for r in _records(path, "settle")] == ["unbilled"]
     assert (guard.state.charged_usd, guard.state.outstanding_usd) == (Decimal("0"), Decimal("0"))
+
+
+# --- ADR-039: a request that can write the cache reserves the write price ---------------------------------
+
+_LONG_PREFIX = "P" * 1000
+_LONG_INPUT = _LONG_PREFIX + " and the question"
+
+
+class _AnyCache(RecordingUpstream):
+    def create_message_once(self, *, model, input_text, max_tokens, provider_controls, reasoning, **cache):
+        self.cache = cache
+        return super().create_message_once(model=model, input_text=input_text, max_tokens=max_tokens, provider_controls=provider_controls, reasoning=reasoning)
+
+
+def _cached_guard(tmp_path: Path, mode: str):
+    clock = Clock()
+    path = stage_c.stage_c_ledger_path(tmp_path / "runtime")
+    envelope = stage_c.compose_stage_c_envelope(ledger=path)
+    stage_c.initialize_stage_c_ledger(path, envelope, clock=clock)
+    guard = StageCGuard.open(path, envelope, clock=clock)
+    policy_text = VERIFIED_POLICY.replace("    route:\n      estimator: half\n", f"    route:\n      prompt_cache: {mode}\n      estimator: half\n", 1)
+    return model_policy(verified_snapshot(tmp_path, policy_text)), guard, path
+
+
+def _post_cached(policy, guard, upstream, *, chars: int | None) -> tuple[int, dict[str, Any]]:
+    bound = RouteBinding(registry_hash=policy.snapshot.effective_hash, request_id="host-req-1", output_cap=CAP, cache_prefix_chars=chars).to_wire()
+    return handle_responses_request(
+        authorization_header=AUTH,
+        request_body={"model": "cn/alpha", "input": _LONG_INPUT, "route_binding": bound},
+        config=dataclasses.replace(gateway_config(policy), stage_c_guard=guard),
+        upstream_client=upstream,
+    )
+
+
+def _reserve_at(policy, multiplier: Decimal) -> Decimal:
+    entry = policy.snapshot.policy.models["cn/alpha"]
+    estimate = -(-len(_LONG_INPUT.encode("utf-8")) // 2) + 8 + 64
+    return stage_c.reservation_usd(
+        input_tokens=estimate, output_tokens=CAP, input_usd_per_million=entry.prices.input_usd_per_million * multiplier, output_usd_per_million=entry.prices.output_usd_per_million
+    )
+
+
+@pytest.mark.parametrize(
+    "mode, chars, multiplier",
+    [("prefix", len(_LONG_PREFIX), Decimal("1.25")), ("prefix", None, Decimal("1")), ("top_level", None, Decimal("1.25")), ("none", None, Decimal("1"))],
+    ids=["named-prefix", "prefix-route-nothing-named", "top-level", "uncached"],
+)
+def test_only_a_request_that_can_write_reserves_the_write_price(tmp_path, mode, chars, multiplier) -> None:
+    policy, guard, path = _cached_guard(tmp_path, mode)
+    try:
+        status, _body = _post_cached(policy, guard, _AnyCache(), chars=chars)
+        assert status == 200
+        [reserve] = _records(path, "reserve")
+        assert Decimal(reserve["reserve_usd"]) == _reserve_at(policy, multiplier)
+    finally:
+        guard.close()
+
+
+def test_a_write_that_fits_at_the_ordinary_price_but_not_the_write_price_is_refused_before_dispatch(tmp_path) -> None:
+    policy, guard, _path = _cached_guard(tmp_path, "prefix")
+    try:
+        ordinary = _reserve_at(policy, Decimal("1"))
+        assert _reserve_at(policy, Decimal("1.25")) > ordinary
+        earlier = stage_c.STAGE_C_LIMIT_USD - ordinary  # exactly the ordinary reservation is left
+        guard.settle_charged(guard.admit(attempt_id="gw-" + "0" * 32, request_id="earlier", reserve_usd=earlier), earlier)
+        upstream = _AnyCache()
+        status, body = _post_cached(policy, guard, upstream, chars=len(_LONG_PREFIX))
+        assert (status, body["code"], body["route_attempts"]) == (503, "STAGE_C_BUDGET_EXHAUSTED", [])
+        assert upstream.calls == []
+        # The control: the same request naming no prefix cannot write, and fits.
+        status, _body = _post_cached(policy, guard, upstream, chars=None)
+        assert status == 200 and len(upstream.calls) == 1
+    finally:
+        guard.close()

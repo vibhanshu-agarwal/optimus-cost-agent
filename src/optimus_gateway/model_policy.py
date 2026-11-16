@@ -144,6 +144,8 @@ class AdmittedRequest:
     then checked with :func:`check_experimental_reply`."""
     prompt_cache: str | None = None
     """The route's approved caching setting; decision requests never carry one."""
+    cache_prefix_chars: int | None = None
+    """Where this request's stable prefix ends, validated against its input; only ever set on a ``prefix`` route."""
 
 
 def parse_route_binding(request_body: Mapping[str, Any], policy: GatewayModelPolicy | None) -> RouteBinding | None:
@@ -188,6 +190,14 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
     if not decision.allowed:
         raise ModelPolicyRefusal(decision.reason or "CAPACITY_REFUSED")
 
+    boundary = binding.cache_prefix_chars
+    if boundary is not None:
+        if entry.route.prompt_cache != "prefix":
+            raise ModelPolicyRefusal("CACHE_PREFIX_INVALID", "this route is not approved for a cached prefix")
+        # Neither block may be blank: a provider refuses an empty text block.
+        if not input_text[:boundary].strip() or not input_text[boundary:].strip():
+            raise ModelPolicyRefusal("CACHE_PREFIX_INVALID", "the cached prefix must split the input into two non-blank parts")
+
     # Eligibility already requires a verified window, max output and quantization on every endpoint.
     endpoints = entry.route.endpoints
 
@@ -201,7 +211,9 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
             request_id=binding.request_id,
             model_id=model,
             route=route_digest(model, entry),
-            payload=payload_digest(model, messages, binding.output_cap, reasoning=entry.default_reasoning, prompt_cache=entry.route.prompt_cache),
+            payload=payload_digest(
+                model, messages, binding.output_cap, reasoning=entry.default_reasoning, prompt_cache=entry.route.prompt_cache, cache_prefix_chars=boundary
+            ),
         ):
             raise ModelPolicyRefusal("DISCLOSURE_INVALID", "the disclosure does not cover this request, route and payload")
 
@@ -221,6 +233,7 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
         reasoning=entry.default_reasoning,
         experimental=experimental,
         prompt_cache=entry.route.prompt_cache,
+        cache_prefix_chars=boundary,
     )
 
 
@@ -314,6 +327,8 @@ def admit_decision(policy: GatewayModelPolicy, *, model: str, payload_text: str,
     if entry.data_use.disclosure == "contributor":
         # This route verifies no disclosure, so a model that needs one is never admitted here (Plan 12.4 Task 5).
         raise ModelPolicyRefusal("DECISION_DISCLOSURE_UNSUPPORTED", "the decision route cannot verify a Contributor disclosure")
+    if binding.cache_prefix_chars is not None:
+        raise ModelPolicyRefusal("CACHE_PREFIX_INVALID", "a decision request has no cached prefix")
     profile = snapshot.policy.estimators[entry.route.estimator]
     if not profile.verified and not (experimental is not None and experimental.empirical_estimate and profile.method == EMPIRICAL_ESTIMATOR_METHOD):
         raise ModelPolicyRefusal("ESTIMATOR_UNVERIFIED")

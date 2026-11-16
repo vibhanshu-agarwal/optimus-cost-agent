@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import subprocess
 import threading
 from pathlib import Path
 
@@ -66,3 +69,539 @@ def test_assembly_counts_only_the_turns_own_calls_and_summarises_them():
              {"wall_ms": 20.0, "route_ms": 6.0, "route_calls": 9, "pack_tokens": None, "budget_tokens": None, "state": "unavailable", "blocked": "X"}]
     summary = m1_scale._assembly_summary(turns)
     assert summary["route_calls_max"] == 9 and summary["pack_share_of_token_budget_max"] == 0.5 and summary["states"] == ["ok", "unavailable"] and summary["blocked"] == ["X"]
+
+
+def test_the_k2_admin_user_leaves_the_index_user_alone_and_the_launch_path_still_accepts_the_file(tmp_path: Path) -> None:
+    from optimus_security.memory_index_config import ACL_NAME, CONFIG_NAME, acl_text
+    from tools.plan12_memory.m1_qualify import k2_admin_acl
+
+    original = acl_text("optimus-index", "a" * 64)
+    (tmp_path / ACL_NAME).write_bytes(original.encode("utf-8"))
+    (tmp_path / CONFIG_NAME).write_text(json.dumps({"acl_sha256": "0" * 64, "port": 6393}), encoding="utf-8")
+    k2_admin_acl(tmp_path, "local")
+    data = (tmp_path / ACL_NAME).read_bytes()
+    assert data.decode("utf-8").startswith(original) and b"user k2-admin on #" in data and b"local" not in data
+    document = json.loads((tmp_path / CONFIG_NAME).read_text(encoding="utf-8"))
+    assert document == {"acl_sha256": hashlib.sha256(data).hexdigest(), "port": 6393}
+
+
+def test_a_bound_with_no_measurement_is_neither_met_nor_failed() -> None:
+    from tools.plan12_memory.m1_qualify import within
+
+    assert within(None, 1) is None
+    assert within(2, 2) is True and within(3, 2) is False
+    assert within(3, 2, at_least=True) is True
+
+
+def test_the_large_corpus_must_be_at_the_approved_commit(tmp_path: Path) -> None:
+    from tools.plan12_memory.m1_qualify import clone_large_corpus
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "a.java").write_text("class A {}\n", encoding="utf-8")
+    for args in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "c"]):
+        subprocess.run(["git", "-C", str(source), *args], capture_output=True, check=True)
+    head = subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    with pytest.raises(SystemExit, match="not the approved"):
+        clone_large_corpus(source, tmp_path / "wrong", expected_commit="0" * 40)
+    clone = clone_large_corpus(source, tmp_path / "right", expected_commit=head)
+    assert "**/*Test.java" in (clone / ".optimusignore").read_text(encoding="utf-8")
+
+
+def test_survival_is_by_identity_and_payload_not_by_count() -> None:
+    from tools.plan12_memory.m1_qualify import compare_acknowledged
+
+    assert compare_acknowledged({"a": "1", "b": "2"}, {"a": "1", "b": "2", "c": "3"}) == {"acknowledged": 2, "missing": 0, "conflicting": 0}
+    assert compare_acknowledged({"a": "1", "b": "2"}, {"a": "9", "c": "3"}) == {"acknowledged": 2, "missing": 1, "conflicting": 1}  # same count as stored would hide this
+
+
+def test_every_canary_request_passes_the_routes_own_contract() -> None:
+    from optimus_security import memory_index_contract as mic
+    from tools.plan12_memory.m1_qualify import _ANY_REVISION, _ONE_FILE, _record, owner_id
+
+    scope = "0" * 64
+    owner = owner_id("k2owner0")
+    name = "canaryabcdx1"
+    for body in (
+        {"op": "generation", "action": "open", "embedding": "e", "dimensions": 4, "schema_version": 1},
+        {"op": "lease", "action": "acquire", "owner": owner, "ttl_ms": 60000, "kind": "scope"},
+        {"op": "lease", "action": "renew", "owner": owner, "ttl_ms": 60000, "kind": "scope", "token": 1},
+        {"op": "generation", "action": "begin", "token": 1},
+        {"op": "batch", "token": 1, "epoch": 1, "records": [_record(name, 4)]},
+        {"op": "generation", "action": "publish", "token": 1, "epoch": 1, "revision": _ANY_REVISION, "dirty": False, "coverage": _ONE_FILE},
+        {"op": "query", "mode": "lexical", "terms": [name], "k": 1},
+        {"op": "cleanup", "action": "drop", "token": 1},
+        {"op": "lease", "action": "release", "owner": owner, "kind": "scope", "token": 1},
+    ):
+        mic.parse_request(json.dumps({"scope": scope, **body}).encode("utf-8"))
+
+
+def test_a_failed_resource_sample_makes_the_bound_unknown_unless_the_outage_was_planned() -> None:
+    from tools.plan12_memory.m1_qualify import _Peaks
+
+    peaks = _Peaks("none", lambda: None)  # type: ignore[arg-type, return-value]
+    peaks._bump("disk_mb", 10.0)
+    assert peaks.bound("index", "disk_mb", 20) is True
+    peaks.in_outage = True
+    peaks._bump("disk_mb", None)
+    assert peaks.bound("index", "disk_mb", 20) is True
+    peaks.in_outage = False
+    peaks._bump("disk_mb", None)
+    assert peaks.bound("index", "disk_mb", 20) is None
+    assert peaks.bound("k2", "disk_mb", 20) is None  # nothing seen is not a pass
+
+
+def test_the_edit_lands_on_a_file_the_index_admits(tmp_path: Path) -> None:
+    body = "class A {\n" + "    int field;\n" * 200 + "}\n"
+    for name in ("a/src/test/java/ATest.java", "b/src/main/java/B.java"):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True)
+        path.write_bytes(body.encode())
+    (tmp_path / ".optimusignore").write_bytes(b"**/test/\n")
+    assert m1_scale.edit_target(tmp_path, ".java").name == "B.java"  # the sorted-first file is ignored, which measured nothing on 2026-11-06
+    (tmp_path / ".optimusignore").write_bytes(b"**/test/\n**/main/\n")
+    with pytest.raises(SystemExit, match="no indexed"):
+        m1_scale.edit_target(tmp_path, ".java")
+
+
+def test_an_edit_counts_as_visible_when_it_can_be_queried_not_when_its_pass_ends() -> None:
+    published, release, finished = threading.Event(), threading.Event(), threading.Event()
+    pass_over_when_found: list[bool] = []
+
+    def run(_cancel: threading.Event) -> object:
+        published.set()  # the early publication; the pass then keeps reconciling until the query has answered
+        release.wait(5)
+        finished.set()
+        return type("Outcome", (), {"state": "complete", "records_written": 3})()
+
+    def found() -> bool:
+        if published.is_set():
+            pass_over_when_found.append(finished.is_set())  # observed before reconciliation is let go
+            release.set()
+            return True
+        return False
+
+    result = m1_scale.edit_visibility(run, found, poll_seconds=0.01)
+    assert result["new_symbol_found"] and result["state"] == "complete" and result["records_written"] == 3
+    assert pass_over_when_found == [False]  # run-then-query would only ask after the pass had finished
+    assert result["pass_running_before_successful_probe"] is True
+    assert result["seconds_until_queryable"] <= result["whole_pass_seconds"]
+    never = m1_scale.edit_visibility(lambda _cancel: type("Outcome", (), {"state": "complete", "records_written": 0})(), lambda: False, poll_seconds=0.01)
+    assert never["new_symbol_found"] is False and never["seconds_until_queryable"] is None
+
+
+def test_an_edit_measurement_past_its_deadline_or_a_failed_query_stops_its_worker() -> None:
+    stopped: list[bool] = []
+
+    def endless(cancel: threading.Event) -> object:
+        while not cancel.wait(0.01):
+            pass
+        stopped.append(True)
+        return type("Outcome", (), {"state": "cancelled", "records_written": 0})()
+
+    late = m1_scale.edit_visibility(endless, lambda: False, limit_seconds=0.2, poll_seconds=0.01)
+    assert stopped == [True] and late["state"] == "cancelled" and late["new_symbol_found"] is False
+
+    def broken() -> bool:
+        raise ConnectionError("route gone")
+
+    failed = m1_scale.edit_visibility(endless, broken, poll_seconds=0.01)
+    assert stopped == [True, True] and failed["query_error"] == "ConnectionError"
+    crashed = m1_scale.edit_visibility(lambda _cancel: 1 / 0, lambda: False, poll_seconds=0.01)
+    assert crashed["worker_failure"] == "ZeroDivisionError"
+
+
+def test_a_session_edit_is_timed_from_the_wake_to_the_symbol_in_that_file(tmp_path: Path) -> None:
+    from tools.plan12_memory.m1_qualify import session_edit_visibility
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "A.java").write_bytes(("class A {\n" + "    int field;\n" * 200 + "}\n").encode())
+
+    class Session:
+        _last_outcome: object = None
+
+        def request_pass(self) -> None:
+            threading.Timer(0.05, lambda: setattr(self, "_last_outcome", type("Outcome", (), {"state": "complete"})())).start()
+
+    class Storage:
+        def __init__(self, session: Session) -> None:
+            self.session = session
+
+        def call(self, op: str, **fields: object) -> dict:
+            text = (tmp_path / "src" / "A.java").read_text(encoding="utf-8")
+            hit = self.session._last_outcome is not None and "m1SessionAddedMethod" in text
+            return {"records": [{"path": "elsewhere/B.java"}] + ([{"path": "src/A.java"}] if hit else [])}
+
+    session = Session()
+    result = session_edit_visibility(session, tmp_path, Storage(session), poll_seconds=0.01)  # type: ignore[arg-type]
+    assert result["new_symbol_found"] and result["pass_state"] == "complete" and result["seconds_until_queryable"] <= result["whole_pass_seconds"]
+
+
+def test_a_stalled_session_pass_stops_the_run_before_k2() -> None:
+    from tools.plan12_memory.m1_qualify import close_and_confirm_stopped
+
+    stall = threading.Event()
+
+    class Session:
+        def __init__(self, stops: bool) -> None:
+            self._thread = threading.Thread(target=lambda: stall.wait(0.05 if stops else 5), daemon=True)
+            self._thread.start()
+
+        def close(self) -> None:
+            self._thread.join(0.01)  # like the session's own short join
+
+    close_and_confirm_stopped(Session(stops=True), seconds=2)
+    with pytest.raises(SystemExit, match="did not stop"):
+        close_and_confirm_stopped(Session(stops=False), seconds=0.1)
+    stall.set()
+
+
+def test_assembly_without_the_dense_channel_is_flagged_as_not_what_a_person_gets() -> None:
+    from tools.plan12_memory.m1_qualify import _dense_in_every_turn
+
+    assert _dense_in_every_turn([{"task": "a", "channels": {"dense": "40 results", "lexical": "40 results"}}]) == {"dense_in_every_turn": True}
+    assert _dense_in_every_turn([{"task": "a", "channels": {"dense": "no embedding artifact", "lexical": "40 results"}}]) == {
+        "dense_in_every_turn": False, "turns_without_dense": ["a"], "channels_that_did_not_answer": ["dense: no embedding artifact"]}
+    refused = _dense_in_every_turn([{"task": "b", "channels": {"dense": "refused:INDEX_BUSY", "lexical": "unavailable"}}])
+    assert refused["dense_in_every_turn"] is False  # it was asked, and retrieval still said ok
+    assert refused["channels_that_did_not_answer"] == ["dense: refused:INDEX_BUSY", "lexical: unavailable"]
+
+
+def test_logical_purge_is_timed_at_the_first_refusal_not_the_whole_sweep() -> None:
+    from context_engine.index_worker import StorageRefusedError
+    from tools.plan12_memory.m1_qualify import drop_and_time
+
+    class Storage:
+        steps = 0
+
+        def call(self, op: str, **body: object) -> dict:
+            if op == "cleanup":
+                self.steps += 1
+                return {"cursor": "next" if self.steps < 3 else None}
+            if self.steps:
+                raise StorageRefusedError("SCOPE_UNKNOWN")
+            return {"records": [{"id": "marker"}]}
+
+    times = iter([0.0, 0.2, 5.0])
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("tools.plan12_memory.m1_qualify.time.monotonic", lambda: next(times))
+        result = drop_and_time(Storage(), 1, "marker")
+    assert result["logical_purge_seconds"] == 0.2
+    assert result["whole_drop_seconds"] == 5.0
+    assert result["route_denies_after_drop"] is True
+    assert result["answer_after_first_step"] == "SCOPE_UNKNOWN"
+
+
+
+_RUN, _WAIT, _DONE = "running", "scheduled", "ended"
+
+
+@pytest.mark.parametrize(("polls", "status", "counted", "proven"), [
+    # Each poll: what the rewrite was when asked, how many acknowledgements landed just before that answer, and how many just after it.
+    ([(_RUN, 0, 0), (_RUN, 2, 0), (_RUN, 2, 0), (_DONE, 0, 0)], "ok", 2, True),  # the 2 before the third running answer are vouched for
+    ([(_DONE, 0, 0)], "ok", 0, False),  # ended before the watch began
+    ([(_RUN, 0, 0), (_RUN, 0, 0), (_DONE, 0, 0)], "ok", 0, False),  # ran, nothing acknowledged under it
+    ([(_RUN, 0, 0), (_RUN, 2, 0), (_RUN, 2, 0), (_DONE, 0, 0)], "err", 2, False),  # writes under a rewrite that failed
+    ([(_WAIT, 2, 0), (_WAIT, 2, 0), (_RUN, 0, 0), (_DONE, 0, 0)], "ok", 0, False),  # Codex review 31: writes while only scheduled are not overlap
+    ([(_RUN, 0, 0), (_RUN, 0, 3), (_DONE, 0, 0)], "ok", 0, False),  # Codex review 31: acknowledged after its last running answer, as it ended
+    ([(_RUN, 0, 0), (_RUN, 0, 0), (_DONE, 3, 0)], "ok", 0, False),  # acknowledged as it ended
+    ([(_RUN, 0, 0), (_RUN, 1, 0), (_DONE, 0, 0)], "ok", 0, False),  # landed before a running answer no later poll confirmed: undercounted, by design
+])
+def test_a_rewrite_phase_counts_only_writes_a_later_poll_saw_the_rewrite_still_running_after(polls: list, status: str, counted: int, proven: bool) -> None:
+    from tools.plan12_memory.m1_qualify import rewrite_under_writes
+
+    order: list[str] = []
+
+    class Canaries:
+        acknowledged: dict[str, str] = {"earlier phase": "x"}
+
+        def run(self, *, rounds: int, pause: float, pressure, during) -> dict:
+            assert rounds == 5 and pause == 0
+            order.append("clients ready")
+            pressure()
+            during()
+            self.acknowledged["after the watch"] = "x"
+            return {"acknowledged": 20}
+
+    canaries = Canaries()
+    script = iter(polls)
+
+    class Admin:
+        def bgrewriteaof(self) -> None:
+            order.append("rewrite")
+
+        def info(self, section: str) -> dict:
+            assert section == "persistence"
+            state, before, after = next(script)
+            self.land(before)
+            answer = ({"aof_rewrite_in_progress": 0, "aof_rewrite_scheduled": 0, "aof_last_bgrewrite_status": status} if state == _DONE
+                      else {"aof_rewrite_in_progress": int(state == _RUN), "aof_rewrite_scheduled": int(state == _WAIT)})
+            self.land(after)  # once the answer is fixed, before the caller reads anything else
+            return answer
+
+        @staticmethod
+        def land(count: int) -> None:
+            for _ in range(count):
+                canaries.acknowledged[f"a{len(canaries.acknowledged)}"] = "x"
+
+    result = rewrite_under_writes(Admin(), canaries, rounds=5, poll_seconds=0)
+    assert order == ["clients ready", "rewrite"], "the rewrite starts only once every client holds its line"
+    rewrite = result["rewrite"]
+    assert (rewrite["acknowledged_while_running"], rewrite["overlap_proven"]) == (counted, proven)
+    assert rewrite["seen_running"] is any(state == _RUN for state, _before, _after in polls)
+    assert result["acknowledged"] == 20 and rewrite["last_status"] == status
+
+
+def _assembly_turn(progress: float | None = None, dense: str = "100 results", *, during: bool | None = None) -> dict:
+    turn = {"task": "t", "wall_ms": 1000.0, "route_ms": 100.0, "route_calls": 11, "calls": {}, "state": "ok", "channels": {"dense": dense, "lexical": "3 results"},
+            "pack_tokens": 16000, "budget_tokens": 16384, "blocked": None}
+    if progress is not None or during is not None:
+        turn |= {"build_progress": progress, "during_build": True if during is None else during}
+    return turn
+
+
+def test_assembly_qualifies_only_with_twenty_completed_turns_dense_in_each_and_every_third_of_the_build() -> None:
+    """Codex reviews 30 and 31: four early turns cannot qualify; every turn is kept; a missing dense answer or a raised turn cannot qualify."""
+    from tools.plan12_memory.m1_qualify import _assembly_condition
+
+    spread = [_assembly_turn(progress) for progress in (0.05, 0.4, 0.8) for _ in range(7)]
+    enough = _assembly_condition(spread, spread=True)
+    assert enough is not None and enough["enough_to_qualify"] is True and enough["build_thirds_sampled"] == ["early", "middle", "late"]
+    assert len(enough["per_turn"]) == 21 and enough["turns"] == 21
+
+    early_only = _assembly_condition([_assembly_turn(0.01) for _ in range(24)], spread=True)
+    assert early_only is not None and early_only["not_enough_because"] == ["no sample in the middle, late third of the build"]
+    assert _assembly_condition([_assembly_turn(0.01) for _ in range(4)], spread=False)["not_enough_because"] == ["4 completed turns, fewer than 20"]  # type: ignore[index]
+
+    without_dense = _assembly_condition([*[_assembly_turn() for _ in range(20)], _assembly_turn(dense="unavailable: INDEX_DOWN")], spread=False)
+    assert without_dense is not None and without_dense["enough_to_qualify"] is False and without_dense["turns"] == 21
+
+    raised = _assembly_condition([*[_assembly_turn() for _ in range(20)], {"task": "t", "error": "TimeoutError: slow"}], spread=False)
+    assert raised is not None and raised["errors"] == ["TimeoutError: slow"] and raised["turns"] == 20 and len(raised["per_turn"]) == 21
+    assert raised["not_enough_because"] == ["a turn without the dense channel's answer", "1 turns raised"]
+
+    unplaced = _assembly_condition([_assembly_turn(None, during=True) for _ in range(21)], spread=True)
+    assert unplaced is not None and unplaced["turns"] == 21 and unplaced["build_thirds_sampled"] == []
+    assert _assembly_condition([], spread=True) is None
+
+
+def test_background_catalogue_reads_are_counted_apart_and_never_taken_from_a_turns_own_calls() -> None:
+    """Codex review 39: the session's background reads are reported apart, and no foreground call or time is moved out of a turn."""
+    from optimus.context.memory_session import CATALOGUE_THREAD
+    from tools.plan12_memory.m1_qualify import _assembly_condition
+
+    class Inner:
+        def call(self, op, **fields):
+            return {"op": op}
+
+    counting = m1_scale._CountingStorage(Inner(), threading.get_ident())
+    counting.call("catalogue", epoch=3)
+    for name in (CATALOGUE_THREAD, "context-index"):
+        reader = threading.Thread(target=counting.call, args=("catalogue",), kwargs={"epoch": 3}, name=name)
+        reader.start()
+        reader.join()
+    assert counting.calls == {"catalogue": 1} and counting.background == {"catalogue": 1}  # the worker's own read is neither
+    counting.calls.clear()  # what each measured turn does first
+    assert counting.background == {"catalogue": 1}
+
+    turns = [_assembly_turn() for _ in range(20)]
+    turns[0]["session_background"] = {"settled": True, "calls": 41, "seconds": 15.5}
+    turns[-1]["session_background"] = {"settled": False, "incomplete_so_far": {"calls": 3, "seconds": 1.0}}
+    condition = _assembly_condition(turns, spread=False)
+    assert condition is not None and condition["route_calls_max"] == 11  # unchanged by the background reads
+    background = condition["background_catalogue"]
+    assert (background["calls"], background["seconds"], background["sessions_not_settled"], background["complete"]) == (41, 15.5, 1, False)  # no partial cost counted as whole
+    del turns[-1]["session_background"]
+    assert _assembly_condition(turns, spread=False)["background_catalogue"]["complete"] is True  # type: ignore[index]
+
+
+def test_a_background_read_still_running_is_reported_as_incomplete_never_as_its_cost() -> None:
+    from tools.plan12_memory.m1_qualify import _session_background
+
+    class Counter:
+        background = {"catalogue": 3}
+        background_seconds = 1.25
+
+    class Session:
+        def __init__(self, settles: bool) -> None:
+            self.settles = settles
+
+        def wait_for_catalogue(self, seconds: float) -> bool:
+            return self.settles
+
+    assert _session_background(Session(True), [Counter()]) == {"settled": True, "calls": 3, "seconds": 1.25}  # type: ignore[arg-type]
+    assert _session_background(Session(False), [Counter()]) == {"settled": False, "incomplete_so_far": {"calls": 3, "seconds": 1.25}}  # type: ignore[arg-type]
+
+
+def test_an_unprimed_first_turn_is_each_in_its_own_session_and_its_background_read_finishes_first(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from tools.plan12_memory import m1_qualify
+
+    events: list[str] = []
+
+    class Session:
+        def __init__(self) -> None:
+            self.number = len([event for event in events if event == "open"])
+            events.append("open")
+
+        def wait_for_catalogue(self, seconds: float) -> bool:
+            events.append(f"settle {self.number}")
+            return True
+
+        def close(self) -> None:
+            events.append(f"close {self.number}")
+
+    monkeypatch.setattr(m1_qualify, "_session", lambda *args, **kwargs: Session())
+    monkeypatch.setattr(m1_qualify, "_turn_or_error", lambda session, counters, task, run_id: events.append(f"turn {session.number}") or {"task": task, "run_id": run_id})
+    turns = m1_qualify._first_turns_unprimed(tmp_path, None, "embedder", tmp_path, project="p", parser_version="v", rounds=2)
+    assert len(turns) == 2 * len(m1_qualify._LARGE_TASKS) and all(turn["session_background"]["settled"] for turn in turns)
+    assert events[:8] == ["open", "turn 0", "settle 0", "close 0", "open", "turn 1", "settle 1", "close 1"]
+    assert len({turn["run_id"] for turn in turns}) == len(turns)
+
+
+def test_a_batch_that_crosses_the_builds_end_keeps_its_idle_turns_but_never_counts_them() -> None:
+    """Codex review 32: 16 build turns, then a late batch whose first turn ends before the worker's finish and whose other three end after it."""
+    from tools.plan12_memory.m1_qualify import _assembly_condition, mark_during_build
+
+    build_ended = 1000.0
+    turns = [{**_assembly_turn(), "build_progress": progress, "ended_at": ended}
+             for progress, ended in [*[(p, e) for p, e in ((0.05, 100.0), (0.4, 400.0), (0.6, 600.0), (0.75, 800.0)) for _ in range(4)],
+                                     (0.97, 999.0), (0.99, 1000.5), (1.0, 1002.0), (1.0, 1003.5)]]
+    mark_during_build(turns, build_ended)
+    assert [turn["during_build"] for turn in turns[-4:]] == [True, False, False, False]
+    assert turns[-1]["seconds_before_build_end"] == -3.5 and "ended_at" not in turns[-1]
+    late = _assembly_condition(turns, spread=True)
+    assert late is not None and late["turns"] == 17 and late["turns_after_the_build_ended"] == 3 and len(late["per_turn"]) == 20
+    assert late["enough_to_qualify"] is False and late["not_enough_because"] == ["17 completed turns, fewer than 20"]
+
+    unfinished = [{**_assembly_turn(), "build_progress": 0.5, "ended_at": 5.0}]
+    mark_during_build(unfinished, None)  # no recorded finish vouches for no turn
+    assert unfinished[0]["during_build"] is False and unfinished[0]["seconds_before_build_end"] is None
+
+
+@pytest.mark.parametrize(("error", "expected"), [
+    (TimeoutError("route stalled"), "TimeoutError: route stalled"),
+    (FileNotFoundError(2, "No such file", str(Path.home() / "private" / "x.txt")), "FileNotFoundError: [Errno 2] No such file: '<path>'"),
+    (OSError("cannot open /home/someone/x/y.txt here"), "OSError: cannot open <path> here"),
+    (OSError(r"share \\server\share\x failed"), "OSError: share <path> failed"),
+    (ValueError("ratio 1/2 at 12:30, see http://127.0.0.1:8772/v1/memory"), "ValueError: ratio 1/2 at 12:30, see http://127.0.0.1:8772/v1/memory"),
+    (RuntimeError("token sk-or-v1-" + "a" * 48 + " refused"), "RuntimeError: token ********** refused"),
+    # review 37: a quoted path is replaced whole, spaces and all, and a one-part POSIX path is a path
+    (FileNotFoundError(2, "No such file", r"C:\Users\Jane Doe\private.txt"), "FileNotFoundError: [Errno 2] No such file: '<path>'"),
+    (OSError(r"cannot open '\\server\share name\x.txt' now"), "OSError: cannot open '<path>' now"),
+    (OSError('cannot open "/home/jane doe/x.txt" now'), 'OSError: cannot open "<path>" now'),
+    (OSError("cannot open /private.txt or '/private.txt'"), "OSError: cannot open <path> or '<path>'"),
+    (OSError("a relative src/x.py and and/or stay"), "OSError: a relative src/x.py and and/or stay"),
+])
+def test_a_failure_kept_in_a_committed_report_names_no_local_path_or_secret(error: BaseException, expected: str) -> None:
+    from tools.plan12_memory.m1_qualify import _error_text
+
+    assert _error_text(error) == expected
+    assert len(_error_text(RuntimeError("x" * 500))) <= len("RuntimeError: ") + 200
+
+
+def test_a_paused_build_resumes_under_its_own_clock_and_keeps_every_pause() -> None:
+    """Codex reviews 36 and 37: one 4 h clock across resumptions; every paused outcome is recorded, the last included; each pass is kept as
+    it returns, so a later pass that raises loses none."""
+    from types import SimpleNamespace
+
+    from tools.plan12_memory.m1_qualify import _BUILD_RESUMES, build_with_resumes
+
+    def outcomes(*states: str):
+        script = iter(states)
+
+        def run():
+            state = next(script)
+            if state == "raise":
+                raise TimeoutError("route stalled")
+            return SimpleNamespace(state=state, detail="the index route cannot be reached", files_written=3, records_written=30)
+
+        return run
+
+    def build(states, cancel=None, pauses=None, kept=None):
+        kept = [] if kept is None else kept
+        build_with_resumes(outcomes(*states), cancel or threading.Event(), [] if pauses is None else pauses, lambda: 12.0, outcomes=kept, wait_seconds=0)
+        return kept
+
+    pauses: list = []
+    assert [item.state for item in build(["paused", "paused", "complete"], pauses=pauses)] == ["paused", "paused", "complete"] and len(pauses) == 2
+    assert pauses[0] == {"at_seconds": 12.0, "detail": "the index route cannot be reached", "files_written": 3, "records_written": 30}
+
+    stopped = threading.Event()
+    stopped.set()  # the build's own limit has passed: the pause is still recorded, and nothing resumes
+    late: list = []
+    assert [item.state for item in build(["paused", "complete"], cancel=stopped, pauses=late)] == ["paused"] and len(late) == 1
+
+    capped: list = []
+    forever = build(["paused"] * (_BUILD_RESUMES + 3), pauses=capped)
+    assert len(forever) == _BUILD_RESUMES + 1 and len(capped) == _BUILD_RESUMES + 1, "five resumptions, six paused outcomes, six pauses"
+    assert [item.state for item in build(["cancelled"])] == ["cancelled"]
+
+    kept: list = []
+    with pytest.raises(TimeoutError):
+        build(["paused", "raise"], kept=kept)
+    assert [item.state for item in kept] == ["paused"], "the pass before the one that raised is kept"
+
+
+def test_an_unreachable_route_call_keeps_its_transport_cause_and_still_raises() -> None:
+    from context_engine.index_worker import StorageUnavailableError
+    from tools.plan12_memory.m1_qualify import recording_unavailable
+
+    def call(op: str, **fields: object) -> dict:
+        if op == "batch":
+            try:
+                raise TimeoutError("timed out")
+            except TimeoutError as exc:
+                raise StorageUnavailableError("the index route cannot be reached") from exc
+        return {"ok": True}
+
+    failures: list = []
+    recorded = recording_unavailable(call, failures, iter([5.0, 12.0]).__next__)
+    with pytest.raises(StorageUnavailableError):
+        recorded("batch", records=[])
+    assert failures == [{"at_seconds": 5.0, "op": "batch", "seconds": 7.0, "error": "StorageUnavailableError: the index route cannot be reached", "cause": "TimeoutError: timed out"}]
+    assert recording_unavailable(call, failures, lambda: 0.0)("coverage") == {"ok": True} and len(failures) == 1
+
+
+def test_build_progress_is_the_publications_own_share_and_unknown_when_unread() -> None:
+    from tools.plan12_memory.m1_qualify import _build_progress, _turn_or_error
+
+    assert _build_progress(lambda op: {"current": {"coverage": {"files_indexed": 2564, "files_total": 10255}}}) == 0.25
+    assert _build_progress(lambda op: {"current": None}) is None
+
+    def down(op: str) -> dict:
+        raise ConnectionError("route down")
+
+    assert _build_progress(down) is None
+
+    class Session:
+        def turn(self):
+            raise TimeoutError("route stalled")
+
+    assert _turn_or_error(Session(), [], "t", "r") == {"task": "t", "error": "TimeoutError: route stalled"}  # type: ignore[arg-type]
+
+
+def test_a_failed_acpx_start_or_turn_keeps_its_own_output_so_a_stopped_run_records_why(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    turns = object.__new__(m1_scale._AcpxTurns)
+    turns._acpx, turns._common = "acpx", []
+    refusal = '{"error":{"message":"ACP agent exited before initialize completed: no launch approval found for this workspace"}}'
+    answers = iter([subprocess.CompletedProcess([], 1, refusal, ""), subprocess.CompletedProcess([], 0, '{"stopReason":"cancelled"}', "turn stderr")])
+    monkeypatch.setattr(m1_scale.subprocess, "run", lambda *_args, **_kwargs: next(answers))
+    assert turns.open() == "1"
+    assert turns.failure is not None and "no launch approval found" in turns.failure
+    assert turns.turns(1)["failures"] == 1
+    assert turns.failure == '{"stopReason":"cancelled"}turn stderr'
+
+
+def test_the_assembly_phase_reads_its_head_before_provisioning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Everything between provisioning and the cleanup block can leak the container, volume and Gateway when it fails (Codex review 43 item 2)."""
+
+    def reached(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("provisioned before the head was read")
+
+    def no_git(command: list[str], **_kwargs: object) -> None:
+        raise subprocess.CalledProcessError(128, command)
+
+    monkeypatch.setattr(m1_scale, "_provision", reached)
+    monkeypatch.setattr(m1_scale.subprocess, "run", no_git)
+    with pytest.raises(subprocess.CalledProcessError):
+        m1_scale.run_assembly({"work_dir": "work"}, tmp_path)

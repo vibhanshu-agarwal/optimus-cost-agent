@@ -192,6 +192,94 @@
     }
   },
   "task": 4,
+  "task5": {
+    "artifacts": {
+      "kept_at": "optimus-handoff/p1210-pair; the crops show only the Zed window",
+      "sha256": {
+        "cfg-off/accounting/outbox/host/af4d2707d34b4994be1e683f275b18e4/seg-000001.log": "hex:d1250d9416df64d4a81cfd5417d4ee8cb8b0bab8620a9afa15c4af5b52dd8447",
+        "cfg-on/accounting/outbox/host/7bea5eba395b4cebbf06d10f35ca3ee7/seg-000001.log": "hex:7948cd9dd84526b44b5e47b8ec3e65f2fdbbbd2d7fdde5030be767890cb1b983",
+        "cfg-on/accounting/outbox/host/f464436b60ac4b09932b77495c7f0f6f/seg-000001.log": "hex:efeb4e95e131793d7286fecbb6b165c24e6f2cbeb31f8834fbca645de6a53b41",
+        "entries.json": "hex:429cf27cc9652522aa2f9089c04a5670bec19a70ae8bfd1d5e3023c5fcb70fa2",
+        "gate.py": "hex:fa1d5d99176f67dabdbaf2fc4c1854bf5821d122cc4b2c6319f533fe89b681f6",
+        "p5a-stub/stub-requests.ndjson": "hex:2313f7415e1a9789cb00163d00744b2fc424c14202bed77c6aee0e0fd49a5395",
+        "prepare.py": "hex:1b7cdbcb2684746a4a469869d988a862350786edfaf0ce8740390c18afec6463",
+        "workspace-off/.optimus/debug-acp.ndjson": "hex:c4f92712c0ee068e076e450615fc9cc3febb0cad737f1bf883599b1de3a148cf",
+        "workspace/.optimus/debug-acp.ndjson": "hex:bbd00b2e52c99f5a835df1add7a61f3a9237bf74fdb447b68ae4c3ccdf525178",
+        "zed-entry.py": "hex:6ef80d774c5f6a49bbc2bb55c7739dc9bf6d00b60b53205e711e6d88ed053175",
+        "zed-prompts.md": "hex:79987d5c7f2a3a72255f086d6662d4afcb904a6e884e6a791884f1dc411a224e",
+        "zed-run/p5a-p1-saved-panel.jpg": "hex:d1e4cec9d66e8d2887662aea69436239f5d034ed4d55b6c6c1219b2d7a59f751",
+        "zed-run/p5a-p2-unsaved-zed-window.jpg": "hex:835926f33753c1ff3a1607446dc63b2d8ff69d49b5c8bee0a2ba28015fceed6d",
+        "zed-run/p5a-p3-saved-zed-window.jpg": "hex:c127d40dd191dbe9c089a224684381be28979504446d98be66d58c76459205c9",
+        "zed-run/pair-1-chat-off.jpg": "hex:42a4a6c0ca0eafb117fd7162b608b65b6076a350d779c2925727202b0e975705",
+        "zed-run/pair-2-agent-off.jpg": "hex:94412e5c300598f976cea2a513df7c8e6fbe77cbbac85e51b984a400cca103f1",
+        "zed-run/pair-3-chat-on.jpg": "hex:6cdd8991b5b9f3545cc9266a389b9ca00eb84f246a3b6b9e7474a825425d18f9",
+        "zed-run/pair-4-agent-on.jpg": "hex:1bdb87360d349c7a70af608ee4c0b4d241663e697f902482e3c6daf8f1fd2c91",
+        "zero-paid-streams.json": "hex:b9a30c95e28c171228b20827e3e295e648b9b0b30169af427af806376cd73237"
+      }
+    },
+    "observations": [
+      "every session/new sends one session/request_permission per IDE-configured MCP server before the session/new response, so Zed answers each with Resource not found; seen identically in both conditions and in P5-a, so it does not bias the pair",
+      "agent-on stopped at planning turn 3 of 7 saying the raw bytes were not visible: it searched and outlined but never asked to read the range it found",
+      "Zed's panel shows the index state only inside a reply, so the plan's start-once-ready step cannot be checked before the first prompt"
+    ],
+    "p5a_rerun": {
+      "entry": "optimus-p1210-p5a, window p1210-zed/workspace-rehearse, zero paid against the local stub on Gateway port 18767",
+      "index": "building at the first prompt, then ready, 12 of 12 files",
+      "prompts_utc": {
+        "p1_saved": "2026-11-15T14:19:20Z: the disk marker and no unsaved marker",
+        "p2_unsaved": "2026-11-15T14:21:12Z: UNSAVED_MARKER_P1210 with shown from the editor's unsaved text; the disk was unchanged",
+        "p3_after_save": "2026-11-15T14:22:16Z: the marker came from disk"
+      },
+      "status": "proved",
+      "stream_excluded_from_paid": "the one stream named in zero-paid-streams.json",
+      "zed_version": "1.27.0"
+    },
+    "pair": {
+      "agent_prompt": "Plan the smallest fix for this defect and stop before changing anything: when an MCP-bearing session/new request fails, its removed session ID stays in the close-once marker set. Name the function to change and what to change.",
+      "chat_prompt": "When an MCP-bearing session/new request fails, its removed session ID stays in the close-once marker set. Where are sessions removed?",
+      "code_under_test": "worktree src at 7a66b2a, clean; the last commit touching src is c3475da",
+      "context_strategy": "sliding_window on all four paid turns, from the durable capture; the only compaction records are the excluded P5-a stream's",
+      "deviations": [
+        "Chat-on ran with the index at 87 of 325 files, about four minutes after launch. This demonstrates improvement under partial-build conditions; the direction of bias relative to a complete index is unknown (wording from Codex review 45 item 3).",
+        "the off entry used workspace-off, a clone of the same commit ccc2bc9, because one durable approval per workspace meant the on approval overwrote the off one"
+      ],
+      "gate": {
+        "host_requests": 6,
+        "physical_attempts": 6,
+        "problems": [],
+        "settled_usd": "0.0089404",
+        "turns_closed": 4
+      },
+      "turns": {
+        "agent-off": {
+          "receipts": 1,
+          "reply": "Planning stopped because requested read evidence exceeds the allowed budget; no function named",
+          "usd": "0.0013336"
+        },
+        "agent-on": {
+          "index": "ready, 325 of 325 files",
+          "receipts": 3,
+          "reply": "searched _closed_state_ids and def _handle_session_new, outlined spec.py, then named _handle_session_new's MCP-setup failure path and the change, flagged as to verify",
+          "usd": "0.0047023"
+        },
+        "chat-off": {
+          "index": "setup required (context off)",
+          "receipts": 1,
+          "reply": "could not tell from the files shown; guessed six files by name",
+          "usd": "0.0011127"
+        },
+        "chat-on": {
+          "index": "building, 87 of 325 files",
+          "receipts": 1,
+          "reply": "named InMemoryAcpSpecSessionStore.remove (spec.py:335-338) and _closed_state_ids; both match the workspace's spec.py",
+          "usd": "0.0017918"
+        }
+      },
+      "verdict": "pass: a visible improvement in Chat and a smaller one in Agent, with no critical regression",
+      "zed_version": "1.28.1 e8bc16acee5ae1937600d571d441c4b5d7b0d288; Zed updated itself after P5-a"
+    },
+    "release": "C: USD 2 and 24 attempts, gate.py before every paid prompt"
+  },
   "tool_cards": {
     "cards": [
       "SEARCH how fusion ranks channels",

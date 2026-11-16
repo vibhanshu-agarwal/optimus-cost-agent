@@ -215,6 +215,16 @@ def test_a_partial_build_is_usable_and_says_so_and_a_turn_does_not_wait_for_the_
     _ready(session)
 
 
+def test_a_complete_pass_reads_its_catalogue_before_any_turn_asks_for_it(root: Path, sessions: _Sessions) -> None:
+    """Review 39: a turn never pages the catalogue itself, so the session reads the one each complete pass publishes."""
+    session = sessions.open(root)
+    _ready(session)
+    _until(lambda: session._catalogue.identity == session._current_scope().identity, seconds=10)
+    assert session.wait_for_catalogue(30)
+    retrieval = session.turn()._retriever.retrieve("how does first_function work")
+    assert retrieval.state == "ok" and "catalogue" not in retrieval.channels and retrieval.channels["recency"] != "0 results"
+
+
 def test_an_edit_is_reconciled_and_the_old_body_is_never_shown(root: Path, sessions: _Sessions) -> None:
     session = sessions.open(root)
     _ready(session)
@@ -267,16 +277,18 @@ def test_a_switch_before_a_pass_looks_at_the_disk_never_writes_that_branch_into_
     switched = threading.Event()
 
     def prepare(session: MemorySession) -> None:
-        real = session._source.revision
+        def switching(real: Callable[[], Any]) -> Callable[[], Any]:
+            def switch_then_look() -> Any:
+                if not switched.is_set():
+                    _git(root, "checkout", "-q", "-b", "feature")
+                    (root / "feature_only.py").write_text("def feature_function():\n    return 1\n", encoding="utf-8")
+                    switched.set()
+                return real()
+            return switch_then_look
 
-        def switch_then_look() -> tuple[str, bool]:
-            if not switched.is_set():
-                _git(root, "checkout", "-q", "-b", "feature")
-                (root / "feature_only.py").write_text("def feature_function():\n    return 1\n", encoding="utf-8")
-                switched.set()
-            return real()
-
-        session._source.revision = switch_then_look  # type: ignore[method-assign]
+        # The switch lands at the pass's first look at the disk, whichever that is: Git's changed files, or the whole-tree revision.
+        session._source.changed_facts = switching(session._source.changed_facts)  # type: ignore[method-assign]
+        session._source.revision = switching(session._source.revision)  # type: ignore[method-assign]
 
     session = sessions.open(root, prepare=prepare)
     original = session._scope.identity
@@ -374,6 +386,23 @@ def test_a_change_only_a_tool_noticed_gets_its_pass(root: Path, sessions: _Sessi
     answer = session.turn().tools.run("SYMBOLS", "aaaaaaa_name")
     assert "their files changed" in answer
     _until(lambda: "dirty.py:" in session.turn().tools.run("SYMBOLS", "bbbbbbb_name"))
+
+
+def test_an_indexed_dirty_file_starts_no_pass_on_a_wake_and_its_next_edit_still_does(root: Path, sessions: _Sessions) -> None:
+    """Codex review 30: the session no longer stats the tree before a Git-changed file's pass, and a dirty file already indexed must not
+    mean a full reconcile on every wake."""
+    (root / "first.py").write_text("def ccccccc_name():\n    return 1\n", encoding="utf-8", newline="\n")
+    session = sessions.open(root)
+    _ready(session)
+    _until(lambda: session._last_outcome is not None and session._last_outcome.state == "complete" and session._indexed_changes)
+    done = session._last_outcome
+    for _wake in range(3):
+        session.request_pass()
+        time.sleep(0.5)
+    assert session._last_outcome is done, "an unchanged dirty file started a pass"
+    (root / "first.py").write_text("def ddddddd_name():\n    return 2\n", encoding="utf-8", newline="\n")
+    session.request_pass()
+    _until(lambda: "first.py:" in session.turn().tools.run("SYMBOLS", "ddddddd_name"))
 
 
 def test_a_symbol_in_a_file_too_large_to_index_is_not_called_absent(root: Path, sessions: _Sessions) -> None:

@@ -1,0 +1,124 @@
+{
+ "schema": "plan12-memory-m1.retrieval-experiments.v1",
+ "plan": "12.10",
+ "issue": 469,
+ "scope": "Train and development only (35 requirements, 16 cases). The fresh held-out set was sealed first (targets.json retrieval_fresh, 2ee51af) and was not read; the first held-out set was not read.",
+ "recommended_by": "Codex reviews 24 and 26 on #469: channel K 100; the qualified symbol name in method embedding text, with a parser identity change; recency suppressed when the catalogue holds zero or one distinct non-null modification time. RRF 60 and weights unchanged; arms compared separately.",
+ "method": "handoff kit m1_experiments.py: every arm runs the real Retriever.retrieve on the same real index of each cutoff tree. Run 2 is the same script on source with the qualified-name change and PARSER_VERSION code-index-v2, uncommitted when run (src_uncommitted lists it).",
+ "runs": {
+  "run1_code_index_v1": {
+   "head": "hex:2ee51af5e0bf9b8a61f6cc8e8fca056c4f5b5d1c",
+   "parser_version": "code-index-v1",
+   "src_uncommitted": [],
+   "script_sha256": "hex:2cc5015025e92b7537a12b590068be8468c0d8b9e776a0848c0ba6a4d4cc06b8",
+   "raw_sha256": "hex:800333360c920194517869fa7ce46d299755fa2fa7775fa65336c6183c19b1db",
+   "totals": {
+    "baseline": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 243087,
+     "met_at_k": 4,
+     "no_channel_found": 16,
+     "required_evidence_met": 14,
+     "required_file_met": 17,
+     "requirements": 35
+    },
+    "k100": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 242082,
+     "met_at_k": 5,
+     "no_channel_found": 11,
+     "required_evidence_met": 16,
+     "required_file_met": 19,
+     "requirements": 35
+    },
+    "k100+recency_rule": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 242082,
+     "met_at_k": 5,
+     "no_channel_found": 11,
+     "required_evidence_met": 16,
+     "required_file_met": 19,
+     "requirements": 35
+    },
+    "recency_rule": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 242660,
+     "met_at_k": 4,
+     "no_channel_found": 16,
+     "required_evidence_met": 14,
+     "required_file_met": 17,
+     "requirements": 35
+    }
+   },
+   "recency_suppressed_cases": {
+    "k100+recency_rule": 16,
+    "recency_rule": 16
+   }
+  },
+  "run2_qualified_names_code_index_v2": {
+   "head": "hex:2ee51af5e0bf9b8a61f6cc8e8fca056c4f5b5d1c",
+   "parser_version": "code-index-v2",
+   "src_uncommitted": [
+    "M src/context_engine/code_index.py"
+   ],
+   "script_sha256": "hex:2cc5015025e92b7537a12b590068be8468c0d8b9e776a0848c0ba6a4d4cc06b8",
+   "raw_sha256": "hex:2aeeaf44594769a4ac2f8ef6b6e0fb9acebedbc5f8c13fedf608ae9fd9d5796d",
+   "totals": {
+    "baseline": {
+     "cases": 16,
+     "file_met_at_k": 7,
+     "irrelevant_tokens": 243045,
+     "met_at_k": 3,
+     "no_channel_found": 17,
+     "required_evidence_met": 14,
+     "required_file_met": 19,
+     "requirements": 35
+    },
+    "k100": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 238882,
+     "met_at_k": 5,
+     "no_channel_found": 12,
+     "required_evidence_met": 14,
+     "required_file_met": 18,
+     "requirements": 35
+    },
+    "k100+recency_rule": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 238854,
+     "met_at_k": 5,
+     "no_channel_found": 12,
+     "required_evidence_met": 14,
+     "required_file_met": 18,
+     "requirements": 35
+    },
+    "recency_rule": {
+     "cases": 16,
+     "file_met_at_k": 6,
+     "irrelevant_tokens": 242995,
+     "met_at_k": 3,
+     "no_channel_found": 17,
+     "required_evidence_met": 14,
+     "required_file_met": 19,
+     "requirements": 35
+    }
+   },
+   "recency_suppressed_cases": {
+    "k100+recency_rule": 16,
+    "recency_rule": 16
+   }
+  }
+ },
+ "reading": [
+  "k100 against baseline on code-index-v1: symbol recall at 5 from 4 to 5, required evidence in context from 14 to 16, required files in context from 17 to 19; requirements found by no channel from 16 to 11; mean irrelevant tokens 15,193 to 15,130.",
+  "The qualified-name text (code-index-v2) did worse: at K 40, symbol recall at 5 3 and files at 5 7, against 4 and 8; at K 100, evidence 14 against 16.",
+  "The recency rule fired on all 16 cases, because every file in these copies has one time, and changed no recall or evidence count. Suppressing it is principled but has no supporting evidence here."
+ ],
+ "decision": "Adopt CHANNEL_K 100 (src/context_engine/retrieval.py). Revert the qualified-name text: not adopted. The recency rule is not adopted: neutral on this evidence. The configuration is then frozen; it is the k100 arm of run 1 exactly."
+}

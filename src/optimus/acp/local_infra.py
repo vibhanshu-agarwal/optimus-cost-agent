@@ -540,8 +540,9 @@ def _memory_container_view(docker: str, name: str) -> dict[str, Any] | None:
 
 
 def _memory_server_args(config: MemoryIndexConfig) -> list[str]:
+    # At the ceiling writes are refused and searches keep answering. Redis's default returns zero results there, which reads as "nothing found".
     return ["redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "everysec",
-            "--save", "300 1", "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction"]
+            "--save", "300 1", "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction", "--search-on-oom", "IGNORE"]
 
 
 def _memory_container_conflict(view: Mapping[str, Any], config: MemoryIndexConfig, acl_path: Path) -> str | None:

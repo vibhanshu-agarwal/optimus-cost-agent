@@ -225,10 +225,7 @@ def build_agent_planner_input(
 def build_indexed_chat_input(task: str, *, workspace_context: str, conversation_envelope: str, repo_map: str, index_results: str, tools_enabled: bool, limit_observation: str = "") -> str:
     """Chat with the context index, laid out for provider caching: what never changes first, then the map, history and this turn's
     material, and the question last, so a follow-up shares the longest possible prefix."""
-    sections = [f"{INDEXED_CHAT_PROMPT_VERSION}\n", _CHAT_ANSWER_INSTRUCTIONS]
-    if tools_enabled:
-        sections.append(_INDEX_TOOL_GRAMMAR)
-    sections.extend(_stable_map(repo_map))
+    sections = [indexed_chat_prefix(repo_map=repo_map, tools_enabled=tools_enabled)]
     history = conversation_envelope.strip()
     if history:
         sections.append(f"{_CONVERSATION_HEADER}\n{history}\n{_CONVERSATION_FOOTER}\n")
@@ -242,6 +239,24 @@ def build_indexed_chat_input(task: str, *, workspace_context: str, conversation_
         sections.append(f"{limit_observation}\n")
     sections.append(f"Current question: {task}\n")
     return "\n".join(sections)
+
+
+def indexed_chat_prefix(*, repo_map: str, tools_enabled: bool) -> str:
+    """The start of an indexed Chat request, through the map: what a provider may cache. History can be repacked, so it stays after."""
+    sections = [f"{INDEXED_CHAT_PROMPT_VERSION}\n", _CHAT_ANSWER_INSTRUCTIONS]
+    if tools_enabled:
+        sections.append(_INDEX_TOOL_GRAMMAR)
+    return "\n".join(sections + _stable_map(repo_map))
+
+
+def indexed_planner_prefix(*, repo_map: str, tools_enabled: bool, evidence_limits: tuple[int, int, int] | None) -> str:
+    """The start of an indexed planning request, through the map: what a provider may cache."""
+    sections = [f"{INDEXED_PLANNER_PROMPT_VERSION}\n", _MULTI_TURN_DIRECTIVE_GRAMMAR]
+    if tools_enabled:
+        sections.append(_INDEX_TOOL_GRAMMAR)
+    if evidence_limits is not None:
+        sections.append(_evidence_limits_line(evidence_limits))
+    return "\n".join(sections + _stable_map(repo_map))
 
 
 def _stable_map(repo_map: str) -> list[str]:
@@ -337,12 +352,7 @@ def _build_indexed_planner_input(
     mcp_evidence_envelope: str, initial_workspace_context: str, initial_workspace_file_sizes: Mapping[str, int] | None, required_file_sizes: Mapping[str, int] | None,
     evidence_limits: tuple[int, int, int] | None, conversation_envelope: str, recovery_note: str, correction_notice: str, repo_map: str, index_results: str, index_tools_enabled: bool,
 ) -> str:
-    sections = [f"{INDEXED_PLANNER_PROMPT_VERSION}\n", _MULTI_TURN_DIRECTIVE_GRAMMAR]
-    if index_tools_enabled:
-        sections.append(_INDEX_TOOL_GRAMMAR)
-    if evidence_limits is not None:
-        sections.append(_evidence_limits_line(evidence_limits))
-    sections.extend(_stable_map(repo_map))
+    sections = [indexed_planner_prefix(repo_map=repo_map, tools_enabled=index_tools_enabled, evidence_limits=evidence_limits)]
     history = conversation_envelope.strip()
     if history:
         sections.append(f"{_CONVERSATION_HEADER}\n{history}\n{_CONVERSATION_FOOTER}\n")

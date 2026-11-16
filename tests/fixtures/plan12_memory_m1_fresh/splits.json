@@ -1,0 +1,28 @@
+{
+ "schema": "plan12-memory-splits/1",
+ "version": 1,
+ "families": {
+  "train": [],
+  "development": [],
+  "held_out": [
+   "MF01",
+   "MF02",
+   "MF03",
+   "MF04",
+   "MF05",
+   "MF06",
+   "MF07",
+   "MF08",
+   "MF09",
+   "MF10",
+   "MF11",
+   "MF12"
+  ]
+ },
+ "expected_family_counts": {
+  "localization": 12
+ },
+ "chronological_kinds": [
+  "localization"
+ ]
+}

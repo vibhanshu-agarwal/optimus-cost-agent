@@ -51,6 +51,19 @@
     ],
     "note": "The map refresh interval is 300 s, which is not a guaranteed rate limit."
   },
+  "assembly_corpus_b": {
+    "state": "APPROVED, prospective: Codex review 30 item 5 on #469 (comment 6882669502) agreed these ceilings; the operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved. Not yet qualified.",
+    "basis": "About twice attempt 4's corrected calibration (qualify-4.json, dense in every turn): idle wall p95 2,121 ms, during-build p95 3,623 ms over 4 turns, route calls at most 12, a repo-map refresh on a miss 90 calls and 17.4 s. That calibration stays CALIBRATION and is never relabelled.",
+    "qualification": "On a LATER cold-build run, with at least 20 assembly turns per condition, the during-build turns spread across early, middle and late build progress; that run may also measure the warm session edit, after the retrieval changes are frozen.",
+    "limits": [
+      {"metric": "assembly wall time p95, idle, ms", "limit": 7500},
+      {"metric": "assembly wall time p95, during a cold build, ms", "limit": 7500},
+      {"metric": "route calls per complete assembly invocation, including retries", "limit": 30},
+      {"metric": "route calls for one repo-map refresh on a miss, reported apart", "limit": 150},
+      {"metric": "wall time of one repo-map refresh on a miss, ms, reported apart", "limit": 35000},
+      {"metric": "pack size as a share of min(25 percent of usable input, 16384 tokens), a budget invariant", "limit": 1.0}
+    ]
+  },
   "k2_second_run": {
     "items": 125000,
     "items_why": "the approved corpus B's real records, rounded up",
@@ -70,5 +83,137 @@
       "physical_erasure_seconds": 120
     }
   },
-  "retrieval": "Recall, required-evidence, irrelevant-token and coverage targets are set from context-off and lexical baselines before the held-out set is opened, in Task 5, and need their own approval. No number is proposed here because nothing has measured them."
+  "dispositions": [
+    {
+      "metric": "seconds until the first file is visible, from the start of a cold build",
+      "frozen_limit": 5,
+      "release_b": {"measured": 30.91, "head": "hex:1a7592b753dfc3f7272d440c049147df4a1e1509", "result": "MISSED; retained in qualify.json and not relabelled"},
+      "cause": "A cold build lists and filters the whole tree (27 s at 10,255 files) and reads its revision before its first publish, which carries the honest total. The 5 s limit came from a 50-file pilot.",
+      "revised": {"corpus_b_cold_seconds": 45, "pilot_cold_seconds": 5, "edit_to_queryable_seconds": 6},
+      "scope": "Prospective: the later qualifying run. Cold discovery is separated from edit responsiveness: today's context stays usable during it, and an edit with a publication in place is written before the listing (a67057c).",
+      "approved": "Codex review 24 item 3 on #469 recommended exactly these values. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved.",
+      "operator_acceptance": "Retained: the Release B miss stays MISSED in qualify.json. Attempt 6 met the revised 45 s corpus-B limit (27.4 s, qualify-6.json); the pilot stays at 5 s; no further relaxation. Codex review 44 item 3a on #469 (comment 6890496149) recommended this; the operator accepted it explicitly on 2026-11-15 (\"Accept all four\")."
+    },
+    {
+      "metric": "held-out retrieval floors: retrieval-held-out.json (3 floors missed) and retrieval-fresh-held-out.json (2 floors missed)",
+      "result": "MISSED; both reports retained with their verdicts and not relabelled",
+      "operator_acceptance": "Accepted as retained misses. Final retrieval qualification rests only on the sealed fresh2 set (retrieval-fresh2-held-out.json, all 7 floors met), a historical holdout that does not establish forward-time quality; the later pass does not turn the earlier results into passes. Codex review 44 item 3a on #469 (comment 6890496149) recommended this; the operator accepted it explicitly on 2026-11-15 (\"Accept all four\")."
+    },
+    {
+      "metric": "session edit path, seconds until an edit is queryable",
+      "frozen_limit": 6,
+      "result": "attempt 4 MISSED (7.53 s, qualify-4.json); retained",
+      "operator_acceptance": "Remediated: verified by attempt 6 at 5.59 s against the unchanged 6 s limit (qualify-6.json). Codex review 44 item 3a on #469 (comment 6890496149) recommended this; the operator accepted it explicitly on 2026-11-15 (\"Accept all four\")."
+    },
+    {
+      "metric": "assembly_corpus_b: during-build wall p95 and route calls",
+      "result": "attempt 5 MISSED 2 of 6 (14,763 ms against 7,500; 46 calls against 30, qualify-5.json); retained",
+      "operator_acceptance": "Remediated: verified by attempt 6 against the unchanged corpus-B ceilings, 6 of 6 met (4,696.9 ms p95, at most 11 calls, qualify-6.json). Codex review 44 item 3a on #469 (comment 6890496149) recommended this; the operator accepted it explicitly on 2026-11-15 (\"Accept all four\")."
+    }
+  ],
+  "retrieval_fresh2": {
+    "state": "APPROVED",
+    "approved": "Codex review 33 on #469 (comment 6883230811) verified each case, removed the duplicate #30 and gave five query corrections, applied here verbatim, and agreed these floors at N = 44. The selection rule is review 32's option A. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved.",
+    "sealed_gold_sha256": "hex:eaaabf131ae9c17e499ebd71a4237d7a0d9d8589781b2c6bf15c7129d0a6b2b0",
+    "splits_sha256": "hex:ac925bd534c7b0d45255af16d84392d1891db25946c1c0f042dc35f025f3b1af",
+    "gold": "tests/fixtures/plan12_memory_m1_fresh2",
+    "selection": "Codex review 32 option A: universe main 6e5478a; every PR in the M1, seed and first fresh golds excluded, plus #475; first-parent fix commits inside each PR, subject fix/fixes/fixed/repair/correct, 1 to 6 src Python files, NO development-date cutoff; old-side extraction; first fix per PR; every eligible PR (24), less #30, the same stable patch as #29 (review 33). Handoff kit m1_fresh2_select.py and m1_fresh2_build.py.",
+    "what_it_is": "A historical holdout, not evidence of forward-time generalization: 22 of its 23 fixes predate the seed development cutoff (only #402 follows it), most from older, smaller trees of July 2026.",
+    "sealed_before": "Any further retrieval change. The two consumed held-out sets and their failed results stay as they are: retrieval-held-out.json and retrieval-fresh-held-out.json.",
+    "what_they_are": "Floors carrying the M1 proportions to N = 44: ceil(3N/11) and ceil(2N/11).",
+    "limits": [
+      {"metric": "Fresh2 held-out, 44 requirements: hybrid required evidence in context, count", "limit": 12, "direction": "at least"},
+      {"metric": "Fresh2 held-out: hybrid symbol recall at 5, count", "limit": 8, "direction": "at least"},
+      {"metric": "Fresh2 held-out: hybrid file recall at 5, count", "limit": 8, "direction": "at least"},
+      {"metric": "Fresh2 held-out: mean irrelevant estimated tokens", "limit": 16000, "direction": "at most"},
+      {"metric": "Incomplete coverage cases", "limit": 0, "direction": "at most"},
+      {"metric": "Stale or missing-file records", "limit": 0, "direction": "at most"},
+      {"metric": "Wrong-branch records, with the positive control found", "limit": 0, "direction": "at most"}
+    ]
+  },
+  "retrieval_fresh": {
+    "state": "APPROVED",
+    "approved": "Codex review 26 on #469 verified each case and gave the corrections applied here verbatim (#439 restored, #402 out, three queries reworded), and agreed these counts for N = 30. The operator's standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex recommendation operator-approved.",
+    "sealed_gold_sha256": "hex:caf1aefa78796438b073f5dae7acff96c691ce978ed7f5ca472f6e21b46e82a0",
+    "gold": "tests/fixtures/plan12_memory_m1_fresh",
+    "selection": "The rule fixed in Codex review 25: fix commits inside merged PRs at main 6e5478a, after the seed development cutoff, the 12 newest PRs; handoff kit m1_fresh_select.py and m1_fresh_build.py. Pre-merge snapshots.",
+    "sealed_before": "Any further tuning. The earlier held-out set and its failed result stay in `retrieval` and retrieval-held-out.json.",
+    "what_they_are": "Floors carrying the stricter M1 proportions to N = 30: ceil(3N/11) and ceil(2N/11). MF10 has requirements of 13 and 23 alternatives under the one-requirement-per-file method; finding one locus per file does not show each of its eleven findings localized.",
+    "limits": [
+      {"metric": "Fresh held-out, 30 requirements: hybrid required evidence in context, count", "limit": 9, "direction": "at least"},
+      {"metric": "Fresh held-out: hybrid symbol recall at 5, count", "limit": 6, "direction": "at least"},
+      {"metric": "Fresh held-out: hybrid file recall at 5, count", "limit": 6, "direction": "at least"},
+      {"metric": "Fresh held-out: mean irrelevant estimated tokens", "limit": 16000, "direction": "at most"},
+      {"metric": "Incomplete coverage cases", "limit": 0, "direction": "at most"},
+      {"metric": "Stale or missing-file records", "limit": 0, "direction": "at most"},
+      {"metric": "Wrong-branch records, with the positive control found", "limit": 0, "direction": "at most"}
+    ]
+  },
+  "retrieval": {
+      "state": "APPROVED",
+      "approved": "The operator, Claude chat 2026-11-05, chose: \"B: seal, then tune (Recommended)\". The question gave this gold hash and these floors. Codex recommended option B and the floors in review 21.",
+      "sealed_gold_sha256": "hex:4254408ded16fb4fdc8f0902b1735689f57ffe571a92b8eee377e1f033ed9688",
+      "gold_before_verification_sha256": "hex:50d513ff24e2b438ef7c03dc2bc1360585ba7507930c83f8bcbf879c6eb8a1ae",
+      "gold_change": "Only provenance.verified_by, set to codex after reviews 19 and 21. The first baseline, retrieval-baseline-4607ff7.json, ran against the earlier hash and is not relabelled.",
+      "splits": "Chronological 4/4/4; tests/fixtures/plan12_memory_m1/splits.json, SHA-256 hex:41f6bb757ebbe1b6326edf593ec21bfbc740b38f54ec9b6a661828479ee02485",
+      "what_they_are": "Modest qualification floors, stated as counts because each set is small. They are not evidence of broad retrieval reliability. One bounded tuning pass on train and development is released before held-out opens.",
+      "limits": [
+          {
+              "metric": "M1 held-out, 11 requirements: hybrid required evidence in context, count",
+              "limit": 3,
+              "direction": "at least"
+          },
+          {
+              "metric": "M1 held-out: hybrid symbol recall at 5, count",
+              "limit": 2,
+              "direction": "at least"
+          },
+          {
+              "metric": "M1 held-out: hybrid file recall at 5, count",
+              "limit": 2,
+              "direction": "at least"
+          },
+          {
+              "metric": "M1 held-out: mean irrelevant estimated tokens",
+              "limit": 16000,
+              "direction": "at most"
+          },
+          {
+              "metric": "Seed held-out, 12 requirements: hybrid required evidence in context, count",
+              "limit": 3,
+              "direction": "at least"
+          },
+          {
+              "metric": "Seed held-out: hybrid symbol recall at 5, count",
+              "limit": 2,
+              "direction": "at least"
+          },
+          {
+              "metric": "Seed held-out: hybrid file recall at 5, count",
+              "limit": 2,
+              "direction": "at least"
+          },
+          {
+              "metric": "Seed held-out: mean irrelevant estimated tokens",
+              "limit": 16000,
+              "direction": "at most"
+          },
+          {
+              "metric": "Incomplete coverage cases",
+              "limit": 0,
+              "direction": "at most"
+          },
+          {
+              "metric": "Stale or missing-file records",
+              "limit": 0,
+              "direction": "at most"
+          },
+          {
+              "metric": "Wrong-branch records, with the positive control found",
+              "limit": 0,
+              "direction": "at most"
+          }
+      ],
+      "compared_with_off": "File-level on both arms: hybrid required files against off's. Off's unavailable symbol measure is not a zero."
+  }
 }

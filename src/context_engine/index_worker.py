@@ -29,6 +29,7 @@ PUBLISH_SECONDS: Final = 15.0
 LEASE_MS: Final = 60_000
 RENEW_SECONDS: Final = 15.0
 _CATALOGUE_PAGE: Final = 256
+EARLY_FILES: Final = 64  # open, named and changed files written before the tree is listed; any more wait for the walk
 
 
 class StorageUnavailableError(RuntimeError):
@@ -68,6 +69,8 @@ class IndexSource(Protocol):
     def read(self, path: str) -> bytes | None: ...
 
     def revision(self) -> tuple[str, bool]: ...
+
+    def modified(self, path: str) -> int | None: ...
 
     def unreachable(self) -> int:
         """How many folders the last listing could not read. What they hold is missing, not excluded."""
@@ -140,6 +143,11 @@ class IndexWorker:
         self._files_written = 0
         self._records_written = 0
 
+    @property
+    def revision(self) -> tuple[str, bool]:
+        """The revision this pass read before it began; a complete pass found it unchanged at the end."""
+        return self._revision
+
     def run(self, cancel: threading.Event) -> WorkerOutcome:
         self._cancel = cancel
         try:
@@ -194,10 +202,13 @@ class IndexWorker:
         self._published_at = self._clock()
         self._revision = self._source.revision()
         self._epoch = self._storage.call("generation", action="begin", token=self._token)["epoch"]
+        first = list(dict.fromkeys(self._priority()))
+        if current is not None:
+            self._write_early(first[:EARLY_FILES], current, cancel)
         self._progress("catalogue")
         held = self._load_catalogue()
         self._coverage = Coverage()
-        wanted = self._ordered_files()
+        wanted = self._ordered_files(first)
         self._coverage.files_total = len(wanted)
         batch = _Batch()
         pending: list[IndexRecord] = []
@@ -267,10 +278,44 @@ class IndexWorker:
                 return False
         return True
 
-    def _ordered_files(self) -> list[SourceFile]:
+    def _write_early(self, paths: Sequence[str], current: dict[str, Any], cancel: threading.Event) -> None:
+        """Open, named and changed files reach readers before the tree is listed, which takes tens of seconds on a large one. Each is read
+        through the policy and compared with its published file record, so a refused or unchanged file costs at most one call. Nothing else
+        was checked, so the publication keeps the last pass's counts and says it is incomplete; the walk that follows decides the rest."""
+        pending: list[IndexRecord] = []
+        batch = _Batch()
+        first_out = False
+        for path in paths:
+            if cancel.is_set():
+                raise _Cancelled([])
+            data = self._source.read(path)
+            if data is None:
+                continue
+            parsed = parse_file(path, data, modified=self._source.modified(path))
+            try:
+                held = self._storage.call("query", mode="path", epoch=current["epoch"], path_id=path_id(path), k=1, kinds=["file"])["records"]
+            except StorageRefusedError:
+                held = []
+            if held and held[0].get("file_hash") == parsed.file_hash:
+                continue
+            batch.removals.append({"path_id": path_id(path), "keep_hash": parsed.file_hash})
+            pending.extend((*parsed.records[1:], parsed.records[0]))
+            self._files_written += 1
+            if not first_out:  # the first change goes out alone, so it never waits on a larger file after it
+                self._publish_early(pending, batch, current)
+                first_out = True
+        if batch.removals:
+            self._publish_early(pending, batch, current)
+
+    def _publish_early(self, pending: list[IndexRecord], batch: _Batch, current: dict[str, Any]) -> None:
+        self._flush(pending, batch, force=True)
+        self._publish(complete=False, coverage={**current["coverage"], "complete": False})
+        self._epoch = self._storage.call("generation", action="begin", token=self._token)["epoch"]
+
+    def _ordered_files(self, first_paths: Sequence[str]) -> list[SourceFile]:
         """Open and named files first, then the catalogue order, so the first file a person cares about is the first published."""
         files = {item.path: item for item in self._source.files()}
-        first = [files[path] for path in self._priority() if path in files]
+        first = [files[path] for path in first_paths if path in files]
         chosen = {item.path for item in first}
         return first + [files[path] for path in sorted(files) if path not in chosen]
 
@@ -328,10 +373,10 @@ class IndexWorker:
         batch.records, batch.removals, batch.size = [], [], 0
         self._progress("embedding")
 
-    def _publish(self, *, complete: bool) -> int:
+    def _publish(self, *, complete: bool, coverage: dict[str, Any] | None = None) -> int:
         revision, dirty = self._revision
         result = self._storage.call("generation", action="publish", token=self._token, epoch=self._epoch, revision=revision, dirty=dirty,
-                                    coverage=self._coverage.report(complete=complete))
+                                    coverage=coverage or self._coverage.report(complete=complete))
         self._published_any = True
         self._published_at = self._clock()
         epoch: int = result["current"]["epoch"]

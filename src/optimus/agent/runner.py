@@ -17,7 +17,7 @@ from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failu
 from optimus.agent.index_turn import LIMIT_NOTICE, LIMIT_OBSERVATION, MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import TEST_STOP_REASONS, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
-from optimus.agent.prompts import build_agent_planner_input, build_indexed_chat_input
+from optimus.agent.prompts import build_agent_planner_input, build_indexed_chat_input, indexed_chat_prefix
 from optimus.agent.state_store import (
     AgentPlanRecord,
     AgentStateStore,
@@ -1870,7 +1870,15 @@ class AgentRunner:
             if halt_requested is not None and halt_requested():
                 return fail(stop_reason="CHAT_HALTED", status=AgentRunStatus.TERMINATED)
             reply = self._chat_call(
-                request=request, scope=scope, chat_input=chat_input, ordinal=rounds + 1, prior_cost=spent, operation_control=operation_control, context_packer=context_packer, fail=fail
+                request=request,
+                scope=scope,
+                chat_input=chat_input,
+                stable_prefix="" if memory is None else indexed_chat_prefix(repo_map=repo_map, tools_enabled=tools_open),
+                ordinal=rounds + 1,
+                prior_cost=spent,
+                operation_control=operation_control,
+                context_packer=context_packer,
+                fail=fail,
             )
             if isinstance(reply, AgentRunResult):
                 return reply
@@ -1926,6 +1934,7 @@ class AgentRunner:
         request: AgentRunRequest,
         scope: _RunScope,
         chat_input: str,
+        stable_prefix: str,
         ordinal: int,
         prior_cost: Decimal,
         operation_control: TurnOperationControl | None,
@@ -1937,7 +1946,7 @@ class AgentRunner:
         if scope.route is not None:
             # Bound before the Gateway lease, so a request whose notice was not delivered is never a
             # started provider attempt.
-            bound = scope.route.bind(stage="answer", input_text=chat_input)
+            bound = scope.route.bind(stage="answer", input_text=chat_input, stable_prefix=stable_prefix)
             if bound is None:
                 self._report_attempts(request, scope, settled_turn=ordinal, wire_attempt=1, attempts=(_NOT_SENT,), identity=scope.route.identity)
                 return fail(stop_reason="CHAT_NOTICE_UNDELIVERED")

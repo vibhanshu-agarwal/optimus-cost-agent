@@ -30,18 +30,19 @@ class ContributorDisclosure:
         self._deliver = deliver_notice
         self._noticed: set[tuple[str, str, str]] = set()
 
-    def binding(self, *, model_id: str, request_id: str, input_text: str, output_cap: int) -> RouteBinding | None:
+    def binding(self, *, model_id: str, request_id: str, input_text: str, output_cap: int, cache_prefix_chars: int | None = None) -> RouteBinding | None:
         """The request's route binding, or None when its required notice was not delivered (then
-        nothing may be sent)."""
+        nothing may be sent). A stable prefix is named only on a route approved to cache one."""
         entry = self._snapshot.policy.models.get(model_id)
         if entry is None:
             raise ValueError(f"model {model_id!r} is not in the trusted registry")
         registry_hash = self._snapshot.effective_hash
+        boundary = cache_prefix_chars if entry.route.prompt_cache == "prefix" else None
         if entry.data_use.disclosure != "contributor":
-            return RouteBinding(registry_hash=registry_hash, request_id=request_id, output_cap=output_cap)
+            return RouteBinding(registry_hash=registry_hash, request_id=request_id, output_cap=output_cap, cache_prefix_chars=boundary)
         # The Gateway's upstream request is one user message holding the final flattened input.
         messages = (Message(role="user", content=input_text),)
-        payload = payload_digest(model_id, messages, output_cap, reasoning=entry.default_reasoning, prompt_cache=entry.route.prompt_cache)
+        payload = payload_digest(model_id, messages, output_cap, reasoning=entry.default_reasoning, prompt_cache=entry.route.prompt_cache, cache_prefix_chars=boundary)
         route = route_digest(model_id, entry)
         identity = (request_id, route, payload)
         if identity not in self._noticed:
@@ -49,4 +50,4 @@ class ContributorDisclosure:
                 return None
             self._noticed.add(identity)
         authorization = issue_disclosure(self._key, request_id=request_id, model_id=model_id, route=route, payload=payload)
-        return RouteBinding(registry_hash=registry_hash, request_id=request_id, output_cap=output_cap, disclosure=authorization)
+        return RouteBinding(registry_hash=registry_hash, request_id=request_id, output_cap=output_cap, disclosure=authorization, cache_prefix_chars=boundary)

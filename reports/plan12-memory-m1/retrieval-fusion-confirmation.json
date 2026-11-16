@@ -1,0 +1,3961 @@
+{
+ "decision": {
+  "verdict": "KEEP FROZEN: no demonstrated robust improvement",
+  "why": [
+   "repetition 1: fewer file_met_at_k (7 against 8)",
+   "repetition 1: fewer required_file_met (18 against 19)",
+   "repetition 2: fewer file_met_at_k (7 against 8)",
+   "repetition 2: fewer required_file_met (18 against 19)",
+   "repetition 3: fewer file_met_at_k (7 against 8)",
+   "repetition 3: fewer required_file_met (18 against 19)"
+  ]
+ },
+ "head": "hex:75b4624fe646002b708b14108d879a0f37703d4c",
+ "parser_version": "code-index-v1",
+ "protocol": "(review 34 item 2, verbatim in substance):\n- exactly three repetitions, each on a fresh container and the same 16 train and development cases;\n- in each, retrieve once per case, capture the ordered channel inputs that production fuse receives, and apply both the frozen setting\n  (RRF k 60, dense weight 1.0) and the candidate (RRF k 10, dense weight 2.0) to those identical inputs with production fuse;\n- adopt the candidate only if its worst symbol-hits-at-5 count over the three repetitions exceeds the frozen setting's best, and in every\n  repetition it has no fewer file hits at 5, required evidence in context or required files in context, and its mean irrelevant tokens stay\n  at most 16,000; otherwise keep the frozen code and report no demonstrated robust improvement;\n- every repetition is kept; an incomplete one makes the result inconclusive; none is replaced, and the experiment is not extended.\nA paused worker is resumed up to three times, as the product's session does; each pause, and a stop, is written to the report before cleanup.",
+ "repetitions": [
+  {
+   "pauses": [],
+   "per_case": {
+    "L01-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 20
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 14573,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16366
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 20
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 14505,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16306
+      },
+      "requirements": 1
+     }
+    },
+    "L02-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 7,
+         "lexical": 25
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 11,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16046,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16307
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 7,
+         "lexical": 25
+        },
+        "file_fused_rank": 4,
+        "fused_rank": 11,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15192,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16368
+      },
+      "requirements": 1
+     }
+    },
+    "L03-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 5
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 6,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 68
+        },
+        "file_fused_rank": 3,
+        "fused_rank": 4,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 57,
+        "fused_rank": null,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12359,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16299
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 5
+        },
+        "file_fused_rank": 38,
+        "fused_rank": 38,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 68
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 16,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 67,
+        "fused_rank": null,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16105,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16332
+      },
+      "requirements": 3
+     }
+    },
+    "L04-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 39
+        },
+        "file_fused_rank": 8,
+        "fused_rank": 51,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16229,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16364
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 39
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 73,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16215,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16348
+      },
+      "requirements": 1
+     }
+    },
+    "L05-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 44
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 2,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 12
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R2"
+       }
+      ],
+      "file_met_at_k": 2,
+      "met_at_k": 2,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 10938,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16347
+      },
+      "requirements": 2
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 44
+        },
+        "file_fused_rank": 11,
+        "fused_rank": 12,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 12
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R2"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 10524,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16276
+      },
+      "requirements": 2
+     }
+    },
+    "L06-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 1
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15803,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16306
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 1
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15876,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16382
+      },
+      "requirements": 1
+     }
+    },
+    "L07-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 16,
+         "lexical": 26
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 21,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 63
+        },
+        "file_fused_rank": 61,
+        "fused_rank": 148,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 38
+        },
+        "file_fused_rank": 32,
+        "fused_rank": 107,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16008,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16300
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 16,
+         "lexical": 26
+        },
+        "file_fused_rank": 14,
+        "fused_rank": 14,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 63
+        },
+        "file_fused_rank": 50,
+        "fused_rank": 109,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 38
+        },
+        "file_fused_rank": 21,
+        "fused_rank": 72,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15452,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16356
+      },
+      "requirements": 3
+     }
+    },
+    "L08-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16248,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16238,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16374
+      },
+      "requirements": 1
+     }
+    },
+    "ML01-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 12,
+         "lexical": 42
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 10,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 94,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 50
+        },
+        "file_fused_rank": 74,
+        "fused_rank": 74,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 114,
+        "fused_rank": null,
+        "requirement": "R4"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4",
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15950,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16300
+      },
+      "requirements": 5
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 12,
+         "lexical": 42
+        },
+        "file_fused_rank": 4,
+        "fused_rank": 4,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 121,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 50
+        },
+        "file_fused_rank": 98,
+        "fused_rank": 98,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 77,
+        "fused_rank": null,
+        "requirement": "R4"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R2",
+       "R3",
+       "R4",
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 11136,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16329
+      },
+      "requirements": 5
+     }
+    },
+    "ML02-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 62,
+         "lexical": 61
+        },
+        "file_fused_rank": 53,
+        "fused_rank": 53,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 92
+        },
+        "file_fused_rank": 81,
+        "fused_rank": 127,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16196,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16322
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 62,
+         "lexical": 61
+        },
+        "file_fused_rank": 17,
+        "fused_rank": 17,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 92
+        },
+        "file_fused_rank": 108,
+        "fused_rank": 165,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15997,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16285
+      },
+      "requirements": 3
+     }
+    },
+    "ML03-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 20,
+         "lexical": 1
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 6,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15180,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16372
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 20,
+         "lexical": 1
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 5,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15137,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16329
+      },
+      "requirements": 1
+     }
+    },
+    "ML04-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 56,
+         "lexical": 65
+        },
+        "file_fused_rank": 55,
+        "fused_rank": 55,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16229,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16381
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 56,
+         "lexical": 65
+        },
+        "file_fused_rank": 24,
+        "fused_rank": 24,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16064,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16301
+      },
+      "requirements": 1
+     }
+    },
+    "ML05-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 98
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 3,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12501,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16330
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 98
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 5,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12513,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16345
+      },
+      "requirements": 1
+     }
+    },
+    "ML06-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 18,
+        "fused_rank": null,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 4
+        },
+        "file_fused_rank": 21,
+        "fused_rank": 21,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16118,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16342
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 32,
+        "fused_rank": null,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 4
+        },
+        "file_fused_rank": 13,
+        "fused_rank": 13,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16124,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16347
+      },
+      "requirements": 3
+     }
+    },
+    "ML07-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 94
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 7,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 32
+        },
+        "file_fused_rank": 24,
+        "fused_rank": 45,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 14
+        },
+        "file_fused_rank": 18,
+        "fused_rank": 18,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {
+         "dense": 4,
+         "lexical": 35
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 5,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12837,
+       "required_evidence_met": 3,
+       "required_file_met": 3,
+       "stale_paths": 0,
+       "tokens": 16381
+      },
+      "requirements": 4
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 94
+        },
+        "file_fused_rank": 9,
+        "fused_rank": 9,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 32
+        },
+        "file_fused_rank": 18,
+        "fused_rank": 63,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 14
+        },
+        "file_fused_rank": 33,
+        "fused_rank": 33,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {
+         "dense": 4,
+         "lexical": 35
+        },
+        "file_fused_rank": 8,
+        "fused_rank": 8,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15413,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16345
+      },
+      "requirements": 4
+     }
+    },
+    "ML08-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 22
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 7,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 23,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15798,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 4
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 22
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 10,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 9,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15966,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16296
+      },
+      "requirements": 4
+     }
+    }
+   },
+   "repetition": 1,
+   "state": "complete",
+   "totals": {
+    "candidate": {
+     "cases": 16,
+     "file_met_at_k": 7,
+     "irrelevant_tokens": 239013,
+     "met_at_k": 7,
+     "required_evidence_met": 16,
+     "required_file_met": 18,
+     "requirements": 35
+    },
+    "frozen": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 238457,
+     "met_at_k": 6,
+     "required_evidence_met": 16,
+     "required_file_met": 19,
+     "requirements": 35
+    }
+   }
+  },
+  {
+   "pauses": [],
+   "per_case": {
+    "L01-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 20
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 14573,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16366
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 20
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 14505,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16306
+      },
+      "requirements": 1
+     }
+    },
+    "L02-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 7,
+         "lexical": 25
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 11,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16046,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16307
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 7,
+         "lexical": 25
+        },
+        "file_fused_rank": 4,
+        "fused_rank": 11,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15192,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16368
+      },
+      "requirements": 1
+     }
+    },
+    "L03-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 5
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 6,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 68
+        },
+        "file_fused_rank": 3,
+        "fused_rank": 4,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 57,
+        "fused_rank": null,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12359,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16299
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 5
+        },
+        "file_fused_rank": 38,
+        "fused_rank": 38,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 68
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 16,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 67,
+        "fused_rank": null,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16105,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16332
+      },
+      "requirements": 3
+     }
+    },
+    "L04-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 39
+        },
+        "file_fused_rank": 8,
+        "fused_rank": 51,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16229,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16364
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 39
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 73,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16215,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16348
+      },
+      "requirements": 1
+     }
+    },
+    "L05-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 44
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 2,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 12
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R2"
+       }
+      ],
+      "file_met_at_k": 2,
+      "met_at_k": 2,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 10938,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16347
+      },
+      "requirements": 2
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 44
+        },
+        "file_fused_rank": 11,
+        "fused_rank": 12,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 12
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R2"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 10524,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16276
+      },
+      "requirements": 2
+     }
+    },
+    "L06-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 1
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15803,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16306
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 1
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15876,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16382
+      },
+      "requirements": 1
+     }
+    },
+    "L07-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 16,
+         "lexical": 27
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 21,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 64
+        },
+        "file_fused_rank": 59,
+        "fused_rank": 149,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 41
+        },
+        "file_fused_rank": 34,
+        "fused_rank": 115,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16008,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16300
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 16,
+         "lexical": 27
+        },
+        "file_fused_rank": 13,
+        "fused_rank": 13,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 64
+        },
+        "file_fused_rank": 49,
+        "fused_rank": 112,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 41
+        },
+        "file_fused_rank": 21,
+        "fused_rank": 75,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15452,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16356
+      },
+      "requirements": 3
+     }
+    },
+    "L08-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16248,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16238,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16374
+      },
+      "requirements": 1
+     }
+    },
+    "ML01-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 12,
+         "lexical": 42
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 10,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 94,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 50
+        },
+        "file_fused_rank": 74,
+        "fused_rank": 74,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 114,
+        "fused_rank": null,
+        "requirement": "R4"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4",
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15950,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16300
+      },
+      "requirements": 5
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 12,
+         "lexical": 42
+        },
+        "file_fused_rank": 4,
+        "fused_rank": 4,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 121,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 50
+        },
+        "file_fused_rank": 98,
+        "fused_rank": 98,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 77,
+        "fused_rank": null,
+        "requirement": "R4"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R2",
+       "R3",
+       "R4",
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 11136,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16329
+      },
+      "requirements": 5
+     }
+    },
+    "ML02-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 62,
+         "lexical": 61
+        },
+        "file_fused_rank": 53,
+        "fused_rank": 53,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 92
+        },
+        "file_fused_rank": 81,
+        "fused_rank": 127,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16196,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16322
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 62,
+         "lexical": 61
+        },
+        "file_fused_rank": 17,
+        "fused_rank": 17,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 92
+        },
+        "file_fused_rank": 108,
+        "fused_rank": 165,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15997,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16285
+      },
+      "requirements": 3
+     }
+    },
+    "ML03-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 20,
+         "lexical": 1
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 6,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15180,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16372
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 20,
+         "lexical": 1
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 5,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15137,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16329
+      },
+      "requirements": 1
+     }
+    },
+    "ML04-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 56,
+         "lexical": 65
+        },
+        "file_fused_rank": 55,
+        "fused_rank": 55,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16229,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16381
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 56,
+         "lexical": 65
+        },
+        "file_fused_rank": 24,
+        "fused_rank": 24,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16064,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16301
+      },
+      "requirements": 1
+     }
+    },
+    "ML05-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 98
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 3,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12501,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16330
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 98
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 5,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12513,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16345
+      },
+      "requirements": 1
+     }
+    },
+    "ML06-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 18,
+        "fused_rank": null,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 4
+        },
+        "file_fused_rank": 21,
+        "fused_rank": 21,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16118,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16342
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 32,
+        "fused_rank": null,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 4
+        },
+        "file_fused_rank": 13,
+        "fused_rank": 13,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16124,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16347
+      },
+      "requirements": 3
+     }
+    },
+    "ML07-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 94
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 7,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 32
+        },
+        "file_fused_rank": 24,
+        "fused_rank": 45,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 14
+        },
+        "file_fused_rank": 18,
+        "fused_rank": 18,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {
+         "dense": 4,
+         "lexical": 35
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 5,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12837,
+       "required_evidence_met": 3,
+       "required_file_met": 3,
+       "stale_paths": 0,
+       "tokens": 16381
+      },
+      "requirements": 4
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 94
+        },
+        "file_fused_rank": 9,
+        "fused_rank": 9,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 32
+        },
+        "file_fused_rank": 18,
+        "fused_rank": 63,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 14
+        },
+        "file_fused_rank": 33,
+        "fused_rank": 33,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {
+         "dense": 4,
+         "lexical": 35
+        },
+        "file_fused_rank": 8,
+        "fused_rank": 8,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15413,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16345
+      },
+      "requirements": 4
+     }
+    },
+    "ML08-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 22
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 7,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 23,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15798,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 4
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 22
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 10,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 9,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15966,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16296
+      },
+      "requirements": 4
+     }
+    }
+   },
+   "repetition": 2,
+   "state": "complete",
+   "totals": {
+    "candidate": {
+     "cases": 16,
+     "file_met_at_k": 7,
+     "irrelevant_tokens": 239013,
+     "met_at_k": 7,
+     "required_evidence_met": 16,
+     "required_file_met": 18,
+     "requirements": 35
+    },
+    "frozen": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 238457,
+     "met_at_k": 6,
+     "required_evidence_met": 16,
+     "required_file_met": 19,
+     "requirements": 35
+    }
+   }
+  },
+  {
+   "pauses": [],
+   "per_case": {
+    "L01-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 20
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 14573,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16366
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 20
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 14505,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16306
+      },
+      "requirements": 1
+     }
+    },
+    "L02-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 7,
+         "lexical": 27
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 12,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16046,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16307
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 7,
+         "lexical": 27
+        },
+        "file_fused_rank": 4,
+        "fused_rank": 11,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15192,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16368
+      },
+      "requirements": 1
+     }
+    },
+    "L03-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 5
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 6,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 68
+        },
+        "file_fused_rank": 3,
+        "fused_rank": 4,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 57,
+        "fused_rank": null,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12359,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16299
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 5
+        },
+        "file_fused_rank": 38,
+        "fused_rank": 38,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 68
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 18,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 68,
+        "fused_rank": null,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16105,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16332
+      },
+      "requirements": 3
+     }
+    },
+    "L04-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 39
+        },
+        "file_fused_rank": 8,
+        "fused_rank": 51,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16229,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16364
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 39
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 73,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16215,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16348
+      },
+      "requirements": 1
+     }
+    },
+    "L05-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 44
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 2,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 12
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R2"
+       }
+      ],
+      "file_met_at_k": 2,
+      "met_at_k": 2,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 10938,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16347
+      },
+      "requirements": 2
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 44
+        },
+        "file_fused_rank": 11,
+        "fused_rank": 12,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 12
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R2"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 10524,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16276
+      },
+      "requirements": 2
+     }
+    },
+    "L06-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 1
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15803,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16306
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 1,
+         "lexical": 1
+        },
+        "file_fused_rank": 1,
+        "fused_rank": 1,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15876,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16382
+      },
+      "requirements": 1
+     }
+    },
+    "L07-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 16,
+         "lexical": 26
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 21,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 63
+        },
+        "file_fused_rank": 61,
+        "fused_rank": 148,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 38
+        },
+        "file_fused_rank": 33,
+        "fused_rank": 107,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16008,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16300
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 16,
+         "lexical": 26
+        },
+        "file_fused_rank": 14,
+        "fused_rank": 14,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 63
+        },
+        "file_fused_rank": 50,
+        "fused_rank": 109,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 38
+        },
+        "file_fused_rank": 21,
+        "fused_rank": 72,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15452,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16356
+      },
+      "requirements": 3
+     }
+    },
+    "L08-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16248,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16238,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16374
+      },
+      "requirements": 1
+     }
+    },
+    "ML01-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 12,
+         "lexical": 42
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 10,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 94,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 50
+        },
+        "file_fused_rank": 74,
+        "fused_rank": 74,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 114,
+        "fused_rank": null,
+        "requirement": "R4"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4",
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15950,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16300
+      },
+      "requirements": 5
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 12,
+         "lexical": 42
+        },
+        "file_fused_rank": 4,
+        "fused_rank": 4,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 121,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 50
+        },
+        "file_fused_rank": 98,
+        "fused_rank": 98,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 77,
+        "fused_rank": null,
+        "requirement": "R4"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R2",
+       "R3",
+       "R4",
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 11136,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16329
+      },
+      "requirements": 5
+     }
+    },
+    "ML02-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 62,
+         "lexical": 61
+        },
+        "file_fused_rank": 53,
+        "fused_rank": 53,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 92
+        },
+        "file_fused_rank": 81,
+        "fused_rank": 127,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16196,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16322
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 62,
+         "lexical": 61
+        },
+        "file_fused_rank": 17,
+        "fused_rank": 17,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 92
+        },
+        "file_fused_rank": 108,
+        "fused_rank": 165,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15997,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16285
+      },
+      "requirements": 3
+     }
+    },
+    "ML03-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 20,
+         "lexical": 1
+        },
+        "file_fused_rank": 6,
+        "fused_rank": 6,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15180,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16372
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 20,
+         "lexical": 1
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 5,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15137,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16329
+      },
+      "requirements": 1
+     }
+    },
+    "ML04-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 56,
+         "lexical": 71
+        },
+        "file_fused_rank": 56,
+        "fused_rank": 56,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16229,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16381
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 56,
+         "lexical": 71
+        },
+        "file_fused_rank": 25,
+        "fused_rank": 25,
+        "requirement": "R5"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R5"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16061,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16299
+      },
+      "requirements": 1
+     }
+    },
+    "ML05-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 98
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 3,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12501,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16330
+      },
+      "requirements": 1
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 2,
+         "lexical": 98
+        },
+        "file_fused_rank": 2,
+        "fused_rank": 5,
+        "requirement": "R1"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12513,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16345
+      },
+      "requirements": 1
+     }
+    },
+    "ML06-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 18,
+        "fused_rank": null,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 4
+        },
+        "file_fused_rank": 21,
+        "fused_rank": 21,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16118,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16342
+      },
+      "requirements": 3
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 33,
+        "fused_rank": null,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "lexical": 4
+        },
+        "file_fused_rank": 14,
+        "fused_rank": 14,
+        "requirement": "R3"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16111,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16334
+      },
+      "requirements": 3
+     }
+    },
+    "ML07-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 98
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 7,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 32
+        },
+        "file_fused_rank": 26,
+        "fused_rank": 44,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 14
+        },
+        "file_fused_rank": 18,
+        "fused_rank": 18,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {
+         "dense": 4,
+         "lexical": 33
+        },
+        "file_fused_rank": 5,
+        "fused_rank": 5,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 12789,
+       "required_evidence_met": 3,
+       "required_file_met": 3,
+       "stale_paths": 0,
+       "tokens": 16335
+      },
+      "requirements": 4
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 98
+        },
+        "file_fused_rank": 9,
+        "fused_rank": 9,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {
+         "dense": 32
+        },
+        "file_fused_rank": 19,
+        "fused_rank": 63,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {
+         "dense": 14
+        },
+        "file_fused_rank": 33,
+        "fused_rank": 33,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {
+         "dense": 4,
+         "lexical": 33
+        },
+        "file_fused_rank": 8,
+        "fused_rank": 8,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15435,
+       "required_evidence_met": 2,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16367
+      },
+      "requirements": 4
+     }
+    },
+    "ML08-a": {
+     "candidate": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 23
+        },
+        "file_fused_rank": 7,
+        "fused_rank": 7,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 23,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15796,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16382
+      },
+      "requirements": 4
+     },
+     "channel_lengths": {
+      "dense": 100,
+      "lexical": 100,
+      "memory": 0,
+      "recency": 8,
+      "structure": 0
+     },
+     "frozen": {
+      "candidates": [
+       {
+        "channel_ranks": {
+         "dense": 6,
+         "lexical": 23
+        },
+        "file_fused_rank": 10,
+        "fused_rank": 10,
+        "requirement": "R1"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": 9,
+        "fused_rank": null,
+        "requirement": "R2"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R3"
+       },
+       {
+        "channel_ranks": {},
+        "file_fused_rank": null,
+        "fused_rank": null,
+        "requirement": "R4"
+       }
+      ],
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15966,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16296
+      },
+      "requirements": 4
+     }
+    }
+   },
+   "repetition": 3,
+   "state": "complete",
+   "totals": {
+    "candidate": {
+     "cases": 16,
+     "file_met_at_k": 7,
+     "irrelevant_tokens": 238963,
+     "met_at_k": 7,
+     "required_evidence_met": 16,
+     "required_file_met": 18,
+     "requirements": 35
+    },
+    "frozen": {
+     "cases": 16,
+     "file_met_at_k": 8,
+     "irrelevant_tokens": 238463,
+     "met_at_k": 6,
+     "required_evidence_met": 16,
+     "required_file_met": 19,
+     "requirements": 35
+    }
+   }
+  }
+ ],
+ "schema": "plan12-memory-m1.fusion-confirmation.v1",
+ "script_sha256": "hex:874d3a15fdd761e33b73ad8bbd80fc26c41828a1082385b148380480b5ae0909",
+ "settings": {
+  "candidate": {
+   "dense_weight": 2.0,
+   "rrf_k": 10
+  },
+  "frozen": {
+   "dense_weight": 1.0,
+   "rrf_k": 60
+  }
+ },
+ "src_uncommitted": []
+}

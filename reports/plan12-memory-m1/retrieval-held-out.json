@@ -1,0 +1,1229 @@
+{
+ "budget_tokens": 16384,
+ "cases": {
+  "m1": [
+   {
+    "ablations": {
+     "dense": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15779,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16340
+      },
+      "requirements": 4
+     },
+     "hybrid": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15223,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16345
+      },
+      "requirements": 4
+     },
+     "lexical": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16244,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16377
+      },
+      "requirements": 4
+     },
+     "off": {
+      "file_met_at_k": 0,
+      "files": 1,
+      "met_at_k": null,
+      "missed_at_k": null,
+      "pack": {
+       "budget_tokens": null,
+       "irrelevant_tokens": 16384,
+       "required_evidence_met": null,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 4
+     }
+    },
+    "case_id": "ML09-a",
+    "channels": {
+     "dense": "40 results",
+     "lexical": "40 results",
+     "memory": "no authorized source",
+     "recency": "8 results",
+     "structure": "0 results"
+    },
+    "coverage": {
+     "complete": true,
+     "excluded": 0,
+     "files_indexed": 1326,
+     "files_total": 1326,
+     "parsed_loc": {
+      "markdown": 105338,
+      "python": 226521,
+      "text": 267
+     },
+     "records": 21863,
+     "unsupported": 184
+    },
+    "cutoff": "2026-10-14T15:57:10+05:30",
+    "requirements": 4,
+    "retrieve_seconds": 2.167,
+    "snapshot": "hex:15f3e31f77eb72e03e8256fa8128b6ecac000f96",
+    "split": "held_out",
+    "stale_or_missing_records": 0,
+    "version": 1
+   },
+   {
+    "ablations": {
+     "dense": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16160,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16289
+      },
+      "requirements": 1
+     },
+     "hybrid": {
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 13861,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16370
+      },
+      "requirements": 1
+     },
+     "lexical": {
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 14992,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16354
+      },
+      "requirements": 1
+     },
+     "off": {
+      "file_met_at_k": 0,
+      "files": 1,
+      "met_at_k": null,
+      "missed_at_k": null,
+      "pack": {
+       "budget_tokens": null,
+       "irrelevant_tokens": 16384,
+       "required_evidence_met": null,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 1
+     }
+    },
+    "case_id": "ML10-a",
+    "channels": {
+     "dense": "40 results",
+     "lexical": "40 results",
+     "memory": "no authorized source",
+     "recency": "8 results",
+     "structure": "0 results"
+    },
+    "coverage": {
+     "complete": true,
+     "excluded": 0,
+     "files_indexed": 1427,
+     "files_total": 1427,
+     "parsed_loc": {
+      "markdown": 107869,
+      "python": 245435,
+      "text": 267
+     },
+     "records": 23787,
+     "unsupported": 194
+    },
+    "cutoff": "2026-10-22T17:55:44+05:30",
+    "requirements": 1,
+    "retrieve_seconds": 2.2,
+    "snapshot": "hex:dbdfaa3210b329c9fae6de2fb80811174e361786",
+    "split": "held_out",
+    "stale_or_missing_records": 0,
+    "version": 1
+   },
+   {
+    "ablations": {
+     "dense": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16147,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16281
+      },
+      "requirements": 3
+     },
+     "hybrid": {
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16224,
+       "required_evidence_met": 0,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16363
+      },
+      "requirements": 3
+     },
+     "lexical": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15485,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16174
+      },
+      "requirements": 3
+     },
+     "off": {
+      "file_met_at_k": 0,
+      "files": 1,
+      "met_at_k": null,
+      "missed_at_k": null,
+      "pack": {
+       "budget_tokens": null,
+       "irrelevant_tokens": 16384,
+       "required_evidence_met": null,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 3
+     }
+    },
+    "case_id": "ML11-a",
+    "channels": {
+     "dense": "40 results",
+     "lexical": "40 results",
+     "memory": "no authorized source",
+     "recency": "8 results",
+     "structure": "0 results"
+    },
+    "coverage": {
+     "complete": true,
+     "excluded": 0,
+     "files_indexed": 1439,
+     "files_total": 1439,
+     "parsed_loc": {
+      "markdown": 108441,
+      "python": 247937,
+      "text": 267
+     },
+     "records": 24082,
+     "unsupported": 194
+    },
+    "cutoff": "2026-10-24T00:12:12+05:30",
+    "requirements": 3,
+    "retrieve_seconds": 2.189,
+    "snapshot": "hex:8a22e22d7be0a8c89bbe0b0302e38d879242d003",
+    "split": "held_out",
+    "stale_or_missing_records": 0,
+    "version": 1
+   },
+   {
+    "ablations": {
+     "dense": {
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16136,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16261
+      },
+      "requirements": 3
+     },
+     "hybrid": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16198,
+       "required_evidence_met": 0,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16327
+      },
+      "requirements": 3
+     },
+     "lexical": {
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16101,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16231
+      },
+      "requirements": 3
+     },
+     "off": {
+      "file_met_at_k": 0,
+      "files": 1,
+      "met_at_k": null,
+      "missed_at_k": null,
+      "pack": {
+       "budget_tokens": null,
+       "irrelevant_tokens": 16384,
+       "required_evidence_met": null,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 3
+     }
+    },
+    "case_id": "ML12-a",
+    "channels": {
+     "dense": "40 results",
+     "lexical": "40 results",
+     "memory": "no authorized source",
+     "recency": "8 results",
+     "structure": "0 results"
+    },
+    "coverage": {
+     "complete": true,
+     "excluded": 0,
+     "files_indexed": 1581,
+     "files_total": 1581,
+     "parsed_loc": {
+      "markdown": 115335,
+      "python": 270462,
+      "text": 344
+     },
+     "records": 26816,
+     "unsupported": 211
+    },
+    "cutoff": "2026-10-30T17:38:53+05:30",
+    "requirements": 3,
+    "retrieve_seconds": 2.452,
+    "snapshot": "hex:1c9cac7d26887f7182b95160413b30886b1c9efe",
+    "split": "held_out",
+    "stale_or_missing_records": 0,
+    "version": 1
+   }
+  ],
+  "seeds": [
+   {
+    "ablations": {
+     "dense": {
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15485,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16223
+      },
+      "requirements": 2
+     },
+     "hybrid": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 14410,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16195
+      },
+      "requirements": 2
+     },
+     "lexical": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16066,
+       "required_evidence_met": 0,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16201
+      },
+      "requirements": 2
+     },
+     "off": {
+      "file_met_at_k": 0,
+      "files": 1,
+      "met_at_k": null,
+      "missed_at_k": null,
+      "pack": {
+       "budget_tokens": null,
+       "irrelevant_tokens": 16384,
+       "required_evidence_met": null,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 2
+     }
+    },
+    "case_id": "L09-a",
+    "channels": {
+     "dense": "40 results",
+     "lexical": "40 results",
+     "memory": "no authorized source",
+     "recency": "8 results",
+     "structure": "0 results"
+    },
+    "coverage": {
+     "complete": true,
+     "excluded": 0,
+     "files_indexed": 1439,
+     "files_total": 1439,
+     "parsed_loc": {
+      "markdown": 108441,
+      "python": 248008,
+      "text": 267
+     },
+     "records": 24085,
+     "unsupported": 194
+    },
+    "cutoff": "2026-10-24T02:14:10+05:30",
+    "requirements": 2,
+    "retrieve_seconds": 2.312,
+    "snapshot": "hex:dc42eb60ea5c1ed0109f66508a65d18f367c101a",
+    "split": "held_out",
+    "stale_or_missing_records": 0,
+    "version": 3
+   },
+   {
+    "ablations": {
+     "dense": {
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15000,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16318
+      },
+      "requirements": 3
+     },
+     "hybrid": {
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16218,
+       "required_evidence_met": 0,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16354
+      },
+      "requirements": 3
+     },
+     "lexical": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16220,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16355
+      },
+      "requirements": 3
+     },
+     "off": {
+      "file_met_at_k": 0,
+      "files": 1,
+      "met_at_k": null,
+      "missed_at_k": null,
+      "pack": {
+       "budget_tokens": null,
+       "irrelevant_tokens": 16384,
+       "required_evidence_met": null,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 3
+     }
+    },
+    "case_id": "L10-a",
+    "channels": {
+     "dense": "40 results",
+     "lexical": "40 results",
+     "memory": "no authorized source",
+     "recency": "8 results",
+     "structure": "0 results"
+    },
+    "coverage": {
+     "complete": true,
+     "excluded": 0,
+     "files_indexed": 1447,
+     "files_total": 1447,
+     "parsed_loc": {
+      "markdown": 108441,
+      "python": 249772,
+      "text": 267
+     },
+     "records": 24270,
+     "unsupported": 194
+    },
+    "cutoff": "2026-10-24T18:15:18+05:30",
+    "requirements": 3,
+    "retrieve_seconds": 2.278,
+    "snapshot": "hex:159a712b31eda0eb023cb9ede4d44eb5a8a60d2a",
+    "split": "held_out",
+    "stale_or_missing_records": 0,
+    "version": 3
+   },
+   {
+    "ablations": {
+     "dense": {
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15594,
+       "required_evidence_met": 2,
+       "required_file_met": 3,
+       "stale_paths": 0,
+       "tokens": 16064
+      },
+      "requirements": 4
+     },
+     "hybrid": {
+      "file_met_at_k": 1,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15657,
+       "required_evidence_met": 2,
+       "required_file_met": 3,
+       "stale_paths": 0,
+       "tokens": 16081
+      },
+      "requirements": 4
+     },
+     "lexical": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3",
+       "R4"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16030,
+       "required_evidence_met": 1,
+       "required_file_met": 2,
+       "stale_paths": 0,
+       "tokens": 16266
+      },
+      "requirements": 4
+     },
+     "off": {
+      "file_met_at_k": 0,
+      "files": 1,
+      "met_at_k": null,
+      "missed_at_k": null,
+      "pack": {
+       "budget_tokens": null,
+       "irrelevant_tokens": 16384,
+       "required_evidence_met": null,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 4
+     }
+    },
+    "case_id": "L11-a",
+    "channels": {
+     "dense": "40 results",
+     "lexical": "40 results",
+     "memory": "no authorized source",
+     "recency": "8 results",
+     "structure": "0 results"
+    },
+    "coverage": {
+     "complete": true,
+     "excluded": 0,
+     "files_indexed": 1468,
+     "files_total": 1468,
+     "parsed_loc": {
+      "markdown": 109734,
+      "python": 253203,
+      "text": 267
+     },
+     "records": 24695,
+     "unsupported": 195
+    },
+    "cutoff": "2026-10-26T11:39:09+05:30",
+    "requirements": 4,
+    "retrieve_seconds": 2.279,
+    "snapshot": "hex:733d6858834c53d3e4d9dd4d524fb419ed558e75",
+    "split": "held_out",
+    "stale_or_missing_records": 0,
+    "version": 3
+   },
+   {
+    "ablations": {
+     "dense": {
+      "file_met_at_k": 1,
+      "met_at_k": 1,
+      "missed_at_k": [
+       "R1",
+       "R2"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15260,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16301
+      },
+      "requirements": 3
+     },
+     "hybrid": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 15475,
+       "required_evidence_met": 1,
+       "required_file_met": 1,
+       "stale_paths": 0,
+       "tokens": 16366
+      },
+      "requirements": 3
+     },
+     "lexical": {
+      "file_met_at_k": 0,
+      "met_at_k": 0,
+      "missed_at_k": [
+       "R1",
+       "R2",
+       "R3"
+      ],
+      "pack": {
+       "budget_tokens": 16384,
+       "irrelevant_tokens": 16194,
+       "required_evidence_met": 0,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16321
+      },
+      "requirements": 3
+     },
+     "off": {
+      "file_met_at_k": 0,
+      "files": 1,
+      "met_at_k": null,
+      "missed_at_k": null,
+      "pack": {
+       "budget_tokens": null,
+       "irrelevant_tokens": 16384,
+       "required_evidence_met": null,
+       "required_file_met": 0,
+       "stale_paths": 0,
+       "tokens": 16384
+      },
+      "requirements": 3
+     }
+    },
+    "case_id": "L12-a",
+    "channels": {
+     "dense": "40 results",
+     "lexical": "40 results",
+     "memory": "no authorized source",
+     "recency": "8 results",
+     "structure": "0 results"
+    },
+    "coverage": {
+     "complete": true,
+     "excluded": 0,
+     "files_indexed": 1537,
+     "files_total": 1537,
+     "parsed_loc": {
+      "markdown": 113843,
+      "python": 262543,
+      "text": 344
+     },
+     "records": 25885,
+     "unsupported": 202
+    },
+    "cutoff": "2026-10-28T16:25:53+05:30",
+    "requirements": 3,
+    "retrieve_seconds": 2.322,
+    "snapshot": "hex:35263daa97524f28dad98e11d2fef21a332652ee",
+    "split": "held_out",
+    "stale_or_missing_records": 0,
+    "version": 3
+   }
+  ]
+ },
+ "embedding": {
+  "embedded": 3900,
+  "reused": 179930
+ },
+ "estimator": "one token per UTF-8 byte",
+ "fixed_route": "anthropic/claude-haiku-5.5",
+ "gold": {
+  "m1": {
+   "directory": "tests/fixtures/plan12_memory_m1",
+   "sha256": "hex:4254408ded16fb4fdc8f0902b1735689f57ffe571a92b8eee377e1f033ed9688"
+  },
+  "seeds": {
+   "directory": "tests/fixtures/plan12_memory",
+   "sha256": "hex:07cc94c9b94d2d9ae5a09b6072cdc66f527bbd2767617b0e26230e07be1998dc"
+  }
+ },
+ "head": "hex:81e8b78a9ca8abc30f77d3673b94197106abdefd",
+ "k": 5,
+ "limits": [
+  "Recency sees commit-time file dates in these copies, so it is noise here, not evidence of its value.",
+  "A cutoff tree's index holds only that tree, so future leakage is excluded by construction."
+ ],
+ "redis": {
+  "disk_kb": 378316,
+  "maxmemory_mb": 512.0,
+  "used_memory_mb": 207.4,
+  "used_memory_peak_mb": 369.8
+ },
+ "results": {
+  "m1": {
+   "held_out": {
+    "cases": 4,
+    "coverage": {
+     "excluded": 0,
+     "files_indexed": 5773,
+     "files_total": 5773,
+     "incomplete_cases": 0,
+     "unsupported": 783
+    },
+    "dense": {
+     "cases_with_all_required_evidence": 0,
+     "file_recall_at_5": 0.0909,
+     "mean_context_tokens": 16292.8,
+     "mean_irrelevant_tokens": 16055.5,
+     "recall_at_5": 0.0,
+     "required_evidence_in_context": 0.0909,
+     "required_file_in_context": 0.2727,
+     "stale_paths": 0
+    },
+    "hybrid": {
+     "cases_with_all_required_evidence": 1,
+     "file_recall_at_5": 0.1818,
+     "mean_context_tokens": 16351.2,
+     "mean_irrelevant_tokens": 15376.5,
+     "recall_at_5": 0.0909,
+     "required_evidence_in_context": 0.1818,
+     "required_file_in_context": 0.5455,
+     "stale_paths": 0
+    },
+    "lexical": {
+     "cases_with_all_required_evidence": 1,
+     "file_recall_at_5": 0.1818,
+     "mean_context_tokens": 16284.0,
+     "mean_irrelevant_tokens": 15705.5,
+     "recall_at_5": 0.0909,
+     "required_evidence_in_context": 0.1818,
+     "required_file_in_context": 0.3636,
+     "stale_paths": 0
+    },
+    "off": {
+     "cases_with_all_required_evidence": null,
+     "file_recall_at_5": 0.0,
+     "mean_context_tokens": 16384.0,
+     "mean_irrelevant_tokens": 16384.0,
+     "recall_at_5": null,
+     "required_evidence_in_context": null,
+     "required_file_in_context": 0.0,
+     "stale_paths": 0
+    },
+    "requirements": 11,
+    "stale_or_missing_file_records": 0
+   }
+  },
+  "seeds": {
+   "held_out": {
+    "cases": 4,
+    "coverage": {
+     "excluded": 0,
+     "files_indexed": 5891,
+     "files_total": 5891,
+     "incomplete_cases": 0,
+     "unsupported": 785
+    },
+    "dense": {
+     "cases_with_all_required_evidence": 0,
+     "file_recall_at_5": 0.3333,
+     "mean_context_tokens": 16226.5,
+     "mean_irrelevant_tokens": 15334.8,
+     "recall_at_5": 0.0833,
+     "required_evidence_in_context": 0.4167,
+     "required_file_in_context": 0.5833,
+     "stale_paths": 0
+    },
+    "hybrid": {
+     "cases_with_all_required_evidence": 0,
+     "file_recall_at_5": 0.1667,
+     "mean_context_tokens": 16249.0,
+     "mean_irrelevant_tokens": 15440.0,
+     "recall_at_5": 0.0,
+     "required_evidence_in_context": 0.3333,
+     "required_file_in_context": 0.5833,
+     "stale_paths": 0
+    },
+    "lexical": {
+     "cases_with_all_required_evidence": 0,
+     "file_recall_at_5": 0.0,
+     "mean_context_tokens": 16285.8,
+     "mean_irrelevant_tokens": 16127.5,
+     "recall_at_5": 0.0,
+     "required_evidence_in_context": 0.0833,
+     "required_file_in_context": 0.3333,
+     "stale_paths": 0
+    },
+    "off": {
+     "cases_with_all_required_evidence": null,
+     "file_recall_at_5": 0.0,
+     "mean_context_tokens": 16384.0,
+     "mean_irrelevant_tokens": 16384.0,
+     "recall_at_5": null,
+     "required_evidence_in_context": null,
+     "required_file_in_context": 0.0,
+     "stale_paths": 0
+    },
+    "requirements": 12,
+    "stale_or_missing_file_records": 0
+   }
+  }
+ },
+ "schema": "plan12-memory-m1.retrieval.v1",
+ "splits": [
+  "held_out"
+ ],
+ "trees": [
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 1326,
+    "files_total": 1326,
+    "parsed_loc": {
+     "markdown": 105338,
+     "python": 226521,
+     "text": 267
+    },
+    "records": 21863,
+    "unsupported": 184
+   },
+   "embedded_now": 1,
+   "files": 1326,
+   "records": 21863,
+   "revision": "hex:15f3e31f77eb72e03e8256fa8128b6ecac000f96",
+   "seconds": 43.2
+  },
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 1427,
+    "files_total": 1427,
+    "parsed_loc": {
+     "markdown": 107869,
+     "python": 245435,
+     "text": 267
+    },
+    "records": 23787,
+    "unsupported": 194
+   },
+   "embedded_now": 0,
+   "files": 1427,
+   "records": 23787,
+   "revision": "hex:dbdfaa3210b329c9fae6de2fb80811174e361786",
+   "seconds": 44.2
+  },
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 1439,
+    "files_total": 1439,
+    "parsed_loc": {
+     "markdown": 108441,
+     "python": 247937,
+     "text": 267
+    },
+    "records": 24082,
+    "unsupported": 194
+   },
+   "embedded_now": 411,
+   "files": 1439,
+   "records": 24082,
+   "revision": "hex:8a22e22d7be0a8c89bbe0b0302e38d879242d003",
+   "seconds": 88.6
+  },
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 1439,
+    "files_total": 1439,
+    "parsed_loc": {
+     "markdown": 108441,
+     "python": 248008,
+     "text": 267
+    },
+    "records": 24085,
+    "unsupported": 194
+   },
+   "embedded_now": 13,
+   "files": 1439,
+   "records": 24085,
+   "revision": "hex:dc42eb60ea5c1ed0109f66508a65d18f367c101a",
+   "seconds": 49.2
+  },
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 1447,
+    "files_total": 1447,
+    "parsed_loc": {
+     "markdown": 108441,
+     "python": 249772,
+     "text": 267
+    },
+    "records": 24270,
+    "unsupported": 194
+   },
+   "embedded_now": 234,
+   "files": 1447,
+   "records": 24270,
+   "revision": "hex:159a712b31eda0eb023cb9ede4d44eb5a8a60d2a",
+   "seconds": 68.9
+  },
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 1468,
+    "files_total": 1468,
+    "parsed_loc": {
+     "markdown": 109734,
+     "python": 253203,
+     "text": 267
+    },
+    "records": 24695,
+    "unsupported": 195
+   },
+   "embedded_now": 697,
+   "files": 1468,
+   "records": 24695,
+   "revision": "hex:733d6858834c53d3e4d9dd4d524fb419ed558e75",
+   "seconds": 128.8
+  },
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 1537,
+    "files_total": 1537,
+    "parsed_loc": {
+     "markdown": 113843,
+     "python": 262543,
+     "text": 344
+    },
+    "records": 25885,
+    "unsupported": 202
+   },
+   "embedded_now": 1415,
+   "files": 1537,
+   "records": 25885,
+   "revision": "hex:35263daa97524f28dad98e11d2fef21a332652ee",
+   "seconds": 211.4
+  },
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 1581,
+    "files_total": 1581,
+    "parsed_loc": {
+     "markdown": 115335,
+     "python": 270462,
+     "text": 344
+    },
+    "records": 26816,
+    "unsupported": 211
+   },
+   "embedded_now": 1121,
+   "files": 1581,
+   "records": 26816,
+   "revision": "hex:1c9cac7d26887f7182b95160413b30886b1c9efe",
+   "seconds": 167.3
+  }
+ ],
+ "verdict": {
+  "floors": [
+   {
+    "direction": "at least",
+    "limit": 3,
+    "measured": 2,
+    "met": false,
+    "metric": "hybrid required evidence in context, count",
+    "set": "M1"
+   },
+   {
+    "direction": "at least",
+    "limit": 2,
+    "measured": 1,
+    "met": false,
+    "metric": "hybrid symbol recall at 5, count",
+    "set": "M1"
+   },
+   {
+    "direction": "at least",
+    "limit": 2,
+    "measured": 2,
+    "met": true,
+    "metric": "hybrid file recall at 5, count",
+    "set": "M1"
+   },
+   {
+    "direction": "at most",
+    "limit": 16000,
+    "measured": 15376.5,
+    "met": true,
+    "metric": "mean irrelevant estimated tokens",
+    "set": "M1"
+   },
+   {
+    "direction": "at least",
+    "limit": 3,
+    "measured": 4,
+    "met": true,
+    "metric": "hybrid required evidence in context, count",
+    "set": "Seed"
+   },
+   {
+    "direction": "at least",
+    "limit": 2,
+    "measured": 0,
+    "met": false,
+    "metric": "hybrid symbol recall at 5, count",
+    "set": "Seed"
+   },
+   {
+    "direction": "at least",
+    "limit": 2,
+    "measured": 2,
+    "met": true,
+    "metric": "hybrid file recall at 5, count",
+    "set": "Seed"
+   },
+   {
+    "direction": "at most",
+    "limit": 16000,
+    "measured": 15440.0,
+    "met": true,
+    "metric": "mean irrelevant estimated tokens",
+    "set": "Seed"
+   },
+   {
+    "direction": "at most",
+    "limit": 0,
+    "measured": 0,
+    "met": true,
+    "metric": "incomplete coverage cases",
+    "set": "both"
+   },
+   {
+    "direction": "at most",
+    "limit": 0,
+    "measured": 0,
+    "met": true,
+    "metric": "stale or missing-file records",
+    "set": "both"
+   },
+   {
+    "direction": "at most",
+    "limit": 0,
+    "measured": 0,
+    "met": true,
+    "metric": "wrong-branch records, positive control found",
+    "set": "both"
+   }
+  ],
+  "m1_counts": {
+   "file_recall_at_5": 2,
+   "off_required_file_in_context": 0,
+   "required_evidence_in_context": 2,
+   "required_file_in_context": 6,
+   "requirements": 11,
+   "symbol_recall_at_5": 1
+  },
+  "reading": "Against today's context, at file level, on the same cases: hybrid brought the required files into context far more often, and today's context none. Within the first five and at symbol level, the floors were missed: the gold accepts only the symbols a fix changed, in fixes that often span several files. Dense did not do better on the M1 set. These are small sets; they neither prove nor disprove broad reliability.",
+  "seeds_counts": {
+   "file_recall_at_5": 2,
+   "off_required_file_in_context": 0,
+   "required_evidence_in_context": 4,
+   "required_file_in_context": 7,
+   "requirements": 12,
+   "symbol_recall_at_5": 0
+  },
+  "state": "FAILED: three approved floors were missed. The failure is retained; there was no retuning, and this held-out set has now been read, so any later change needs a fresh one. The operator's disposition is owed."
+ },
+ "wrong_branch_control": {
+  "hits_on_its_own_branch": 2,
+  "hits_on_the_evaluated_branch": 0,
+  "positive_control_found_it": true,
+  "wrong_branch_records": 0
+ }
+}

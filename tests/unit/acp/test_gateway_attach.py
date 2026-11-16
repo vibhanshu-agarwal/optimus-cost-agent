@@ -459,8 +459,10 @@ async def test_shutdown_waits_for_a_diagnostic_write_the_client_is_blocking() ->
             return None
 
     lifecycle = ProcessLifecycle()
+    # The window counts from cleanup start, and the blocked write alone takes 0.3 s of it: a shorter one leaves the
+    # reader's close a zero-length check, which failed about 1 run in 15 when the reader thread had not yet exited.
     call = asyncio.create_task(_run_serving_process(
-        GatewayRefusalServer(code="C", reason=_REASON), lifecycle=lifecycle, observation_seconds=0.03,
+        GatewayRefusalServer(code="C", reason=_REASON), lifecycle=lifecycle, observation_seconds=5.0,
         reader=StdioNdjsonLineReader(io.BytesIO(_lines(_dialogue()[0]))), writer=StdioNdjsonLineWriter(BlockedOutput()),
     ))
     try:

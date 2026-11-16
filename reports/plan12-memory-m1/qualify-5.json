@@ -1,0 +1,2023 @@
+{
+ "acpx": {
+  "first_turn": {
+   "failures": 0,
+   "max_ms": 16712.233,
+   "mean_ms": 16712.233,
+   "p50_ms": 16712.233,
+   "p95_ms": 16712.233,
+   "samples": 1
+  },
+  "idle": {
+   "failures": 0,
+   "max_ms": 8886.0,
+   "mean_ms": 8639.163,
+   "p50_ms": 8625.845,
+   "p95_ms": 8813.795,
+   "samples": 20
+  },
+  "idle_cancel": {
+   "seconds_to_stop": 2.92,
+   "stop": "cancelled"
+  },
+  "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line",
+  "queue_owners_recorded": 1
+ },
+ "config": {
+  "acpx_turns": 20,
+  "assembly_qualifies": true,
+  "assembly_sample_seconds": 1800,
+  "authorization": "Codex review 38 on #469: RELEASED at f38d2a4, with removal of p1210-qualify-redis and p1210-qualify-data before provisioning and after evidence is kept, after the acpx approval probe and the optimus-redis check; the operator standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex release sufficient. Same envelope as review 29.",
+  "bulk_batches": 20,
+  "container": "p1210-qualify-redis",
+  "embedding_cache": "tmp/plan12-m1-eval/embedding-cache.sqlite",
+  "embedding_threads": 2,
+  "foreground_sample_seconds": 3600,
+  "gateway_port": 8773,
+  "hours_limit": 4,
+  "k2_out": "reports/plan12-memory-m1/k2-5.json",
+  "k2_rounds": 100,
+  "label": "plan12.10-qualify-5-2026-11-15",
+  "large_commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+  "large_corpus": "tmp/plan12-m1-corpus/hadoop",
+  "maxmemory_mb": 4096,
+  "out": "reports/plan12-memory-m1/qualify-5.json",
+  "peak_sample_seconds": 30,
+  "port": 6393,
+  "query_samples": 200,
+  "repo_paths": [
+   "."
+  ],
+  "volume": "p1210-qualify-data",
+  "work_dir": "tmp/plan12-m1-qualify-5"
+ },
+ "head": "hex:f38d2a4cf61e5dbded28c1936e30e256da44b5dd",
+ "host": {
+  "cpus": 12,
+  "memory_gb": 47.8
+ },
+ "large": {
+  "assembly_calibration": {
+   "coverage": "Context index: ready, 10255 of 10255 files.",
+   "during_build": {
+    "blocked": [],
+    "build_thirds_sampled": [
+     "early",
+     "middle",
+     "late"
+    ],
+    "dense_in_every_turn": true,
+    "enough_to_qualify": true,
+    "errors": [],
+    "pack_share_of_token_budget_max": 1.0,
+    "per_turn": [
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.0,
+      "calls": {
+       "catalogue": 1,
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 1
+      },
+      "channels": {
+       "dense": "0 results",
+       "lexical": "0 results",
+       "memory": "no authorized source",
+       "recency": "1 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 0,
+      "route_calls": 5,
+      "route_ms": 58.8,
+      "seconds_before_build_end": 8382.3,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 2519.9
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.0,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 1
+      },
+      "channels": {
+       "dense": "0 results",
+       "lexical": "0 results",
+       "memory": "no authorized source",
+       "recency": "1 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 0,
+      "route_calls": 4,
+      "route_ms": 41.8,
+      "seconds_before_build_end": 8381.6,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 698.9
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.0,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 1
+      },
+      "channels": {
+       "dense": "0 results",
+       "lexical": "0 results",
+       "memory": "no authorized source",
+       "recency": "1 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 0,
+      "route_calls": 4,
+      "route_ms": 34.8,
+      "seconds_before_build_end": 8381.0,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 619.5
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.0,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 1
+      },
+      "channels": {
+       "dense": "0 results",
+       "lexical": "0 results",
+       "memory": "no authorized source",
+       "recency": "1 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 0,
+      "route_calls": 4,
+      "route_ms": 26.8,
+      "seconds_before_build_end": 8380.3,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 652.1
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.216,
+      "calls": {
+       "catalogue": 9,
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16383,
+      "route_calls": 20,
+      "route_ms": 3949.6,
+      "seconds_before_build_end": 6572.4,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 6694.4
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.216,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16362,
+      "route_calls": 11,
+      "route_ms": 146.0,
+      "seconds_before_build_end": 6571.4,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 999.9
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.216,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16380,
+      "route_calls": 11,
+      "route_ms": 127.2,
+      "seconds_before_build_end": 6570.5,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 929.6
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.216,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16379,
+      "route_calls": 11,
+      "route_ms": 110.3,
+      "seconds_before_build_end": 6569.6,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 855.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.413,
+      "calls": {
+       "catalogue": 17,
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16347,
+      "route_calls": 28,
+      "route_ms": 7716.4,
+      "seconds_before_build_end": 4758.8,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 10497.2
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.413,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16383,
+      "route_calls": 11,
+      "route_ms": 151.5,
+      "seconds_before_build_end": 4757.8,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 975.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.413,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16379,
+      "route_calls": 11,
+      "route_ms": 136.5,
+      "seconds_before_build_end": 4756.8,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 996.3
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.413,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16361,
+      "route_calls": 11,
+      "route_ms": 113.8,
+      "seconds_before_build_end": 4755.9,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 925.1
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.678,
+      "calls": {
+       "catalogue": 28,
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16362,
+      "route_calls": 39,
+      "route_ms": 11896.6,
+      "seconds_before_build_end": 2940.3,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 14762.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.678,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16382,
+      "route_calls": 11,
+      "route_ms": 151.5,
+      "seconds_before_build_end": 2939.3,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 988.3
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.678,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16380,
+      "route_calls": 11,
+      "route_ms": 187.8,
+      "seconds_before_build_end": 2938.3,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1050.9
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.678,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16357,
+      "route_calls": 11,
+      "route_ms": 146.0,
+      "seconds_before_build_end": 2937.3,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 964.3
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.857,
+      "calls": {
+       "catalogue": 35,
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16380,
+      "route_calls": 46,
+      "route_ms": 18573.8,
+      "seconds_before_build_end": 1112.9,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 23322.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.858,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16361,
+      "route_calls": 11,
+      "route_ms": 139.9,
+      "seconds_before_build_end": 1111.9,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 991.0
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.858,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16379,
+      "route_calls": 11,
+      "route_ms": 179.1,
+      "seconds_before_build_end": 1110.8,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1092.2
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "build_progress": 0.858,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "during_build": true,
+      "pack_tokens": 16357,
+      "route_calls": 11,
+      "route_ms": 181.2,
+      "seconds_before_build_end": 1109.8,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 1020.2
+     }
+    ],
+    "route_calls_max": 46,
+    "route_calls_median": 11.0,
+    "route_ms": {
+     "max_ms": 18573.8,
+     "mean_ms": 2203.47,
+     "p50_ms": 146.0,
+     "p95_ms": 11896.6,
+     "samples": 20
+    },
+    "states": [
+     "ok"
+    ],
+    "turns": 20,
+    "turns_after_the_build_ended": 0,
+    "wall_ms": {
+     "max_ms": 23322.7,
+     "mean_ms": 3577.83,
+     "p50_ms": 991.0,
+     "p95_ms": 14762.7,
+     "samples": 20
+    }
+   },
+   "idle": {
+    "blocked": [],
+    "dense_in_every_turn": true,
+    "enough_to_qualify": true,
+    "errors": [],
+    "pack_share_of_token_budget_max": 1.0,
+    "per_turn": [
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 118.0,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 2626.8
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 147.0,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1566.1
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 168.2,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1038.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16377,
+      "route_calls": 11,
+      "route_ms": 98.9,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 864.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 125.1,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 1018.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 148.3,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1464.0
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 177.2,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1160.4
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16377,
+      "route_calls": 11,
+      "route_ms": 115.0,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 868.6
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 104.6,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 964.0
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 137.2,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1463.5
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 169.8,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1198.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16377,
+      "route_calls": 11,
+      "route_ms": 120.0,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 879.0
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 103.3,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 935.0
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 133.1,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1465.9
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 167.7,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1176.2
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16377,
+      "route_calls": 11,
+      "route_ms": 101.4,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 858.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 104.9,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 928.5
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 143.5,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1486.8
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 232.0,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1177.9
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16377,
+      "route_calls": 11,
+      "route_ms": 99.7,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 840.5
+     }
+    ],
+    "route_calls_max": 11,
+    "route_calls_median": 11.0,
+    "route_ms": {
+     "max_ms": 232.0,
+     "mean_ms": 135.745,
+     "p50_ms": 125.1,
+     "p95_ms": 177.2,
+     "samples": 20
+    },
+    "states": [
+     "ok"
+    ],
+    "turns": 20,
+    "wall_ms": {
+     "max_ms": 2626.8,
+     "mean_ms": 1199.135,
+     "p50_ms": 1038.7,
+     "p95_ms": 1566.1,
+     "samples": 20
+    }
+   },
+   "repo_map_on_a_miss": {
+    "chars": 11901,
+    "route_calls": 90,
+    "wall_ms": 14771.1
+   },
+   "session_edit": {
+    "new_symbol_found": true,
+    "pass_state": "complete",
+    "seconds_until_queryable": 5.38,
+    "whole_pass_seconds": 207.09
+   },
+   "state": "QUALIFICATION: judged against targets.json assembly_corpus_b"
+  },
+  "bulk": {
+   "native_records_per_second": 8113.9,
+   "native_seconds": 0.316,
+   "proxy_records_per_second": 7201.1,
+   "proxy_seconds": 0.355,
+   "records": 2560
+  },
+  "cancel": {
+   "seconds_to_stop": 2.425,
+   "state": "cancelled"
+  },
+  "cold": {
+   "acpx_during_build": [
+    {
+     "at_seconds": 70,
+     "cancel": {
+      "seconds_to_stop": 3.741,
+      "stop": "cancelled"
+     },
+     "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line",
+     "turns": {
+      "failures": 0,
+      "max_ms": 12203.442,
+      "mean_ms": 10455.268,
+      "p50_ms": 10344.847,
+      "p95_ms": 10632.544,
+      "samples": 20
+     }
+    }
+   ],
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 10255,
+    "files_total": 10255,
+    "parsed_loc": {
+     "java": 1438914,
+     "markdown": 121476,
+     "python": 499,
+     "text": 5788
+    },
+    "records": 122872,
+    "unsupported": 1816
+   },
+   "detail": "",
+   "embedded_items_per_second": 13.8,
+   "failure": [],
+   "files_written": 10255,
+   "first_file_visible_seconds": 28.14,
+   "foreground_during_build": [
+    {
+     "at_seconds": 61,
+     "native_dense": {
+      "max_ms": 41.239,
+      "mean_ms": 11.534,
+      "p50_ms": 10.05,
+      "p95_ms": 17.294,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 72.985,
+      "mean_ms": 6.911,
+      "p50_ms": 5.651,
+      "p95_ms": 10.088,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 53.397,
+      "mean_ms": 16.232,
+      "p50_ms": 14.616,
+      "p95_ms": 23.718,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 29.05,
+      "mean_ms": 10.392,
+      "p50_ms": 9.619,
+      "p95_ms": 14.561,
+      "samples": 200
+     }
+    },
+    {
+     "at_seconds": 3885,
+     "native_dense": {
+      "max_ms": 54.977,
+      "mean_ms": 18.97,
+      "p50_ms": 17.234,
+      "p95_ms": 28.435,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 28.09,
+      "mean_ms": 6.188,
+      "p50_ms": 5.681,
+      "p95_ms": 8.687,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 50.886,
+      "mean_ms": 22.556,
+      "p50_ms": 20.64,
+      "p95_ms": 34.637,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 30.99,
+      "mean_ms": 10.606,
+      "p50_ms": 9.852,
+      "p95_ms": 15.33,
+      "samples": 200
+     }
+    },
+    {
+     "at_seconds": 7497,
+     "native_dense": {
+      "max_ms": 77.666,
+      "mean_ms": 19.451,
+      "p50_ms": 17.021,
+      "p95_ms": 29.967,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 40.162,
+      "mean_ms": 6.3,
+      "p50_ms": 5.659,
+      "p95_ms": 8.423,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 62.391,
+      "mean_ms": 23.829,
+      "p50_ms": 21.401,
+      "p95_ms": 34.479,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 28.255,
+      "mean_ms": 10.18,
+      "p50_ms": 9.566,
+      "p95_ms": 14.065,
+      "samples": 200
+     }
+    }
+   ],
+   "foreground_errors": [],
+   "hours": 2.337,
+   "index_disk_within_2048": true,
+   "passes": 1,
+   "pauses": [],
+   "peaks": {
+    "container_memory_mb": 1039.0,
+    "disk_mb": 852.3,
+    "failed_samples": 0,
+    "used_memory_mb": 1025.9
+   },
+   "processes": {
+    "gateway": {
+     "cpu_percent_max": 58.2,
+     "cpu_percent_mean": 0.6,
+     "rss_mb_max": 76.8,
+     "threads_max": 4,
+     "threads_using_over_5_percent_of_a_cpu": 0
+    },
+    "worker": {
+     "cpu_percent_max": 300.8,
+     "cpu_percent_mean": 201.8,
+     "rss_mb_max": 1030.2,
+     "threads_max": 37,
+     "threads_using_over_5_percent_of_a_cpu": 1
+    }
+   },
+   "records_written": 122872,
+   "redis": {
+    "disk_kb": 872768,
+    "maxmemory_mb": 4096.0,
+    "used_memory_mb": 1025.0,
+    "used_memory_peak_mb": 1025.9
+   },
+   "seconds": 8413.3,
+   "state": "complete",
+   "transport_failures": [],
+   "within_the_hours_limit": true
+  },
+  "commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+  "count": {
+   "chunk_chars_mean": 644.5,
+   "chunk_chars_p95": 1869,
+   "embedded_chunks": 112617,
+   "excluded": {
+    "deny.secret": 75,
+    "deny.skipped_dir": 25,
+    "excluded.binary": 94,
+    "excluded.too_large": 48,
+    "ignored.gitignore": 11,
+    "ignored.optimusignore": 5104
+   },
+   "files": {
+    "java": 7781,
+    "markdown": 521,
+    "python": 4,
+    "text": 133,
+    "unsupported": 1816
+   },
+   "parse_error_files": 0,
+   "parse_seconds": 106.768,
+   "parsed_lines": {
+    "java": 1438914,
+    "markdown": 121476,
+    "python": 499,
+    "text": 5788,
+    "unsupported": 0
+   },
+   "records": {
+    "java": 114985,
+    "markdown": 5776,
+    "python": 23,
+    "text": 272,
+    "unsupported": 1816
+   }
+  },
+  "incremental_one_file": {
+   "new_symbol_found": true,
+   "pass_running_before_successful_probe": true,
+   "query_error": null,
+   "records_written": 14,
+   "seconds_until_queryable": 3.81,
+   "state": "complete",
+   "whole_pass_seconds": 204.41,
+   "worker_failure": null
+  },
+  "parsed_java_at_least_1m": true,
+  "query_idle": {
+   "native_dense": {
+    "max_ms": 32.703,
+    "mean_ms": 19.948,
+    "p50_ms": 19.512,
+    "p95_ms": 22.132,
+    "samples": 200
+   },
+   "native_lexical": {
+    "max_ms": 9.394,
+    "mean_ms": 5.162,
+    "p50_ms": 5.235,
+    "p95_ms": 6.65,
+    "samples": 200
+   },
+   "proxy_dense": {
+    "max_ms": 59.274,
+    "mean_ms": 22.745,
+    "p50_ms": 22.113,
+    "p95_ms": 25.307,
+    "samples": 200
+   },
+   "proxy_lexical": {
+    "max_ms": 13.985,
+    "mean_ms": 8.381,
+    "p50_ms": 8.472,
+    "p95_ms": 10.165,
+    "samples": 200
+   }
+  },
+  "reconcile_unchanged": {
+   "records_written": 0,
+   "seconds": 203.3,
+   "seconds_per_1000_files": 19.8,
+   "state": "complete"
+  }
+ },
+ "phase": "qualify",
+ "redis_before_k2": {
+  "disk_kb": 888584,
+  "maxmemory_mb": 4096.0,
+  "used_memory_mb": 1025.2,
+  "used_memory_peak_mb": 1053.2
+ },
+ "redis_log_tail": [
+  "1:M 15 Nov 2026 02:21:01.664 * <timeseries> \t{ ts-ignore-max-time-diff:            0 }",
+  "1:M 15 Nov 2026 02:21:01.664 * <timeseries> \t{ ts-ignore-max-val-diff :     0.000000 }",
+  "1:M 15 Nov 2026 02:21:01.664 * <timeseries> \t{ ts-topology-events     :         true }",
+  "1:M 15 Nov 2026 02:21:01.664 * <timeseries> ]",
+  "1:M 15 Nov 2026 02:21:01.664 * <timeseries> Detected redis oss (cluster-enabled=no)",
+  "1:M 15 Nov 2026 02:21:01.664 * <timeseries> Subscribe to ASM events",
+  "1:M 15 Nov 2026 02:21:01.664 * <timeseries> Subscribe to topology changes events",
+  "1:M 15 Nov 2026 02:21:01.664 * <timeseries> Enabled diskless replication",
+  "1:M 15 Nov 2026 02:21:01.664 * Module 'timeseries' loaded from /usr/local/lib/redis/modules//redistimeseries.so",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Created new data type 'ReJSON-RL'",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> version: 81000 git sha: unknown branch: unknown",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Exported RedisJSON_V1 API",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Exported RedisJSON_V2 API",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Exported RedisJSON_V3 API",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Exported RedisJSON_V4 API",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Exported RedisJSON_V5 API",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Exported RedisJSON_V6 API",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Exported RedisJSON_V7 API",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Exported RedisJSON_V8 API",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Enabled diskless replication",
+  "1:M 15 Nov 2026 02:21:01.669 * <ReJSON> Initialized shared string cache, thread safe: true.",
+  "1:M 15 Nov 2026 02:21:01.669 * Module 'ReJSON' loaded from /usr/local/lib/redis/modules//rejson.so",
+  "1:M 15 Nov 2026 02:21:01.669 * <search> Acquired RedisJSON_V8 API",
+  "1:M 15 Nov 2026 02:21:01.671 * Server initialized",
+  "1:M 15 Nov 2026 02:21:01.671 * <search> LOAD start source=AOF sst=false disk=rebuild-from-keyspace",
+  "1:M 15 Nov 2026 02:21:01.671 * Reading RDB base file on AOF loading...",
+  "1:M 15 Nov 2026 02:21:01.671 * Loading RDB produced by version 8.10.1",
+  "1:M 15 Nov 2026 02:21:01.671 * RDB age 114 seconds",
+  "1:M 15 Nov 2026 02:21:01.671 * RDB memory usage when created 1028.92 Mb",
+  "1:M 15 Nov 2026 02:21:01.671 * RDB is base AOF",
+  "1:M 15 Nov 2026 02:21:01.671 * <search> RDB Load, SST persistence: false",
+  "1:M 15 Nov 2026 02:21:01.671 * <search> Loading RDB for IndexSpec without SST flag",
+  "1:M 15 Nov 2026 02:21:01.671 * <search> Creating vector index of type FLAT. Required memory for a block of 1024 vectors: 1589800B",
+  "1:M 15 Nov 2026 02:21:01.683 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:01.724 * <search> DocTable capacity increase from 1000 to 1501",
+  "1:M 15 Nov 2026 02:21:01.747 * <search> DocTable capacity increase from 1501 to 2252",
+  "1:M 15 Nov 2026 02:21:01.787 * <search> DocTable capacity increase from 2252 to 3379",
+  "1:M 15 Nov 2026 02:21:01.789 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:01.837 * <search> DocTable capacity increase from 3379 to 5069",
+  "1:M 15 Nov 2026 02:21:01.890 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:01.908 * <search> DocTable capacity increase from 5069 to 7604",
+  "1:M 15 Nov 2026 02:21:01.997 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.019 * <search> DocTable capacity increase from 7604 to 11407",
+  "1:M 15 Nov 2026 02:21:02.101 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.179 * <search> DocTable capacity increase from 11407 to 17111",
+  "1:M 15 Nov 2026 02:21:02.211 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.313 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.423 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.442 * <search> DocTable capacity increase from 17111 to 25667",
+  "1:M 15 Nov 2026 02:21:02.529 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.634 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.739 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.787 * <search> DocTable capacity increase from 25667 to 38501",
+  "1:M 15 Nov 2026 02:21:02.844 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:02.947 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.051 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.157 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.258 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.356 * <search> DocTable capacity increase from 38501 to 57752",
+  "1:M 15 Nov 2026 02:21:03.360 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.462 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.568 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.668 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.776 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.884 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:03.987 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.090 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.192 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.236 * <search> DocTable capacity increase from 57752 to 86629",
+  "1:M 15 Nov 2026 02:21:04.295 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.399 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.506 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.611 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.712 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.815 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:04.921 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.026 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.132 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.233 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.335 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.447 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.536 * <search> DocTable capacity increase from 86629 to 129944",
+  "1:M 15 Nov 2026 02:21:05.553 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.655 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.768 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.872 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:05.975 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.084 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.186 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.289 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.394 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.495 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.599 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.701 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.805 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:06.911 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.016 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.124 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.228 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.335 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.441 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.545 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.597 * <search> DocTable capacity increase from 129944 to 194917",
+  "1:M 15 Nov 2026 02:21:07.654 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.754 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.867 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:07.977 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.082 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.183 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.284 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.387 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.497 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.605 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.716 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.820 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:08.892 * Done loading RDB, keys loaded: 167183, keys expired: 0.",
+  "1:M 15 Nov 2026 02:21:08.892 * DB loaded from base file appendonly.aof.6.base.rdb: 7.222 seconds",
+  "1:M 15 Nov 2026 02:21:08.917 * DB loaded from incr file appendonly.aof.6.incr.aof: 0.024 seconds",
+  "1:M 15 Nov 2026 02:21:08.917 * <search> LOAD end disk=rebuild-from-keyspace ok=true",
+  "1:M 15 Nov 2026 02:21:08.917 * DB loaded from append only file: 7.246 seconds",
+  "1:M 15 Nov 2026 02:21:08.918 * Opening AOF incr file appendonly.aof.6.incr.aof on server start",
+  "1:M 15 Nov 2026 02:21:08.918 * Ready to accept connections tcp",
+  "Starting Redis Server",
+  "1:C 15 Nov 2026 02:21:15.807 * oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo",
+  "1:C 15 Nov 2026 02:21:15.807 * Redis version=8.10.1, bits=64, commit=00000000, modified=1, pid=1, just started",
+  "1:C 15 Nov 2026 02:21:15.807 * Configuration loaded",
+  "1:M 15 Nov 2026 02:21:15.807 * monotonic clock: POSIX clock_gettime",
+  "1:M 15 Nov 2026 02:21:15.807 * Running mode=standalone, port=6379.",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> RedisBloom version 8.10.1 (Git=unknown)",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> Registering configuration options: [",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> \t{ bf-error-rate       :      0.01 }",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> \t{ bf-initial-size     :       100 }",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> \t{ bf-expansion-factor :         2 }",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> \t{ cf-bucket-size      :         2 }",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> \t{ cf-initial-size     :      1024 }",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> \t{ cf-max-iterations   :        20 }",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> \t{ cf-expansion-factor :         1 }",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> \t{ cf-max-expansions   :        32 }",
+  "1:M 15 Nov 2026 02:21:15.808 * <bf> ]",
+  "1:M 15 Nov 2026 02:21:15.808 * Module 'bf' loaded from /usr/local/lib/redis/modules//redisbloom.so",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> search-workers default: 12 (min of MAX_WORKER_THREADS=16 and CPU cores)",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> Redis version found by RedisSearch : 8.10.1 - oss",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> RediSearch version 8.10.0 (Git=)",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> gc: ON, prefix min length: 2, min word length to stem: 4, prefix max expansions: 200, query timeout (ms): 500, timeout policy: return, oom policy: ignore, cursor read size: 1000, cursor max idle (ms): 300000, max doctable size: 1000000, max number of search results:  1000000, default scorer: BM25STD, ",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> Initialized thread pools!",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> Enabled workers threadpool of size 12",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> Subscribe to config changes",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> Subscribe to cluster slot migration events",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> Subscribe to cluster topology change events",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> Enabled role change notification",
+  "1:M 15 Nov 2026 02:21:15.810 * <search> Cluster configuration: AUTO partitions, type: 0, coordinator timeout: 0ms",
+  "1:M 15 Nov 2026 02:21:15.811 * Module 'search' loaded from /usr/local/lib/redis/modules//redisearch.so",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> RedisTimeSeries version 81000, git_sha=",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> Redis version found by RedisTimeSeries : 8.10.1 - oss",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> Registering configuration options: [",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-compaction-policy   :              }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-num-threads         :            3 }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-libmr-protocol      :     INTERNAL }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-retention-policy    :            0 }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-duplicate-policy    :        block }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-chunk-size-bytes    :         4096 }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-encoding            :   compressed }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-ignore-max-time-diff:            0 }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-ignore-max-val-diff :     0.000000 }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> \t{ ts-topology-events     :         true }",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> ]",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> Detected redis oss (cluster-enabled=no)",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> Subscribe to ASM events",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> Subscribe to topology changes events",
+  "1:M 15 Nov 2026 02:21:15.811 * <timeseries> Enabled diskless replication",
+  "1:M 15 Nov 2026 02:21:15.811 * Module 'timeseries' loaded from /usr/local/lib/redis/modules//redistimeseries.so",
+  "1:M 15 Nov 2026 02:21:15.811 * <ReJSON> Created new data type 'ReJSON-RL'",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> version: 81000 git sha: unknown branch: unknown",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Exported RedisJSON_V1 API",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Exported RedisJSON_V2 API",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Exported RedisJSON_V3 API",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Exported RedisJSON_V4 API",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Exported RedisJSON_V5 API",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Exported RedisJSON_V6 API",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Exported RedisJSON_V7 API",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Exported RedisJSON_V8 API",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Enabled diskless replication",
+  "1:M 15 Nov 2026 02:21:15.812 * <ReJSON> Initialized shared string cache, thread safe: true.",
+  "1:M 15 Nov 2026 02:21:15.812 * Module 'ReJSON' loaded from /usr/local/lib/redis/modules//rejson.so",
+  "1:M 15 Nov 2026 02:21:15.812 * <search> Acquired RedisJSON_V8 API",
+  "1:M 15 Nov 2026 02:21:15.813 * Server initialized",
+  "1:M 15 Nov 2026 02:21:15.813 * <search> LOAD start source=AOF sst=false disk=rebuild-from-keyspace",
+  "1:M 15 Nov 2026 02:21:15.814 * Reading RDB base file on AOF loading...",
+  "1:M 15 Nov 2026 02:21:15.814 * Loading RDB produced by version 8.10.1",
+  "1:M 15 Nov 2026 02:21:15.814 * RDB age 128 seconds",
+  "1:M 15 Nov 2026 02:21:15.814 * RDB memory usage when created 1028.92 Mb",
+  "1:M 15 Nov 2026 02:21:15.814 * RDB is base AOF",
+  "1:M 15 Nov 2026 02:21:15.814 * <search> RDB Load, SST persistence: false",
+  "1:M 15 Nov 2026 02:21:15.814 * <search> Loading RDB for IndexSpec without SST flag",
+  "1:M 15 Nov 2026 02:21:15.814 * <search> Creating vector index of type FLAT. Required memory for a block of 1024 vectors: 1589800B",
+  "1:M 15 Nov 2026 02:21:15.825 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:15.861 * <search> DocTable capacity increase from 1000 to 1501",
+  "1:M 15 Nov 2026 02:21:15.882 * <search> DocTable capacity increase from 1501 to 2252",
+  "1:M 15 Nov 2026 02:21:15.918 * <search> DocTable capacity increase from 2252 to 3379",
+  "1:M 15 Nov 2026 02:21:15.932 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:15.980 * <search> DocTable capacity increase from 3379 to 5069",
+  "1:M 15 Nov 2026 02:21:16.047 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.073 * <search> DocTable capacity increase from 5069 to 7604",
+  "1:M 15 Nov 2026 02:21:16.151 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.194 * <search> DocTable capacity increase from 7604 to 11407",
+  "1:M 15 Nov 2026 02:21:16.256 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.355 * <search> DocTable capacity increase from 11407 to 17111",
+  "1:M 15 Nov 2026 02:21:16.358 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.463 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.565 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.589 * <search> DocTable capacity increase from 17111 to 25667",
+  "1:M 15 Nov 2026 02:21:16.670 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.772 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.874 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:16.945 * <search> DocTable capacity increase from 25667 to 38501",
+  "1:M 15 Nov 2026 02:21:16.976 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.079 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.184 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.287 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.389 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.487 * <search> DocTable capacity increase from 38501 to 57752",
+  "1:M 15 Nov 2026 02:21:17.492 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.597 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.699 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.804 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:17.910 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.013 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.114 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.219 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.314 * <search> DocTable capacity increase from 57752 to 86629",
+  "1:M 15 Nov 2026 02:21:18.325 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.429 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.531 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.634 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.739 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.840 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:18.943 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.053 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.159 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.260 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.365 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.470 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.574 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.674 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.718 * <search> DocTable capacity increase from 86629 to 129944",
+  "1:M 15 Nov 2026 02:21:19.782 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.886 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:19.999 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.101 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.209 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.315 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.416 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.520 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.621 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.722 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.827 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:20.932 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.034 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.139 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.246 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.353 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.458 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.559 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.667 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.769 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.871 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:21.904 * <search> DocTable capacity increase from 129944 to 194917",
+  "1:M 15 Nov 2026 02:21:21.976 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.078 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.181 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.285 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.387 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.493 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.600 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.703 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.811 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:22.918 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:23.020 * <search> Draining workers thread pool with threshold 100",
+  "1:M 15 Nov 2026 02:21:23.086 * Done loading RDB, keys loaded: 167183, keys expired: 0.",
+  "1:M 15 Nov 2026 02:21:23.086 * DB loaded from base file appendonly.aof.6.base.rdb: 7.273 seconds",
+  "1:M 15 Nov 2026 02:21:23.111 * DB loaded from incr file appendonly.aof.6.incr.aof: 0.024 seconds",
+  "1:M 15 Nov 2026 02:21:23.111 * <search> LOAD end disk=rebuild-from-keyspace ok=true",
+  "1:M 15 Nov 2026 02:21:23.111 * DB loaded from append only file: 7.297 seconds",
+  "1:M 15 Nov 2026 02:21:23.111 * Opening AOF incr file appendonly.aof.6.incr.aof on server start",
+  "1:M 15 Nov 2026 02:21:23.111 * Ready to accept connections tcp",
+  "1:M 15 Nov 2026 02:24:51.182 * Creating AOF incr file appendonly.aof.7.incr.aof on background rewrite",
+  "1:M 15 Nov 2026 02:24:51.192 * Background append only file rewriting started by pid 156",
+  "156:C 15 Nov 2026 02:24:53.804 * BGSAVE done, 168848 keys saved, 0 keys skipped, 439776536 bytes written.",
+  "156:C 15 Nov 2026 02:24:53.809 * Successfully created the temporary AOF base file temp-rewriteaof-bg-156.aof",
+  "156:C 15 Nov 2026 02:24:53.814 * Fork CoW for AOF rewrite: current 2 MB, peak 2 MB, average 1 MB",
+  "1:M 15 Nov 2026 02:24:53.859 * Background AOF rewrite terminated with success",
+  "1:M 15 Nov 2026 02:24:53.859 * Successfully renamed the temporary AOF base file temp-rewriteaof-bg-156.aof into appendonly.aof.7.base.rdb",
+  "1:M 15 Nov 2026 02:24:53.861 * Removing the history file appendonly.aof.6.incr.aof in the background",
+  "1:M 15 Nov 2026 02:24:53.861 * Removing the history file appendonly.aof.6.base.rdb in the background",
+  "1:M 15 Nov 2026 02:24:53.863 * Background AOF rewrite finished successfully",
+  "1:M 15 Nov 2026 02:24:53.971 * Background saving started by pid 157",
+  "157:C 15 Nov 2026 02:24:56.403 * BGSAVE done, 168848 keys saved, 0 keys skipped, 439776536 bytes written.",
+  "157:C 15 Nov 2026 02:24:56.412 * DB saved on disk",
+  "157:C 15 Nov 2026 02:24:56.419 * Fork CoW for RDB: current 2 MB, peak 2 MB, average 1 MB",
+  "1:M 15 Nov 2026 02:24:56.484 * Background saving terminated with success"
+ ],
+ "repository": {
+  "count": {
+   "chunk_chars_mean": 1016.4,
+   "chunk_chars_p95": 3338,
+   "embedded_chunks": 28793,
+   "excluded": {
+    "deny.secret": 2,
+    "deny.skipped_dir": 2094,
+    "excluded.binary": 54,
+    "excluded.empty": 6,
+    "excluded.too_large": 32
+   },
+   "files": {
+    "java": 0,
+    "markdown": 545,
+    "python": 934,
+    "text": 22,
+    "unsupported": 305
+   },
+   "parse_error_files": 0,
+   "parse_seconds": 22.751,
+   "parsed_lines": {
+    "java": 0,
+    "markdown": 119694,
+    "python": 301648,
+    "text": 344,
+    "unsupported": 0
+   },
+   "records": {
+    "java": 0,
+    "markdown": 7169,
+    "python": 23081,
+    "text": 44,
+    "unsupported": 305
+   }
+  },
+  "coverage": {
+   "complete": true,
+   "excluded": 0,
+   "files_indexed": 1806,
+   "files_total": 1806,
+   "parsed_loc": {
+    "markdown": 119694,
+    "python": 301648,
+    "text": 344
+   },
+   "records": 30599,
+   "unsupported": 305
+  },
+  "embedded_now": 115,
+  "note": "Embeddings reused, so this time is not a build forecast.",
+  "records_written": 30599,
+  "seconds": 65.1,
+  "state": "complete"
+ },
+ "schema": "plan12-memory-m1.qualify.v2",
+ "verdict": {
+  "state": "Every frozen limit met, including the session edit (attempt 4's miss). 2 of 6 assembly_corpus_b limits MISSED, both by the during-build catalogue re-read. The operator's disposition is owed; nothing was retuned or rerun.",
+  "limits": [
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 50,
+    "measured": 25.307,
+    "met": true,
+    "metric": "proxy dense query p95, idle, ms"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 25,
+    "measured": 10.165,
+    "met": true,
+    "metric": "proxy lexical query p95, idle, ms"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 110,
+    "measured": 34.637,
+    "met": true,
+    "metric": "proxy dense query p95, during a cold build, ms, worst of 3 samples"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 45,
+    "measured": 15.33,
+    "met": true,
+    "metric": "proxy lexical query p95, during a cold build, ms, worst of 3 samples"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 1.5,
+    "measured": 1.199,
+    "met": true,
+    "metric": "acpx turn p50 during a build / idle p50, 20 turns each"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 1.5,
+    "measured": 1.206,
+    "met": true,
+    "metric": "acpx turn p95 during a build / idle p95, 20 turns each"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 0,
+    "measured": 0,
+    "met": true,
+    "metric": "acpx turn failures during a build"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 5,
+    "measured": 3.741,
+    "met": true,
+    "metric": "seconds for a person's cancel to stop a turn, during a build"
+   },
+   {
+    "direction": "at least",
+    "group": "indexing",
+    "limit": 7,
+    "measured": 13.8,
+    "met": true,
+    "metric": "embedded chunks per second on two threads"
+   },
+   {
+    "direction": "at least",
+    "group": "indexing",
+    "limit": 3000,
+    "measured": 7201.1,
+    "met": true,
+    "metric": "proxy bulk records per second"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 45,
+    "measured": 28.14,
+    "met": true,
+    "metric": "seconds until the first file is visible, from the start of a cold build, corpus B",
+    "note": "Against the revised corpus-B cold limit in targets.json dispositions (Codex review 24). The frozen 5 s pilot limit's Release B miss (30.91 s) is retained."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 4,
+    "measured": 1.492,
+    "met": true,
+    "metric": "hours per 1M eligible parsed LOC",
+    "note": "2.337 h for 1566677 parsed LOC, one pass, no pauses; also inside the approved 4 h total."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 6,
+    "measured": 5.38,
+    "met": true,
+    "metric": "seconds from an edit to its symbol being queryable, one file, the product's session path",
+    "note": "7c04340 bypasses the session\u2019s preliminary whole-tree revision() when a file is named or Git\u2019s changed facts differ from the last complete pass; the worker still reads the revision. Attempt 4\u2019s 7.53 s miss is retained. (Wording: Codex review 39 item 2.)"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 6,
+    "measured": 3.81,
+    "met": true,
+    "metric": "seconds from an edit to its symbol being queryable, one file, the worker alone",
+    "note": "The direct worker measure, reported beside the line above, not instead of it."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 60,
+    "measured": 19.8,
+    "met": true,
+    "metric": "seconds per 1000 files to reconcile an unchanged tree"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 3,
+    "measured": 2.425,
+    "met": true,
+    "metric": "seconds to stop a build on cancel"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 10,
+    "measured": 8.529,
+    "met": true,
+    "metric": "seconds until answering after a Redis kill, same publication"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 2,
+    "measured": 2,
+    "met": true,
+    "metric": "native embedding threads, as configured"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 1500,
+    "measured": 1030.2,
+    "met": true,
+    "metric": "worker RSS, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 250,
+    "measured": 201.8,
+    "met": true,
+    "metric": "worker mean CPU during a build, percent of one core"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 3,
+    "measured": 1,
+    "met": true,
+    "metric": "process threads doing work during a build (over 5 percent of a core)"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 150,
+    "measured": 76.8,
+    "met": true,
+    "metric": "Gateway RSS, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 3072,
+    "measured": 1053.2,
+    "met": true,
+    "metric": "Redis used memory peak, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 2048,
+    "measured": 871.2,
+    "met": true,
+    "metric": "index disk at the run's record count, MB, at its peak"
+   }
+  ],
+  "assembly": "QUALIFICATION against targets.json assembly_corpus_b: 20 turns per condition, during-build turns at build progress 0.0, 0.216, 0.413, 0.678, 0.857, 0.858 (early, middle and late), none after the build ended; dense queried in every turn.",
+  "assembly_limits": [
+   {
+    "direction": "at most",
+    "group": "assembly",
+    "limit": 7500,
+    "measured": 1566.1,
+    "met": true,
+    "metric": "assembly wall time p95, idle, ms"
+   },
+   {
+    "direction": "at most",
+    "group": "assembly",
+    "limit": 7500,
+    "measured": 14762.7,
+    "met": false,
+    "metric": "assembly wall time p95, during a cold build, ms",
+    "note": "MISSED. Every over-limit turn is the first of a build sample. Each sample opens a new session (m1_qualify._assembly_during_build), so that turn had no catalogue, and its retrieval read every page of the current epoch's catalogue inline (memory_session._catalogue_for; one route call per 256 files): 9 pages, 20 calls, 6694.4 ms at build progress 0.216, 17 pages, 28 calls, 10497.2 ms at build progress 0.413, 28 pages, 39 calls, 14762.7 ms at build progress 0.678, 35 pages, 46 calls, 23322.7 ms at build progress 0.857. The other 15 during-build turns took 11 calls or fewer and at most 2,520 ms. The product pays the same: its runner assembles the pack first (agent/runner.py:1815, _turn_context, memory.assemble at :1921) and only then calls repo_map (:1824), so a person's first turn in a session during a build reads the whole catalogue inside assembly. A long-lived session re-reads it inside a turn whenever its catalogue is older than CATALOGUE_SECONDS (60 s) and the build has published since. Measured as the limit is written; a disposition is owed."
+   },
+   {
+    "direction": "at most",
+    "group": "assembly",
+    "limit": 30,
+    "measured": 46,
+    "met": false,
+    "metric": "route calls per complete assembly invocation, including retries",
+    "note": "Idle at most 11; during the build at most 46. MISSED by the same catalogue re-reads as the row above."
+   },
+   {
+    "direction": "at most",
+    "group": "assembly",
+    "limit": 150,
+    "measured": 90,
+    "met": true,
+    "metric": "route calls for one repo-map refresh on a miss, reported apart"
+   },
+   {
+    "direction": "at most",
+    "group": "assembly",
+    "limit": 35000,
+    "measured": 14771.1,
+    "met": true,
+    "metric": "wall time of one repo-map refresh on a miss, ms, reported apart"
+   },
+   {
+    "direction": "at most",
+    "group": "assembly",
+    "limit": 1.0,
+    "measured": 1.0,
+    "met": true,
+    "metric": "pack size as a share of min(25 percent of usable input, 16384 tokens), a budget invariant"
+   }
+  ],
+  "missed": [
+   "assembly wall time p95, during a cold build, ms",
+   "route calls per complete assembly invocation, including retries"
+  ],
+  "not_measured": [],
+  "other_observations": [
+   "The build ran in one pass with no pauses and no transport failures: 2.337 h, 122872 records, coverage complete.",
+   "4 during-build turns at build progress 0.0 (about 31 s in, just after the first file was visible) packed nothing: the index had nothing matching yet. They are counted in the p95 as measured.",
+   "The repo-map refresh on a miss took 90 calls and 14771.1 ms idle, within its reported-apart limits; the during-build catalogue re-reads above are the turn's retrieval, not that refresh.",
+   "The first acpx turn took 16712.233 ms against an idle p50 of 8625.845 ms: the stub agent's start, not the index.",
+   "Attempt 4's session-edit miss, attempts 2 (INTERRUPTED) and 3 (STOPPED_BEFORE_BUILD) and Release B's misses are retained in their own reports."
+  ]
+ }
+}

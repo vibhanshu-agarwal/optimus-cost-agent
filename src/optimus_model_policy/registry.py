@@ -279,9 +279,11 @@ class Route(BaseModel):
     endpoints: Annotated[tuple[Endpoint, ...], Field(min_length=1)]
     allow_fallbacks: StrictFlag = False
     require_parameters: StrictFlag = True
-    prompt_cache: Literal["none", "implicit", "top_level"] | None = None
+    prompt_cache: Literal["none", "implicit", "top_level", "prefix"] | None = None
     """Absent and ``none`` send what was always sent, as does ``implicit``, which records that the provider caches by itself.
-    ``top_level`` adds the root ``cache_control``. A route that only caches by content block has no value here: it stays uncached."""
+    ``top_level`` adds the root ``cache_control``, which writes the whole prompt, so only an exact repeat reads it (ADR-039).
+    ``prefix`` splits a request whose binding names its stable prefix into two text blocks and marks the first; a request naming none
+    is sent as always."""
 
     @model_serializer(mode="wrap")
     def absent_cache_keeps_identity(self, handler: Any) -> dict[str, Any]:

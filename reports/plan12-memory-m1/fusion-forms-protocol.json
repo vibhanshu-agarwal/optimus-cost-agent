@@ -1,0 +1,21 @@
+{
+ "schema": "plan12-memory-m1.fusion-forms-protocol.v1",
+ "state": "PRE-REGISTERED: committed before any run",
+ "recommended_by": "Codex review 35 on #469 (comment 6884549279), item 4: option F, one bounded experiment",
+ "script": "handoff kit m1_fusion_forms.py",
+ "script_sha256": "hex:fa354496e01497cea3c2fe9e32e87790fd373f657da4bcb458af4a75abfc74e3",
+ "protocol": "(review 35 item 4, verbatim in substance):\n- quota: dense-1, lexical-1, dense-2, lexical-2 placed first; deduplicated by hit id, with no backfill of a quota; then every unseen hit\n  in frozen RRF order;\n- file: sum the frozen RRF scores once per unique hit per file; order files by that sum, ties by their best frozen rank, then path; emit\n  each file's hits in frozen order, file and section records kept.\nProtocol: exactly three fresh-container repetitions on the same 16 cases; retrieve once per case and capture the exact inputs production\nfuse receives; score the frozen code and both variants on those inputs.\nAdoption gate, for each variant against the frozen code, review 34's unchanged: its worst symbol-hits-at-5 count over the three repetitions\nexceeds the frozen code's best; in every repetition it has no fewer file hits at 5, required evidence in context or required files in\ncontext; mean irrelevant tokens at most 16,000. If both pass, the higher worst-case symbol count wins; a tie keeps the frozen code. An\nincomplete repetition makes the result inconclusive. No further variant or extension after seeing results. A passing variant is not adopted\nhere: quota-first or file-first ordering changes plan v2's fusion contract (RRF, then utility and stable ties), so adoption needs a\ncomplete approved successor first.",
+ "opportunities": "Codex review 35 item 3: five requirements are in some channel's own top five but fused below it; two of them fall within the quota variant's top-two places. This is not a ceiling.",
+ "earlier_difference": {
+  "what": "retrieval-frozen.json (888022e, the evaluator) had 5 symbol hits at 5 where the paired confirmation has 6 in all three repetitions",
+  "where": "one case, ML05-a: dense rank 2 in both; lexical rank of its requirement absent (outside the top 100) in the earlier record and 98 in the confirmation; fused rank 10 against 5",
+  "bounded_comparison": {
+   "query_and_gold": "unchanged: no commit to either gold since 888022e; m1 4254408d..., seeds 07cc94c9...",
+   "snapshot": "the same, 3b3093d3b1b9",
+   "parser": "code-index-v1 in both",
+   "channel_k": "100 in both; both lexical channels returned 100 results",
+   "retrieval_source": "unchanged under src/context_engine except the read-only IndexWorker.revision property"
+  },
+  "reading": "the inputs differ at the lexical channel's last places; the backend cause is not established. Both results keep their own identities; neither supersedes the other."
+ }
+}

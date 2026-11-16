@@ -1,0 +1,1249 @@
+{
+ "acpx": {
+  "first_turn": {
+   "failures": 0,
+   "max_ms": 17574.256,
+   "mean_ms": 17574.256,
+   "p50_ms": 17574.256,
+   "p95_ms": 17574.256,
+   "samples": 1
+  },
+  "idle": {
+   "failures": 0,
+   "max_ms": 10118.587,
+   "mean_ms": 9183.563,
+   "p50_ms": 9098.005,
+   "p95_ms": 10060.009,
+   "samples": 20
+  },
+  "idle_cancel": {
+   "seconds_to_stop": 3.101,
+   "stop": "cancelled"
+  },
+  "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line",
+  "queue_owners_recorded": 1
+ },
+ "config": {
+  "acpx_turns": 20,
+  "authorization": "Codex review 29 on #469 (comment 6878991378): RELEASED at 770877c after the operator's approve-a.cmd and a successful no-prompt acpx sessions new probe, with removal of the container and volume before provisioning and after evidence is kept; the operator standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex release sufficient. Same resources and bounds as Release B.",
+  "bulk_batches": 20,
+  "container": "p1210-qualify-redis",
+  "embedding_cache": "tmp/plan12-m1-eval/embedding-cache.sqlite",
+  "embedding_threads": 2,
+  "foreground_sample_seconds": 3600,
+  "gateway_port": 8773,
+  "hours_limit": 4,
+  "k2_out": "reports/plan12-memory-m1/k2-4.json",
+  "k2_rounds": 100,
+  "label": "plan12.10-qualify-4-2026-11-14",
+  "large_commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+  "large_corpus": "tmp/plan12-m1-corpus/hadoop",
+  "maxmemory_mb": 4096,
+  "out": "reports/plan12-memory-m1/qualify-4.json",
+  "peak_sample_seconds": 30,
+  "port": 6393,
+  "query_samples": 200,
+  "repo_paths": [
+   "."
+  ],
+  "volume": "p1210-qualify-data",
+  "work_dir": "tmp/plan12-m1-qualify-4"
+ },
+ "head": "hex:770877ceb7cfa3eb4dd34bdd015485aa2c2e9092",
+ "host": {
+  "cpus": 12,
+  "memory_gb": 47.8
+ },
+ "large": {
+  "assembly_calibration": {
+   "coverage": "Context index: ready, 10255 of 10255 files.",
+   "during_build": {
+    "blocked": [],
+    "dense_in_every_turn": true,
+    "pack_share_of_token_budget_max": 1.0,
+    "per_turn": [
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "catalogue": 1,
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "28 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 12,
+      "route_ms": 361.6,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 3623.1
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "3 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16371,
+      "route_calls": 11,
+      "route_ms": 262.5,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1150.2
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "34 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16380,
+      "route_calls": 11,
+      "route_ms": 124.7,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 984.8
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "0 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16368,
+      "route_calls": 11,
+      "route_ms": 116.4,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 970.5
+     }
+    ],
+    "route_calls_max": 12,
+    "route_calls_median": 11.0,
+    "route_ms": {
+     "max_ms": 361.6,
+     "mean_ms": 216.3,
+     "p50_ms": 124.7,
+     "p95_ms": 361.6,
+     "samples": 4
+    },
+    "states": [
+     "ok"
+    ],
+    "turns": 4,
+    "wall_ms": {
+     "max_ms": 3623.1,
+     "mean_ms": 1682.15,
+     "p50_ms": 984.8,
+     "p95_ms": 3623.1,
+     "samples": 4
+    }
+   },
+   "idle": {
+    "blocked": [],
+    "dense_in_every_turn": true,
+    "pack_share_of_token_budget_max": 1.0,
+    "per_turn": [
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 350.2,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 4050.8
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 191.6,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1362.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 214.4,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1085.0
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16383,
+      "route_calls": 11,
+      "route_ms": 110.9,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 1095.4
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 154.8,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 2120.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 128.2,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 994.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 167.5,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1040.9
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16383,
+      "route_calls": 11,
+      "route_ms": 164.2,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 1694.7
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 171.7,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 1197.1
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 120.2,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 997.4
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 159.3,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1305.0
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16383,
+      "route_calls": 11,
+      "route_ms": 172.7,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 1690.1
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 122.6,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 1051.6
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 132.3,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 1004.2
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 193.2,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1821.6
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16383,
+      "route_calls": 11,
+      "route_ms": 160.1,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 1107.5
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16373,
+      "route_calls": 11,
+      "route_ms": 137.4,
+      "state": "ok",
+      "task": "how does the namenode decide where to place a new block",
+      "wall_ms": 1126.4
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16370,
+      "route_calls": 11,
+      "route_ms": 130.8,
+      "state": "ok",
+      "task": "where does the resource manager schedule a container and what happens when a node is lost",
+      "wall_ms": 999.9
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16347,
+      "route_calls": 11,
+      "route_ms": 233.2,
+      "state": "ok",
+      "task": "explain how a failed block write is recovered in the client pipeline",
+      "wall_ms": 1952.6
+     },
+     {
+      "blocked": null,
+      "budget_tokens": 16384,
+      "calls": {
+       "coverage": 1,
+       "query:dense": 1,
+       "query:lexical": 1,
+       "query:path": 8
+      },
+      "channels": {
+       "dense": "100 results",
+       "lexical": "100 results",
+       "memory": "no authorized source",
+       "recency": "8 results",
+       "structure": "0 results"
+      },
+      "pack_tokens": 16383,
+      "route_calls": 11,
+      "route_ms": 139.0,
+      "state": "ok",
+      "task": "where are delegation tokens renewed and cancelled",
+      "wall_ms": 995.3
+     }
+    ],
+    "route_calls_max": 11,
+    "route_calls_median": 11.0,
+    "route_ms": {
+     "max_ms": 350.2,
+     "mean_ms": 167.715,
+     "p50_ms": 159.3,
+     "p95_ms": 233.2,
+     "samples": 20
+    },
+    "states": [
+     "ok"
+    ],
+    "turns": 20,
+    "wall_ms": {
+     "max_ms": 4050.8,
+     "mean_ms": 1434.68,
+     "p50_ms": 1107.5,
+     "p95_ms": 2120.7,
+     "samples": 20
+    }
+   },
+   "repo_map_on_a_miss": {
+    "chars": 11901,
+    "route_calls": 90,
+    "wall_ms": 17354.2
+   },
+   "session_edit": {
+    "new_symbol_found": true,
+    "pass_state": "complete",
+    "seconds_until_queryable": 7.53,
+    "whole_pass_seconds": 228.67
+   },
+   "state": "CALIBRATION: never a qualification result"
+  },
+  "bulk": {
+   "native_records_per_second": 8654.7,
+   "native_seconds": 0.296,
+   "proxy_records_per_second": 6466.0,
+   "proxy_seconds": 0.396,
+   "records": 2560
+  },
+  "cancel": {
+   "seconds_to_stop": 1.583,
+   "state": "cancelled"
+  },
+  "cold": {
+   "acpx_during_build": [
+    {
+     "at_seconds": 80,
+     "cancel": {
+      "seconds_to_stop": 4.992,
+      "stop": "cancelled"
+     },
+     "measures": "machine load on a person's turn; this agent's own Gateway and kit, not the indexed line",
+     "turns": {
+      "failures": 0,
+      "max_ms": 13781.582,
+      "mean_ms": 12585.634,
+      "p50_ms": 12731.098,
+      "p95_ms": 13402.873,
+      "samples": 20
+     }
+    }
+   ],
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 10255,
+    "files_total": 10255,
+    "parsed_loc": {
+     "java": 1438914,
+     "markdown": 121476,
+     "python": 499,
+     "text": 5788
+    },
+    "records": 122872,
+    "unsupported": 1816
+   },
+   "detail": "",
+   "embedded_items_per_second": 10.6,
+   "failure": [],
+   "files_written": 10255,
+   "first_file_visible_seconds": 39.82,
+   "foreground_during_build": [
+    {
+     "at_seconds": 60,
+     "native_dense": {
+      "max_ms": 96.606,
+      "mean_ms": 15.727,
+      "p50_ms": 13.817,
+      "p95_ms": 23.149,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 77.28,
+      "mean_ms": 8.888,
+      "p50_ms": 7.818,
+      "p95_ms": 12.1,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 80.418,
+      "mean_ms": 22.285,
+      "p50_ms": 19.368,
+      "p95_ms": 45.308,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 79.712,
+      "mean_ms": 14.694,
+      "p50_ms": 12.996,
+      "p95_ms": 19.44,
+      "samples": 200
+     }
+    },
+    {
+     "at_seconds": 3939,
+     "native_dense": {
+      "max_ms": 78.296,
+      "mean_ms": 24.273,
+      "p50_ms": 22.076,
+      "p95_ms": 39.402,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 73.033,
+      "mean_ms": 9.8,
+      "p50_ms": 8.254,
+      "p95_ms": 13.828,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 161.236,
+      "mean_ms": 31.436,
+      "p50_ms": 27.861,
+      "p95_ms": 51.141,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 67.976,
+      "mean_ms": 14.708,
+      "p50_ms": 13.225,
+      "p95_ms": 20.464,
+      "samples": 200
+     }
+    },
+    {
+     "at_seconds": 7555,
+     "native_dense": {
+      "max_ms": 91.681,
+      "mean_ms": 26.014,
+      "p50_ms": 22.811,
+      "p95_ms": 47.524,
+      "samples": 200
+     },
+     "native_lexical": {
+      "max_ms": 51.053,
+      "mean_ms": 9.67,
+      "p50_ms": 8.502,
+      "p95_ms": 15.202,
+      "samples": 200
+     },
+     "proxy_dense": {
+      "max_ms": 268.3,
+      "mean_ms": 33.632,
+      "p50_ms": 29.178,
+      "p95_ms": 55.401,
+      "samples": 200
+     },
+     "proxy_lexical": {
+      "max_ms": 139.471,
+      "mean_ms": 16.024,
+      "p50_ms": 13.8,
+      "p95_ms": 24.276,
+      "samples": 200
+     }
+    }
+   ],
+   "foreground_errors": [],
+   "hours": 3.043,
+   "index_disk_within_2048": true,
+   "peaks": {
+    "container_memory_mb": 1046.5,
+    "disk_mb": 903.8,
+    "failed_samples": 0,
+    "used_memory_mb": 1040.9
+   },
+   "processes": {
+    "gateway": {
+     "cpu_percent_max": 38.0,
+     "cpu_percent_mean": 0.4,
+     "rss_mb_max": 72.1,
+     "threads_max": 4,
+     "threads_using_over_5_percent_of_a_cpu": 0
+    },
+    "worker": {
+     "cpu_percent_max": 299.3,
+     "cpu_percent_mean": 200.1,
+     "rss_mb_max": 965.9,
+     "threads_max": 37,
+     "threads_using_over_5_percent_of_a_cpu": 1
+    }
+   },
+   "records_written": 122872,
+   "redis": {
+    "disk_kb": 871308,
+    "maxmemory_mb": 4096.0,
+    "used_memory_mb": 1026.0,
+    "used_memory_peak_mb": 1040.9
+   },
+   "seconds": 10953.6,
+   "state": "complete",
+   "within_the_hours_limit": true
+  },
+  "commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+  "count": {
+   "chunk_chars_mean": 644.5,
+   "chunk_chars_p95": 1869,
+   "embedded_chunks": 112617,
+   "excluded": {
+    "deny.secret": 75,
+    "deny.skipped_dir": 25,
+    "excluded.binary": 94,
+    "excluded.too_large": 48,
+    "ignored.gitignore": 11,
+    "ignored.optimusignore": 5104
+   },
+   "files": {
+    "java": 7781,
+    "markdown": 521,
+    "python": 4,
+    "text": 133,
+    "unsupported": 1816
+   },
+   "parse_error_files": 0,
+   "parse_seconds": 137.118,
+   "parsed_lines": {
+    "java": 1438914,
+    "markdown": 121476,
+    "python": 499,
+    "text": 5788,
+    "unsupported": 0
+   },
+   "records": {
+    "java": 114985,
+    "markdown": 5776,
+    "python": 23,
+    "text": 272,
+    "unsupported": 1816
+   }
+  },
+  "incremental_one_file": {
+   "new_symbol_found": true,
+   "pass_running_before_successful_probe": true,
+   "query_error": null,
+   "records_written": 14,
+   "seconds_until_queryable": 4.55,
+   "state": "complete",
+   "whole_pass_seconds": 277.75,
+   "worker_failure": null
+  },
+  "parsed_java_at_least_1m": true,
+  "query_idle": {
+   "native_dense": {
+    "max_ms": 381.076,
+    "mean_ms": 23.666,
+    "p50_ms": 21.328,
+    "p95_ms": 26.557,
+    "samples": 200
+   },
+   "native_lexical": {
+    "max_ms": 10.267,
+    "mean_ms": 5.94,
+    "p50_ms": 5.935,
+    "p95_ms": 8.643,
+    "samples": 200
+   },
+   "proxy_dense": {
+    "max_ms": 507.628,
+    "mean_ms": 27.338,
+    "p50_ms": 24.263,
+    "p95_ms": 29.127,
+    "samples": 200
+   },
+   "proxy_lexical": {
+    "max_ms": 20.327,
+    "mean_ms": 9.334,
+    "p50_ms": 9.131,
+    "p95_ms": 12.033,
+    "samples": 200
+   }
+  },
+  "reconcile_unchanged": {
+   "records_written": 0,
+   "seconds": 274.8,
+   "seconds_per_1000_files": 26.8,
+   "state": "complete"
+  }
+ },
+ "phase": "qualify",
+ "redis_before_k2": {
+  "disk_kb": 888948,
+  "maxmemory_mb": 4096.0,
+  "used_memory_mb": 1026.3,
+  "used_memory_peak_mb": 1054.1
+ },
+ "repository": {
+  "count": {
+   "chunk_chars_mean": 1016.0,
+   "chunk_chars_p95": 3337,
+   "embedded_chunks": 28718,
+   "excluded": {
+    "deny.secret": 2,
+    "deny.skipped_dir": 2081,
+    "excluded.binary": 54,
+    "excluded.empty": 6,
+    "excluded.too_large": 32
+   },
+   "files": {
+    "java": 0,
+    "markdown": 544,
+    "python": 934,
+    "text": 22,
+    "unsupported": 294
+   },
+   "parse_error_files": 0,
+   "parse_seconds": 30.001,
+   "parsed_lines": {
+    "java": 0,
+    "markdown": 119522,
+    "python": 301173,
+    "text": 344,
+    "unsupported": 0
+   },
+   "records": {
+    "java": 0,
+    "markdown": 7148,
+    "python": 23026,
+    "text": 44,
+    "unsupported": 294
+   }
+  },
+  "coverage": {
+   "complete": true,
+   "excluded": 0,
+   "files_indexed": 1794,
+   "files_total": 1794,
+   "parsed_loc": {
+    "markdown": 119522,
+    "python": 301173,
+    "text": 344
+   },
+   "records": 30512,
+   "unsupported": 294
+  },
+  "embedded_now": 6,
+  "note": "Embeddings reused, so this time is not a build forecast.",
+  "records_written": 30512,
+  "seconds": 69.2,
+  "state": "complete"
+ },
+ "schema": "plan12-memory-m1.qualify.v2",
+ "verdict": {
+  "assembly": "CALIBRATION only, as planned: large-corpus assembly limits are the operator's to approve from it and are qualified on a later run.",
+  "assembly_observations": {
+   "dense_in_every_turn": {
+    "during_build": true,
+    "idle": true
+   },
+   "pack_share_max": {
+    "during_build": 1.0,
+    "idle": 1.0
+   },
+   "pilot_limits_for_comparison": "wall p95 750 ms, 30 route calls, map refresh 75 calls and 1,000 ms: the 52-file pilot's, not limits for corpus B",
+   "repo_map_on_a_miss": {
+    "chars": 11901,
+    "route_calls": 90,
+    "wall_ms": 17354.2
+   },
+   "route_calls_max": {
+    "during_build": 12,
+    "idle": 11
+   },
+   "wall_ms_max": {
+    "during_build": 3623.1,
+    "idle": 4050.8
+   },
+   "wall_ms_p95": {
+    "during_build": 3623.1,
+    "idle": 2120.7
+   }
+  },
+  "limits": [
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 50,
+    "measured": 29.127,
+    "met": true,
+    "metric": "proxy dense query p95, idle, ms"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 25,
+    "measured": 12.033,
+    "met": true,
+    "metric": "proxy lexical query p95, idle, ms"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 110,
+    "measured": 55.401,
+    "met": true,
+    "metric": "proxy dense query p95, during a cold build, ms, worst of 3 samples"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 45,
+    "measured": 24.276,
+    "met": true,
+    "metric": "proxy lexical query p95, during a cold build, ms, worst of 3 samples"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 1.5,
+    "measured": 1.399,
+    "met": true,
+    "metric": "acpx turn p50 during a build / idle p50, 20 turns each"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 1.5,
+    "measured": 1.332,
+    "met": true,
+    "metric": "acpx turn p95 during a build / idle p95, 20 turns each"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 0,
+    "measured": 0,
+    "met": true,
+    "metric": "acpx turn failures during a build"
+   },
+   {
+    "direction": "at most",
+    "group": "foreground",
+    "limit": 5,
+    "measured": 4.992,
+    "met": true,
+    "metric": "seconds for a person's cancel to stop a turn, during a build",
+    "note": "Met with little room: 4.99 of 5; Release B had 2.78."
+   },
+   {
+    "direction": "at least",
+    "group": "indexing",
+    "limit": 7,
+    "measured": 10.6,
+    "met": true,
+    "metric": "embedded chunks per second on two threads"
+   },
+   {
+    "direction": "at least",
+    "group": "indexing",
+    "limit": 3000,
+    "measured": 6466.0,
+    "met": true,
+    "metric": "proxy bulk records per second"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 45,
+    "measured": 39.82,
+    "met": true,
+    "metric": "seconds until the first file is visible, from the start of a cold build, corpus B",
+    "note": "Against the revised corpus-B cold limit in targets.json dispositions (Codex review 24), which applies prospectively to this run. The frozen 5 s came from a 50-file pilot; Release B measured 30.91 s against it, retained."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 4,
+    "measured": 1.942,
+    "met": true,
+    "metric": "hours per 1M eligible parsed LOC",
+    "note": "3.043 h for 1566677 parsed LOC; also inside the approved 4 h total."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 6,
+    "measured": 7.53,
+    "met": false,
+    "metric": "seconds from an edit to its symbol being queryable, one file, the product's session path",
+    "note": "MISSED. This is the measure against the 6 s limit (m1_qualify.session_edit_visibility). Root cause, measured apart on the same tree after the run: before each pass the session calls the source's revision(), which reads the size and modified time of every admitted file, 2.84-3.12 s on 10,255 files; Git's changed paths take 0.26-0.30 s. The priority write that a67057c moved ahead of the listing runs only inside the worker, after that check. 3 s plus the worker's own 4.55 s (the row below) accounts for 7.53 s. A remedy is a production change to memory_session's pass loop; nothing was changed or rerun."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 6,
+    "measured": 4.55,
+    "met": true,
+    "metric": "seconds from an edit to its symbol being queryable, one file, the worker alone",
+    "note": "The direct worker measure, which leaves out the session's revision check; reported beside the line above, not instead of it."
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 60,
+    "measured": 26.8,
+    "met": true,
+    "metric": "seconds per 1000 files to reconcile an unchanged tree"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 3,
+    "measured": 1.583,
+    "met": true,
+    "metric": "seconds to stop a build on cancel"
+   },
+   {
+    "direction": "at most",
+    "group": "indexing",
+    "limit": 10,
+    "measured": 9.446,
+    "met": true,
+    "metric": "seconds until answering after a Redis kill, same publication",
+    "note": "Met with little room: 9.45 of 10, as in Release B (9.30)."
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 2,
+    "measured": 2,
+    "met": true,
+    "metric": "native embedding threads, as configured"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 1500,
+    "measured": 965.9,
+    "met": true,
+    "metric": "worker RSS, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 250,
+    "measured": 200.1,
+    "met": true,
+    "metric": "worker mean CPU during a build, percent of one core"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 3,
+    "measured": 1,
+    "met": true,
+    "metric": "process threads doing work during a build (over 5 percent of a core)"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 150,
+    "measured": 72.1,
+    "met": true,
+    "metric": "Gateway RSS, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 3072,
+    "measured": 1054.1,
+    "met": true,
+    "metric": "Redis used memory peak, MB"
+   },
+   {
+    "direction": "at most",
+    "group": "resources",
+    "limit": 2048,
+    "measured": 903.8,
+    "met": true,
+    "metric": "index disk at the run's record count, MB, at its peak"
+   }
+  ],
+  "missed": [
+   "seconds from an edit to its symbol being queryable, one file, the product's session path"
+  ],
+  "not_measured": [],
+  "other_observations": [
+   "Both Release B harness defects are fixed and measured here: the edit hit an admitted file (14 records, symbol found), and assembly used dense in every turn, idle and during the build. The 52-call idle outlier did not recur (idle max 11 calls).",
+   "Attempt 4's first acpx turn took 17.6 s against an idle p50 of 9.1 s: the stub agent's start, not the index. Idle turns were slower than attempt 2's (7.1 s mean); the ratios above compare turns within this run.",
+   "Attempts 2 (INTERRUPTED) and 3 (STOPPED_BEFORE_BUILD) make no claim; see qualify-2-interrupted.json and qualify-3-stopped.json."
+  ],
+  "state": "1 frozen limit MISSED, the rest met. The operator's disposition is owed; nothing was retuned or rerun."
+ }
+}

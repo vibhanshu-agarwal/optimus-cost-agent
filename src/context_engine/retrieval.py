@@ -19,7 +19,12 @@ from .repo_map import MapFile, RepoMap, build_repo_map, imports_of, neighbours, 
 RRF_K: Final = 60
 # Agent-selected and frozen before evaluation. Structure means the person or the task named it, so it counts most; recency only nudges.
 WEIGHTS: Final = {"lexical": 1.0, "dense": 1.0, "structure": 1.5, "recency": 0.25, "memory": 1.0}
-CHANNEL_K: Final = 40
+# The route's own maximum. On train and development, 40 left 16 of 35 required symbols in no channel's results and 100 left 11
+# (reports/plan12-memory-m1/retrieval-experiments.json); the deeper lists also raised recall at 5 from 4 to 5 and evidence in context from 14 to 16.
+CHANNEL_K: Final = 100
+# Plan v3: the first places go to dense-1, lexical-1, dense-2, lexical-2. Fusing alone pushed some of a channel's own top five out of the top
+# five; on train and development this took symbol hits at 5 from 6 to 7 with no other measure lower (reports/plan12-memory-m1/retrieval-fusion-forms.json).
+QUOTA: Final = (("dense", 0), ("lexical", 0), ("dense", 1), ("lexical", 1))
 MAX_TERMS: Final = 64
 MAX_SYMBOL_CHARS: Final = 256  # the route's limit, and no real symbol is longer
 MAX_NAMED: Final = 8
@@ -30,6 +35,11 @@ _CATALOGUE_PAGE: Final = 256
 _ATTEMPTS: Final = 2  # an epoch can expire while it is read; a second try sees the newer one
 _MOVED: Final = frozenset({"EPOCH_EXPIRED", "NOT_PUBLISHED"})
 _KIND_ORDER: Final = {"symbol": 0, "section": 1, "file": 2}
+# The lexical channel ORs its terms, and "where" or "the" match nearly everything. Chosen on train and development (retrieval-tuning.json).
+STOP_WORDS: Final = frozenset(
+    "a an and are as at be but by can could do does for from had has have how if in instead into is it its may more no not of on only or should so such than that the "
+    "their them then there these they this those to was were what when where which while who why will with would you your".split()
+)
 
 
 @dataclass(frozen=True)
@@ -91,9 +101,15 @@ def query_terms(text: str) -> list[str]:
     return list(seen)[:MAX_TERMS]
 
 
+def lexical_terms(text: str) -> list[str]:
+    """The lexical channel's terms: the words that can tell one record from another, unless a question has nothing else."""
+    terms = query_terms(text)
+    return [term for term in terms if term not in STOP_WORDS] or terms
+
+
 def fuse(channels: Mapping[str, Sequence[Hit]], *, named: Iterable[str] = (), weights: Mapping[str, float] = WEIGHTS, k: int = RRF_K) -> tuple[Ranked, ...]:
-    """Reciprocal rank fusion. Ties go to a named file, then to symbols over sections over files, then path and line, so the same input
-    always gives the same order."""
+    """Reciprocal rank fusion, then the dense and lexical quota unless a path was named or structure answered. Ties go to a named file, then
+    to symbols over sections over files, then path and line, so the same input always gives the same order. Every hit keeps its score and ranks."""
     chosen = set(named)
     hits: dict[str, Hit] = {}
     scores: dict[str, float] = {}
@@ -108,7 +124,16 @@ def fuse(channels: Mapping[str, Sequence[Hit]], *, named: Iterable[str] = (), we
         hit = hits[identity]
         return (-round(scores[identity], 12), hit.path not in chosen, _KIND_ORDER.get(hit.kind, 3), hit.path, hit.start_line or 0, identity)
 
-    return tuple(Ranked(hits[identity], scores[identity], ranks[identity]) for identity in sorted(hits, key=order))
+    base = tuple(Ranked(hits[identity], scores[identity], ranks[identity]) for identity in sorted(hits, key=order))
+    if chosen or channels.get("structure"):  # a named path or a structural hit keeps the base order (plan v3)
+        return base
+    first: dict[str, None] = {}
+    for channel, position in QUOTA:
+        listed = channels.get(channel) or ()
+        if position < len(listed):
+            first.setdefault(listed[position].id)  # a duplicate takes no place and nothing backfills it
+    by_id = {item.hit.id: item for item in base}
+    return (*(by_id[identity] for identity in first), *(item for item in base if item.hit.id not in first))
 
 
 def read_catalogue(storage: IndexStorage, epoch: int) -> list[CatalogueFile]:
@@ -141,10 +166,12 @@ def seed_files(storage: IndexStorage, epoch: int, catalogue: Sequence[CatalogueF
 
 
 class Retriever:
-    def __init__(self, storage: IndexStorage, embedder: Embedder | None, *, catalogue: Callable[[int, bool], Sequence[CatalogueFile]] | None = None, cancelled: Callable[[], bool] = lambda: False) -> None:
+    def __init__(self, storage: IndexStorage, embedder: Embedder | None, *, catalogue: Callable[[int, bool], Sequence[CatalogueFile] | None] | None = None,
+                 cancelled: Callable[[], bool] = lambda: False) -> None:
         self._storage = storage
         self._embedder = embedder
-        self._catalogue = catalogue or (lambda epoch, _complete: read_catalogue(storage, epoch))  # told whether the generation is complete
+        # Told whether the generation is complete. None means none is ready for it: recency and neighbours are then not suggested.
+        self._catalogue = catalogue or (lambda epoch, _complete: read_catalogue(storage, epoch))
         self._cancelled = cancelled
 
     def retrieve(self, text: str, *, named_paths: Sequence[str] = (), named_symbols: Sequence[str] = (), memory: Sequence[Hit] = ()) -> Retrieval:
@@ -167,6 +194,16 @@ class Retriever:
         channels: dict[str, list[Hit]] = {"memory": list(memory)}
         report: dict[str, str] = {"memory": f"{len(memory)} results" if memory else "no authorized source"}
 
+        taken: list[Sequence[CatalogueFile] | None] = []
+
+        def catalogue() -> Sequence[CatalogueFile]:
+            """One answer per retrieval, so its channels and its report agree even if a background read lands between them."""
+            if not taken:
+                taken.append(self._catalogue(epoch, complete))
+                if taken[0] is None:
+                    report["catalogue"] = "not ready: it is being read in the background, so recency and import neighbours were not suggested"
+            return taken[0] or ()
+
         def run(name: str, ask: Callable[[], list[Hit]]) -> None:
             if self._cancelled():
                 report[name] = "not asked: the turn was cancelled"
@@ -186,8 +223,8 @@ class Retriever:
             report["dense"] = "no embedding artifact"
         else:
             run("dense", lambda: self._dense(text, epoch))
-        run("structure", lambda: self._structure(named_paths, named_symbols, epoch, complete))
-        run("recency", lambda: self._recent(epoch, complete))
+        run("structure", lambda: self._structure(named_paths, named_symbols, epoch, catalogue))
+        run("recency", lambda: self._recent(epoch, catalogue))
         ranked = fuse(channels, named=named_paths)
         return Retrieval("ok", epoch, current["coverage"], current.get("revision"), ranked, report)
 
@@ -195,7 +232,7 @@ class Retriever:
         return [Hit.from_wire(record) for record in self._storage.call("query", epoch=epoch, **query)["records"]]
 
     def _lexical(self, text: str, epoch: int) -> list[Hit]:
-        terms = query_terms(text)
+        terms = lexical_terms(text)
         return self._ask(epoch, mode="lexical", terms=terms, k=CHANNEL_K) if terms else []
 
     def _dense(self, text: str, epoch: int) -> list[Hit]:
@@ -206,7 +243,7 @@ class Retriever:
             raise StorageUnavailableError("the embedder failed") from exc
         return self._ask(epoch, mode="dense", vector=base64.b64encode(embedded).decode("ascii"), k=CHANNEL_K)
 
-    def _structure(self, named_paths: Sequence[str], named_symbols: Sequence[str], epoch: int, complete: bool) -> list[Hit]:
+    def _structure(self, named_paths: Sequence[str], named_symbols: Sequence[str], epoch: int, catalogue: Callable[[], Sequence[CatalogueFile]]) -> list[Hit]:
         """Only what was named or observed: the named files, the named symbols, then what the named files import or are imported by."""
         hits: list[Hit] = []
         for symbol in [name for name in named_symbols if len(name) <= MAX_SYMBOL_CHARS][:MAX_NAMED]:
@@ -215,13 +252,13 @@ class Retriever:
         for path in chosen:
             hits.extend(self._ask(epoch, mode="path", path_id=path_id(path), k=CHANNEL_K))
         if chosen:
-            files = [MapFile(item.path, imports_of(item.description)) for item in self._catalogue(epoch, complete)]
+            files = [MapFile(item.path, imports_of(item.description)) for item in catalogue()]
             for path in neighbours(files, chosen)[:MAX_NAMED]:
                 hits.extend(self._ask(epoch, mode="path", path_id=path_id(path), k=MAX_NAMED, kinds=["file", "symbol"]))
         return hits
 
-    def _recent(self, epoch: int, complete: bool) -> list[Hit]:
-        dated = [item for item in self._catalogue(epoch, complete) if item.modified is not None]
+    def _recent(self, epoch: int, catalogue: Callable[[], Sequence[CatalogueFile]]) -> list[Hit]:
+        dated = [item for item in catalogue() if item.modified is not None]
         dated.sort(key=lambda item: (-(item.modified or 0), item.path))
         hits: list[Hit] = []
         for item in dated[:_RECENT_FILES]:

@@ -1,4 +1,4 @@
-"""Plan 12.10 M1 measurement: `python -m tools.plan12_memory.m1_scale --phase pilot|assembly --config reports/plan12-memory-m1/run-config.json`.
+"""Plan 12.10 M1 measurement: `python -m tools.plan12_memory.m1_scale --phase pilot|assembly|qualify --config reports/plan12-memory-m1/run-config.json`.
 
 Runs against the released dedicated Redis and a real Gateway process, on a throwaway copy of the corpus. Measures, never tunes: it
 reports what the pilot saw so the operator can freeze targets from numbers. No generative or provider call is possible here: the
@@ -24,15 +24,19 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-import psutil
 import redis
+
+try:
+    import psutil
+except ModuleNotFoundError:  # measurement-only, deliberately not a dependency (packages.json): only the measuring paths need it
+    psutil = None  # type: ignore[assignment]
 
 from context_engine.code_index import parse_file
 from context_engine.index_worker import IndexWorker
 from optimus.acp import local_infra
 from optimus.acp.memory_setup import run_setup
 from optimus.config.gateway import OptimusGatewaySettings
-from optimus.context.memory_session import PACK_MAX_TOKENS, MemorySession
+from optimus.context.memory_session import CATALOGUE_THREAD, PACK_MAX_TOKENS, MemorySession
 from optimus.context.memory_workspace import FastembedEmbedder, GatewayIndexStorage, WorkspaceIndexSource, current_branch, index_scope
 from optimus.context.project_registry import ProjectRegistration
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
@@ -51,7 +55,7 @@ from optimus_gateway.server import serve_gateway
 options = json.loads(sys.stdin.readline())
 client = memory_index.connect(memory_index.IndexEndpoint("127.0.0.1", options["port"], options["user"], options["password"], options["resource"]))
 store = memory_index.IndexStore(client, cursor_key=b"m" * 32)
-config = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=0, shared_secret=options["secret"], provider="openrouter",
+config = GatewayServiceConfig(bind_host="127.0.0.1", bind_port=options["gateway_port"], shared_secret=options["secret"], provider="openrouter",
                               provider_api_key=options["secret"], base_url="http://127.0.0.1:9/api/v1")
 server = serve_gateway(config=replace(config, memory_index=memory_index.IndexService(store)), upstream_client=object())
 print(server.server_address[1], flush=True)
@@ -161,11 +165,77 @@ class _Index:
         self.owner = hashlib.sha256(f"{project}{root}".encode()).hexdigest()[:32]
 
     def worker(self) -> IndexWorker:
-        return IndexWorker(WorkspaceIndexSource(FilePolicy(self.root)), self.storage, self.embedder, owner=self.owner, cold_admission=False)
+        """As the session runs it: what Git calls changed goes first."""
+        source = WorkspaceIndexSource(FilePolicy(self.root))
+        return IndexWorker(source, self.storage, self.embedder, owner=self.owner, cold_admission=False, priority=lambda: source.dirty_paths() or ())
+
+
+def edit_visibility(run: Callable[[threading.Event], Any], found: Callable[[], bool], *, limit_seconds: float = 900, poll_seconds: float = 0.1) -> dict[str, Any]:
+    """How soon an edit can be queried, while the pass that wrote it may still be reconciling the rest; the whole pass is reported apart."""
+    cancel = threading.Event()
+    outcome: list[Any] = []
+    failure: list[str] = []
+
+    def work() -> None:
+        try:
+            outcome.append(run(cancel))
+        except Exception as error:  # noqa: BLE001 - kept in the report; the caller stops on it
+            failure.append(type(error).__name__)
+
+    started = time.perf_counter()
+    worker = threading.Thread(target=work, daemon=True)
+    worker.start()
+    visible, while_running, query_error = None, None, None
+    try:
+        while visible is None and time.perf_counter() - started < limit_seconds:
+            alive = worker.is_alive()
+            if found():
+                visible = round(time.perf_counter() - started, 2)
+                while_running = alive  # the answering query began before the pass ended
+            elif not alive:
+                break
+            else:
+                time.sleep(poll_seconds)
+    except Exception as error:  # noqa: BLE001 - a query failure ends the measurement, never the stop below
+        query_error = type(error).__name__
+    finally:
+        if visible is None:
+            cancel.set()
+        worker.join(max(0.0, limit_seconds - (time.perf_counter() - started)))
+        if worker.is_alive():
+            cancel.set()
+            worker.join(120)
+    if worker.is_alive():
+        raise SystemExit("the edit's index pass did not stop; anything measured next would run under its load")
+    result = outcome[0] if outcome else None
+    return {"seconds_until_queryable": visible, "new_symbol_found": visible is not None, "pass_running_before_successful_probe": while_running,
+            "whole_pass_seconds": round(time.perf_counter() - started, 2) if result else None, "state": getattr(result, "state", "no-result"),
+            "records_written": getattr(result, "records_written", None), "worker_failure": failure[0] if failure else None, "query_error": query_error}
+
+
+def long_path(path: Path) -> Path:
+    """Real trees hold paths past Windows's 260 characters, which plain file calls refuse while the product's own policy reaches them."""
+    return Path("\\\\?\\" + str(path.resolve())) if sys.platform == "win32" else path
+
+
+def _symbol_at(index: _Index, symbol: str, root: Path, target: Path) -> bool:
+    """The new symbol, in the edited file: a match elsewhere proves nothing about this edit."""
+    expected = target.relative_to(long_path(root) if str(target).startswith("\\\\?\\") else root).as_posix()
+    records = index.storage.call("query", mode="lexical", terms=[symbol.lower()], k=5)["records"]
+    return any(record.get("path") == expected for record in records)
+
+
+def edit_target(root: Path, suffix: str) -> Path:
+    """The first sizeable file of this kind the index admits. An ignored file is never picked up, so editing one measures nothing."""
+    policy, base = FilePolicy(root), long_path(root)
+    for path in sorted(base.rglob(f"*{suffix}")):
+        if path.stat().st_size > 2000 and policy.read(path.relative_to(base).as_posix(), purpose=FilePurpose.INDEX)[0].allowed:
+            return path
+    raise SystemExit(f"no indexed {suffix} file over 2000 bytes under {root}")
 
 
 def _git(root: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(root), "-c", "user.name=m1", "-c", "user.email=m1@example.invalid", *args], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(root), "-c", "core.longpaths=true", "-c", "user.name=m1", "-c", "user.email=m1@example.invalid", *args], capture_output=True, check=True)
 
 
 def _clear_read_only(remove: Callable[[str], None], path: str, _error: BaseException) -> None:
@@ -177,13 +247,13 @@ def _clear_read_only(remove: Callable[[str], None], path: str, _error: BaseExcep
 def _corpus_copy(source: Path, target: Path, paths: Sequence[str]) -> Path:
     """A throwaway copy of the corpus's tracked files, so the measurement can edit it and no checkout changes."""
     if target.exists():
-        shutil.rmtree(target, onexc=_clear_read_only)
+        shutil.rmtree(long_path(target), onexc=_clear_read_only)
     target.mkdir(parents=True)
     tracked = subprocess.run(["git", "-C", str(source), "ls-files", "-z", "--", *paths], capture_output=True, check=True).stdout.decode("utf-8").split("\0")
     for relative in filter(None, tracked):
-        origin = source / relative
+        origin = long_path(source) / relative
         if origin.is_file():
-            destination = target / relative
+            destination = long_path(target) / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(origin, destination)
     _git(target, "init", "-q", "-b", "pilot")
@@ -276,12 +346,12 @@ class _AcpxTurns:
     """Real acpx turns against a real approved agent whose upstream is a local stub, so a person's turn is measured, idle and during a
     cold build. The folder comes only from P1210_ACPX_KIT, because its launch approvals belong to that folder; without it this reports UNRUN."""
 
-    def __init__(self, kit: Path, evidence: Path) -> None:
+    def __init__(self, kit: Path, evidence: Path, *, stub_seconds: int = 1800) -> None:
         self._kit = kit
         self._acpx = shutil.which("acpx") or "acpx"
         self._common = ["--format", "json", "--deny-all", "--ttl", "900", "--timeout", "120", "--cwd", str(kit / "workspace-a"), "--agent", f"'{kit / 'run-a.cmd'}'"]
         evidence.mkdir(parents=True, exist_ok=True)
-        self._stub = subprocess.Popen([sys.executable, "-I", str(kit / "stub_provider.py"), str(kit / "scenario.json"), str(evidence), "18791", "1800"],
+        self._stub = subprocess.Popen([sys.executable, "-I", str(kit / "stub_provider.py"), str(kit / "scenario.json"), str(evidence), "18791", str(stub_seconds)],
                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self._before = set(psutil.pids())
         self._owners: list[tuple[int, float]] = []
@@ -290,8 +360,16 @@ class _AcpxTurns:
     def _run(self, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run([self._acpx, *self._common, *args], capture_output=True, text=True, encoding="utf-8", errors="replace", check=False, timeout=180)
 
+    failure: str | None = None  # the last failed call's own output, so a stopped run records why
+
+    def _keep_failure(self, result: subprocess.CompletedProcess[str]) -> None:
+        self.failure = (result.stdout + result.stderr).strip()[-2000:]
+
     def open(self) -> str:
-        return str(self._run("sessions", "new").returncode)
+        result = self._run("sessions", "new")
+        if result.returncode:
+            self._keep_failure(result)
+        return str(result.returncode)
 
     def turns(self, count: int) -> dict[str, Any]:
         times, failures = [], 0
@@ -299,7 +377,9 @@ class _AcpxTurns:
             started = time.perf_counter()
             result = self._run("prompt", "Explain in one line what the docstring in notes.py says. [p129:T1]")
             times.append((time.perf_counter() - started) * 1000)
-            failures += '"stopReason":"end_turn"' not in result.stdout.replace(" ", "")
+            if '"stopReason":"end_turn"' not in result.stdout.replace(" ", ""):
+                failures += 1
+                self._keep_failure(result)
         return {**_summary(times), "failures": failures}
 
     def cancel_during_a_turn(self) -> dict[str, Any]:
@@ -386,7 +466,7 @@ def _bulk(index: _Index, store: memory_index.IndexStore, *, batches: int, dimens
             "proxy_seconds": round(proxy_seconds, 3), "native_seconds": round(native_seconds, 3)}
 
 
-def _provision(config: dict[str, Any], repository: Path, work: Path) -> tuple[Path, Any, str, redis.Redis, subprocess.Popen[str], OptimusGatewaySettings, dict[str, Any]]:
+def _provision(config: dict[str, Any], repository: Path, work: Path, *, prepare: Callable[[Path], None] | None = None) -> tuple[Path, Any, str, redis.Redis, subprocess.Popen[str], OptimusGatewaySettings, dict[str, Any]]:
     """The released Redis made the way a real launch makes it, and a real Gateway process in front of it."""
     work.mkdir(parents=True, exist_ok=True)
     container, volume = config["container"], config["volume"]
@@ -414,6 +494,8 @@ def _provision(config: dict[str, Any], repository: Path, work: Path) -> tuple[Pa
     assert memory is not None
     password = keyring.get_password(KEYRING_SERVICE, memory.credential_name)
     assert password is not None
+    if prepare is not None:
+        prepare(root)
     status = local_infra.ensure_memory_redis(root)
     assert status.state == "ready", status
     client = memory_index.connect(memory_index.IndexEndpoint("127.0.0.1", memory.port, memory.user, password, memory.resource))
@@ -428,7 +510,7 @@ def _provision(config: dict[str, Any], repository: Path, work: Path) -> tuple[Pa
 
     gateway = subprocess.Popen([sys.executable, "-c", _GATEWAY_SCRIPT], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     assert gateway.stdin is not None and gateway.stdout is not None
-    gateway.stdin.write(json.dumps({"port": memory.port, "user": memory.user, "password": password, "resource": memory.resource, "secret": _SECRET}) + "\n")
+    gateway.stdin.write(json.dumps({"port": memory.port, "user": memory.user, "password": password, "resource": memory.resource, "secret": _SECRET, "gateway_port": config.get("gateway_port", 0)}) + "\n")
     gateway.stdin.flush()
     port = int(gateway.stdout.readline())
     settings = OptimusGatewaySettings.from_env({"OPTIMUS_GATEWAY_URL": f"http://127.0.0.1:{port}", "OPTIMUS_API_KEY": _SECRET})
@@ -450,15 +532,25 @@ def _bytes_estimate(text: str) -> int:
 
 
 class _CountingStorage:
-    """The real storage port, counting one thread's calls and their time; the worker's own calls go uncounted."""
+    """The real storage port, counting one thread's calls and their time; the worker's own calls go uncounted. The session's background
+    catalogue reads are counted apart, in `background`, and a turn's own count never clears them."""
 
     def __init__(self, inner: Any, thread: int) -> None:
         self._inner = inner
         self._thread = thread
         self.calls: dict[str, int] = {}
         self.seconds = 0.0
+        self.background: dict[str, int] = {}
+        self.background_seconds = 0.0
 
     def call(self, op: str, **fields: Any) -> dict[str, Any]:
+        if threading.current_thread().name == CATALOGUE_THREAD:
+            self.background[op] = self.background.get(op, 0) + 1
+            started = time.perf_counter()
+            try:
+                return self._inner.call(op, **fields)
+            finally:
+                self.background_seconds += time.perf_counter() - started
         if threading.get_ident() != self._thread:
             return self._inner.call(op, **fields)
         label = f"{op}:{fields['mode']}" if op == "query" else op
@@ -484,7 +576,8 @@ def _measure_turn(session: MemorySession, counters: list[_CountingStorage], task
             calls[label] = calls.get(label, 0) + count
     budget = turn.manifest.get("budget", {})
     return {"task": task, "wall_ms": round(wall * 1000, 1), "route_ms": round(sum(counter.seconds for counter in counters) * 1000, 1), "route_calls": sum(calls.values()), "calls": calls,
-            "state": turn.manifest.get("retrieval", {}).get("state"), "pack_tokens": budget.get("tokens"), "budget_tokens": budget.get("budget_tokens"), "blocked": result.blocking_stop_reason}
+            "state": turn.manifest.get("retrieval", {}).get("state"), "channels": dict(turn.manifest.get("retrieval", {}).get("channels", {})),
+            "pack_tokens": budget.get("tokens"), "budget_tokens": budget.get("budget_tokens"), "blocked": result.blocking_stop_reason}
 
 
 def _assembly_summary(turns: Sequence[dict[str, Any]]) -> dict[str, Any]:
@@ -494,11 +587,18 @@ def _assembly_summary(turns: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "pack_share_of_token_budget_max": round(max(used), 3) if used else None, "states": sorted({str(turn["state"]) for turn in turns}), "blocked": sorted({turn["blocked"] for turn in turns if turn["blocked"]})}
 
 
+def _require_psutil() -> None:
+    """The measuring phases need psutil; refuse before anything is provisioned, so nothing is left running (Codex review 46)."""
+    if psutil is None:
+        raise RuntimeError("this phase measures processes and needs psutil, which is measurement-only and not a project dependency; install it in this environment")
+
+
 def run_assembly(config: dict[str, Any], repository: Path) -> dict[str, Any]:
     """A real session on the real artifact and route: what one turn's context costs while the worker builds, and after. No model is called."""
+    _require_psutil()
     work = repository / config["work_dir"] / "assembly"
+    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()  # before provisioning: a failure here leaves nothing running
     root, memory, _password, client, gateway, settings, settings_file = _provision(config, repository, work)
-    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
     report: dict[str, Any] = {"schema": "plan12-memory-m1.assembly.v1", "phase": "assembly", "head": f"hex:{head}", "config": {k: v for k, v in config.items() if k != "artifact_cache"}, "estimator": "utf8 bytes / 4",
                               "pack_max_tokens": PACK_MAX_TOKENS, "tasks": list(ASSEMBLY_TASKS)}
     report["host"] = {"cpus": psutil.cpu_count(), "memory_gb": round(psutil.virtual_memory().total / 2**30, 1), "python": sys.version.split()[0], "platform": sys.platform}
@@ -553,6 +653,7 @@ def run_assembly(config: dict[str, Any], repository: Path) -> dict[str, Any]:
 
 
 def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
+    _require_psutil()
     work = repository / config["work_dir"]
     container = config["container"]
     root, memory, _password, client, gateway, settings, settings_file = _provision(config, repository, work)
@@ -593,13 +694,9 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
         idle = _required(index.worker().run(threading.Event()))
         report["reconcile_unchanged"] = {"state": idle.state, "seconds": round(time.perf_counter() - started, 2), "records_written": idle.records_written}
 
-        target = next(path for path in sorted(corpus.rglob("*.py")) if path.stat().st_size > 2000)
+        target = edit_target(corpus, ".py")
         target.write_text(target.read_text(encoding="utf-8") + "\n\ndef m1_pilot_added_function():\n    return 1\n", encoding="utf-8")
-        started = time.perf_counter()
-        edited = _required(index.worker().run(threading.Event()))
-        report["incremental_one_file"] = {"state": edited.state, "seconds": round(time.perf_counter() - started, 2), "records_written": edited.records_written}
-        found = index.storage.call("query", mode="lexical", terms=["m1_pilot_added_function"], k=5)["records"]
-        report["incremental_one_file"]["new_symbol_found"] = bool(found)
+        report["incremental_one_file"] = edit_visibility(lambda cancel: index.worker().run(cancel), lambda: _symbol_at(index, "m1_pilot_added_function", corpus, target))
 
         _note("loading scale records")
         report["scale_load"] = _load_scale_records(index, total=config["scale_records"], dimensions=memory.embedding.dimensions)
@@ -673,11 +770,16 @@ def run_pilot(config: dict[str, Any], repository: Path) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="m1_scale")
-    parser.add_argument("--phase", choices=["pilot", "assembly"], required=True)
+    parser.add_argument("--phase", choices=["pilot", "assembly", "qualify"], required=True)
     parser.add_argument("--config", required=True)
     args = parser.parse_args(argv)
     repository = Path(__file__).resolve().parents[2]
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    if args.phase == "qualify":
+        from tools.plan12_memory.m1_qualify import run_qualify  # it imports this module
+
+        run_qualify(config, repository)
+        return 0
     report = (run_assembly if args.phase == "assembly" else run_pilot)(config, repository)
     out = Path(args.config).with_name(f"{args.phase}.json")
     out.write_text(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")

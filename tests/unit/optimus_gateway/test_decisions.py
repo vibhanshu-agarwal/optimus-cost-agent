@@ -138,6 +138,16 @@ def test_decisions_need_an_enforced_registry_and_a_binding(tmp_path: Path) -> No
     assert upstream.calls == []
 
 
+def test_a_decision_request_cannot_name_a_cached_prefix(tmp_path: Path) -> None:
+    snapshot = _snapshot(tmp_path)
+    upstream = Deciding()
+    bound = {**binding(snapshot, model=JEV, output_cap=1), "cache_prefix_chars": 1}
+    body = {"model": JEV, "state": STATE, "questions": QUESTIONS, "route_binding": bound}
+    status, reply = handle_decision_request(authorization_header=AUTH, request_body=body, config=gateway_config(model_policy(snapshot)), upstream_client=upstream)
+    assert (status, reply["code"]) == (400, "CACHE_PREFIX_INVALID")
+    assert upstream.calls == []
+
+
 def test_only_a_classifier_eligible_model_is_served(tmp_path: Path) -> None:
     snapshot = _snapshot(tmp_path)
     upstream = Deciding()
