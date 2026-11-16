@@ -87,9 +87,16 @@ def _integer(value: Any, minimum: int, maximum: int) -> int:
 
 
 def _line(value: Any, limit: int) -> str:
-    if type(value) is not str or len(value) > limit or any(ord(c) < 32 and c != "\t" for c in value):
+    """One line: no control characters (C0, DEL, C1) except tab, and no bidi overrides or isolates. Other format characters,
+    such as the joiners inside emoji, are text."""
+    if type(value) is not str or len(value) > limit or any(_forbidden(c) for c in value):
         raise _refuse()
     return value
+
+
+def _forbidden(c: str) -> bool:
+    code = ord(c)
+    return (code < 32 and c != "\t") or 0x7F <= code <= 0x9F or 0x202A <= code <= 0x202E or 0x2066 <= code <= 0x2069
 
 
 def _choice(value: Any, allowed: tuple[str, ...]) -> str:
@@ -134,7 +141,7 @@ def event(value: Any) -> dict[str, Any]:
         raise _refuse()
     if (action == "withdraw") != (status == "withdrawn") or status == "purged":
         raise _refuse()
-    if action == "admit" and value["version"] != 1 or action == "update" and value["version"] == 1:
+    if (action == "admit") != (value["version"] == 1) and action != "off":  # the engine's fold refuses anything else for good
         raise _refuse()
     return value
 

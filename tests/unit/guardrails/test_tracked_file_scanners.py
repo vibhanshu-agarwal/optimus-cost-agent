@@ -109,6 +109,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tests/integration/context/test_memory_b1_canaries.py:test_the_canaries_really_are_in_the_source:rglob:*": "Reads the canary repository this test module wrote under tmp_path.",
     "tests/integration/context/test_memory_b1_canaries.py:test_the_host_side_writes_no_cache_or_journal_with_source_text:rglob:*": "Scans the test's own config root and canary repository for leaked text and leftovers.",
     "tests/integration/context/test_memory_native_keyring.py:test_the_real_keyring_holds_the_password_and_no_file_does:rglob:*": "Scans the configuration folder setup wrote under tmp_path for the password.",
+    "tests/unit/context/test_memory_store_setup.py:test_store_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password:rglob:*": "Scans the store configuration folder setup wrote under tmp_path for the password.",
     "tests/integration/memory/test_native_keyring.py:test_the_real_keyring_holds_the_password_and_no_file_does:rglob:*": "Scans the store configuration folder setup wrote under tmp_path for the password.",
     "tests/integration/evidence/test_acpx_capture_live.py:test_acpx_capture_streams_into_redaction_gate_without_raw_transcript:rglob:*": "Walks a tmp_path capture created by this test.",
     "tests/integration/evidence/test_collector_redaction_live.py:test_collector_redaction_live_os_keyring_and_public_gate:rglob:*": "Walks the test-created capture tree.",

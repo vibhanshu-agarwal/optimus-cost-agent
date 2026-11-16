@@ -6321,6 +6321,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus_gateway.memory_store:MemoryStore.page:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: measures the encoded size of confirmed items to keep a list reply under its bound; the result is discarded and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_commit.py::test_a_list_page_stays_inside_the_reply_bound",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus_gateway.memory_store:MemoryStore._used:logger_export",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: Redis INFO is read for used memory; the reply carries counts and flags only, and nothing is logged.",

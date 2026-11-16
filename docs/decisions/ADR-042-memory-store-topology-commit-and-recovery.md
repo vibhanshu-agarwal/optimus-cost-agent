@@ -48,7 +48,9 @@ qualification freezes them.
 `optimus-trust memory-setup --store` writes `memory-store/memory-store.json`, a hash-only `users.acl` and a generated password under keyring service
 `optimus-gateway-memory-store`. It changes nothing about index setup. The launch approval binds the configuration's digest as
 `_memory_store_config`; the signed manifest's `memory_store` field (schema offset 12) and the attach identity's `memory_store` field bind the store's
-literal, and an absent configuration leaves both exactly as before. The ACP host starts container `optimus-memory-store-redis` (volume
+literal. An absent configuration adds no approval literal and leaves the manifest's bytes as before. The attach identity always carries the field,
+empty when there is no store, so its digest changes once for every launch, as ADR-037's did, and a Gateway left running from an older build is
+not attached to. The ACP host starts container `optimus-memory-store-redis` (volume
 `optimus-memory-store-data`, loopback port 6394, the M1 image by digest) with AOF on, `noeviction`, `maxmemory` 512 MiB and a 1024 MiB container cap. It
 never adopts or replaces a container or listener with other settings.
 
@@ -84,7 +86,8 @@ the watermark confirms every earlier entry too.
 
 A retry under the same key with the same content returns the first result and appends nothing; different content under that key is
 `IDEMPOTENCY_CONFLICT`. A reply that never confirmed is `unconfirmed`, and admission stops until a fresh `WAITAOF` succeeds; withdrawals and off records
-still go through. New saves are also refused at the 384 MiB admission ceiling, keeping the rest for deletion and control.
+still go through. New saves are also refused at the 384 MiB admission ceiling, keeping the rest for deletion and control; a retry of a save already in the
+stream is answered from it, not refused. A lease's fence is confirmed on disk before its token is handed out.
 
 ### Serving
 
@@ -98,7 +101,9 @@ refuses a healthy store that is not empty. Task 4 delivers it and amends this re
 
 ## Consequences
 
-- Every confirmed save costs one local fsync wait, bounded at 1 second; the ack latency target is frozen in `reports/plan12-memory-m3/targets.json`.
+- Every confirmed save waits for the next fsync. Under `appendfsync everysec` that measured about 1.0 s per save (50 in a row: p50 1.003 s, max
+  1.006 s), bounded at 2.5 s, and one Gateway's writer confirms about one save a second. The ack target is frozen in
+  `reports/plan12-memory-m3/targets.json`; whether to move to `appendfsync always` is open for the checkpoint 1 review.
 - One writer per project at a time. A second writer waits for the lease or is refused; nothing merges.
 - Two workspaces on one key are not isolated from each other by the store.
 - An `unconfirmed` reply is honest, not a failure to report: the host must not say "Remembered" for it.

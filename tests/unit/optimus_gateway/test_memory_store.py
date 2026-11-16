@@ -34,6 +34,9 @@ class _Store:
             raise self.error
         return {"status": "ok"}
 
+    def forget(self) -> None:
+        self.forgotten = getattr(self, "forgotten", 0) + 1
+
 
 def _service(store: _Store, **kwargs: Any) -> memory_store.MemoryStoreService:
     return memory_store.MemoryStoreService(store, **kwargs)  # type: ignore[arg-type]
@@ -68,6 +71,30 @@ class _Redis:
     def execute_command(self, *args: Any) -> Any:
         assert args[:3] == ("WAITAOF", 1, 0)
         return list(self.waitaof) if isinstance(self.waitaof, tuple) else self.waitaof
+
+    def pipeline(self, transaction: bool = True) -> _Probe:
+        assert not transaction
+        return _Probe(self)
+
+
+class _Probe:
+    """The fsync probe's one-connection pipeline: INCR of the probe key, then WAITAOF."""
+
+    def __init__(self, client: _Redis) -> None:
+        self.client, self.queued = client, []  # type: list[str]
+
+    def incr(self, key: str) -> None:
+        assert key == "omem:fsync-probe"
+        self.queued.append("incr")
+
+    def execute_command(self, *args: Any) -> None:
+        assert args[:3] == ("WAITAOF", 1, 0)
+        self.queued.append("waitaof")
+
+    def execute(self) -> list[Any]:
+        assert self.queued == ["incr", "waitaof"], "the probe must write before it waits"
+        self.client.probes = getattr(self.client, "probes", 0) + 1
+        return [1, self.client.execute_command("WAITAOF", 1, 0, 0)]
 
 
 def _refusal(client: _Redis, resource: str = "optimus-memory-store-x") -> str | None:

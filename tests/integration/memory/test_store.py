@@ -266,3 +266,17 @@ def test_the_writer_is_one_connection_without_retries(provisioned: Provisioned) 
         assert connection.retry._retries == 0
     finally:
         pool.release(connection)
+
+
+def test_fifty_saves_in_a_row_are_each_confirmed_within_the_commit_timeout(provisioned: Provisioned) -> None:
+    service, project = _service(provisioned), _project()
+    token = _lease(service, project)
+    took: list[float] = []
+    for n in range(50):
+        started = time.perf_counter()
+        status, reply = _append(service, project, token, _event(item=f"m-{n:016x}"))
+        took.append(time.perf_counter() - started)
+        assert status == 200 and reply["durable_state"] == "confirmed", reply
+    took.sort()
+    print(f"ack seconds: p50={took[24]:.4f} p95={took[47]:.4f} max={took[-1]:.4f}")
+    assert took[-1] < memory_store._WAITAOF_COMMIT_MS / 1000

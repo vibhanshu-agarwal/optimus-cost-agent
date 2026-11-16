@@ -11,19 +11,20 @@ Admission is bounded, so memory traffic waits or is refused and never holds a mo
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any, Final
 
 import redis
 from redis.backoff import NoBackoff
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import RedisError, TimeoutError, WatchError
+from redis.exceptions import RedisError, ResponseError, TimeoutError, WatchError
 from redis.retry import Retry
 
 from optimus_security import memory_store_contract as msc
@@ -31,10 +32,11 @@ from optimus_security.memory_store_config import KEYRING_SERVICE, MemoryStoreCon
 
 _PREFIX: Final = "omem"
 _RESOURCE_KEY: Final = f"{_PREFIX}:resource"
-_WAITAOF_PROBE_MS: Final = 1000
-_WAITAOF_COMMIT_MS: Final = 1000
+_WAITAOF_PROBE_MS: Final = 2500  # appendfsync everysec: a write waits for the next fsync, measured at about 1.0 s
+_WAITAOF_COMMIT_MS: Final = 2500
 _WATCH_ATTEMPTS: Final = 3
 _FOLD_PAGE: Final = 500
+_LIST_ENVELOPE_BYTES: Final = 1024  # status, cursor and framing around the items
 _FENCE_KEY: Final = f"{_PREFIX}:fence"
 _PROBE_KEY: Final = f"{_PREFIX}:fsync-probe"
 _MIB: Final = 1024 * 1024
@@ -69,7 +71,7 @@ def connect(endpoint: MemoryStoreEndpoint, *, writer: bool = False) -> redis.Red
     if writer:
         pool = redis.BlockingConnectionPool(max_connections=1, timeout=msc.DEADLINE_SECONDS, retry=Retry(NoBackoff(), 0), **settings)
         return redis.Redis(connection_pool=pool)
-    return redis.Redis(max_connections=msc.SERVING_WORKERS + 2, decode_responses=False, **settings)
+    return redis.Redis(max_connections=msc.SERVING_WORKERS + 2, decode_responses=False, retry=Retry(NoBackoff(), 0), **settings)
 
 
 def _text(value: Any) -> str:
@@ -78,7 +80,14 @@ def _text(value: Any) -> str:
 
 def waitaof_local(client: redis.Redis, *, timeout_ms: int) -> int:
     """How many local fsyncs `WAITAOF 1 0` confirms on one connection: 1 once preceding writes are on disk, 0 otherwise."""
-    reply = client.execute_command("WAITAOF", 1, 0, timeout_ms)
+    try:
+        reply = client.execute_command("WAITAOF", 1, 0, timeout_ms)
+    except ResponseError as exc:
+        raise MemoryStoreStartupError("MEMORY_STORE_FSYNC_UNCONFIRMED") from exc
+    return _local_count(reply)
+
+
+def _local_count(reply: Any) -> int:
     if not isinstance(reply, list) or len(reply) != 2 or not all(isinstance(count, int) for count in reply):
         raise MemoryStoreStartupError("MEMORY_STORE_WAITAOF_UNEXPECTED")
     return int(reply[0])
@@ -103,12 +112,24 @@ def verify_resource(client: redis.Redis, resource: str) -> None:
             stored = client.get(_RESOURCE_KEY)  # a concurrent Gateway may have marked it first; either way it must be ours
         if stored is None or _text(stored) != resource:
             raise MemoryStoreStartupError("MEMORY_STORE_RESOURCE_MISMATCH")
-        if waitaof_local(client, timeout_ms=_WAITAOF_PROBE_MS) < 1:
+        if fsync_probe(client, timeout_ms=_WAITAOF_PROBE_MS) < 1:
             raise MemoryStoreStartupError("MEMORY_STORE_FSYNC_UNCONFIRMED")
     except MemoryStoreStartupError:
         raise
     except (RedisError, OSError) as exc:
         raise MemoryStoreStartupError("MEMORY_STORE_UNREACHABLE") from exc
+
+
+def fsync_probe(client: redis.Redis, *, timeout_ms: int) -> int:
+    """Write the probe key and wait for its fsync on one connection: a WAITAOF after no write answers at once and proves nothing."""
+    pipe = client.pipeline(transaction=False)
+    pipe.incr(_PROBE_KEY)
+    pipe.execute_command("WAITAOF", 1, 0, timeout_ms)
+    try:
+        replies = pipe.execute()
+    except ResponseError as exc:
+        raise MemoryStoreStartupError("MEMORY_STORE_FSYNC_UNCONFIRMED") from exc
+    return _local_count(replies[1])
 
 
 class _Fold:
@@ -203,47 +224,67 @@ class MemoryStore:
     # --- leases --------------------------------------------------------------------------------------------------------
 
     def _op_lease(self, body: dict[str, Any]) -> dict[str, Any]:
-        """One writer per project. A new holder always takes a higher fence, so a writer that lost its lease cannot append."""
+        """One writer per project. A new holder always takes a higher fence, and gets it only once the fence is on disk, so a
+        crash cannot hand the same token out twice and a writer that lost its lease cannot append."""
         key, owner = self._key(body["project"], "lease"), body["owner"]
-        for _ in range(_WATCH_ATTEMPTS):
-            with self._redis.pipeline() as pipe:
-                try:
-                    pipe.watch(key)
-                    held = _text(pipe.get(key) or b"")
-                    if body["action"] == "acquire":
-                        if held and held.split(":", 1)[1] != owner:
-                            pipe.unwatch()
-                            raise msc.MemoryRequestError("LEASE_HELD", 409)
-                        token = int(pipe.incr(_FENCE_KEY))
-                        pipe.multi()
-                        pipe.set(key, f"{token}:{owner}", px=body["ttl_ms"])
+        with self._writing():
+            connection = int(self._writer.client_id())
+            for _ in range(_WATCH_ATTEMPTS):
+                token = 0
+                with self._writer.pipeline() as pipe:
+                    try:
+                        pipe.watch(key)
+                        held = _text(pipe.get(key) or b"")
+                        if body["action"] == "acquire":
+                            if held and held.split(":", 1)[1] != owner:
+                                pipe.unwatch()
+                                raise msc.MemoryRequestError("LEASE_HELD", 409)
+                            token = int(pipe.incr(_FENCE_KEY))
+                            pipe.multi()
+                            pipe.set(key, f"{token}:{owner}", px=body["ttl_ms"])
+                        else:
+                            if held != f"{body['token']}:{owner}":
+                                pipe.unwatch()
+                                raise msc.MemoryRequestError("LEASE_LOST", 409)
+                            pipe.multi()
+                            if body["action"] == "renew":
+                                pipe.pexpire(key, body["ttl_ms"])
+                            else:
+                                pipe.delete(key)
                         pipe.execute()
-                        return {"status": "ok", "token": token}
-                    if held != f"{body['token']}:{owner}":
-                        pipe.unwatch()
-                        raise msc.MemoryRequestError("LEASE_LOST", 409)
-                    pipe.multi()
-                    if body["action"] == "renew":
-                        pipe.pexpire(key, body["ttl_ms"])
-                    else:
-                        pipe.delete(key)
-                    pipe.execute()
+                    except WatchError:
+                        continue
+                if not token:
                     return {"status": "ok"}
-                except WatchError:
-                    continue
-        raise msc.MemoryRequestError("LEASE_CONTENDED", 409)
+                if not self._durable(connection):
+                    raise msc.MemoryRequestError("LEASE_UNCONFIRMED", 503)
+                return {"status": "ok", "token": token}
+            raise msc.MemoryRequestError("LEASE_CONTENDED", 409)
+
+    @contextlib.contextmanager
+    def _writing(self) -> Iterator[None]:
+        if not self._write_lock.acquire(timeout=msc.DEADLINE_SECONDS):
+            raise msc.MemoryRequestError("MEMORY_BUSY", 503)
+        try:
+            yield
+        finally:
+            self._write_lock.release()
+
+    def forget(self) -> None:
+        """Drop every cached fold after an outage or an unexpected error; the next use rebuilds from the stream."""
+        self._writer_folds = {}
+        self._serving_folds = {}
 
     # --- the one append ------------------------------------------------------------------------------------------------
 
     def _op_append(self, body: dict[str, Any]) -> dict[str, Any]:
         event = body["event"]
-        if event["action"] in ("admit", "update") and (self._fsync_failed or self._used() >= self._ceiling_bytes):
-            self._recheck_fsync()  # a refused save never weakens durability; withdrawals and off records still go through
-            if self._fsync_failed or self._used() >= self._ceiling_bytes:
-                raise msc.MemoryRequestError("MEMORY_NOT_ADMITTING", 503)
+        gated = event["action"] in ("admit", "update")  # withdrawals and off records still go through when saves are refused
+        if gated and self._fsync_failed:
+            self._recheck_fsync()
         record = {"type": "event", "key": body["idempotency_key"], "digest": _digest([body["expected_version"], event]),
                   "event": event}
-        return self._append(body["project"], body["token"], record, expected=body["expected_version"])
+        return self._append(body["project"], body["token"], record, expected=body["expected_version"], gated=gated)
 
     def _op_checkpoint(self, body: dict[str, Any]) -> dict[str, Any]:
         point = body["checkpoint"]
@@ -251,11 +292,9 @@ class MemoryStore:
                   "checkpoint": point}
         return self._append(body["project"], body["token"], record, expected=None)
 
-    def _append(self, project: str, token: int, record: dict[str, Any], *, expected: int | None) -> dict[str, Any]:
+    def _append(self, project: str, token: int, record: dict[str, Any], *, expected: int | None, gated: bool = False) -> dict[str, Any]:
         stream, lease = self._key(project, "events"), self._key(project, "lease")
-        if not self._write_lock.acquire(timeout=msc.DEADLINE_SECONDS):
-            raise msc.MemoryRequestError("MEMORY_BUSY", 503)
-        try:
+        with self._writing():
             fold = self._writer_folds.setdefault(project, _Fold())
             connection = int(self._writer.client_id())
             for _ in range(_WATCH_ATTEMPTS):
@@ -274,6 +313,9 @@ class MemoryStore:
                         if record["key"] in fold.keys:
                             pipe.unwatch()
                             replay_at = head
+                        elif gated and (self._fsync_failed or self._used() >= self._ceiling_bytes):
+                            pipe.unwatch()
+                            raise msc.MemoryRequestError("MEMORY_NOT_ADMITTING", 503)
                         else:
                             self._check(fold, record, expected)
                             pipe.multi()
@@ -286,8 +328,6 @@ class MemoryStore:
                 fold.apply(stream_id, record)
                 return {"status": "ok", **_result(stream_id, record), **self._confirm(project, stream_id, connection)}
             raise msc.MemoryRequestError("MEMORY_CONTENDED", 409)
-        finally:
-            self._write_lock.release()
 
     @staticmethod
     def _check(fold: _Fold, record: dict[str, Any], expected: int | None) -> None:
@@ -311,13 +351,18 @@ class MemoryStore:
         self._writer.incr(self._key(project, "sync"))  # puts this connection's offset past the earlier append, wherever it came from
         return {"status": "ok", **result, "replayed": True, **self._confirm(project, head, connection)}
 
-    def _confirm(self, project: str, stream_id: str, connection: int) -> dict[str, str]:
+    def _durable(self, connection: int) -> bool:
+        """Whether this connection's writes are on disk: `WAITAOF` on the writer, and the same connection before and after."""
         try:
             confirmed = waitaof_local(self._writer, timeout_ms=_WAITAOF_COMMIT_MS) >= 1 and int(self._writer.client_id()) == connection
         except (RedisError, OSError, MemoryStoreStartupError):
             confirmed = False
         if not confirmed:
             self._fsync_failed = True
+        return confirmed
+
+    def _confirm(self, project: str, stream_id: str, connection: int) -> dict[str, str]:
+        if not self._durable(connection):
             return {"durable_state": "unconfirmed", "projection_state": "pending"}
         self._advance_watermark(project, stream_id)
         return {"durable_state": "confirmed", "projection_state": "current"}
@@ -325,8 +370,7 @@ class MemoryStore:
     def _recheck_fsync(self) -> None:
         if self._fsync_failed and self._write_lock.acquire(timeout=msc.DEADLINE_SECONDS):
             try:
-                self._writer.incr(_PROBE_KEY)
-                self._fsync_failed = waitaof_local(self._writer, timeout_ms=_WAITAOF_COMMIT_MS) < 1
+                self._fsync_failed = fsync_probe(self._writer, timeout_ms=_WAITAOF_COMMIT_MS) < 1
             except (RedisError, OSError, MemoryStoreStartupError):
                 self._fsync_failed = True
             finally:
@@ -353,31 +397,39 @@ class MemoryStore:
 
     # --- serving -------------------------------------------------------------------------------------------------------
 
-    def _served(self, project: str) -> _Fold:
+    def _served(self, project: str, answer: Callable[[_Fold], dict[str, Any]]) -> dict[str, Any]:
+        """Answer from the confirmed fold while holding the read lock: another request may advance the same fold."""
         with self._read_lock:
             fold = self._serving_folds.setdefault(project, _Fold())
             watermark = _text(self._redis.get(self._key(project, "durable")) or b"0-0")
             if _order(watermark) < _order(fold.head):
                 fold = self._serving_folds[project] = _Fold()
             fold.advance(self._redis, self._key(project, "events"), watermark)
-            return fold
+            return answer(fold)
 
     def _op_read(self, body: dict[str, Any]) -> dict[str, Any]:
-        return {"status": "ok", "item": self._served(body["project"]).items.get(body["item"])}
+        return self._served(body["project"], lambda fold: {"status": "ok", "item": fold.items.get(body["item"])})
 
     def _op_list(self, body: dict[str, Any]) -> dict[str, Any]:
-        """Confirmed items in one scope, in item-id order. A cursor is sealed to its project and scope."""
-        after = ""
-        if "cursor" in body:
-            after = self._unseal(body["project"], body["scope"], body["cursor"])
-        fold = self._served(body["project"])
-        ids = sorted(item for item, record in fold.items.items() if record["scope"] == body["scope"] and item > after)
-        page = ids[: body["limit"]]
-        cursor = self._seal(body["project"], body["scope"], page[-1]) if len(ids) > len(page) else None
-        return {"status": "ok", "items": [fold.items[item] for item in page], "cursor": cursor}
+        """Confirmed items in one scope, in item-id order, as many as fit the reply bound. A cursor is sealed to its project and scope."""
+        after = self._unseal(body["project"], body["scope"], body["cursor"]) if "cursor" in body else ""
+
+        def page(fold: _Fold) -> dict[str, Any]:
+            ids = sorted(item for item, record in fold.items.items() if record["scope"] == body["scope"] and item > after)
+            items: list[dict[str, Any]] = []
+            size = _LIST_ENVELOPE_BYTES
+            for item in ids[: body["limit"]]:
+                size += len(json.dumps(fold.items[item], ensure_ascii=True)) + 1
+                if items and size > msc.MAX_RESPONSE_BYTES:
+                    break
+                items.append(fold.items[item])
+            cursor = self._seal(body["project"], body["scope"], items[-1]["item"]) if len(ids) > len(items) else None
+            return {"status": "ok", "items": items, "cursor": cursor}
+
+        return self._served(body["project"], page)
 
     def _op_checkpoints(self, body: dict[str, Any]) -> dict[str, Any]:
-        return {"status": "ok", "checkpoints": self._served(body["project"]).checkpoints[-body["limit"]:][::-1]}
+        return self._served(body["project"], lambda fold: {"status": "ok", "checkpoints": fold.checkpoints[-body["limit"]:][::-1]})
 
     def _seal(self, project: str, scope: str, after: str) -> str:
         data = base64.urlsafe_b64encode(after.encode()).decode()
@@ -431,8 +483,10 @@ class MemoryStoreService:
             return refusal.status, msc.error_body(refusal.code)
         except (RedisConnectionError, TimeoutError, OSError):
             self._verified = self._verify is None  # whatever comes back on this port has to prove itself again
+            self._store.forget()  # and nothing cached from before the outage is trusted: it may hold writes Redis lost
             return 503, msc.error_body("MEMORY_UNAVAILABLE")
-        except RedisError:
+        except Exception:  # noqa: BLE001 - a malformed entry or any other fault is a stable code, never a dropped connection
+            self._store.forget()
             return 503, msc.error_body("MEMORY_STORAGE_ERROR")
         finally:
             self._workers.release()

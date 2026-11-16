@@ -92,7 +92,18 @@ INVALID = {
     "idempotency-not-digest": append(idempotency_key="retry-1"),
     "checkpoint-with-text": {"op": "checkpoint", "project": "p-1", "token": 1, "checkpoint": {**_POINT, "objective": "fix the bug"}},
     "checkpoint-bad-baseline": {"op": "checkpoint", "project": "p-1", "token": 1, "checkpoint": {**_POINT, "baseline": "main"}},
+    "withdraw-first": append(event=event(action="withdraw", status="withdrawn", title="", statement="")),
+    "statement-c1-control": append(event=event(statement="a" + chr(0x85) + "b")),
+    "statement-delete": append(event=event(statement="a" + chr(0x7F))),
+    "title-bidi-override": append(event=event(title=chr(0x202E) + "evil")),
+    "title-bidi-isolate": append(event=event(title=chr(0x2066) + "x" + chr(0x2069))),
 }
+
+
+def test_emoji_joined_by_zero_width_joiners_are_text() -> None:
+    family = chr(0x1F468) + chr(0x200D) + chr(0x1F469) + chr(0x200D) + chr(0x1F467)
+    body = append(event=event(statement=f"Our team emoji is {family}"))
+    assert msc.parse_request(json.dumps(body).encode()) == body
 
 
 @pytest.mark.parametrize("body", INVALID.values(), ids=INVALID.keys())
