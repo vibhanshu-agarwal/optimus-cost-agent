@@ -26,8 +26,10 @@ class _Store:
         self.error = error
         self.calls = 0
 
-    def take_suspect(self) -> bool:
-        return False
+    suspect = False
+
+    def connection_lost(self) -> None:
+        self.lost = getattr(self, "lost", 0) + 1
 
     def dispatch(self, _body: dict[str, Any], *, deadline: float | None = None) -> dict[str, Any]:
         self.calls += 1
@@ -184,7 +186,7 @@ def test_a_failed_startup_check_is_a_stable_refusal_and_is_tried_again() -> None
     store = _Store()
     outcomes: list[Exception | None] = [memory_store.MemoryStoreStartupError("MEMORY_STORE_UNREACHABLE"), None]
 
-    def verify() -> None:
+    def verify(_deadline: float) -> None:
         outcome = outcomes.pop(0)
         if outcome is not None:
             raise outcome
@@ -200,7 +202,7 @@ def test_an_outage_makes_the_store_prove_itself_again() -> None:
 
     store = _Store(error=RedisConnectionError("gone"))
     checks: list[int] = []
-    service = _service(store, verify=lambda: checks.append(1))
+    service = _service(store, verify=lambda _deadline: checks.append(1))
     assert service.handle(_CAPS, deadline=time.monotonic() + 1) == (503, msc.error_body("MEMORY_UNAVAILABLE"))
     store.error = None
     assert service.handle(_CAPS, deadline=time.monotonic() + 1)[0] == 200

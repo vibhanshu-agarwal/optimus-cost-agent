@@ -215,6 +215,34 @@ class MemoryEvent:
             raise ContractError("only an item's first event admits it")
 
 
+_STREAM_ID = re.compile(r"[0-9]{1,20}-[0-9]{1,20}")
+
+
+def _stream_id(owner: str, value: object) -> None:
+    if type(value) is not str or not _STREAM_ID.fullmatch(value):
+        raise ContractError(f"{owner}.stream_id must be a store entry id")
+
+
+@dataclass(frozen=True)
+class StoredEvent:
+    """An event as the store returns it: the append's record plus the entry id the store assigned, its transaction time."""
+
+    event: MemoryEvent
+    stream_id: str
+
+    def __post_init__(self) -> None:
+        _stream_id("StoredEvent", self.stream_id)
+
+    @classmethod
+    def from_record(cls, project: str, record: Mapping[str, Any]) -> StoredEvent:
+        if not isinstance(record, Mapping) or "stream_id" not in record:
+            raise ContractError("StoredEvent record must carry its stream_id")
+        return cls(MemoryEvent.from_record(project, {k: v for k, v in record.items() if k != "stream_id"}), record["stream_id"])
+
+    def to_record(self) -> dict[str, Any]:
+        return {**self.event.to_record(), "stream_id": self.stream_id}
+
+
 @dataclass(frozen=True)
 class ServedMemory:
     """What may enter a prompt: one active, vouched-for item at its confirmed version, with the citation the answer must use."""
@@ -337,15 +365,52 @@ class ContinuationCheckpoint:
         _references(owner, "pending", self.pending)
 
 
+@dataclass(frozen=True)
+class StoredCheckpoint:
+    checkpoint: ContinuationCheckpoint
+    stream_id: str
+
+    def __post_init__(self) -> None:
+        _stream_id("StoredCheckpoint", self.stream_id)
+
+    @classmethod
+    def from_record(cls, project: str, record: Mapping[str, Any]) -> StoredCheckpoint:
+        if not isinstance(record, Mapping) or "stream_id" not in record:
+            raise ContractError("StoredCheckpoint record must carry its stream_id")
+        point = ContinuationCheckpoint.from_record(project, {k: v for k, v in record.items() if k != "stream_id"})
+        return cls(point, record["stream_id"])
+
+
+@dataclass(frozen=True)
+class CheckpointResult:
+    """What the store reports for one checkpoint: a session's settled turn, not an item version."""
+
+    session: str
+    sequence: int
+    stream_id: str
+    durable_state: str
+    projection_state: str
+    replayed: bool = False
+
+    def __post_init__(self) -> None:
+        _opaque("CheckpointResult", "session", self.session)
+        _count("CheckpointResult", "sequence", self.sequence, minimum=1)
+        _stream_id("CheckpointResult", self.stream_id)
+        _choice("CheckpointResult", "durable_state", self.durable_state, DURABLE_STATES)
+        _choice("CheckpointResult", "projection_state", self.projection_state, PROJECTION_STATES)
+        if type(self.replayed) is not bool:
+            raise ContractError("CheckpointResult.replayed must be a bool")
+
+
 class MemoryStorePort(Protocol):
     """What the engine needs from the store, injected by the host: closed operations on typed records, never keys or commands."""
 
     def append(self, event: MemoryEvent, *, expected_version: int, idempotency_key: str) -> MemoryCommitResult: ...
 
-    def read(self, project: str, item: str) -> MemoryEvent | None: ...
+    def read(self, project: str, item: str) -> StoredEvent | None: ...
 
-    def list_items(self, project: str, scope: str, *, limit: int, cursor: str | None = None) -> tuple[list[MemoryEvent], str | None]: ...
+    def list_items(self, project: str, scope: str, *, limit: int, cursor: str | None = None) -> tuple[list[StoredEvent], str | None]: ...
 
-    def checkpoint(self, checkpoint: ContinuationCheckpoint) -> MemoryCommitResult: ...
+    def checkpoint(self, checkpoint: ContinuationCheckpoint) -> CheckpointResult: ...
 
-    def checkpoints(self, project: str, *, limit: int) -> list[ContinuationCheckpoint]: ...
+    def checkpoints(self, project: str, *, limit: int) -> list[StoredCheckpoint]: ...

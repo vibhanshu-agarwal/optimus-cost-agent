@@ -257,8 +257,17 @@ def test_checkpoints_are_kept_once_and_served_newest_first(provisioned: Provisio
     assert [entry["sequence"] for entry in served] == [3, 2]
 
 
+def test_a_connection_takes_the_request_budget_as_its_socket_timeout_and_gives_it_back(provisioned: Provisioned) -> None:
+    client = memory_store.connect(provisioned.endpoint())
+    client.ping()
+    with memory_store._budgeted(client, 0.3) as connection:
+        assert connection.socket_timeout == 0.3 and connection._sock.gettimeout() == 0.3
+        client.ping()
+    assert connection.socket_timeout == msc.DEADLINE_SECONDS and connection._sock.gettimeout() == msc.DEADLINE_SECONDS
+
+
 def test_the_writer_is_one_connection_without_retries(provisioned: Provisioned) -> None:
-    writer = memory_store.connect(provisioned.endpoint(), writer=True)
+    writer = memory_store.connect(provisioned.endpoint())
     pool = writer.connection_pool
     assert isinstance(pool, redis.BlockingConnectionPool) and pool.max_connections == 1
     assert int(writer.client_id()) == int(writer.client_id())  # the same connection answers twice

@@ -63,7 +63,7 @@ The ACL opens only `omem:*` and named commands: no scripting, `KEYS`, `CONFIG`, 
 
 `POST /v1/context/memory` takes a closed set of operations: `capabilities`, `lease`, `append`, `read`, `list`, `checkpoint`, `checkpoints`, `purge`,
 `purge_status`, `export`, `restore` and `restore_status`. The bearer is checked before any body byte is read. Limits: 256 KiB requests, 1 MiB replies,
-a 5 second deadline that covers waiting and execution (no lock wait, fold page or append starts after it), two serving workers and a queue of eight;
+a 5 second deadline that covers waiting and execution, two serving workers and a queue of eight;
 a full queue is refused at once, and memory traffic never holds a model or capture request. No command, key or filesystem path crosses the route,
 and a field outside the schema is refused. Every shape is fixed now; `purge` and `purge_status` answer `MEMORY_OPERATION_UNAVAILABLE` until Task 2's
 journal backs them, and `export`, `restore` and `restore_status` until Task 4's recovery copy does.
@@ -87,8 +87,13 @@ An append runs on the writer's single connection: `WATCH` the lease and the stre
 check the expected version and the idempotency key there (not in what is served), then `MULTI` with exactly one `XADD`. `WAITAOF 1 0` follows on that
 connection. Only when it reports the local fsync, and `CLIENT ID` is unchanged, does the confirmed watermark move to the new entry. AOF is ordered, so
 the watermark confirms every earlier entry too. A lost or replaced connection, during the wait or reported by redis-py as a `WatchError`, is not an
-fsync failure: the Gateway drops every cached fold and the resource proves itself again before the next request, because Redis may have lost writes a
-cache still holds.
+fsync failure: the request answers `MEMORY_UNAVAILABLE`, the Gateway drops every cached fold, and every operation, including one already queued, is
+refused until the resource proves itself again, because Redis may have lost writes a cache still holds or another instance may now hold the port.
+Whether a transaction already sent took effect is uncertain; a retry under the same key reconciles it.
+
+The store has two single connections, one for writes and one for reads, each under its own lock. While one is in use its socket timeout is the
+request's remaining budget, so every lock wait and every Redis wait, verification and the fsync probe included, ends with the deadline. Past the
+deadline nothing new starts; a write already sent stays uncertain.
 
 A retry under the same key with the same content returns the first result and appends nothing; different content under that key is
 `IDEMPOTENCY_CONFLICT`. A reply that never confirmed is `unconfirmed`, and admission stops until a fresh `WAITAOF` succeeds; withdrawals and off records
@@ -107,8 +112,8 @@ refuses a healthy store that is not empty. Task 4 delivers it and amends this re
 
 ## Consequences
 
-- Every write to the memory store is fsynced before Redis answers. Confirmed saves measured p50 8.7 ms, max 15.6 ms; a slow disk is bounded by a
-  2.5 s wait. This departs from Plan 12.11's proposed `everysec`; `reports/plan12-memory-m3/targets.json` keeps its frozen thresholds and its
+- Every write to the memory store is fsynced before Redis answers. Confirmed saves measured p50 8.7 ms, max 15.6 ms; a slow disk is bounded by the
+  request's deadline, after which the save is reported as uncertain, never as confirmed. This departs from Plan 12.11's proposed `everysec`; `reports/plan12-memory-m3/targets.json` keeps its frozen thresholds and its
   description of the proposal, and Task 2's K2 measures contention and slow storage under `always`.
 - One writer per project at a time. A second writer waits for the lease or is refused; nothing merges.
 - Two workspaces on one key are not isolated from each other by the store.

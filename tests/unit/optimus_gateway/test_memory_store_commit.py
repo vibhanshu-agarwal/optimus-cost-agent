@@ -13,6 +13,7 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import WatchError
 
+from context_engine import memory_contracts as engine
 from optimus_gateway import memory_store
 from optimus_security import memory_store_contract as msc
 
@@ -28,6 +29,8 @@ class Server:
         self.fsync = 1
         self.used = 10 * 1024 * 1024
         self.before_exec: Callable[[], None] | None = None
+        self.page_delay = 0.0
+        self.waitaof_timeouts: list[int] = []
 
     def touch(self, key: str) -> None:
         self.versions[key] = self.versions.get(key, 0) + 1
@@ -62,7 +65,12 @@ class Server:
         self.touch(key)
         return entry_id
 
+    def dbsize(self) -> int:
+        return len(self.strings) + len(self.streams)
+
     def xrange(self, key: str, min: str, max: str, count: int) -> list[Any]:
+        time.sleep(self.page_delay)
+        self.pages = getattr(self, "pages", 0) + 1
         low = memory_store._order(min.lstrip("("))
         high = memory_store._order(max)
         rows = [(i, f) for i, f in self.streams.get(key, []) if low < memory_store._order(i.decode()) <= high]
@@ -140,7 +148,7 @@ class Client:
 
     def info(self, _section: str) -> dict[str, Any]:
         self.check()
-        return {"used_memory": self.server.used}
+        return {"used_memory": self.server.used, "aof_enabled": 1, "maxmemory_policy": "noeviction"}
 
     def execute_command(self, *args: Any) -> Any:
         self.check()
@@ -148,6 +156,7 @@ class Client:
         if self.waitaof_raises is not None:
             error, self.waitaof_raises = self.waitaof_raises, None
             raise error
+        self.server.waitaof_timeouts.append(int(args[3]))
         return [self.server.fsync, 0]
 
     def __getattr__(self, name: str) -> Callable[..., Any]:
@@ -157,12 +166,24 @@ class Client:
         return call
 
 
-def store(server: Server | None = None, verify: Callable[[], None] | None = None) -> tuple[memory_store.MemoryStoreService, Server, Client]:
+RESOURCE = "optimus-memory-store-test"
+
+
+def store(server: Server | None = None, checks: list[int] | None = None) -> tuple[memory_store.MemoryStoreService, Server, Client]:
+    """The service with the store's own verification, which marks the stand-in as its resource on first use."""
     server = server or Server()
     writer = Client(server)
-    service = memory_store.MemoryStoreService(memory_store.MemoryStore(Client(server, 9), writer, admission_ceiling_mb=384,  # type: ignore[arg-type]
-                                                                      cursor_key=b"k"), verify=verify)
-    return service, server, writer
+    inner = memory_store.MemoryStore(Client(server, 9), writer, admission_ceiling_mb=384, cursor_key=b"k")  # type: ignore[arg-type]
+
+    def verify(deadline: float) -> None:
+        if checks is not None:
+            checks.append(1)
+        try:
+            inner.verify(RESOURCE, deadline=deadline)
+        except msc.MemoryRequestError as refusal:
+            raise memory_store.MemoryStoreStartupError(refusal.code) from None
+
+    return memory_store.MemoryStoreService(inner, verify=verify), server, writer
 
 
 def call(service: memory_store.MemoryStoreService, body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -226,6 +247,7 @@ def test_a_reconnect_between_append_and_waitaof_is_never_a_confirmation() -> Non
     token = lease(service)
     server.before_exec = lambda: setattr(writer, "connection", 8)  # the append lands on another connection than the one checked
     assert append(service, token, event())[1]["durable_state"] == "unconfirmed"
+    assert service._store.suspect is True
 
 
 def test_saves_stop_at_the_ceiling_but_withdrawals_go_through() -> None:
@@ -251,6 +273,7 @@ def test_the_fence_moves_on_and_only_the_holder_appends() -> None:
 
 def test_a_fence_that_is_not_on_disk_is_never_handed_out() -> None:
     service, server, _ = store()
+    call(service, {"op": "capabilities"})  # verified while fsync still works
     server.fsync = 0
     status, reply = call(service, {"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000})
     assert (status, reply) == (503, msc.error_body("LEASE_UNCONFIRMED"))
@@ -338,7 +361,7 @@ def test_the_fsync_probe_writes_before_it_waits(reply: list[int]) -> None:
 
 def test_a_connection_lost_during_waitaof_never_confirms_a_save_redis_then_lost() -> None:
     checks: list[int] = []
-    service, server, writer = store(verify=lambda: checks.append(1))
+    service, server, writer = store(checks=checks)
     token = lease(service)
     stream = memory_store.MemoryStore._key("p-1", "events")
     writer.waitaof_raises = RedisConnectionError("reset")
@@ -354,8 +377,9 @@ def test_a_connection_lost_during_waitaof_never_confirms_a_save_redis_then_lost(
     assert [json.loads(fields[b"e"])["key"] for _id, fields in server.streams[stream]] == ["d" * 64, "c" * 64]
 
 
-def test_a_watch_error_from_a_replaced_connection_drops_the_caches_and_confirms_on_the_new_one() -> None:
-    service, server, writer = store()
+def test_a_watch_error_from_a_replaced_connection_unwinds_and_waits_for_verification() -> None:
+    checks: list[int] = []
+    service, server, writer = store(checks=checks)
     token = lease(service)
     append(service, token, event())
     stream = memory_store.MemoryStore._key("p-1", "events")
@@ -365,8 +389,48 @@ def test_a_watch_error_from_a_replaced_connection_drops_the_caches_and_confirms_
         server.touch(stream)
 
     server.before_exec = reconnect
-    reply = append(service, token, event(version=2))[1]
-    assert reply["durable_state"] == "confirmed" and service._store.take_suspect() is False  # the service already took it
+    assert append(service, token, event(version=2)) == (503, msc.error_body("MEMORY_UNAVAILABLE"))
+    assert len(server.streams[stream]) == 1 and service._store.suspect is True
+    before = len(checks)
+    assert append(service, token, event(version=2))[1]["durable_state"] == "confirmed"  # verified first, then written once
+    assert len(checks) == before + 1 and len(server.streams[stream]) == 2
+
+
+def test_a_lease_whose_connection_was_replaced_is_not_granted() -> None:
+    service, server, writer = store()
+    call(service, {"op": "capabilities"})  # the first request verifies the stand-in
+    lease_key = memory_store.MemoryStore._key("p-1", "lease")
+
+    def reconnect() -> None:
+        writer.connection = 8
+        server.touch(lease_key)
+
+    server.before_exec = reconnect
+    status, reply = call(service, {"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000})
+    assert (status, reply) == (503, msc.error_body("MEMORY_UNAVAILABLE")) and lease_key not in server.strings
+
+
+def test_a_request_queued_behind_a_lost_connection_writes_and_reads_nothing() -> None:
+    service, server, _ = store()
+    token = lease(service)
+    service._store.connection_lost()
+    stream = memory_store.MemoryStore._key("p-1", "events")
+    renew = {"op": "lease", "project": "p-1", "owner": "host-1", "action": "renew", "ttl_ms": 60_000, "token": token}  # the writer alone
+    body = {"op": "append", "project": "p-1", "token": token, "expected_version": 0, "idempotency_key": "9" * 64, "event": event()}
+    for op in (renew, body, {"op": "read", "project": "p-1", "item": "m-0123456789abcdef"}):
+        with pytest.raises(msc.MemoryRequestError) as refused:
+            service._store.dispatch(op, deadline=time.monotonic() + 5)  # already past the service's verification gate
+        assert refused.value.code == "MEMORY_UNAVAILABLE"
+    assert stream not in server.streams
+
+
+def test_a_replacement_resource_is_refused_before_anything_runs() -> None:
+    service, server, _ = store()
+    token = lease(service)
+    service._store.connection_lost()
+    server.strings["omem:resource"] = b"optimus-memory-store-someone-else"  # another instance now answers on the port
+    assert append(service, token, event()) == (503, msc.error_body("MEMORY_STORE_RESOURCE_MISMATCH"))
+    assert memory_store.MemoryStore._key("p-1", "events") not in server.streams
 
 
 def test_a_request_whose_budget_went_on_queueing_starts_no_write() -> None:
@@ -392,16 +456,69 @@ def test_a_request_whose_budget_went_on_queueing_starts_no_write() -> None:
     assert memory_store.MemoryStore._key("p-1", "events") not in server.streams
 
 
-def test_an_expired_deadline_stops_a_fold_rebuild_between_pages() -> None:
+def test_an_expired_deadline_stops_a_fold_rebuild_between_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    service, server, _ = store()
+    token = lease(service)
+    for n in range(6):
+        append(service, token, event(item=f"m-{n:016x}"))
+    monkeypatch.setattr(memory_store, "_FOLD_PAGE", 1)
+    service._store.forget()
+    server.page_delay, server.pages = 0.05, 0
+    with pytest.raises(msc.MemoryRequestError) as stopped:
+        service._store.dispatch({"op": "read", "project": "p-1", "item": "m-0000000000000000"}, deadline=time.monotonic() + 0.12)
+    assert stopped.value.code == "MEMORY_TIMEOUT" and 2 <= server.pages < 6  # it started, then stopped between pages
+
+
+def test_the_fsync_recheck_waits_only_for_what_is_left_of_the_request() -> None:
+    service, server, _ = store()
+    token = lease(service)
+    service._store._fsync_failed = True
+    server.fsync, server.waitaof_timeouts = 0, []
+    body = {"op": "append", "project": "p-1", "token": token, "expected_version": 0, "idempotency_key": "8" * 64, "event": event()}
+    started = time.monotonic()
+    status, _reply = service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 0.4)
+    assert status == 503 and time.monotonic() - started < 1.0
+    assert server.waitaof_timeouts and max(server.waitaof_timeouts) <= 400
+
+
+def test_a_read_waits_for_the_read_lock_only_inside_its_budget() -> None:
+    service, _, _ = store()
+    lease(service)
+    held, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with service._store._reading():
+            held.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    held.wait(5)
+    started = time.monotonic()
+    reply = service.handle(json.dumps({"op": "read", "project": "p-1", "item": "m-0123456789abcdef"}).encode(), deadline=time.monotonic() + 0.3)
+    release.set()
+    holder.join(5)
+    assert reply == (503, msc.error_body("MEMORY_BUSY")) and time.monotonic() - started < 1.0
+
+
+def test_replies_convert_into_the_engine_contracts() -> None:
     service, _, _ = store()
     token = lease(service)
-    for n in range(3):
-        append(service, token, event(item=f"m-{n:016x}"))
-    store_ = service._store
-    store_.forget()
-    with pytest.raises(msc.MemoryRequestError) as stopped:
-        store_.dispatch({"op": "read", "project": "p-1", "item": "m-0000000000000000"}, deadline=time.monotonic() - 1)
-    assert stopped.value.code == "MEMORY_TIMEOUT"
+    wire = event(anchors=["b-1:0-25"], lineage=["ev-1"], valid_from_ms=3)
+    saved = append(service, token, wire)[1]
+    result = engine.MemoryCommitResult(saved["event_id"], saved["item"], saved["version"], saved["durable_state"], saved["projection_state"])
+    assert result.durable_state == "confirmed"
+    stored = engine.StoredEvent.from_record("p-1", read(service))
+    assert stored.event.lineage == ("ev-1",) and stored.stream_id == saved["stream_id"] and stored.to_record() == read(service)
+    listed = call(service, {"op": "list", "project": "p-1", "scope": "s-1", "limit": 10})[1]["items"]
+    assert [engine.StoredEvent.from_record("p-1", item).event.item for item in listed] == [wire["item"]]
+    point = {"session": "sess-1", "sequence": 1, "branch": "main", "worktree": "wt-1", "baseline": "", "settled_at_ms": 1, "outcome": "settled",
+             "objective": "obj-1", "provenance": "turn-1", "plan_hash": "", "pending": [], "amendments": [], "completion": [], "verification": [],
+             "remaining": []}
+    ack = call(service, {"op": "checkpoint", "project": "p-1", "token": token, "checkpoint": point})[1]
+    assert engine.CheckpointResult(ack["session"], ack["sequence"], ack["stream_id"], ack["durable_state"], ack["projection_state"]).sequence == 1
+    served = call(service, {"op": "checkpoints", "project": "p-1", "limit": 5})[1]["checkpoints"]
+    assert engine.StoredCheckpoint.from_record("p-1", served[0]).checkpoint.provenance == "turn-1"
 
 
 def test_a_retry_of_an_unconfirmed_save_is_answered_even_over_the_ceiling() -> None:
