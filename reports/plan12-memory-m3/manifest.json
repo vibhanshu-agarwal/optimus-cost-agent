@@ -3,7 +3,7 @@
   "plan": "12.11",
   "issue": 490,
   "later_part_issue": 491,
-  "plan_file": "docs/superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation.md",
+  "plan_file": "docs/superpowers/plans/archive/2026-11-16-plan-12-11-memory-and-continuity-implementation.md",
   "plan_sha256": "hex:77a7aec144b7b85ad379ff59bdb95912411b7753e6b3338628aa09e2f995824d",
   "approval": "Operator, Claude chat 2026-11-16: \"Approve hash\", for Plan 12.11 at the hash above with decisions D1-D8 as recommended. Recorded on #490. It released no live operation.",
   "filed": "PR #492, merge commit 71d1c1efd875926ddd762ff5b4f57c0c92a08ca3, plan bytes on main equal the approved hash",
@@ -36,5 +36,12 @@
       "finding": "unchanged since discovery's 2026-10-22 check: a MEMORY.md index, one-line entries with open [key: value] metadata (recommended source and added), [[path]] cross-links. Adoption as the export format holds."
     },
     "not_released": "Docker containers, keyring writes, Zed sessions and paid calls: each needs its own operator release"
+  },
+  "successor": {
+    "plan_file": "docs/superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v2.md",
+    "plan_sha256": "hex:75ba9164e65dc9241fcb5d8af8af54005b6309484f31fdea8004eeff4e07f55e",
+    "authored_by": "Codex, CP1 review 2 ruling 1 (round-105 kit, plan-v2-draft.md, final newline added)",
+    "changes": "appendfsync always with same-connection WAITAOF and CLIENT ID; preserved everysec and always measurements; recovery shapes in Task 1; Q3 and Q4 acceptance tests in Task 4",
+    "authority": "Codex CP1 review 1 recommendation, carrying the operator's approval under the standing rule of 2026-10-03 (reaffirmed 2026-10-28); authoritative from its commit, with the original archived byte for byte"
   }
 }
