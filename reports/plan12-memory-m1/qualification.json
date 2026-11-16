@@ -12,8 +12,23 @@
     "branch": "agent/claude/p469-task5-qualify",
     "base": "origin/main 6e5478a, 0 commits behind at 2026-11-16",
     "windows_full_suite_head": "hex:c18ecd032d84ff076e5b68a03a2b30c8b7255b6e",
-    "code_head": "hex:7535f7c8d76b13f8d71a0429c29fb8918b828e39",
-    "delta_after_windows_full_suite": "7535f7c changes one test only, tests/unit/acp/test_gateway_attach.py (observation_seconds 0.03 to 5.0 in test_shutdown_waits_for_a_diagnostic_write_the_client_is_blocking), fixing the run's one failure. No product code changed. Whether this delta needs another full run is put to Codex review 45 (plan v3:209: later code invalidates acceptance; operator disposition before repeating)."
+    "code_head_accepted_by_review_45": "hex:7535f7c8d76b13f8d71a0429c29fb8918b828e39",
+    "final_code_head": "hex:53ff77ffc55e1e3573b1d94e1330335983b22439",
+    "delta_after_windows_full_suite": "7535f7c was accepted with exception by Codex review 45. The c18ecd0 full run remains FAIL and validator exit 3 remains retained. Later harness-only deltas and their dispositions are recorded separately.",
+    "harness_deltas_after_windows_full_suite": [
+      {
+        "commit": "06c9f4b",
+        "change": "tools/plan12_memory/m1_scale.py imports psutil optionally, so CI's clean environment (no psutil: measurement-only, not in uv.lock, packages.json) collects test_plan12_memory_m1_evaluate.py",
+        "found_by": "PR #478 clean-environment-recheck run 43830234606 at 386a6e4, FAIL at collection",
+        "disposition": "not accepted unchanged (Codex review 46 item 2, #469 comment 6912184674): it made a resource leak reachable"
+      },
+      {
+        "commit": "53ff77f",
+        "change": "run_assembly and run_pilot refuse a missing psutil before provisioning (_require_psutil); parametrized test test_a_measuring_phase_without_psutil_provisions_nothing, both cases fail with the guard calls removed",
+        "focused_verification": "with a psutil stub raising ModuleNotFoundError first on PYTHONPATH (children inherit it): 204 passed, 1 skipped (the evaluate tests, both launcher inventories, the child-site map, the walker inventory; the scale test skips as on main); normal environment 84 passed; Ruff clean",
+        "disposition": "harness-only; per Codex review 46 item 2, after this bounded fix and focused verification no further Windows full suite or qualification run is required. Codex's confirmation of 53ff77f is pending."
+      }
+    ]
   },
   "inventories": {
     "command": "uv run --no-sync pytest --no-cov <the nine files of plan v3:212> -q",
@@ -83,10 +98,26 @@
     "Task 5 evidence: Codex reviews 19 to 44 on #469; the last, review 44 (comment 6890496149), agreed the fresh2 result and the order of what remains",
     "Operator: plan v2/v3 releases A to C ('Approved. Go ahead. #1 - #3'); the four retained-miss dispositions ('Accept all four', targets.json dispositions, 7a66b2a); cleanup released",
     "Zed benefit pair: reports/plan12-memory-m1/zed-ui.json task5 (0655cbb), verdict pass",
-    "CP4: Codex review 45 (#469 comment 6910824077): AGREE 1, 2, 5, 7; OBJECT 3 (zed-ui.json wording, corrected), 4 (recorder failure custody, issue owed), 6 (retention and freshness, corrected)"
+    "CP4: Codex review 45 objections 3, 4 and 6 resolved by 65a5e51 and 386a6e4; recorder custody is #477. Subsequent review verdicts are recorded separately.",
+    "Pre-merge: Codex review 46 (#469 comment 6912184674): AGREE 1; OBJECT 2 (fixed in 53ff77f), 3 (stale claims, corrected here; live issue snapshots retained for its re-check), 4 (CI attribution and post-merge order, recorded here)"
   ],
   "landing": {
-    "pr": "not opened (needs the operator's OK)",
-    "final_linux_ci_sha": "pending"
+    "pr": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/478",
+    "linux_ci_runs": [
+      {
+        "run": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/43830234606",
+        "head": "386a6e4",
+        "check": "clean-environment-recheck",
+        "result": "FAIL: collection ImportError, psutil (retained; fixed by 06c9f4b and 53ff77f)"
+      },
+      {
+        "run": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/43831538409",
+        "head": "06c9f4b",
+        "check": "clean-environment-recheck",
+        "result": "PASS in 21m28s; evidence for 06c9f4b only, not for any later commit"
+      }
+    ],
+    "final_linux_ci_sha": "pending: required checks must pass on the eventual PR head",
+    "after_merge": "record the terminal delivery disposition in #469 first (AGENTS.md:88); then archive plan v3 byte for byte and repair the mutable pointers (docs/README.md:124, backlog registry:75) together; then close #469 and remove its status: label"
   }
 }

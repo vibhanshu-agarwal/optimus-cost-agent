@@ -4,15 +4,16 @@
   "checkout": "C:/worktrees/optimus-cost-agent-worktrees/optimus-cost-agent-wt-claude-m1plan",
   "platform": "Windows 11 Pro (10.0.26300), CPython 3.14.4, uv 0.11.29",
   "source": {
-    "head": "hex:7535f7c8d76b13f8d71a0429c29fb8918b828e39",
-    "tree": "hex:6893042554a50e5730ddec76eeb2ba43b840ebc7",
+    "head": "hex:53ff77ffc55e1e3573b1d94e1330335983b22439",
+    "tree": "hex:4fe15c8bf6a512d59684cf9e8e3b908bbad546d8",
     "full_suite_head": "hex:c18ecd032d84ff076e5b68a03a2b30c8b7255b6e",
+    "code_head_accepted_by_review_45": "hex:7535f7c8d76b13f8d71a0429c29fb8918b828e39",
     "dirty": false,
     "excluded": "reports/plan12-memory-m1"
   },
   "recorder": {
     "file": "optimus-handoff/p465-cp1/make_cp4_records.py",
-    "sha256": "hex:11cfac86fe6285c88a6c19e4f9ab6212c06495fd1bda7eeb98130fac8edefd78"
+    "sha256": "hex:2c3b5ef15876b22a3e8b07b8af3503efcd0261fca008bb71a5607c066633ed13"
   },
   "released_resources": [
     "attempt 6 (c3475da): p1210-qualify-redis and p1210-qualify-data, removed after the run",
