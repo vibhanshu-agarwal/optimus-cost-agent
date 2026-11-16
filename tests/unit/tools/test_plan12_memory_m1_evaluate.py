@@ -14,6 +14,7 @@ from tools.plan12_memory import m1_evaluate as ev
 from tools.plan12_memory import m1_scale
 from tools.plan12_memory.contracts import GoldenCase
 from tools.plan12_memory.evaluate import validate_cases
+from tools.tracked_repository_files import tracked_repository_files
 
 
 def _case(*requirements: tuple[str, ...]) -> GoldenCase:
@@ -225,7 +226,8 @@ def test_every_sealed_gold_loads_every_case_through_the_case_schema() -> None:
     """A seal binds bytes, not loadability: the fresh2 gold was sealed with a provenance field the schema refused, and its released run failed at loading."""
     targets = json.loads((REPOSITORY / "reports/plan12-memory-m1/targets.json").read_text(encoding="utf-8"))
     sealed = {section["sealed_gold_sha256"] for key, section in targets.items() if key.startswith("retrieval") and isinstance(section, dict) and "sealed_gold_sha256" in section}
-    golds = {ev.gold_digest(directory): directory for directory in (REPOSITORY / "tests/fixtures").glob("plan12_memory_m1*") if (directory / "localization.json").exists()}
+    gold_files = tracked_repository_files(REPOSITORY, pathspecs=("tests/fixtures",))
+    golds = {ev.gold_digest(file.parent): file.parent for file in gold_files if file.name == "localization.json" and file.parent.name.startswith("plan12_memory_m1")}
     assert len(sealed) == 3 and sealed <= set(golds)
     for digest in sealed:
         payload = json.loads((golds[digest] / "localization.json").read_text(encoding="utf-8"))
