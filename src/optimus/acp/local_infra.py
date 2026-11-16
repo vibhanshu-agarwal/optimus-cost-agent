@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import ipaddress
 import json
 import shutil
 import socket
@@ -19,7 +20,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+import redis
 from pydantic import SecretStr
+from redis.asyncio.connection import SSLConnection as RedisSSLConnection
+from redis.asyncio.connection import parse_url as parse_redis_url
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 from optimus.acp.launch_policy import project_gateway_tool_child_env
 from optimus.acp.local_gateway_secrets import ProviderCredentialResolution, _parse_env_gateway_file
@@ -69,6 +75,7 @@ _AGENT_ENVIRON_EXCLUDED_KEYS = LOCAL_PROVIDER_KEY_NAMES | {
 _REDIS_CONTAINER_NAME = "optimus-redis"
 _REDIS_IMAGE = "redis:8"
 _REDIS_READY_TIMEOUT_SECONDS = 15.0
+_REDIS_PROBE_SECONDS = 2.0
 _GATEWAY_READY_TIMEOUT_SECONDS = 10.0
 _POLL_INTERVAL_SECONDS = 0.5
 _DEFAULT_REDIS_URL = "redis://127.0.0.1:6379/0"
@@ -174,10 +181,15 @@ def _docker_daemon_reachable(docker: str) -> bool:
     return result.returncode == 0
 
 
-def _container_exists(docker: str, name: str) -> bool:
+def _pinned(docker: str, host: str | None) -> list[str]:
+    """The Docker command, pinned to one engine when ``host`` is given, so a context switched meanwhile is not followed."""
+    return [docker] if host is None else [docker, "--host", host]
+
+
+def _container_exists(docker: str, name: str, *, host: str | None = None) -> bool:
     try:
         result = subprocess.run(
-            [docker, "ps", "-a", "--filter", f"name=^/{name}$", "--format", "{{.Names}}"],
+            [*_pinned(docker, host), "ps", "-a", "--filter", f"name=^/{name}$", "--format", "{{.Names}}"],
             capture_output=True,
             text=True,
             check=False,
@@ -188,29 +200,11 @@ def _container_exists(docker: str, name: str) -> bool:
     return name in result.stdout.split()
 
 
-def _is_established_default_redis_url(redis_url: str) -> bool:
-    parsed = urlparse(redis_url)
-    host = (parsed.hostname or "127.0.0.1").lower()
-    if host == "localhost":
-        host = "127.0.0.1"
-    port = parsed.port or 6379
-    path = parsed.path or "/0"
-    if path in ("", "/"):
-        path = "/0"
-    return (
-        host == "127.0.0.1"
-        and port == 6379
-        and path == "/0"
-        and not parsed.username
-        and not parsed.password
-    )
-
-
-def _docker_published_port_owners(docker: str, port: int) -> list[tuple[str, str]]:
+def _docker_published_port_owners(docker: str, port: int, *, host: str | None = None) -> list[tuple[str, str]]:
     """Return exact (name, image) pairs publishing ``port`` on the Docker host."""
     try:
         result = subprocess.run(
-            [docker, "ps", "--filter", f"publish={port}", "--format", "{{.Names}}\t{{.Image}}"],
+            [*_pinned(docker, host), "ps", "--filter", f"publish={port}", "--format", "{{.Names}}\t{{.Image}}"],
             capture_output=True,
             text=True,
             check=False,
@@ -229,46 +223,100 @@ def _docker_published_port_owners(docker: str, port: int) -> list[tuple[str, str
     return owners
 
 
-def _assert_default_redis_port_owner(*, docker: str | None, port: int, log: Callable[[str], None]) -> None:
-    """Fail closed only when Docker reports a non-optimus-redis owner of the default port."""
-    if docker is None:
-        log(
-            "optimus-agent: Docker not available; treating reachable Redis on the default port "
-            "as a native/operator-managed listener and leaving TimeSeries preflight to decide."
+def _container_redis_run_id(docker: str) -> str | None:
+    """The run_id the optimus-redis container's server reports from inside the container, or None."""
+    try:
+        result = subprocess.run(
+            [docker, "exec", _REDIS_CONTAINER_NAME, "redis-cli", "INFO", "server"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
         )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines():
+        key, _, value = line.strip().partition(":")
+        if key == "run_id" and value:
+            return value
+    return None
+
+
+def _redis_run_id(host: str, port: int, *, tls: bool) -> str | None:
+    """The run_id the server at ``host:port`` reports, from one attempt within the probe's bound; None for anything that
+    is not a Redis answering INFO. Built from the address only, so no URL option can lengthen or retry it."""
+    client = redis.Redis(host=host, port=port, ssl=tls, socket_timeout=_REDIS_PROBE_SECONDS,
+                         socket_connect_timeout=_REDIS_PROBE_SECONDS, retry=Retry(NoBackoff(), 0), decode_responses=True)
+    try:
+        run_id = client.info("server").get("run_id")
+    except Exception:  # noqa: BLE001 - a refused, stalled or malformed reply proves nothing; the caller refuses
+        return None
+    finally:
+        client.close()
+    return run_id if isinstance(run_id, str) and run_id else None
+
+
+def _confirm_redis_identity(host: str, port: int, *, tls: bool) -> None:
+    """#480: reuse a listening Redis only when it is the optimus-redis container itself: the run_id it reports, a random
+    value per server start, equals the one read inside the container. Anything else refuses, and the listener is never
+    stopped or changed. (OPTIMUS_REDIS_URL carries no credentials, so no authenticated identity is available to prove.)"""
+    run_id = _redis_run_id(host, port, tls=tls)
+    docker = shutil.which("docker")
+    if run_id is not None and docker is not None and run_id == _container_redis_run_id(docker):
         return
-    owners = _docker_published_port_owners(docker, port)
-    if not owners:
-        log(
-            "optimus-agent: no Docker container owns the default Redis port; treating the "
-            "reachable listener as native/operator-managed and leaving TimeSeries preflight to decide."
-        )
-        return
-    names = [name for name, _image in owners]
-    if names and all(name == _REDIS_CONTAINER_NAME for name in names):
-        return
-    observed = ", ".join(names)
     raise LocalInfrastructureError(
-        code="REDIS_PORT_CONFLICT",
+        code="REDIS_IDENTITY_UNCONFIRMED",
         user_message=(
-            f"Default Redis port {port} is owned by Docker container {observed}, "
-            f"not {_REDIS_CONTAINER_NAME}. Stop or reconfigure that container yourself, "
-            "or set an explicit OPTIMUS_REDIS_URL and re-approve; Optimus will not stop "
-            "or delete the conflicting container."
+            f"Something is listening at {host}:{port}, but it did not prove it is this setup's Redis, the "
+            f"{_REDIS_CONTAINER_NAME} container. Optimus will not use it, and will not stop or change it. Stop that "
+            f"listener yourself so Optimus can start {_REDIS_CONTAINER_NAME} there, or set OPTIMUS_REDIS_URL to the port "
+            f"{_REDIS_CONTAINER_NAME} publishes, and approve the launch again."
         ),
     )
 
 
+def _redis_endpoint(redis_url: str) -> tuple[str, int, bool] | None:
+    """Where the runtime connects for this URL, and whether over TLS, read with the parser its pool uses: a `?port=`
+    option and a percent-encoded host count, so what is checked is what is used. None for a URL that parser refuses,
+    which pre-flight then refuses too."""
+    try:
+        options = parse_redis_url(redis_url)
+        return str(options.get("host", "localhost")), int(options.get("port", 6379)), options.get("connection_class") is RedisSSLConnection
+    except (ValueError, TypeError):
+        return None
+
+
+def _redis_host_is_local(host: str, port: int) -> bool:
+    """Whether the runtime's connection to ``host`` lands on this machine: any loopback address (all of 127.0.0.0/8 and
+    ::1), or a name such as `localhost` that resolves to one. Anything else is a remote Redis, left to pre-flight."""
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        pass
+    try:
+        addresses = {str(info[4][0]).split("%")[0] for info in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)}
+        return any(ipaddress.ip_address(address).is_loopback for address in addresses)
+    except (OSError, ValueError):
+        return False
+
+
+def confirm_local_redis(redis_url: str) -> None:
+    """For a launch that starts nothing (`--no-auto-start`): a loopback Redis that answers must prove itself as one this
+    launch would start must. A remote Redis, or none at all, is left to pre-flight."""
+    endpoint = _redis_endpoint(redis_url)
+    if endpoint is not None and _redis_host_is_local(endpoint[0], endpoint[1]) and _tcp_reachable(endpoint[0], endpoint[1]):
+        _confirm_redis_identity(endpoint[0], endpoint[1], tls=endpoint[2])
+
+
 def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log) -> None:
-    parsed = urlparse(redis_url)
-    host = parsed.hostname or "127.0.0.1"
-    port = parsed.port or 6379
-    if not _is_loopback(host):
+    endpoint = _redis_endpoint(redis_url)
+    if endpoint is None or not _redis_host_is_local(endpoint[0], endpoint[1]):
         return
+    host, port, tls = endpoint
     if _tcp_reachable(host, port):
-        if _is_established_default_redis_url(redis_url):
-            docker = shutil.which("docker")
-            _assert_default_redis_port_owner(docker=docker, port=port, log=log)
+        _confirm_redis_identity(host, port, tls=tls)
         return
 
     docker = shutil.which("docker")
@@ -294,6 +342,7 @@ def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log
     deadline = time.monotonic() + _REDIS_READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         if _tcp_reachable(host, port):
+            _confirm_redis_identity(host, port, tls=tls)  # another listener may have taken the port first
             return
         time.sleep(_POLL_INTERVAL_SECONDS)
     log(f"optimus-agent: {_REDIS_CONTAINER_NAME} did not become reachable in time; leaving pre-flight to fail closed.")
@@ -307,10 +356,10 @@ def _phoenix_health_ready(url: str) -> bool:
         return False
 
 
-def _docker_container_image(docker: str, name: str) -> str | None:
+def _docker_container_image(docker: str, name: str, *, host: str | None = None) -> str | None:
     try:
         result = subprocess.run(
-            [docker, "inspect", "--format", "{{.Config.Image}}", name],
+            [*_pinned(docker, host), "inspect", "--format", "{{.Config.Image}}", name],
             capture_output=True,
             text=True,
             check=False,
@@ -324,8 +373,8 @@ def _docker_container_image(docker: str, name: str) -> str | None:
     return image or None
 
 
-def _assert_phoenix_port_identity(*, docker: str, log: Callable[[str], None]) -> None:
-    owners = _docker_published_port_owners(docker, _PHOENIX_PORT)
+def _assert_phoenix_port_identity(*, docker: str, log: Callable[[str], None], host: str | None = None) -> None:
+    owners = _docker_published_port_owners(docker, _PHOENIX_PORT, host=host)
     if not owners:
         return
     names = [name for name, _image in owners]
@@ -350,8 +399,56 @@ def _assert_phoenix_port_identity(*, docker: str, log: Callable[[str], None]) ->
             )
 
 
+def _local_docker_endpoint(docker: str) -> str | None:
+    """The selected Docker engine's endpoint (it reflects DOCKER_HOST too) when that engine runs on this machine: a Unix
+    socket, or a named pipe on this machine (`//./pipe/...`, not `//server/pipe/...`). None otherwise. A remote engine's
+    port bindings say nothing about this machine's ports."""
+    try:
+        result = subprocess.run([docker, "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],
+                                capture_output=True, text=True, check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    endpoint = result.stdout.strip()
+    parsed = urlparse(endpoint)
+    local = parsed.scheme == "unix" or (parsed.scheme == "npipe" and not parsed.netloc and parsed.path.startswith("//./pipe/"))
+    return endpoint if result.returncode == 0 and local else None
+
+
+def _phoenix_binding_conflict(docker: str, host: str) -> str | None:
+    """#481: why the optimus-phoenix container is not what answers at the OTLP endpoint, or None when it is: it runs the
+    expected image, and the local engine ``host`` holds exactly 127.0.0.1:6006 for it now. Docker binds that address
+    exclusively, so while it does, nothing else can answer there."""
+    try:
+        result = subprocess.run([*_pinned(docker, host), "inspect", "--type", "container", _PHOENIX_CONTAINER_NAME],
+                                capture_output=True, text=True, check=False, timeout=10)
+        view: dict[str, Any] | None = json.loads(result.stdout)[0] if result.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, ValueError, IndexError, TypeError):
+        view = None
+    if not isinstance(view, dict):
+        return f"{_PHOENIX_CONTAINER_NAME} does not exist"
+    if not (view.get("State") or {}).get("Running"):
+        return f"{_PHOENIX_CONTAINER_NAME} is not running"
+    if (view.get("Config") or {}).get("Image") != _PHOENIX_IMAGE:
+        return f"{_PHOENIX_CONTAINER_NAME} runs another image"
+    bound = ((view.get("NetworkSettings") or {}).get("Ports") or {}).get(f"{_PHOENIX_PORT}/tcp") or []
+    if [(binding.get("HostIp"), binding.get("HostPort")) for binding in bound] != [("127.0.0.1", str(_PHOENIX_PORT))]:
+        return f"Docker does not publish {_PHOENIX_CONTAINER_NAME} on 127.0.0.1:{_PHOENIX_PORT}"
+    return None
+
+
+def _phoenix_unconfirmed(reason: str) -> LocalInfrastructureError:
+    return LocalInfrastructureError(
+        code="PHOENIX_IDENTITY_UNCONFIRMED",
+        user_message=(
+            f"Something answers at {LOCAL_PHOENIX_BASE_URL}, but it is not this setup's Phoenix: {reason}. Optimus will not "
+            "send traces there, and will not stop or change what is listening. Stop it yourself so Optimus can start "
+            f"{_PHOENIX_CONTAINER_NAME} there, and launch again."
+        ),
+    )
+
+
 def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
-    """Return the fixed OTLP endpoint after named-container health succeeds."""
+    """Return the fixed OTLP endpoint once it is bound to the optimus-phoenix container and healthy (#481)."""
     docker = shutil.which("docker")
     if docker is None:
         raise LocalInfrastructureError(
@@ -364,10 +461,18 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
             user_message="Docker daemon not reachable; cannot start local Phoenix.",
         )
 
-    _assert_phoenix_port_identity(docker=docker, log=log)
+    host = _local_docker_endpoint(docker)  # every Docker command below is pinned to this engine
+    if host is None:
+        raise _phoenix_unconfirmed("Docker's selected engine is not on this machine, so its containers cannot vouch for it")
+    _assert_phoenix_port_identity(docker=docker, log=log, host=host)
 
-    if _container_exists(docker, _PHOENIX_CONTAINER_NAME):
-        configured = _docker_container_image(docker, _PHOENIX_CONTAINER_NAME)
+    conflict = _phoenix_binding_conflict(docker, host)
+    if conflict is not None and _tcp_reachable("127.0.0.1", _PHOENIX_PORT):
+        # The container does not hold the port, yet something answers there: starting it would fail, and the health
+        # check below would read the other listener.
+        raise _phoenix_unconfirmed(f"{conflict}, yet something already listens on its port")
+    if _container_exists(docker, _PHOENIX_CONTAINER_NAME, host=host):
+        configured = _docker_container_image(docker, _PHOENIX_CONTAINER_NAME, host=host)
         if configured is not None and configured != _PHOENIX_IMAGE:
             raise LocalInfrastructureError(
                 code="PHOENIX_IMAGE_CONFLICT",
@@ -380,7 +485,7 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
         if not _phoenix_health_ready(_PHOENIX_HEALTHZ_URL):
             log(f"optimus-agent: starting existing {_PHOENIX_CONTAINER_NAME} container...")
             subprocess.run(
-                [docker, "start", _PHOENIX_CONTAINER_NAME],
+                [*_pinned(docker, host), "start", _PHOENIX_CONTAINER_NAME],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -389,7 +494,7 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
         log(f"optimus-agent: creating {_PHOENIX_CONTAINER_NAME} container ({_PHOENIX_IMAGE})...")
         subprocess.run(
             [
-                docker,
+                *_pinned(docker, host),
                 "run",
                 "-d",
                 "--name",
@@ -406,6 +511,9 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
     deadline = time.monotonic() + _PHOENIX_READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         if _phoenix_health_ready(_PHOENIX_HEALTHZ_URL):
+            conflict = _phoenix_binding_conflict(docker, host)  # what answered must be the container
+            if conflict is not None:
+                raise _phoenix_unconfirmed(conflict)
             return LOCAL_PHOENIX_OTLP_ENDPOINT
         time.sleep(_POLL_INTERVAL_SECONDS)
     raise LocalInfrastructureError(

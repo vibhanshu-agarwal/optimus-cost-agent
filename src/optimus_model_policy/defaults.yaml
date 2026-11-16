@@ -42,6 +42,7 @@ models:
     default_reasoning: low
     route:
       estimator: haiku-5-5-empirical
+      prompt_cache: prefix  # ADR-041 (#485): the stable start through the map is cached; only indexed turns name it
       endpoints:
         - {provider: anthropic, quantization: unknown, context_window_tokens: 1000000, max_output_tokens: 128000, verified: true, observed_on: "2026-10-09"}
     admission:

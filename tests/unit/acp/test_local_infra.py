@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import contextlib
+import http.server
+import json
+import socket
 import subprocess
 import sys
+import threading
+import time
+import urllib.request
+from collections.abc import Iterator
 from unittest.mock import MagicMock
+from urllib.parse import urlparse
 
 import pytest
 
@@ -148,27 +157,7 @@ def test_apply_local_defaults_does_not_mutate_input_or_os_environ(tmp_path) -> N
     assert result is not input_environ
 
 
-# --- ensure_local_redis: unchanged ---
-
-
-def test_ensure_local_redis_noops_when_already_reachable(monkeypatch) -> None:
-    run_calls: list[list[str]] = []
-    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
-
-    def fake_run(args, **_k):
-        run_calls.append(list(args))
-        if args[:3] == ["docker", "ps", "--filter"]:
-            return _fake_docker_ps_owner("optimus-redis", "redis:8")
-        raise AssertionError(f"unexpected docker call: {args}")
-
-    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
-
-    local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
-
-    assert run_calls == [
-        ["docker", "ps", "--filter", "publish=6379", "--format", "{{.Names}}\t{{.Image}}"],
-    ]
+# --- ensure_local_redis: an unreachable port ---
 
 
 def test_ensure_local_redis_noops_for_non_loopback_host(monkeypatch) -> None:
@@ -176,7 +165,7 @@ def test_ensure_local_redis_noops_for_non_loopback_host(monkeypatch) -> None:
     monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
     monkeypatch.setattr(local_infra.subprocess, "run", lambda *a, **k: docker_calls.append((a, k)))
 
-    local_infra.ensure_local_redis("redis://remote.example.com:6379/0")
+    local_infra.ensure_local_redis("redis://203.0.113.5:6379/0")
 
     assert docker_calls == []
 
@@ -210,6 +199,8 @@ def test_ensure_local_redis_noops_when_docker_daemon_unreachable(monkeypatch) ->
 
 def test_ensure_local_redis_creates_container_when_missing(monkeypatch) -> None:
     run_calls: list[list[str]] = []
+    confirmed: list[object] = []
+    monkeypatch.setattr(local_infra, "_confirm_redis_identity", lambda *a, **k: confirmed.append((a, k)))
     monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
     monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
     monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: False)
@@ -228,6 +219,8 @@ def test_ensure_local_redis_creates_container_when_missing(monkeypatch) -> None:
 
     local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
 
+    assert confirmed == [(("127.0.0.1", 6379), {"tls": False})]  # #480: what answers after the start proves itself too
+
     assert run_calls == [
         ["docker", "run", "-d", "--name", "optimus-redis", "-p", "127.0.0.1:6379:6379", "redis:8"],
     ]
@@ -236,6 +229,8 @@ def test_ensure_local_redis_creates_container_when_missing(monkeypatch) -> None:
 
 def test_ensure_local_redis_starts_existing_container(monkeypatch) -> None:
     run_calls: list[list[str]] = []
+    confirmed: list[object] = []
+    monkeypatch.setattr(local_infra, "_confirm_redis_identity", lambda *a, **k: confirmed.append((a, k)))
     monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
     monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
     monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: True)
@@ -254,10 +249,12 @@ def test_ensure_local_redis_starts_existing_container(monkeypatch) -> None:
 
     local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
 
+    assert confirmed == [(("127.0.0.1", 6379), {"tls": False})]  # #480: what answers after the start proves itself too
+
     assert run_calls == [["docker", "start", "optimus-redis"]]
 
 
-# --- Plan 11.6 Task 2: default-port Redis ownership ---
+# --- #480: a listening Redis must prove it is this setup's ---
 
 
 def _fake_docker_ps_owner(name: str, image: str) -> subprocess.CompletedProcess[str]:
@@ -270,97 +267,194 @@ def _fake_docker_ps_owner(name: str, image: str) -> subprocess.CompletedProcess[
 
 
 def _assert_no_destructive_docker_args(run_calls: list[list[str]]) -> None:
-    destructive = {"stop", "rm", "rename", "update"}
+    destructive = {"stop", "rm", "rename", "update", "kill"}
     for cmd in run_calls:
         assert destructive.isdisjoint(cmd), cmd
 
 
-def test_ensure_local_redis_accepts_default_port_owned_by_optimus_redis(monkeypatch) -> None:
+_OURS = "a" * 40
+_FOREIGN = "f" * 40
+_URLS = pytest.mark.parametrize("url", ["redis://127.0.0.1:6379/0", "redis://127.0.0.1:6380/0"], ids=["default", "custom"])
+_EXEC = ["docker", "exec", "optimus-redis", "redis-cli", "INFO", "server"]
+
+
+def _listening(monkeypatch, listener_run_id: str | None, *, container_run_id: str | None, docker: str | None = "docker",
+               reachable: object = True) -> list[list[str]]:
+    """A port held by a Redis that passes ordinary preflight and reports ``listener_run_id`` (None: something that is not
+    a Redis answering INFO), and an optimus-redis container whose own server reports ``container_run_id`` (None: no such
+    container running). Returns the recorded Docker calls."""
     run_calls: list[list[str]] = []
-    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+    if isinstance(reachable, bool):
+        monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: reachable)
+    else:
+        monkeypatch.setattr(local_infra, "_tcp_reachable", reachable)
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: docker)
+    monkeypatch.setattr(local_infra, "_redis_run_id", lambda *_a, **_k: listener_run_id)
 
     def fake_run(args, **_k):
         run_calls.append(list(args))
-        if args[:3] == ["docker", "ps", "--filter"]:
-            return _fake_docker_ps_owner("optimus-redis", "redis:7-alpine")
+        if args == _EXEC:
+            if container_run_id is None:
+                return subprocess.CompletedProcess(args, 1, "", "Error response from daemon: No such container: optimus-redis")
+            return subprocess.CompletedProcess(args, 0, f"# Server\r\nredis_version:8.0.2\r\nrun_id:{container_run_id}\r\n", "")
+        if args[:2] == ["docker", "start"]:
+            return subprocess.CompletedProcess(args, 1, "", "Bind for 127.0.0.1:6379 failed: port is already allocated")
         raise AssertionError(f"unexpected docker call: {args}")
 
     monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
-
-    local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
-
-    assert run_calls == [
-        ["docker", "ps", "--filter", "publish=6379", "--format", "{{.Names}}\t{{.Image}}"],
-    ]
-    _assert_no_destructive_docker_args(run_calls)
+    return run_calls
 
 
-def test_ensure_local_redis_raises_port_conflict_for_wrong_docker_owner(monkeypatch) -> None:
-    run_calls: list[list[str]] = []
-    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+@_URLS
+@pytest.mark.parametrize("confirm", [local_infra.ensure_local_redis, local_infra.confirm_local_redis], ids=["start", "no-auto-start"])
+def test_a_listening_redis_is_reused_when_it_is_the_optimus_redis_container_itself(monkeypatch, url, confirm) -> None:
+    run_calls = _listening(monkeypatch, _OURS, container_run_id=_OURS)
 
-    def fake_run(args, **_k):
-        run_calls.append(list(args))
-        if args[:3] == ["docker", "ps", "--filter"]:
-            return _fake_docker_ps_owner("optimus-plan112-redis", "redis:7-alpine")
-        raise AssertionError(f"unexpected docker call: {args}")
+    confirm(url)
 
-    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
+    assert run_calls == [_EXEC]
+
+
+@_URLS
+@pytest.mark.parametrize("confirm", [local_infra.ensure_local_redis, local_infra.confirm_local_redis], ids=["start", "no-auto-start"])
+def test_a_foreign_redis_is_refused_and_left_running(monkeypatch, url, confirm) -> None:
+    run_calls = _listening(monkeypatch, _FOREIGN, container_run_id=_OURS)
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        confirm(url)
+
+    assert exc_info.value.code == "REDIS_IDENTITY_UNCONFIRMED"
+    assert f"127.0.0.1:{urlparse(url).port}" in exc_info.value.user_message
+    assert "will not stop or change it" in exc_info.value.user_message
+    assert run_calls == [_EXEC]
+
+
+@_URLS
+@pytest.mark.parametrize("docker", ["docker", None], ids=["no-container", "no-docker"])
+def test_a_listener_with_no_container_to_match_is_refused(monkeypatch, url, docker) -> None:
+    """Plan 11.6 accepted a reachable Redis that no Docker container owned as native; nothing proved it was this setup's."""
+    run_calls = _listening(monkeypatch, _FOREIGN, container_run_id=None, docker=docker)
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.ensure_local_redis(url)
+
+    assert exc_info.value.code == "REDIS_IDENTITY_UNCONFIRMED"
+    assert run_calls == ([] if docker is None else [_EXEC])
+
+
+def test_a_listener_that_is_not_a_redis_answering_info_is_refused(monkeypatch) -> None:
+    run_calls = _listening(monkeypatch, None, container_run_id=_OURS)
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.confirm_local_redis("redis://127.0.0.1:6379/0")
+
+    assert exc_info.value.code == "REDIS_IDENTITY_UNCONFIRMED"
+    assert run_calls == []
+
+
+def test_a_foreign_redis_that_takes_the_port_while_optimus_redis_starts_is_refused(monkeypatch) -> None:
+    """Codex #480 review item 4: the port was free, the container's start failed, and a foreign Redis now answers."""
+    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
+    monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: True)
+    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
+    run_calls = _listening(monkeypatch, _FOREIGN, container_run_id=None, reachable=MagicMock(side_effect=[False, True]))
 
     with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
         local_infra.ensure_local_redis("redis://127.0.0.1:6379/0")
 
-    assert exc_info.value.code == "REDIS_PORT_CONFLICT"
-    assert "6379" in exc_info.value.user_message
-    assert "optimus-plan112-redis" in exc_info.value.user_message
-    _assert_no_destructive_docker_args(run_calls)
+    assert exc_info.value.code == "REDIS_IDENTITY_UNCONFIRMED"
+    assert run_calls == [["docker", "start", "optimus-redis"], _EXEC]
 
 
-def test_ensure_local_redis_treats_reachable_default_without_docker_owner_as_native(monkeypatch) -> None:
-    run_calls: list[list[str]] = []
-    messages: list[str] = []
-    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+@pytest.mark.parametrize("url", ["redis://127.0.0.1:6379/0", "redis://203.0.113.5:6379/0"], ids=["unreachable", "remote"])
+def test_confirming_without_a_local_listener_leaves_redis_to_preflight(monkeypatch, url) -> None:
+    run_calls = _listening(monkeypatch, _FOREIGN, container_run_id=None, reachable=False)
 
-    def fake_run(args, **_k):
-        run_calls.append(list(args))
-        if args[:3] == ["docker", "ps", "--filter"]:
-            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
-        raise AssertionError(f"unexpected docker call: {args}")
-
-    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
-
-    local_infra.ensure_local_redis("redis://127.0.0.1:6379/0", log=messages.append)
-
-    assert any("native" in msg.lower() or "operator-managed" in msg.lower() for msg in messages)
-    _assert_no_destructive_docker_args(run_calls)
-
-
-def test_ensure_local_redis_treats_reachable_default_when_docker_missing_as_native(monkeypatch) -> None:
-    messages: list[str] = []
-    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: None)
-    monkeypatch.setattr(
-        local_infra.subprocess,
-        "run",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("docker must not be invoked")),
-    )
-
-    local_infra.ensure_local_redis("redis://127.0.0.1:6379/0", log=messages.append)
-
-    assert any("native" in msg.lower() or "operator-managed" in msg.lower() for msg in messages)
-
-
-def test_ensure_local_redis_non_default_reachable_url_skips_ownership_gate(monkeypatch) -> None:
-    run_calls: list[object] = []
-    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
-    monkeypatch.setattr(local_infra.subprocess, "run", lambda *a, **k: run_calls.append((a, k)))
-
-    local_infra.ensure_local_redis("redis://127.0.0.1:6380/0")
+    local_infra.confirm_local_redis(url)
 
     assert run_calls == []
+
+
+_RUNTIME_URLS = ["redis://127.0.0.1/0?port=6380", "redis://%31%32%37.0.0.1:6380/0", "redis://127.0.0.2:6380/0", "redis://[::1]:6380/0", "redis://localhost:6380/0"]
+
+
+@pytest.mark.parametrize("url", _RUNTIME_URLS, ids=["query-port", "encoded-host", "loopback-range", "ipv6", "localhost"])
+@pytest.mark.parametrize("confirm", [local_infra.ensure_local_redis, local_infra.confirm_local_redis], ids=["start", "no-auto-start"])
+def test_the_endpoint_checked_is_the_one_the_runtime_connects_to(monkeypatch, url, confirm) -> None:
+    """Codex #480 review round 2: optimus-redis on 6379, a foreign Redis on 6380, and a URL the runtime reads as 6380."""
+    run_calls = _listening(monkeypatch, None, container_run_id=_OURS)
+    monkeypatch.setattr(local_infra, "_redis_run_id", lambda _host, port, **_k: _OURS if port == 6379 else _FOREIGN)
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        confirm(url)
+
+    assert ":6380" in exc_info.value.user_message
+    _assert_no_destructive_docker_args(run_calls)
+
+
+@pytest.mark.parametrize("url", [*_RUNTIME_URLS, "redis://127.0.0.1:6379/0", "rediss://localhost:6390/0", "redis:///0"])
+def test_the_endpoint_is_read_as_the_runtime_pool_reads_it(url) -> None:
+    from redis.asyncio import ConnectionPool
+
+    options = ConnectionPool.from_url(url).connection_kwargs
+    assert local_infra._redis_endpoint(url)[:2] == (options.get("host", "localhost"), int(options.get("port", 6379)))  # noqa: SLF001
+
+
+class _Listener:
+    """A real loopback socket that accepts and answers every request with ``reply`` (None: never answers)."""
+
+    def __init__(self, reply: bytes | None) -> None:
+        self._server = socket.create_server(("127.0.0.1", 0))
+        self.port = self._server.getsockname()[1]
+        self._reply = reply
+        self._open: list[socket.socket] = []
+        threading.Thread(target=self._serve, daemon=True).start()
+
+    def _serve(self) -> None:
+        while True:
+            try:
+                connection, _ = self._server.accept()
+            except OSError:
+                return
+            self._open.append(connection)
+            if self._reply is not None:
+                with contextlib.suppress(OSError):
+                    connection.recv(4096)
+                    connection.sendall(self._reply)
+
+    def close(self) -> None:
+        for connection in self._open:
+            connection.close()
+        self._server.close()
+
+
+@pytest.mark.parametrize("reply", [b":1\r\n", b"$-1\r\n", b"-ERR unknown command\r\n", b"+OK\r\n"], ids=["integer", "null", "error", "status"])
+def test_a_malformed_info_reply_is_refused_as_unconfirmed(monkeypatch, reply) -> None:
+    """Codex #480 review item 6: the real client against a real socket; a reply redis-py cannot read as INFO proves nothing."""
+    listener = _Listener(reply)
+    monkeypatch.setattr(local_infra, "_REDIS_PROBE_SECONDS", 0.3)
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: None)
+    try:
+        with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+            local_infra.confirm_local_redis(f"redis://127.0.0.1:{listener.port}/0")
+    finally:
+        listener.close()
+    assert exc_info.value.code == "REDIS_IDENTITY_UNCONFIRMED"
+
+
+def test_a_silent_listener_is_refused_within_the_probe_bound_whatever_the_url_asks(monkeypatch) -> None:
+    """Codex #480 review item 5: URL options cannot lengthen or retry the identity probe."""
+    listener = _Listener(None)
+    monkeypatch.setattr(local_infra, "_REDIS_PROBE_SECONDS", 0.3)
+    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: None)
+    url = f"redis://127.0.0.1:{listener.port}/0?socket_timeout=60&socket_connect_timeout=60&retry_on_timeout=true"
+    started = time.monotonic()
+    try:
+        with pytest.raises(local_infra.LocalInfrastructureError):
+            local_infra.ensure_local_redis(url)
+    finally:
+        listener.close()
+    assert time.monotonic() - started < 2.0
 
 
 # --- ensure_local_gateway: Task 5 signature (pre-resolved credentials,
@@ -870,125 +964,242 @@ def test_retired_origin_configuration_is_not_in_gateway_child_registry() -> None
     )
 
 
-# --- Plan 11.6 Task 3: local Phoenix lifecycle ---
+# --- Plan 11.6 Task 3, then #481: local Phoenix lifecycle and attach identity ---
+
+
+class _Docker:
+    """A fake Docker that keeps optimus-phoenix's state, as `docker inspect` would report it. Starting the container fails,
+    as Docker's exclusive bind does, while something else already listens on its port."""
+
+    def __init__(self, monkeypatch, *, exists: bool, running: bool = False, image: str = "arizephoenix/phoenix:latest",
+                 owners: list[tuple[str, str]] | None = None, port_taken: object = lambda: False,
+                 engine: str = "npipe:////./pipe/dockerDesktopLinuxEngine") -> None:
+        self.exists, self.running, self.image, self.port_taken, self.engine = exists, running, image, port_taken, engine
+        self.bindings = [{"HostIp": "127.0.0.1", "HostPort": str(local_infra._PHOENIX_PORT)}]  # noqa: SLF001
+        self.calls: list[list[str]] = []
+        monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
+        monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
+        monkeypatch.setattr(local_infra, "_docker_published_port_owners", lambda *_a, **_k: list(owners or []))
+        monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
+        monkeypatch.setattr(local_infra.subprocess, "run", self.run)
+
+    def run(self, args, **_k):
+        args = list(args)
+        if args[:3] == ["docker", "context", "inspect"]:
+            self.calls.append(args)
+            return subprocess.CompletedProcess(args, 0, f"{self.engine}\n", "")
+        # Codex #481 review round 2: every other command is pinned to the engine just checked, so a context switched
+        # meanwhile is not followed. An unpinned one fails the test.
+        assert args[1:3] == ["--host", self.engine], f"unpinned docker call: {args}"
+        args = [args[0], *args[3:]]
+        self.calls.append(args)
+        if args[:2] == ["docker", "ps"]:  # _container_exists
+            return subprocess.CompletedProcess(args, 0, "optimus-phoenix\n" if self.exists else "", "")
+        if args[:3] == ["docker", "inspect", "--format"]:  # _docker_container_image
+            return subprocess.CompletedProcess(args, 0 if self.exists else 1, f"{self.image}\n" if self.exists else "", "")
+        if args[:4] == ["docker", "inspect", "--type", "container"]:
+            if not self.exists:
+                return subprocess.CompletedProcess(args, 1, "", "Error: No such container: optimus-phoenix")
+            ports = {f"{local_infra._PHOENIX_PORT}/tcp": self.bindings} if self.running else {}  # noqa: SLF001
+            view = {"State": {"Running": self.running}, "Config": {"Image": self.image}, "NetworkSettings": {"Ports": ports}}
+            return subprocess.CompletedProcess(args, 0, json.dumps([view]), "")
+        if args[:2] in (["docker", "start"], ["docker", "run"]):
+            self.exists = True
+            self.running = not self.port_taken()
+            return subprocess.CompletedProcess(args, 0 if self.running else 1, "", "" if self.running else "port is already allocated")
+        raise AssertionError(f"unexpected docker call: {args}")
+
+
+class _HealthyListener:
+    """A real loopback HTTP server that passes Phoenix's health check: GET /healthz answers 200."""
+
+    def __init__(self) -> None:
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 - the standard library's name
+                self.send_response(200 if self.path == "/healthz" else 404)
+                self.end_headers()
+
+            def log_message(self, *_args: object) -> None:
+                return None
+
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._server.server_address[1]
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+
+
+@pytest.fixture
+def phoenix_port(monkeypatch) -> Iterator[_HealthyListener]:
+    """Phoenix's fixed port, moved to a free one held by a foreign endpoint that passes the health checks. Tests that
+    want the port free close it first."""
+    listener = _HealthyListener()
+    base = f"http://127.0.0.1:{listener.port}"
+    monkeypatch.setattr(local_infra, "_PHOENIX_PORT", listener.port)
+    monkeypatch.setattr(local_infra, "LOCAL_PHOENIX_BASE_URL", base)
+    monkeypatch.setattr(local_infra, "_PHOENIX_HEALTHZ_URL", f"{base}/healthz")
+    monkeypatch.setattr(local_infra, "LOCAL_PHOENIX_OTLP_ENDPOINT", f"{base}/v1/traces")
+    yield listener
+    listener.close()
+
+
+def _ours_answers(monkeypatch) -> None:
+    """The port is free until Optimus starts its container, which then answers the health check."""
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
+    monkeypatch.setattr(local_infra, "_phoenix_health_ready", lambda _url: True)
 
 
 def test_ensure_local_phoenix_creates_named_container_when_missing(monkeypatch) -> None:
-    run_calls: list[list[str]] = []
-    health_urls: list[str] = []
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
-    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
-    monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: False)
-    monkeypatch.setattr(local_infra, "_docker_published_port_owners", lambda *_a, **_k: [])
-    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
-
-    def fake_run(args, **_k):
-        run_calls.append(list(args))
-        return subprocess.CompletedProcess(args, 0, "", "")
-
-    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
-    monkeypatch.setattr(
-        local_infra,
-        "_phoenix_health_ready",
-        lambda url: health_urls.append(url) or True,
-    )
+    docker = _Docker(monkeypatch, exists=False)
+    _ours_answers(monkeypatch)
 
     endpoint = local_infra.ensure_local_phoenix()
 
-    assert endpoint == local_infra.LOCAL_PHOENIX_OTLP_ENDPOINT
-    assert run_calls == [
-        [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            "optimus-phoenix",
-            "-p",
-            "127.0.0.1:6006:6006",
-            "arizephoenix/phoenix:latest",
-        ],
+    assert endpoint == local_infra.LOCAL_PHOENIX_OTLP_ENDPOINT == "http://127.0.0.1:6006/v1/traces"
+    assert [call for call in docker.calls if call[1] == "run"] == [
+        ["docker", "run", "-d", "--name", "optimus-phoenix", "-p", "127.0.0.1:6006:6006", "arizephoenix/phoenix:latest"],
     ]
-    assert health_urls == ["http://127.0.0.1:6006/healthz"]
-    _assert_no_destructive_docker_args(run_calls)
+    _assert_no_destructive_docker_args(docker.calls)
 
 
 def test_ensure_local_phoenix_starts_existing_matching_container(monkeypatch) -> None:
-    run_calls: list[list[str]] = []
-    health_calls = {"n": 0}
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
-    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
-    monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: True)
-    monkeypatch.setattr(
-        local_infra,
-        "_docker_published_port_owners",
-        lambda *_a, **_k: [],
-    )
-    monkeypatch.setattr(
-        local_infra,
-        "_docker_container_image",
-        lambda *_a, **_k: "arizephoenix/phoenix:latest",
-    )
+    docker = _Docker(monkeypatch, exists=True)
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: False)
+    health = iter([False, True])
+    monkeypatch.setattr(local_infra, "_phoenix_health_ready", lambda _url: next(health))
 
-    def fake_health(_url: str) -> bool:
-        health_calls["n"] += 1
-        return health_calls["n"] > 1
+    assert local_infra.ensure_local_phoenix() == local_infra.LOCAL_PHOENIX_OTLP_ENDPOINT
+    assert [call for call in docker.calls if call[1] in ("start", "run")] == [["docker", "start", "optimus-phoenix"]]
+    _assert_no_destructive_docker_args(docker.calls)
 
-    monkeypatch.setattr(local_infra, "_phoenix_health_ready", fake_health)
-    monkeypatch.setattr(local_infra.time, "sleep", lambda _seconds: None)
 
-    def fake_run(args, **_k):
-        run_calls.append(list(args))
-        return subprocess.CompletedProcess(args, 0, "", "")
+def test_ensure_local_phoenix_reuses_its_running_container(monkeypatch) -> None:
+    docker = _Docker(monkeypatch, exists=True, running=True)
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)  # it is the container that answers
+    monkeypatch.setattr(local_infra, "_phoenix_health_ready", lambda _url: True)
 
-    monkeypatch.setattr(local_infra.subprocess, "run", fake_run)
+    assert local_infra.ensure_local_phoenix() == local_infra.LOCAL_PHOENIX_OTLP_ENDPOINT
+    assert [call for call in docker.calls if call[1] in ("start", "run")] == []
 
-    endpoint = local_infra.ensure_local_phoenix()
 
-    assert endpoint == local_infra.LOCAL_PHOENIX_OTLP_ENDPOINT
-    assert run_calls == [["docker", "start", "optimus-phoenix"]]
-    _assert_no_destructive_docker_args(run_calls)
+@pytest.mark.parametrize("exists", [True, False], ids=["stopped-container", "no-container"])
+def test_a_foreign_endpoint_that_passes_the_health_checks_is_refused_and_left_running(monkeypatch, phoenix_port, exists) -> None:
+    """#481: before, a healthy foreign listener on the port skipped the start, or outlived a failed one, and got the traces."""
+    docker = _Docker(monkeypatch, exists=exists, port_taken=lambda: True)
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.ensure_local_phoenix()
+
+    assert exc_info.value.code == "PHOENIX_IDENTITY_UNCONFIRMED"
+    assert f"127.0.0.1:{phoenix_port.port}" in exc_info.value.user_message
+    assert [call for call in docker.calls if call[1] in ("start", "run")] == []
+    _assert_no_destructive_docker_args(docker.calls)
+    with urllib.request.urlopen(f"http://127.0.0.1:{phoenix_port.port}/healthz", timeout=2) as response:
+        assert response.status == 200  # still serving
+
+
+def test_a_foreign_endpoint_that_takes_the_port_while_the_container_starts_is_refused(monkeypatch, phoenix_port) -> None:
+    """Codex #481 review item 2: the port is free and unhealthy at the check, the start is attempted and fails because a
+    foreign listener bound first, and that listener then passes the health check."""
+    taken = iter([False])
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: next(taken, True))
+    real_health, probes = local_infra._phoenix_health_ready, []  # noqa: SLF001
+
+    def health(url: str) -> bool:
+        probes.append(url)
+        return len(probes) > 1 and real_health(url)  # the first probe, before the start, finds nothing healthy
+
+    monkeypatch.setattr(local_infra, "_phoenix_health_ready", health)
+    docker = _Docker(monkeypatch, exists=True, port_taken=lambda: True)
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.ensure_local_phoenix()
+
+    assert exc_info.value.code == "PHOENIX_IDENTITY_UNCONFIRMED"
+    assert "is not running" in exc_info.value.user_message
+    assert [call for call in docker.calls if call[1] in ("start", "run")] == [["docker", "start", "optimus-phoenix"]]
+    _assert_no_destructive_docker_args(docker.calls)
+    with urllib.request.urlopen(f"http://127.0.0.1:{phoenix_port.port}/healthz", timeout=2) as response:
+        assert response.status == 200  # still serving
+
+
+def test_a_remote_docker_engine_cannot_vouch_for_this_machine_s_port(monkeypatch, phoenix_port) -> None:
+    """Codex #481 review item 1: a remote engine reports a matching optimus-phoenix while a foreign local endpoint is healthy."""
+    docker = _Docker(monkeypatch, exists=True, running=True, engine="tcp://10.0.0.9:2375")
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.ensure_local_phoenix()
+
+    assert exc_info.value.code == "PHOENIX_IDENTITY_UNCONFIRMED"
+    assert "not on this machine" in exc_info.value.user_message
+    assert [call for call in docker.calls if call[1] in ("start", "run")] == []
+
+
+@pytest.mark.parametrize("engine", ["npipe:////remote-server/pipe/docker_engine", "npipe://server/pipe/docker_engine",
+                                    "ssh://me@build-box", "tcp://127.0.0.1:2375"])
+def test_only_a_local_pipe_or_socket_counts_as_this_machine_s_engine(monkeypatch, engine) -> None:
+    _Docker(monkeypatch, exists=True, running=True, engine=engine)
+    assert local_infra._local_docker_endpoint("docker") is None  # noqa: SLF001
+
+
+@pytest.mark.parametrize("engine", ["npipe:////./pipe/dockerDesktopLinuxEngine", "unix:///var/run/docker.sock"])
+def test_a_local_engine_is_pinned_for_every_later_command(monkeypatch, engine) -> None:
+    """A context switched after the check is not followed: the fake answers only commands carrying the checked engine."""
+    docker = _Docker(monkeypatch, exists=True, running=True, engine=engine)
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_a, **_k: True)
+    monkeypatch.setattr(local_infra, "_phoenix_health_ready", lambda _url: True)
+
+    assert local_infra.ensure_local_phoenix() == local_infra.LOCAL_PHOENIX_OTLP_ENDPOINT
+    assert len(docker.calls) > 1  # the checked engine answered every one of them
+
+
+@pytest.mark.parametrize(
+    ("bindings", "image"),
+    [
+        ([{"HostIp": "0.0.0.0", "HostPort": "{port}"}], "arizephoenix/phoenix:latest"),
+        ([{"HostIp": "127.0.0.1", "HostPort": "16006"}], "arizephoenix/phoenix:latest"),
+        ([], "arizephoenix/phoenix:latest"),
+        ([{"HostIp": "127.0.0.1", "HostPort": "{port}"}], "someone/else:1"),
+    ],
+    ids=["all-interfaces", "other-port", "unpublished", "other-image"],
+)
+def test_a_running_container_that_does_not_hold_the_endpoint_is_refused(monkeypatch, phoenix_port, bindings, image) -> None:
+    """A healthy answer counts only while Docker holds exactly 127.0.0.1:<port> for optimus-phoenix running its image."""
+    docker = _Docker(monkeypatch, exists=True, running=True, image="arizephoenix/phoenix:latest")
+    docker.bindings = [{**binding, "HostPort": binding["HostPort"].format(port=phoenix_port.port)} for binding in bindings]
+    docker.image = image
+    monkeypatch.setattr(local_infra, "_docker_container_image", lambda *_a, **_k: "arizephoenix/phoenix:latest")
+
+    with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
+        local_infra.ensure_local_phoenix()
+
+    assert exc_info.value.code == "PHOENIX_IDENTITY_UNCONFIRMED"
+    _assert_no_destructive_docker_args(docker.calls)
 
 
 def test_ensure_local_phoenix_raises_on_wrong_port_owner(monkeypatch) -> None:
-    run_calls: list[list[str]] = []
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
-    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
-    monkeypatch.setattr(
-        local_infra,
-        "_docker_published_port_owners",
-        lambda *_a, **_k: [("other-phoenix", "arizephoenix/phoenix:latest")],
-    )
-    monkeypatch.setattr(local_infra.subprocess, "run", lambda *a, **k: run_calls.append(list(a[0])))
+    docker = _Docker(monkeypatch, exists=False, owners=[("other-phoenix", "arizephoenix/phoenix:latest")])
 
     with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
         local_infra.ensure_local_phoenix()
 
-    assert "PHOENIX" in exc_info.value.code
+    assert exc_info.value.code == "PHOENIX_PORT_CONFLICT"
     assert "6006" in exc_info.value.user_message
     assert "other-phoenix" in exc_info.value.user_message
-    _assert_no_destructive_docker_args(run_calls)
+    assert docker.calls == [["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"]]  # read-only
 
 
 def test_ensure_local_phoenix_raises_on_wrong_image_for_named_container(monkeypatch) -> None:
-    monkeypatch.setattr(local_infra.shutil, "which", lambda _name: "docker")
-    monkeypatch.setattr(local_infra, "_docker_daemon_reachable", lambda _docker: True)
-    monkeypatch.setattr(local_infra, "_container_exists", lambda *_a, **_k: True)
-    monkeypatch.setattr(
-        local_infra,
-        "_docker_published_port_owners",
-        lambda *_a, **_k: [("optimus-phoenix", "wrong/image:tag")],
-    )
-    monkeypatch.setattr(
-        local_infra.subprocess,
-        "run",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not mutate")),
-    )
+    docker = _Docker(monkeypatch, exists=True, owners=[("optimus-phoenix", "wrong/image:tag")])
 
     with pytest.raises(local_infra.LocalInfrastructureError) as exc_info:
         local_infra.ensure_local_phoenix()
 
-    assert "PHOENIX" in exc_info.value.code
-    assert "wrong/image:tag" in exc_info.value.user_message or "arizephoenix/phoenix:latest" in exc_info.value.user_message
+    assert exc_info.value.code == "PHOENIX_IMAGE_CONFLICT"
+    assert "wrong/image:tag" in exc_info.value.user_message
+    assert docker.calls == [["docker", "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"]]  # read-only
 
 
 def test_ensure_local_gateway_injects_otlp_endpoint_into_child_env_only(tmp_path, monkeypatch) -> None:

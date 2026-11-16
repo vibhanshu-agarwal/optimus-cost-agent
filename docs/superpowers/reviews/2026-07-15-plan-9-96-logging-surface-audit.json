@@ -497,11 +497,11 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.__main__:_start_local_dependencies:stderr_export",
+      "key": "optimus.acp.local_infra:_redis_run_id:logger_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.acp.__main__:_start_local_dependencies:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_main_wiring.py::test_main_exits_2_on_redis_port_conflict_before_gateway",
+      "rationale": "Inspection: AST overmatch. client.info(\"server\") is the Redis INFO command that reads the listener's run_id for #480's identity check, not a logger call; it exports nothing.",
+      "sanitizer": "Redis INFO read; no logging",
+      "test_node": "tests/unit/acp/test_local_infra.py::test_a_malformed_info_reply_is_refused_as_unconfirmed",
       "evidence_tier": "unit"
     },
     {

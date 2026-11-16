@@ -196,6 +196,8 @@ async def test_signal_does_not_absorb_an_independent_cleanup_control(tmp_path, m
     assert raised.value is expected
 
 _HOST_STARTERS = ("ensure_local_redis", "ensure_local_phoenix", "ensure_local_gateway")
+# #480: read-only, but it probes the real loopback Redis and runs `docker exec`; every test gets a no-op unless it sets its own.
+_HOST_CHECKS = ("confirm_local_redis",)
 
 
 @pytest.fixture(autouse=True)
@@ -206,12 +208,14 @@ def _no_host_infrastructure(monkeypatch):
     reached: list[str] = []
     for name in _HOST_STARTERS:
         monkeypatch.setattr(acp_main, name, lambda *_a, _name=name, **_k: reached.append(_name))
+    for name in _HOST_CHECKS:
+        monkeypatch.setattr(acp_main, name, lambda *_a, **_k: None)
     yield reached
     assert reached == [], f"the test reached the real {reached}; stub it like its siblings"
 
 
 def test_the_host_starter_tripwire_records_every_starter_main_reaches(_no_host_infrastructure: list[str]) -> None:
-    assert sorted(_HOST_STARTERS) == sorted(name for name in vars(acp_main) if name.startswith("ensure_local_"))
+    assert sorted(_HOST_STARTERS + _HOST_CHECKS) == sorted(name for name in vars(acp_main) if name.startswith(("ensure_local_", "confirm_local_")))
     for name in _HOST_STARTERS:
         assert getattr(acp_main, name)("redis://127.0.0.1:6379/0") is None  # recorded, not run
     assert _no_host_infrastructure == list(_HOST_STARTERS)
@@ -1274,8 +1278,9 @@ def test_no_gated_helper_reads_os_environ_after_capture(monkeypatch, tmp_path) -
     assert agent_environ_seen["OPTIMUS_API_KEY"] == "test-key"  # pragma: allowlist secret
 
 
-def test_main_exits_2_on_redis_port_conflict_before_gateway(monkeypatch, tmp_path, capsys) -> None:
-    """Plan 11.6 Task 2: typed Redis ownership failure prints and exits 2 before Gateway."""
+def test_main_refuses_in_the_panel_on_a_redis_refusal_before_gateway(monkeypatch, tmp_path, capsys) -> None:
+    """Plan 11.6 Task 2, then #480: a typed Redis refusal prints its reason and serves only the refusal host, before Gateway."""
+    from optimus.acp.gateway_refusal import GatewayRefusalServer
     from optimus.acp.local_infra import LocalInfrastructureError
 
     env = _base_env()
@@ -1292,12 +1297,20 @@ def test_main_exits_2_on_redis_port_conflict_before_gateway(monkeypatch, tmp_pat
     monkeypatch.setattr(acp_main, "ensure_local_redis", raise_conflict)
     monkeypatch.setattr(acp_main, "ensure_local_gateway", lambda **k: gateway_calls.append(k) or None)
     monkeypatch.setattr(acp_main, "build_configured_server", lambda **k: server_calls.append(k) or None)
+    served: list[object] = []
+
+    async def serving(server, **_kwargs):
+        served.append(server)
+        return 0
+
+    monkeypatch.setattr(acp_main, "_run_serving_process", serving)
 
     exit_code = acp_main.main(["--workspace-root", str(tmp_path)])
 
     captured = capsys.readouterr()
-    assert exit_code == 2
-    assert "optimus-agent:" in captured.err
+    assert exit_code == 0
+    assert [type(server) for server in served] == [GatewayRefusalServer]
+    assert "optimus-agent: REDIS_PORT_CONFLICT:" in captured.err
     assert "optimus-plan112-redis" in captured.err
     assert gateway_calls == []
     assert server_calls == []
