@@ -1,0 +1,40 @@
+{
+  "schema": "plan12-memory-m3.manifest.v1",
+  "plan": "12.11",
+  "issue": 490,
+  "later_part_issue": 491,
+  "plan_file": "docs/superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation.md",
+  "plan_sha256": "hex:77a7aec144b7b85ad379ff59bdb95912411b7753e6b3338628aa09e2f995824d",
+  "approval": "Operator, Claude chat 2026-11-16: \"Approve hash\", for Plan 12.11 at the hash above with decisions D1-D8 as recommended. Recorded on #490. It released no live operation.",
+  "filed": "PR #492, merge commit 71d1c1efd875926ddd762ff5b4f57c0c92a08ca3, plan bytes on main equal the approved hash",
+  "inputs": {
+    "discovery_v12_sha256": "hex:33670c6b84aceccd629437c14f03609ba4293d70cde95b242dd93a2b0ad4fb14",
+    "spec_v4_sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9",
+    "provenance_only": "discovery v12 lives outside the repository; no test or command reads it"
+  },
+  "task0_inventory": {
+    "observed_on": "2026-11-16",
+    "source_head": "git:71d1c1efd875926ddd762ff5b4f57c0c92a08ca3",
+    "branch": "agent/claude/p490-task0",
+    "python": "CPython 3.14.4, repository venv synced with --frozen --extra dev --extra memory",
+    "uv": "0.11.29",
+    "docker_engine": "29.9.3, Docker Desktop (WSL2 backend)",
+    "redis_image_local": "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5 (tag 8), the M1 image the plan pins",
+    "memory_store_port_6394": "not listening",
+    "running_containers": "optimus-redis only (the shared TimeSeries Redis on 6379); no memory or index container exists",
+    "keyring_backend": "keyring.backends.Windows.WinVaultKeyring (Windows Credential Manager)",
+    "zed": "1.28.1 (e8bc16acee5ae1937600d571d441c4b5d7b0d288)",
+    "acpx": "0.12.0",
+    "wsl": "Ubuntu-24.04 installed (stopped); Linux Secret Service not yet inventoried",
+    "second_real_route": "none: the summarizer and easy roles list only the Haiku 5.5 route, the only endpoint marked verified. Under D6, actual second-model proof is UNRUN unless a route qualifies, with #491 as owner.",
+    "summarizer_prices": "USD 0.50 input and 2.50 output per million tokens, as the plan's forecast assumed",
+    "export_format": {
+      "spec": "Agent Memory Repo, github.com/AgentMemoryRepo/agentmemoryrepo, MIT",
+      "commit": "git:8798cb26c817d451a5ed6cba0ad8d9eca8d5ec3e",
+      "committed": "2026-10-06T23:52:19Z",
+      "spec_md_sha256": "hex:62a3eecd0d8c08aa69f5ced633e5e1d52b23eaf4fbbc78bfbf65fbbe980b1d72",
+      "finding": "unchanged since discovery's 2026-10-22 check: a MEMORY.md index, one-line entries with open [key: value] metadata (recommended source and added), [[path]] cross-links. Adoption as the export format holds."
+    },
+    "not_released": "Docker containers, keyring writes, Zed sessions and paid calls: each needs its own operator release"
+  }
+}
