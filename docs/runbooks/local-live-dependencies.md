@@ -107,6 +107,10 @@ This foreground process:
 
 - parses checkout `.env.gateway` as untrusted key=value data (never `source`d);
 - optionally ensures `optimus-phoenix` and injects `OTEL_EXPORTER_OTLP_ENDPOINT` into the **Gateway child only**;
+  at launch (#481) that endpoint is exported only when a local Docker engine holds exactly `127.0.0.1:6006` for a
+  running `optimus-phoenix` with the expected image. A healthy answer from anything else refuses with
+  `PHOENIX_IDENTITY_UNCONFIRMED`, and Optimus never stops, deletes or changes what is listening. The check runs at
+  launch only: if the container later stops and something else takes the port, traces go there until relaunch;
 - keeps the Gateway alive until you stop the terminal.
 
 **Terminal B — consumer (zero Optimus shell vars):**

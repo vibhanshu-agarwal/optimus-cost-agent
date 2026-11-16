@@ -174,10 +174,15 @@ def _docker_daemon_reachable(docker: str) -> bool:
     return result.returncode == 0
 
 
-def _container_exists(docker: str, name: str) -> bool:
+def _pinned(docker: str, host: str | None) -> list[str]:
+    """The Docker command, pinned to one engine when ``host`` is given, so a context switched meanwhile is not followed."""
+    return [docker] if host is None else [docker, "--host", host]
+
+
+def _container_exists(docker: str, name: str, *, host: str | None = None) -> bool:
     try:
         result = subprocess.run(
-            [docker, "ps", "-a", "--filter", f"name=^/{name}$", "--format", "{{.Names}}"],
+            [*_pinned(docker, host), "ps", "-a", "--filter", f"name=^/{name}$", "--format", "{{.Names}}"],
             capture_output=True,
             text=True,
             check=False,
@@ -206,11 +211,11 @@ def _is_established_default_redis_url(redis_url: str) -> bool:
     )
 
 
-def _docker_published_port_owners(docker: str, port: int) -> list[tuple[str, str]]:
+def _docker_published_port_owners(docker: str, port: int, *, host: str | None = None) -> list[tuple[str, str]]:
     """Return exact (name, image) pairs publishing ``port`` on the Docker host."""
     try:
         result = subprocess.run(
-            [docker, "ps", "--filter", f"publish={port}", "--format", "{{.Names}}\t{{.Image}}"],
+            [*_pinned(docker, host), "ps", "--filter", f"publish={port}", "--format", "{{.Names}}\t{{.Image}}"],
             capture_output=True,
             text=True,
             check=False,
@@ -307,10 +312,10 @@ def _phoenix_health_ready(url: str) -> bool:
         return False
 
 
-def _docker_container_image(docker: str, name: str) -> str | None:
+def _docker_container_image(docker: str, name: str, *, host: str | None = None) -> str | None:
     try:
         result = subprocess.run(
-            [docker, "inspect", "--format", "{{.Config.Image}}", name],
+            [*_pinned(docker, host), "inspect", "--format", "{{.Config.Image}}", name],
             capture_output=True,
             text=True,
             check=False,
@@ -324,8 +329,8 @@ def _docker_container_image(docker: str, name: str) -> str | None:
     return image or None
 
 
-def _assert_phoenix_port_identity(*, docker: str, log: Callable[[str], None]) -> None:
-    owners = _docker_published_port_owners(docker, _PHOENIX_PORT)
+def _assert_phoenix_port_identity(*, docker: str, log: Callable[[str], None], host: str | None = None) -> None:
+    owners = _docker_published_port_owners(docker, _PHOENIX_PORT, host=host)
     if not owners:
         return
     names = [name for name, _image in owners]
@@ -350,8 +355,56 @@ def _assert_phoenix_port_identity(*, docker: str, log: Callable[[str], None]) ->
             )
 
 
+def _local_docker_endpoint(docker: str) -> str | None:
+    """The selected Docker engine's endpoint (it reflects DOCKER_HOST too) when that engine runs on this machine: a Unix
+    socket, or a named pipe on this machine (`//./pipe/...`, not `//server/pipe/...`). None otherwise. A remote engine's
+    port bindings say nothing about this machine's ports."""
+    try:
+        result = subprocess.run([docker, "context", "inspect", "--format", "{{.Endpoints.docker.Host}}"],
+                                capture_output=True, text=True, check=False, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    endpoint = result.stdout.strip()
+    parsed = urlparse(endpoint)
+    local = parsed.scheme == "unix" or (parsed.scheme == "npipe" and not parsed.netloc and parsed.path.startswith("//./pipe/"))
+    return endpoint if result.returncode == 0 and local else None
+
+
+def _phoenix_binding_conflict(docker: str, host: str) -> str | None:
+    """#481: why the optimus-phoenix container is not what answers at the OTLP endpoint, or None when it is: it runs the
+    expected image, and the local engine ``host`` holds exactly 127.0.0.1:6006 for it now. Docker binds that address
+    exclusively, so while it does, nothing else can answer there."""
+    try:
+        result = subprocess.run([*_pinned(docker, host), "inspect", "--type", "container", _PHOENIX_CONTAINER_NAME],
+                                capture_output=True, text=True, check=False, timeout=10)
+        view: dict[str, Any] | None = json.loads(result.stdout)[0] if result.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, ValueError, IndexError, TypeError):
+        view = None
+    if not isinstance(view, dict):
+        return f"{_PHOENIX_CONTAINER_NAME} does not exist"
+    if not (view.get("State") or {}).get("Running"):
+        return f"{_PHOENIX_CONTAINER_NAME} is not running"
+    if (view.get("Config") or {}).get("Image") != _PHOENIX_IMAGE:
+        return f"{_PHOENIX_CONTAINER_NAME} runs another image"
+    bound = ((view.get("NetworkSettings") or {}).get("Ports") or {}).get(f"{_PHOENIX_PORT}/tcp") or []
+    if [(binding.get("HostIp"), binding.get("HostPort")) for binding in bound] != [("127.0.0.1", str(_PHOENIX_PORT))]:
+        return f"Docker does not publish {_PHOENIX_CONTAINER_NAME} on 127.0.0.1:{_PHOENIX_PORT}"
+    return None
+
+
+def _phoenix_unconfirmed(reason: str) -> LocalInfrastructureError:
+    return LocalInfrastructureError(
+        code="PHOENIX_IDENTITY_UNCONFIRMED",
+        user_message=(
+            f"Something answers at {LOCAL_PHOENIX_BASE_URL}, but it is not this setup's Phoenix: {reason}. Optimus will not "
+            "send traces there, and will not stop or change what is listening. Stop it yourself so Optimus can start "
+            f"{_PHOENIX_CONTAINER_NAME} there, and launch again."
+        ),
+    )
+
+
 def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
-    """Return the fixed OTLP endpoint after named-container health succeeds."""
+    """Return the fixed OTLP endpoint once it is bound to the optimus-phoenix container and healthy (#481)."""
     docker = shutil.which("docker")
     if docker is None:
         raise LocalInfrastructureError(
@@ -364,10 +417,18 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
             user_message="Docker daemon not reachable; cannot start local Phoenix.",
         )
 
-    _assert_phoenix_port_identity(docker=docker, log=log)
+    host = _local_docker_endpoint(docker)  # every Docker command below is pinned to this engine
+    if host is None:
+        raise _phoenix_unconfirmed("Docker's selected engine is not on this machine, so its containers cannot vouch for it")
+    _assert_phoenix_port_identity(docker=docker, log=log, host=host)
 
-    if _container_exists(docker, _PHOENIX_CONTAINER_NAME):
-        configured = _docker_container_image(docker, _PHOENIX_CONTAINER_NAME)
+    conflict = _phoenix_binding_conflict(docker, host)
+    if conflict is not None and _tcp_reachable("127.0.0.1", _PHOENIX_PORT):
+        # The container does not hold the port, yet something answers there: starting it would fail, and the health
+        # check below would read the other listener.
+        raise _phoenix_unconfirmed(f"{conflict}, yet something already listens on its port")
+    if _container_exists(docker, _PHOENIX_CONTAINER_NAME, host=host):
+        configured = _docker_container_image(docker, _PHOENIX_CONTAINER_NAME, host=host)
         if configured is not None and configured != _PHOENIX_IMAGE:
             raise LocalInfrastructureError(
                 code="PHOENIX_IMAGE_CONFLICT",
@@ -380,7 +441,7 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
         if not _phoenix_health_ready(_PHOENIX_HEALTHZ_URL):
             log(f"optimus-agent: starting existing {_PHOENIX_CONTAINER_NAME} container...")
             subprocess.run(
-                [docker, "start", _PHOENIX_CONTAINER_NAME],
+                [*_pinned(docker, host), "start", _PHOENIX_CONTAINER_NAME],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -389,7 +450,7 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
         log(f"optimus-agent: creating {_PHOENIX_CONTAINER_NAME} container ({_PHOENIX_IMAGE})...")
         subprocess.run(
             [
-                docker,
+                *_pinned(docker, host),
                 "run",
                 "-d",
                 "--name",
@@ -406,6 +467,9 @@ def ensure_local_phoenix(*, log: Callable[[str], None] = _noop_log) -> str:
     deadline = time.monotonic() + _PHOENIX_READY_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
         if _phoenix_health_ready(_PHOENIX_HEALTHZ_URL):
+            conflict = _phoenix_binding_conflict(docker, host)  # what answered must be the container
+            if conflict is not None:
+                raise _phoenix_unconfirmed(conflict)
             return LOCAL_PHOENIX_OTLP_ENDPOINT
         time.sleep(_POLL_INTERVAL_SECONDS)
     raise LocalInfrastructureError(
