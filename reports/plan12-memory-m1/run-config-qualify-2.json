@@ -1,0 +1,27 @@
+{
+  "label": "plan12.10-qualify-2-2026-11-06",
+  "authorization": "Codex review 27 on #469: RELEASED at ed2acf2, with removal after evidence is kept; the operator standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex release sufficient. Same resources and bounds as Release B.",
+  "container": "p1210-qualify-redis",
+  "volume": "p1210-qualify-data",
+  "port": 6393,
+  "gateway_port": 8773,
+  "maxmemory_mb": 4096,
+  "work_dir": "tmp/plan12-m1-qualify-2",
+  "artifact_cache": "tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+  "embedding_threads": 2,
+  "embedding_cache": "tmp/plan12-m1-eval/embedding-cache.sqlite",
+  "large_corpus": "tmp/plan12-m1-corpus/hadoop",
+  "large_commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+  "hours_limit": 4,
+  "query_samples": 200,
+  "acpx_turns": 20,
+  "foreground_sample_seconds": 3600,
+  "bulk_batches": 20,
+  "k2_rounds": 100,
+  "out": "reports/plan12-memory-m1/qualify-2.json",
+  "k2_out": "reports/plan12-memory-m1/k2-2.json",
+  "repo_paths": [
+    "."
+  ],
+  "peak_sample_seconds": 30
+}

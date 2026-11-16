@@ -242,6 +242,23 @@ def test_dirty_paths_names_each_changed_file_relative_to_this_root(tmp_path: Pat
 def test_dirty_paths_is_none_outside_git(tmp_path: Path) -> None:
     (tmp_path / "a.py").write_text("a = 1\n", encoding="utf-8")
     assert WorkspaceIndexSource(FilePolicy(tmp_path)).dirty_paths() is None
+    assert WorkspaceIndexSource(FilePolicy(tmp_path)).changed_facts() is None
+
+
+def test_changed_facts_move_when_a_changed_file_is_edited_again_and_hold_while_it_is_not(tmp_path: Path) -> None:
+    """The session compares these between wakes instead of stat-ing the whole tree; an unchanged dirty file must read the same each time."""
+    root = _committed(tmp_path / "repo")
+    source = WorkspaceIndexSource(FilePolicy(root))
+    assert source.changed_facts() == ()
+    (root / "sub" / "a.py").write_text("a = 2\n", encoding="utf-8")
+    first = source.changed_facts()
+    assert first is not None and [path for path, _size, _time in first] == ["sub/a.py"]
+    assert source.changed_facts() == first
+    facts = os.stat(root / "sub" / "a.py")
+    os.utime(root / "sub" / "a.py", ns=(facts.st_atime_ns, facts.st_mtime_ns + 1_000_000))
+    assert source.changed_facts() != first
+    (root / "b.py").unlink()
+    assert ("b.py", -1, -1) in (source.changed_facts() or ())
 
 
 def test_a_workers_source_sees_an_ignore_file_change_at_its_next_revision(tmp_path: Path) -> None:

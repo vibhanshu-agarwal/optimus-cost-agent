@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,12 +17,18 @@ import pytest
 
 from context_engine.code_index import path_id
 from context_engine.index_worker import StorageRefusedError, StorageUnavailableError
-from context_engine.retrieval import Hit, Retriever
+from context_engine.retrieval import CatalogueFile, Hit, Retriever
 from optimus.acp.trusted_paths import TrustedPathError
 from optimus.agent.directives import IndexToolRequest, parse_index_tool_reply
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentRunRequest, AgentRunStatus
-from optimus.agent.prompts import build_agent_planner_input, build_indexed_chat_input, build_multi_turn_planner_input
+from optimus.agent.prompts import (
+    build_agent_planner_input,
+    build_indexed_chat_input,
+    build_multi_turn_planner_input,
+    indexed_chat_prefix,
+    indexed_planner_prefix,
+)
 from optimus.agent.runner import AgentRunner
 from optimus.agent.tools import AgentToolbox
 from optimus.context import memory_session
@@ -29,10 +36,13 @@ from optimus.context.index_tools import IndexTools
 from optimus.context.memory_session import GroundingReport, MemorySession, _Scope, named_symbols, session_factory
 from optimus.context.project_registry import ProjectRegistration
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.gateway.route_binding import RoutePolicy
 from optimus.guardrails import file_policy
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import RuntimeContext
+from optimus_model_policy.binding import disclosure_key
+from tests.unit.optimus_gateway.model_policy_support import CAP, SHARED_SECRET, VERIFIED_POLICY, verified_snapshot
 
 SOURCE = "class Parser:\n    def parse(self, text):\n        return text\n\n\ndef helper():\n    return 'needle here'\n"
 
@@ -447,6 +457,97 @@ def test_a_new_branch_still_gets_its_own_scope_and_clears_what_the_old_one_cache
     assert session._map is None and session._indexed_revision is None and session._wake.is_set() and session._cancel.is_set()
     same = session._scope
     assert session._current_scope() is same  # an unchanged branch keeps its scope
+
+
+class _PassSource:
+    """Counts the whole-tree scans the session makes; the test sets Git's changed files and the tree's revision."""
+
+    def __init__(self) -> None:
+        self.changed: tuple[tuple[str, int, int], ...] = ()
+        self.tree = ("r1", False)
+        self.scans = 0
+
+    def changed_facts(self):
+        return self.changed
+
+    def dirty_paths(self):
+        return tuple(path for path, _size, _time in self.changed)
+
+    def revision(self):
+        self.scans += 1
+        return self.tree
+
+
+def _passes_with(session: MemorySession, source: _PassSource, monkeypatch) -> tuple[list[tuple[int, tuple[str, ...]]], threading.Thread]:
+    """The session's own pass loop with a stand-in worker, which records how many scans came before it and what it was asked to write first."""
+    runs: list[tuple[int, tuple[str, ...]]] = []
+
+    class Worker:
+        def __init__(self, _source, _storage, _embedder, *, priority, **_options) -> None:
+            self._priority = priority
+
+        @property
+        def revision(self):
+            return source.tree
+
+        def run(self, _cancel):
+            runs.append((source.scans, tuple(self._priority())))
+            return memory_session.WorkerOutcome("complete")
+
+    monkeypatch.setattr(memory_session, "IndexWorker", Worker)
+    session._source = source  # type: ignore[assignment]
+    session._embedder = object()  # type: ignore[assignment]
+    thread = threading.Thread(target=session._passes, daemon=True)
+    thread.start()
+    return runs, thread
+
+
+def _until(condition, seconds=10.0):
+    deadline = time.monotonic() + seconds
+    while not condition():
+        assert time.monotonic() < deadline, "the condition never held"
+        time.sleep(0.01)
+
+
+def test_a_named_or_git_changed_file_reaches_the_worker_without_a_whole_tree_scan_first(workspace, monkeypatch):
+    """Attempt 4 on corpus B: the session's revision scan (3 s on 10,255 files) came before the worker's, so an edit took 7.53 s against 6."""
+    session, source = _session(workspace, _Storage()), _PassSource()
+    runs, thread = _passes_with(session, source, monkeypatch)
+    try:
+        _until(lambda: len(runs) == 1)
+        session.request_pass(["open.py"])
+        _until(lambda: len(runs) == 2)
+        source.changed = (("edited.py", 10, 1),)
+        session.request_pass()
+        _until(lambda: len(runs) == 3)
+        assert runs == [(0, ()), (0, ("open.py",)), (0, ("edited.py",))], "no pass may scan the tree before its worker writes what was named or changed"
+    finally:
+        session.stop()
+        thread.join(10)
+
+
+def test_an_already_indexed_dirty_file_does_not_start_a_pass_on_every_wake(workspace, monkeypatch):
+    """Codex review 30: Git's changed paths alone must not mean a full reconcile each time a turn wakes the worker."""
+    session, source = _session(workspace, _Storage()), _PassSource()
+    source.changed = (("edited.py", 10, 1),)
+    runs, thread = _passes_with(session, source, monkeypatch)
+    try:
+        _until(lambda: len(runs) == 1)
+        for wake in range(1, 4):
+            session.request_pass()
+            _until(lambda wake=wake: source.scans == wake)  # each wake is checked against the tree, and finds nothing new
+        assert len(runs) == 1
+        source.changed = (("edited.py", 10, 2),)  # edited again
+        session.request_pass()
+        _until(lambda: len(runs) == 2)
+        assert runs[1] == (3, ("edited.py",))
+        source.tree = ("r2", False)  # a change Git's paths do not show, such as an ignored file's rule
+        session.request_pass()
+        _until(lambda: len(runs) == 3)
+        assert runs[2][0] == 4, "only that whole-tree check finds it"
+    finally:
+        session.stop()
+        thread.join(10)
 
 
 def test_status_is_one_content_free_line(workspace):
@@ -925,55 +1026,255 @@ def test_a_turn_keeps_its_own_scopes_catalogue_after_a_switch(workspace):
     session = MemorySession(policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False), storage_for=storage_for, embedder_for=lambda: None,
                             embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "m2", branch_of=lambda root: branch[0])
     old = session.turn()
+    old._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     first = next(iter(stores.values()))
     branch[0] = "other"
     session.turn()
     second = next(store for store in stores.values() if store is not first)
     second.calls.clear()
     old._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     assert second.calls == [], "an old turn read another branch's line with its own epoch number"
     assert any(op == "catalogue" for op, _fields in first.calls)
     session.turn()._retriever.retrieve("helper")  # both lines happen to be at epoch 3, and the old turn's catalogue is the one in the cache
+    assert session.wait_for_catalogue(5)
     assert any(op == "catalogue" for op, _fields in second.calls), "a turn was given another branch's catalogue"
 
 
-def test_a_complete_generation_never_reuses_an_older_catalogue(workspace):
-    class Moving(_Storage):
-        epoch = 3
+class _Moving(_Storage):
+    epoch = 3
 
-        def call(self, op, **fields):
+    def call(self, op, **fields):
+        reply = super().call(op, **fields)
+        if op == "coverage" and reply["current"]:
+            reply["current"]["epoch"] = self.epoch
+        return reply
+
+
+class _Gated(_Moving):
+    """The background refresh waits at each catalogue page until `gate` opens; any other thread's read goes straight through."""
+
+    def __init__(self, *args, pages=2, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pages = pages
+        self.gate = threading.Event()
+        self.entered = threading.Event()
+        self.threads: list[str] = []
+
+    def call(self, op, **fields):
+        if op == "catalogue":
+            self.threads.append(threading.current_thread().name)
+            if threading.current_thread().name == memory_session.CATALOGUE_THREAD:
+                self.entered.set()
+                assert self.gate.wait(10)
             reply = super().call(op, **fields)
-            if op == "coverage":
-                reply["current"]["epoch"] = self.epoch
-            return reply
+            return {**reply, "cursor": None if fields.get("cursor") or self.pages == 1 else "page-2"}
+        return super().call(op, **fields)
 
-    storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+
+def test_a_complete_generation_never_reuses_an_older_catalogue(workspace):
+    storage = _Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
     session = _session(workspace, storage)
     session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     storage.epoch = 4
-    session.turn()._retriever.retrieve("helper")
+    moved = session.turn()._retriever.retrieve("helper")
+    assert "not ready" in moved.channels["catalogue"]  # epoch 3's catalogue is never offered for epoch 4
+    assert session.wait_for_catalogue(5)
     assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3, 4]
+    assert "catalogue" not in session.turn()._retriever.retrieve("helper").channels
 
 
 def test_a_build_may_reuse_a_recent_catalogue_since_it_only_suggests_what_to_ask(workspace):
-    class Moving(_Storage):
-        epoch = 3
-
-        def call(self, op, **fields):
-            reply = super().call(op, **fields)
-            if op == "coverage":
-                reply["current"]["epoch"] = self.epoch
-            return reply
-
-    storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=False)
+    storage = _Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=False)
     session = _session(workspace, storage)
     session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     storage.epoch = 4
     assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3]
     storage.calls.clear()
     second = session.turn()._retriever.retrieve("helper")
-    assert second.epoch == 4 and not any(op == "catalogue" for op, _fields in storage.calls)
+    assert second.epoch == 4 and not any(op == "catalogue" for op, _fields in storage.calls) and "catalogue" not in second.channels
     assert {fields["epoch"] for op, fields in storage.calls if op == "query"} == {4}  # every record comes from the retrieval's own epoch
+
+
+def test_a_turn_never_reads_the_catalogue_itself_and_says_when_its_suggestions_are_missing(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    storage.gate.set()
+    session = _session(workspace, storage)
+    first = session.turn()._retriever.retrieve("helper")
+    assert first.state == "ok" and "not ready" in first.channels["catalogue"]
+    assert first.channels["lexical"] == "1 results"  # the other channels and their checks go on
+    assert session.wait_for_catalogue(5)
+    assert storage.threads == [memory_session.CATALOGUE_THREAD] * 2
+    second = session.turn()._retriever.retrieve("helper")
+    assert "catalogue" not in second.channels and len(storage.threads) == 2
+
+
+def test_a_turn_does_not_wait_behind_a_catalogue_refresh(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    started = time.monotonic()
+    again = session.turn()._retriever.retrieve("helper")
+    assert time.monotonic() - started < 2 and "not ready" in again.channels["catalogue"]
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+
+
+def test_catalogue_refreshes_coalesce_to_the_newest_wanted(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    for epoch in (4, 5, 6, 7, 8):
+        storage.epoch = epoch
+        session.turn()._retriever.retrieve("helper")
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue" and not fields.get("cursor")] == [3, 8]
+    assert session._catalogue.epoch == 8
+
+
+@pytest.mark.parametrize("pages", [1, 2])
+def test_a_refresh_for_a_retired_branch_stops_paging_and_is_never_published(workspace, pages):
+    stores: dict[str, _Gated] = {}
+    branch = ["main"]
+    session = MemorySession(policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False),
+                            storage_for=lambda scope: stores.setdefault(scope, _Gated([_record(scope[:6], "pkg/a.py", "helper", _sha(SOURCE))], pages=pages)), embedder_for=lambda: None,
+                            embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "m3", branch_of=lambda root: branch[0])
+    retired = session._current_scope().identity
+    session.turn()._retriever.retrieve("helper")
+    old = stores[retired]
+    assert old.entered.wait(5)
+    branch[0] = "other"
+    session._current_scope()
+    old.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert old.threads == [memory_session.CATALOGUE_THREAD], "the retired line's second page was asked for"
+    assert session._catalogue.identity != retired
+
+
+@pytest.mark.parametrize("old_asks_last", [True, False])
+def test_a_retired_lines_request_never_displaces_the_current_lines_pending_one(workspace, old_asks_last):
+    """Codex review 40: while the old line's read is blocked, the new line asks, and a turn begun on the old line asks too, in either order."""
+    stores: dict[str, _Gated] = {}
+    branch = ["main"]
+    session = MemorySession(policy=FilePolicy(workspace), registration=ProjectRegistration("p", 1, "git:p", str(workspace), created=False),
+                            storage_for=lambda scope: stores.setdefault(scope, _Gated([_record(scope[:6], "pkg/a.py", "helper", _sha(SOURCE))])), embedder_for=lambda: None,
+                            embedding_identity="e@1", parser_version="v1", manifest_root=workspace.parent / "m4", branch_of=lambda root: branch[0])
+    old_turn = session.turn()
+    old_turn._retriever.retrieve("helper")
+    old = stores[session._scope.identity]
+    assert old.entered.wait(5)
+    branch[0] = "other"
+    new_turn = session.turn()
+    new = stores[session._scope.identity]
+    new.gate.set()
+    asks = [lambda: old_turn._retriever.retrieve("helper"), lambda: new_turn._retriever.retrieve("helper")]
+    for ask in (asks[1], asks[0]) if old_asks_last else asks:
+        ask()
+    old.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert session._catalogue.identity == session._scope.identity, "the current line's catalogue was never read"
+    assert new.threads == [memory_session.CATALOGUE_THREAD] * 2
+
+
+@pytest.mark.parametrize("asked", [(9, 8), (8, 9)])
+def test_an_older_epochs_request_never_displaces_a_newer_pending_one(workspace, asked):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    scope = session._current_scope()
+    for epoch in asked:  # a retrieval that read coverage earlier can ask after one that read it later
+        session._catalogue_for(scope, epoch, True)
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue" and not fields.get("cursor")] == [3, 9]
+
+
+def test_one_retrieval_uses_one_catalogue_answer_so_its_report_matches_its_channels():
+    """Codex review 40: with a named path, structure and recency both want the catalogue; a read that lands between them must not split them."""
+    answers = iter([None, [CatalogueFile("pkg/a.py", _sha(SOURCE), "python", 100, "import pkg.b")]])
+    asked = []
+
+    def catalogue(epoch, complete):
+        asked.append(epoch)
+        return next(answers)
+
+    retrieval = Retriever(_Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))]), None, catalogue=catalogue).retrieve("helper", named_paths=("pkg/a.py",))
+    assert asked == [3]
+    assert "not ready" in retrieval.channels["catalogue"] and retrieval.channels["recency"] == "0 results"
+
+
+def test_an_older_refresh_never_replaces_a_newer_catalogue(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    storage.epoch = 4
+    session.repo_map(session._current_scope())  # the map reads epoch 4 itself, on this thread
+    assert session._catalogue.epoch == 4
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert session._catalogue.epoch == 4, "epoch 3's late refresh replaced epoch 4"
+
+
+def test_stopping_the_session_stops_a_catalogue_refresh_between_pages(workspace):
+    storage = _Gated([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert storage.entered.wait(5)
+    session.stop()
+    storage.gate.set()
+    assert session.wait_for_catalogue(5)
+    assert storage.threads == [memory_session.CATALOGUE_THREAD] and session._catalogue.identity == ""
+    assert "not ready" in session.turn()._retriever.retrieve("helper").channels["catalogue"]  # a stopped session starts no refresh
+    assert session.wait_for_catalogue(1) and storage.threads == [memory_session.CATALOGUE_THREAD]
+
+
+@pytest.mark.parametrize("failure", [StorageRefusedError("EPOCH_EXPIRED"), StorageUnavailableError("C:\\Users\\someone\\private\\route.txt unreachable")])
+def test_a_catalogue_that_cannot_be_read_logs_only_its_code_and_the_next_turn_asks_again(workspace, caplog, failure):
+    class Failing(_Storage):
+        fail = True
+
+        def call(self, op, **fields):
+            if op == "catalogue" and self.fail:
+                raise failure
+            return super().call(op, **fields)
+
+    storage = Failing([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    with caplog.at_level("INFO", logger=memory_session.__name__):
+        assert session.turn()._retriever.retrieve("helper").state == "ok"
+        assert session.wait_for_catalogue(5)
+    assert getattr(failure, "code", type(failure).__name__) in caplog.text and "private" not in caplog.text
+    storage.fail = False
+    session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5) and session._catalogue.epoch == 3
+
+
+def test_a_ready_catalogue_gives_exactly_the_retrieval_the_turn_used_to_read_for_itself(workspace):
+    class Dated(_Storage):
+        def call(self, op, **fields):
+            reply = super().call(op, **fields)
+            if op == "catalogue":
+                reply["files"] = [{**item, "modified": 100 + index, "description": "import pkg.a"} for index, item in enumerate(reply["files"])]
+            return reply
+
+    records = [_record("x", "pkg/a.py", "helper", _sha(SOURCE)), _record("y", "notes.md", None, _sha("notes"), kind="file"), _record("z", "pkg/b.py", "Parser", _sha("b"))]
+    storage = Dated(records)
+    session = _session(workspace, storage)
+    session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
+    for asked in ({}, {"named_paths": ("pkg/a.py",)}, {"named_symbols": ("helper",)}):
+        ready = session.turn()._retriever.retrieve("helper parser", **asked)
+        inline = Retriever(storage, None).retrieve("helper parser", **asked)  # the catalogue read inside the turn, as before
+        assert ready == inline, asked
+        assert ready.channels["recency"] != "0 results"
 
 
 def test_a_file_too_large_to_index_is_still_listed_searched_and_named(workspace):
@@ -1086,9 +1387,19 @@ def test_the_map_reads_its_hashes_from_its_own_epoch_even_during_a_build(workspa
     storage = Moving([_record("x", "pkg/a.py", "helper", _sha(SOURCE))], complete=False)
     session = _session(workspace, storage)
     session.turn()._retriever.retrieve("helper")
+    assert session.wait_for_catalogue(5)
     storage.epoch = 4
     session.repo_map(session._current_scope())
     assert [fields["epoch"] for op, fields in storage.calls if op == "catalogue"] == [3, 4]
+
+
+def test_the_catalogue_the_map_read_serves_the_turns_retrieval(workspace):
+    storage = _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE))])
+    session = _session(workspace, storage)
+    turn = session.turn()
+    turn.repo_map()
+    turn._retriever.retrieve("helper")
+    assert [op for op, _fields in storage.calls].count("catalogue") == 1  # 41 pages each at 10,255 files, read twice on a first turn
 
 
 @pytest.mark.parametrize("damage", ["emptied", "binary"])
@@ -1266,3 +1577,79 @@ def test_grounding_on_one_turn_sees_an_ignore_file_change_by_itself(workspace):
     assert turn.ground("See pkg/a.py.").resolved == ("pkg/a.py",)
     _ignore(workspace, "pkg/\n")
     assert turn.ground("See pkg/a.py.").unresolved == ("pkg/a.py",)  # the same turn, with no tool or new turn between
+
+
+# --- ADR-039: what each indexed request names as its cacheable prefix ---------------------------------
+
+
+def test_the_prefix_is_the_request_through_the_map_and_no_further():
+    for tools in (True, False):
+        prefix = indexed_chat_prefix(repo_map="MAP", tools_enabled=tools)
+        text = build_indexed_chat_input("the question", workspace_context="PACK", conversation_envelope="HISTORY", repo_map="MAP", index_results="RESULTS", tools_enabled=tools)
+        assert text.startswith(prefix) and "MAP" in prefix
+        assert not any(later in prefix for later in ("HISTORY", "PACK", "RESULTS", "the question"))
+    limits = (1, 2, 3)
+    prefix = indexed_planner_prefix(repo_map="MAP", tools_enabled=True, evidence_limits=limits)
+    text = build_multi_turn_planner_input(
+        "THE TASK", planning_turn=2, max_planning_turns=7, remaining_wall_clock_minutes=30, conversation_envelope="HISTORY", initial_workspace_context="PACK",
+        evidence_limits=limits, repo_map="MAP", index_results="RESULTS", index_tools_enabled=True,
+    )  # fmt: skip
+    assert text.startswith(prefix) and "MAP" in prefix
+    assert not any(later in prefix for later in ("HISTORY", "PACK", "RESULTS", "THE TASK", "Planning turn"))
+
+
+class _BoundGateway(_Gateway):
+    def __init__(self, replies):
+        super().__init__(replies)
+        self.bindings: list[Any] = []
+
+    def create_response(self, *, model, input_text, metadata=None, route_binding=None):
+        self.bindings.append(route_binding)
+        return super().create_response(model=model, input_text=input_text, metadata=metadata)
+
+
+def _route(tmp_path: Path, cache: str) -> RoutePolicy:
+    (tmp_path / "registry").mkdir()
+    policy = VERIFIED_POLICY.replace("    route:\n      estimator: half\n", f"    route:\n      prompt_cache: {cache}\n      estimator: half\n", 1)
+    return RoutePolicy(snapshot=verified_snapshot(tmp_path / "registry", policy), disclosure_key=disclosure_key(SHARED_SECRET), model_id="cn/alpha", role="medium", output_cap=CAP)
+
+
+def _bound_run(tmp_path: Path, workspace: Path, mode: ExecutionMode, replies, cache: str = "prefix") -> _BoundGateway:
+    route = _route(tmp_path, cache)
+    gateway = _BoundGateway(replies)
+    packer = _Packer(_session(workspace, _Storage()).turn())
+    packer.model_id = "cn/alpha"
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="how does it work", execution_mode=mode, workspace_root=workspace)
+    AgentRunner(gateway_client=gateway, model="cn/alpha").run(request, context_packer=packer, route_binder=route.capture(session_id="s", turn_seq=1, deliver_notice=lambda _notice: True))
+    return gateway
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_each_indexed_request_names_the_same_prefix_as_rounds_change_what_follows(tmp_path, workspace, mode):
+    gateway = _bound_run(tmp_path, workspace, mode, ["LIST .", "SEARCH more", "REFUSE: done"])
+    assert len(gateway.inputs) == 3 and all(binding.cache_prefix_chars for binding in gateway.bindings)
+    assert len({text[: binding.cache_prefix_chars] for text, binding in zip(gateway.inputs, gateway.bindings, strict=True)}) == 1
+    assert "how does it work" not in gateway.inputs[0][: gateway.bindings[0].cache_prefix_chars]
+    assert gateway.inputs[0] != gateway.inputs[1]
+
+
+def test_withdrawing_the_tools_is_a_new_prefix_and_it_is_still_named(tmp_path, workspace):
+    replies = [f"SEARCH round {i}" for i in range(MAX_INDEX_ROUNDS)] + ["Here is what I found."]
+    gateway = _bound_run(tmp_path, workspace, ExecutionMode.CHAT, replies)
+    assert all(binding.cache_prefix_chars for binding in gateway.bindings)
+    prefixes = [text[: binding.cache_prefix_chars] for text, binding in zip(gateway.inputs, gateway.bindings, strict=True)]
+    assert len(set(prefixes[:4])) == 1 and prefixes[4] != prefixes[0] and "SEARCH <words>" not in prefixes[4]
+
+
+def test_an_indexed_request_names_no_prefix_on_a_route_not_approved_for_one(tmp_path, workspace):
+    gateway = _bound_run(tmp_path, workspace, ExecutionMode.CHAT, ["An answer."], cache="top_level")
+    assert gateway.bindings[0].cache_prefix_chars is None
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_a_turn_without_an_index_names_no_prefix_even_on_a_prefix_route(tmp_path, workspace, mode):
+    gateway = _BoundGateway(["REFUSE: done"])
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="t", execution_mode=mode, workspace_root=workspace)
+    binder = _route(tmp_path, "prefix").capture(session_id="s", turn_seq=1, deliver_notice=lambda _notice: True)
+    AgentRunner(gateway_client=gateway, model="cn/alpha").run(request, route_binder=binder)
+    assert gateway.bindings[0].cache_prefix_chars is None

@@ -1,0 +1,18 @@
+{
+  "label": "plan12.10-retrieval-2026-11-05",
+  "authorization": "Operator, Claude chat 2026-11-05 (Release A): \"Yes, release all three\", reconfirmed \"Approved. Go ahead. #1 - #3\".",
+  "container": "p1210-eval-redis",
+  "volume": "p1210-eval-data",
+  "port": 6392,
+  "gateway_port": 8772,
+  "maxmemory_mb": 512,
+  "work_dir": "tmp/plan12-m1-eval",
+  "artifact_cache": "tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+  "embedding_threads": 2,
+  "fixed_route": "anthropic/claude-haiku-5.5",
+  "gold": {
+    "m1": "tests/fixtures/plan12_memory_m1",
+    "seeds": "tests/fixtures/plan12_memory"
+  },
+  "out": "reports/plan12-memory-m1/retrieval-held-out.json"
+}

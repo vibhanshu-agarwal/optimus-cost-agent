@@ -361,6 +361,31 @@ def test_an_unwritable_raw_bundle_reports_only_a_fixed_code_after_cleanup(tmp_pa
     assert list(pipeline.scratch.iterdir()) == [] and not (pipeline.capture / RUN_ID / "raw-bundle.json").exists()
 
 
+@pytest.mark.parametrize("fault", ["run_key_read", "missing_scratch_parent"])
+def test_an_early_filesystem_fault_reports_only_a_fixed_code(tmp_path, monkeypatch, capsys, windows_shaped_paths, fault):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    pipeline.register_run()
+    if fault == "run_key_read":
+        key_path = pipeline.capture / RUN_ID / col.PATH_KEY_LOCATOR
+        original = Path.read_bytes
+
+        def read_bytes(self):
+            if self == key_path:
+                raise OSError(5, "Input/output error", "C:\\Users\\operator-private-p117v5\\path-key.json")
+            return original(self)
+
+        monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    else:
+        pipeline.scratch = tmp_path / "operator-private-p117v5" / "scratch"
+    capsys.readouterr()
+    assert pipeline.collect() == 2
+    out, err = _out(capsys)
+    assert err.strip() == "host_action_failed" and "operator-private" not in out + err and "Traceback" not in err
+    assert pipeline.host.launches == [] and not (pipeline.capture / RUN_ID / "artifacts").exists()
+    assert not (pipeline.capture / RUN_ID / "raw-bundle.json").exists()
+
+
 def test_bundle_cannot_register_itself(tmp_path, monkeypatch, capsys, windows_shaped_paths):
     pipeline = Pipeline(tmp_path, monkeypatch)
     assert pipeline.prepare() == 0

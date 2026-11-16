@@ -1,0 +1,29 @@
+{
+  "label": "plan12.10-qualify-6",
+  "authorization": "Codex review 41 on #469 (comment 6888387975): RELEASED at c3475da, with removal of p1210-qualify-redis and p1210-qualify-data before provisioning and after evidence is kept, after the acpx approval probe and the optimus-redis check; the operator standing rule (2026-10-03, reaffirmed 2026-10-28) makes a Codex release sufficient. Same envelope as review 38.",
+  "container": "p1210-qualify-redis",
+  "volume": "p1210-qualify-data",
+  "port": 6393,
+  "gateway_port": 8773,
+  "maxmemory_mb": 4096,
+  "work_dir": "tmp/plan12-m1-qualify-6",
+  "artifact_cache": "tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+  "embedding_threads": 2,
+  "embedding_cache": "tmp/plan12-m1-eval/embedding-cache.sqlite",
+  "large_corpus": "tmp/plan12-m1-corpus/hadoop",
+  "large_commit": "hex:9d50c6884666e794e45102260a4017bb31802e1b",
+  "hours_limit": 4,
+  "query_samples": 200,
+  "acpx_turns": 20,
+  "foreground_sample_seconds": 3600,
+  "bulk_batches": 20,
+  "k2_rounds": 100,
+  "out": "reports/plan12-memory-m1/qualify-6.json",
+  "k2_out": "reports/plan12-memory-m1/k2-6.json",
+  "repo_paths": [
+    "."
+  ],
+  "peak_sample_seconds": 30,
+  "assembly_qualifies": true,
+  "assembly_sample_seconds": 1800
+}

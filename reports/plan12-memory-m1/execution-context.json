@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "branch": "agent/claude/p469-task5-qualify",
+  "checkout": "C:/worktrees/optimus-cost-agent-worktrees/optimus-cost-agent-wt-claude-m1plan",
+  "platform": "Windows 11 Pro (10.0.26300), CPython 3.14.4, uv 0.11.29",
+  "source": {
+    "head": "hex:53ff77ffc55e1e3573b1d94e1330335983b22439",
+    "tree": "hex:4fe15c8bf6a512d59684cf9e8e3b908bbad546d8",
+    "full_suite_head": "hex:c18ecd032d84ff076e5b68a03a2b30c8b7255b6e",
+    "code_head_accepted_by_review_45": "hex:7535f7c8d76b13f8d71a0429c29fb8918b828e39",
+    "dirty": false,
+    "excluded": "reports/plan12-memory-m1"
+  },
+  "recorder": {
+    "file": "optimus-handoff/p465-cp1/make_cp4_records.py",
+    "sha256": "hex:ac1353a1763a8341902320ba5e272d0b1bc1d778ef96fcd6996ee0bb9bffa7ff"
+  },
+  "released_resources": [
+    "attempt 6 (c3475da): p1210-qualify-redis and p1210-qualify-data, removed after the run",
+    "fresh2 held-out (6f7b2a3): p1210-eval-redis and p1210-eval-data, removed by the evaluator",
+    "Zed pair: optimus-memory-redis, optimus-memory-redis-data and the keyring entry optimus-gateway-memory-index/redis-password, removed 2026-11-16 under the operator's cleanup release"
+  ],
+  "resources_at_record": "Docker lists only optimus-redis (the product ledger, untouched); no p1210 or memory container or volume remains",
+  "environment": [
+    "P1210_INDEX_DOCKER_RELEASED (set only for released integration runs; unset for the full suite)",
+    "P1210_ACPX_KIT (qualify runs only)"
+  ]
+}

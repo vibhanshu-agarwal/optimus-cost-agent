@@ -191,7 +191,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tools/testing/test_main5_runner.py:test_scoped_plugin_contains_publication_failure_and_removes_only_own_temp:glob:.shutdown-probe-*.tmp": "Inspects generated staging files in this test's tmp_path collector attempt to verify publication failure and cleanup containment.",
     "tools/testing/test_main5_runner.py:test_scoped_plugin_review_target_appearing_at_publication_is_preserved:glob:.shutdown-probe-*.tmp": "Checks generated staging files in this test's tmp_path collector attempt after a competing target prevents publication.",
     "tools/plan12_memory/m1_scale.py:count_corpus:walk:<none>": "Counts the corpus root the manually run measurement tool was given, its own copy under its work folder, not repository truth.",
-    "tools/plan12_memory/m1_scale.py:run_pilot:rglob:*.py": "Lists Python files of the measurement tool's own corpus copy under its work folder.",
+    "tools/plan12_memory/m1_scale.py:edit_target:rglob:<dynamic>": "Lists files of one kind in the measurement tool's own corpus copy under its work folder, then asks the product's file policy which one it admits.",
 }
 
 

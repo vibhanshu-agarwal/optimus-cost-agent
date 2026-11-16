@@ -350,3 +350,15 @@ def test_the_real_download_asks_for_exactly_the_files_the_digest_covers(tmp_path
     target.mkdir()
     memory_setup.huggingface_download(repository="r", revision="v", target=target)
     assert {path.name for path in target.iterdir() if path.is_file()} == set(only_the_digests_files)
+
+
+def test_a_full_index_refuses_writes_and_keeps_answering_searches() -> None:
+    """Redis's default answers a search at the memory ceiling with zero results, which a turn would read as nothing found (K2, Plan 12.10). Proven live in reports/plan12-memory-m1/k2.json."""
+    from types import SimpleNamespace
+
+    from optimus.acp.local_infra import _memory_server_args
+
+    args = _memory_server_args(SimpleNamespace(maxmemory_mb=4096))
+    assert args[args.index("--maxmemory-policy") + 1] == "noeviction"
+    assert args[args.index("--search-on-oom") + 1] == "IGNORE"
+

@@ -191,16 +191,20 @@ def route_digest(model_id: str, entry: ModelEntry) -> str:
     return _sha256_canonical({"model": model_id, "route": entry.route.model_dump(mode="json")})
 
 
-def payload_digest(model_id: str, messages: Sequence[Message], output_cap: int, *, reasoning: str | None, prompt_cache: str | None = None) -> str:
+def payload_digest(
+    model_id: str, messages: Sequence[Message], output_cap: int, *, reasoning: str | None, prompt_cache: str | None = None, cache_prefix_chars: int | None = None
+) -> str:
     """Identity of the final upstream payload, after every host and Gateway transformation: model,
     messages, output cap and the approved reasoning setting it is sent with. Only ``top_level`` caching
-    changes those bytes, so only it changes this digest."""
+    and a named prefix change those bytes, so only they change this digest."""
     payload = {
         "model": model_id,
         "messages": [[message.role, message.content] for message in messages],
         "output_cap": output_cap,
         "reasoning": reasoning,
     }
+    if cache_prefix_chars is not None:
+        return _sha256_canonical({**payload, "prompt_cache": "prefix", "cache_prefix_chars": cache_prefix_chars})
     return _sha256_canonical({**payload, "prompt_cache": prompt_cache} if prompt_cache == "top_level" else payload)
 
 
@@ -302,12 +306,14 @@ def verify_disclosure(
 @dataclass(frozen=True, slots=True)
 class RouteBinding:
     """The host's per-request binding: the snapshot it composed, its request identity, the output
-    cap it reserved and, for a Contributor route, its disclosure authorization."""
+    cap it reserved, for a Contributor route its disclosure authorization and, on a ``prefix`` caching route,
+    where the stable prefix ends: a count of Unicode code points of the final flattened input."""
 
     registry_hash: str
     request_id: str
     output_cap: int
     disclosure: DisclosureAuthorization | None = None
+    cache_prefix_chars: int | None = None
 
     def to_wire(self) -> dict[str, Any]:
         wire: dict[str, Any] = {
@@ -322,6 +328,8 @@ class RouteBinding:
                 "payload_digest": self.disclosure.payload_digest,
                 "mac": self.disclosure.mac,
             }
+        if self.cache_prefix_chars is not None:
+            wire["cache_prefix_chars"] = self.cache_prefix_chars
         return wire
 
     @classmethod
@@ -329,7 +337,7 @@ class RouteBinding:
         """Strict parse: unknown fields, other versions and malformed values are rejected."""
         if not isinstance(raw, Mapping):
             raise BindingError("BINDING_MALFORMED", "route_binding must be an object")
-        _exact_keys(raw, required={"version", "registry_hash", "request_id", "output_cap"}, optional={"disclosure"})
+        _exact_keys(raw, required={"version", "registry_hash", "request_id", "output_cap"}, optional={"disclosure", "cache_prefix_chars"})
         version = raw["version"]
         if isinstance(version, bool) or not isinstance(version, int):
             raise BindingError("BINDING_MALFORMED", "version must be an integer")
@@ -352,11 +360,15 @@ class RouteBinding:
                 payload_digest=_hex_digest(item["payload_digest"], "payload_digest"),
                 mac=_hex_digest(item["mac"], "mac"),
             )
+        cache_prefix_chars = raw.get("cache_prefix_chars")
+        if cache_prefix_chars is not None and (isinstance(cache_prefix_chars, bool) or not isinstance(cache_prefix_chars, int) or cache_prefix_chars <= 0):
+            raise BindingError("BINDING_MALFORMED", "cache_prefix_chars must be a positive integer")
         return cls(
             registry_hash=_hex_digest(raw["registry_hash"], "registry_hash"),
             request_id=request_id,
             output_cap=output_cap,
             disclosure=disclosure,
+            cache_prefix_chars=cache_prefix_chars,
         )
 
 

@@ -1,0 +1,16 @@
+{
+  "attempt": "plan12.10-qualify-2-2026-11-06",
+  "state": "INTERRUPTED",
+  "claims": "none: no large-corpus build, edit, purge, calibration or K2 result was produced",
+  "head": "ed2acf2",
+  "started": "2026-11-06T06:25:18+05:30",
+  "last_log_line": "06:32:04 large corpus: 112617 chunks",
+  "stopped": "about 2026-11-06T08:35+05:30, stopped by Claude because the operator had to shut the machine down",
+  "config": "reports/plan12-memory-m1/run-config-qualify-2.json",
+  "retained_in_kit": {
+    "optimus-handoff/p465-cp1/qualify-2-interrupted-partial.json": "hex:90c3c47a5ce9698124b181e91cad87a497480e54caace55a72280c88b37552fe",
+    "optimus-handoff/p465-cp1/m1-qualify-2.log": "hex:aa9e2d36130aa1f22c4b005de87df905c6c00fe23bed64470125a8c7d7245e92",
+    "optimus-handoff/p465-cp1/run-config-qualify-2.json": "hex:051e80fd736c74b96843574e9fd9b3fa20dbedaf323a6b111351b957e1b1a64a"
+  },
+  "successor": "plan12.10-qualify-3, released anew by Codex review 28 on #469 (comment 6878745056)"
+}

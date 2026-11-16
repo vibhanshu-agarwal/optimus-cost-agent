@@ -180,14 +180,19 @@ class TurnRouteBinder:
             return None
         return max(readings, key=lambda reading: (reading.tokens, -reading.capacity))
 
-    def bind(self, *, stage: str, input_text: str) -> BoundRequest | None:
+    def bind(self, *, stage: str, input_text: str, stable_prefix: str = "") -> BoundRequest | None:
         """A new request for the complete final `input_text`, or None when its required notice was
-        not delivered (then nothing may be sent)."""
+        not delivered (then nothing may be sent). `stable_prefix` is what the prompt builder laid out to stay
+        the same between requests; text that does not begin with it names no prefix and stays uncached."""
         with self._lock:
             ordinal = next(self._ordinal)
         request_id = f"{self._prefix}:{stage}:{ordinal}:{uuid.uuid4().hex}"
         binding = self._disclosure.binding(
-            model_id=self.identity.model_id, request_id=request_id, input_text=input_text, output_cap=self.output_cap
+            model_id=self.identity.model_id,
+            request_id=request_id,
+            input_text=input_text,
+            output_cap=self.output_cap,
+            cache_prefix_chars=len(stable_prefix) if stable_prefix and input_text.startswith(stable_prefix) else None,
         )
         if binding is None:
             return None

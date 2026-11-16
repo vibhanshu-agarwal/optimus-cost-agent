@@ -42,6 +42,7 @@ class Provenance(_Record):
     drafted_by: Id
     verified_by: Id | None
     source: str = Field(min_length=1)
+    holdout: str | None = None  # how a held-out set was held out; the sealed fresh2 gold says "historical, not forward-time"
 
 
 class ExpectedSavings(_Record):
@@ -336,6 +337,7 @@ class SplitManifest(_Record):
     families: dict[Literal["train", "development", "held_out"], tuple[Id, ...]]
     expected_family_counts: dict[Literal["lifecycle", "localization", "accounting"], int]
     chronological_kinds: tuple[Literal["lifecycle", "localization", "accounting"], ...]
+    deduplicated_prs: dict[str, str] = Field(default_factory=dict)  # PR number -> why it was left out; the sealed fresh2 manifest records #30
 
 
 class ValidationReport(_Record):

@@ -154,6 +154,38 @@ def test_response_start_versus_already_abandoned_transport() -> None:
     assert control.rpc_response_delivery is RpcResponseDelivery.NOT_ATTEMPTED
 
 
+@pytest.mark.parametrize("end", ["flushed", "conclusive_failure", "ambiguous", "teardown", "finalized"])
+@pytest.mark.parametrize("written", [False, True], ids=["queued", "write_started"])
+def test_protocol_response_in_handoff_covers_the_live_lease_and_its_flush(written: bool, end: str) -> None:
+    control = _control()
+    assert control.protocol_response_in_handoff() is False, "no response send yet"
+    control.try_start(SendKind.PROGRESS, "p1")
+    control.seal_final_delivery()
+    control.start_terminal_message("m1")
+    assert control.protocol_response_in_handoff() is False, "other in-flight sends are not the response"
+    lease = control.start_response_send()
+    assert lease.send_key is not None
+    if written:
+        assert control.mark_write_started(lease.send_key)
+    assert control.protocol_response_in_handoff() is True
+    assert control.rpc_response_delivery is RpcResponseDelivery.NOT_ATTEMPTED, "the query is not a delivery claim"
+    if end == "teardown":
+        control.request_transport_teardown()
+    elif end == "finalized":
+        control.finalize_once()
+    else:
+        control.publish_authoritative(lease.send_key, SendOutcome(end))
+    assert control.protocol_response_in_handoff() is (end == "flushed")
+    assert (control.rpc_response_delivery is RpcResponseDelivery.FLUSHED) is (end == "flushed")
+
+
+def test_protocol_response_in_handoff_is_false_for_a_suppressed_response_start() -> None:
+    control = _control()
+    control.request_transport_teardown()
+    control.start_response_send()
+    assert control.protocol_response_in_handoff() is False
+
+
 def test_concurrent_try_start_and_cancel_barrier_invariants() -> None:
     for _ in range(20):
         control = _control()

@@ -811,18 +811,18 @@ def _failure_code(exc: Exception) -> str:
 def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> CollectionBatch:
     context, spec = inputs.context, inputs.run_spec
     emit = _Emitter(context, actions)
-    run_key = load_run_key(emit.run_dir)
+    normal_root = Path(inputs.normal_source_root)
+    run_root = Path(inputs.scratch_parent) / f"p117v5-{context.run_id}"
     try:
-        base_spec, source = _preflight(inputs, actions, run_key)
+        # The key read and scratch allocation are filesystem calls too: their errors' messages carry private paths.
+        base_spec, source = _preflight(inputs, actions, load_run_key(emit.run_dir))
+        if run_root.exists():
+            raise HostError("run_root_exists")
+        run_root.mkdir()
     except (HostError, contract.ContractError):
         raise
     except Exception as exc:
         raise HostError("host_action_failed") from exc
-    normal_root = Path(inputs.normal_source_root)
-    run_root = Path(inputs.scratch_parent) / f"p117v5-{context.run_id}"
-    if run_root.exists():
-        raise HostError("run_root_exists")
-    run_root.mkdir()
     try:
 
         emit.document("run_start", "plan117_v5_run_start", "artifacts/plan117/run-start.json", {

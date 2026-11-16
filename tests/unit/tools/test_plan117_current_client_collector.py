@@ -1001,6 +1001,79 @@ def test_existing_run_root_is_never_reused(tmp_path, windows_shaped_paths):
     assert excinfo.value.code == "run_root_exists"
 
 
+def _fail_path_method(monkeypatch, name, target, exc):
+    """A real filesystem fault on one path only; every other path keeps the real method."""
+    original = getattr(Path, name)
+
+    def method(self, *args, **kwargs):
+        if self == target:
+            raise exc
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, name, method)
+
+
+def _early_faults():
+    private = f"C:\\Users\\{_PRIVATE_TEXT}\\x"
+    return [
+        ("read_bytes", PermissionError(13, "Permission denied", private)),
+        ("read_bytes", FileNotFoundError(2, "No such file or directory", private)),
+        ("read_bytes", OSError(5, "Input/output error", private)),
+        ("exists", OSError(5, "Input/output error", private)),
+        ("mkdir", PermissionError(13, "Permission denied", private)),
+        ("mkdir", OSError(28, "No space left on device", private)),
+    ]
+
+
+def _early_target(run, name):
+    return run.run_dir / col.PATH_KEY_LOCATOR if name == "read_bytes" else run.scratch / f"p117v5-{RUN_ID}"
+
+
+def _assert_nothing_started(run):
+    assert run.host.launches == [] and list(run.scratch.iterdir()) == []
+    assert not (run.run_dir / "artifacts").exists(), "no run record (start, custody or cleanup) for a run that never started"
+
+
+@pytest.mark.parametrize("name,exc", _early_faults(), ids=lambda value: value if isinstance(value, str) else type(value).__name__)
+def test_an_early_filesystem_fault_reports_only_a_fixed_code(tmp_path, windows_shaped_paths, monkeypatch, name, exc):
+    run = Run(tmp_path)
+    _fail_path_method(monkeypatch, name, _early_target(run, name), exc)
+    with pytest.raises(HostError) as excinfo:
+        run.collect()
+    assert excinfo.value.code == "host_action_failed"
+    assert _PRIVATE_TEXT not in str(excinfo.value) and _PRIVATE_TEXT not in repr(excinfo.value.args)
+    _assert_nothing_started(run)
+
+
+def test_a_missing_scratch_parent_reports_only_a_fixed_code(tmp_path, windows_shaped_paths):
+    run = Run(tmp_path)
+    run.scratch.rmdir()
+    run.scratch = tmp_path / _PRIVATE_TEXT / "scratch"
+    with pytest.raises(HostError) as excinfo:
+        run.collect()
+    assert excinfo.value.code == "host_action_failed" and _PRIVATE_TEXT not in str(excinfo.value)
+    assert run.host.launches == [] and not run.scratch.parent.exists()
+    assert not (run.run_dir / "artifacts").exists()
+
+
+@pytest.mark.parametrize("name", ["read_bytes", "mkdir"])
+def test_an_interrupt_during_early_filesystem_access_still_propagates(tmp_path, windows_shaped_paths, monkeypatch, name):
+    run = Run(tmp_path)
+    _fail_path_method(monkeypatch, name, _early_target(run, name), KeyboardInterrupt())
+    with pytest.raises(KeyboardInterrupt):
+        run.collect()
+    _assert_nothing_started(run)
+
+
+def test_a_malformed_run_key_keeps_its_own_code_through_collect(tmp_path, windows_shaped_paths):
+    run = Run(tmp_path)
+    (run.run_dir / col.PATH_KEY_LOCATOR).write_bytes(b"{}")
+    with pytest.raises(HostError) as excinfo:
+        run.collect()
+    assert excinfo.value.code == "run_key_invalid"
+    _assert_nothing_started(run)
+
+
 def test_tampered_artifact_after_collection_is_a_custody_failure(tmp_path, windows_shaped_paths):
     run = Run(tmp_path)
     run.collect()
