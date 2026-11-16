@@ -322,3 +322,12 @@ def test_fifty_saves_in_a_row_are_each_confirmed_within_the_commit_timeout(provi
     took.sort()
     print(f"ack seconds: p50={took[24]:.4f} p95={took[47]:.4f} max={took[-1]:.4f}")
     assert took[-1] < memory_store._WAITAOF_COMMIT_MS / 1000
+
+
+def test_capabilities_never_reports_a_silently_reconnected_store(provisioned: Provisioned) -> None:
+    service = _service(provisioned)
+    assert _call(service, {"op": "capabilities"})[0] == 200
+    _drop(service._store._redis)
+    assert _call(service, {"op": "capabilities"}) == (503, msc.error_body("MEMORY_UNAVAILABLE"))
+    status, reply = _call(service, {"op": "capabilities"})
+    assert status == 200 and reply["durable"] is True  # after verifying again

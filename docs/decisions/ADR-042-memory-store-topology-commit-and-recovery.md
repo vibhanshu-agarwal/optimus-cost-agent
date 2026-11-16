@@ -91,12 +91,14 @@ fsync failure: the request answers `MEMORY_UNAVAILABLE`, the Gateway drops every
 refused until the resource proves itself again, because Redis may have lost writes a cache still holds or another instance may now hold the port.
 Whether a transaction already sent took effect is uncertain; a retry under the same key reconciles it.
 
-The store has two single connections, one for writes and one for reads, each under its own lock. A connect hook counts every time either connection
-is established, including the silent reconnect redis-py's pool makes when it finds a closed socket at checkout; any connect since the last
-verification makes the store suspect before the next command runs. Verification checks both connections reach the same resource. While a
-connection is in use, its connect timeout, its socket timeout and its parser's cached timeout are the request's remaining budget, refreshed
-before each command, so every lock wait and every Redis wait, connecting, verification and the fsync probe included, ends with the deadline. Past
-the deadline nothing new starts; a write already sent stays uncertain.
+The store has two single connections, one for writes and one for reads, each under its own lock. Each connection registers itself when it is
+created, and every attempt to establish it, failed or not, is a new generation, including the silent reconnect redis-py's pool makes when it
+finds a closed socket at checkout. Any new generation since the last verification makes the store suspect before the next command runs or result
+is returned. Verification establishes both connections first and refuses a proof if either changes while it is collected, and checks both reach
+the same resource. While a connection is in use, its connect timeout, its socket timeout and its parser's cached timeout are the request's
+remaining budget, refreshed before each command, and a watchdog shuts its socket at the absolute deadline, so no handshake, fragmented reply or
+sequence of commands outlasts the request. Past the deadline nothing new starts; a write already sent stays uncertain, and the cut connection is
+a new generation that must be verified.
 
 A retry under the same key with the same content returns the first result and appends nothing; different content under that key is
 `IDEMPOTENCY_CONFLICT`. A reply that never confirmed is `unconfirmed`, and admission stops until a fresh `WAITAOF` succeeds; withdrawals and off records

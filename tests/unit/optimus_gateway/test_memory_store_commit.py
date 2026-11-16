@@ -65,6 +65,9 @@ class Server:
         self.touch(key)
         return entry_id
 
+    def ping(self) -> bool:
+        return True
+
     def dbsize(self) -> int:
         return len(self.strings) + len(self.streams)
 

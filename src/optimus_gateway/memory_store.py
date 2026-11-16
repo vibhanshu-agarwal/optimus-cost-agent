@@ -15,6 +15,7 @@ import contextlib
 import hashlib
 import hmac
 import json
+import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -66,17 +67,35 @@ class MemoryStoreEndpoint:
 
 
 class Link:
-    """One connection's bookkeeping, kept by a connect hook: the live connection object and how many times it has connected.
-    redis-py's pool reconnects silently when it finds a closed socket at checkout; the count is how the store sees that."""
+    """One connection's bookkeeping. The connection registers itself when it is created, before any attempt to connect, so a
+    budget always reaches it; every attempt to establish it, failed or not, is a new generation. redis-py's pool reconnects
+    silently when it finds a closed socket at checkout; the generation is how the store sees that."""
 
     def __init__(self) -> None:
         self.connection: Any = None
         self.connects = 0
 
     def established(self, connection: Any) -> None:
+        self.connects += 1  # counted before the handshake: a half-finished attempt is still another connection
         connection.on_connect()  # the handshake redis-py runs when no hook is given
-        self.connection = connection
-        self.connects += 1
+
+    def cut(self) -> None:
+        """The deadline's hard stop: shut the live socket, so whatever read is blocked (a handshake, a reply arriving in
+        fragments, an ordinary command) returns at once. The next use reconnects, which is a new generation."""
+        sock = getattr(self.connection, "_sock", None)  # shortcut: redis-py 8 keeps the live socket here; re-check on upgrade
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+
+class _TrackedConnection(redis.Connection):
+    """A redis-py connection that hands itself to its `Link` as soon as it exists."""
+
+    def __init__(self, *args: Any, optimus_link: Link, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        optimus_link.connection = self
 
 
 def connect(endpoint: MemoryStoreEndpoint) -> redis.Redis:
@@ -85,6 +104,7 @@ def connect(endpoint: MemoryStoreEndpoint) -> redis.Redis:
     and one for reads, each used under its own lock."""
     link = Link()
     pool = redis.BlockingConnectionPool(max_connections=1, timeout=msc.DEADLINE_SECONDS, retry=Retry(NoBackoff(), 0),
+                                        connection_class=_TrackedConnection, optimus_link=link,
                                         host=endpoint.host, port=endpoint.port, username=endpoint.username, password=endpoint.password,
                                         socket_timeout=msc.DEADLINE_SECONDS, socket_connect_timeout=_CONNECT_SECONDS, protocol=2,
                                         redis_connect_func=link.established)
@@ -295,12 +315,21 @@ class MemoryStore:
 
     @contextlib.contextmanager
     def _holding(self, client: Any) -> Iterator[None]:
+        """Use one connection inside the request's budget: its timeouts shrink as the budget does, and a watchdog cuts its
+        socket at the absolute deadline, so no sequence of reads, however fragmented, outlasts the request."""
         held = getattr(self._local, "held", ())
         self._local.held = (*held, client)
         set_budget(client, self._remaining())
+        link = getattr(client, "optimus_link", None)
+        watchdog = threading.Timer(max(0.0, self._remaining()), link.cut) if isinstance(link, Link) else None
+        if watchdog is not None:
+            watchdog.daemon = True
+            watchdog.start()
         try:
             yield
         finally:
+            if watchdog is not None:
+                watchdog.cancel()
             self._local.held = held
             set_budget(client, msc.DEADLINE_SECONDS)
 
@@ -310,25 +339,45 @@ class MemoryStore:
         return self._suspect
 
     def verify(self, resource: str, *, deadline: float | None = None) -> None:
-        """Prove the resource on both connections, inside the request's budget, and clear suspicion only when it holds. The
-        connections' counts at that moment are the ones every later operation must still see."""
+        """Prove the resource on both connections, inside the request's budget, and clear suspicion only when it holds.
+
+        Both connections are established first and their generations fixed; the proof is refused if either changes while it is
+        collected, so persistence, eviction, the resource marker and the fsync probe all come from the same two connections.
+        Those generations are the ones every later operation must still see."""
         self._local.deadline = deadline
         self._local.verifying = True
         try:
-            with self._writing(verifying=True):
-                probe_ms = min(_WAITAOF_PROBE_MS, int(self._remaining() * 1000) - _SOCKET_MARGIN_MS)
-                if probe_ms <= 0:
-                    raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503)
-                verify_resource(self._writer, resource, probe_ms=probe_ms, step=self._on_time)
-                with self._reading(verifying=True):
-                    if _text(self._redis.get(_RESOURCE_KEY) or b"") != resource:  # the reader reaches the same instance
-                        raise MemoryStoreStartupError("MEMORY_STORE_RESOURCE_MISMATCH")
-                self.forget()
-                self._verified_connects = (_connects(self._writer), _connects(self._redis))
-                self._suspect = False
+            self._prove(resource)
+        except (RedisError, OSError) as exc:  # a cut at the deadline included
+            if self._remaining() <= 0:
+                raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503) from None
+            raise MemoryStoreStartupError("MEMORY_STORE_UNREACHABLE") from exc
         finally:
             self._local.deadline = None
             self._local.verifying = False
+
+    def _prove(self, resource: str) -> None:
+        with self._writing(verifying=True), self._reading(verifying=True):
+            self._writer.ping()
+            self._redis.ping()
+            generations = (_connects(self._writer), _connects(self._redis))
+
+            def step() -> None:
+                self._on_time()
+                if (_connects(self._writer), _connects(self._redis)) != generations:
+                    raise MemoryStoreStartupError("MEMORY_STORE_RECONNECTED")
+
+            probe_ms = min(_WAITAOF_PROBE_MS, int(self._remaining() * 1000) - _SOCKET_MARGIN_MS)
+            if probe_ms <= 0:
+                raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503)
+            verify_resource(self._writer, resource, probe_ms=probe_ms, step=step)
+            step()
+            if _text(self._redis.get(_RESOURCE_KEY) or b"") != resource:  # the reader reaches the same instance
+                raise MemoryStoreStartupError("MEMORY_STORE_RESOURCE_MISMATCH")
+            step()
+            self.forget()
+            self._verified_connects = generations
+            self._suspect = False
 
     def connection_lost(self) -> None:
         """Drop every cache and refuse everything until the resource is verified again."""
@@ -351,7 +400,9 @@ class MemoryStore:
 
     def _used(self) -> int:
         with self._reading():
-            return int(self._redis.info("memory").get("used_memory", 0))
+            used = int(self._redis.info("memory").get("used_memory", 0))
+            self._check_links()  # a reply from a connection re-established since verification is not reported
+            return used
 
     def _op_capabilities(self, _body: dict[str, Any]) -> dict[str, Any]:
         used = self._used()
@@ -415,6 +466,7 @@ class MemoryStore:
         if not self._write_lock.acquire(timeout=max(0.0, self._remaining())):
             raise msc.MemoryRequestError("MEMORY_BUSY", 503)
         try:
+            self._on_time()  # the wait for the lock may have used up the budget
             if self._suspect and not verifying:
                 raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)
             self._check_links()
@@ -429,6 +481,7 @@ class MemoryStore:
         if not self._read_lock.acquire(timeout=max(0.0, self._remaining())):
             raise msc.MemoryRequestError("MEMORY_BUSY", 503)
         try:
+            self._on_time()
             if self._suspect and not verifying:
                 raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)
             self._check_links()
@@ -690,7 +743,7 @@ class MemoryStoreService:
         except (RedisConnectionError, TimeoutError, OSError):
             self._verified = self._verify is None  # whatever comes back on this port has to prove itself again
             self._store.connection_lost()  # and nothing cached from before the outage is trusted: it may hold writes Redis lost
-            return 503, msc.error_body("MEMORY_UNAVAILABLE")
+            return 503, msc.error_body("MEMORY_TIMEOUT" if time.monotonic() >= deadline else "MEMORY_UNAVAILABLE")
         except Exception:  # noqa: BLE001 - a malformed entry or any other fault is a stable code, never a dropped connection
             self._store.forget()
             return 503, msc.error_body("MEMORY_STORAGE_ERROR")

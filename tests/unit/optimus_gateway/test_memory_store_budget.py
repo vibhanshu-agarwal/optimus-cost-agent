@@ -57,6 +57,7 @@ _REPLIES = {
     b"INCRBY": b":1\r\n",
     b"WAITAOF": b"*2\r\n:1\r\n:0\r\n",
     b"CLIENT": b":7\r\n",
+    b"PING": b"+PONG\r\n",
 }
 
 
@@ -65,6 +66,7 @@ class FakeRedis:
 
     def __init__(self, mode: str) -> None:
         self.mode = mode
+        self.connections = 0
         self.server = socket.create_server(("127.0.0.1", 0))
         self.port = self.server.getsockname()[1]
         self.stop = threading.Event()
@@ -80,15 +82,31 @@ class FakeRedis:
             threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
 
     def _serve(self, conn: socket.socket) -> None:
+        self.connections += 1
+        first, infos = self.connections == 1, 0
         with conn:
             for command in _commands(conn):
-                if self.mode == "silent":
+                mode = self.mode  # read per command, so a test can change it between operations
+                if mode == "silent":
                     self.stop.wait(10)
                     return
                 name = command[0].upper()
-                if self.mode == "slow-all":  # a well-formed Redis that takes 150 ms per reply
+                reply = _REPLIES.get(name, b"+OK\r\n")
+                if mode == "slow-all":  # a well-formed Redis that takes 150 ms per reply
                     self.stop.wait(0.15)
-                    conn.sendall(_REPLIES.get(name, b"+OK\r\n"))
+                    conn.sendall(reply)
+                elif mode == "trickle":  # well-formed replies, one byte every 20 ms
+                    for byte in reply:
+                        if self.stop.wait(0.02):
+                            return
+                        conn.sendall(bytes([byte]))
+                elif mode == "drop-after-info":  # the first connection dies after its second INFO, as a restart would
+                    conn.sendall(reply)
+                    infos += name == b"INFO"
+                    if first and infos == 2:
+                        return
+                elif mode == "fast":
+                    conn.sendall(reply)
                 elif name == b"PING":
                     self.stop.wait(2)
                     conn.sendall(b"+PONG\r\n")
@@ -169,6 +187,53 @@ def test_verification_stops_between_commands_when_the_budget_runs_out(fake: Call
     started = time.monotonic()
     with pytest.raises((msc.MemoryRequestError, memory_store.MemoryStoreStartupError)) as stopped:
         store.verify(endpoint.resource, deadline=time.monotonic() + 0.35)
-    assert time.monotonic() - started < 0.8, stopped.value
+    assert time.monotonic() - started < 0.5, stopped.value  # the deadline plus scheduling, not the eight replies
     store.verify(endpoint.resource, deadline=time.monotonic() + 5)  # given the time, the same server verifies
     assert store.suspect is False
+
+
+def _store(server: FakeRedis) -> tuple[memory_store.MemoryStore, memory_store.MemoryStoreEndpoint]:
+    endpoint = _endpoint(server.port)
+    store = memory_store.MemoryStore(memory_store.connect(endpoint), memory_store.connect(endpoint), admission_ceiling_mb=384, cursor_key=b"k")
+    return store, endpoint
+
+
+def test_verification_refuses_a_proof_gathered_across_a_reconnect(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("drop-after-info")
+    store, endpoint = _store(server)
+    with pytest.raises(memory_store.MemoryStoreStartupError) as refused:
+        store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    assert refused.value.code == "MEMORY_STORE_RECONNECTED" and store.suspect is False and store._verified_connects == (0, 0)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)  # later connections stay up, so the proof holds
+    assert store._verified_connects == (2, 1)
+
+
+def test_a_failed_first_handshake_does_not_keep_its_longer_budget(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("silent")
+    store, endpoint = _store(server)
+    with pytest.raises((msc.MemoryRequestError, memory_store.MemoryStoreStartupError)):
+        store.verify(endpoint.resource, deadline=time.monotonic() + 1.0)
+    started = time.monotonic()
+    with pytest.raises((msc.MemoryRequestError, memory_store.MemoryStoreStartupError)):
+        store.verify(endpoint.resource, deadline=time.monotonic() + 0.3)
+    assert time.monotonic() - started < 0.5
+
+
+def test_a_reply_that_trickles_in_is_cut_at_the_deadline(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    server.mode = "trickle"  # INFO's reply is about 90 bytes: almost two seconds at one byte every 20 ms
+    service = memory_store.MemoryStoreService(store)  # already verified above
+    started = time.monotonic()
+    reply = service.handle(json.dumps({"op": "capabilities"}).encode(), deadline=time.monotonic() + 0.3)
+    assert time.monotonic() - started < 0.5 and reply == (503, msc.error_body("MEMORY_TIMEOUT"))
+
+
+def test_a_slow_handshake_is_cut_at_the_deadline(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("slow-all")  # AUTH and the client-name replies alone take about 450 ms
+    store, endpoint = _store(server)
+    started = time.monotonic()
+    with pytest.raises((msc.MemoryRequestError, memory_store.MemoryStoreStartupError)):
+        store.verify(endpoint.resource, deadline=time.monotonic() + 0.25)
+    assert time.monotonic() - started < 0.4
