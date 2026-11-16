@@ -24,8 +24,12 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-import psutil
 import redis
+
+try:
+    import psutil
+except ModuleNotFoundError:  # measurement-only, deliberately not a dependency (packages.json): only the measuring paths need it
+    psutil = None  # type: ignore[assignment]
 
 from context_engine.code_index import parse_file
 from context_engine.index_worker import IndexWorker
