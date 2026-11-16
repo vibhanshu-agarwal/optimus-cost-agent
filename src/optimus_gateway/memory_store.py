@@ -39,6 +39,7 @@ _FOLD_PAGE: Final = 500
 _LIST_ENVELOPE_BYTES: Final = 1024  # status, cursor and framing around the items
 _SOCKET_MARGIN_MS: Final = 100  # WAITAOF answers before the socket's own budget runs out
 _MIN_SOCKET_SECONDS: Final = 0.05
+_CONNECT_SECONDS: Final = 2.0
 _FENCE_KEY: Final = f"{_PREFIX}:fence"
 _PROBE_KEY: Final = f"{_PREFIX}:fsync-probe"
 _MIB: Final = 1024 * 1024
@@ -64,38 +65,60 @@ class MemoryStoreEndpoint:
         return f"MemoryStoreEndpoint(host={self.host!r}, port={self.port}, username={self.username!r}, password='<redacted>')"
 
 
+class Link:
+    """One connection's bookkeeping, kept by a connect hook: the live connection object and how many times it has connected.
+    redis-py's pool reconnects silently when it finds a closed socket at checkout; the count is how the store sees that."""
+
+    def __init__(self) -> None:
+        self.connection: Any = None
+        self.connects = 0
+
+    def established(self, connection: Any) -> None:
+        connection.on_connect()  # the handshake redis-py runs when no hook is given
+        self.connection = connection
+        self.connects += 1
+
+
 def connect(endpoint: MemoryStoreEndpoint) -> redis.Redis:
-    """One connection with retries off, so a dropped socket is an error and never a silent reconnect that `WAITAOF` would then
-    answer for. The store keeps two, one for writes and one for reads, each used under its own lock."""
+    """One connection with retries off, so a dropped socket is an error, never a retried command that `WAITAOF` would then answer
+    for; a reconnect at checkout is counted by its `Link` (on the client as `optimus_link`). The store keeps two, one for writes
+    and one for reads, each used under its own lock."""
+    link = Link()
     pool = redis.BlockingConnectionPool(max_connections=1, timeout=msc.DEADLINE_SECONDS, retry=Retry(NoBackoff(), 0),
                                         host=endpoint.host, port=endpoint.port, username=endpoint.username, password=endpoint.password,
-                                        socket_timeout=msc.DEADLINE_SECONDS, socket_connect_timeout=2.0, protocol=2)
-    return redis.Redis(connection_pool=pool)
+                                        socket_timeout=msc.DEADLINE_SECONDS, socket_connect_timeout=_CONNECT_SECONDS, protocol=2,
+                                        redis_connect_func=link.established)
+    client = redis.Redis(connection_pool=pool)
+    client.optimus_link = link  # type: ignore[attr-defined]
+    return client
 
 
-@contextlib.contextmanager
-def _budgeted(client: Any, seconds: float) -> Iterator[Any]:
-    """Give a single-connection client's socket the request's remaining budget while it is used, so no Redis wait (EXEC under
-    a slow fsync included) outlasts the deadline. Called only while holding that client's lock, so its one connection is free.
-    Yields the connection, so later steps can shrink the budget on it without asking the pool, which a watching pipeline holds."""
-    pool = getattr(client, "connection_pool", None)
-    if not isinstance(pool, redis.ConnectionPool):  # an in-memory stand-in
-        yield None
+def set_budget(client: Any, seconds: float) -> None:
+    """Bound every wait on this client's one connection to `seconds`: connecting and authenticating, each socket read, and the
+    timeout redis-py's parser restores after its checkout probe. It touches the recorded connection object, never the pool, so it
+    is safe while a watching pipeline holds the connection."""
+    link = getattr(client, "optimus_link", None)
+    if not isinstance(link, Link):  # an in-memory stand-in
         return
-    connection = pool.get_connection()
-    try:
-        _socket_timeout(connection, max(_MIN_SOCKET_SECONDS, seconds))
-        pool.release(connection)
-        yield connection
-    finally:
-        _socket_timeout(connection, msc.DEADLINE_SECONDS)
-
-
-def _socket_timeout(connection: Any, seconds: float) -> None:
-    connection.socket_timeout = seconds  # used for every new socket and every read redis-py times
-    sock = getattr(connection, "_sock", None)  # shortcut: redis-py 8 keeps the live socket here; re-check on upgrade
+    seconds = max(_MIN_SOCKET_SECONDS, seconds)
+    client.connection_pool.connection_kwargs.update(socket_timeout=seconds, socket_connect_timeout=min(_CONNECT_SECONDS, seconds))
+    connection = link.connection
+    if connection is None:  # not connected yet: the pool's settings above apply to the first connection
+        return
+    connection.socket_timeout = seconds
+    connection.socket_connect_timeout = min(_CONNECT_SECONDS, seconds)
+    # shortcut: redis-py 8 keeps the live socket and the parser's cached timeout in private fields; re-check them on upgrade
+    sock = getattr(connection, "_sock", None)
     if sock is not None:
         sock.settimeout(seconds)
+    buffer = getattr(getattr(connection, "_parser", None), "_buffer", None)
+    if buffer is not None:
+        buffer.socket_timeout = seconds
+
+
+def _connects(client: Any) -> int:
+    link = getattr(client, "optimus_link", None)
+    return int(link.connects) if isinstance(link, Link) else 0
 
 
 def _text(value: Any) -> str:
@@ -117,12 +140,17 @@ def _local_count(reply: Any) -> int:
     return int(reply[0])
 
 
-def verify_resource(client: redis.Redis, resource: str, *, probe_ms: int = _WAITAOF_PROBE_MS) -> None:
+def verify_resource(client: redis.Redis, resource: str, *, probe_ms: int = _WAITAOF_PROBE_MS,
+                    step: Callable[[], None] = lambda: None) -> None:
     """Before serving: authentication works, persistence and eviction are as provisioned, `WAITAOF` confirms a local fsync, and
-    this is the instance setup provisioned rather than whatever now holds the port."""
+    this is the instance setup provisioned rather than whatever now holds the port. `step` runs before each command, so a caller
+    can stop on its deadline and shrink the socket's budget between commands."""
     try:
+        step()
         persistence = client.info("persistence")
+        step()
         memory = client.info("memory")
+        step()
         stored = client.get(_RESOURCE_KEY)
     except (RedisError, OSError) as exc:
         raise MemoryStoreStartupError("MEMORY_STORE_UNREACHABLE") from exc
@@ -130,12 +158,16 @@ def verify_resource(client: redis.Redis, resource: str, *, probe_ms: int = _WAIT
         raise MemoryStoreStartupError("MEMORY_STORE_CONFIGURATION_UNEXPECTED")
     try:
         if stored is None:
+            step()
             if client.dbsize() != 0:  # never adopt data nobody can vouch for
                 raise MemoryStoreStartupError("MEMORY_STORE_UNIDENTIFIED_DATA")
+            step()
             client.set(_RESOURCE_KEY, resource, nx=True)
+            step()
             stored = client.get(_RESOURCE_KEY)  # a concurrent Gateway may have marked it first; either way it must be ours
         if stored is None or _text(stored) != resource:
             raise MemoryStoreStartupError("MEMORY_STORE_RESOURCE_MISMATCH")
+        step()
         if fsync_probe(client, timeout_ms=probe_ms) < 1:
             raise MemoryStoreStartupError("MEMORY_STORE_FSYNC_UNCONFIRMED")
     except MemoryStoreStartupError:
@@ -220,6 +252,7 @@ class MemoryStore:
         self._cursor_key = cursor_key
         self._fsync_failed = False
         self._suspect = False
+        self._verified_connects = (_connects(writer), _connects(client))
         self._local = threading.local()
         self._writer_folds: dict[str, _Fold] = {}
         self._serving_folds: dict[str, _Fold] = {}
@@ -241,25 +274,35 @@ class MemoryStore:
         return msc.DEADLINE_SECONDS if deadline is None else deadline - time.monotonic()
 
     def _on_time(self) -> None:
+        """Between blocking steps: stop once the deadline has passed, stop if either connection was re-established since the
+        resource was verified, and give the held connection only what is left of the budget."""
         if self._remaining() <= 0:
             raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503)
+        self._check_links()
         self._rebudget()
 
+    def _check_links(self) -> None:
+        if getattr(self._local, "verifying", False):
+            return
+        if (_connects(self._writer), _connects(self._redis)) != self._verified_connects:
+            self.connection_lost()
+            raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)
+
     def _rebudget(self) -> None:
-        """Shrink the held connection's socket timeout to what is left of the request's budget."""
-        connection = getattr(self._local, "connection", None)
-        if connection is not None:
-            _socket_timeout(connection, max(_MIN_SOCKET_SECONDS, self._remaining()))
+        """Shrink the held connections' budgets to what is left of the request's."""
+        for client in getattr(self._local, "held", ()):
+            set_budget(client, self._remaining())
 
     @contextlib.contextmanager
     def _holding(self, client: Any) -> Iterator[None]:
-        previous = getattr(self._local, "connection", None)
-        with _budgeted(client, self._remaining()) as connection:
-            self._local.connection = connection
-            try:
-                yield
-            finally:
-                self._local.connection = previous
+        held = getattr(self._local, "held", ())
+        self._local.held = (*held, client)
+        set_budget(client, self._remaining())
+        try:
+            yield
+        finally:
+            self._local.held = held
+            set_budget(client, msc.DEADLINE_SECONDS)
 
     @property
     def suspect(self) -> bool:
@@ -267,18 +310,25 @@ class MemoryStore:
         return self._suspect
 
     def verify(self, resource: str, *, deadline: float | None = None) -> None:
-        """Prove the resource on the writer, inside the request's budget, and clear suspicion only when it holds."""
+        """Prove the resource on both connections, inside the request's budget, and clear suspicion only when it holds. The
+        connections' counts at that moment are the ones every later operation must still see."""
         self._local.deadline = deadline
+        self._local.verifying = True
         try:
             with self._writing(verifying=True):
-                probe_ms = min(_WAITAOF_PROBE_MS, int(self._remaining() * 1000))
+                probe_ms = min(_WAITAOF_PROBE_MS, int(self._remaining() * 1000) - _SOCKET_MARGIN_MS)
                 if probe_ms <= 0:
                     raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503)
-                verify_resource(self._writer, resource, probe_ms=probe_ms)
+                verify_resource(self._writer, resource, probe_ms=probe_ms, step=self._on_time)
+                with self._reading(verifying=True):
+                    if _text(self._redis.get(_RESOURCE_KEY) or b"") != resource:  # the reader reaches the same instance
+                        raise MemoryStoreStartupError("MEMORY_STORE_RESOURCE_MISMATCH")
                 self.forget()
+                self._verified_connects = (_connects(self._writer), _connects(self._redis))
                 self._suspect = False
         finally:
             self._local.deadline = None
+            self._local.verifying = False
 
     def connection_lost(self) -> None:
         """Drop every cache and refuse everything until the resource is verified again."""
@@ -322,6 +372,7 @@ class MemoryStore:
         key, owner = self._key(body["project"], "lease"), body["owner"]
         with self._writing():
             connection = int(self._writer.client_id())
+            self._check_links()
             for _ in range(_WATCH_ATTEMPTS):
                 token = 0
                 with self._writer.pipeline() as pipe:
@@ -366,19 +417,21 @@ class MemoryStore:
         try:
             if self._suspect and not verifying:
                 raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)
+            self._check_links()
             with self._holding(self._writer):
                 yield
         finally:
             self._write_lock.release()
 
     @contextlib.contextmanager
-    def _reading(self) -> Iterator[None]:
+    def _reading(self, *, verifying: bool = False) -> Iterator[None]:
         self._on_time()
         if not self._read_lock.acquire(timeout=max(0.0, self._remaining())):
             raise msc.MemoryRequestError("MEMORY_BUSY", 503)
         try:
-            if self._suspect:
+            if self._suspect and not verifying:
                 raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)
+            self._check_links()
             with self._holding(self._redis):
                 yield
         finally:
@@ -411,6 +464,7 @@ class MemoryStore:
         with self._writing():
             fold = self._writer_folds.setdefault(project, _Fold())
             connection = int(self._writer.client_id())
+            self._check_links()  # the baseline connection is the verified one, not one the pool re-established just now
             for _ in range(_WATCH_ATTEMPTS):
                 replay_at = None
                 with self._writer.pipeline() as pipe:  # a watching pipeline holds the writer's only connection until it closes
@@ -479,7 +533,7 @@ class MemoryStore:
         self._rebudget()
         try:
             count = waitaof_local(self._writer, timeout_ms=budget)
-            same = int(self._writer.client_id()) == connection
+            same = int(self._writer.client_id()) == connection and _connects(self._writer) == self._verified_connects[0]
         except (RedisConnectionError, TimeoutError, OSError):
             count, same = 0, False
         except (RedisError, MemoryStoreStartupError):
@@ -554,6 +608,7 @@ class MemoryStore:
             if _order(watermark) < _order(fold.head):
                 fold = self._serving_folds[project] = _Fold()
             fold.advance(self._redis, self._key(project, "events"), watermark, self._on_time)
+            self._check_links()  # nothing read from a connection re-established since verification is served
             return answer(fold)
 
     def _op_read(self, body: dict[str, Any]) -> dict[str, Any]:

@@ -17,13 +17,13 @@
   "runs": {
     "dedicated_store": {
       "command": "P1211_MEMORY_DOCKER_RELEASED=1 pytest -m requires_plan12_memory_redis tests/integration/memory/test_store.py",
-      "run": "20261116T211244-39996-9fd3c2",
-      "result": "29 passed, after the Codex review 2 fixes",
+      "run": "20261116T213503-15252-16b1d7",
+      "result": "31 passed, after the Codex review 3 fixes",
       "ack_latency_s": {
         "saves": 50,
-        "p50": 0.0078,
-        "p95": 0.0094,
-        "max": 0.0289,
+        "p50": 0.0073,
+        "p95": 0.009,
+        "max": 0.01,
         "policy": "appendfsync always"
       },
       "superseded_measurement": {
@@ -37,7 +37,7 @@
     },
     "native_keyring": {
       "command": "pytest -m requires_os_keyring_write tests/integration/memory/test_native_keyring.py",
-      "run": "20261116T211305-51772-76daa3",
+      "run": "20261116T213453-16300-dbcbf6",
       "result": "3 passed",
       "residue": "none: keyring.get_password('optimus-p1211-test', 'redis-password') is None after the run"
     }
@@ -85,6 +85,11 @@
     "codex_review_2": {
       "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex2.py",
       "killed": 8,
+      "survived": 0
+    },
+    "codex_review_3": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex3.py",
+      "killed": 5,
       "survived": 0
     }
   },

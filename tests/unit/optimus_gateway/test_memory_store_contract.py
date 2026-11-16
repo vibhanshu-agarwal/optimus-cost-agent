@@ -159,6 +159,8 @@ def test_the_route_speaks_the_engines_vocabulary() -> None:
 
 class _Untouchable:
     def __getattr__(self, name: str) -> Any:
+        if name == "optimus_link":  # bookkeeping read at construction, not Redis
+            raise AttributeError(name)
         raise AssertionError(f"the store must not be reached: {name}")
 
 

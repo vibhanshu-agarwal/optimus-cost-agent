@@ -4,6 +4,7 @@ resource. Selected with `-m requires_plan12_memory_redis`. These tests stop and 
 from __future__ import annotations
 
 import json
+import socket
 import time
 import uuid
 from typing import Any
@@ -257,13 +258,44 @@ def test_checkpoints_are_kept_once_and_served_newest_first(provisioned: Provisio
     assert [entry["sequence"] for entry in served] == [3, 2]
 
 
-def test_a_connection_takes_the_request_budget_as_its_socket_timeout_and_gives_it_back(provisioned: Provisioned) -> None:
+def test_a_connection_keeps_the_request_budget_through_a_real_command(provisioned: Provisioned) -> None:
     client = memory_store.connect(provisioned.endpoint())
     client.ping()
-    with memory_store._budgeted(client, 0.3) as connection:
-        assert connection.socket_timeout == 0.3 and connection._sock.gettimeout() == 0.3
-        client.ping()
-    assert connection.socket_timeout == msc.DEADLINE_SECONDS and connection._sock.gettimeout() == msc.DEADLINE_SECONDS
+    memory_store.set_budget(client, 0.3)
+    client.ping()  # a real checkout runs its probe, which restores the parser's cached timeout
+    connection = client.optimus_link.connection
+    assert connection.socket_timeout == 0.3 and connection._sock.gettimeout() == 0.3 and connection._parser._buffer.socket_timeout == 0.3
+    memory_store.set_budget(client, msc.DEADLINE_SECONDS)
+    client.ping()
+    assert connection._sock.gettimeout() == msc.DEADLINE_SECONDS
+
+
+def _drop(client: redis.Redis) -> None:
+    """Close the connection's socket under redis-py, as a server restart would; the pool reconnects at the next checkout."""
+    client.optimus_link.connection._sock.shutdown(socket.SHUT_RDWR)
+
+
+def test_a_silent_reconnect_is_never_used_before_the_resource_is_verified_again(provisioned: Provisioned) -> None:
+    service, project = _service(provisioned), _project()
+    token = _lease(service, project)
+    _drop(service._store._writer)
+    assert _append(service, project, token, _event()) == (503, msc.error_body("MEMORY_UNAVAILABLE"))  # reconnected, then refused
+    assert _append(service, project, token, _event())[1]["durable_state"] == "confirmed"  # verified again first
+    assert service._store._writer.optimus_link.connects == 2
+
+
+def test_a_reconnect_to_another_resource_is_refused(provisioned: Provisioned) -> None:
+    service, project = _service(provisioned), _project()
+    token = _lease(service, project)
+    admin = provisioned.connect()
+    admin.set("omem:resource", "optimus-memory-store-someone-else")
+    try:
+        _drop(service._store._redis)
+        assert _call(service, {"op": "read", "project": project, "item": "m-0123456789abcdef"}) == (503, msc.error_body("MEMORY_UNAVAILABLE"))
+        assert _append(service, project, token, _event()) == (503, msc.error_body("MEMORY_STORE_RESOURCE_MISMATCH"))
+        assert _stream_length(provisioned, project) == 0
+    finally:
+        admin.set("omem:resource", provisioned.config.resource)
 
 
 def test_the_writer_is_one_connection_without_retries(provisioned: Provisioned) -> None:
