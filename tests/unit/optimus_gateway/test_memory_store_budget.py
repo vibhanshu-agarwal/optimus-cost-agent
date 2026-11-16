@@ -67,6 +67,8 @@ class FakeRedis:
     def __init__(self, mode: str) -> None:
         self.mode = mode
         self.connections = 0
+        self.logs: dict[int, list[bytes]] = {}
+        self.dropped = False
         self.server = socket.create_server(("127.0.0.1", 0))
         self.port = self.server.getsockname()[1]
         self.stop = threading.Event()
@@ -83,7 +85,8 @@ class FakeRedis:
 
     def _serve(self, conn: socket.socket) -> None:
         self.connections += 1
-        first, infos = self.connections == 1, 0
+        first, infos, queued = self.connections == 1, 0, None
+        log = self.logs.setdefault(self.connections, [])
         with conn:
             for command in _commands(conn):
                 mode = self.mode  # read per command, so a test can change it between operations
@@ -91,7 +94,27 @@ class FakeRedis:
                     self.stop.wait(10)
                     return
                 name = command[0].upper()
+                log.append(name)
                 reply = _REPLIES.get(name, b"+OK\r\n")
+                if name == b"GET" and command[1:] != [b"omem:resource"]:
+                    reply = b"$-1\r\n"
+                if name == b"MULTI":
+                    queued = 0
+                elif queued is not None and name not in (b"EXEC", b"DISCARD"):
+                    queued += 1
+                    reply = b"+QUEUED\r\n"
+                elif name == b"EXEC":
+                    reply, queued = b"*%d\r\n" % queued + b"+OK\r\n" * queued, None
+                if mode == "drop-after-client-id" and not self.dropped and command[:2] == [b"CLIENT", b"ID"]:
+                    self.dropped = True
+                    conn.sendall(reply)
+                    return  # the socket dies between two checkouts
+                if mode == "stall-waitaof" and name == b"WAITAOF":
+                    self.stop.wait(10)
+                    return
+                if mode in ("drop-after-client-id", "stall-waitaof"):
+                    conn.sendall(reply)
+                    continue
                 if mode == "slow-all":  # a well-formed Redis that takes 150 ms per reply
                     self.stop.wait(0.15)
                     conn.sendall(reply)
@@ -349,3 +372,104 @@ def test_a_tracked_connection_neither_connects_nor_sends_after_its_deadline(fake
     assert link.connects == 1  # the refused connect never reached the handshake
     link.deadline = None
     assert client.ping() is True and link.connects == 2
+
+
+_WRITES = {b"WATCH", b"GET", b"INCR", b"INCRBY", b"SET", b"MULTI", b"EXEC", b"XADD", b"PEXPIRE", b"DEL"}
+
+
+def test_a_reconnect_between_checkouts_reaches_no_application_command(fake: Callable[[str], FakeRedis]) -> None:
+    """The writer's socket dies right after the lease's CLIENT ID. redis-py reconnects at the next checkout; the new connection
+    may authenticate, but no WATCH, GET or fence INCR reaches it."""
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    before = server.connections  # the writer's existing connection is among these; anything later is a reconnect
+    server.mode = "drop-after-client-id"
+    service = memory_store.MemoryStoreService(store)
+    body = {"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000}
+    assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 5) == (503, msc.error_body("MEMORY_UNAVAILABLE"))
+    assert server.dropped is True
+    reached = [name for number, names in server.logs.items() if number > before for name in names]
+    assert not set(reached) & _WRITES, reached
+    assert store.suspect is True
+
+
+def test_no_command_is_sent_on_a_connection_the_store_did_not_verify(fake: Callable[[str], FakeRedis]) -> None:
+    """The guard every path relies on (lease, append, replay's sync INCR, the fsync probe, the watermark, serving): a send on a
+    newer generation, or one that would have to connect first, is refused before it leaves."""
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    store._local.deadline = time.monotonic() + 5
+    try:
+        with store._writing():
+            store._writer.optimus_link.connects += 1  # as if checkout had reconnected
+            with pytest.raises(memory_store.Reconnected):
+                store._writer.incr("omem:p:x:sync")
+        store._writer.optimus_link.connects -= 1
+        store._writer.optimus_link.connection.disconnect()
+        with store._writing():  # a send that would reconnect first
+            with pytest.raises(memory_store.Reconnected):
+                store._writer.get("omem:p:x:durable")
+    finally:
+        store._local.deadline = None
+    assert not [name for names in server.logs.values() for name in names if name == b"INCR"]
+
+
+def test_connecting_takes_only_what_is_left_of_the_budget(fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch) -> None:
+    server = fake("fast")
+    client = memory_store.connect(_endpoint(server.port))
+    client.ping()  # the pool creates its connection on first use
+    link = client.optimus_link
+    link.connection.disconnect()
+    seen: list[tuple[float, float]] = []
+    monkeypatch.setattr(memory_store.redis.Connection, "connect_check_health",
+                        lambda self, *a, **k: seen.append((self.socket_connect_timeout, self.socket_timeout)))
+    link.deadline = time.monotonic() + 0.3
+    time.sleep(0.2)  # a delayed checkout used most of the budget
+    link.connection.connect()
+    assert seen and seen[0][0] <= 0.11 and seen[0][1] <= 0.11
+
+
+def test_a_pool_wait_gets_exactly_what_is_left_and_localhost_is_one_address(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("fast")
+    client = memory_store.connect(_endpoint(server.port))
+    memory_store.set_budget(client, 0.01)
+    assert client.connection_pool.timeout == 0.01  # no 50 ms floor on the queue
+    local = memory_store.connect(memory_store.MemoryStoreEndpoint("localhost", server.port, "u", "p" * 32, "r"))  # pragma: allowlist secret
+    assert local.connection_pool.connection_kwargs["host"] == "127.0.0.1"
+
+
+def test_a_lease_whose_confirmation_stalls_is_a_timeout(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    server.mode = "stall-waitaof"
+    service = memory_store.MemoryStoreService(store)
+    body = {"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000}
+    started = time.monotonic()
+    assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 0.4) == (503, msc.error_body("MEMORY_TIMEOUT"))
+    assert time.monotonic() - started < 0.6
+
+
+def test_a_fsync_recheck_that_stalls_is_a_timeout(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    store._fsync_failed = True
+    server.mode = "stall-waitaof"
+    service = memory_store.MemoryStoreService(store)
+    event = {"event_id": "e-1", "item": "m-0123456789abcdef", "version": 1, "action": "admit", "trust": "user-authored", "status": "active",
+             "kind": "fact", "scope": "s-1", "title": "t", "statement": "s", "anchors": [], "lineage": [], "valid_from_ms": 0, "valid_until_ms": 0}
+    body = {"op": "append", "project": "p-1", "token": 1, "expected_version": 0, "idempotency_key": "a" * 64, "event": event}
+    assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 0.4) == (503, msc.error_body("MEMORY_TIMEOUT"))
+
+
+def test_an_unavailable_operation_never_reaches_verification(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("fast")
+    store, _endpoint_ = _store(server)
+    checks: list[float] = []
+    service = memory_store.MemoryStoreService(store, verify=checks.append)
+    body = {"op": "export", "project": "p-1", "limit": 10}
+    assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 5) == (501, msc.error_body("MEMORY_OPERATION_UNAVAILABLE"))
+    assert checks == [] and server.connections == 0

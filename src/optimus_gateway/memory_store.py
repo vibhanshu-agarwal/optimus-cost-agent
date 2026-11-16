@@ -75,10 +75,11 @@ class Link:
         self.connection: Any = None
         self.connects = 0
         self.deadline: float | None = None  # the holding request's absolute deadline, on time.monotonic()
+        self.expected: int | None = None  # the verified generation while the store holds this connection; None while verifying
 
     def established(self, connection: Any) -> None:
         self.connects += 1  # counted before the handshake: a half-finished attempt is still another connection
-        connection.on_connect()  # the handshake redis-py runs when no hook is given
+        connection.on_connect()  # the handshake redis-py runs when no hook is given; refused while held, as a new generation
 
     def cut(self) -> None:
         """The deadline's hard stop: shut the live socket, so whatever read is blocked (a handshake, a reply arriving in
@@ -97,6 +98,11 @@ class DeadlinePassed(RedisConnectionError):
     own cleanup (a pipeline's UNWATCH after a cut, say) treats it as a dead connection rather than reconnecting."""
 
 
+class Reconnected(RedisConnectionError):
+    """Raised instead of sending a command on a connection established since the store last verified the resource, or one that
+    would have to be established first. Nothing reaches an unverified Redis; the store verifies again before the next request."""
+
+
 class _TrackedConnection(redis.Connection):
     """A redis-py connection that hands itself to its `Link` as soon as it exists, and refuses to connect or send after the
     holding request's deadline, so nothing, redis-py's own cleanup included, reconnects or talks past it."""
@@ -111,12 +117,22 @@ class _TrackedConnection(redis.Connection):
         if deadline is not None and time.monotonic() >= deadline:
             raise DeadlinePassed("the memory request's deadline has passed")
 
-    def connect(self, *args: Any, **kwargs: Any) -> None:
+    def connect_check_health(self, *args: Any, **kwargs: Any) -> None:
+        """Where redis-py really connects (a pool checkout, or a send on a closed connection): only inside the deadline, and with
+        what is left of it as the TCP and handshake timeouts."""
         self._within_deadline()
-        super().connect(*args, **kwargs)
+        deadline = self._optimus_link.deadline
+        if deadline is not None:
+            remaining = max(0.001, deadline - time.monotonic())
+            self.socket_connect_timeout = min(_CONNECT_SECONDS, remaining)
+            self.socket_timeout = remaining
+        super().connect_check_health(*args, **kwargs)
 
     def send_packed_command(self, *args: Any, **kwargs: Any) -> None:
         self._within_deadline()
+        link = self._optimus_link
+        if link.expected is not None and (self._sock is None or link.connects != link.expected):
+            raise Reconnected("this connection is not the one the store verified")
         super().send_packed_command(*args, **kwargs)
 
 
@@ -125,9 +141,10 @@ def connect(endpoint: MemoryStoreEndpoint) -> redis.Redis:
     for; a reconnect at checkout is counted by its `Link` (on the client as `optimus_link`). The store keeps two, one for writes
     and one for reads, each used under its own lock."""
     link = Link()
+    host = "127.0.0.1" if endpoint.host == "localhost" else endpoint.host  # one literal address: no resolver, no address fallback
     pool = redis.BlockingConnectionPool(max_connections=1, timeout=msc.DEADLINE_SECONDS, retry=Retry(NoBackoff(), 0),
                                         connection_class=_TrackedConnection, optimus_link=link,
-                                        host=endpoint.host, port=endpoint.port, username=endpoint.username, password=endpoint.password,
+                                        host=host, port=endpoint.port, username=endpoint.username, password=endpoint.password,
                                         socket_timeout=msc.DEADLINE_SECONDS, socket_connect_timeout=_CONNECT_SECONDS, protocol=2,
                                         redis_connect_func=link.established)
     client = redis.Redis(connection_pool=pool)
@@ -142,8 +159,8 @@ def set_budget(client: Any, seconds: float) -> None:
     link = getattr(client, "optimus_link", None)
     if not isinstance(link, Link):  # an in-memory stand-in
         return
+    client.connection_pool.timeout = max(0.0, seconds)  # a checkout waits for the pool's one connection only for what is left
     seconds = max(_MIN_SOCKET_SECONDS, seconds)
-    client.connection_pool.timeout = seconds  # how long a checkout waits for the pool's one connection
     client.connection_pool.connection_kwargs.update(socket_timeout=seconds, socket_connect_timeout=min(_CONNECT_SECONDS, seconds))
     connection = link.connection
     if connection is None:  # not connected yet: the pool's settings above apply to the first connection
@@ -350,6 +367,8 @@ class MemoryStore:
         watchdog = None
         if isinstance(link, Link):
             link.deadline = time.monotonic() + self._remaining()
+            verifying = getattr(self._local, "verifying", False)
+            link.expected = None if verifying else self._verified_connects[0 if client is self._writer else 1]
             watchdog = threading.Timer(max(0.0, self._remaining()), link.cut)
             watchdog.daemon = True
             watchdog.start()
@@ -360,6 +379,7 @@ class MemoryStore:
                 watchdog.cancel()
                 watchdog.join()  # a cut already under way finishes on this request's connection, before the lock is released
                 link.deadline = None
+                link.expected = None
             self._local.held = held
             set_budget(client, msc.DEADLINE_SECONDS)
 
@@ -742,6 +762,12 @@ class MemoryStoreService:
     The store is checked before it first serves and again after an outage, because the Gateway may start before the container
     is up and must keep serving models meanwhile."""
 
+    @staticmethod
+    def _late(deadline: float) -> tuple[int, dict[str, str]] | None:
+        """After the deadline every outcome is a timeout, whatever the operation made of the failure: the caller must treat
+        anything it sent as uncertain."""
+        return (503, msc.error_body("MEMORY_TIMEOUT")) if time.monotonic() >= deadline else None
+
     def __init__(self, store: MemoryStore, *, verify: Callable[[float], None] | None = None) -> None:
         self._store = store
         self._verify = verify
@@ -761,27 +787,29 @@ class MemoryStoreService:
             if time.monotonic() >= deadline:
                 return 503, msc.error_body("MEMORY_TIMEOUT")
             request = msc.parse_request(raw_body)
+            if request["op"] in msc.UNAVAILABLE:  # answered before verification, which would connect and write
+                return 501, msc.error_body("MEMORY_OPERATION_UNAVAILABLE")
             if not self._verified or self._store.suspect:
                 if self._verify is None:
                     raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)
                 try:
                     self._verify(deadline)
                 except MemoryStoreStartupError as refusal:
-                    return 503, msc.error_body(refusal.code)
+                    return self._late(deadline) or (503, msc.error_body(refusal.code))
                 self._verified = True
             result = self._store.dispatch(request, deadline=deadline)
             if time.monotonic() >= deadline:  # a late answer is not a success
                 return 503, msc.error_body("MEMORY_TIMEOUT")
             return 200, result
         except msc.MemoryRequestError as refusal:
-            return refusal.status, msc.error_body(refusal.code)
+            return self._late(deadline) or (refusal.status, msc.error_body(refusal.code))
         except (RedisConnectionError, TimeoutError, OSError):
             self._verified = self._verify is None  # whatever comes back on this port has to prove itself again
             self._store.connection_lost()  # and nothing cached from before the outage is trusted: it may hold writes Redis lost
-            return 503, msc.error_body("MEMORY_TIMEOUT" if time.monotonic() >= deadline else "MEMORY_UNAVAILABLE")
+            return self._late(deadline) or (503, msc.error_body("MEMORY_UNAVAILABLE"))
         except Exception:  # noqa: BLE001 - a malformed entry or any other fault is a stable code, never a dropped connection
             self._store.forget()
-            return 503, msc.error_body("MEMORY_STORAGE_ERROR")
+            return self._late(deadline) or (503, msc.error_body("MEMORY_STORAGE_ERROR"))
         finally:
             self._workers.release()
 

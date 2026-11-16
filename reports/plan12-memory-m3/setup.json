@@ -17,13 +17,13 @@
   "runs": {
     "dedicated_store": {
       "command": "P1211_MEMORY_DOCKER_RELEASED=1 pytest -m requires_plan12_memory_redis tests/integration/memory/test_store.py",
-      "run": "20261116T230834-33096-3a3907",
-      "result": "32 passed, after the connection-class round (Codex review 5)",
+      "run": "20261116T232807-36328-22473d",
+      "result": "32 passed, after the connection-layer round (Codex review 6)",
       "ack_latency_s": {
         "saves": 50,
-        "p50": 0.0078,
-        "p95": 0.0092,
-        "max": 0.0093,
+        "p50": 0.0079,
+        "p95": 0.0104,
+        "max": 0.0112,
         "policy": "appendfsync always"
       },
       "superseded_measurement": {
@@ -37,7 +37,7 @@
     },
     "native_keyring": {
       "command": "pytest -m requires_os_keyring_write tests/integration/memory/test_native_keyring.py",
-      "run": "20261116T230852-27372-924342",
+      "run": "20261116T232755-48056-fae5f1",
       "result": "3 passed",
       "residue": "none: keyring.get_password('optimus-p1211-test', 'redis-password') is None after the run"
     }
@@ -101,8 +101,13 @@
       "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex5.py",
       "killed": 7,
       "survived": 0
+    },
+    "codex_review_6": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex6.py",
+      "killed": 10,
+      "survived": 0
     }
   },
   "not_covered_here": "Competing writers, disconnections around the append, fsync timeout, AOF-off and OOM at runtime, purge and capacity under load are Task 2 (checkpoint 2).",
-  "connection_paths": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/connection-paths.md (17 paths, guards G1-G7, each with its test)"
+  "connection_paths": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/connection-paths.md (v2: 20 paths, guards G1-G7, each with its test)"
 }

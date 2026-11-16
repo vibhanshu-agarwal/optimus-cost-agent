@@ -276,3 +276,13 @@ def test_without_a_configured_store_the_route_does_not_exist() -> None:
         server.shutdown()
         server.server_close()
         thread.join(5)
+
+
+def test_an_answer_after_the_deadline_is_a_timeout_not_a_success() -> None:
+    release = threading.Event()
+    timer = threading.Timer(0.3, release.set)
+    timer.start()
+    try:
+        assert _service(_Store(release=release)).handle(_CAPS, deadline=time.monotonic() + 0.1) == (503, msc.error_body("MEMORY_TIMEOUT"))
+    finally:
+        timer.cancel()

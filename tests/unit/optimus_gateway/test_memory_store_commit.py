@@ -501,7 +501,7 @@ def test_a_read_waits_for_the_read_lock_only_inside_its_budget() -> None:
     reply = service.handle(json.dumps({"op": "read", "project": "p-1", "item": "m-0123456789abcdef"}).encode(), deadline=time.monotonic() + 0.3)
     release.set()
     holder.join(5)
-    assert reply == (503, msc.error_body("MEMORY_BUSY")) and time.monotonic() - started < 1.0
+    assert reply == (503, msc.error_body("MEMORY_TIMEOUT")) and time.monotonic() - started < 1.0  # the wait used the whole budget
 
 
 def test_replies_convert_into_the_engine_contracts() -> None:

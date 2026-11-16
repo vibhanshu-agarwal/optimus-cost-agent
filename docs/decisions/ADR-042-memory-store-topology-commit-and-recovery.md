@@ -91,15 +91,16 @@ fsync failure: the request answers `MEMORY_UNAVAILABLE`, the Gateway drops every
 refused until the resource proves itself again, because Redis may have lost writes a cache still holds or another instance may now hold the port.
 Whether a transaction already sent took effect is uncertain; a retry under the same key reconciles it.
 
-The store has two single connections, one for writes and one for reads, each under its own lock. Each connection registers itself when it is
-created, and every attempt to establish it, failed or not, is a new generation, including the silent reconnect redis-py's pool makes when it
-finds a closed socket at checkout. Any new generation since the last verification makes the store suspect before the next command runs or result
-is returned. Verification establishes both connections first and refuses a proof if either changes while it is collected, and checks both reach
-the same resource. While a connection is in use, its connect timeout, its socket timeout and its parser's cached timeout are the request's
-remaining budget, refreshed before each command; a watchdog closes its socket at the absolute deadline, and after the deadline the connection
-neither connects nor sends, redis-py's own cleanup included, so no handshake, fragmented reply or
-sequence of commands outlasts the request. Past the deadline nothing new starts; a write already sent stays uncertain, and the cut connection is
-a new generation that must be verified.
+The store has two single connections, one for writes and one for reads, each under its own lock, and the guards live in the
+connection itself so they hold for every command, redis-py's own cleanup included. Each connection registers itself when it is created,
+and every attempt to establish it, failed or not, is a new generation, including the silent reconnect redis-py's pool makes at checkout.
+While the store holds a connection, a command on any generation but the verified one, or one that would have to connect first, is refused
+before it leaves, so nothing reaches an unverified Redis; verification establishes both connections first and refuses a proof gathered
+across a reconnect. While held, the connection's connect, socket and parser timeouts are the request's remaining budget, refreshed before
+each command and again at the moment redis-py connects; `localhost` is connected as `127.0.0.1`, so there is one address and no resolver;
+the pool's wait takes exactly what is left; a watchdog closes the socket at the absolute deadline; and after the deadline the connection
+neither connects nor sends. Any outcome the service returns after the deadline is `MEMORY_TIMEOUT`, and a write already sent stays
+uncertain, reconciled by a retry under the same key. Unavailable operations are refused before verification, which would connect and write.
 
 A retry under the same key with the same content returns the first result and appends nothing; different content under that key is
 `IDEMPOTENCY_CONFLICT`. A reply that never confirmed is `unconfirmed`, and admission stops until a fresh `WAITAOF` succeeds; withdrawals and off records

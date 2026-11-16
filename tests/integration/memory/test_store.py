@@ -281,7 +281,7 @@ def test_a_silent_reconnect_is_never_used_before_the_resource_is_verified_again(
     _drop(service._store._writer)
     assert _append(service, project, token, _event()) == (503, msc.error_body("MEMORY_UNAVAILABLE"))  # reconnected, then refused
     assert _append(service, project, token, _event())[1]["durable_state"] == "confirmed"  # verified again first
-    assert service._store._writer.optimus_link.connects == 2
+    assert service._store._writer.optimus_link.connects == 3  # the refused reconnect (no handshake sent), then verification's
 
 
 def test_a_reconnect_to_another_resource_is_refused(provisioned: Provisioned) -> None:
