@@ -678,8 +678,9 @@ def _memory_server_args(config: MemoryIndexConfig) -> list[str]:
 
 
 def _memory_store_server_args(config: MemoryStoreConfig) -> list[str]:
-    # Accepted memory is never evicted: at maxmemory writes are refused, and the Gateway stops new saves before that.
-    return ["redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "everysec",
+    # Accepted memory is never evicted: at maxmemory writes are refused, and the Gateway stops new saves before that. Every write
+    # is fsynced (ADR-042): under everysec a confirmed save waited about a second, and one writer confirmed one save a second.
+    return ["redis-server", "--aclfile", "/etc/redis/users.acl", "--appendonly", "yes", "--appendfsync", "always",
             "--save", "300 1", "--maxmemory", f"{config.maxmemory_mb}mb", "--maxmemory-policy", "noeviction"]
 
 

@@ -26,7 +26,10 @@ class _Store:
         self.error = error
         self.calls = 0
 
-    def dispatch(self, _body: dict[str, Any]) -> dict[str, Any]:
+    def take_suspect(self) -> bool:
+        return False
+
+    def dispatch(self, _body: dict[str, Any], *, deadline: float | None = None) -> dict[str, Any]:
         self.calls += 1
         if self.release is not None:
             self.release.wait(5)

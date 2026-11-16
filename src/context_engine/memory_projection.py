@@ -12,7 +12,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
 from context_engine.contracts import ContractError
-from context_engine.memory_contracts import MemoryEvent
+from context_engine.memory_contracts import MemoryEvent, ServedMemory
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,11 @@ class ItemState:
     kind: str
     title: str
     statement: str
+    scope: str
+    anchors: tuple[str, ...]
+    lineage: tuple[str, ...]
+    valid_from_ms: int
+    valid_until_ms: int
 
     @property
     def live(self) -> bool:
@@ -36,6 +41,13 @@ class ItemState:
         """May enter a prompt: vouched for and active. A reverify item is at most an explicitly unverified hint, decided by the
         host, so it is not servable here."""
         return self.trust != "off" and self.status == "active"
+
+    def served(self) -> ServedMemory:
+        """The served form; only a servable item has one."""
+        if not self.servable:
+            raise ContractError(f"item {self.item} is not servable")
+        return ServedMemory(self.project, self.item, self.version, self.trust, self.kind, self.scope, self.title, self.statement,
+                            self.anchors)
 
 
 def fold(events: Iterable[MemoryEvent]) -> dict[str, ItemState]:
@@ -55,8 +67,9 @@ def fold(events: Iterable[MemoryEvent]) -> dict[str, ItemState]:
         if event.action == "withdraw" and current is not None:
             state = replace(current, version=event.version, status="withdrawn")  # the view keeps what was said; the event carries nothing
         elif event.action == "tombstone" and current is not None:
-            state = replace(current, version=event.version, status="purged", title="", statement="")
+            state = replace(current, version=event.version, status="purged", title="", statement="", anchors=())
         else:
-            state = ItemState(event.project, event.item, event.version, event.trust, event.status, event.kind, event.title, event.statement)
+            state = ItemState(event.project, event.item, event.version, event.trust, event.status, event.kind, event.title, event.statement,
+                              event.scope, event.anchors, event.lineage, event.valid_from_ms, event.valid_until_ms)
         items[event.item] = state
     return items

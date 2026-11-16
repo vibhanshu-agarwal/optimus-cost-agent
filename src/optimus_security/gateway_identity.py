@@ -60,6 +60,8 @@ TOOL_POLICY_NAMES = (
 )
 
 # Each field and how a refusal names it to the person reading the Agent Panel.
+# Present only when configured, so a launch without that feature keeps the identity it had before the feature existed.
+OPTIONAL_FIELDS = frozenset({"memory_store"})
 FIELD_LABELS: Mapping[str, str] = {
     "accounting": "usage accounting",
     "memory_index": "context index",
@@ -130,7 +132,6 @@ def compose_identity(
     values = {
         "accounting": accounting or "",
         "memory_index": memory_index or "",
-        "memory_store": memory_store or "",
         "composition": composition,
         "gateway_key": shared_secret,
         "provider": provider,
@@ -140,6 +141,8 @@ def compose_identity(
         "upstream": _normal_url(base_url),
         "upstream_credential": provider_api_key,
     }
+    if memory_store:
+        values["memory_store"] = memory_store
     fields = {name: _keyed(_FIELD_DOMAIN, hmac_key, name, value) for name, value in values.items()}
     return GatewayIdentity(fields=fields, digest=_digest(fields, hmac_key))
 
@@ -204,7 +207,7 @@ def read_reply(reply: Any, *, nonce: str, hmac_key: bytes) -> GatewayIdentity:
     fields, digest, proof = reply["fields"], reply["digest"], reply["proof"]
     if reply["schema"] != SCHEMA or reply["nonce"] != nonce:
         raise IdentityReplyError("nonce")
-    if not isinstance(fields, dict) or set(fields) != set(FIELD_LABELS):
+    if not isinstance(fields, dict) or not set(FIELD_LABELS) - OPTIONAL_FIELDS <= set(fields) <= set(FIELD_LABELS):
         raise IdentityReplyError("fields")
     if not all(isinstance(value, str) and _HEX_DIGEST.fullmatch(value) for value in (*fields.values(), digest, proof)):
         raise IdentityReplyError("fields")
@@ -217,4 +220,5 @@ def read_reply(reply: Any, *, nonce: str, hmac_key: bytes) -> GatewayIdentity:
 
 
 def differing_fields(expected: GatewayIdentity, reported: GatewayIdentity) -> tuple[str, ...]:
-    return tuple(name for name in sorted(FIELD_LABELS) if expected.fields[name] != reported.fields[name])
+    """An optional field present on one side only differs: a launch with a memory store never attaches to a Gateway without one."""
+    return tuple(name for name in sorted(FIELD_LABELS) if expected.fields.get(name) != reported.fields.get(name))

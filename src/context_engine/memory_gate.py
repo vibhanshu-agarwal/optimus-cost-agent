@@ -37,6 +37,13 @@ class EventDraft:
     kind: str
     title: str
     statement: str
+    scope: str
+    anchors: tuple[str, ...]  # "block:start-end" for each verified user span
+    lineage: tuple[str, ...]  # host-issued evidence references
+
+
+def _anchors(candidate: MemoryCandidate) -> tuple[str, ...]:
+    return tuple(f"{span.block}:{span.start}-{span.end}" for span in candidate.spans)
 
 
 @dataclass(frozen=True)
@@ -54,7 +61,8 @@ def item_id(project: str, idempotency_key: str) -> str:
 def _off(candidate: MemoryCandidate, reason: str, *, scanned: bool) -> GateDecision:
     """An off record: pointer and scanned title only, never the payload (§4)."""
     title = candidate.title if scanned else _BLOCKED_TITLE
-    draft = EventDraft(item_id(candidate.project, candidate.idempotency_key), 0, "off", "off", "active", candidate.kind, title, "")
+    draft = EventDraft(item_id(candidate.project, candidate.idempotency_key), 0, "off", "off", "active", candidate.kind, title, "",
+                       candidate.scope, (), ())
     return GateDecision("append", reason, draft)
 
 
@@ -85,10 +93,10 @@ def admit(candidate: MemoryCandidate, verdict: HostVerdict, target: ItemState | 
         if target.trust == "user-authored" and not user:
             return _off(candidate, "CONFLICTS_WITH_USER", scanned=True)  # agent conflicts go off without prompting
         if candidate.speech_act == "retraction":
-            draft = EventDraft(target.item, target.version, "withdraw", target.trust, "withdrawn", target.kind, "", "")
+            draft = EventDraft(target.item, target.version, "withdraw", target.trust, "withdrawn", target.kind, "", "", target.scope, (), ())
             return GateDecision("append", "RETRACTED", draft)
         draft = EventDraft(target.item, target.version, "update", candidate.trust, "active", candidate.kind, candidate.title,
-                           candidate.statement)
+                           candidate.statement, candidate.scope, _anchors(candidate), candidate.evidence)
         return GateDecision("append", "SUPERSEDED", draft)  # a new version of the same item; history keeps the old one
 
     if candidate.speech_act == "retraction":
@@ -96,5 +104,5 @@ def admit(candidate: MemoryCandidate, verdict: HostVerdict, target: ItemState | 
     if candidate.speech_act not in ADMITTING_ACTS:  # pragma: no cover - every speech act is handled above
         raise ContractError(f"unhandled speech act {candidate.speech_act}")
     draft = EventDraft(item_id(candidate.project, candidate.idempotency_key), 0, "admit", candidate.trust, "active", candidate.kind,
-                       candidate.title, candidate.statement)
+                       candidate.title, candidate.statement, candidate.scope, _anchors(candidate), candidate.evidence)
     return GateDecision("append", "ADMITTED", draft)

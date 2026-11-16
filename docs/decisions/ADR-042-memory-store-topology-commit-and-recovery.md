@@ -34,7 +34,10 @@ restore targets."
 | Agent-selected, commit | One stream per project, one append per change under a fenced lease | Chosen | `WATCH`/`MULTI` on the lease and the stream makes a lost lease or a moved head publish nothing, with one key changed, so there is no partial write to roll back. |
 | | A hash per item, versions checked by script | Rejected | Needs `+eval`; ADR-037 kept scripting out of the ACL. |
 | Agent-selected, confirmation | `WAITAOF 1 0` on the appending connection | Chosen | Says the append itself reached the local disk. The writer is one connection with retries off, and `CLIENT ID` before and after proves no reconnect came between. |
-| | `appendfsync always` and trust the reply | Rejected | Proves the configuration, not this write, and costs every write an fsync whether or not anyone waits. |
+| | `appendfsync always` and trust the reply | Rejected | Proves the configuration, not this write. |
+| Agent-selected, fsync policy | `appendfsync always`, with `WAITAOF` on the appending connection still the proof | Chosen (Codex CP1 review 1) | Every memory write is waited on anyway. Measured on the released store: 50 saves in a row confirmed at p50 8.7 ms, max 15.6 ms. |
+| | `appendfsync everysec`, as Plan 12.11 proposed | Rejected after measurement | `WAITAOF` waited for the next periodic fsync: p50 1.003 s, max 1.006 s per save. With one serialized writer per Gateway that is about one save a second, so four simultaneous saves finish at about 1, 2, 3 and 4 seconds against a p95 target of 1.5 s. |
+| | A pool of writer connections sharing one fsync | Rejected | More concurrency machinery than `always` for the same effect. |
 | D5 and D8, recovery | A plaintext copy in the workspace, one confirmed location, restore only into an empty store | Chosen; lands with Task 4 | Volume loss would otherwise lose everything. |
 | | No copy in this part | Rejected by the operator | Thirteen days instead of sixteen, and no recovery from volume loss. |
 
@@ -48,21 +51,22 @@ qualification freezes them.
 `optimus-trust memory-setup --store` writes `memory-store/memory-store.json`, a hash-only `users.acl` and a generated password under keyring service
 `optimus-gateway-memory-store`. It changes nothing about index setup. The launch approval binds the configuration's digest as
 `_memory_store_config`; the signed manifest's `memory_store` field (schema offset 12) and the attach identity's `memory_store` field bind the store's
-literal. An absent configuration adds no approval literal and leaves the manifest's bytes as before. The attach identity always carries the field,
-empty when there is no store, so its digest changes once for every launch, as ADR-037's did, and a Gateway left running from an older build is
-not attached to. The ACP host starts container `optimus-memory-store-redis` (volume
-`optimus-memory-store-data`, loopback port 6394, the M1 image by digest) with AOF on, `noeviction`, `maxmemory` 512 MiB and a 1024 MiB container cap. It
-never adopts or replaces a container or listener with other settings.
+literal. An absent configuration changes none of them: no approval literal, the manifest's bytes as before, and the attach identity without the
+field, so its digest is the one before Plan 12.11 (a test pins Plan 12.10's digest). A reply's `memory_store` field is optional, and a launch with
+a store never attaches to a Gateway without one. The ACP host starts container `optimus-memory-store-redis` (volume `optimus-memory-store-data`,
+loopback port 6394, the M1 image by digest) with AOF on and fsync on every write, `noeviction`, `maxmemory` 512 MiB and a 1024 MiB container cap.
+It never adopts or replaces a container or listener with other settings.
 
 The ACL opens only `omem:*` and named commands: no scripting, `KEYS`, `CONFIG`, `FLUSH*`, `DEBUG`, `ACL` or `SHUTDOWN`.
 
 ### The route
 
-`POST /v1/context/memory` takes a closed set of operations: `capabilities`, `lease`, `append`, `read`, `list`, `checkpoint`, `checkpoints`, `purge` and
-`purge_status`. The bearer is checked before any body byte is read. Limits: 256 KiB requests, 1 MiB replies, a 5 second deadline that covers
-waiting and execution, two serving workers and a queue of eight; a full queue is refused at once, and memory traffic never holds a model or capture
-request. No command, key or filesystem path crosses the route, and a field outside the schema is refused. `purge` and `purge_status` answer
-`MEMORY_OPERATION_UNAVAILABLE` until Task 2's journal backs them. The recovery operations join with Task 4.
+`POST /v1/context/memory` takes a closed set of operations: `capabilities`, `lease`, `append`, `read`, `list`, `checkpoint`, `checkpoints`, `purge`,
+`purge_status`, `export`, `restore` and `restore_status`. The bearer is checked before any body byte is read. Limits: 256 KiB requests, 1 MiB replies,
+a 5 second deadline that covers waiting and execution (no lock wait, fold page or append starts after it), two serving workers and a queue of eight;
+a full queue is refused at once, and memory traffic never holds a model or capture request. No command, key or filesystem path crosses the route,
+and a field outside the schema is refused. Every shape is fixed now; `purge` and `purge_status` answer `MEMORY_OPERATION_UNAVAILABLE` until Task 2's
+journal backs them, and `export`, `restore` and `restore_status` until Task 4's recovery copy does.
 
 **Projects are host-asserted, as ADR-037's scopes are.** A host holding the Gateway key can name another project; a test pins that residual. List
 cursors are sealed with HMAC to their project and scope.
@@ -82,7 +86,9 @@ fence: a new holder always gets a higher token, so the old one can no longer app
 An append runs on the writer's single connection: `WATCH` the lease and the stream, check the token, rebuild the item lookup up to the stream's head,
 check the expected version and the idempotency key there (not in what is served), then `MULTI` with exactly one `XADD`. `WAITAOF 1 0` follows on that
 connection. Only when it reports the local fsync, and `CLIENT ID` is unchanged, does the confirmed watermark move to the new entry. AOF is ordered, so
-the watermark confirms every earlier entry too.
+the watermark confirms every earlier entry too. A lost or replaced connection, during the wait or reported by redis-py as a `WatchError`, is not an
+fsync failure: the Gateway drops every cached fold and the resource proves itself again before the next request, because Redis may have lost writes a
+cache still holds.
 
 A retry under the same key with the same content returns the first result and appends nothing; different content under that key is
 `IDEMPOTENCY_CONFLICT`. A reply that never confirmed is `unconfirmed`, and admission stops until a fresh `WAITAOF` succeeds; withdrawals and off records
@@ -101,9 +107,9 @@ refuses a healthy store that is not empty. Task 4 delivers it and amends this re
 
 ## Consequences
 
-- Every confirmed save waits for the next fsync. Under `appendfsync everysec` that measured about 1.0 s per save (50 in a row: p50 1.003 s, max
-  1.006 s), bounded at 2.5 s, and one Gateway's writer confirms about one save a second. The ack target is frozen in
-  `reports/plan12-memory-m3/targets.json`; whether to move to `appendfsync always` is open for the checkpoint 1 review.
+- Every write to the memory store is fsynced before Redis answers. Confirmed saves measured p50 8.7 ms, max 15.6 ms; a slow disk is bounded by a
+  2.5 s wait. This departs from Plan 12.11's proposed `everysec`; `reports/plan12-memory-m3/targets.json` keeps its frozen thresholds and its
+  description of the proposal, and Task 2's K2 measures contention and slow storage under `always`.
 - One writer per project at a time. A second writer waits for the lease or is refused; nothing merges.
 - Two workspaces on one key are not isolated from each other by the store.
 - An `unconfirmed` reply is honest, not a failure to report: the host must not say "Remembered" for it.

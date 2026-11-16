@@ -12,24 +12,32 @@
     "maxmemory_mb": 512,
     "admission_ceiling_mb": 384,
     "container_memory_mib": 1024,
-    "persistence": "AOF everysec, noeviction"
+    "persistence": "AOF with appendfsync always, noeviction (Codex CP1 review 1; the plan proposed everysec)"
   },
   "runs": {
     "dedicated_store": {
       "command": "P1211_MEMORY_DOCKER_RELEASED=1 pytest -m requires_plan12_memory_redis tests/integration/memory/test_store.py",
-      "run": "20261116T201743-42348-455d0c",
-      "result": "28 passed, after the Fable review 1 fixes",
+      "run": "20261116T204113-43152-751697",
+      "result": "28 passed, after the Codex review 1 fixes",
       "ack_latency_s": {
         "saves": 50,
+        "p50": 0.0087,
+        "p95": 0.0117,
+        "max": 0.0156,
+        "policy": "appendfsync always"
+      },
+      "superseded_measurement": {
+        "run": "20261116T201743-42348-455d0c",
+        "policy": "appendfsync everysec",
         "p50": 1.0032,
         "p95": 1.0049,
         "max": 1.0063,
-        "cause": "appendfsync everysec: WAITAOF waits for the next fsync"
+        "cause": "WAITAOF waited for the next periodic fsync"
       }
     },
     "native_keyring": {
       "command": "pytest -m requires_os_keyring_write tests/integration/memory/test_native_keyring.py",
-      "run": "20261116T195547-9036-c61623",
+      "run": "20261116T204135-53812-041a85",
       "result": "3 passed",
       "residue": "none: keyring.get_password('optimus-p1211-test', 'redis-password') is None after the run"
     }
@@ -70,7 +78,10 @@
       ],
       "not_mutated": "the read lock around list answers: the race it closes is not deterministic, so no mutant can show it reliably"
     },
-    "survived": []
+    "survived": [],
+    "codex_review_1": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex1.py"
+    }
   },
   "not_covered_here": "Competing writers, disconnections around the append, fsync timeout, AOF-off and OOM at runtime, purge and capacity under load are Task 2 (checkpoint 2)."
 }

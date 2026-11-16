@@ -197,6 +197,48 @@ def test_a_gateway_serving_another_store_is_not_compatible() -> None:
     assert gi.FIELD_LABELS["memory_store"] == "memory store"
 
 
+# Plan 12.10's identity (main at 71d1c1e) for these inputs: a launch without a store must keep it byte for byte.
+_BASELINE_DIGEST = "1fb4d21165100a912a9f6db3262bfbd542ff1bf2a5281eecb758a4cd5eb1b5e0"  # pragma: allowlist secret
+_BASELINE_FIELDS = ["accounting", "composition", "gateway_key", "memory_index", "provider", "registry", "stage_c", "tool_policy", "upstream",
+                    "upstream_credential"]
+
+
+def _baseline_inputs(**extra: Any) -> gi.GatewayIdentity:
+    return gi.compose_identity(provider="openrouter", base_url="https://upstream.test/api/v1/", provider_api_key="upstream-key",  # pragma: allowlist secret
+                               shared_secret="gateway-key", composition="ordinary", model_registry="registry:x", stage_c_envelope=None,  # pragma: allowlist secret
+                               accounting="accounting:y", tool_environ={}, hmac_key=b"k" * 32, memory_index="index:z", **extra)
+
+
+def test_without_a_store_the_identity_is_the_one_before_plan_12_11() -> None:
+    identity = _baseline_inputs()
+    assert sorted(identity.fields) == _BASELINE_FIELDS and identity.digest == _BASELINE_DIGEST
+    assert _baseline_inputs(memory_store=None).digest == _BASELINE_DIGEST
+
+
+def _reply(identity: gi.GatewayIdentity, nonce: str = "n" * 32) -> dict[str, Any]:
+    return gi.ServedIdentity(identity, gi.proof_key(b"k" * 32)).reply(nonce)
+
+
+def test_a_reply_without_the_store_field_is_read_and_only_matches_a_launch_without_a_store() -> None:
+    old = gi.read_reply(_reply(_baseline_inputs()), nonce="n" * 32, hmac_key=b"k" * 32)
+    assert gi.differing_fields(_baseline_inputs(), old) == ()
+    assert gi.differing_fields(_baseline_inputs(memory_store="store:1"), old) == ("memory_store",)
+    new = gi.read_reply(_reply(_baseline_inputs(memory_store="store:1")), nonce="n" * 32, hmac_key=b"k" * 32)
+    assert gi.differing_fields(_baseline_inputs(), new) == ("memory_store",)
+
+
+def test_a_reply_missing_a_required_field_or_carrying_an_unknown_one_is_refused() -> None:
+    for change in ({"drop": "memory_index"}, {"add": "workspace"}):
+        reply = _reply(_baseline_inputs())
+        fields = dict(reply["fields"])
+        if "drop" in change:
+            fields.pop(change["drop"])
+        else:
+            fields[change["add"]] = "0" * 64
+        with pytest.raises(gi.IdentityReplyError):
+            gi.read_reply({**reply, "fields": fields}, nonce="n" * 32, hmac_key=b"k" * 32)
+
+
 def test_a_launch_expects_what_the_gateway_it_starts_serves_with_a_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """The real child arguments and environment, into the real Gateway entrypoint, with no password anywhere in either."""
     keyring = FakeKeyring()

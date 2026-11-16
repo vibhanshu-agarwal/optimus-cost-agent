@@ -30,7 +30,8 @@ def append(**changes: Any) -> dict[str, Any]:
 
 
 _POINT = {"session": "sess-1", "sequence": 1, "branch": "main", "worktree": "wt-1", "baseline": "b" * 40, "settled_at_ms": 5,
-          "outcome": "settled", "objective": "obj-1", "pending": []}
+          "outcome": "settled", "objective": "obj-1", "provenance": "turn-1", "plan_hash": "", "pending": [], "amendments": [],
+          "completion": [], "verification": [], "remaining": []}
 
 VALID = [
     {"op": "capabilities"},
@@ -49,6 +50,10 @@ VALID = [
     {"op": "checkpoints", "project": "p-1", "limit": 20},
     {"op": "purge", "project": "p-1", "token": 1, "item": "m-0123456789abcdef", "idempotency_key": _KEY},
     {"op": "purge_status", "project": "p-1", "item": "m-0123456789abcdef"},
+    {"op": "export", "project": "p-1", "limit": 100},
+    {"op": "export", "project": "p-1", "limit": 1, "cursor": "bS0x." + "0" * 64},
+    {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": True, "events": [event()]},
+    {"op": "restore_status", "project": "p-1", "generation": _KEY},
 ]
 
 
@@ -92,12 +97,39 @@ INVALID = {
     "idempotency-not-digest": append(idempotency_key="retry-1"),
     "checkpoint-with-text": {"op": "checkpoint", "project": "p-1", "token": 1, "checkpoint": {**_POINT, "objective": "fix the bug"}},
     "checkpoint-bad-baseline": {"op": "checkpoint", "project": "p-1", "token": 1, "checkpoint": {**_POINT, "baseline": "main"}},
+    "restore-empty-batch": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": True, "events": []},
+    "restore-too-many": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": False,
+                         "events": [event()] * (msc.MAX_RESTORE_BATCH + 1)},
+    "restore-bad-event": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": True,
+                          "events": [event(status="purged")]},
+    "restore-final-not-bool": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": 1, "events": [event()]},
+    "export-path": {"op": "export", "project": "p-1", "limit": 1, "path": "C:/x"},
     "withdraw-first": append(event=event(action="withdraw", status="withdrawn", title="", statement="")),
     "statement-c1-control": append(event=event(statement="a" + chr(0x85) + "b")),
     "statement-delete": append(event=event(statement="a" + chr(0x7F))),
     "title-bidi-override": append(event=event(title=chr(0x202E) + "evil")),
     "title-bidi-isolate": append(event=event(title=chr(0x2066) + "x" + chr(0x2069))),
 }
+
+
+def test_an_event_crosses_from_the_route_to_the_engine_and_back_unchanged() -> None:
+    wire = event(anchors=["b-1:0-25"], lineage=["ev-1", "ev-2"], valid_from_ms=7, valid_until_ms=9)
+    assert msc.event(wire) == wire
+    assert engine.MemoryEvent.from_record("p-1", wire).to_record() == wire
+    assert set(engine.MemoryEvent.RECORD_FIELDS) == set(wire)
+
+
+def test_a_checkpoint_crosses_from_the_route_to_the_engine_and_back_unchanged() -> None:
+    wire = {**_POINT, "plan_hash": "c" * 64, "amendments": ["am-1"], "completion": ["done-1"], "verification": ["ver-1"], "remaining": ["todo-1"]}
+    assert msc.checkpoint(wire) == wire
+    assert engine.ContinuationCheckpoint.from_record("p-1", wire).to_record() == wire
+
+
+def test_a_record_with_a_missing_or_extra_field_is_not_an_engine_contract() -> None:
+    with pytest.raises(engine.ContractError):
+        engine.MemoryEvent.from_record("p-1", {**event(), "extra": 1})
+    with pytest.raises(engine.ContractError):
+        engine.ContinuationCheckpoint.from_record("p-1", {k: v for k, v in _POINT.items() if k != "provenance"})
 
 
 def test_emoji_joined_by_zero_width_joiners_are_text() -> None:

@@ -386,6 +386,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus_security/failure_facts.py",
     "src/optimus_security/gateway_identity.py",
     "src/optimus_security/memory_index_config.py",
+    "src/optimus_security/memory_store_config.py",
     "src/optimus_security/memory_index_contract.py",
     "src/optimus_security/launch_manifest.py",
     "src/optimus_security/outbox_drain.py",

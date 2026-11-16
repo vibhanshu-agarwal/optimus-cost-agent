@@ -125,6 +125,7 @@ class Pipeline:
 class Client:
     def __init__(self, server: Server, connection: int = 7) -> None:
         self.server, self.connection, self.down = server, connection, False
+        self.waitaof_raises: Exception | None = None
 
     def check(self) -> None:
         if self.down:
@@ -144,6 +145,9 @@ class Client:
     def execute_command(self, *args: Any) -> Any:
         self.check()
         assert args[0] == "WAITAOF"
+        if self.waitaof_raises is not None:
+            error, self.waitaof_raises = self.waitaof_raises, None
+            raise error
         return [self.server.fsync, 0]
 
     def __getattr__(self, name: str) -> Callable[..., Any]:
@@ -153,11 +157,11 @@ class Client:
         return call
 
 
-def store(server: Server | None = None) -> tuple[memory_store.MemoryStoreService, Server, Client]:
+def store(server: Server | None = None, verify: Callable[[], None] | None = None) -> tuple[memory_store.MemoryStoreService, Server, Client]:
     server = server or Server()
     writer = Client(server)
     service = memory_store.MemoryStoreService(memory_store.MemoryStore(Client(server, 9), writer, admission_ceiling_mb=384,  # type: ignore[arg-type]
-                                                                      cursor_key=b"k"))
+                                                                      cursor_key=b"k"), verify=verify)
     return service, server, writer
 
 
@@ -330,3 +334,82 @@ def test_the_fsync_probe_writes_before_it_waits(reply: list[int]) -> None:
     client = Client(server)
     assert memory_store.fsync_probe(client, timeout_ms=10) == reply[0]  # type: ignore[arg-type]
     assert server.strings[memory_store._PROBE_KEY] == b"1"
+
+
+def test_a_connection_lost_during_waitaof_never_confirms_a_save_redis_then_lost() -> None:
+    checks: list[int] = []
+    service, server, writer = store(verify=lambda: checks.append(1))
+    token = lease(service)
+    stream = memory_store.MemoryStore._key("p-1", "events")
+    writer.waitaof_raises = RedisConnectionError("reset")
+    reply = append(service, token, event(), key="c" * 64)[1]
+    assert reply["durable_state"] == "unconfirmed" and service._store._writer_folds == {}
+    server.streams[stream].clear()  # Redis lost the unconfirmed append in the outage
+    other = {"type": "event", "key": "d" * 64, "digest": "0" * 64, "event": event(item="m-00000000000000dd")}
+    server.xadd(stream, {"e": json.dumps(other)})  # and another Gateway appended past it
+    before = len(checks)
+    retry = append(service, token, event(), key="c" * 64)
+    assert retry[0] == 200 and "replayed" not in retry[1] and retry[1]["durable_state"] == "confirmed"  # written again, not a phantom
+    assert len(checks) == before + 1  # the resource proved itself again before that request ran
+    assert [json.loads(fields[b"e"])["key"] for _id, fields in server.streams[stream]] == ["d" * 64, "c" * 64]
+
+
+def test_a_watch_error_from_a_replaced_connection_drops_the_caches_and_confirms_on_the_new_one() -> None:
+    service, server, writer = store()
+    token = lease(service)
+    append(service, token, event())
+    stream = memory_store.MemoryStore._key("p-1", "events")
+
+    def reconnect() -> None:
+        writer.connection = 8
+        server.touch(stream)
+
+    server.before_exec = reconnect
+    reply = append(service, token, event(version=2))[1]
+    assert reply["durable_state"] == "confirmed" and service._store.take_suspect() is False  # the service already took it
+
+
+def test_a_request_whose_budget_went_on_queueing_starts_no_write() -> None:
+    service, server, _ = store()
+    token = lease(service)
+    held = threading.Event()
+    release = threading.Event()
+
+    def hold() -> None:
+        with service._store._writing():
+            held.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    held.wait(5)
+    started = time.monotonic()
+    body = {"op": "append", "project": "p-1", "token": token, "expected_version": 0, "idempotency_key": "e" * 64, "event": event()}
+    status, reply = service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 0.3)
+    release.set()
+    holder.join(5)
+    assert (status, reply["error"]) in {(503, "MEMORY_BUSY"), (503, "MEMORY_TIMEOUT")} and time.monotonic() - started < 1.5
+    assert memory_store.MemoryStore._key("p-1", "events") not in server.streams
+
+
+def test_an_expired_deadline_stops_a_fold_rebuild_between_pages() -> None:
+    service, _, _ = store()
+    token = lease(service)
+    for n in range(3):
+        append(service, token, event(item=f"m-{n:016x}"))
+    store_ = service._store
+    store_.forget()
+    with pytest.raises(msc.MemoryRequestError) as stopped:
+        store_.dispatch({"op": "read", "project": "p-1", "item": "m-0000000000000000"}, deadline=time.monotonic() - 1)
+    assert stopped.value.code == "MEMORY_TIMEOUT"
+
+
+def test_a_retry_of_an_unconfirmed_save_is_answered_even_over_the_ceiling() -> None:
+    service, server, _ = store()
+    token = lease(service)
+    server.fsync = 0
+    append(service, token, event(), key="f" * 64)
+    server.used = 384 * 1024 * 1024
+    retry = append(service, token, event(), key="f" * 64)
+    assert retry[0] == 200 and retry[1]["replayed"] is True
+    assert append(service, token, event(item="m-00000000000000ff")) == (503, msc.error_body("MEMORY_NOT_ADMITTING"))

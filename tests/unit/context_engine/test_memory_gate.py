@@ -38,7 +38,7 @@ def _verdict(**changes: bool) -> HostVerdict:
 
 def _state(**changes: object) -> ItemState:
     base: dict[str, object] = {"project": "p-1", "item": "m-" + "a" * 16, "version": 3, "trust": "user-authored", "status": "active",
-                               "kind": "preference", "title": "old", "statement": "Use unittest."}
+                               "kind": "preference", "title": "old", "statement": "Use unittest.", "scope": "s-1", "anchors": ("b-1:0-38",), "lineage": (), "valid_from_ms": 0, "valid_until_ms": 0}
     return ItemState(**{**base, **changes})  # type: ignore[arg-type]
 
 
@@ -159,7 +159,7 @@ def test_an_empty_span_is_refused() -> None:
 
 def _event(**changes: object) -> MemoryEvent:
     base: dict[str, object] = {"event_id": "1-0", "project": "p-1", "item": "m-" + "a" * 16, "version": 1, "action": "admit",
-                               "trust": "user-authored", "status": "active", "kind": "fact", "title": "t", "statement": "s"}
+                               "trust": "user-authored", "status": "active", "kind": "fact", "title": "t", "statement": "s", "scope": "s-1", "anchors": ("b-1:0-38",), "lineage": (), "valid_from_ms": 0, "valid_until_ms": 0}
     return MemoryEvent(**{**base, **changes})  # type: ignore[arg-type]
 
 
@@ -225,7 +225,7 @@ def test_an_off_record_is_never_servable() -> None:
 
 def _checkpoint(**changes: object) -> ContinuationCheckpoint:
     base: dict[str, object] = {"project": "p-1", "session": "s-1", "sequence": 1, "branch": "main", "worktree": "w-1", "baseline": "a" * 40,
-                               "settled_at_ms": 1000, "outcome": "completed", "objective": "o-1"}
+                               "settled_at_ms": 1000, "outcome": "completed", "objective": "o-1", "provenance": "turn-1", "plan_hash": ""}
     return ContinuationCheckpoint(**{**base, **changes})  # type: ignore[arg-type]
 
 
@@ -249,3 +249,48 @@ def test_the_lookup_does_not_depend_on_input_order() -> None:
 def test_a_checkpoint_carries_only_host_references(changes: dict[str, object]) -> None:
     with pytest.raises(ContractError):
         _checkpoint(**changes)
+
+
+# --- provenance and serving ------------------------------------------------------------------------------------------------
+
+
+def test_an_admitted_draft_keeps_its_scope_spans_and_evidence() -> None:
+    draft = memory_gate.admit(_candidate(), _OK).draft
+    assert draft is not None and (draft.scope, draft.anchors, draft.lineage) == ("s-1", ("b-1:0-38",), ())
+
+
+def test_an_off_record_and_a_withdrawal_carry_no_supporting_text() -> None:
+    blocked = memory_gate.admit(_candidate(), dataclasses.replace(_OK, scans_passed=False)).draft
+    assert blocked is not None and (blocked.anchors, blocked.lineage) == ((), ())
+    withdrawn = memory_gate.admit(_candidate(speech_act="retraction", target="m-" + "a" * 16), _OK, _state()).draft
+    assert withdrawn is not None and (withdrawn.anchors, withdrawn.lineage, withdrawn.scope) == ((), (), "s-1")
+
+
+def test_the_fold_keeps_provenance_and_a_purge_drops_the_supporting_text() -> None:
+    state = fold([_event(lineage=("ev-1",), valid_from_ms=5)])["m-" + "a" * 16]
+    assert (state.scope, state.anchors, state.lineage, state.valid_from_ms) == ("s-1", ("b-1:0-38",), ("ev-1",), 5)
+    purged = fold([_event(), _event(event_id="2-0", version=2, action="tombstone", status="purged", title="", statement="")])
+    assert purged["m-" + "a" * 16].anchors == () and purged["m-" + "a" * 16].statement == ""
+
+
+def test_only_a_servable_item_is_served_with_its_citation() -> None:
+    served = _state().served()
+    assert served.citation == "[memory:m-" + "a" * 16 + "@3]" and served.anchors == ("b-1:0-38",)
+    with pytest.raises(ContractError):
+        _state(status="withdrawn").served()
+    with pytest.raises(ContractError):
+        _state(trust="off").served()
+
+
+@pytest.mark.parametrize("changes", [{"valid_from_ms": 10, "valid_until_ms": 10}, {"anchors": ("bad ref",)}, {"scope": ""},
+                                     {"lineage": tuple(f"e-{n}" for n in range(33))}])
+def test_an_event_with_bad_provenance_is_refused(changes: dict[str, object]) -> None:
+    with pytest.raises(ContractError):
+        _event(**changes)
+
+
+def test_a_checkpoint_binds_provenance_and_its_plan() -> None:
+    assert _checkpoint(plan_hash="b" * 64, completion=("done-1",), remaining=("todo-1",)).plan_hash == "b" * 64
+    for changes in ({"plan_hash": "main"}, {"provenance": ""}, {"verification": ("not a ref",)}):
+        with pytest.raises(ContractError):
+            _checkpoint(**changes)

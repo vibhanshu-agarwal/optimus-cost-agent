@@ -6,9 +6,9 @@ as the index's scopes are (ADR-037): the Gateway authenticates the shared key, n
 can name another project. The trusted host binds them and the model never selects one.
 
 One stream per project is authoritative: `append` (admit, update, withdraw, off) and `checkpoint` add one event under the
-project's fenced lease; `read`, `list` and `checkpoints` serve only what `WAITAOF` confirmed. `purge` and `purge_status` have
-their shapes here and answer `MEMORY_OPERATION_UNAVAILABLE` until Task 2's journal backs them; the recovery operations join
-with Task 4's export format. Limits are agent-selected, frozen in `reports/plan12-memory-m3/targets.json`.
+project's fenced lease; `read`, `list` and `checkpoints` serve only what `WAITAOF` confirmed. `purge`, `purge_status`,
+`export`, `restore` and `restore_status` have their shapes here and answer `MEMORY_OPERATION_UNAVAILABLE` until Task 2's journal
+and Task 4's recovery copy back them. Limits are agent-selected, frozen in `reports/plan12-memory-m3/targets.json`.
 """
 
 from __future__ import annotations
@@ -36,6 +36,7 @@ MAX_TITLE_CHARS: Final = 120
 MAX_REFERENCES: Final = 32
 MAX_LIST: Final = 100
 MAX_CHECKPOINTS: Final = 20
+MAX_RESTORE_BATCH: Final = 10  # ten maximal events stay well inside the request bound
 MAX_VERSION: Final = 2**31 - 1
 LEASE_TTL_MS: Final = (1_000, 300_000)
 
@@ -43,6 +44,7 @@ _OPAQUE = re.compile(r"[A-Za-z0-9._:@/-]{1,128}")
 _ITEM = re.compile(r"m-[0-9a-f]{16}")
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _BASELINE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})?")
+_PLAN_HASH = re.compile(r"(?:[0-9a-f]{64})?")
 _CURSOR = re.compile(r"[A-Za-z0-9_=-]{1,512}\.[0-9a-f]{64}")
 
 
@@ -146,19 +148,22 @@ def event(value: Any) -> dict[str, Any]:
     return value
 
 
-_CHECKPOINT_FIELDS = {"session", "sequence", "branch", "worktree", "baseline", "settled_at_ms", "outcome", "objective", "pending"}
+_CHECKPOINT_FIELDS = {"session", "sequence", "branch", "worktree", "baseline", "settled_at_ms", "outcome", "objective", "provenance",
+                      "plan_hash", "pending", "amendments", "completion", "verification", "remaining"}
 
 
 def checkpoint(value: Any) -> dict[str, Any]:
     """The deterministic turn checkpoint (engine `ContinuationCheckpoint`): host references only, never source text."""
     if not isinstance(value, dict) or set(value) != _CHECKPOINT_FIELDS:
         raise _refuse()
-    for name in ("session", "branch", "worktree", "outcome", "objective"):
+    for name in ("session", "branch", "worktree", "outcome", "objective", "provenance"):
         _opaque(value[name])
     _integer(value["sequence"], 1, MAX_VERSION)
     _integer(value["settled_at_ms"], 0, 2**53)
     _match(value["baseline"], _BASELINE)
-    _references(value["pending"])
+    _match(value["plan_hash"], _PLAN_HASH)
+    for name in ("pending", "amendments", "completion", "verification", "remaining"):
+        _references(value[name])
     return value
 
 
@@ -248,9 +253,40 @@ def _purge_status(body: dict[str, Any]) -> None:
     _match(body["item"], _ITEM)
 
 
+def _export(body: dict[str, Any]) -> None:
+    """A page of the project's active payloads for the plaintext recovery copy (D5); the host writes the one fixed location."""
+    _fields(body, {"op", "project", "limit"}, frozenset({"cursor"}))
+    _opaque(body["project"])
+    _integer(body["limit"], 1, MAX_LIST)
+    if "cursor" in body:
+        _match(body["cursor"], _CURSOR)
+
+
+def _restore(body: dict[str, Any]) -> None:
+    """One batch of a recovery generation into an empty store (D8): batches are numbered, the last says so, and every event has
+    the append contract's shape."""
+    _fields(body, {"op", "project", "token", "generation", "batch", "final", "events"})
+    _opaque(body["project"])
+    _integer(body["token"], 1, 2**63 - 1)
+    _match(body["generation"], _DIGEST)
+    _integer(body["batch"], 0, MAX_VERSION)
+    if type(body["final"]) is not bool or type(body["events"]) is not list or not 1 <= len(body["events"]) <= MAX_RESTORE_BATCH:
+        raise _refuse()
+    for value in body["events"]:
+        event(value)
+
+
+def _restore_status(body: dict[str, Any]) -> None:
+    _fields(body, {"op", "project", "generation"})
+    _opaque(body["project"])
+    _match(body["generation"], _DIGEST)
+
+
 _SHAPES: Final[dict[str, Callable[[dict[str, Any]], None]]] = {
     "capabilities": _capabilities, "lease": _lease, "append": _append, "read": _read, "list": _list, "checkpoint": _checkpoint,
-    "checkpoints": _checkpoints, "purge": _purge, "purge_status": _purge_status,
+    "checkpoints": _checkpoints, "purge": _purge, "purge_status": _purge_status, "export": _export, "restore": _restore,
+    "restore_status": _restore_status,
 }
 OPERATIONS: Final = frozenset(_SHAPES)
-UNAVAILABLE: Final = frozenset({"purge", "purge_status"})  # shapes fixed now; Task 2's journal serves them
+# Shapes fixed now: Task 2's journal serves purge and its status, Task 4 the recovery copy and restore.
+UNAVAILABLE: Final = frozenset({"purge", "purge_status", "export", "restore", "restore_status"})

@@ -4190,6 +4190,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     memory_session_committed = b"from optimus.context.memory_session import" in probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/bootstrap.py")
     if not memory_session_committed:
         expected -= memory_session_paths
+    # Plan 12.11 adds the memory store's configuration, which the launch gate reads (one path), keyed on HEAD.
+    store_config_path = "src/optimus_security/memory_store_config.py"
+    store_config_committed = b"from optimus_security.memory_store_config import" in head_gate
+    if not store_config_committed:
+        expected -= {store_config_path}
     assert (admission_path in closure) is admission_committed
     assert (secret_paths_path in closure) is secret_paths_committed
     assert (file_policy_path in closure) is file_policy_committed
@@ -4227,7 +4232,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         8 if capture_committed else 0
     ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
         5 if memory_session_committed else 0
-    )
+    ) + store_config_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

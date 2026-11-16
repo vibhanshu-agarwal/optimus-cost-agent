@@ -32,7 +32,7 @@ from optimus_security.memory_store_config import KEYRING_SERVICE, MemoryStoreCon
 
 _PREFIX: Final = "omem"
 _RESOURCE_KEY: Final = f"{_PREFIX}:resource"
-_WAITAOF_PROBE_MS: Final = 2500  # appendfsync everysec: a write waits for the next fsync, measured at about 1.0 s
+_WAITAOF_PROBE_MS: Final = 2500  # bounds a slow disk; under appendfsync always the wait is the write's own fsync
 _WAITAOF_COMMIT_MS: Final = 2500
 _WATCH_ATTEMPTS: Final = 3
 _FOLD_PAGE: Final = 500
@@ -152,8 +152,9 @@ class _Fold:
         self.keys[record["key"]] = (record["digest"], _result(stream_id, record))
         self.head = stream_id
 
-    def advance(self, reader: Any, stream: str, target: str) -> None:
+    def advance(self, reader: Any, stream: str, target: str, on_time: Callable[[], None] = lambda: None) -> None:
         while _order(self.head) < _order(target):
+            on_time()
             entries = reader.xrange(stream, min=f"({self.head}", max=target, count=_FOLD_PAGE)
             if not entries:
                 raise RedisError("stream shorter than its head")  # never serve a fold that skipped events
@@ -193,15 +194,47 @@ class MemoryStore:
         self._admission_ceiling_mb = admission_ceiling_mb
         self._cursor_key = cursor_key
         self._fsync_failed = False
+        self._suspect = False
+        self._local = threading.local()
         self._writer_folds: dict[str, _Fold] = {}
         self._serving_folds: dict[str, _Fold] = {}
 
-    def dispatch(self, body: dict[str, Any]) -> dict[str, Any]:
+    def dispatch(self, body: dict[str, Any], *, deadline: float | None = None) -> dict[str, Any]:
+        """Run one operation inside the request's deadline: no lock wait, fold page or append starts once it has passed."""
         if body["op"] in msc.UNAVAILABLE:
             raise msc.MemoryRequestError("MEMORY_OPERATION_UNAVAILABLE", 501)
-        handler = getattr(self, f"_op_{body['op']}")
-        result: dict[str, Any] = handler(body)
-        return result
+        self._local.deadline = deadline
+        try:
+            handler = getattr(self, f"_op_{body['op']}")
+            result: dict[str, Any] = handler(body)
+            return result
+        finally:
+            self._local.deadline = None
+
+    def _remaining(self) -> float:
+        deadline = getattr(self._local, "deadline", None)
+        return msc.DEADLINE_SECONDS if deadline is None else deadline - time.monotonic()
+
+    def _on_time(self) -> None:
+        if self._remaining() <= 0:
+            raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503)
+
+    def take_suspect(self) -> bool:
+        """Whether a connection was lost or replaced since the last call; the service then re-verifies the resource."""
+        suspect, self._suspect = self._suspect, False
+        return suspect
+
+    def _connection_lost(self) -> None:
+        self.forget()
+        self._suspect = True
+
+    def _after_watch_error(self, connection: int) -> int:
+        """A WatchError is either another writer or redis-py reporting a lost connection. A new connection id means the latter:
+        nothing cached is trusted, and later confirmation is checked against the new connection."""
+        current = int(self._writer.client_id())
+        if current != connection:
+            self._connection_lost()
+        return current
 
     @staticmethod
     def _key(project: str, name: str) -> str:
@@ -251,8 +284,10 @@ class MemoryStore:
                                 pipe.pexpire(key, body["ttl_ms"])
                             else:
                                 pipe.delete(key)
+                        self._on_time()
                         pipe.execute()
                     except WatchError:
+                        connection = self._after_watch_error(connection)
                         continue
                 if not token:
                     return {"status": "ok"}
@@ -263,7 +298,8 @@ class MemoryStore:
 
     @contextlib.contextmanager
     def _writing(self) -> Iterator[None]:
-        if not self._write_lock.acquire(timeout=msc.DEADLINE_SECONDS):
+        self._on_time()
+        if not self._write_lock.acquire(timeout=max(0.0, self._remaining())):
             raise msc.MemoryRequestError("MEMORY_BUSY", 503)
         try:
             yield
@@ -309,7 +345,7 @@ class MemoryStore:
                         head = _text(newest[0][0]) if newest else "0-0"
                         if _order(head) < _order(fold.head):
                             fold = self._writer_folds[project] = _Fold()  # the stream went back: rebuild, never trust the cache
-                        fold.advance(pipe, stream, head)
+                        fold.advance(pipe, stream, head, self._on_time)
                         if record["key"] in fold.keys:
                             pipe.unwatch()
                             replay_at = head
@@ -318,10 +354,13 @@ class MemoryStore:
                             raise msc.MemoryRequestError("MEMORY_NOT_ADMITTING", 503)
                         else:
                             self._check(fold, record, expected)
+                            self._on_time()  # past the deadline nothing is appended; once EXEC is sent the outcome may be uncertain
                             pipe.multi()
                             pipe.xadd(stream, {"e": json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=True)})
                             stream_id = _text(pipe.execute()[0])
                     except WatchError:
+                        connection = self._after_watch_error(connection)
+                        fold = self._writer_folds.setdefault(project, _Fold())
                         continue
                 if replay_at is not None:
                     return self._replay(project, fold, record, replay_at, connection)
@@ -352,20 +391,35 @@ class MemoryStore:
         return {"status": "ok", **result, "replayed": True, **self._confirm(project, head, connection)}
 
     def _durable(self, connection: int) -> bool:
-        """Whether this connection's writes are on disk: `WAITAOF` on the writer, and the same connection before and after."""
+        """Whether this connection's writes are on disk: `WAITAOF` on the writer, and the same connection before and after.
+
+        Three ways to fail, kept apart. A lost or replaced connection drops every cache and re-verifies the resource, since Redis
+        may have lost writes the caches hold. A full-length wait that confirms nothing stops new saves until a probe succeeds. A
+        wait cut short by the request's deadline only leaves this write unconfirmed."""
+        budget = min(_WAITAOF_COMMIT_MS, int(self._remaining() * 1000))
+        if budget <= 0:
+            return False
         try:
-            confirmed = waitaof_local(self._writer, timeout_ms=_WAITAOF_COMMIT_MS) >= 1 and int(self._writer.client_id()) == connection
-        except (RedisError, OSError, MemoryStoreStartupError):
-            confirmed = False
-        if not confirmed:
+            count = waitaof_local(self._writer, timeout_ms=budget)
+            same = int(self._writer.client_id()) == connection
+        except (RedisConnectionError, TimeoutError, OSError):
+            count, same = 0, False
+        except (RedisError, MemoryStoreStartupError):
+            count, same = 0, True
+        if not same:
+            self._connection_lost()
+            return False
+        if count < 1 and budget == _WAITAOF_COMMIT_MS:
             self._fsync_failed = True
-        return confirmed
+        return count >= 1
 
     def _confirm(self, project: str, stream_id: str, connection: int) -> dict[str, str]:
         if not self._durable(connection):
             return {"durable_state": "unconfirmed", "projection_state": "pending"}
-        self._advance_watermark(project, stream_id)
-        return {"durable_state": "confirmed", "projection_state": "current"}
+        self._advance_watermark(project, stream_id, connection)
+        # confirmed on disk either way; "current" only once the watermark this Gateway serves from includes it
+        current = _order(_text(self._redis.get(self._key(project, "durable")) or b"0-0")) >= _order(stream_id)
+        return {"durable_state": "confirmed", "projection_state": "current" if current else "pending"}
 
     def _recheck_fsync(self) -> None:
         if self._fsync_failed and self._write_lock.acquire(timeout=msc.DEADLINE_SECONDS):
@@ -376,7 +430,7 @@ class MemoryStore:
             finally:
                 self._write_lock.release()
 
-    def _advance_watermark(self, project: str, stream_id: str) -> None:
+    def _advance_watermark(self, project: str, stream_id: str, connection: int) -> None:
         """AOF is ordered, so a confirmed event confirms every one before it. The watermark only moves forward."""
         key = self._key(project, "durable")
         for _ in range(_WATCH_ATTEMPTS):
@@ -392,6 +446,9 @@ class MemoryStore:
                     pipe.execute()
                     return
                 except WatchError:
+                    if int(self._writer.client_id()) != connection:
+                        self._connection_lost()
+                        return
                     continue
         # shortcut: a contended watermark stays behind until the next confirmed write moves it; nothing unconfirmed is served
 
@@ -404,7 +461,7 @@ class MemoryStore:
             watermark = _text(self._redis.get(self._key(project, "durable")) or b"0-0")
             if _order(watermark) < _order(fold.head):
                 fold = self._serving_folds[project] = _Fold()
-            fold.advance(self._redis, self._key(project, "events"), watermark)
+            fold.advance(self._redis, self._key(project, "events"), watermark, self._on_time)
             return answer(fold)
 
     def _op_read(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -475,7 +532,7 @@ class MemoryStoreService:
                 except MemoryStoreStartupError as refusal:
                     return 503, msc.error_body(refusal.code)
                 self._verified = True
-            result = self._store.dispatch(request)
+            result = self._store.dispatch(request, deadline=deadline)
             if time.monotonic() >= deadline:  # a late answer is not a success
                 return 503, msc.error_body("MEMORY_TIMEOUT")
             return 200, result
@@ -489,6 +546,8 @@ class MemoryStoreService:
             self._store.forget()
             return 503, msc.error_body("MEMORY_STORAGE_ERROR")
         finally:
+            if self._store.take_suspect():
+                self._verified = self._verify is None  # a lost connection makes the resource prove itself before the next request
             self._workers.release()
 
 

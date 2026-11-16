@@ -246,7 +246,8 @@ def test_checkpoints_are_kept_once_and_served_newest_first(provisioned: Provisio
     service, project = _service(provisioned), _project()
     token = _lease(service, project)
     point = {"session": "sess-1", "sequence": 1, "branch": "main", "worktree": "wt-1", "baseline": "", "settled_at_ms": 1,
-             "outcome": "settled", "objective": "obj-1", "pending": []}
+             "outcome": "settled", "objective": "obj-1", "provenance": "turn-1", "plan_hash": "", "pending": [], "amendments": [],
+             "completion": [], "verification": [], "remaining": []}
     for sequence in (1, 2, 3):
         status, reply = _call(service, {"op": "checkpoint", "project": project, "token": token, "checkpoint": {**point, "sequence": sequence}})
         assert status == 200 and reply["durable_state"] == "confirmed"
