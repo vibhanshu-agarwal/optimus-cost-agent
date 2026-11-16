@@ -3,7 +3,8 @@
   "recorded": "2026-11-16",
   "issue": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/469",
   "plan": {
-    "file": "docs/superpowers/plans/archive/2026-11-03-plan-12-10-memory-index-and-context-implementation_v3.md",
+    "file": "docs/superpowers/plans/2026-11-03-plan-12-10-memory-index-and-context-implementation_v3.md",
+    "archive_locator": "docs/superpowers/plans/archive/2026-11-03-plan-12-10-memory-index-and-context-implementation_v3.md (moved byte for byte at closure; the path above is the approval-time record)",
     "sha256": "hex:13a98af3042ef741c2132be57e85eedd3860ba1189272cdd669ae06141b3c79f",
     "approval": "bound to these bytes by Codex review 37 (#469 comment 6885872133)"
   },
@@ -100,7 +101,7 @@
     "Zed benefit pair: reports/plan12-memory-m1/zed-ui.json task5 (0655cbb), verdict pass",
     "CP4: Codex review 45 objections 3, 4 and 6 resolved by 65a5e51 and 386a6e4; recorder custody is #477. Subsequent review verdicts are recorded separately.",
     "Pre-merge re-check: Codex review 47 (#469 comment 6912354656): AGREE 1 (53ff77f accepted) and 3; OBJECT 2 (issue and PR text, corrected on GitHub with its wording)",
-    "Closure: Codex review 48 (#469 comment 6913347243) verified the residual issues #480, #481 and #482 and the terminal disposition (#469 comment 6913361116)",
+    "Closure drafts: Codex review 48 (#469 comment 6913347243): OBJECT 1, 2, 3; corrections applied before filing #480, #481 and #482 and posting terminal disposition comment 6913361116.",
     "Pre-merge: Codex review 46 (#469 comment 6912184674): AGREE 1; OBJECT 2 (fixed in 53ff77f), 3 (stale claims, corrected here; live issue snapshots retained for its re-check), 4 (CI attribution and post-merge order, recorded here)"
   ],
   "landing": {
