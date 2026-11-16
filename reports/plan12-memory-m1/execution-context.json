@@ -12,7 +12,7 @@
   },
   "recorder": {
     "file": "optimus-handoff/p465-cp1/make_cp4_records.py",
-    "sha256": "hex:f172a2e2ea9c6059e338962e4db152821ec987fa44ede48b38792f0f3f28dac5"
+    "sha256": "hex:8b05bb1c7a361ced69fe15664da0eb683d2acc1a3ecd276b0d8b9321bd5cbe95"
   },
   "released_resources": [
     "attempt 6 (c3475da): p1210-qualify-redis and p1210-qualify-data, removed after the run",

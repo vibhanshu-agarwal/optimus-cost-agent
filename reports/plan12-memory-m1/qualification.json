@@ -26,7 +26,7 @@
       ]
     },
     "fix": "c18ecd0: the walk uses tracked_repository_files; the file is serial in tests/profiles.toml and a reviewed cheap launcher",
-    "after_fix": "the three, plus the child-site inventory and the evaluate tests: 335 passed, 1 failed; the failure (test_the_effective_audit_depth_and_budget_are_in_the_terminal_record_and_summary[arguments1-True-quick-1]) passed in two reruns of its file (136 passed). Root cause from its child's own run record 20261116T062621-63684-47a16f: terminal_failure PermissionError, completeness INVALID; the run-record writer's os.replace onto run.json (tools/testing/run_context_records.py:343) was refused by Windows, and the recorder wrote its minimal INVALID record without the audit fields. Test-runner code outside this plan; recorded, not changed. The full suite then ran every inventory node at c18ecd0 without failure."
+    "after_fix": "the three, plus the child-site inventory and the evaluate tests: 335 passed, 1 failed; the failure (test_the_effective_audit_depth_and_budget_are_in_the_terminal_record_and_summary[arguments1-True-quick-1]) passed in two reruns of its file (136 passed). Root cause from its child's own run record 20261116T062621-63684-47a16f: terminal_failure PermissionError, completeness INVALID; the run-record writer's os.replace onto run.json (tools/testing/run_context_records.py:343) raised PermissionError, and the recorder wrote its minimal INVALID record without the audit fields. Test-runner code outside this plan; recorded, not changed. The record establishes PermissionError and INVALID, not the underlying Windows interference mechanism (Codex review 45 item 4). Child bundle retained: optimus-handoff/p465-cp1/run-context-inventory-child/ (run.json hex:96a6e3529c0cd2ff877d7d01fde65830f907295c30f707cfe6f16e189c2278e4). No existing issue owns it (#436 covers a hang and durable failure text; #239 is Plan 11.28's owner, not this defect); a runner-reliability issue is owed before closure and needs the operator's approval to file. The full suite then ran every inventory node at c18ecd0 without failure."
   },
   "full_runs": [
     {
@@ -39,7 +39,7 @@
       "finished_utc": "2026-11-16T07:42:31.612999+00:00",
       "run_context": "mode=active reason=default_selection native=valid guard=pytest_process_guard protection=full records=COMPLETE",
       "concurrency": "another session's full suite (a separate Codex worktree) was running when this one started; the runner supports parallel sessions",
-      "status": "FAIL (exit 1), resolved in 7535f7c",
+      "status": "FAIL (exit 1). It remains FAIL; validator exit 3 remains recorded. This is not a green final-head full run.",
       "result": "1 failed, 12190 passed, 69 skipped, 330 deselected, 2 warnings in 4155.37s (1:09:15)",
       "failures": [
         "tests/unit/acp/test_gateway_attach.py::test_shutdown_waits_for_a_diagnostic_write_the_client_is_blocking: assert 75 == 143. Unchanged from main (the branch's only src/optimus/acp change is the memory Redis argument list). The observation window counts from cleanup start (process_lifecycle.py:166); the test's blocked write takes 0.3 s of its 0.03 s window, so the reader's close got a zero-length check and the lifecycle reported borrowed_stdio incomplete (exit 75, process_lifecycle.py:227). It failed 1 of 15 runs alone at c18ecd0; with 5.0 s it passed 40 of 40."
@@ -50,10 +50,27 @@
       "retained_output": {
         "log": "optimus-handoff/p465-cp1/full-suite-c18ecd0.log hex:25f34cf0baf82bfef5a90b0ce0c760df1dcae8b46f1a49378e2894341d7d6f93",
         "gate_report": "optimus-handoff/p465-cp1/product-coverage-report-c18ecd0.json hex:4f6b5cccbfaa94083adabb3d22f143cd960ad8c2932740b807737fe6e5589d35",
-        "coverage_json_sha256": "hex:1a2bb5600825adc0ebd75c0049a6dc3b70367b68115fe77c6f186ba34457358e"
+        "coverage_json_sha256": "hex:1a2bb5600825adc0ebd75c0049a6dc3b70367b68115fe77c6f186ba34457358e",
+        "run_context_bundle": {
+          "optimus-handoff/p465-cp1/run-context-c18ecd0/run.json": "hex:0726f6b168d47673c98a9ff625f6015dcb421bac9a8b7130e4535cedf80086b1",
+          "optimus-handoff/p465-cp1/run-context-c18ecd0/nodes.jsonl": "hex:a939cd90010f1f37e6c85d27219fe3fadef5fbc0dc8c15404b6ac3839e5146d5",
+          "optimus-handoff/p465-cp1/run-context-c18ecd0/phases.jsonl": "hex:8171694a67263a859581a0c2577171356eda52f853f0323625db3f2621ba9959",
+          "optimus-handoff/p465-cp1/run-context-c18ecd0/samples.jsonl": "hex:1bb252eb4f530404a7bbc134b3ae02b5a37e30874e40713bf236caa273dad2dc"
+        }
       }
     }
   ],
+  "full_suite_disposition": {
+    "state": "ACCEPTED WITH EXCEPTION (not a passing full run)",
+    "by": "Codex review 45 item 5 (#469 comment 6910824077), which counts as the operator's",
+    "text": "7535f7c is accepted as an explicit test-only disposition; no further Windows full suite is required. Acceptance rests on the c18ecd0 full run, its passing required coverage floors, and 40 successful focused repetitions after the test correction. The original run remains FAIL and its validator exit 3 remains recorded.",
+    "focused_evidence": {
+      "command": "uv run --no-sync pytest --no-cov tests/unit/acp/test_gateway_attach.py::test_shutdown_waits_for_a_diagnostic_write_the_client_is_blocking -q -p no:cacheprovider, 40 separate runs",
+      "before_fix": "at c18ecd0: 1 failed of 15 (reported; summary lines only)",
+      "after_fix": "at 7535f7c: 40 passed of 40 (reported); again at b84bb4a, whose tests and src equal 7535f7c's: 40 passed of 40, retained",
+      "retained_output": "optimus-handoff/p465-cp1/focused-blocked-write-40.log hex:00f18e9c568633bb3f76678635fd152c9f5fc71699c11054f1c4adb8d718a572"
+    }
+  },
   "ruff": "uv run --no-sync ruff check . (ruff 0.15.20) at c18ecd0: All checks passed; the commit hooks ran Ruff again on c18ecd0 and 7535f7c",
   "focused_and_revert_evidence": [
     "f38d2a4: 5 of 5 mutations caught (review 37; kit mutate_review37.py)",
@@ -66,7 +83,7 @@
     "Task 5 evidence: Codex reviews 19 to 44 on #469; the last, review 44 (comment 6890496149), agreed the fresh2 result and the order of what remains",
     "Operator: plan v2/v3 releases A to C ('Approved. Go ahead. #1 - #3'); the four retained-miss dispositions ('Accept all four', targets.json dispositions, 7a66b2a); cleanup released",
     "Zed benefit pair: reports/plan12-memory-m1/zed-ui.json task5 (0655cbb), verdict pass",
-    "CP4: Codex review 45, pending"
+    "CP4: Codex review 45 (#469 comment 6910824077): AGREE 1, 2, 5, 7; OBJECT 3 (zed-ui.json wording, corrected), 4 (recorder failure custody, issue owed), 6 (retention and freshness, corrected)"
   ],
   "landing": {
     "pr": "not opened (needs the operator's OK)",

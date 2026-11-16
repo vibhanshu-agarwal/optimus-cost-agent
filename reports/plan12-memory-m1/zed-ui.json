@@ -240,7 +240,7 @@
       "code_under_test": "worktree src at 7a66b2a, clean; the last commit touching src is c3475da",
       "context_strategy": "sliding_window on all four paid turns, from the durable capture; the only compaction records are the excluded P5-a stream's",
       "deviations": [
-        "chat-on ran with the index at 87 of 325 files, about 4 minutes after launch; it works against context-on, so its Chat win is conservative",
+        "Chat-on ran with the index at 87 of 325 files, about four minutes after launch. This demonstrates improvement under partial-build conditions; the direction of bias relative to a complete index is unknown (wording from Codex review 45 item 3).",
         "the off entry used workspace-off, a clone of the same commit ccc2bc9, because one durable approval per workspace meant the on approval overwrote the off one"
       ],
       "gate": {
