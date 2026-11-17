@@ -695,6 +695,7 @@ class AcpStreamServer:
         context_attachment: Any | None = None,
         session_seeder: Any | None = None,
         memory_factory: Any | None = None,
+        memory_extractor_factory: Any | None = None,
         memory_notice: str | None = None,
         failure_telemetry: Any | None = None,
         auto_router: Any | None = None,
@@ -723,6 +724,7 @@ class AcpStreamServer:
         self._context_attachment = context_attachment
         self._session_seeder = session_seeder
         self._memory_factory = memory_factory
+        self._memory_extractor_factory = memory_extractor_factory
         self._memory_notice = memory_notice
         # Plan 12.4 Task 4: an Auto launch's per-turn router, which binds each turn's route and attachment itself.
         self._auto_router = auto_router
@@ -1046,6 +1048,7 @@ class AcpStreamServer:
             context_attachment=self._context_attachment,
             session_seeder=self._session_seeder,
             memory_factory=self._memory_factory,
+            memory_extractor_factory=self._memory_extractor_factory,
             memory_notice=self._memory_notice,
             failure_telemetry=self._failure_telemetry,
             auto_router=self._auto_router,

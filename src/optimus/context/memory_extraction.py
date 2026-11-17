@@ -349,6 +349,8 @@ class TurnInput:
     work: CompletedWork | None
     sources: tuple[str, ...]
     trusted: bool
+    call: Callable[..., Any] | None = None  # the turn's bound summarizer; else the extractor's own `bind`
+    record: Callable[[str, str, Any, str | None], None] | None = None  # the turn's receipt sink; else the extractor's own
 
 
 @dataclass(frozen=True)
@@ -371,8 +373,8 @@ class MemoryExtractor:
     closes only once the job has settled; a job that never runs abandons it. At most one user and one agent call per turn; a
     reply is used once, never retried."""
 
-    def __init__(self, *, store: Any, settlement: Any, bind: Callable[[str], Callable[..., Any]],
-                 record: Callable[[str, str, Any, str | None], None], sanitize: Callable[[str], str],
+    def __init__(self, *, store: Any, settlement: Any, bind: Callable[[str], Callable[..., Any]] | None = None,
+                 record: Callable[[str, str, Any, str | None], None] | None = None, sanitize: Callable[[str], str],
                  report: Callable[[Outcome], None], workers: int = 2, depth: int = 4) -> None:
         self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
         self._sanitize, self._report = sanitize, report
@@ -431,9 +433,13 @@ class MemoryExtractor:
             else:
                 assert turn.work is not None
                 prompt = agent_prompt(turn.work)
-            response = self._bind(turn.turn_id)(prompt=prompt, max_output_tokens=MAX_OUTPUT_TOKENS, purpose=purpose)
+            call = turn.call or (self._bind(turn.turn_id) if self._bind is not None else None)
+            record = turn.record or self._record
+            if call is None or record is None:
+                return Outcome(turn.turn_id, purpose, incomplete="no_summarizer")  # nothing was sent
+            response = call(prompt=prompt, max_output_tokens=MAX_OUTPUT_TOKENS, purpose=purpose)
             for attempt in response.attempts:  # every attempt settles, whatever the reply turns out to be
-                self._record(turn.turn_id, purpose, attempt, response.finish_status if attempt.outcome == "completed" else None)
+                record(turn.turn_id, purpose, attempt, response.finish_status if attempt.outcome == "completed" else None)
             if getattr(response, "diagnostic", None) is not None:
                 with contextlib.suppress(Exception):
                     response.diagnostic()
@@ -512,3 +518,40 @@ def _state(stored: Any) -> ItemState | None:
     event = stored.event
     return ItemState(event.project, event.item, event.version, event.trust, event.status, event.kind, event.title, event.statement,
                      event.scope, event.anchors, event.lineage, event.valid_from_ms, event.valid_until_ms)
+
+
+_TOOL_EVIDENCE: Final = {"test_runner": "verification", "write_file": "edit", "file_reader": "read"}
+
+
+def evidence_from(run_id: str, tool_calls: Sequence[Any]) -> tuple[Evidence, ...]:
+    """Host-issued evidence for the work a run completed: one reference per allowed tool call. A check that ran is new evidence;
+    anything from an MCP server came from outside the workspace."""
+    found = []
+    for number, call in enumerate(tool_calls):
+        if call.authorization_outcome != "ALLOW":
+            continue
+        external = call.tool_name.startswith("mcp")
+        kind = _TOOL_EVIDENCE.get(call.tool_name, "document" if external else "read")
+        found.append(Evidence(f"{run_id}:tool:{number}", kind, external))
+    return tuple(found)
+
+
+def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., MemoryExtractor | None]:
+    """How a launch with an approved, ready memory store opens one extractor per session. A workspace that cannot be
+    registered (an untrusted or unresolvable path) gets none: memory stays read-only there."""
+    from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
+    from optimus.context.authored_memory import GatewayMemoryStore
+    from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError
+
+    registry = ProjectRegistry(config_root)
+
+    def open_extractor(workspace: Any, *, settlement: Any, sanitize: Callable[[str], str], session_id: str,
+                       report: Callable[[Outcome], None]) -> MemoryExtractor | None:
+        try:
+            registration = registry.resolve(resolve_workspace_identity(workspace), create=True)
+        except (ProjectRegistryError, TrustedPathError, OSError, ValueError):
+            return None
+        store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
+        return MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report)
+
+    return open_extractor

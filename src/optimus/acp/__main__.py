@@ -106,6 +106,7 @@ class _BuildServerKwargs(TypedDict):
     auto_composition: NotRequired[AutoComposition]
     durable_capture: NotRequired[DurableCapture]
     memory_index: NotRequired[tuple[Path, Path]]
+    memory_store: NotRequired[Path]
     memory_notice: NotRequired[str]
 
 
@@ -874,6 +875,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     memory_index_ready: list[Path] = []
+    memory_store_ready: list[Path] = []
     memory_notices: list[str] = []  # the panel's copy of why not: a person in the editor never sees this launch's log
 
     def _ensure_memory_index(*, start: bool) -> None:
@@ -908,6 +910,8 @@ def main(argv: list[str] | None = None) -> int:
         status = ensure_memory_store_redis(store_dir, start=start, log=_print_log)
         if status.state != "ready":
             _print_log(f"optimus-agent: the memory store is {status.state}: {status.detail}. This launch runs without memory.")
+            return
+        memory_store_ready.append(store_dir)
 
     def _start_local_dependencies() -> str | None:
         """Start Redis (+ optional Phoenix) and return the OTLP endpoint. A refusal raises `LocalInfrastructureError`."""
@@ -1127,6 +1131,8 @@ def main(argv: list[str] | None = None) -> int:
                     build_server_kwargs["stage_c"] = stage_c_launch
                 if auto_composition is not None:
                     build_server_kwargs["auto_composition"] = auto_composition
+                if memory_store_ready:
+                    build_server_kwargs["memory_store"] = candidate.operator_paths.config_root
                 if memory_index_ready:
                     build_server_kwargs["memory_index"] = (memory_index_ready[-1], candidate.operator_paths.config_root)
                 elif memory_notices:

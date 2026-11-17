@@ -30,6 +30,7 @@ import re
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from context_engine import (
@@ -61,7 +62,10 @@ from optimus.context.maintenance import (
     HostMaintenance,
     MaintenanceIdentity,
     MaintenanceReceipt,
+    SummarizerAttempt,
+    SummarizerCall,
     SummarizerFactory,
+    SummarizerResponse,
     SummarizerRoute,
     first_error,
 )
@@ -88,6 +92,7 @@ STATE_HEADER = (
     "an earlier approval never authorizes a new change):"
 )
 _ADMITTED_DOMAIN = b"optimus/admitted-context/v1\x00"
+_SOURCE_CHARS = 262_144  # per kept request: what the source-overlap check compares against, in RAM only
 
 
 class ViewEngine(Protocol):
@@ -443,6 +448,10 @@ class AttachedTurn:
         # A turn without a notice channel can deliver no required notice, so it sends nothing that needs one.
         self._deliver_notice = deliver_notice if deliver_notice is not None else (lambda text: False)
         self._dispatches: list[DispatchReading] = []
+        # Plan 12.11: what this turn sent, kept in RAM for the memory source-overlap check only, and its bound summarizer.
+        self._dispatched: list[str] = []
+        self._memory_call: SummarizerCall | None = None
+        self._memory_identity: MaintenanceIdentity | None = None
         # The turn's own receipt sink (its session's settlement), alongside the attachment's.
         self._record_receipt = record_receipt
         # Told of a receipt the attachment's ledger refused, so the turn's settlement never reads complete.
@@ -596,6 +605,7 @@ class AttachedTurn:
                 # operator sees a content-free config fault (Codex CP3 ruling R5 and M2).
                 self._fault("prepare", "config_error", exception_fact(exc)["class"])
             else:
+                self._memory_call, self._memory_identity = call, identity
                 host = HostMaintenance(
                     call=call,
                     sanitizer=self._sanitizer,
@@ -774,6 +784,29 @@ class AttachedTurn:
     def record_dispatch(self, text: str) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""
         self._dispatches.append(DispatchReading(tokens=self._attachment.estimate_request(text), capacity=self._attachment.usable_input_tokens))
+        self._dispatched = [*self._dispatched[-1:], text[:_SOURCE_CHARS]]  # bounded: the turn's last two requests
+
+    def memory_sources(self) -> tuple[str, ...]:
+        """What this turn sent besides the user's own words (files, tool results, index passages, earlier answers): the text a
+        memory must never copy. RAM only, for the source-overlap check (Plan 12.11)."""
+        return tuple(text.replace(self._current_prompt, "") for text in self._dispatched)
+
+    def memory_hooks(self) -> tuple[Callable[..., SummarizerResponse], Callable[[str, str, SummarizerAttempt, str | None], None]] | None:
+        """The turn's bound summarizer and a receipt sink for a memory call's attempts (Plan 12.11 Task 3): the same route,
+        identity and settlement as the turn's summaries, with the memory purpose on every receipt. None without a summarizer."""
+        call, identity = self._memory_call, self._memory_identity
+        if call is None or identity is None:
+            return None
+
+        def record(_turn_id: str, purpose: str, attempt: SummarizerAttempt, finish_status: str | None) -> None:
+            self._receipt_sink(MaintenanceReceipt(
+                identity=identity, stage="summarization", attempt_id=attempt.attempt_id, gateway_request_id=attempt.gateway_request_id,
+                outcome=attempt.outcome, cost_usd=attempt.cost_usd, finish_status=finish_status, covered_turn_ids=(),
+                recorded_at=datetime.now(UTC), provider_request_id=attempt.provider_request_id, http_status=attempt.http_status,
+                provider=attempt.provider, resolved_provider=attempt.resolved_provider, resolved_model=attempt.resolved_model,
+                gateway_usage=attempt.gateway_usage, purpose=purpose))
+
+        return call, record
 
     def largest_dispatch(self) -> DispatchReading | None:
         return DispatchReading.largest(self._dispatches)
