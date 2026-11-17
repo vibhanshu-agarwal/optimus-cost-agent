@@ -1,0 +1,10 @@
+{
+  "image": "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5",
+  "container": "optimus-memory-store-redis",
+  "volume": "optimus-memory-store-data",
+  "host": "127.0.0.1",
+  "port": 6394,
+  "user": "optimus-memory",
+  "maxmemory_mb": 512,
+  "admission_ceiling_mb": 384
+}

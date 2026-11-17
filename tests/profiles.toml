@@ -1108,6 +1108,7 @@ serial = [
   "tests/integration/release/test_phase1_release_gate_cli.py",
   "tests/unit/acp/test_plan1126_queue_policy.py",
   "tests/unit/acp/test_server_reader_ownership.py",
+  "tests/unit/acp/test_memory_notices.py",
   "tests/unit/acp/test_stdio_ndjson.py",
   "tests/unit/context/test_memory_workspace.py",
   "tests/unit/context/test_project_registry.py",

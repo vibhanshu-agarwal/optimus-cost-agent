@@ -1,0 +1,58 @@
+{
+  "schema": "plan12-memory-m3.client-capabilities.v1",
+  "plan": "12.11",
+  "issue": 490,
+  "release": "Operator, Claude chat 2026-11-16: \"Release all three\", including one Z0 zero-paid Zed session. The operator typed each prompt; Claude launched and quit Zed, picked the agent, checked the probe log after every prompt before the next, and captured screenshots.",
+  "observed_on": "2026-11-17",
+  "client": {"name": "zed", "version": "1.28.1+stable.390.e8bc16acee5ae1937600d571d441c4b5d7b0d288", "platform": "Windows 11 Pro 10.0.26300", "panel_layout": "Agentic"},
+  "agent": {
+    "entry": "optimus-p1211-z0, a custom agent server added to Zed's settings for this session and removed after it (settings restored byte-identical from a backup)",
+    "program": "tools/plan12_memory/m3_notice_probe.py",
+    "outbound_path": "Notices built by optimus.acp.memory_notices from synthetic MemoryNotice records and written by optimus.acp.server.StdioNdjsonLineWriter, the host's own NDJSON writer",
+    "paid_calls": 0,
+    "evidence_of_zero_calls": "No Gateway, Optimus agent or model ran: process listings during the session showed only the probe, and nothing listened on 8765 or 8776. The probe's code opens no socket of its own; tests/unit/acp/test_memory_notices.py runs it under an audit hook that refuses name lookups and any connection outside its own event-loop pipe."
+  },
+  "prompts": [
+    {"text": "hi", "thread": 1, "gate": "probe log recorded the prompt and its result before the next prompt was released"},
+    {"text": "/welcome", "thread": 1, "gate": "as above"},
+    {"text": "hi", "thread": 2, "note": "after the address fix; Zed was quit and relaunched because it runs one agent process for all threads"},
+    {"text": "again", "thread": 2}
+  ],
+  "observations": {
+    "P5-b": {
+      "pre_prompt_text": "SHOWN. An agent_message_chunk sent right after the session/new response renders before any prompt (01-pre-prompt-brief.jpg). Optional surface under D4; nothing may depend on it.",
+      "first_response_brief": "SHOWN. The brief leads the first response with its citation (02-first-response-cards-and-fallback.jpg).",
+      "welcome_command": "SHOWN. /welcome, advertised through available_commands_update after session/new, returns the brief (03-welcome.jpg).",
+      "selected_surface": "First-response brief plus /welcome, as the plan states."
+    },
+    "P5-c": {
+      "model_free_card": "SHOWN. A tool_call with id memory/<event_id>, kind other, renders as a card; status failed adds a red mark (02, 04).",
+      "same_id_resend": "ONE CARD. The same tool_call id and state sent twice renders once (05-update-resend-forget.jpg), so a reconnect resend is safe.",
+      "appended_text_fallback": "SHOWN. The appended block quote renders after the answer (02, 05).",
+      "unconfirmed_wording": "SHOWN. An unconfirmed save says 'Not saved yet' and is marked failed; it never says Remembered.",
+      "selected_surface": "Card, with the appended text as the fallback for clients without cards."
+    },
+    "label_rendering": {
+      "markdown": "Card titles and message text render Markdown. Escaped emphasis, links, code, HTML and headings show as literal characters.",
+      "controls_and_bidi": "Removed before display; the right-to-left override did not reorder the label.",
+      "autolink_finding": "Zed auto-linked a bare http://x inside an escaped label in both surfaces (02). Fixed in memory_notices.escape_label: addresses render as http[:]//x and www[.]name. Rechecked in Zed after the fix: plain text, not a link (04-address-inert-after-fix.jpg).",
+      "session_resume": "On relaunch Zed tried to resume the earlier thread and reported 'Loading or resuming sessions is not supported by this agent', as the probe advertises loadSession false."
+    },
+    "P5-d": "NOT CLAIMED. Nothing here says what Zed keeps in its history or logs."
+  },
+  "evidence": {
+    "folder": "optimus-handoff/p1211-z0/evidence (outside the repository)",
+    "files": {
+      "01-pre-prompt-brief.jpg": "hex:ff1584275bad21553decf27610bf71e1908ac58bb98d3f306a05438198af5909",
+      "02-first-response-cards-and-fallback.jpg": "hex:01a431e267899da09115b24bdb28a75b55ae4beb7e89b6c791eb0e73e8664468",
+      "02-full-window.jpg": "hex:91efe143d4f1e54e5aac0d1c2ca43c2bb168505f4482d7c9f694e5961ea044ae",
+      "03-welcome.jpg": "hex:d856b97d8330c2b3a113c1ff23bbde41ee848aad6406749aea450374f28472cc",
+      "04-address-inert-after-fix.jpg": "hex:7d9369e8be844aec03454ba56a8dd9a148c798480f6883545f68c5388fb47f45",
+      "04-full-window.jpg": "hex:de0ae8dd635257143a65483abbc063a580f25bab5ccfb6fea4f3b238f4f302c4",
+      "05-update-resend-forget.jpg": "hex:cb63497ef90eb8b799d20bac6ceded1c288f68d8f5022893908311c85fe5cef4",
+      "05-full-window.jpg": "hex:7ecbf345a619c8b0909eaa8f07d974841d4211602012d2ebcdf78e612f603f49",
+      "z0-probe.jsonl": "hex:cfc16462145d7aec0751a0871a3a2d9aba33a7bdb64dee193c6e6ba66b778284"
+    },
+    "probe_log": "41 rows, two probe starts, four prompts, 2026-11-17T01:11:34 to 01:23:04 local time"
+  }
+}

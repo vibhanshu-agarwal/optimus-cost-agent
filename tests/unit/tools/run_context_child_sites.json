@@ -62,6 +62,12 @@
    "proof": "tests/integration/release/test_phase1_release_gate_cli.py::test_release_cli_accepts_golden_results_path",
    "basis": "Tripwire loaded at start-up in the real release CLI child; zero real-adapter calls asserted."
   },
+  "tests/unit/acp/test_memory_notices.py::test_the_probe_answers_without_a_network_and_emits_the_real_cards#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "census",
+   "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
+   "basis": "Runs the Plan 12.11 Z0 notice probe over stdio under an audit hook that refuses name lookups and outside connections; it writes only its journal under tmp_path and never asks for the real known folders."
+  },
   "tests/unit/acp/test_main5_guard.py::_guarded_probe#1": {
    "mechanism": "python:inline_script",
    "disposition": "guard_built_by_test",

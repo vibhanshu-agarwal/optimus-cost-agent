@@ -512,6 +512,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/integration/release/test_phase1_release_gate_cli.py": "one release-CLI child with the tripwire at the site; product CLI tests",
     "tests/unit/acp/test_plan1126_queue_policy.py": _MIXED,
     "tests/unit/acp/test_server_reader_ownership.py": _MIXED,
+    "tests/unit/acp/test_memory_notices.py": "one node runs the Z0 notice probe over stdio under a no-network audit hook; the other nodes run in-process",
     "tests/unit/acp/test_stdio_ndjson.py": "its launch sites are runner-only plants, skipped in an ordinary run",
     "tests/unit/context/test_memory_workspace.py": "one Windows-only test launches git three times to build a repository holding a file past the path limit; the other nodes run in-process",
     "tests/unit/context_engine/test_code_index.py": "one inline-script child imports the neutral engine with the optional parser package blocked; a test of an import, cheap and starting nothing",

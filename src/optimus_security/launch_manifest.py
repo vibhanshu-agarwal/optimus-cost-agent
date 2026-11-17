@@ -44,6 +44,8 @@ MANIFEST_STAGE_C_SCHEMA_VERSION = 3
 MANIFEST_ACCOUNTING_VERSION_OFFSET = 3
 # Plan 12.10 (ADR-037): a manifest that also binds the context index's literal is its version plus 6, the same way.
 MANIFEST_MEMORY_INDEX_VERSION_OFFSET = 6
+# Plan 12.11 (ADR-042): a manifest that also binds the memory store's literal is its version plus 12, the same way.
+MANIFEST_MEMORY_STORE_VERSION_OFFSET = 12
 MANIFEST_MAX_AGE_SECONDS = 60
 
 # Plan 9.96, Task 5 Batch 3 (review finding): the SINGLE shared source for
@@ -117,11 +119,19 @@ class GatewayChildManifest:
     stage_c_envelope: str | None = None
     accounting: str | None = None
     memory_index: str | None = None
+    memory_store: str | None = None
 
 
-def _schema_version(model_registry: str | None, stage_c_envelope: str | None, accounting: str | None = None, memory_index: str | None = None) -> int:
+def _schema_version(
+    model_registry: str | None,
+    stage_c_envelope: str | None,
+    accounting: str | None = None,
+    memory_index: str | None = None,
+    memory_store: str | None = None,
+) -> int:
     offset = 0 if accounting is None else MANIFEST_ACCOUNTING_VERSION_OFFSET
     offset += 0 if memory_index is None else MANIFEST_MEMORY_INDEX_VERSION_OFFSET
+    offset += 0 if memory_store is None else MANIFEST_MEMORY_STORE_VERSION_OFFSET
     if stage_c_envelope is not None:
         return MANIFEST_STAGE_C_SCHEMA_VERSION + offset
     return (MANIFEST_SCHEMA_VERSION if model_registry is None else MANIFEST_REGISTRY_SCHEMA_VERSION) + offset
@@ -167,6 +177,7 @@ def _canonical_fields(
     stage_c_envelope: str | None = None,
     accounting: str | None = None,
     memory_index: str | None = None,
+    memory_store: str | None = None,
 ) -> dict[str, Any]:
     """Canonical field mapping used for BOTH signing and serialization.
 
@@ -201,6 +212,8 @@ def _canonical_fields(
         fields["accounting"] = accounting
     if memory_index is not None:
         fields["memory_index"] = memory_index
+    if memory_store is not None:
+        fields["memory_store"] = memory_store
     return fields
 
 
@@ -226,6 +239,7 @@ def build_gateway_child_manifest(
     stage_c_envelope: str | None = None,
     accounting: str | None = None,
     memory_index: str | None = None,
+    memory_store: str | None = None,
 ) -> GatewayChildManifest:
     """Build a signed manifest. issued_at/expires_at are exactly
     MANIFEST_MAX_AGE_SECONDS apart. ``model_registry`` is the trusted registry's approval literal
@@ -243,7 +257,7 @@ def build_gateway_child_manifest(
     provider_fp = _fingerprint_credential(provider_api_key, field_name="provider_api_key", hmac_key=hmac_key)
     shared_fp = _fingerprint_credential(shared_secret, field_name="shared_secret", hmac_key=hmac_key)
 
-    schema_version = _schema_version(model_registry, stage_c_envelope, accounting, memory_index)
+    schema_version = _schema_version(model_registry, stage_c_envelope, accounting, memory_index, memory_store)
     fields = _canonical_fields(
         schema_version=schema_version,
         policy_version=policy_version,
@@ -262,6 +276,7 @@ def build_gateway_child_manifest(
         stage_c_envelope=stage_c_envelope,
         accounting=accounting,
         memory_index=memory_index,
+        memory_store=memory_store,
     )
     signature = _compute_signature(fields, hmac_key=hmac_key)
 
@@ -284,6 +299,7 @@ def build_gateway_child_manifest(
         stage_c_envelope=stage_c_envelope,
         accounting=accounting,
         memory_index=memory_index,
+        memory_store=memory_store,
     )
 
 
@@ -313,6 +329,8 @@ def serialize_gateway_child_manifest(manifest: GatewayChildManifest) -> str:
         data["accounting"] = manifest.accounting
     if manifest.memory_index is not None:
         data["memory_index"] = manifest.memory_index
+    if manifest.memory_store is not None:
+        data["memory_store"] = manifest.memory_store
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
 
 
@@ -330,6 +348,7 @@ def verify_gateway_child_manifest(
     stage_c_envelope: str | None = None,
     accounting: str | None = None,
     memory_index: str | None = None,
+    memory_store: str | None = None,
 ) -> GatewayChildManifest:
     """Verify a serialized manifest against the Gateway's actual construction
     inputs. Rejects missing, expired, mismatched, or invalid manifests.
@@ -355,7 +374,7 @@ def verify_gateway_child_manifest(
 
     ``accounting`` is the accounting literal this Gateway composed itself from its accounting root and the configuration
     it found there (Plan 12.8), or None without one; the manifest must bind exactly that value too. ``memory_index`` is
-    the same for the context index (Plan 12.10).
+    the same for the context index (Plan 12.10), and ``memory_store`` for the memory store (Plan 12.11).
     """
     try:
         data = json.loads(serialized)
@@ -381,6 +400,7 @@ def verify_gateway_child_manifest(
             stage_c_envelope=data.get("stage_c_envelope"),
             accounting=data.get("accounting"),
             memory_index=data.get("memory_index"),
+            memory_store=data.get("memory_store"),
         )
         signature = data["signature"]
     except (KeyError, TypeError, AttributeError) as exc:
@@ -400,7 +420,10 @@ def verify_gateway_child_manifest(
     signed_memory_index = fields.get("memory_index")
     if signed_memory_index is not None and not isinstance(signed_memory_index, str):
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="memory_index must be a string")
-    if fields["schema_version"] != _schema_version(signed_registry, signed_envelope, signed_accounting, signed_memory_index):
+    signed_memory_store = fields.get("memory_store")
+    if signed_memory_store is not None and not isinstance(signed_memory_store, str):
+        raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="memory_store must be a string")
+    if fields["schema_version"] != _schema_version(signed_registry, signed_envelope, signed_accounting, signed_memory_index, signed_memory_store):
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="schema version and signed literals disagree")
 
     expected_signature = _compute_signature(fields, hmac_key=hmac_key)
@@ -455,6 +478,9 @@ def verify_gateway_child_manifest(
     if signed_memory_index != memory_index:
         raise LaunchManifestError(code="MANIFEST_MEMORY_INDEX_MISMATCH")
 
+    if signed_memory_store != memory_store:
+        raise LaunchManifestError(code="MANIFEST_MEMORY_STORE_MISMATCH")
+
     return GatewayChildManifest(
         schema_version=data["schema_version"],
         policy_version=data["policy_version"],
@@ -474,4 +500,5 @@ def verify_gateway_child_manifest(
         stage_c_envelope=signed_envelope,
         accounting=signed_accounting,
         memory_index=signed_memory_index,
+        memory_store=signed_memory_store,
     )
