@@ -150,6 +150,7 @@ class MaintenanceReceipt:
     resolved_provider: str | None = None
     resolved_model: str | None = None
     gateway_usage: GatewayUsage | None = None
+    purpose: str | None = None  # a memory extraction's `memory.*` purpose; None for compaction's ordinary summary
 
 
 def _utc_now() -> datetime:
@@ -291,7 +292,8 @@ class GatewaySummarizerCall:
         self._experimental = experimental
         self._model_stops = model_stops
 
-    def __call__(self, *, prompt: str, max_output_tokens: int) -> SummarizerResponse:
+    def __call__(self, *, prompt: str, max_output_tokens: int, purpose: str | None = None) -> SummarizerResponse:
+        """`purpose`: a memory call's own `memory.*` purpose, sent as its metadata and captured with its intent."""
         request_id = self._request_ids()
         if self._model_stops is not None and self._model_id in self._model_stops:
             # Plan 12.4 Task 4: a model this launch proved stopped is never called again; the turn reads it as a stopped route.
@@ -306,12 +308,12 @@ class GatewaySummarizerCall:
                 # The disclosure notice was not delivered, so nothing was sent: diagnosable, never silent.
                 response = SummarizerResponse(text=None, finish_status=None, attempts=(unsent,))
                 return self._observed(request_id, (), response, reason="summary_disclosure_undelivered")
-        metadata = {"session_id": self._session_id, "purpose": "context_summary", "request_id": request_id}
+        metadata = {"session_id": self._session_id, "purpose": purpose or "context_summary", "request_id": request_id}
         try:
             if self._turn_id is None:
                 response = self._client.create_response(model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding)
             else:
-                with capturing(CaptureIntent(self._turn_id, request_id, "summarization", requested_model=self._model_id)):
+                with capturing(CaptureIntent(self._turn_id, request_id, "summarization", purpose=purpose, requested_model=self._model_id)):
                     response = self._client.create_response(model=self._model_id, input_text=prompt, metadata=metadata, route_binding=binding)
         except Exception as exc:  # noqa: BLE001 - every failure is classified; transport loss stays unknown
             # Evaluated first, so the integrity branch below records a proven stop too (Plan 12.4 Task 4).
