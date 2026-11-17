@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 from redis.exceptions import OutOfMemoryError
 
+from context_engine import memory_contracts as engine
 from optimus_gateway import memory_store
 from optimus_gateway.memory_journal import PurgeJournal, journal_key
 from optimus_security import memory_store_contract as msc
@@ -210,3 +211,12 @@ def test_a_store_at_its_memory_limit_reports_full_not_a_fault(tmp_path: Path) ->
     server.before_exec = refuse
     assert append(service, token, event()) == (507, msc.error_body("MEMORY_FULL"))
     assert STREAM not in server.streams
+
+
+def test_a_purged_item_is_served_as_the_engine_s_tombstone(tmp_path: Path) -> None:
+    service, _server, _journal = store(tmp_path)
+    token = lease(service)
+    saved(service, token)
+    purge(service, token)
+    stored = engine.StoredEvent.from_record("p-1", read(service))
+    assert (stored.event.action, stored.event.status, stored.event.statement, stored.event.version) == ("tombstone", "purged", "", 3)

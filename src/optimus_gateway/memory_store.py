@@ -310,7 +310,7 @@ class _Fold:
         if record["type"] == "event":
             event = record["event"]
             item = event["item"]
-            if event["action"] == "purge":
+            if event["action"] == "tombstone":
                 self.items[item] = {**event, **_PURGED_PAYLOAD, "stream_id": stream_id}
                 for key, (_digest_value, result) in list(self.keys.items()):
                     if result.get("item") == item:
@@ -333,7 +333,7 @@ class _Fold:
                 raise RedisError("stream shorter than its head")  # never serve a fold that skipped events
             records = [(_text(raw_id), json.loads(fields[b"e"])) for raw_id, fields in entries]
             wanted = [record["event"]["event_id"] for _, record in records
-                      if record["type"] == "event" and record["event"]["action"] != "purge"]
+                      if record["type"] == "event" and record["event"]["action"] != "tombstone"]
             on_time()
             found = dict(zip(wanted, reader.hmget(payloads, wanted), strict=True)) if wanted else {}
             for stream_id, record in records:
@@ -897,7 +897,7 @@ class MemoryStore:
                             raise msc.MemoryRequestError("ITEM_PURGED", 409)
                         else:
                             tombstone = {**{field: current[field] for field in _TOMBSTONE_KEEPS}, "event_id": f"purge-{key}",
-                                         "version": current["version"] + 1, "action": "purge", "status": "purged"}
+                                         "version": current["version"] + 1, "action": "tombstone", "status": "purged"}
                             record = {"type": "event", "key": key, "digest": digest, "event": tombstone}
                             self._journal(journal, name, item, "intent", version=tombstone["version"], key=key)
                             self._on_time()

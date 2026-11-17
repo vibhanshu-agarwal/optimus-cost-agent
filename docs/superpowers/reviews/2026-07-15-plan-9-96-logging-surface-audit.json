@@ -6383,6 +6383,78 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/context/test_memory_store_setup.py::test_store_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_journal:_mac:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical JSON of a payload-free journal record (project hash, item id, version, key, stream id, counters), only to compute its HMAC; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_purge.py::test_a_record_the_gateway_did_not_write_is_refused",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_k2:_call:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement on the released test store with synthetic statements; the report holds counts, timings and digests, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_summaries_report_the_tail_not_only_the_middle",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_k2:_index_load:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: synthetic index-shaped records (fixed terms, random vector bytes) into the released second Redis; no workspace or memory content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_summaries_report_the_tail_not_only_the_middle",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_k2:_sampler:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: Redis INFO is read for memory, copy-on-write and persistence counts; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_summaries_report_the_tail_not_only_the_middle",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_k2:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement on the released test store with synthetic statements; the report holds counts, timings and digests, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_summaries_report_the_tail_not_only_the_middle",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_k2:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints the pass flag and per-target verdicts (booleans) or the UNRUN line; no statement or secret.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_without_the_release_nothing_runs",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_k2:run:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement on the released test store with synthetic statements; the report holds counts, timings and digests, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_summaries_report_the_tail_not_only_the_middle",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_k2:run:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: the second Redis client is created for the synthetic index load; no workspace or memory content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_summaries_report_the_tail_not_only_the_middle",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_k2:run:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement on the released test store with synthetic statements; the report holds counts, timings and digests, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_summaries_report_the_tail_not_only_the_middle",
+      "evidence_tier": "unit"
     }
   ]
 }
