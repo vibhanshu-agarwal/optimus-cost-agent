@@ -56,6 +56,19 @@ def _until_completed(service: memory_store.MemoryStoreService, project: str, ite
         time.sleep(0.25)
 
 
+def _until_held(service: memory_store.MemoryStoreService, project: str, item: str, why: tuple[str, ...], seconds: float = 180) -> None:
+    """Poll as `_until_completed` does until the purge is pending for one of `why`: the rewrite and the snapshot are done,
+    and a file outside the current set holds it."""
+    started = time.monotonic()
+    while True:
+        code, reply = _call(service, {"op": "purge_status", "project": project, "item": item})
+        assert code == 200 or reply == msc.error_body("MEMORY_UNAVAILABLE"), reply
+        if reply.get("files") in why:
+            return
+        assert reply.get("purge_state", "pending") == "pending" and time.monotonic() - started < seconds, reply
+        time.sleep(0.25)
+
+
 def _files_with(needle: str) -> set[str]:
     """Every file under /data holding these exact bytes. grep exits 1 when nothing matches, which is the answer, not an error."""
     found = docker("exec", CONTAINER, "grep", "-racF", "-e", needle, "/data").stdout
@@ -127,27 +140,23 @@ def test_a_purge_leaves_the_text_in_no_key_and_no_file(visible: Provisioned, tmp
 
 def test_a_file_the_rewrite_left_behind_holds_the_purge_pending_until_it_is_gone(visible: Provisioned, tmp_path: Path) -> None:
     """Codex CP2 review 1, finding 2: Redis can report a rewrite done while an old AOF file it failed to unlink still holds the
-    text. Copies of the increment stand in for such files (Codex CP2 review 2, findings 1, 3 and 4). The Gateway removes only
-    the one a dead fork of the server's own user would leave; an unlisted AOF part, a Redis name someone else made and a name
-    with a space all hold the purge pending until they are gone."""
+    text. Copies of the increment stand in for such files (Codex CP2 review 2, findings 1, 3 and 4). The Gateway removes
+    nothing (review 3, finding 2): a dead fork's working file made by the server's own user, an unlisted AOF part, a Redis name
+    someone else made and a name with a space all hold the purge pending until they are gone."""
     service, project = _service(visible, tmp_path), _project()
     token = _lease(service, project)
     item, canary, control = _saved_pair(service, project, token)
     names = docker("exec", CONTAINER, "ls", "-1A", "/data/appendonlydir", check=True).stdout.split()
     increment = f"/data/appendonlydir/{next(name for name in names if name.endswith('.incr.aof'))}"
-    dead = "/data/temp-4242.rdb"  # no such process in the container
-    kept = ["/data/appendonlydir/appendonly.aof.99.incr.aof", "/data/temp-4243.rdb", "/data/dump.rdb dump.rdb"]
-    for user, copy in (("redis", dead), ("redis", kept[0]), ("root", kept[1]), ("root", kept[2])):
+    kept = ["/data/temp-4242.rdb", "/data/appendonlydir/appendonly.aof.99.incr.aof", "/data/temp-4243.rdb", "/data/dump.rdb dump.rdb"]
+    for user, copy in zip(("redis", "redis", "root", "root"), kept, strict=True):
         docker("exec", "-u", user, CONTAINER, "cp", increment, copy, check=True)
-    assert {dead, *kept} <= _files_with(canary)
+    assert set(kept) <= _files_with(canary)
     assert _purge(service, project, token, item, "f" * 64)[0] == 200
-    deadline = time.monotonic() + 120
-    while (reply := _status(service, project, item)).get("files") not in ("unexpected_files", "retained_files"):
-        assert reply["purge_state"] == "pending" and time.monotonic() < deadline, reply
-        time.sleep(0.25)
+    _until_held(service, project, item, ("unexpected_files", "retained_files"), seconds=120)
     assert _status(service, project, item)["purge_state"] == "pending"  # the rewrite and snapshot are done; the files are not
-    assert dead not in _files_with(canary) and set(kept) <= _files_with(canary)  # the Gateway removed the dead fork's alone
-    docker("exec", CONTAINER, "rm", *kept, check=True)
+    assert set(kept) <= _files_with(canary)  # every copy is still there: the Gateway removed none
+    docker("exec", CONTAINER, "rm", *kept, check=True)  # what the operator does with the reason
     _until_completed(service, project, item)
     _assert_erased(visible, project, canary, control)
 
@@ -319,6 +328,8 @@ def test_a_kill_under_load_keeps_every_confirmed_save_and_retries_settle_the_res
 
 @pytest.mark.parametrize("during", ["aof_rewrite_in_progress", "rdb_bgsave_in_progress"])
 def test_a_redis_killed_during_the_rewrite_or_the_snapshot_starts_the_disk_step_over(tmp_path: Path, during: str) -> None:
+    """The killed fork's working file holds the purge pending under the restarted Redis, which never removes another process's,
+    and the Gateway removes nothing (Codex CP2 review 3, finding 2); once the operator removes it, the purge completes."""
     with provisioned_variant(tmp_path / "store", *_VISIBLE, *_SLOW_FORKS) as provisioned:
         service, project = _service(provisioned, tmp_path / "journal"), _project()
         token = _lease(service, project)
@@ -329,6 +340,9 @@ def test_a_redis_killed_during_the_rewrite_or_the_snapshot_starts_the_disk_step_
             assert time.monotonic() < deadline, f"{during} never started"
             time.sleep(0.05)
         _restart(provisioned)
+        _until_held(service, project, item, ("unexpected_files",))
+        left = docker("exec", CONTAINER, "find", "/data", "-maxdepth", "1", "-name", "temp-*", "-print", "-delete", check=True).stdout.split()
+        assert left, "the killed fork left no working file"  # what the operator removes, guided by the reason
         _until_completed(service, project, item, seconds=180)
         runs = {entry.get("run_id") for entry in service._store._purge_journal.entries(memory_store.MemoryStore._project_hash(project), item)}
         assert len(runs - {None}) == 2  # the disk step began again under the restarted Redis

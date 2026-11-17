@@ -25,6 +25,7 @@ import re
 import tempfile
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -154,17 +155,26 @@ def overhead(provisioned: Any, work: Path, delay: float) -> dict[str, Any]:
     extractor.close()
     first = asyncio.run(_first_response(provisioned, work, delay, [turn["text"] for turn in workload["turns"]]))
     user_calls, agent_calls = upstream.calls.count(mx.USER_PURPOSE), upstream.calls.count(mx.AGENT_PURPOSE)
+    agent_skips = sum(1 for o in outcomes if o.purpose == mx.AGENT_PURPOSE and o.skipped == "user_items_in_scope")
     added = first["on_ms"]["p95"] - first["off_ms"]["p95"]
+    actions = Counter(notice.action for o in outcomes for notice in o.notices)
     return {
-        "schema": "plan12-memory-m3.extraction-overhead.v1", "source": _stamp(), "upstream": f"controlled, {delay:.3f} s per call, nothing billed",
+        "schema": "plan12-memory-m3.extraction-overhead.v2", "source": _stamp(), "upstream": f"controlled, {delay:.3f} s per call, nothing billed",
         "workload_limit": workload["limits"], "turns": len(workload["turns"]), "calls": {"user": user_calls, "agent": agent_calls, "total": user_calls + agent_calls},
         "expected": workload["expected"], "prefilter_mismatches": mismatches, "settlement_s": _summary(settle),
         "first_response": first, "added_first_response_p95_ms": round(added, 2),
-        "outcomes": {"admitted": sum(len(o.notices) for o in outcomes), "incomplete": sum(1 for o in outcomes if o.incomplete), "skipped": sum(1 for o in outcomes if o.skipped)},
+        # Codex CP2 review 3, finding 5: an off record is appended, but it is not a memory; each action is counted apart.
+        "outcomes": {"appended_by_action": dict(sorted(actions.items())), "incomplete": sum(1 for o in outcomes if o.incomplete),
+                     "skipped_by_reason": dict(sorted(Counter(o.skipped for o in outcomes if o.skipped).items()))},
         "disclosure": "the prefilter was developed against this sealed workload, so its agreement here is not a held-out result; agent evidence follows the workload by construction",
+        # Codex CP2 review 3 decided that an agent call in a scope holding a user item is skipped. The sealed expectation is
+        # kept and still compared; the successor is recorded beside it and gates nothing until it is approved on #490.
+        "successor_expectation": {"user": 12, "agent": 0, "total": 12, "agent_skipped_user_items_in_scope": 8,
+                                  "status": "proposed on #490 after Codex CP2 review 3; not an acceptance gate until approved"},
         "verdicts": {
             "calls_per_100": user_calls + agent_calls <= limits["max_requests_per_100_turns"],
             "matches_expected": (user_calls, agent_calls) == (limits["expected_user_requests_per_100_turns"], limits["expected_agent_requests_per_100_turns"]),
+            "matches_successor_expectation": (user_calls, agent_calls, agent_skips) == (12, 0, 8),
             "added_first_response_p95": added <= limits["added_first_response_p95_ms_vs_off"],
             "settlement_p95": (_summary(settle).get("p95") or 1e9) <= limits["settlement_p95_s"],
         },

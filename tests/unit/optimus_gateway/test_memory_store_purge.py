@@ -30,11 +30,11 @@ CURRENT = ("appendonlydir", "dump.rdb", "appendonlydir/appendonly.aof.2.base.rdb
            "appendonlydir/appendonly.aof.manifest")
 
 
-def files(*extra: str | Entry, manifest: str = MANIFEST, pids: tuple[str, ...] = ("1",)) -> Inventory:
-    """The current snapshot and AOF set, owned by the server's user 999, plus `extra` (a name is a regular file of 999's)."""
-    entries = [Entry("d" if path == "appendonlydir" else "f", "999", path) for path in CURRENT]
-    entries += [item if isinstance(item, Entry) else Entry("f", "999", item) for item in extra]
-    return Inventory(tuple(entries), frozenset(pids), manifest)
+def files(*extra: str | Entry, manifest: str = MANIFEST) -> Inventory:
+    """The current snapshot and AOF set, plus `extra` (a name is a regular file)."""
+    entries = [Entry("d" if path == "appendonlydir" else "f", path) for path in CURRENT]
+    entries += [item if isinstance(item, Entry) else Entry("f", item) for item in extra]
+    return Inventory(tuple(entries), manifest)
 
 
 CLEAN = files()
@@ -43,19 +43,12 @@ CLEAN = files()
 def store(root: Path, server: Server | None = None, *, journal: bool = True) -> tuple[memory_store.MemoryStoreService, Server, PurgeJournal]:
     server = server or Server()
     server.files = CLEAN  # type: ignore[attr-defined]  # what the data directory holds; a test may leave an old file in it
-    server.removed = []  # type: ignore[attr-defined]
-    server.on_read = None  # type: ignore[attr-defined]
     purge_journal = PurgeJournal(root / "journal", journal_key("pw"))
 
-    def inventory(_timeout: float, remove: tuple[str, ...]) -> Inventory:
+    def inventory(_timeout: float) -> Inventory:
         files = server.files  # type: ignore[attr-defined]
         if files is None:
             raise InventoryUnavailable("docker not found")
-        if server.on_read is not None:  # type: ignore[attr-defined]
-            server.on_read()  # type: ignore[attr-defined]
-        server.removed.extend(remove)  # type: ignore[attr-defined]
-        files = Inventory(tuple(entry for entry in files.entries if entry.path not in remove), files.pids, files.manifest)
-        server.files = files  # type: ignore[attr-defined]
         return files
 
     inner = memory_store.MemoryStore(Client(server, 9), Client(server), admission_ceiling_mb=384, cursor_key=b"k",  # type: ignore[arg-type]
@@ -129,15 +122,23 @@ RETAINED = files("appendonlydir/copy.aof")  # a file in the AOF directory Redis 
 HISTORY = files("appendonlydir/appendonly.aof.1.base.rdb", manifest=MANIFEST + "file appendonly.aof.1.base.rdb seq 1 type h\n")
 LEFTOVER = files("dump.rdb.bak")
 SPACED = files("dump.rdb dump.rdb")  # Codex CP2 review 2, finding 3: split on whitespace, this was two allowed names
-NOT_A_FILE = files(Entry("d", "999", "appendonlydir/old"))
-# What a Redis killed mid-fork leaves: its forks' working files, owned by the server's user, whose processes are gone.
-ABANDONED = files("temp-4242.rdb", "temp-rewriteaof-bg-31.aof", "temp-rewriteaof-32.aof")
+NOT_A_FILE = files(Entry("d", "appendonlydir/old"))
+# Review 3, finding 4: a field without its value. The line is otherwise whole, so only the pairing check refuses it.
+UNPAIRED = files(manifest=MANIFEST + "file appendonly.aof.2.incr.aof seq 2 type i startoffset\n")
 
 
-@pytest.mark.parametrize(("inventory", "why"), [(RETAINED, "retained_files"), (HISTORY, "history_files"), (LEFTOVER, "unexpected_files"),
-                                                (SPACED, "unexpected_files"), (NOT_A_FILE, "unexpected_files"),
-                                                (None, "file_inventory_unavailable")])
-def test_a_rewrite_that_left_an_old_file_behind_never_completes_the_purge(tmp_path: Path, inventory: Inventory | None, why: str) -> None:
+# Review 3, finding 2: no listing shows that Redis made a file and has retired it, so nothing is ever removed. What a Redis
+# killed mid-fork leaves (its forks' working files), an increment Redis may name next, and a file anyone made under a Redis
+# name alike hold the purge pending until they are gone.
+@pytest.mark.parametrize(("inventory", "why"), [
+    (RETAINED, "retained_files"), (HISTORY, "history_files"), (LEFTOVER, "unexpected_files"), (SPACED, "unexpected_files"),
+    (NOT_A_FILE, "unexpected_files"), (UNPAIRED, "manifest_unreadable"), (None, "file_inventory_unavailable"),
+    (files("temp-4242.rdb"), "unexpected_files"), (files("temp-rewriteaof-bg-31.aof"), "unexpected_files"),
+    (files("temp-rewriteaof-32.aof"), "unexpected_files"), (files("appendonlydir/appendonly.aof.3.incr.aof"), "retained_files"),
+    (files(Entry("l", "temp-4244.rdb")), "unexpected_files"),
+])
+def test_a_file_outside_the_current_set_holds_the_purge_pending_until_it_is_gone(tmp_path: Path, inventory: Inventory | None,
+                                                                                  why: str) -> None:
     """Codex CP2 review 1, finding 2: Redis reports a rewrite as done even when it could not delete the old AOF file."""
     service, server, journal = store(tmp_path)
     token = lease(service)
@@ -147,55 +148,31 @@ def test_a_rewrite_that_left_an_old_file_behind_never_completes_the_purge(tmp_pa
     server.files = inventory  # type: ignore[attr-defined]
     reply = status(service)
     assert (reply["purge_state"], reply["files"]) == ("pending", why) and "completed" not in phases(journal)
-    assert server.removed == []  # type: ignore[attr-defined]
-    server.files = CLEAN  # type: ignore[attr-defined]  # the old file is gone: the same purge now completes
+    assert status(service)["files"] == why  # asked again, nothing changed it: the Gateway removes nothing
+    server.files = CLEAN  # type: ignore[attr-defined]  # the operator removed it: the same purge now completes
     assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED
 
 
-def test_files_redis_abandoned_are_removed_and_the_purge_completes(tmp_path: Path) -> None:
-    """A Redis killed mid-fork leaves its forks' working files, and the next server never removes another process's: the
-    Gateway removes those, so a purge after a crash still completes."""
-    service, server, _journal = store(tmp_path)
-    token = lease(service)
-    saved(service, token)
-    purge(service, token)
-    finish_background(server)
-    server.files = ABANDONED  # type: ignore[attr-defined]
-    assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED
-    assert server.removed == ["temp-4242.rdb", "temp-rewriteaof-bg-31.aof", "temp-rewriteaof-32.aof"]  # type: ignore[attr-defined]
+LISTING = ("\0--optimus-inventory--\0d appendonlydir\0f dump.rdb\0f appendonlydir/appendonly.aof.2.base.rdb\0"
+           "f appendonlydir/appendonly.aof.manifest\0\0--optimus-inventory--\0file appendonly.aof.2.base.rdb seq 2 type b\n")
 
 
-@pytest.mark.parametrize(("left", "why"), [
-    ("appendonlydir/appendonly.aof.3.incr.aof", "retained_files"),  # finding 1: Redis may reuse an unlisted part's name
-    (Entry("f", "0", "temp-4243.rdb"), "unexpected_files"),  # finding 4: someone else made it, under a Redis name
-    (Entry("l", "999", "temp-4244.rdb"), "unexpected_files"),  # not a regular file
-    ("temp-1.rdb", "unexpected_files"),  # its process is alive: a fork may still be writing it
-    ("temp-4245.rdb.old", "unexpected_files"),  # a name Redis never gives
+@pytest.mark.parametrize("output", [
+    LISTING.replace("manifest\0\0--", "manifest\0--", 1),  # the last record is not terminated
+    LISTING.replace("f dump.rdb\0", "f dump.rdb\0d dump.rdb\0", 1),  # a path twice: a later entry would mask the first
+    LISTING.replace("f dump.rdb\0", "ff dump.rdb\0", 1),  # a malformed record (" dump.rdb" with a leading space is a real name)
+    LISTING.replace("f dump.rdb\0", "dump.rdb\0", 1),  # a record without its type
+    LISTING.replace("f dump.rdb\0", "f /dump.rdb\0", 1),  # not a path relative to the data directory
+    LISTING.replace("\0--optimus-inventory--\0", "", 1),  # the framing is incomplete
+    "x" + LISTING,  # something before the listing
 ])
-def test_a_file_redis_cannot_be_shown_to_have_abandoned_is_never_removed(tmp_path: Path, left: str | Entry, why: str) -> None:
-    """Codex CP2 review 2, findings 1 and 4: only a fork's working file the server's user made, whose process is gone, is
-    removed; anything else holds the purge pending."""
-    service, server, journal = store(tmp_path)
-    token = lease(service)
-    saved(service, token)
-    purge(service, token)
-    finish_background(server)
-    server.files = files(left)  # type: ignore[attr-defined]
-    reply = status(service)
-    assert (reply["purge_state"], reply["files"]) == ("pending", why) and "completed" not in phases(journal)
-    assert server.removed == []  # type: ignore[attr-defined]
+def test_a_malformed_listing_is_unavailable_never_clean(output: str) -> None:
+    """Codex CP2 review 3, finding 4: a listing that is not exactly what find and the manifest produce proves nothing."""
+    from optimus_gateway import memory_files
 
-
-def test_nothing_is_removed_while_a_fork_runs(tmp_path: Path) -> None:
-    service, server, _journal = store(tmp_path)
-    token = lease(service)
-    saved(service, token)
-    purge(service, token)
-    finish_background(server)
-    server.files = ABANDONED  # type: ignore[attr-defined]
-    server.on_read = lambda: server.persistence.update(rdb_bgsave_in_progress=1)  # type: ignore[attr-defined]  # one starts meanwhile
-    reply = status(service)
-    assert (reply["purge_state"], reply["files"]) == ("pending", "unexpected_files") and server.removed == []  # type: ignore[attr-defined]
+    assert memory_files.residue(memory_files.parse(LISTING)) is None  # control: the well-formed listing is clean
+    with pytest.raises(memory_files.InventoryUnavailable):
+        memory_files.parse(output)
 
 
 def test_the_inventory_reads_only_the_provisioned_container(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -206,30 +183,24 @@ def test_the_inventory_reads_only_the_provisioned_container(monkeypatch: pytest.
 
     assert memory_files.RESOURCE_LABEL == local_infra._MEMORY_RESOURCE_LABEL
     config = SimpleNamespace(container="c", resource="r-1", port=6394)
-    mark = "\0--optimus-inventory--\0"
-    listing = (f"{mark}d 999 appendonlydir\0f 999 dump.rdb\0f 999 appendonlydir/appendonly.aof.2.base.rdb\0"
-               f"f 999 appendonlydir/appendonly.aof.manifest\0{mark}1\0{mark}file appendonly.aof.2.base.rdb seq 2 type b\n")
     # Codex CP2 review 2, finding 3: a name with spaces or a newline is one entry, never two allowed ones
-    odd = memory_files.parse(listing.replace("f 999 dump.rdb\0", "f 999 dump.rdb dump.rdb\0f 999 a\nb\0", 1))
+    odd = memory_files.parse(LISTING.replace("f dump.rdb\0", "f dump.rdb dump.rdb\0f a\nb\0", 1))
     assert [entry.path for entry in odd.entries][1:3] == ["dump.rdb dump.rdb", "a\nb"] and memory_files.residue(odd) == "unexpected_files"
     inspected = {"Config": {"Labels": {"optimus.memory.resource": "r-1"}}, "HostConfig": {"PortBindings": {"6379/tcp": [{"HostPort": "6394"}]}}}
-    calls = []
+    argvs: list[list[str]] = []
 
     def run(argv, **_kwargs):  # type: ignore[no-untyped-def]
-        calls.append(argv[1])
-        return SimpleNamespace(returncode=0, stdout=json.dumps([inspected]) if argv[1] == "inspect" else listing)
+        argvs.append(argv)
+        return SimpleNamespace(returncode=0, stdout=json.dumps([inspected]) if argv[1] == "inspect" else LISTING)
 
     monkeypatch.setattr(memory_files.shutil, "which", lambda _name: "docker")
     monkeypatch.setattr(memory_files.subprocess, "run", run)
-    assert memory_files.residue(memory_files.docker_inventory(config)(5.0, ())) is None and calls == ["inspect", "exec"]  # type: ignore[arg-type]
-    argvs: list[list[str]] = []
-    monkeypatch.setattr(memory_files.subprocess, "run", lambda argv, **kwargs: argvs.append(argv) or run(argv, **kwargs))
-    memory_files.docker_inventory(config)(5.0, ("temp-31.rdb", "temp-rewriteaof-bg-32.aof"))  # type: ignore[arg-type]
-    assert argvs[-1][-3:] == ["sh", "temp-31.rdb", "temp-rewriteaof-bg-32.aof"]  # paths are arguments, never script
-    assert "\0" not in argvs[-1][-4]  # the NULs are the shell's printf's: argv cannot carry one
+    assert memory_files.residue(memory_files.docker_inventory(config)(5.0)) is None  # type: ignore[arg-type]
+    assert [argv[1] for argv in argvs] == ["inspect", "exec"] and argvs[-1][-3:-1] == ["sh", "-c"]  # the fixed script alone
+    assert "\0" not in argvs[-1][-1] and "rm " not in argvs[-1][-1]  # the NULs are the shell's printf's; nothing is removed
     inspected["Config"]["Labels"]["optimus.memory.resource"] = "someone-else"
     with pytest.raises(memory_files.InventoryUnavailable):
-        memory_files.docker_inventory(config)(5.0, ())  # type: ignore[arg-type]
+        memory_files.docker_inventory(config)(5.0)  # type: ignore[arg-type]
 
 
 def test_a_rewrite_already_running_at_the_purge_is_never_counted(tmp_path: Path) -> None:

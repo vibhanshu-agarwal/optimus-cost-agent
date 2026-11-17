@@ -806,9 +806,10 @@ class AttachedTurn:
 
     def record_context(self, context: Any) -> None:
         """The runner reports each automatic workspace or index context it attached (Plan 12.11): every file it delivered, the
-        ones the task named and the ones retrieval chose alike (Codex CP2 review 2, finding 5). Context text with no file
-        behind it cannot be attributed, and counts as never reported."""
-        delivered = (*context.prioritized_paths, *getattr(context, "file_sha256s", {}))
+        ones the task named and the ones retrieval chose alike (Codex CP2 review 2, finding 5), a file shown only by its signature
+        or description too (review 3, finding 3). Context text with no file behind it cannot be attributed, and counts as never
+        reported."""
+        delivered = (*context.prioritized_paths, *getattr(context, "file_sha256s", {}), *getattr(context, "shown_paths", ()))
         if context.text and not delivered:
             self._context_unattributed = True
         self._context_paths = (*(self._context_paths or ()), *delivered)

@@ -6321,14 +6321,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.memory_store:MemoryStore._forking:logger_export",
-      "policy": "safe-by-construction",
-      "rationale": "AST overmatch: Redis INFO is read for the persistence fork flags only; nothing is logged.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_memory_store_purge.py::test_nothing_is_removed_while_a_fork_runs",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus_gateway.memory_store:MemoryStore._op_lease:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes a fence number and the host-asserted owner id, both validated opaque identities; nothing is logged.",

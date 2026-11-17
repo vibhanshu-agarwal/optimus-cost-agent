@@ -56,10 +56,14 @@ _WITHDRAW = re.compile(r"\b(no longer|not any ?more|scratch that|forget (that|wh
                        r"retract\w*|changed? (my|our) minds?|undo|cancel\w*|drop (that|the))\b", re.IGNORECASE)
 _CHANGE = re.compile(_WITHDRAW.pattern + r"|\b(correction|actually|instead|rather than|switch(ed)? to|moved? to|replaced?|now)\b",
                      re.IGNORECASE)
-_NEGATED = re.compile(r"\b(not|never|no|don'?t|do not|won'?t|shouldn'?t)\s+(\w+\s+)?$", re.IGNORECASE)  # just before a marker
-# A line that opens someone else's words for the lines after it: "A README excerpt follows:", "The log output:".
-_INTRODUCES = re.compile(r"\b(excerpt|quot\w*|pasted|copied|says|said|reads|follows|following|below|output|log|readme|docs?|issue|"
-                         r"ticket|comment|wiki|spec|email|message)\b[^\n]*:\s*$", re.IGNORECASE)
+# Any negation before a marker in its sentence leaves the act unestablished: "Never, ever cancel ..." (Codex CP2 review 3, finding 1).
+_NEGATION = re.compile(r"\b(not|never|no|nor|neither|none|nothing|cannot|without)\b|n'?t\b", re.IGNORECASE)
+_CLAUSE = re.compile(r"[,;()]|\b(and|but|or|then|while|whereas|although|though|except|unless|so)\b", re.IGNORECASE)  # a colon opens the object
+# What opens someone else's words for what follows in the block: "The following text is copied from a README.", or a source
+# named before a colon: "The log output:" (review 2 and review 3, finding 1).
+_INTRODUCES = re.compile(r"\b(excerpt|quot\w*|pasted|copied|verbatim|follows|following|below)\b"
+                         r"|\b(says|said|reads|wrote|writes|output|log|readme|docs?|issue|ticket|comment|wiki|spec|email|message)\b[^\n]*:\s*$",
+                         re.IGNORECASE)
 _QUOTE_MARKS: Final = "\"'“‘`«"
 _TASK_VERBS = frozenset({
     "add", "remove", "fix", "rename", "refactor", "move", "update", "write", "run", "check", "make", "implement", "replace", "extract",
@@ -279,9 +283,20 @@ def _quoted_at(text: str, start: int) -> bool:
     return any(_INTRODUCES.search(part) or _QUOTED.search(part) for part in (*before[:line].splitlines(), before[line:]))
 
 
-def _says(pattern: re.Pattern[str], text: str) -> bool:
-    """The marker is in the words and not negated just before it: "Never cancel the tests." cancels nothing."""
-    return any(not _NEGATED.search(text[: match.start()]) for match in pattern.finditer(text))
+def _bears(pattern: re.Pattern[str], said: Sequence[str], title: str | None) -> bool:
+    """Whether one sentence the user said establishes the act for this item (Codex CP2 review 3, finding 1): a marker with no
+    negation anywhere before it in the sentence, in a clause that itself names the item. "Never push to main, and cancel the
+    smoke tests." withdraws nothing: the withdrawal's clause names the smoke tests. `title` None: the proposal names no item."""
+    for sentence in said:
+        bounds = list(_CLAUSE.finditer(sentence))
+        for match in pattern.finditer(sentence):
+            if _NEGATION.search(sentence[: match.start()]):
+                continue
+            start = max((bound.end() for bound in bounds if bound.end() <= match.start()), default=0)
+            end = min((bound.start() for bound in bounds if bound.start() >= match.end()), default=len(sentence))
+            if title is None or _names(sentence[start:end], title):
+                return True
+    return False
 
 
 def _names(text: str, title: str) -> bool:
@@ -294,9 +309,9 @@ def _names(text: str, title: str) -> bool:
 
 def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | None) -> str | None:
     """The speech act the user's own words bear out (Codex CP2 review 1, finding 1; review 2, finding 2). A question,
-    hypothetical or quotation is that, whatever the model labels it, and a quotation is judged in its whole block. A proposal
-    naming an item needs words that name it; a retraction needs an unnegated withdrawal, and an update a change; "Never push to
-    main." said again withdraws nothing. None: the words do not bear the model out, so it goes off."""
+    hypothetical or quotation is that, whatever the model labels it, and a quotation is judged in its whole block. A retraction
+    needs a withdrawal, and an update a change, that the user's words establish for the item it names (`_bears`); "Never push
+    to main." said again withdraws nothing. None: the words do not bear the model out, so it goes off."""
     said = []
     for span in proposal.spans:
         text = blocks.get(span.block)
@@ -308,12 +323,11 @@ def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | N
         if _QUOTED.search(part) or part[:1] in _QUOTE_MARKS or _quoted_at(text, span.start):
             return "quotation"
         said.append(part)
-    words = " ".join(said)
-    if proposal.target is not None and (target_title is None or not _names(words, target_title)):
+    if proposal.target is not None and target_title is None:
         return None
     if proposal.speech_act == "retraction":
-        return "retraction" if _says(_WITHDRAW, words) else None
-    if proposal.target is not None and not _says(_CHANGE, words):
+        return "retraction" if _bears(_WITHDRAW, said, target_title) else None
+    if proposal.target is not None and not _bears(_CHANGE, said, target_title):
         return None
     return proposal.speech_act
 
@@ -491,7 +505,8 @@ class Outcome:
     refusals: tuple[str, ...] = ()  # Gate reasons and store codes for candidates not appended
     reasons: tuple[str, ...] = ()  # the Gate's reason for every candidate it decided (an off record is appended, but not as memory)
     incomplete: str | None = None
-    skipped: str | None = None  # no call made: the queue was full, the extractor closed, or the text's changes all still stand
+    skipped: str | None = None  # no call made: the queue was full, the extractor closed, the text's changes all still stand, or
+    # (agent) the scope holds a user item
 
 
 class MemoryExtractor:
@@ -563,6 +578,9 @@ class MemoryExtractor:
         try:
             if purpose == USER_PURPOSE and self._still_stands(said):
                 return Outcome(turn.turn_id, purpose, skipped="already_extracted")
+            if purpose == AGENT_PURPOSE and self._store.user_items(turn.scope, limit=1):
+                # Its lessons could only go off (`_commit`), so no call is paid for (Codex CP2 review 3, on finding 6).
+                return Outcome(turn.turn_id, purpose, skipped="user_items_in_scope")
             existing = self._store.user_items(turn.scope, limit=MAX_EXISTING_ITEMS) if purpose == USER_PURPOSE else []
             if purpose == USER_PURPOSE:
                 prompt, _kept = user_prompt(turn.blocks, existing)
@@ -630,7 +648,8 @@ class MemoryExtractor:
         refused by the store's expected version, never forced. A new item whose id is taken by a withdrawn or purged one
         (the same words said again) gets the next free id along its chain; one still live is replayed by the store. An agent
         candidate in a scope holding any live user item goes off: no deterministic check can show that a lesson leaves the
-        user's items standing ("Never deploy." against "Deploy after tests pass.": Codex CP2 review 2, finding 6). The last two
+        user's items standing ("Never deploy." against "Deploy after tests pass.": Codex CP2 review 2, finding 6). `_run` skips
+        the call when the scope already holds one; this check, under the lease, catches one saved meanwhile. The last two
         values: whether the store refused any write, and each (item, version) written, or None unless every write was confirmed
         on disk."""
         from optimus.context.authored_memory import MemoryStoreRefused

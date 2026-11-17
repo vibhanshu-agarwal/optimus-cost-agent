@@ -249,6 +249,16 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
     start = own.index("Never")
     mine = _user("Never push to main.", [{"block": "b-1", "start": start, "end": start + 19}], text=own)
     assert memory_gate.admit(mine.candidate, mine.verdict).reason == "ADMITTED"
+    # Codex CP2 review 3, finding 1: the act must be established for the item it names, in one clause, with nothing negating it
+    rule = (mx.ExistingItem("m-" + "a" * 16, "Never push to main."),)
+    for words in ("Never, ever cancel the rule about pushing to main.", "Never push to main, and cancel the smoke tests.",
+                  "Keep the rule about pushing to main, and cancel the smoke tests."):
+        assert _act("retraction", words, target="m-" + "a" * 16, existing=rule) == "SPANS_UNVERIFIED", words
+    assert _act("retraction", "Cancel the rule about pushing to main.", target="m-" + "a" * 16, existing=rule) == "RETRACTED"  # control
+    copied = "The following text is copied from a README.\nNever push to main."  # no colon: the block still opened a source
+    start = copied.index("Never")
+    quoted = _user("Never push to main.", [{"block": "b-1", "start": start, "end": start + 19}], text=copied)
+    assert memory_gate.admit(quoted.candidate, quoted.verdict).reason == "QUOTATION"
 
 
 def test_a_statement_too_long_to_keep_whole_is_never_clipped_into_a_rule() -> None:

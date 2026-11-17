@@ -272,15 +272,17 @@ _AGAINST = json.dumps({"candidates": [{"speech_act": "assertion", "kind": "proce
                                        "statement": "Deploy after tests pass.", "evidence": ["ev-1"]}]})
 
 
-def test_an_agent_lesson_in_a_scope_with_a_user_rule_goes_off() -> None:
+def test_no_agent_call_is_made_in_a_scope_with_a_user_rule() -> None:
     """Codex CP2 review 1, finding 5, and review 2, finding 6, through the extractor: the lesson names no target and shares one
-    word with the rule, and no check can show it leaves the rule standing; so in a scope holding a user item it goes off."""
+    word with the rule, and no check can show it leaves the rule standing; so in a scope holding a user item it could only go
+    off, and the call is skipped (review 3's decision)."""
     control = _AGAINST.replace("Deploy after tests pass.", "Run the smoke tests before a deploy.")
-    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(control, 1), _completed(_RULE, 2), _completed(_AGAINST, 3)))
+    upstream = _Upstream(_completed(control, 1), _completed(_RULE, 2), _completed(_AGAINST, 3))
+    extractor, settlement, outcomes, _receipts = _harness(upstream)
     work = mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"),))
     extractor.submit(_turn(1, text="Release it.", work=work))
     _until(outcomes, 1)
-    assert outcomes[0].reasons == ("ADMITTED",)  # control: no user item in the scope yet
+    assert outcomes[0].reasons == ("ADMITTED",)  # control: no user item in the scope yet, so the optional lesson is kept
     extractor.submit(_turn(2, text="Never deploy."))
     _until(outcomes, 2)
     assert outcomes[1].reasons == ("ADMITTED",)
@@ -288,9 +290,32 @@ def test_an_agent_lesson_in_a_scope_with_a_user_rule_goes_off() -> None:
     extractor.submit(_turn(3, text="Release it again.", work=work))
     _until(outcomes, 3)
     extractor.close()
-    assert outcomes[2].reasons == ("USER_ITEMS_IN_SCOPE",)
-    (off,) = outcomes[2].notices
-    assert extractor._store.read(off.item).event.trust == "off"  # appended as an off record, never as memory
+    assert (outcomes[2].skipped, outcomes[2].notices) == ("user_items_in_scope", ())
+    assert [purpose for _turn_id, purpose, _tokens, _prompt in upstream.calls] == [mx.AGENT_PURPOSE, mx.USER_PURPOSE]
+    settlement.finalize_turn("s:3")
+    assert settlement.settle_turn("s:3").pending_invocations == 0  # the skipped job still released its turn
+
+
+def test_a_user_rule_saved_while_the_agent_call_is_out_sends_its_lesson_off() -> None:
+    """The skip reads the scope before the call; the commit reads it again under the lease, so a rule saved meanwhile still
+    sends the lesson off."""
+    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(_RULE, 1), _completed(_AGAINST, 2)))
+    extractor.submit(_turn(1, text="Never deploy."))
+    _until(outcomes, 1)
+    store = extractor._store
+    real, seen = store.user_items, []
+
+    def first_empty(scope: str, *, limit: int) -> Any:  # the skip check ran just before the rule was saved
+        seen.append(scope)
+        return [] if len(seen) == 1 else real(scope, limit=limit)
+
+    store.user_items = first_empty
+    extractor.submit(_turn(2, text="Release it.", work=mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"),))))
+    _until(outcomes, 2)
+    extractor.close()
+    assert outcomes[1].reasons == ("USER_ITEMS_IN_SCOPE",) and len(seen) == 2
+    (off,) = outcomes[1].notices
+    assert store.read(off.item).event.trust == "off"  # appended as an off record, never as memory
 
 
 def test_a_refused_receipt_never_drops_the_attempts_after_it() -> None:

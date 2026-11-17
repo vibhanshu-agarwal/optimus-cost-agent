@@ -56,6 +56,8 @@ class WorkspaceContextResult:
     blocking_message: str | None = None
     # Path -> sha256 of the bytes each shown file had when it was read, whole or truncated (#407).
     file_sha256s: Mapping[str, str] = field(default_factory=dict)
+    # Every file the text shows anything of, a signature or description alone included, for memory lineage (Plan 12.11).
+    shown_paths: tuple[str, ...] = ()
     # Coverage: the file policy revision, and how many workspace files each rule excluded (never their content).
     policy_revision: str = ""
     excluded_counts: Mapping[str, int] = field(default_factory=dict)

@@ -578,8 +578,9 @@ class MemoryTurn:
         self.manifest = self._manifest(retrieval, pack, model_id=model_id, budget=budget, task_terms=len(task.split()))
         self._session.write_manifest(run_id, self.manifest)
         omitted = tuple(dict.fromkeys(item.path for item in pack.selected if item.disclosure == "omitted"))
+        shown = tuple(dict.fromkeys(item.path for item in pack.selected if item.disclosure != "omitted"))  # Codex CP2 review 3, finding 3
         return WorkspaceContextResult(text=text, max_total_bytes=DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES, used_bytes=len(text.encode("utf-8")), prioritized_paths=required, omitted_paths=omitted,
-                                      diagnostics=diagnostics, file_sha256s=dict(pack.file_sha256s), policy_revision=policy.revision())
+                                      diagnostics=diagnostics, file_sha256s=dict(pack.file_sha256s), shown_paths=shown, policy_revision=policy.revision())
 
     def _capture_buffers(self, required: Sequence[str]) -> None:
         """The editor's text for the files this task names, where it differs from disk. The policy decides first, so a denied file is
