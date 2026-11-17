@@ -65,7 +65,7 @@ def _seed(store: GatewayMemoryStore, scope: str, text: str) -> dict[str, Any]:
     assert decision.reason == "ADMITTED" and decision.draft is not None, decision.reason
     with store.lease() as token:
         result = store.append(token, candidate, decision.draft)
-    return {"item": result.item, "version": result.version, "scope": scope, "statement_sha256": mx.digest(text), "made_by": _HOST_PATH}
+    return {"item": result.item, "version": result.version, "scope": scope, "statement_sha256": "hex:" + mx.digest(text), "made_by": _HOST_PATH}
 
 
 def _stamp() -> dict[str, Any]:
