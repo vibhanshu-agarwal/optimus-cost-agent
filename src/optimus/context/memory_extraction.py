@@ -77,6 +77,34 @@ _ADMITS = re.compile(
     r"must|should)\b"
     r"|our\s+(?:[\w-]+\s+){0,4}?(?:is|are|uses|use|runs on|run on)\b"
     r"|(?:the|our)\s+(?:[\w-]+\s+){0,4}?(?:is|are)\s+owned\s+by\b", re.IGNORECASE)
+# The whole sentence, not just its opening, must be a rule (Codex CP2 review 8): split at "," and ";", its first part is a
+# form above (or a "from now on" lead and the clause it leads), and every other part is one too, or a contrast ("not unittest
+# methods") or a condition or limit ("only after operator approval", "under 60 characters"). "Never push to main, Alice says." ends in neither.
+_LED = re.compile(r"(?:from now on|going forward|by default)", re.IGNORECASE)
+_CONTRAST = re.compile(r"(?:not|but not|rather than|instead of)\b", re.IGNORECASE)
+_CONDITIONAL = re.compile(r"(?:but\s+)?(?:only|unless|except|if|when|whenever|after|before|until|once|provided|as long as|under|over|"
+                          r"at most|at least|no more than|no less than|up to|within)\b", re.IGNORECASE)
+# What no rule of the user's own holds anywhere: an indirect question, a request to the assistant, or someone's words reported.
+_NOT_A_RULE = re.compile(r"\b(whether|says?|said|saying|told|claims?|claimed|insists?|insisted|thinks?|thought|believes?|believed|"
+                         r"reckons?|argues?|argued|reported|heard|wonders?|wondered|according)\b|\b(?:i|we)\s+(?:want|need|would like)\s+you\b",
+                         re.IGNORECASE)
+
+
+def _admitted(sentence: str) -> bool:
+    """Whether one sentence of the user's is, whole, a rule in a form of their own (`_ADMITS`, `_LED`, `_CONTRAST`,
+    `_CONDITIONAL`), and holds nothing that makes it someone else's or a request (`_NOT_A_RULE`)."""
+    body = _CODE_TOKEN.sub("x", sentence).strip().rstrip(".!?")
+    if _NOT_A_RULE.search(body):
+        return False
+    parts = [part.strip() for part in re.split(r"[,;]", body)]
+    first, rest = parts[0], parts[1:]
+    if _LED.fullmatch(first):
+        if not rest:
+            return False
+        rest = rest[1:]  # the clause a lead leads is the rule
+    elif not _ADMITS.match(first):
+        return False
+    return all(_ADMITS.match(part) or _CONTRAST.match(part) or _CONDITIONAL.match(part) for part in rest)
 # What opens someone else's words for what follows in the block: "The following text is copied from a README.", or a source
 # named before a colon: "The log output:" (review 2 and review 3, finding 1).
 _INTRODUCES = re.compile(r"\b(excerpt|quot\w*|pasted|copied|verbatim|follows|following|below)\b"
@@ -383,7 +411,7 @@ def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | N
             return None, None
         said.append(part)
     if proposal.target is None:
-        admits = proposal.speech_act != "retraction" and bool(said) and all(_ADMITS.match(part) for part in said)
+        admits = proposal.speech_act != "retraction" and bool(said) and all(_admitted(part) for part in said)
         return (proposal.speech_act if admits else None), None
     if target_title is None or proposal.speech_act != "retraction":
         return None, None  # an update never supersedes on its own (see _WITHDRAWS)

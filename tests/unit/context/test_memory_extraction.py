@@ -159,9 +159,9 @@ def test_a_turn_that_read_a_document_or_anything_outside_vouches_for_nothing(tai
 
 def test_a_cut_down_span_is_widened_to_the_user_s_whole_sentence() -> None:
     """Fable CP2 M3: the model chooses where the words are, never which of them count."""
-    text = "Never push to main; open a pull request instead."
+    text = "Never push to main; always open a pull request instead."
     candidate = _user("push to main", [{"block": "b-1", "start": 6, "end": 18}], text=text)
-    assert candidate.verdict.spans_verified and candidate.candidate.statement == "Never push to main; open a pull request instead."
+    assert candidate.verdict.spans_verified and candidate.candidate.statement == "Never push to main; always open a pull request instead."
     assert candidate.candidate.title == candidate.candidate.statement  # the user's words, never the model's title
 
 
@@ -274,12 +274,18 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
                 existing=ruff) == "RETRACTED"
     # review 7, findings 2 and 3: a new item needs a form that says it is the user's own rule
     for words in ("Alice says never push to main.", "Please explain whether we should always push to main.",
-                  "Run ruff before every commit.", "The lead is sure we should never push to main."):
+                  "Run ruff before every commit.", "The lead is sure we should never push to main.",
+                  # review 8: the whole sentence, not its opening, must be the rule
+                  "Never push to main, Alice says.", "I want you to explain whether we should always push to main.",
+                  "Never push to main as Alice said.", "Never push to main, Alice is sure of it.",
+                  "We decided to keep the CLI out of scope; Optimus only runs inside an ACP IDE."):
         assert _act("decision", words) == "SPANS_UNVERIFIED", words
     for words in ("From now on, new tests should use plain pytest asserts, not unittest methods.",
                   "We use uv for every Python environment in this repo.", "I want error messages to name the file and line.",
                   "Always run ruff check before you propose a commit.", "Please never add a new dependency without telling me first.",
-                  "Our release branch is cut every second Tuesday.",
+                  "Our release branch is cut every second Tuesday.", "I prefer short commit subjects, under 60 characters.",
+                  "Our staging database is Postgres 17; never assume SQLite anywhere.",
+                  "We always deploy to main, only after operator approval.",
                   "The payments module is owned by the billing team; do not refactor it without asking."):
         assert _act("decision", words) == "ADMITTED", words  # controls: the workload's forms
     # review 5: the host resolves the target; words that name two live items withdraw neither
