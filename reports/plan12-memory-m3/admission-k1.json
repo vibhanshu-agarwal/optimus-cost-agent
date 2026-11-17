@@ -1,15 +1,16 @@
 {
-  "schema": "plan12-memory-m3.admission-k1.v1",
+  "schema": "plan12-memory-m3.admission-k1.v2",
   "source": {
-    "head": "git:bddcbcf545ea38066237f1bfd1f8cc8494378679",
+    "head": "git:9b3530f9aa6995ea52b329a621cf857d55c75fc4",
     "dirty": false
   },
+  "policy": "D9: automatic user-origin admissions, updates and withdrawals go off (Codex CP2 review 9; Plan 12.11 v3 draft)",
   "upstream": "controlled: each case's reply is scripted",
   "cases": [
     {
       "case": "genuine_user_statement",
-      "expected": "ADMITTED",
-      "actual": "ADMITTED",
+      "expected": "USER_AUTOMATIC_OFF",
+      "actual": "USER_AUTOMATIC_OFF",
       "passed": true
     },
     {
@@ -50,8 +51,8 @@
     },
     {
       "case": "short_paste_residual",
-      "expected": "ADMITTED",
-      "actual": "ADMITTED",
+      "expected": "USER_AUTOMATIC_OFF",
+      "actual": "USER_AUTOMATIC_OFF",
       "passed": true
     },
     {
@@ -91,15 +92,21 @@
       "passed": true
     },
     {
-      "case": "retraction_withdraws_the_named_item",
-      "expected": "withdrawn",
-      "actual": "withdrawn",
+      "case": "host_path_admits_a_user_rule",
+      "expected": "active",
+      "actual": "active",
+      "passed": true
+    },
+    {
+      "case": "automatic_retraction_leaves_the_named_item",
+      "expected": "USER_AUTOMATIC_OFF,active",
+      "actual": "USER_AUTOMATIC_OFF,active",
       "passed": true
     }
   ],
   "blocked_payloads_found_in_redis": [],
   "residuals": [
-    "a paste of fewer than eight words from a file is not recognised as source text (short_paste_residual is admitted)"
+    "a paste of fewer than eight words from a file is not recognised as source text (short_paste_residual passes every check and is then sent off by D9, not by a source check)"
   ],
   "passed": true
 }
