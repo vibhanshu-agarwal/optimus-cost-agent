@@ -685,6 +685,8 @@ paths = [
   "tests/unit/security/test_sanitization.py",
   "tests/unit/support/test_concurrency_diagnostics.py",
   "tests/unit/tools/test_bounded_command.py",
+  "tests/unit/tools/test_evidence_gather_plan117_v5.py",
+  "tests/unit/tools/test_plan117_current_client_collector.py",
   "tests/unit/tools/test_plan117_custody_relay.py",
   "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py",
   "tests/unit/tools/test_probe_p11_zed_session_load.py",
@@ -698,6 +700,7 @@ paths = [
   "tests/unit/tools/test_run_context_xdist.py",
   "tests/unit/tools/test_run_plan996_acpx_security_evidence.py",
   "tests/unit/tools/test_run_profile.py",
+  "tests/unit/tools/test_verify_plan117_v5_current_client_evidence.py",
 ]
 why = "Maintained signal: the module reads the running platform (sys.platform, os.name, platform.system()...), so its behaviour or selection differs between Windows and POSIX."
 

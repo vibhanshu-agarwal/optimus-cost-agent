@@ -29,6 +29,8 @@ from evidence_handoff.collector.scenarios import load_scenario, resolve_bindings
 from tools.evidence_gather_support import acp as acp_mod
 from tools.evidence_gather_support import detectors as detectors_mod
 from tools.evidence_gather_support import ndjson as ndjson_mod
+from tools.evidence_gather_support import plan117_current_client_collector as plan117_mod
+from tools.evidence_gather_support import plan117_current_client_contract as plan117_contract
 from tools.evidence_gather_support import redaction as redaction_mod
 from tools.evidence_gather_support import reports as reports_mod
 from tools.evidence_gather_support import windows_capture as dwm_mod
@@ -38,6 +40,11 @@ from tools.evidence_gather_support.fixtures import prepare_fixtures, run_precond
 from tools.evidence_gather_support.registry import assert_scenario_adapters_registered, build_registry
 
 _DEFAULT_STABILITY_INTERVAL_NS = 1_000_000_000
+
+# Plan 11.7 v5 trust inputs come from this reviewed checkout only; tests substitute these seams.
+PLAN117_V5_CHECKOUT_ROOT: Path = _ROOT
+PLAN117_V5_HOST_ACTIONS_FACTORY = plan117_mod.real_host_actions
+PLAN117_V5_IDENTITY_TOKENS_FACTORY = redaction_mod.resolve_operator_identity_values
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -108,9 +115,92 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def build_plan117_v5_collect_parser() -> argparse.ArgumentParser:
+    """Separate parser for the v5 gate; the legacy collect subparser is untouched."""
+    parser = argparse.ArgumentParser(prog="evidence_gather collect (plan117-v5)")
+    parser.add_argument("--scenario", type=Path, required=True)
+    parser.add_argument("--capture-root", type=Path, required=True)
+    parser.add_argument("--bind", action="append", default=[])
+    parser.add_argument("--invocation-record", type=Path, required=True)
+    parser.add_argument("--normal-source-root", type=Path, required=True)
+    parser.add_argument("--scratch-parent", type=Path, required=True)
+    return parser
+
+
+def build_plan117_v5_redact_parser() -> argparse.ArgumentParser:
+    """Separate parser for the v5 two-phase redaction; the legacy redact subparser is untouched."""
+    parser = argparse.ArgumentParser(prog="evidence_gather redact (plan117-v5)")
+    parser.add_argument("--scenario", type=Path, required=True)
+    parser.add_argument("--capture-root", type=Path, required=True)
+    parser.add_argument("--bind", action="append", default=[])
+    parser.add_argument("--staging-root", type=Path, required=True)
+    parser.add_argument("--quarantine-root", type=Path, required=True)
+    parser.add_argument("--sanitized-root", type=Path, required=True)
+    parser.add_argument("--result", type=Path, required=True)
+    parser.add_argument("--review-receipt", type=Path, required=False)
+    return parser
+
+
+def _scenario_flag_values(argv: Sequence[str]) -> list[str]:
+    values = []
+    for index, token in enumerate(argv):
+        if token == "--scenario" and index + 1 < len(argv):
+            values.append(argv[index + 1])
+        elif token.startswith("--scenario="):
+            values.append(token.split("=", 1)[1])
+    return values
+
+
+def _plan117_v5_selected(scenario_path: str | Path) -> bool:
+    """The registered v5 path, or any file declaring the v5 scenario ID or collector. Never raises."""
+    try:
+        resolved = Path(scenario_path).resolve(strict=True)
+        if resolved == PLAN117_V5_CHECKOUT_ROOT.joinpath(*plan117_mod.SCENARIO_RELATIVE.split("/")).resolve(strict=True):
+            return True
+        scenario = load_scenario(resolved)
+    except Exception:  # noqa: BLE001 - unreadable input falls through to the ordinary handler's own error
+        return False
+    return scenario.scenario_id == plan117_contract.SCENARIO_ID or any(item.adapter_id == plan117_mod.COLLECTOR_ID for item in scenario.collection)
+
+
+def _authorize_plan117_v5(scenario_path: Path) -> bool:
+    """Scenario authority for every stage: a v5 scenario must be the reviewed checkout's registered file."""
+    if not _plan117_v5_selected(scenario_path):
+        return False
+    plan117_mod.require_registered_scenario(scenario_path, PLAN117_V5_CHECKOUT_ROOT)
+    return True
+
+
+def _plan117_v5_checkout_head(root: Path) -> str:
+    import subprocess
+
+    completed = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=False, timeout=30)  # noqa: S603, S607
+    if completed.returncode != 0:
+        raise HostError("checkout_head_unavailable")
+    return completed.stdout.strip()
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    argv_list = list(argv) if argv is not None else sys.argv[1:]
+    scenario_values = _scenario_flag_values(argv_list)
+    v5_selected = any(_plan117_v5_selected(value) for value in scenario_values)
+    if v5_selected and len(scenario_values) > 1:
+        print("repeated_scenario_flag", file=sys.stderr)
+        return 2
+    if v5_selected and argv_list and argv_list[0] in ("collect", "redact"):
+        v5_parser = build_plan117_v5_collect_parser() if argv_list[0] == "collect" else build_plan117_v5_redact_parser()
+        v5_handler = _handle_collect_plan117_v5 if argv_list[0] == "collect" else _handle_redact_plan117_v5
+        v5_args = v5_parser.parse_args(argv_list[1:])
+        try:
+            return v5_handler(v5_args)
+        except HostError as exc:
+            print(exc.code, file=sys.stderr)
+            return 2
+        except plan117_contract.ContractError as exc:
+            print(exc.code, file=sys.stderr)
+            return 2
     parser = build_parser()
-    args = parser.parse_args(list(argv) if argv is not None else None)
+    args = parser.parse_args(argv_list)
     handlers = {
         "validate": _handle_validate,
         "prepare": _handle_prepare,
@@ -132,6 +222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _handle_validate(args: argparse.Namespace) -> int:
     scenario_path = require_existing_file(Path(args.scenario))
+    _authorize_plan117_v5(scenario_path)
     scenario = load_scenario(scenario_path)
     bindings = resolve_bindings(scenario, tuple(args.bind))
     registry = build_registry()
@@ -152,12 +243,15 @@ def _handle_validate(args: argparse.Namespace) -> int:
 
 def _handle_prepare(args: argparse.Namespace) -> int:
     scenario_path = require_existing_file(Path(args.scenario))
+    v5 = _authorize_plan117_v5(scenario_path)
     capture_root = require_directory(Path(args.capture_root), create=True)
     scenario = load_scenario(scenario_path)
     bindings = resolve_bindings(scenario, tuple(args.bind))
     registry = build_registry()
     assert_scenario_adapters_registered(scenario, registry)
     digest = scenario_sha256(scenario, bindings)
+    if v5:
+        return _prepare_plan117_v5(capture_root, scenario, bindings, digest)
     existing = _find_run_for_digest(capture_root, digest)
     if existing is not None:
         run_id, origin = existing
@@ -183,8 +277,26 @@ def _handle_prepare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _prepare_plan117_v5(capture_root: Path, scenario, bindings, digest: str) -> int:
+    """One run ID chosen before the run (the reviewed RunSpec names it); its private key is created once."""
+    run_id = next((str(item.value) for item in bindings if item.name == "run_id"), "")
+    if not plan117_contract._RUN_ID.fullmatch(run_id):
+        raise HostError("plan117_v5_run_id_invalid")
+    existing = _find_run_for_digest(capture_root, digest)
+    if existing is not None and existing[0] != run_id:
+        raise HostError("run_id_conflict")
+    origin = existing[1] if existing is not None else None
+    context = write_run_manifest(capture_root=capture_root, scenario=scenario, bindings=bindings, run_id=run_id, monotonic_origin_ns=origin)
+    prepare_fixtures(capture_root=capture_root, scenario=scenario, bindings=bindings, run_id=context.run_id)
+    key = plan117_mod.create_run_key(capture_root / run_id)
+    summary = {"run_id": run_id, "private_root_commitments": plan117_mod.private_root_commitments(capture_root, key)}
+    print(json.dumps(summary, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
 def _handle_check(args: argparse.Namespace) -> int:
     scenario_path = require_existing_file(Path(args.scenario))
+    _authorize_plan117_v5(scenario_path)
     capture_root = require_directory(Path(args.capture_root), create=False)
     scenario = load_scenario(scenario_path)
     bindings = resolve_bindings(scenario, tuple(args.bind))
@@ -199,8 +311,15 @@ def _handle_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _refuse_plan117_v5_on_legacy_route(scenario_path: Path) -> None:
+    """main routes v5 on the exact --scenario flag only; an argparse abbreviation (--scen) lands here instead."""
+    if _authorize_plan117_v5(scenario_path):
+        raise HostError("plan117_v5_legacy_route_refused")
+
+
 def _handle_collect(args: argparse.Namespace) -> int:
     scenario_path = require_existing_file(Path(args.scenario))
+    _refuse_plan117_v5_on_legacy_route(scenario_path)
     capture_root = require_directory(Path(args.capture_root), create=False)
     workspace_root = require_absolute_path(Path(args.workspace_root)).resolve()
     agent_executable = require_absolute_path(Path(args.agent_executable)).resolve()
@@ -479,6 +598,7 @@ def _handle_collect(args: argparse.Namespace) -> int:
 
 def _handle_classify(args: argparse.Namespace) -> int:
     scenario_path = require_existing_file(Path(args.scenario))
+    _authorize_plan117_v5(scenario_path)
     capture_root = require_directory(Path(args.capture_root), create=False)
     result_path = require_absolute_path(Path(args.result)).resolve()
     scenario = load_scenario(scenario_path)
@@ -554,6 +674,7 @@ def _stability_interval_ns(scenario) -> int:
 
 def _handle_redact(args: argparse.Namespace) -> int:
     scenario_path = require_existing_file(Path(args.scenario))
+    _refuse_plan117_v5_on_legacy_route(scenario_path)
     workspace_root = require_absolute_path(Path(args.workspace_root)).resolve()
     capture_root = require_directory(Path(args.capture_root), create=False)
     staging_root = require_directory(Path(args.staging_root), create=True)
@@ -668,6 +789,83 @@ def _handle_redact(args: argparse.Namespace) -> int:
             sort_keys=True,
         )
     )
+    return 0
+
+
+def _plan117_v5_context(args: argparse.Namespace) -> tuple[RunContext, Path, bytes]:
+    """Registered scenario + verified run manifest for a v5 stage; returns context, run dir, scenario bytes."""
+    scenario_path = require_existing_file(Path(args.scenario))
+    scenario_bytes = plan117_mod.require_registered_scenario(scenario_path, PLAN117_V5_CHECKOUT_ROOT)
+    capture_root = require_directory(Path(args.capture_root), create=False)
+    scenario = load_scenario(scenario_path)
+    bindings = resolve_bindings(scenario, tuple(args.bind))
+    assert_scenario_adapters_registered(scenario, build_registry())
+    digest = scenario_sha256(scenario, bindings)
+    existing = _find_run_for_digest(capture_root, digest)
+    if existing is None:
+        raise HostError("run_dir_missing")
+    run_id, origin = existing
+    context = RunContext(schema="evidence-run-v1", scenario_id=scenario.scenario_id, run_id=run_id, scenario_sha256=digest,
+                         capture_root=capture_root, monotonic_origin_ns=origin)
+    return context, capture_root / run_id, scenario_bytes
+
+
+def _handle_collect_plan117_v5(args: argparse.Namespace) -> int:
+    checkout = PLAN117_V5_CHECKOUT_ROOT
+    context, run_dir, scenario_bytes = _plan117_v5_context(args)
+    if (run_dir / "raw-bundle.json").exists():
+        raise HostError("run_already_collected")  # one run ID owns one immutable bundle; never append or merge
+    scenario = load_scenario(Path(args.scenario))
+    run_preconditions(capture_root=context.capture_root, scenario=scenario, run_id=context.run_id)
+    registry, _payload = plan117_mod.load_trusted_registry(checkout)
+    try:
+        spec = registry.lookup(context.run_id)
+    except plan117_contract.ContractError as exc:
+        raise HostError(exc.code) from None
+    if spec.scenario_sha256 != context.scenario_sha256 or spec.scenario_source_sha256 != plan117_contract.sha256_hex(scenario_bytes):
+        raise HostError("run_spec_mismatch")
+    scratch = require_absolute_path(Path(args.scratch_parent)).resolve()
+    plan117_mod.verify_invocation_record(Path(args.invocation_record), checkout_root=checkout, checkout_commit=_plan117_v5_checkout_head(checkout),
+                                         forbidden_roots=(context.capture_root, scratch), run_id=context.run_id)
+    fixture, fixture_sha = plan117_mod.load_descriptor_fixture(checkout)
+    inputs = plan117_mod.CollectInputs(context, spec, fixture, fixture_sha, require_absolute_path(Path(args.normal_source_root)).resolve(), scratch)
+    batch = plan117_mod.collect_current_client_gate(inputs, PLAN117_V5_HOST_ACTIONS_FACTORY(checkout))
+    try:
+        write_raw_bundle(context=context, batches=(batch,))
+    except OSError:
+        raise HostError("raw_bundle_write_failed") from None  # a storage error's message can carry private paths
+    print(json.dumps({"run_id": context.run_id, "observations": len(batch.observations), "artifacts": len(batch.artifacts)}, separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+def _handle_redact_plan117_v5(args: argparse.Namespace) -> int:
+    from evidence_handoff.collector.bundles import _atomic_write_json, validate_custody_roots
+
+    context, _run_dir, _scenario_bytes = _plan117_v5_context(args)
+    staging = require_directory(Path(args.staging_root), create=True)
+    quarantine = require_directory(Path(args.quarantine_root), create=True)
+    sanitized = require_directory(Path(args.sanitized_root), create=True)
+    result_path = require_absolute_path(Path(args.result)).resolve()
+    try:
+        validate_custody_roots(capture_root=context.capture_root, other_roots=(staging, quarantine, sanitized), forbidden_roots=())
+    except ValueError as exc:
+        raise HostError(str(exc.args[0]) if exc.args else "path_overlap") from None
+    checkout = PLAN117_V5_CHECKOUT_ROOT.resolve()
+    if any(root == checkout or root.is_relative_to(checkout) for root in (context.capture_root, staging, quarantine)):
+        raise HostError("private_root_inside_checkout")
+    redaction_mod.reject_cloud_sync_roots((context.capture_root, staging, quarantine, sanitized))
+    tokens = tuple(PLAN117_V5_IDENTITY_TOKENS_FACTORY())
+    if args.review_receipt is None:
+        staged = plan117_mod.stage_redaction(context, staging_root=staging, quarantine_root=quarantine, identity_tokens=tokens)
+        summary = {"status": staged.status, "gate": staged.gate.to_json()}
+    else:
+        receipt = require_absolute_path(Path(args.review_receipt)).resolve()
+        if receipt.is_relative_to(sanitized):
+            raise HostError("receipt_inside_promoted_root")
+        plan117_mod.promote_with_receipt(context, staging_root=staging, sanitized_root=sanitized, receipt_path=receipt, identity_tokens=tokens)
+        summary = {"status": "promoted"}
+    _atomic_write_json(result_path, {"schema": "plan117-v5-redact-result-v1", "complete": True, "run_id": context.run_id, **summary})
+    print(json.dumps({"run_id": context.run_id, **summary}, separators=(",", ":"), sort_keys=True))
     return 0
 
 

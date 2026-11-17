@@ -81,6 +81,7 @@ relevant records before proposing a change in their area.
 | [ADR-040: Accepts ADR-036 to ADR-039](decisions/ADR-040-accepts-adr-036-to-039-plan-12-10-memory-m1.md) | Accepts the Plan 12.10 memory M1 decisions as merged, with their disclosed limits; operator acceptance (source S20) |
 | [ADR-041: Prefix prompt caching on by default](decisions/ADR-041-prefix-prompt-caching-on-by-default.md) | The shipped Haiku 5.5 route sets `prompt_cache: prefix`; launches re-approve the new registry hash once (#485) |
 | [ADR-042: Memory store topology, commit and recovery](decisions/ADR-042-memory-store-topology-commit-and-recovery.md) | Accepted memory lives in one fenced stream per project on its own durable Redis, served only once fsync is confirmed on the appending connection; Proposed under Plan 12.11 (#490) |
+| [ADR-043: Durable ACP session retention, replay and interrupted-state refusal](decisions/ADR-043-durable-acp-session-retention-and-replay.md) | Plan 11.7 v5's D1–D13 mechanisms for #240: schema 2 over the existing Redis runtime, sealed-only resume, retained healthy uncommitted replay, sliding TTL and no purge API; accepted with the plan's exact-hash adoption, with empirical open items |
 | [Ordering/lifecycle/signals and queue decision](decisions/2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Exact operator authority, accepted proposals, alternatives and scoped ADR-027 supersession |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
@@ -126,7 +127,7 @@ Live plans (each listed in the backlog's live plan registry):
 |---|---|
 | [Plan 12.11 v2: memory and continuity (M3)](superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v2.md) | #490; automatic memory, commands, continuity and same-drive recovery |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
-| [Plan 11.7 v3: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Resume an ACP session in Zed |
+| [Plan 11.7 v5: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v5.md) | #240; durable ACP sessions and Zed resume ([adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md)). v1 to v3 are in `archive/`; v4 is a local frozen predecessor |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
 | [Plan 11.24 v6: guided session-load probe](superpowers/plans/2026-08-18-plan-11-24-zed-guided-session-load-probe_v6.md) | Probe of Zed's `session/load` |
 | [Plan 11.27 v12: Git test immunity and CI secret scan](superpowers/plans/2026-09-04-plan-11-27-git-test-immunity-and-production-secret-scan_v12.md) | Latest version; v2 to v10 are in `archive/` |
@@ -160,6 +161,7 @@ Live plans (each listed in the backlog's live plan registry):
 | [Ruff first-tranche disposition and verification](superpowers/reports/2026-10-30-ruff-first-tranche.md) | All 27 original C4/PERF/RET/ASYNC findings, src-only gate, exact-line contracts and provisional Windows evidence under issue #324 |
 | [Ruff first-tranche source and evidence manifest](superpowers/reports/2026-10-30-ruff-first-tranche-manifest.yaml) | Original tested hashes, review-fix delta and retained evidence hashes for the bounded Ruff tranche |
 | [H4 historical replay test-contract repair](superpowers/reports/2026-10-30-h4-historical-replay-test-contract-repair.md) | #447: test-only migration to sealed replay, exact node mappings, retained drift guards and source-bound focused evidence |
+| [Plan 11.7 v5 adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md) | #240: the operator's adoption of v5 at its exact hash, the predecessor disposition, the released E1–E2 scope and what the E1–E2 delivery does not establish |
 | [Plan 12.2 offline delivery merge record](superpowers/reviews/2026-10-08-plan-12-2-offline-merge-record.md) | PR #276 merged as c509fc8 on 2026-10-08, with Package A (#216 marked merged); offline merge gate complete, not a full CP4 pass; three live obligations remain deferred |
 | [Plan 12.2 CP4 offline delivery disposition](superpowers/reviews/2026-10-08-plan-12-2-cp4-offline-delivery-disposition.md) | Operator decision, 2026-10-08: offline delivery through 2068366 is complete; Luna qualification, the summary-quality receipt and real-editor Task 13 are deferred as UNRUN obligations; not a full CP4 pass |
 | [Plan 12.2 CP4 offline review disposition](superpowers/reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md) | Codex accepts the offline batch at cf9bb9d with declared scope; five rulings; full CP4 remains open |

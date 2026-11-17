@@ -102,7 +102,8 @@ def test_support_package_has_no_main_or_prompt_injection_ids() -> None:
 
 
 def test_only_entry_point_imports_support_from_outside() -> None:
-    allowed = {ENTRY.resolve()}
+    # Plan 11.7 v5: the standalone offline verifier reuses the shared contract/collector; it collects nothing.
+    allowed = {ENTRY.resolve(), (REPO_ROOT / "tools" / "verify_plan117_v5_current_client_evidence.py").resolve()}
     offenders: list[str] = []
     for path in _tracked_python_files("src"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

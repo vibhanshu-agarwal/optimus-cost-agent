@@ -1,0 +1,37 @@
+schema = "evidence-scenario-v1"
+scenario_id = "plan117-current-client-gate-v5"
+required_evidence = [
+  "observation_window_complete",
+]
+
+[[required_bindings]]
+name = "run_id"
+kind = "string"
+required = true
+min_length = 8
+max_length = 64
+
+[client]
+adapter_id = "zed_acp_client"
+contract_version = "v1"
+parameters = []
+
+[fixture]
+adapter_id = "plan117_v5_isolated_source_fixture"
+contract_version = "v1"
+parameters = []
+
+[[preconditions]]
+adapter_id = "capture_root_ready"
+contract_version = "v1"
+parameters = []
+
+[[collection]]
+adapter_id = "plan117_v5_current_client_collector"
+contract_version = "v1"
+parameters = []
+
+[[detection]]
+adapter_id = "crash_detector"
+contract_version = "v1"
+parameters = []

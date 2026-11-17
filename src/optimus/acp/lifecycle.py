@@ -211,6 +211,17 @@ class TurnControl:
         with self._lock:
             return self._transport_abandoned
 
+    def protocol_response_in_handoff(self) -> bool:
+        """The protocol response is QUEUED, WRITE_STARTED or FLUSHED: handoff, not execution.
+
+        One locked read, so a concurrent FLUSHED publication cannot fall between two observations.
+        Not a delivery claim (rpc_response_delivery is); teardown and finalization move the live
+        states to AMBIGUOUS or SUPPRESSED.
+        """
+        with self._lock:
+            slot = self._send_slots.get(TurnSendKey(kind="protocol_response", message_id="response"))
+            return slot is not None and slot.authoritative in {SendState.QUEUED, SendState.WRITE_STARTED, SendState.FLUSHED}
+
     def provider_attempt_started(self) -> bool:
         with self._lock:
             for (kind, _op_id), state in self._directives.items():
