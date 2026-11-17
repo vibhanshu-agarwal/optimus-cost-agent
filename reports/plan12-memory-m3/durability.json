@@ -1,8 +1,8 @@
 {
   "schema": "plan12-memory-m3.durability.v1",
   "source": {
-    "head": "git:ce8a0d17e51b5ac37f61311a59025cbfbdc1f111",
-    "run_id": "20261117T094341-11096-d0e1d7",
+    "head": "git:c56592729c8fd08961d98d4a9f3396ff528ee71c",
+    "run_id": "20261117T121420-20892-458668",
     "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_store.py tests/integration/memory/test_lifecycle.py",
     "exit_status": 0,
     "completeness": "COMPLETE"
