@@ -206,16 +206,21 @@ def test_only_the_lease_holder_appends_and_a_new_holder_fences_the_old_one(provi
     assert _lease(service, project, "host-2") > resumed
 
 
-def test_an_event_whose_fsync_was_never_confirmed_is_not_served_until_a_later_one_is(provisioned: Provisioned) -> None:
+def test_an_event_appended_without_its_proof_is_served_only_once_a_read_proves_it_on_disk(provisioned: Provisioned) -> None:
     service, project = _service(provisioned), _project()
-    token = _lease(service, project)
+    _lease(service, project)
     unconfirmed = _event(item="m-00000000000000cc")
-    record = {"type": "event", "key": "e" * 64, "digest": "0" * 64, "event": unconfirmed}
-    provisioned.connect().xadd(memory_store.MemoryStore._key(project, "events"), {"e": json.dumps(record)})  # appended, never confirmed
-    assert _call(service, {"op": "read", "project": project, "item": unconfirmed["item"]})[1]["item"] is None
-    assert _append(service, project, token, _event())[1]["durable_state"] == "confirmed"
-    # AOF is ordered: the later confirmation covers the earlier append too
+    entry, payload = memory_store._split(unconfirmed)
+    client = provisioned.connect()
+    watermark = memory_store.MemoryStore._key(project, "durable")
+    pipe = client.pipeline()  # what an append leaves when its WAITAOF never answered: the transaction, and no watermark over it
+    pipe.xadd(memory_store.MemoryStore._key(project, "events"), {"e": json.dumps({"type": "event", "key": "e" * 64, "event": entry})})
+    pipe.hset(memory_store.MemoryStore._key(project, "payloads"), unconfirmed["event_id"], json.dumps({**payload, "digest": "0" * 64}))
+    pipe.execute()
+    assert client.get(watermark) is None
+    # the read writes on the writer's connection after the tail and waits for that fsync: AOF is ordered, so it covers the tail
     assert _call(service, {"op": "read", "project": project, "item": unconfirmed["item"]})[1]["item"]["event_id"] == unconfirmed["event_id"]
+    assert client.get(watermark) is not None
 
 
 def test_lists_page_by_item_and_a_cursor_works_only_where_it_was_issued(provisioned: Provisioned) -> None:

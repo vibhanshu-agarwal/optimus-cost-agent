@@ -7,6 +7,7 @@ case skips before any client or Docker command runs. Never the shared test Redis
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -60,9 +61,9 @@ class Provisioned:
         return memory_store.connect(self.endpoint())
 
 
-def setup_config(tmp: Path) -> tuple[Path, MemoryStoreConfig, str]:
+def setup_config(tmp: Path, **changes: Any) -> tuple[Path, MemoryStoreConfig, str]:
     keyring = FakeKeyring()
-    run_store_setup(tmp, keyring_backend=keyring, confirm=lambda _description: True, defaults=settings())
+    run_store_setup(tmp, keyring_backend=keyring, confirm=lambda _description: True, defaults={**settings(), **changes})
     root = memory_store_root(tmp)
     _literal, config, _refusal = read(root)
     assert config is not None
@@ -95,3 +96,23 @@ def wait_for_auth(provisioned: Provisioned) -> redis.Redis:
             if time.monotonic() > deadline:
                 raise
             time.sleep(0.5)
+
+
+@contextlib.contextmanager
+def provisioned_variant(tmp: Path, *server_flags: str, **setting_changes: Any) -> Iterator[Provisioned]:
+    """The released store recreated with extra server flags or settings (the released CP2 fault injection). The flags stay in
+    force for every restart inside the block, so the launch's own settings check still matches; the plain launch returns after."""
+    if not os.environ.get(RELEASE_FLAG) or shutil.which("docker") is None:
+        pytest.skip(f"UNRUN: {RELEASE_FLAG} is not set; no Docker command or client ran")
+    plain = local_infra._memory_store_server_args
+    local_infra._memory_store_server_args = lambda config: [*plain(config), *server_flags]  # type: ignore[assignment]
+    try:
+        remove_released_resources()
+        root, config, password = setup_config(tmp, **setting_changes)
+        status = local_infra.ensure_memory_store_redis(root)
+        assert status.state == "ready", status
+        provisioned = Provisioned(root, config, password)
+        wait_for_auth(provisioned)
+        yield provisioned
+    finally:
+        local_infra._memory_store_server_args = plain  # type: ignore[assignment]

@@ -6289,19 +6289,35 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.memory_store:MemoryStore._append:json_serialization",
+      "key": "optimus_gateway.memory_store:_json:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: serializes the validated event or checkpoint into its own stream entry; the shape is closed by memory_store_contract, and nothing is logged.",
+      "rationale": "Inspection: serializes a validated event's payload-free stream entry, its payload for the project hash, a checkpoint, or a value to hash; shapes are closed by memory_store_contract, and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_memory_store_contract.py::test_anything_else_is_refused_before_the_store",
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.memory_store:_digest:json_serialization",
+      "key": "optimus_gateway.memory_store:MemoryStore._append:redis_hash_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: hashes the validated change for idempotency; only the digest is kept, and nothing is logged.",
+      "rationale": "Inspection: writes a validated event's payload (title, statement, anchors, lineage, retry digest) into the project's payload hash under its event id, in the same transaction as its stream entry; nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_memory_store_contract.py::test_anything_else_is_refused_before_the_store",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_purge.py::test_a_purge_destroys_every_version_and_keeps_only_a_payload_free_tombstone",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:MemoryStore._settle:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a Redis refusal's text is only tested for 'in progress' to tell a concurrent rewrite from a real error; it is never logged or returned, and other refusals propagate to the service's stable code.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_purge.py::test_a_rewrite_already_running_at_the_purge_is_never_counted",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:MemoryStore._settle:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: Redis INFO is read for the run id and persistence counters and flags; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/optimus_gateway/test_memory_store_purge.py::test_a_restarted_redis_starts_the_disk_step_over",
       "evidence_tier": "unit"
     },
     {

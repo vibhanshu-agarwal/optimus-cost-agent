@@ -6,9 +6,10 @@ as the index's scopes are (ADR-037): the Gateway authenticates the shared key, n
 can name another project. The trusted host binds them and the model never selects one.
 
 One stream per project is authoritative: `append` (admit, update, withdraw, off) and `checkpoint` add one event under the
-project's fenced lease; `read`, `list` and `checkpoints` serve only what `WAITAOF` confirmed. `purge`, `purge_status`,
-`export`, `restore` and `restore_status` have their shapes here and answer `MEMORY_OPERATION_UNAVAILABLE` until Task 2's journal
-and Task 4's recovery copy back them. Limits are agent-selected, frozen in `reports/plan12-memory-m3/targets.json`.
+project's fenced lease; `read`, `list` and `checkpoints` serve only what `WAITAOF` confirmed. `purge` destroys one item's text
+behind a journalled tombstone and `purge_status` reports and drives its disk step (Task 2). `export`, `restore` and
+`restore_status` have their shapes here and answer `MEMORY_OPERATION_UNAVAILABLE` until Task 4's recovery copy backs them.
+Limits are agent-selected, frozen in `reports/plan12-memory-m3/targets.json`.
 """
 
 from __future__ import annotations
@@ -288,5 +289,5 @@ _SHAPES: Final[dict[str, Callable[[dict[str, Any]], None]]] = {
     "restore_status": _restore_status,
 }
 OPERATIONS: Final = frozenset(_SHAPES)
-# Shapes fixed now: Task 2's journal serves purge and its status, Task 4 the recovery copy and restore.
-UNAVAILABLE: Final = frozenset({"purge", "purge_status", "export", "restore", "restore_status"})
+# Shapes fixed now; Task 4 serves the recovery copy and restore.
+UNAVAILABLE: Final = frozenset({"export", "restore", "restore_status"})
