@@ -66,7 +66,7 @@ class GatewayToolDependencies:
     counter because both use ``ToolClass.PACKAGE_AND_ADVISORY_METADATA``.
     """
 
-    web_provider: WebToolProvider
+    web_provider: WebToolProvider | None
     package_provider: PackageToolProvider
     advisory_provider: AdvisoryToolProvider
     policy: GatewayToolPolicy
@@ -97,6 +97,9 @@ def handle_tool_request(
 
 
 def _handle_web_search(body: Mapping[str, Any], deps: GatewayToolDependencies) -> tuple[int, dict[str, Any]]:
+    web_provider = deps.web_provider
+    if web_provider is None:
+        return 404, {"error": "not found"}
     try:
         fields = validate_web_search_body(body)
     except GatewayToolValidationError as exc:
@@ -141,7 +144,7 @@ def _handle_web_search(body: Mapping[str, Any], deps: GatewayToolDependencies) -
         search_depth=fields.search_depth,
     )
     try:
-        provider_result = deps.web_provider.search(provider_request)
+        provider_result = web_provider.search(provider_request)
     except Exception as exc:  # noqa: BLE001 - provider faults are always sanitized before export
         return _provider_error_response(exc)
 
@@ -178,6 +181,9 @@ def _handle_web_search(body: Mapping[str, Any], deps: GatewayToolDependencies) -
 
 
 def _handle_web_extract(body: Mapping[str, Any], deps: GatewayToolDependencies) -> tuple[int, dict[str, Any]]:
+    web_provider = deps.web_provider
+    if web_provider is None:
+        return 404, {"error": "not found"}
     try:
         fields = validate_web_extract_body(body)
     except GatewayToolValidationError as exc:
@@ -222,7 +228,7 @@ def _handle_web_extract(body: Mapping[str, Any], deps: GatewayToolDependencies) 
         context=context, urls=fields.urls, max_chars_per_source=fields.max_chars_per_source
     )
     try:
-        provider_result = deps.web_provider.extract(provider_request)
+        provider_result = web_provider.extract(provider_request)
     except Exception as exc:  # noqa: BLE001 - provider faults are always sanitized before export
         return _provider_error_response(exc)
 
