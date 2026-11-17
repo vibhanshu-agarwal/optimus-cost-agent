@@ -257,18 +257,31 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
         ("decision", "Actually, change the rule about pushing to main to allow direct pushes, but only after I approve this change."),
         ("decision", "Change the rule about pushing to main to allow it after review."),
         ("retraction", "Cancel the rule about pushing to main. That needs operator approval."),
+        # review 7, finding 1: no grammar shows a replacement unconditional, so an update never supersedes on its own
+        ("decision", "Actually, change the rule about pushing to main to allow direct pushes subject to my approval of this change."),
+        ("decision", "Change the rule about pushing to main to allow pushes from release branches."),
+        ("decision", "Replace the rule about pushing to main with pushing from release branches."),
+        ("decision", "Cancel the rule about pushing to main."),  # a withdrawal's words labelled an update supersede nothing
     ):
         assert _act(act, words, target="m-" + "a" * 16, existing=rule) == "SPANS_UNVERIFIED", words
     for act, words, reason in (("retraction", "Cancel the rule about pushing to main.", "RETRACTED"),
                                ("retraction", "Ignore what I said about pushing to main.", "RETRACTED"),
                                ("retraction", "Actually, ignore what I said about pushing to main.", "RETRACTED"),
-                               ("retraction", "We want to drop the rule about pushing to main.", "RETRACTED"),
-                               ("decision", "Change the rule about pushing to main to allow pushes from release branches.", "SUPERSEDED"),
-                               ("decision", "Replace the rule about pushing to main with pushing from release branches.", "SUPERSEDED")):
+                               ("retraction", "We want to drop the rule about pushing to main.", "RETRACTED")):
         assert _act(act, words, target="m-" + "a" * 16, existing=rule) == reason, words  # controls
     ruff = (mx.ExistingItem("m-" + "a" * 16, "From now on we always run ruff before every commit."),)  # K1's retraction
     assert _act("retraction", "Actually, ignore what I said about running ruff before every commit.", target="m-" + "a" * 16,
                 existing=ruff) == "RETRACTED"
+    # review 7, findings 2 and 3: a new item needs a form that says it is the user's own rule
+    for words in ("Alice says never push to main.", "Please explain whether we should always push to main.",
+                  "Run ruff before every commit.", "The lead is sure we should never push to main."):
+        assert _act("decision", words) == "SPANS_UNVERIFIED", words
+    for words in ("From now on, new tests should use plain pytest asserts, not unittest methods.",
+                  "We use uv for every Python environment in this repo.", "I want error messages to name the file and line.",
+                  "Always run ruff check before you propose a commit.", "Please never add a new dependency without telling me first.",
+                  "Our release branch is cut every second Tuesday.",
+                  "The payments module is owned by the billing team; do not refactor it without asking."):
+        assert _act("decision", words) == "ADMITTED", words  # controls: the workload's forms
     # review 5: the host resolves the target; words that name two live items withdraw neither
     both = (*rule, mx.ExistingItem("m-" + "b" * 16, "Never push to main without review."))
     assert _act("retraction", "Cancel the rule about pushing to main.", target="m-" + "a" * 16, existing=both) == "SPANS_UNVERIFIED"
@@ -323,7 +336,7 @@ def test_a_rule_whose_reach_the_block_leaves_open_goes_off(block: str, chosen: s
 @pytest.mark.parametrize(("block", "chosen", "kept"), [
     ("We always deploy to main, only after operator approval.", "We always deploy to main,", "We always deploy to main, only after operator approval."),
     ("Never push to `main`; don't skip CI.", "Never push to", "Never push to `main`; don't skip CI."),  # a code token, an apostrophe
-    ("Run ruff before every commit.", "Run ruff", "Run ruff before every commit."),
+    ("Always run ruff before every commit.", "run ruff", "Always run ruff before every commit."),
 ])
 def test_a_plain_sentence_is_kept_whole(block: str, chosen: str, kept: str) -> None:
     """Controls: one plain sentence of the user's own is admitted whole, the condition with it."""

@@ -52,10 +52,10 @@ _DURABLE = re.compile(
 _QUESTION_START = re.compile(r"^\s*(what|where|why|how|who|whom|which|when|does|do|did|is|are|was|were|can|could|would|should|will|"
                              r"if)\b", re.IGNORECASE)
 _HYPOTHETICAL = re.compile(r"^\s*(suppose|imagine|what if|hypothetically)\b", re.IGNORECASE)
-# What a retraction's or an update's own words must hold (Codex CP2 reviews 4 and 5, finding 1): one whole sentence of a
-# narrow form that itself withdraws the item, unconditionally, or replaces it with something new, and that names nothing else.
-# The model may locate the words, never decide what they do. Every other form goes off: the rule stays as it was, and
-# `/forget <id>` withdraws it explicitly.
+# What a retraction's own words must hold (Codex CP2 reviews 4 to 7, finding 1): one whole sentence that itself withdraws the
+# item, unconditionally, and names nothing else. The model may locate the words, never decide what they do. No grammar here
+# can show that a replacement is unconditional ("... subject to my approval of this change"), so an update never supersedes
+# automatically: it goes off, and the user withdraws the rule and states the new one. Plan line 110: ambiguity goes off.
 _LEAD = r"(?:(?:ok(?:ay)?|so|also|and|actually|please|sorry)\s*,?\s+)*"
 _SUBJECT = r"(?:(?:i|we)\s+(?:now\s+|hereby\s+)?(?:want\s+to\s+|would\s+like\s+to\s+|'d\s+like\s+to\s+)?)?"
 _REFERENCE = (r"(?:what\s+(?:i|we)\s+said\s+(?:about|on|regarding)\s+"
@@ -63,14 +63,20 @@ _REFERENCE = (r"(?:what\s+(?:i|we)\s+said\s+(?:about|on|regarding)\s+"
               r"(?:(?:about|on|for|regarding|against|to|that\s+says|saying)\s+)?)?)")
 _WITHDRAWS = re.compile(rf"{_LEAD}{_SUBJECT}(?:withdraw|retract|cancel|drop|forget|disregard|ignore|delete|remove|scratch)\s+"
                         rf"{_REFERENCE}(?P<object>.+)", re.IGNORECASE)
-_CHANGES = re.compile(rf"{_LEAD}{_SUBJECT}(?:change|replace|update|revise|amend)\s+{_REFERENCE}", re.IGNORECASE)
-_CHANGED_TO = re.compile(r"\s+(?:to|with)\s+(?=\S)")  # where a changed item's words end and what replaces them begins
-# Words that make the withdrawn or changed words conditional, or join something else to them: "..., but only after I approve".
+# Words that make the withdrawn words conditional, or join something else to them: "..., but only after I approve".
 _CONDITION = re.compile(r"[,;()]|\b(and|but|or|then|only|if|unless|except|until|after|before|once|when|whenever|while|provided|so)\b",
                         re.IGNORECASE)
-# A replacement that replaces nothing: "Change the rule about pushing to main to stay the same."
-_NOOP = re.compile(r"\b(same|unchanged|as (?:it|they) (?:is|are|was|were|stands?)|as before|nothing|stays?|remains?|keep\w*|kept)\b",
-                   re.IGNORECASE)
+# What a new user item's one sentence must be (Codex CP2 review 7, findings 2 and 3): a rule in a form that says it is the
+# user's own. An instruction with "always", "never" or "don't"; a first-person habit, want or decision; a statement led by
+# "from now on"; or a fact about "our" project, or who owns a part of it. Reported speech ("Alice says never push to main."),
+# a request ("Please explain whether we should always push to main.") and every other form go off.
+_ADMITS = re.compile(
+    r"(?:from now on|going forward|by default)\b"
+    r"|(?:please\s+)?(?:always|never|do not|don't)\b"
+    r"|(?:we|i)\s+(?:always|never|usually|prefer|use|want|need|decided|have decided|'ve decided|do not|don't|will always|will never|"
+    r"must|should)\b"
+    r"|our\s+(?:[\w-]+\s+){0,4}?(?:is|are|uses|use|runs on|run on)\b"
+    r"|(?:the|our)\s+(?:[\w-]+\s+){0,4}?(?:is|are)\s+owned\s+by\b", re.IGNORECASE)
 # What opens someone else's words for what follows in the block: "The following text is copied from a README.", or a source
 # named before a colon: "The log output:" (review 2 and review 3, finding 1).
 _INTRODUCES = re.compile(r"\b(excerpt|quot\w*|pasted|copied|verbatim|follows|following|below)\b"
@@ -347,24 +353,6 @@ def _withdrawn(said: Sequence[str], title: str) -> str | None:
     return None
 
 
-def _changed(said: Sequence[str], title: str) -> str | None:
-    """The words a sentence of the user's changes when, whole, it replaces this item alone with something new: "Change the rule
-    about pushing to main to allow pushes from release branches." What replaces it holds at least two words the item does not,
-    and no condition or second clause: "..., but only after I approve this change." would change it now (review 6, finding 1)."""
-    for sentence in _sentences(said):
-        sentence = sentence.rstrip(" .!")
-        head = _CHANGES.match(sentence)
-        if head is None:
-            continue
-        rest = sentence[head.end():]
-        for split in _CHANGED_TO.finditer(rest):
-            words, new = rest[: split.start()], rest[split.end():]
-            fresh = _content_words(new) - _content_words(title.removesuffix("…"))
-            if _only_names(words, title) and len(fresh) >= 2 and not _NOOP.search(new) and not _CONDITION.search(new):
-                return words
-    return None
-
-
 def _names(text: str, title: str) -> bool:
     """Whether the words name this item: they hold at least two of its title's content words (all, if it has fewer) and half
     of them."""
@@ -377,7 +365,8 @@ def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | N
     """The speech act the user's own words bear out, and for a retraction or an update the words that name its target (Codex
     CP2 reviews 1 to 5). A quotation anywhere in a block makes it all someone else's; a question or hypothetical is that,
     whatever the model labels it; a block that is not one plain sentence
-    bears nothing. A retraction needs `_withdrawn`, and an update `_changed`, for the item it names. None: the words
+    bears nothing. A new item needs a form of the user's own (`_ADMITS`); a retraction needs `_withdrawn` for the item it names; an update
+    goes off. None: the words
     do not bear the model out, so it goes off."""
     said = []
     for span in proposal.spans:
@@ -394,10 +383,11 @@ def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | N
             return None, None
         said.append(part)
     if proposal.target is None:
-        return (None if proposal.speech_act == "retraction" else proposal.speech_act), None
-    if target_title is None:
-        return None, None
-    refers = _withdrawn(said, target_title) if proposal.speech_act == "retraction" else _changed(said, target_title)
+        admits = proposal.speech_act != "retraction" and bool(said) and all(_ADMITS.match(part) for part in said)
+        return (proposal.speech_act if admits else None), None
+    if target_title is None or proposal.speech_act != "retraction":
+        return None, None  # an update never supersedes on its own (see _WITHDRAWS)
+    refers = _withdrawn(said, target_title)
     return (proposal.speech_act if refers is not None else None), refers
 
 

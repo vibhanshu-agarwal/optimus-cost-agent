@@ -350,29 +350,34 @@ def test_a_target_the_words_no_longer_name_alone_under_the_lease_is_left_standin
 
 
 def test_a_target_resolved_after_an_earlier_write_of_the_same_batch_sees_that_write() -> None:
-    """Codex CP2 review 6, finding 2: an update in the batch can make the next withdrawal's words name two items; the live
-    items are read again after each write, so that withdrawal goes off."""
+    """Codex CP2 review 6, finding 2: a write in the batch can make a later withdrawal's words name two items; the live items
+    are read again after each write, so that withdrawal goes off. The first withdrawal reads them; the new rule then written
+    is one the third block's words also name."""
     def saved(text: str, n: int) -> SummarizerResponse:
         return _completed(json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "t", "statement": text,
                                                       "spans": [{"block": "b-1", "start": 0, "end": len(text)}]}]}), n)
 
-    upstream = _Upstream(saved("Never push main nightly.", 1), saved("Always deploy main.", 2))
+    upstream = _Upstream(saved("Never push main nightly.", 1), saved("Never deploy on Fridays.", 2))
     extractor, _settlement, outcomes, _receipts = _harness(upstream)
     extractor.submit(_turn(1, text="Never push main nightly."))
     _until(outcomes, 1)
-    extractor.submit(_turn(2, text="Always deploy main."))
+    extractor.submit(_turn(2, text="Never deploy on Fridays."))
     _until(outcomes, 2)
-    (a,), (b,) = outcomes[0].notices, outcomes[1].notices
-    change, cancel = "Actually, change deploy main to push main nightly.", "Cancel push main nightly."
-    upstream.replies.append(_completed(json.dumps({"candidates": [
-        {"speech_act": "decision", "kind": "constraint", "title": "t", "statement": change, "spans": [{"block": "b-1", "start": 0, "end": len(change)}],
-         "target": b.item},
-        {"speech_act": "retraction", "kind": "constraint", "title": "t", "statement": cancel, "spans": [{"block": "b-2", "start": 0, "end": len(cancel)}],
-         "target": a.item}]}), 3))
-    extractor.submit(mx.TurnInput("s:3", "s-1", (mx.UserBlock("b-1", change), mx.UserBlock("b-2", cancel)), None, (), True))
+    (a,), (x,) = outcomes[0].notices, outcomes[1].notices
+    first, rule, cancel = "Cancel the rule about deploying on Fridays.", "Never push main nightly without review.", "Cancel push main nightly."
+
+    def proposal(act: str, text: str, block: str, target: str | None) -> dict[str, Any]:
+        return {"speech_act": act, "kind": "constraint", "title": "t", "statement": text,
+                "spans": [{"block": block, "start": 0, "end": len(text)}], "target": target}
+
+    upstream.replies.append(_completed(json.dumps({"candidates": [proposal("retraction", first, "b-1", x.item),
+                                                                  proposal("decision", rule, "b-2", None),
+                                                                  proposal("retraction", cancel, "b-3", a.item)]}), 3))
+    extractor.submit(mx.TurnInput("s:3", "s-1", (mx.UserBlock("b-1", first), mx.UserBlock("b-2", rule), mx.UserBlock("b-3", cancel)),
+                                  None, (), True))
     _until(outcomes, 3)
     extractor.close()
-    assert outcomes[2].reasons == ("SUPERSEDED", "SPANS_UNVERIFIED") and extractor._store.read(a.item).event.status == "active"
+    assert outcomes[2].reasons == ("RETRACTED", "ADMITTED", "SPANS_UNVERIFIED") and extractor._store.read(a.item).event.status == "active"
 
 
 def test_a_target_the_words_name_alone_is_withdrawn() -> None:
