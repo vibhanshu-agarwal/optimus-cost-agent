@@ -244,24 +244,52 @@ def test_the_same_words_after_a_withdrawal_are_a_new_item() -> None:
     assert not second.refusals and second.notices[0].item != first.item and second.notices[0].saved
 
 
-_RULE = json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "main", "statement": "Never push directly to main.",
-                                    "spans": [{"block": "b-1", "start": 0, "end": 28}]}]})
-_AGAINST = json.dumps({"candidates": [{"speech_act": "assertion", "kind": "procedure", "title": "release",
-                                       "statement": "Push the release directly to main once the tests pass.", "evidence": ["ev-1"]}]})
+def test_the_same_words_withdrawn_again_and_again_are_saved_each_time() -> None:
+    """Codex CP2 review 2, finding 8, through `submit`: five withdrawals of the same words, and the sixth save still finds a
+    free id; a bounded walk refused it as a version conflict for good."""
+    import hashlib
 
-
-def test_an_agent_lesson_against_a_standing_user_rule_goes_off() -> None:
-    """Codex CP2 review 1, finding 5, through the extractor: the lesson names no target, and still meets the user's rule."""
-    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(_RULE, 1), _completed(_AGAINST, 2)))
-    extractor.submit(_turn(1, text="Never push directly to main."))
-    _until(outcomes, 1)
-    assert outcomes[0].reasons == ("ADMITTED",)
-    work = mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"),))
-    extractor.submit(_turn(2, text="Release it.", work=work))
-    _until(outcomes, 2)
+    upstream = _Upstream(*(_completed(_GOOD, n) for n in range(1, 7)))
+    extractor, _settlement, outcomes, _receipts = _harness(upstream)
+    items: list[str] = []
+    for n in range(1, 7):
+        extractor.submit(_turn(n))
+        _until(outcomes, n)
+        (notice,) = outcomes[-1].notices
+        assert not outcomes[-1].refusals and notice.saved and notice.item not in items, outcomes[-1]
+        items.append(notice.item)
+        with extractor._store.lease() as token:
+            extractor._store.call("append", project="p-1", token=token, expected_version=1, idempotency_key=hashlib.sha256(str(n).encode()).hexdigest(),
+                                  event={"event_id": f"e-withdraw-{n}", "item": notice.item, "version": 2, "action": "withdraw",
+                                         "trust": "user-authored", "status": "withdrawn", "kind": "preference", "scope": "s-1", "title": "",
+                                         "statement": "", "anchors": [], "lineage": [], "valid_from_ms": 0, "valid_until_ms": 0})
     extractor.close()
-    assert outcomes[1].reasons == ("CONFLICTS_WITH_USER",)
-    (off,) = outcomes[1].notices
+
+
+_RULE = json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "deploy", "statement": "Never deploy.",
+                                    "spans": [{"block": "b-1", "start": 0, "end": 13}]}]})
+_AGAINST = json.dumps({"candidates": [{"speech_act": "assertion", "kind": "procedure", "title": "release",
+                                       "statement": "Deploy after tests pass.", "evidence": ["ev-1"]}]})
+
+
+def test_an_agent_lesson_in_a_scope_with_a_user_rule_goes_off() -> None:
+    """Codex CP2 review 1, finding 5, and review 2, finding 6, through the extractor: the lesson names no target and shares one
+    word with the rule, and no check can show it leaves the rule standing; so in a scope holding a user item it goes off."""
+    control = _AGAINST.replace("Deploy after tests pass.", "Run the smoke tests before a deploy.")
+    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(control, 1), _completed(_RULE, 2), _completed(_AGAINST, 3)))
+    work = mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"),))
+    extractor.submit(_turn(1, text="Release it.", work=work))
+    _until(outcomes, 1)
+    assert outcomes[0].reasons == ("ADMITTED",)  # control: no user item in the scope yet
+    extractor.submit(_turn(2, text="Never deploy."))
+    _until(outcomes, 2)
+    assert outcomes[1].reasons == ("ADMITTED",)
+    work = mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"), mx.Evidence("ev-2", "verification")))
+    extractor.submit(_turn(3, text="Release it again.", work=work))
+    _until(outcomes, 3)
+    extractor.close()
+    assert outcomes[2].reasons == ("USER_ITEMS_IN_SCOPE",)
+    (off,) = outcomes[2].notices
     assert extractor._store.read(off.item).event.trust == "off"  # appended as an off record, never as memory
 
 

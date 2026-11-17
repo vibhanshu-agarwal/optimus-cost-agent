@@ -35,7 +35,6 @@ MAX_INPUT_TOKENS: Final = 8192  # frozen in reports/plan12-memory-m3/targets.jso
 MAX_OUTPUT_TOKENS: Final = 512
 MAX_CANDIDATES: Final = 8
 MAX_EXISTING_ITEMS: Final = 20  # current user items a retraction may name
-MAX_CONFLICT_ITEMS: Final = 500  # live user items an agent lesson is checked against; more, and every lesson goes off
 _OVERLAP_TOKENS: Final = 8  # a verbatim run this long from a file or tool result is source text, never memory (B1)
 _COVERAGE: Final = 0.7  # share of a statement's content words its spans must hold
 
@@ -57,6 +56,10 @@ _WITHDRAW = re.compile(r"\b(no longer|not any ?more|scratch that|forget (that|wh
                        r"retract\w*|changed? (my|our) minds?|undo|cancel\w*|drop (that|the))\b", re.IGNORECASE)
 _CHANGE = re.compile(_WITHDRAW.pattern + r"|\b(correction|actually|instead|rather than|switch(ed)? to|moved? to|replaced?|now)\b",
                      re.IGNORECASE)
+_NEGATED = re.compile(r"\b(not|never|no|don'?t|do not|won'?t|shouldn'?t)\s+(\w+\s+)?$", re.IGNORECASE)  # just before a marker
+# A line that opens someone else's words for the lines after it: "A README excerpt follows:", "The log output:".
+_INTRODUCES = re.compile(r"\b(excerpt|quot\w*|pasted|copied|says|said|reads|follows|following|below|output|log|readme|docs?|issue|"
+                         r"ticket|comment|wiki|spec|email|message)\b[^\n]*:\s*$", re.IGNORECASE)
 _QUOTE_MARKS: Final = "\"'“‘`«"
 _TASK_VERBS = frozenset({
     "add", "remove", "fix", "rename", "refactor", "move", "update", "write", "run", "check", "make", "implement", "replace", "extract",
@@ -260,32 +263,57 @@ def _content_words(text: str) -> set[str]:
     return {_stem(word) for word in _WORD.findall(text.lower()) if len(word) >= 3 and word not in _STOPWORDS}
 
 
-def _touches(candidate: MemoryCandidate, rule: set[str]) -> bool:
-    """Whether an agent lesson is about what a user rule governs: it shares at least two of the rule's content words and half
-    of them. Deterministic and deliberately broad; a lesson that only might conflict goes off, since agent memory is optional."""
-    shared = _content_words(f"{candidate.title} {candidate.statement}") & rule
-    return len(shared) >= 2 and 2 * len(shared) >= len(rule)
-
-
 def _said(proposal: Proposal, blocks: dict[str, str]) -> list[str]:
     """What the user actually said, span by span: a user-authored memory's statement is their own words, never the model's
     paraphrase."""
     return [blocks[span.block][span.start : span.end].strip() for span in proposal.spans if span.block in blocks]
 
 
-def _borne_act(proposal: Proposal, said: Sequence[str]) -> str | None:
-    """The speech act the user's own words bear out (Codex CP2 review 1, finding 1). A question, hypothetical or quotation is
-    that, whatever the model labels it. A retraction needs a withdrawal in the words, and an update of a named item needs a
-    change; "Never push to main." said again withdraws nothing. None: the words do not bear the model out, so it goes off."""
-    for part in said:
+def _quoted_at(text: str, start: int) -> bool:
+    """Whether the words at `start` sit inside someone else's words that the block opened before them: an open code fence, a
+    "> " line, or after a line (or the part of this one before them) that introduces a source (Codex CP2 review 2, finding 2)."""
+    before = text[:start]
+    line = before.rfind("\n") + 1
+    if before.count("```") % 2 or text[line:].lstrip().startswith(">"):
+        return True
+    return any(_INTRODUCES.search(part) or _QUOTED.search(part) for part in (*before[:line].splitlines(), before[line:]))
+
+
+def _says(pattern: re.Pattern[str], text: str) -> bool:
+    """The marker is in the words and not negated just before it: "Never cancel the tests." cancels nothing."""
+    return any(not _NEGATED.search(text[: match.start()]) for match in pattern.finditer(text))
+
+
+def _names(text: str, title: str) -> bool:
+    """Whether the words name this item: they hold at least two of its title's content words (all, if it has fewer) and half
+    of them. A withdrawal or change that does not name its target can withdraw nothing (finding 2)."""
+    words = _content_words(title.removesuffix("…")) - {"never", "always"}
+    shared = _content_words(text) & words
+    return bool(words) and len(shared) >= min(2, len(words)) and 2 * len(shared) >= len(words)
+
+
+def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | None) -> str | None:
+    """The speech act the user's own words bear out (Codex CP2 review 1, finding 1; review 2, finding 2). A question,
+    hypothetical or quotation is that, whatever the model labels it, and a quotation is judged in its whole block. A proposal
+    naming an item needs words that name it; a retraction needs an unnegated withdrawal, and an update a change; "Never push to
+    main." said again withdraws nothing. None: the words do not bear the model out, so it goes off."""
+    said = []
+    for span in proposal.spans:
+        text = blocks.get(span.block)
+        if text is None:
+            continue
+        part = text[span.start : span.end].strip()
         if part.endswith("?") or _HYPOTHETICAL.match(part) or (_QUESTION_START.match(part) and not _DURABLE.search(part)):
             return "question"
-        if _QUOTED.search(part) or part[:1] in _QUOTE_MARKS:
+        if _QUOTED.search(part) or part[:1] in _QUOTE_MARKS or _quoted_at(text, span.start):
             return "quotation"
-    text = " ".join(said)
+        said.append(part)
+    words = " ".join(said)
+    if proposal.target is not None and (target_title is None or not _names(words, target_title)):
+        return None
     if proposal.speech_act == "retraction":
-        return "retraction" if _WITHDRAW.search(text) else None
-    if proposal.target is not None and not _CHANGE.search(text):
+        return "retraction" if _says(_WITHDRAW, words) else None
+    if proposal.target is not None and not _says(_CHANGE, words):
         return None
     return proposal.speech_act
 
@@ -316,14 +344,14 @@ def overlaps_source(text: str, sources: Iterable[str]) -> bool:
     return bool(runs) and any(runs & _runs(source, _OVERLAP_TOKENS) for source in sources)
 
 
-def scans_pass(title: str, statement: str, *, sanitize: Callable[[str], str], sources: Iterable[str]) -> bool:
+def scans_pass(title: str, statement: str, *, sanitize: Callable[[str], str], sources: Iterable[str] | None) -> bool:
     """Injection, secret and source-overlap checks on what would be persisted. A scanner ALLOW is not proof; it is the floor."""
     text = f"{title}\n{statement}"
     if not ConfigTrustScanner().scan_text(text, subject=TrustScanSubject.TOOL_OUTPUT, source_path="memory-candidate").allowed:
         return False
     if sanitize(title) != title or sanitize(statement) != statement:
         return False  # the persistence sanitizer would have changed it: it holds something secret-shaped
-    return not overlaps_source(text, sources)
+    return sources is not None and not overlaps_source(text, sources)  # sources lost: nothing can be shown not to copy them
 
 
 @dataclass(frozen=True)
@@ -362,20 +390,20 @@ def _title_of(statement: str) -> str:
 
 
 def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, blocks: Sequence[UserBlock], trusted: bool,
-                    sanitize: Callable[[str], str], sources: Sequence[str], existing: Sequence[ExistingItem],
+                    sanitize: Callable[[str], str], sources: Sequence[str] | None, existing: Sequence[ExistingItem],
                     keyed: Callable[[str], str] = digest) -> list[Candidate]:
     """Each proposal as a user-origin candidate with the host's verdict. A proposal outside the contract (unknown kind, an agent
     kind, an unknown target) is dropped here and counted by the caller; it never reaches the Gate. `keyed` makes the item's
     key, so ids derived from what the user said cannot be checked against a guess without the host's key."""
     texts = {block.block: block.text for block in blocks}
-    known = {item.item for item in existing}
+    known = {item.item: item.title for item in existing}
     out = []
     for proposal in proposals:
         if proposal.kind not in USER_KINDS or (proposal.target is not None and proposal.target not in known):
             continue
         proposal = _snapped(proposal, texts)
         said = _said(proposal, texts)
-        act = _borne_act(proposal, said)
+        act = _borne_act(proposal, texts, known.get(proposal.target) if proposal.target else None)
         statement = " ".join(said)
         # The persisted statement and title are the user's own span text; the model's sentence only has to agree with it. A
         # statement too long to keep whole is never clipped (its condition may be at the end). An unsupported proposal becomes
@@ -399,7 +427,7 @@ def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, 
 
 
 def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, work: CompletedWork, trusted: bool,
-                     sanitize: Callable[[str], str], sources: Sequence[str], keyed: Callable[[str], str] = digest) -> list[Candidate]:
+                     sanitize: Callable[[str], str], sources: Sequence[str] | None, keyed: Callable[[str], str] = digest) -> list[Candidate]:
     """Each proposal as an optional agent-derived candidate. Lineage is complete only when every cited reference is evidence the
     host issued for this work and none of it came from outside (a document's or a tool's directive goes off)."""
     issued = {item.ref: item for item in work.evidence}
@@ -445,7 +473,7 @@ class TurnInput:
     scope: str
     blocks: tuple[UserBlock, ...]
     work: CompletedWork | None
-    sources: tuple[str, ...]
+    sources: tuple[str, ...] | None  # None: the turn sent more than could be kept, so no candidate passes its scans
     trusted: bool
     call: Callable[..., Any] | None = None  # the turn's bound summarizer; else the extractor's own `bind`
     record: Callable[[str, str, Any, str | None], None] | None = None  # the turn's receipt sink; else the extractor's own
@@ -597,27 +625,14 @@ class MemoryExtractor:
                 return False
         return True
 
-    def _user_rules(self, scope: str) -> list[set[str]] | None:
-        """The content words of every live user item in the scope, each read whole when its title is cut; None when there are
-        more than can be checked, so nothing an agent proposes can be shown not to conflict."""
-        items = self._store.user_items(scope, limit=MAX_CONFLICT_ITEMS + 1)
-        if len(items) > MAX_CONFLICT_ITEMS:
-            return None
-        rules = []
-        for item in items:
-            text = item.title
-            if text.endswith("…"):
-                stored = self._store.read(item.item)
-                text = "" if stored is None else stored.event.statement
-            rules.append(_content_words(text))
-        return rules
-
     def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str], list[str], bool, list[tuple[str, int]] | None]:
         """The Gate decides each candidate against the item's current state, read now: a decision taken on a moved head is
         refused by the store's expected version, never forced. A new item whose id is taken by a withdrawn or purged one
-        (the same words said again) gets a fresh id; one still live is replayed by the store. An agent candidate that touches
-        a live user rule goes off as a conflict (Codex CP2 review 1, finding 5). The last two values: whether the store
-        refused any write, and each (item, version) written, or None unless every write was confirmed on disk."""
+        (the same words said again) gets the next free id along its chain; one still live is replayed by the store. An agent
+        candidate in a scope holding any live user item goes off: no deterministic check can show that a lesson leaves the
+        user's items standing ("Never deploy." against "Deploy after tests pass.": Codex CP2 review 2, finding 6). The last two
+        values: whether the store refused any write, and each (item, version) written, or None unless every write was confirmed
+        on disk."""
         from optimus.context.authored_memory import MemoryStoreRefused
 
         notices: list[Any] = []
@@ -628,16 +643,17 @@ class MemoryExtractor:
         if not candidates:
             return notices, refusals, reasons, store_refused, written
         with self._commit_lock, self._store.lease() as token:
-            rules: list[set[str]] | None = []
-            if any(entry.candidate.trust == "agent-derived" for entry in candidates):
-                rules = self._user_rules(candidates[0].candidate.scope)
+            ruled = any(entry.candidate.trust == "agent-derived" for entry in candidates) and bool(
+                self._store.user_items(candidates[0].candidate.scope, limit=1))  # read under the lease, so none slips in meanwhile
             for entry in candidates:
                 candidate, verdict = entry.candidate, entry.verdict
-                if candidate.trust == "agent-derived" and (rules is None or any(_touches(candidate, rule) for rule in rules)):
-                    verdict = dataclasses.replace(verdict, conflicts_with_user=True)
+                if candidate.trust == "agent-derived" and ruled:
+                    verdict = dataclasses.replace(verdict, user_items_in_scope=True)
                 target = _state(self._store.read(candidate.target)) if candidate.target else None
                 decision = memory_gate.admit(candidate, verdict, target)
-                for _ in range(3):  # an id is taken only by an earlier item that is no longer live; a bounded walk to a free one
+                # An id is taken only by an earlier item that is no longer live, so the chain walks to a free one however often
+                # the words were withdrawn (Codex CP2 review 2, finding 8). Each step is one read; a hash collision is not a risk.
+                while True:
                     if decision.outcome != "append" or decision.draft is None or decision.draft.expected_version != 0:
                         break
                     taken = self._store.read(decision.draft.item)
@@ -702,13 +718,14 @@ DOCUMENT_NAMES: Final = re.compile(r"(^|/)(readme|contributing|changelog|agents|
 def evidence_from(run_id: str, tool_calls: Sequence[Any]) -> tuple[Evidence, ...]:
     """Host-issued evidence for the work a run completed: one reference per allowed tool call. A check that ran is new evidence;
     reading a document (a README, the docs, prose files) or anything from an MCP server taints what the turn learned, since
-    the work may be following its instructions. The file reader's summary is "read <relative path>"."""
+    the work may be following its instructions. So does any other tool, an index search among them: its results are not
+    attributed to the files they came from (Codex CP2 review 2, finding 5). The file reader's summary is "read <relative path>"."""
     found = []
     for number, call in enumerate(tool_calls):
         if call.authorization_outcome != "ALLOW":
             continue
         external = call.tool_name.startswith("mcp")
-        kind = _TOOL_EVIDENCE.get(call.tool_name, "document" if external else "read")
+        kind = _TOOL_EVIDENCE.get(call.tool_name, "document")
         if kind == "read" and DOCUMENT_NAMES.search(call.summary.removeprefix("read ").strip()):
             kind = "document"
         found.append(Evidence(f"{run_id}:tool:{number}", kind, external))

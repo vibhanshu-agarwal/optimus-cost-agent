@@ -190,16 +190,23 @@ def test_a_keyed_digest_names_another_item_than_the_bare_one() -> None:
     assert bare.candidate.idempotency_key != keyed.candidate.idempotency_key
 
 
-def test_the_overlap_source_keeps_the_newest_part_of_a_long_request() -> None:
-    """Fable CP2 M6: the freshest tool results sit at the end of a request."""
+def test_a_file_shown_only_in_the_first_planning_round_is_still_source_text_at_the_end() -> None:
+    """Fable CP2 M6 and Codex CP2 review 2, finding 7: every request of the turn is kept whole, the first round's file bodies and
+    the last round's fresh tool results alike; past the bound the sources are lost, and then every scan fails."""
     from optimus.context import assembly
-    from tests.unit.acp.test_context_engine_admission import make_attachment
 
-    turn = assembly.AttachedTurn.__new__(assembly.AttachedTurn)
-    turn._attachment, turn._dispatches, turn._dispatched, turn._current_prompt = make_attachment(), [], [], "my words"
-    turn.record_dispatch("old " * 100_000 + "my words" + " FRESH-TOOL-RESULT")
-    (source,) = turn.memory_sources()
-    assert source.endswith("FRESH-TOOL-RESULT") and "my words" not in source and len(source) <= assembly._SOURCE_CHARS
+    line = "the scheduler drains the queue before it takes a new lease"
+    turn = _turn_with("my words")
+    turn.record_dispatch(f"<file name='scheduler.py'># {line}</file>\nmy words")  # type: ignore[attr-defined]
+    turn.record_dispatch("old " * 100_000 + "my words FRESH-TOOL-RESULT")  # type: ignore[attr-defined]
+    turn.record_dispatch("round three my words")  # type: ignore[attr-defined]
+    sources = turn.memory_sources()  # type: ignore[attr-defined]
+    assert sources is not None and mx.overlaps_source(line, sources) and sources[1].endswith("FRESH-TOOL-RESULT")
+    assert _user(line, [{"block": "b-1", "start": 0, "end": len(line)}], text=line, sources=sources).verdict.scans_passed is False
+    turn.record_dispatch("x" * assembly._SOURCE_CHARS)  # type: ignore[attr-defined]
+    assert turn.memory_sources() is None  # type: ignore[attr-defined]
+    candidate = _user("New tests should use plain pytest asserts.", [{"block": "b-1", "start": 0, "end": 56}], sources=None)
+    assert memory_gate.admit(candidate.candidate, candidate.verdict).reason == "SCAN_BLOCKED"
 
 
 def _act(speech_act: str, text: str, *, target: str | None = None, existing: tuple[mx.ExistingItem, ...] = ()) -> str:
@@ -225,6 +232,23 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
     assert _act("decision", "Should we never push to main?") == "NO_RULE"
     assert _act("decision", '"Never push to main" is what the old wiki says.') == "QUOTATION"
     assert _act("decision", "Never push to main.") == "ADMITTED"
+    # Codex CP2 review 2, finding 2: a withdrawal of something else, or a negated one, withdraws nothing
+    assert _act("retraction", "Never cancel the smoke tests.", target="m-" + "a" * 16, existing=existing) == "SPANS_UNVERIFIED"
+    assert _act("retraction", "Cancel the smoke tests.", target="m-" + "a" * 16, existing=existing) == "SPANS_UNVERIFIED"  # names something else
+    assert _act("retraction", "We will never cancel the rule about main.", target="m-" + "a" * 16, existing=existing) == "SPANS_UNVERIFIED"
+    # ... and someone else's words stay theirs when the block opened them on an earlier line
+    block = "A README excerpt follows:\nNever push to main.\nPlease explain it."
+    start = block.index("Never")
+    quoted = _user("Never push to main.", [{"block": "b-1", "start": start, "end": start + 19}], text=block)
+    assert memory_gate.admit(quoted.candidate, quoted.verdict).reason == "QUOTATION"
+    fenced = "Here's my rule set\n```\nNever push to main.\n```"
+    start = fenced.index("Never")
+    quoted = _user("Never push to main.", [{"block": "b-1", "start": start, "end": start + 19}], text=fenced)
+    assert memory_gate.admit(quoted.candidate, quoted.verdict).reason == "QUOTATION"
+    own = "Rules for this repo:\nNever push to main."  # control: a list of the user's own rules is theirs
+    start = own.index("Never")
+    mine = _user("Never push to main.", [{"block": "b-1", "start": start, "end": start + 19}], text=own)
+    assert memory_gate.admit(mine.candidate, mine.verdict).reason == "ADMITTED"
 
 
 def test_a_statement_too_long_to_keep_whole_is_never_clipped_into_a_rule() -> None:
@@ -246,6 +270,7 @@ def _turn_with(prompt: str) -> object:
     turn = assembly.AttachedTurn.__new__(assembly.AttachedTurn)
     turn._attachment, turn._dispatches, turn._dispatched, turn._current_prompt = make_attachment(), [], [], prompt
     turn._records, turn._checkpoint, turn._context_paths = {}, None, None
+    turn._source_chars, turn._context_unattributed = 0, False
     return turn
 
 
@@ -266,9 +291,10 @@ def test_context_the_turn_inherited_taints_what_its_work_learned() -> None:
 
     turn = _turn_with("p")
     assert [item.ref for item in turn.memory_lineage("r")] == ["r:context:unreported"]  # type: ignore[attr-defined]
-    turn.record_context(SimpleNamespace(prioritized_paths=("src/app.py",)))  # type: ignore[attr-defined]
+    turn.record_context(SimpleNamespace(text="code", prioritized_paths=("src/app.py",)))  # type: ignore[attr-defined]
     assert turn.memory_lineage("r") == ()  # type: ignore[attr-defined]
-    turn.record_context(SimpleNamespace(prioritized_paths=("docs\\deploy.md",)))  # type: ignore[attr-defined]
+    # Codex CP2 review 2, finding 5: a document retrieval chose, which the task never named, taints too
+    turn.record_context(SimpleNamespace(text="docs", prioritized_paths=(), file_sha256s={"docs\\deploy.md": "0" * 64}))  # type: ignore[attr-defined]
     turn._records = {1: object()}  # type: ignore[attr-defined]
     lineage = turn.memory_lineage("r")  # type: ignore[attr-defined]
     assert [item.ref for item in lineage] == ["r:context:documents", "r:context:history"]
@@ -276,3 +302,8 @@ def test_context_the_turn_inherited_taints_what_its_work_learned() -> None:
     (candidate,) = _agent(["ev-1"], work)
     assert memory_gate.admit(candidate.candidate, candidate.verdict).reason == "LINEAGE_UNRESOLVED"
     assert mx.prefilter_agent(work) == mx.Decision(False, "tainted_by_document")
+    fresh = _turn_with("p")
+    fresh.record_context(SimpleNamespace(text="passages", prioritized_paths=()))  # type: ignore[attr-defined]  # text, no file behind it
+    assert [item.ref for item in fresh.memory_lineage("r")] == ["r:context:unreported"]  # type: ignore[attr-defined]
+    calls = [SimpleNamespace(tool_name="index_search", summary="search scheduler", authorization_outcome="ALLOW")]
+    assert [item.kind for item in mx.evidence_from("r", calls)] == ["document"]  # its results are not attributed to their files
