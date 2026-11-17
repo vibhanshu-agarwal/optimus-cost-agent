@@ -18,93 +18,100 @@
   "release": "operator 2026-11-17 'Release both' on #490",
   "loss_scope": "tested crashes with the volume intact; not hardware, power or volume loss",
   "source": {
-    "head": "git:1acc05bc3999b4538b195121457c16f0dbfa2421",
+    "head": "git:ce8a0d17e51b5ac37f61311a59025cbfbdc1f111",
     "dirty": false
   },
   "main": {
-    "seconds": 636.9,
+    "seconds": 583.4,
     "ack_ms": {
       "count": 100000,
-      "p50": 22.6,
-      "p95": 38.92,
-      "max": 1085.98
+      "p50": 21.79,
+      "p95": 30.11,
+      "max": 1495.78
     },
     "projection_after_ack_ms": {
       "count": 2000,
-      "p50": 9.98,
-      "p95": 18.9,
-      "max": 182.83
+      "p50": 9.48,
+      "p95": 14.9,
+      "max": 171.78
     },
     "refusals": {},
-    "unconfirmed": 0,
-    "unconfirmed_retried_confirmed": 0,
+    "unconfirmed_after_retries": 0,
     "events_acknowledged": 100000,
     "identity_after_load": {
       "items_expected": 10000,
+      "live_items": 10000,
       "missing": 0,
-      "wrong": 0
+      "wrong": 0,
+      "unexpected": 0
     },
     "identity_after_restart": {
-      "items_expected": 9996,
+      "items_expected": 10000,
+      "live_items": 9996,
       "missing": 0,
-      "wrong": 0
+      "wrong": 0,
+      "unexpected": 0
     },
     "purge": {
       "logical_s": {
         "count": 4,
-        "p50": 0.09,
-        "p95": 0.15,
-        "max": 0.15
+        "p50": 0.05,
+        "p95": 0.1,
+        "max": 0.1
       },
       "rewrite_and_snapshot_s": {
         "count": 4,
-        "p50": 0.96,
-        "p95": 0.99,
-        "max": 0.99
-      }
+        "p50": 1.32,
+        "p95": 1.37,
+        "max": 1.37
+      },
+      "purges": 4,
+      "completed": 4
     },
-    "restart_to_usable_s": 2.0,
+    "restart_to_usable_s": 1.7,
     "resources": {
-      "container_ram_mib": 63.8,
-      "used_memory_rss_mib": 78.5,
-      "disk_kib": 79824,
+      "container_ram_mib": 63.7,
+      "used_memory_rss_mib": 78.2,
+      "disk_kib": 79972,
       "aof_last_cow_mib": 1.7,
       "rdb_last_cow_mib": 1.6,
-      "samples": 186
+      "samples": 171
     },
     "index_load": {
-      "records": 16687360,
-      "generations": 417
+      "records": 16836992,
+      "generations": 420
     }
   },
   "slow_persistence": {
     "device_write_bps": "/dev/sdd:256kb",
     "events": 4000,
-    "seconds": 126.4,
+    "seconds": 128.2,
     "ack_ms": {
       "count": 4000,
-      "p50": 106.98,
-      "p95": 193.83,
-      "max": 378.64
+      "p50": 108.0,
+      "p95": 196.68,
+      "max": 620.68
     },
     "projection_after_ack_ms": {
       "count": 160,
-      "p50": 12.89,
-      "p95": 103.03,
-      "max": 114.05
+      "p50": 17.39,
+      "p95": 107.98,
+      "max": 126.12
     },
     "refusals": {},
-    "unconfirmed": 0,
-    "unconfirmed_retried_confirmed": 0,
+    "unconfirmed_after_retries": 0,
     "events_acknowledged": 4000,
     "identity": {
       "items_expected": 2000,
+      "live_items": 2000,
       "missing": 0,
-      "wrong": 0
+      "wrong": 0,
+      "unexpected": 0
     }
   },
   "verdicts": {
     "events": true,
+    "live_items_before_purges": true,
     "ack_p95": true,
     "projection_after_ack_p95": true,
     "restart_to_usable": true,
@@ -113,6 +120,7 @@
     "physical_ram": true,
     "peak_disk": true,
     "acknowledged_write_loss": true,
+    "purges_exact_after_restart": true,
     "slow_persistence_loss": true
   },
   "passed": true
