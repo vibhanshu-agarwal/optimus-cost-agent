@@ -201,6 +201,18 @@ def test_a_tombstone_removes_the_payload_from_the_view() -> None:
     assert (state.status, state.title, state.statement) == ("purged", "", "")
 
 
+@pytest.mark.parametrize("ending", [{"action": "withdraw", "status": "withdrawn"}, {"action": "tombstone", "status": "purged"}])
+def test_what_rested_on_a_withdrawn_or_purged_item_is_reverified_transitively(ending: dict[str, str]) -> None:
+    source, lesson, deeper, unrelated = ("m-" + c * 16 for c in "abcd")
+    events = [_event(item=source), _event(event_id="2-0", item=lesson, trust="agent-derived", kind="lesson", lineage=(source,), anchors=()),
+              _event(event_id="3-0", item=deeper, trust="agent-derived", kind="procedure", lineage=(lesson,), anchors=()),
+              _event(event_id="4-0", item=unrelated, lineage=("ev-1",))]
+    assert all(state.servable for state in fold(events).values())
+    view = fold([*events, _event(event_id="5-0", item=source, version=2, title="", statement="", **ending)])
+    assert (view[lesson].status, view[deeper].status, view[unrelated].status) == ("reverify", "reverify", "active")
+    assert not view[lesson].servable and not view[deeper].servable and view[unrelated].servable
+
+
 @pytest.mark.parametrize(
     "events",
     [[_event(version=1), _event(event_id="2-0", version=3, action="update")],

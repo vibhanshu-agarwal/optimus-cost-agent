@@ -51,7 +51,26 @@ class ItemState:
 
 
 def fold(events: Iterable[MemoryEvent]) -> dict[str, ItemState]:
-    """Every item's current state, in stream order."""
+    """Every item's current state, in stream order, with dependants of withdrawn or purged items marked for reverification."""
+    return _invalidate_dependants(_fold(events))
+
+
+def _invalidate_dependants(items: dict[str, ItemState]) -> dict[str, ItemState]:
+    """A live item whose lineage names a withdrawn or purged item, directly or through another item, needs reverification: it
+    rested on something that no longer stands. Derived here, never stored, so it follows the sources it depends on."""
+    gone = {item for item, state in items.items() if state.status in ("withdrawn", "purged")}
+    changed = True
+    while changed:
+        changed = False
+        for item, state in items.items():
+            if state.live and state.status != "reverify" and gone.intersection(state.lineage):
+                items[item] = replace(state, status="reverify")
+                gone.add(item)
+                changed = True
+    return items
+
+
+def _fold(events: Iterable[MemoryEvent]) -> dict[str, ItemState]:
     items: dict[str, ItemState] = {}
     for event in events:
         current = items.get(event.item)
