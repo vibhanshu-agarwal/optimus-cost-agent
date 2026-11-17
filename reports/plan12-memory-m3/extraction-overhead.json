@@ -1,7 +1,7 @@
 {
-  "schema": "plan12-memory-m3.extraction-overhead.v1",
+  "schema": "plan12-memory-m3.extraction-overhead.v2",
   "source": {
-    "head": "git:c56592729c8fd08961d98d4a9f3396ff528ee71c",
+    "head": "git:36232145b771bf3610cc74f89f29c6babaddbb4e",
     "dirty": false
   },
   "upstream": "controlled, 0.200 s per call, nothing billed",
@@ -9,8 +9,8 @@
   "turns": 100,
   "calls": {
     "user": 12,
-    "agent": 8,
-    "total": 20
+    "agent": 0,
+    "total": 12
   },
   "expected": {
     "user_extraction_calls": 12,
@@ -21,33 +21,46 @@
   "settlement_s": {
     "count": 20,
     "p50": 0.23,
-    "p95": 0.24,
-    "max": 0.24
+    "p95": 0.27,
+    "max": 0.27
   },
   "first_response": {
     "off_ms": {
       "count": 100,
-      "p50": 10.91,
-      "p95": 20.56,
-      "max": 23.5
+      "p50": 12.3,
+      "p95": 48.18,
+      "max": 84.02
     },
     "on_ms": {
       "count": 100,
-      "p50": 11.16,
-      "p95": 20.13,
-      "max": 21.21
+      "p50": 12.67,
+      "p95": 22.82,
+      "max": 25.69
     }
   },
-  "added_first_response_p95_ms": -0.43,
+  "added_first_response_p95_ms": -25.36,
   "outcomes": {
-    "admitted": 20,
+    "appended_by_action": {
+      "admit": 10,
+      "off": 2
+    },
     "incomplete": 0,
-    "skipped": 0
+    "skipped_by_reason": {
+      "user_items_in_scope": 8
+    }
   },
   "disclosure": "the prefilter was developed against this sealed workload, so its agreement here is not a held-out result; agent evidence follows the workload by construction",
+  "successor_expectation": {
+    "user": 12,
+    "agent": 0,
+    "total": 12,
+    "agent_skipped_user_items_in_scope": 8,
+    "status": "proposed on #490 after Codex CP2 review 3; not an acceptance gate until approved"
+  },
   "verdicts": {
     "calls_per_100": true,
-    "matches_expected": true,
+    "matches_expected": false,
+    "matches_successor_expectation": true,
     "added_first_response_p95": true,
     "settlement_p95": true
   }

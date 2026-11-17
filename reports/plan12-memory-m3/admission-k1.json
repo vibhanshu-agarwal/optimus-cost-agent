@@ -1,7 +1,7 @@
 {
   "schema": "plan12-memory-m3.admission-k1.v1",
   "source": {
-    "head": "git:c56592729c8fd08961d98d4a9f3396ff528ee71c",
+    "head": "git:36232145b771bf3610cc74f89f29c6babaddbb4e",
     "dirty": false
   },
   "upstream": "controlled: each case's reply is scripted",
