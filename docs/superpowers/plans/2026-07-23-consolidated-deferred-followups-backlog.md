@@ -71,7 +71,6 @@ unchanged, to [Archived moved plans](#archived-moved-plans).
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
-| [Plan 11.33 v2 — search-independent metadata](2026-11-17-plan-11-33-search-independent-metadata-implementation_v2.md) | — | — | [#361](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/361) |
 | [Plan 12.11 v2 memory and continuity (M3)](2026-11-16-plan-12-11-memory-and-continuity-implementation_v2.md) | — | — | [#490](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/490) |
 | [Plan 11.32 — work-status Bugs table](2026-11-03-plan-11-32-work-status-bugs.md) | — | — | [#354](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/354) |
 | [Idle client-MCP lifetime v3](2026-10-26-idle-mcp-suspension-main-port_v3.md) | — | — | [#427](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/427) |
@@ -310,6 +309,7 @@ plans root (the archive-aware link check resolves it there) and its issue owns t
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
+| [Plan 11.33 v2 — search-independent metadata](2026-11-17-plan-11-33-search-independent-metadata-implementation_v2.md) | — | — | [#361](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/361) |
 | [Plan 11.7 v3 — Zed Resume](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v3.md) | Moved | — | [#240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L65-L65) |
 | [Plan 11.29 — GitHub Issues migration and live status view](2026-10-04-plan-11-29-github-issues-migration.md) | Moved | — | [#236](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/236) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L58-L58) |
 | [Plan 12.1 — Plan/Chat advisory answer](2026-09-29-plan-12-1-plan-chat-advisory-answer-implementation.md) | Moved | — | [#238](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/238) · [pinned detail](https://github.com/vibhanshu-agarwal/optimus-cost-agent/blob/d3114bea54d742abffcf104b630cb7104301de15/docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md?plain=1#L60-L60) |
