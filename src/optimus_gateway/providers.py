@@ -23,22 +23,22 @@ def build_upstream_client(config: GatewayServiceConfig) -> UpstreamClient:
 def build_tool_dependencies(config: GatewayServiceConfig) -> GatewayToolDependencies | None:
     """Build the Gateway-side tool provider bundle from config.
 
-    Incomplete tool configuration fails closed by returning ``None`` so the
-    Gateway does not expose a partially configured provider bundle.
+    Shared policy/state configuration is required; search credentials enable
+    only the web provider, independently of package and advisory metadata.
     """
     tavily_api_key = (config.tavily_api_key or "").strip()
     tool_redis_url = (config.tool_redis_url or "").strip()
     allowed_domains = tuple(
         domain for domain in (_normalize_domain(value) for value in config.tool_allowed_domains) if domain
     )
-    if not tavily_api_key or not tool_redis_url or not allowed_domains:
+    if not tool_redis_url or not allowed_domains:
         return None
 
     return GatewayToolDependencies(
         web_provider=TavilyWebToolProvider(
             api_key=tavily_api_key,
             base_url=(config.tavily_base_url or "https://api.tavily.com").strip() or "https://api.tavily.com",
-        ),
+        ) if tavily_api_key else None,
         package_provider=PackageRegistryToolProvider(
             pypi_base_url=(config.pypi_base_url or "https://pypi.org").strip() or "https://pypi.org",
             npm_base_url=(config.npm_base_url or "https://registry.npmjs.org").strip()

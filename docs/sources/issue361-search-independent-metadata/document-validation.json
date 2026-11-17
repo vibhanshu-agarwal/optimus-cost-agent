@@ -1,0 +1,71 @@
+{
+  "scope": "PDF assembly, carried native text, predecessor page coverage, label/footer presence and escape-artifact scan; no product or live run",
+  "inspected_source": "Issue #361 implementation descended from 43e5e5b415140a17005045d3d21c6de2ed8595b3; exact production/source/test identities are recorded in the validation record and issue; carried claims retain their own pins",
+  "results": [
+    {
+      "document": "hld",
+      "file": "Optimus-Cost-Agent-Architecture-v2.25.pdf",
+      "pages": 29,
+      "checks": {
+        "manifest_hash_matches": true,
+        "page_count_matches": true,
+        "successor_pages_contiguous": true,
+        "baseline_hash_matches": true,
+        "every_baseline_page_once": true,
+        "carried_bodies_equal_baseline": true,
+        "predecessor_hash_matches": true,
+        "predecessor_pages_all_mapped": true,
+        "label_and_footer_on_every_page": true,
+        "no_escape_artifacts": true
+      },
+      "carried_native_pages": 1,
+      "predecessor_pages": 29,
+      "sha256": "30f3992275ebf223de1f2c5217f8fff171795ba42765ccbdda655604d98638a6",
+      "status": "PASS"
+    },
+    {
+      "document": "lld",
+      "file": "Optimus-Cost-Agent-LLD-v2.48.pdf",
+      "pages": 64,
+      "checks": {
+        "manifest_hash_matches": true,
+        "page_count_matches": true,
+        "successor_pages_contiguous": true,
+        "baseline_hash_matches": true,
+        "every_baseline_page_once": true,
+        "carried_bodies_equal_baseline": true,
+        "predecessor_hash_matches": true,
+        "predecessor_pages_all_mapped": true,
+        "label_and_footer_on_every_page": true,
+        "no_escape_artifacts": true
+      },
+      "carried_native_pages": 17,
+      "predecessor_pages": 64,
+      "sha256": "620ee455216572e71c28ae7923c12ccc7673659089bae01a0199e807cd44644f",
+      "status": "PASS"
+    },
+    {
+      "document": "test",
+      "file": "Optimus-Cost-Agent-Test-Strategy-v1.11.pdf",
+      "pages": 26,
+      "checks": {
+        "manifest_hash_matches": true,
+        "page_count_matches": true,
+        "successor_pages_contiguous": true,
+        "baseline_hash_matches": true,
+        "every_baseline_page_once": true,
+        "carried_bodies_equal_baseline": true,
+        "predecessor_hash_matches": true,
+        "predecessor_pages_all_mapped": true,
+        "label_and_footer_on_every_page": true,
+        "no_escape_artifacts": true
+      },
+      "carried_native_pages": 3,
+      "predecessor_pages": 26,
+      "sha256": "f417e97e966e41d6603e29f19b649cfd2c810ef0aed0bf6f937f85ecbe107616",
+      "status": "PASS"
+    }
+  ],
+  "failures": [],
+  "status": "PASS"
+}

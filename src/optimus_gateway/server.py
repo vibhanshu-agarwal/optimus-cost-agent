@@ -128,6 +128,12 @@ def _discard_rejected_post_body(stream: Any, connection: Any, length: int, deadl
 _MODEL_ROUTES = frozenset({"/v1/responses", "/v1/chat/completions", DECISIONS_PATH})
 
 
+def _serves_tool_path(path: str, dependencies: GatewayToolDependencies | None) -> bool:
+    if dependencies is None or path not in TOOL_ROUTE_PATHS:
+        return False
+    return path not in {"/v1/tools/web/search", "/v1/tools/web/extract"} or dependencies.web_provider is not None
+
+
 class OptimusGatewayHandler(BaseHTTPRequestHandler):
     config: GatewayServiceConfig
     upstream_client: UpstreamClient
@@ -143,7 +149,7 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         serves_index = path == _INDEX_PATH and self.config.memory_index is not None
         serves_memory = path == _MEMORY_PATH and self.config.memory_store is not None
         if (path not in _CORE_ROUTES and not serves_index and not serves_memory
-                and not (path in TOOL_ROUTE_PATHS and tool_dependencies is not None)):
+                and not _serves_tool_path(path, tool_dependencies)):
             self._reject_unhandled_post()
             return
         if path == _IDENTITY_PATH:
@@ -195,7 +201,7 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
             self._finish(path, HTTPStatus.BAD_REQUEST, {"error": "request body must be a JSON object"})
             return
 
-        if path in TOOL_ROUTE_PATHS and tool_dependencies is not None:
+        if tool_dependencies is not None and _serves_tool_path(path, tool_dependencies):
             status, body = handle_tool_request(
                 authorization_header=self.headers.get("Authorization"),
                 path=path,

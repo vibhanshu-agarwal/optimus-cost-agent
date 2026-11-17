@@ -9,6 +9,7 @@ import threading
 import time
 from decimal import Decimal
 from http.client import HTTPConnection
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import pytest
@@ -305,6 +306,84 @@ def test_tools_routes_return_not_found_when_dependencies_are_not_configured():
             assert body == {"error": "not found"}
     finally:
         _stop_server(server, thread)
+
+
+def test_config_built_metadata_routes_work_without_search_and_preserve_controls(monkeypatch):
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    calls: list[tuple[str, str]] = []
+
+    class RegistryStub(BaseHTTPRequestHandler):
+        def log_message(self, *_args):
+            pass
+
+        def do_GET(self):
+            assert self.path == "/pypi/example/json"
+            calls.append(("GET", self.path))
+            self.reply({"info": {"version": "1.0"}, "releases": {"1.0": []}})
+
+        def do_POST(self):
+            assert self.path == "/v1/query"
+            request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            assert request["package"] == {"name": "example", "ecosystem": "PyPI"}
+            calls.append(("POST", self.path))
+            self.reply({"vulns": [{"id": "GHSA-1234-5678-abcd", "summary": "Unit advisory",
+                                   "references": [{"url": "https://osv.dev/GHSA-1234-5678-abcd"}]}]})
+
+        def reply(self, payload):
+            raw = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+    def forbidden_model(*_args, **_kwargs):
+        pytest.fail("disabled web route must not reach a model handler")
+
+    monkeypatch.setattr("optimus_gateway.server.handle_chat_completions_request", forbidden_model)
+    monkeypatch.setattr("optimus_gateway.server.handle_responses_request", forbidden_model)
+    monkeypatch.setattr(_SmokeUpstreamClient, "create_message", forbidden_model)
+    store = InMemoryGatewayToolStateStore()
+    monkeypatch.setattr("optimus_gateway.providers.RedisGatewayToolStateStore.from_url", lambda _url: store)
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), RegistryStub)
+    upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
+    upstream_thread.start()
+    base_url = f"http://127.0.0.1:{upstream.server_port}"
+    config = dataclasses.replace(_config(), tavily_api_key=None, tool_redis_url="redis://unused-unit-boundary/0",
+                                 tool_allowed_domains=("pypi.org", "osv.dev"), tool_max_calls_per_tool=2,
+                                 pypi_base_url=base_url, osv_base_url=base_url)
+    try:
+        server, thread, host, port = _start_server(config=config)
+        try:
+            package = _tool_context_body(package="example", ecosystem="pypi")
+            advisory = _tool_context_body(identifier="example", ecosystem="pypi")
+            for path, payload, provider in [
+                ("/v1/tools/package/lookup", package, "pypi"),
+                ("/v1/tools/security/advisory", advisory, "osv"),
+            ]:
+                status, body = _post_json(host, port, path, body=json.dumps(payload))
+                assert status == 200, body
+                assert body["tool_class"] == "package_and_advisory_metadata"
+                assert body["gateway_usage"]["provider"] == provider
+                assert body["provenance"]["source_urls"]
+            for path in ["/v1/tools/web/search", "/v1/tools/web/extract"]:
+                status, body = _post_json(host, port, path, body=json.dumps({}))
+                assert (status, body) == (404, {"error": "not found"})
+            status, body = _post_json(host, port, "/v1/tools/package/lookup", body=json.dumps(package))
+            assert status == 429 and body["rule_id"] == "CALL_CAP_EXCEEDED"
+            status, _ = _post_json(host, port, "/v1/tools/package/lookup", body=json.dumps(package),
+                                   headers={"Authorization": "Bearer wrong", "Content-Type": "application/json"})
+            assert status == 401
+            assert calls == [("GET", "/pypi/example/json"), ("POST", "/v1/query")]
+        finally:
+            _stop_server(server, thread)
+            assert not thread.is_alive()
+    finally:
+        _stop_server(upstream, upstream_thread)
+        assert not upstream_thread.is_alive()
 
 
 def test_tool_routes_are_served_over_http_when_dependencies_are_injected():
