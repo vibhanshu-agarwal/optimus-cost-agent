@@ -318,6 +318,53 @@ def test_a_user_rule_saved_while_the_agent_call_is_out_sends_its_lesson_off() ->
     assert store.read(off.item).event.trust == "off"  # appended as an off record, never as memory
 
 
+def _retract(item: str) -> SummarizerResponse:
+    text = "Cancel the rule about pushing to main."
+    return _completed(json.dumps({"candidates": [{"speech_act": "retraction", "kind": "constraint", "title": "main", "statement": text,
+                                                  "spans": [{"block": "b-1", "start": 0, "end": len(text)}], "target": item}]}), 2)
+
+
+def test_a_target_the_words_no_longer_name_alone_under_the_lease_is_left_standing() -> None:
+    """Codex CP2 review 5, finding 1: the host resolves the target again among every live user item under the lease, so a
+    second rule the same words name, saved while the call was out, leaves both standing."""
+    rule = json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "main", "statement": "Never push to main.",
+                                       "spans": [{"block": "b-1", "start": 0, "end": 19}]}]})
+    upstream = _Upstream(_completed(rule, 1))
+    extractor, _settlement, outcomes, _receipts = _harness(upstream)
+    extractor.submit(_turn(1, text="Never push to main."))
+    _until(outcomes, 1)
+    (saved,) = outcomes[0].notices
+    store = extractor._store
+    real = store.user_items
+
+    def another_too(scope: str, *, limit: int) -> Any:  # what the lease-time read sees: a second rule the words also name
+        found = real(scope, limit=limit)
+        return found if limit <= mx.MAX_EXISTING_ITEMS else [*found, mx.ExistingItem("m-" + "b" * 16, "Never push to main without review.")]
+
+    store.user_items = another_too
+    upstream.replies.append(_retract(saved.item))
+    extractor.submit(_turn(2, text="Cancel the rule about pushing to main."))
+    _until(outcomes, 2)
+    extractor.close()
+    assert outcomes[1].reasons == ("SPANS_UNVERIFIED",) and store.read(saved.item).event.status == "active"
+
+
+def test_a_target_the_words_name_alone_is_withdrawn() -> None:
+    """Control for the lease-time resolution: with the one rule live, the same words withdraw it."""
+    rule = json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "main", "statement": "Never push to main.",
+                                       "spans": [{"block": "b-1", "start": 0, "end": 19}]}]})
+    upstream = _Upstream(_completed(rule, 1))
+    extractor, _settlement, outcomes, _receipts = _harness(upstream)
+    extractor.submit(_turn(1, text="Never push to main."))
+    _until(outcomes, 1)
+    (saved,) = outcomes[0].notices
+    upstream.replies.append(_retract(saved.item))
+    extractor.submit(_turn(2, text="Cancel the rule about pushing to main."))
+    _until(outcomes, 2)
+    extractor.close()
+    assert outcomes[1].reasons == ("RETRACTED",) and extractor._store.read(saved.item).event.status == "withdrawn"
+
+
 def test_a_refused_receipt_never_drops_the_attempts_after_it() -> None:
     """Codex CP2 review 1, finding 6: every attempt is offered to settlement before the first refusal is reported."""
     two = SummarizerResponse(text=_GOOD, finish_status="stop", attempts=(SummarizerAttempt("a-1", "gw-1", "rejected", Decimal("0.001")),
