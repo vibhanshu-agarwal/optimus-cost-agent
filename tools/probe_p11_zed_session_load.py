@@ -3158,9 +3158,11 @@ def _launch_zed_once(
         if log_handle is not None:
             log_handle.close()
         raise ProbeError("real_zed", f"{type(exc).__name__}: {exc}") from exc
+    timed_out = False
     try:
         returncode = proc.wait(timeout=timeout_s)
     except subprocess.TimeoutExpired:
+        timed_out = True
         # The whole tree, including descendants no walk of parent pids reaches anymore.
         process_tree.kill_tree(proc)
         try:
@@ -3171,7 +3173,7 @@ def _launch_zed_once(
     finally:
         if log_handle is not None:
             log_handle.close()
-    return {"pid": proc.pid, "returncode": returncode, "log_path": str(log_path) if log_path else None}
+    return {"pid": proc.pid, "returncode": returncode, "log_path": str(log_path) if log_path else None, "timed_out": timed_out}
 
 
 def _launch_log_excerpt(log_path: Path, *, limit: int = 4000) -> str:

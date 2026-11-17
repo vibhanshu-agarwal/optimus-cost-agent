@@ -161,6 +161,7 @@ ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tools/plan12_memory/probes.py:_tree_bytes:rglob:*": "Sizes the isolated probe venv under the ignored probe directory to enforce the download limit; it reads file sizes only.",
     "tools/plan12_stage_c_schedule.py:verify_workspace:rglob:*": "Lists one generated Stage C run workspace outside the repository, to refuse any entry its fixture does not name before the first launch.",
     "tools/probe_p11_zed_session_load.py:throwaway_tree_digest:rglob:*": "Digests a newly created throwaway Zed tree.",
+    "tools/evidence_gather_support/plan117_current_client_collector.py:locate_database:rglob:*.sqlite": "Lists SQLite databases generated beneath the per-launch hermetic Zed profile in the owned throwaway run tree; these client-state files are not repository inputs, and the collector refuses unless exactly one candidate exists.",
     "tools/plan1126_runtime_audit/measurement.py:current_bytecode_cache:rglob:*.pyc": "Inspects the executing interpreter's private bytecode cache (PYTHONPYCACHEPREFIX) for generated .pyc files; a fresh measurement refuses a cache any earlier compilation could have populated. Generated cache files are deliberately outside repository-truth inventory.",
     "tools/run_plan1126_runtime_audit.py:_path_fingerprint:rglob:*": "Handles explicitly supplied external harness directories; repository paths use tracked inventory.",
     "tools/run_redaction_gate_live_evidence.py:_promote_and_record:glob:<dynamic>": "Finds generated live-evidence artifacts selected by the operator.",

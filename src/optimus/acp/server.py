@@ -1270,7 +1270,8 @@ class AcpStreamServer:
                                    if isinstance(session_id, str) and adapter.retention.is_active(session_id) else None)
                     if message.get("method") == "session/prompt" and isinstance(session_id, str):
                         prior = adapter._active_turns.get(session_id)
-                        if prior is not None and prior.turn_control.rpc_response_delivery is not RpcResponseDelivery.FLUSHED:
+                        # A response in handoff queues behind the prompt-session gate; only execution refuses.
+                        if prior is not None and not prior.turn_control.protocol_response_in_handoff():
                             envelope = await adapter.handle_client_request(message)
                             assert isinstance(envelope, NonTurnResponseEnvelope)
                             await submit_via_notice(envelope.response, handle=envelope.response_handle,

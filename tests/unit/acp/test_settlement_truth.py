@@ -580,7 +580,9 @@ async def test_safe_mcp_activity_keeps_terminal_text_and_settlement_gates(tmp_pa
 
 @pytest.mark.parametrize("cancelled", [False, True])
 @pytest.mark.parametrize("cancel_followup", [False, True])
-async def test_flushed_response_handoff_does_not_wait_for_owned_worker(tmp_path, monkeypatch, cancelled, cancel_followup):
+@pytest.mark.parametrize("published", [False, True], ids=["before-publication", "after-publication"])
+async def test_flushed_response_handoff_does_not_wait_for_owned_worker(tmp_path, monkeypatch, cancelled, cancel_followup,
+                                                                       published):
     from optimus.acp.spec import request_worker_custody
 
     release_worker = threading.Event()
@@ -630,21 +632,30 @@ async def test_flushed_response_handoff_does_not_wait_for_owned_worker(tmp_path,
     monkeypatch.setattr(NdjsonOutboundChannel, "deliver_client_response", reply)
     original_publish = TurnControl.publish_authoritative
     def publish(control, key, outcome):
-        original_publish(control, key, outcome)
-        if key.kind == "protocol_response" and control.turn_seq == 1 and outcome is SendOutcome.FLUSHED:
+        target = key.kind == "protocol_response" and control.turn_seq == 1 and outcome is SendOutcome.FLUSHED
+        if published or not target:
+            original_publish(control, key, outcome)
+        if target:
+            # The writer has physically flushed; the barrier sits before or after authoritative publication.
             followup = {"jsonrpc": "2.0", "id": "followup", "method": "session/prompt", "params": {
                 "sessionId": h.session_id, "prompt": [{"type": "text", "text": "Continue"}]}}
             h.transport.loop.call_soon_threadsafe(h.reader._queue.put_nowait, (json.dumps(followup) + "\n").encode())
             h.transport.loop.call_soon_threadsafe(h.reader._queue.put_nowait, b'{"id":"reader-probe","result":{}}\n')
-            assert publication_release.wait(5), "test must release the real writer after authoritative publication"
+            assert publication_release.wait(5), "test must release the real writer at the handoff barrier"
+            if not published:
+                original_publish(control, key, outcome)
     monkeypatch.setattr(TurnControl, "publish_authoritative", publish)
     try:
         await h.prompt()
         await asyncio.wait_for(replied.wait(), 1)
+        assert any(m.get("id") == "prompt" for m in h.transport.flushes), "the response physically flushed"
         assert handled == ["prompt"], "follow-up must stay pending until response-owner retirement"
         assert h.server._inbound_admission.count == 2
         assert not worker.done()
-        assert h.adapter._active_turns[h.session_id].turn_control.rpc_response_delivery.value == "flushed"
+        control = h.adapter._active_turns[h.session_id].turn_control
+        assert control.rpc_response_delivery.value == ("flushed" if published else "not_attempted")
+        assert control.send_slot(TurnSendKey("protocol_response", "response")).authoritative is (
+            SendState.FLUSHED if published else SendState.WRITE_STARTED)
         if cancel_followup:
             await h.reader.send({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": h.session_id}})
             await asyncio.wait_for(cancellation_submitted.wait(), 1)
@@ -662,6 +673,118 @@ async def test_flushed_response_handoff_does_not_wait_for_owned_worker(tmp_path,
         release_worker.set()
         await worker
         await h.close()
+
+
+async def test_publication_between_reader_observations_cannot_refuse_the_followup(tmp_path, monkeypatch):
+    h = ServerTurn(tmp_path, monkeypatch)
+    await h.start()
+    reached = asyncio.Event()
+    publication_release, publication_done = threading.Event(), threading.Event()
+    loop_thread = threading.get_ident()
+    handled, observed = [], []
+    original_handle = AcpDuplexAdapter.handle_client_request
+    async def handle(adapter, message, **kwargs):
+        handled.append((message.get("id"), len(h.events)))
+        return await original_handle(adapter, message, **kwargs)
+    monkeypatch.setattr(AcpDuplexAdapter, "handle_client_request", handle)
+    original_publish = TurnControl.publish_authoritative
+    def publish(control, key, outcome):
+        if key.kind == "protocol_response" and control.turn_seq == 1 and outcome is SendOutcome.FLUSHED:
+            h.transport.loop.call_soon_threadsafe(reached.set)
+            assert publication_release.wait(5), "the reader's first observation must release publication"
+            original_publish(control, key, outcome)
+            publication_done.set()
+            return
+        original_publish(control, key, outcome)
+    monkeypatch.setattr(TurnControl, "publish_authoritative", publish)
+    response_key = TurnSendKey("protocol_response", "response")
+    class PublishAfterReaderRead:
+        """Delegates to the real lock; the reader's first release lets the writer publish before any later read."""
+        def __init__(self, lock):
+            self.lock = lock
+        def __enter__(self):
+            return self.lock.__enter__()
+        def __exit__(self, *exc):
+            result = self.lock.__exit__(*exc)
+            task = asyncio.current_task() if threading.get_ident() == loop_thread else None
+            if task is not None and task.get_coro().__name__ == "read_lines" and not observed:
+                observed.append(control._send_slots[response_key].authoritative)
+                publication_release.set()
+                assert publication_done.wait(5)
+                observed.append(control._send_slots[response_key].authoritative)
+            return result
+    try:
+        await h.prompt()
+        await asyncio.wait_for(reached.wait(), 3)
+        assert any(m.get("id") == "prompt" for m in h.transport.flushes), "the response physically flushed"
+        control = h.adapter._active_turns[h.session_id].turn_control
+        control._lock = PublishAfterReaderRead(control._lock)
+        await h.reader.send({"jsonrpc": "2.0", "id": "followup", "method": "session/prompt", "params": {
+            "sessionId": h.session_id, "prompt": [{"type": "text", "text": "Continue"}]}})
+        response = await h.transport.until(lambda m: m.get("id") == "followup")
+        assert observed == [SendState.WRITE_STARTED, SendState.FLUSHED], "publication was forced between observations"
+        assert response.get("result") == {"stopReason": "end_turn"}
+        assert handled == [("prompt", 0), ("followup", 1)], "the follow-up queues behind the old owner's settlement"
+        assert not h.sink_errors
+    finally:
+        publication_release.set()
+        await h.close()
+    assert h.server._inbound_admission.count == h.server._inbound_admission.bytes == 0
+
+
+@pytest.mark.parametrize("end", ["flushed", "failed", "teardown"])
+async def test_followup_during_held_response_write_waits_for_truthful_retirement(tmp_path, monkeypatch, end):
+    h = ServerTurn(tmp_path, monkeypatch)
+    await h.start()
+    h.transport.hold = lambda m: m.get("id") == "prompt"
+    h.transport.release.clear()
+    probed = asyncio.Event()
+    handled = []
+    original_handle = AcpDuplexAdapter.handle_client_request
+    async def handle(adapter, message, **kwargs):
+        handled.append((message.get("id"), len(h.events)))
+        return await original_handle(adapter, message, **kwargs)
+    monkeypatch.setattr(AcpDuplexAdapter, "handle_client_request", handle)
+    original_reply = NdjsonOutboundChannel.deliver_client_response
+    def reply(channel, message):
+        result = original_reply(channel, message)
+        if message.get("id") == "write-probe":
+            probed.set()
+        return result
+    monkeypatch.setattr(NdjsonOutboundChannel, "deliver_client_response", reply)
+    try:
+        await h.prompt()
+        await asyncio.wait_for(h.transport.entered.wait(), 3)
+        control = h.adapter._active_turns[h.session_id].turn_control
+        assert control.send_slot(TurnSendKey("protocol_response", "response")).authoritative is SendState.WRITE_STARTED
+        await h.reader.send({"jsonrpc": "2.0", "id": "followup", "method": "session/prompt", "params": {
+            "sessionId": h.session_id, "prompt": [{"type": "text", "text": "Continue"}]}})
+        await h.reader.send({"jsonrpc": "2.0", "id": "write-probe", "result": {}})
+        await asyncio.wait_for(probed.wait(), 1)
+        assert handled == [("prompt", 0)], "an in-flight response handoff queues the follow-up"
+        assert h.server._inbound_admission.count == 2
+        if end == "teardown":
+            h.task.cancel()
+            await asyncio.wait_for(h.settled.wait(), 3)
+            h.transport.release.set()
+            await asyncio.wait_for(asyncio.gather(h.task, return_exceptions=True), 5)
+            assert [e.payload["settlement"] for e in h.events] == ["transport_abandoned"]
+            assert h.events[0].payload["rpc_response_delivery"] == "ambiguous"
+            assert handled == [("prompt", 0)]
+            assert not any(m.get("id") == "followup" for m in h.transport.writes)
+        else:
+            h.transport.fail = (lambda m: m.get("id") == "prompt") if end == "failed" else (lambda m: False)
+            h.transport.release.set()
+            response = await h.transport.until(lambda m: m.get("id") == "followup")
+            assert response.get("result") == {"stopReason": "end_turn"}
+            assert h.events[0].payload["rpc_response_delivery"] == ("ambiguous" if end == "failed" else "flushed")
+            assert handled == [("prompt", 0), ("followup", 1)], "dispatch follows the old owner's settlement"
+            assert sum(m.get("id") == "prompt" for m in h.transport.writes) == 1
+        assert not h.sink_errors
+    finally:
+        h.transport.release.set()
+        await h.close()
+    assert h.server._inbound_admission.count == h.server._inbound_admission.bytes == 0
 
 
 @pytest.mark.parametrize("active_prompts", [2, 4], ids=["capacity-boundary", "same-pass-session"])

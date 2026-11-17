@@ -136,6 +136,8 @@ _INDEX_LISTINGS = {
     "tests/unit/guardrails/test_file_policy.py": "lists a per-test temporary repository's ignored files to compare with the policy, never the repository being committed",
     "tests/unit/tools/test_probe_p11_zed_session_load.py": "a stand-in for git that the probe's isolated copies must never call",
     "tests/unit/tools/test_run_profile.py": "lists a per-test fixture repository's default index, which is the subject",
+    "tools/evidence_gather_support/plan117_current_client_collector.py": "real_host_actions source_facts lists the requested acquisition checkout's untracked files for evidence custody, never a verdict about the commit; real actions refuse under pytest and unit tests replace subprocess.run with an inert fake",
+    "tests/unit/tools/test_plan117_current_client_collector.py": "holds that listing's command tuple only as a key of the inert subprocess.run fake; it never runs the listing against the checkout being committed",
 }
 
 
