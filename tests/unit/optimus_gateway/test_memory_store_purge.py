@@ -32,12 +32,21 @@ CLEAN = Inventory(("appendonlydir", "dump.rdb"), ("appendonly.aof.2.base.rdb", "
 def store(root: Path, server: Server | None = None, *, journal: bool = True) -> tuple[memory_store.MemoryStoreService, Server, PurgeJournal]:
     server = server or Server()
     server.files = CLEAN  # type: ignore[attr-defined]  # what the data directory holds; a test may leave an old file in it
+    server.removed = []  # type: ignore[attr-defined]
+    server.on_read = None  # type: ignore[attr-defined]
     purge_journal = PurgeJournal(root / "journal", journal_key("pw"))
 
-    def inventory(_timeout: float) -> Inventory:
-        if server.files is None:  # type: ignore[attr-defined]
+    def inventory(_timeout: float, remove: tuple[str, ...]) -> Inventory:
+        files = server.files  # type: ignore[attr-defined]
+        if files is None:
             raise InventoryUnavailable("docker not found")
-        return server.files  # type: ignore[attr-defined,no-any-return]
+        if server.on_read is not None:  # type: ignore[attr-defined]
+            server.on_read()  # type: ignore[attr-defined]
+        server.removed.extend(remove)  # type: ignore[attr-defined]
+        files = Inventory(tuple(name for name in files.top if name not in remove),
+                          tuple(name for name in files.aof if f"appendonlydir/{name}" not in remove), files.manifest)
+        server.files = files  # type: ignore[attr-defined]
+        return files
 
     inner = memory_store.MemoryStore(Client(server, 9), Client(server), admission_ceiling_mb=384, cursor_key=b"k",  # type: ignore[arg-type]
                                      journal=purge_journal if journal else None, inventory=inventory)
@@ -106,9 +115,11 @@ def test_the_disk_step_completes_only_after_fresh_rewrites_finish_well(tmp_path:
     assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED and len(server.background) == 2
 
 
-RETAINED = Inventory(CLEAN.top, (*CLEAN.aof, "appendonly.aof.1.base.rdb"), CLEAN.manifest)  # an unlink Redis could not do
+RETAINED = Inventory(CLEAN.top, (*CLEAN.aof, "copy.aof"), CLEAN.manifest)  # a file in the AOF directory Redis does not name
 HISTORY = Inventory(CLEAN.top, (*CLEAN.aof, "appendonly.aof.1.base.rdb"), CLEAN.manifest + "file appendonly.aof.1.base.rdb seq 1 type h\n")
-LEFTOVER = Inventory((*CLEAN.top, "temp-4242.rdb"), CLEAN.aof, CLEAN.manifest)
+LEFTOVER = Inventory((*CLEAN.top, "dump.rdb.bak"), CLEAN.aof, CLEAN.manifest)
+ABANDONED = Inventory((*CLEAN.top, "temp-4242.rdb", "temp-rewriteaof-31.aof"), (*CLEAN.aof, "appendonly.aof.1.base.rdb", "appendonly.aof.1.incr.aof"),
+                      CLEAN.manifest)  # what a fork killed mid-run and an unlink Redis could not do leave behind
 
 
 @pytest.mark.parametrize(("files", "why"), [(RETAINED, "retained_files"), (HISTORY, "history_files"), (LEFTOVER, "unexpected_files"),
@@ -125,6 +136,32 @@ def test_a_rewrite_that_left_an_old_file_behind_never_completes_the_purge(tmp_pa
     assert (reply["purge_state"], reply["files"]) == ("pending", why) and "completed" not in phases(journal)
     server.files = CLEAN  # type: ignore[attr-defined]  # the old file is gone: the same purge now completes
     assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED
+
+
+def test_files_redis_abandoned_are_removed_and_the_purge_completes(tmp_path: Path) -> None:
+    """A fork killed mid-run leaves its temporary file, and Redis never removes another process's: the Gateway removes what
+    Redis itself names and no longer uses, so a purge after a crash still completes."""
+    service, server, _journal = store(tmp_path)
+    token = lease(service)
+    saved(service, token)
+    purge(service, token)
+    finish_background(server)
+    server.files = ABANDONED  # type: ignore[attr-defined]
+    assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED
+    assert server.removed == ["temp-4242.rdb", "temp-rewriteaof-31.aof", "appendonlydir/appendonly.aof.1.base.rdb",  # type: ignore[attr-defined]
+                              "appendonlydir/appendonly.aof.1.incr.aof"]
+
+
+def test_nothing_is_removed_while_a_fork_runs(tmp_path: Path) -> None:
+    service, server, _journal = store(tmp_path)
+    token = lease(service)
+    saved(service, token)
+    purge(service, token)
+    finish_background(server)
+    server.files = ABANDONED  # type: ignore[attr-defined]
+    server.on_read = lambda: server.persistence.update(rdb_bgsave_in_progress=1)  # type: ignore[attr-defined]  # one starts meanwhile
+    reply = status(service)
+    assert (reply["purge_state"], reply["files"]) == ("pending", "unexpected_files") and server.removed == []  # type: ignore[attr-defined]
 
 
 def test_the_inventory_reads_only_the_provisioned_container(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -146,10 +183,14 @@ def test_the_inventory_reads_only_the_provisioned_container(monkeypatch: pytest.
 
     monkeypatch.setattr(memory_files.shutil, "which", lambda _name: "docker")
     monkeypatch.setattr(memory_files.subprocess, "run", run)
-    assert memory_files.residue(memory_files.docker_inventory(config)(5.0)) is None and calls == ["inspect", "exec"]  # type: ignore[arg-type]
+    assert memory_files.residue(memory_files.docker_inventory(config)(5.0, ())) is None and calls == ["inspect", "exec"]  # type: ignore[arg-type]
+    argvs: list[list[str]] = []
+    monkeypatch.setattr(memory_files.subprocess, "run", lambda argv, **kwargs: argvs.append(argv) or run(argv, **kwargs))
+    memory_files.docker_inventory(config)(5.0, ("temp-31.rdb", "appendonlydir/appendonly.aof.1.incr.aof"))  # type: ignore[arg-type]
+    assert argvs[-1][-3:] == ["sh", "temp-31.rdb", "appendonlydir/appendonly.aof.1.incr.aof"]  # paths are arguments, never script
     inspected["Config"]["Labels"]["optimus.memory.resource"] = "someone-else"
     with pytest.raises(memory_files.InventoryUnavailable):
-        memory_files.docker_inventory(config)(5.0)  # type: ignore[arg-type]
+        memory_files.docker_inventory(config)(5.0, ())  # type: ignore[arg-type]
 
 
 def test_a_rewrite_already_running_at_the_purge_is_never_counted(tmp_path: Path) -> None:

@@ -29,7 +29,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import OutOfMemoryError, RedisError, ResponseError, TimeoutError, WatchError
 from redis.retry import Retry
 
-from optimus_gateway.memory_files import Inventory, InventoryUnavailable, docker_inventory, residue
+from optimus_gateway.memory_files import Inventory, InventoryUnavailable, abandoned, docker_inventory, residue
 from optimus_gateway.memory_journal import JournalError, PurgeJournal, journal_key
 from optimus_security import memory_store_contract as msc
 from optimus_security.memory_store_config import KEYRING_SERVICE, MemoryStoreConfig
@@ -376,7 +376,7 @@ class MemoryStore:
     `verify` shows the resource is still the provisioned one."""
 
     def __init__(self, client: redis.Redis, writer: redis.Redis, *, admission_ceiling_mb: int, cursor_key: bytes,
-                 journal: PurgeJournal | None = None, inventory: Callable[[float], Inventory] | None = None) -> None:
+                 journal: PurgeJournal | None = None, inventory: Callable[[float, tuple[str, ...]], Inventory] | None = None) -> None:
         self._purge_journal = journal
         self._inventory = inventory  # lists the data directory; without one no purge's disk step is ever shown complete
         self._redis = client
@@ -1031,10 +1031,20 @@ class MemoryStore:
         if self._inventory is None:
             return "file_inventory_unavailable"
         self._on_time()
+        timeout = max(1.0, min(10.0, self._remaining()))
         try:
-            return residue(self._inventory(max(1.0, min(10.0, self._remaining()))))
+            files = self._inventory(timeout, ())
+            stale = abandoned(files)
+            if stale and not self._forking():  # a fork that died left these; a running one may still be writing its own
+                self._on_time()
+                files = self._inventory(timeout, stale)
+            return residue(files)
         except InventoryUnavailable:
             return "file_inventory_unavailable"
+
+    def _forking(self) -> bool:
+        info = self._writer.info("persistence")
+        return any(info.get(flag) for _kind, _counter, busy, *_rest in _PERSISTENCE for flag in busy) or bool(info.get("module_fork_in_progress"))
 
     def _need_journal(self) -> PurgeJournal:
         if self._purge_journal is None:
@@ -1128,7 +1138,7 @@ class MemoryStoreService:
 
 def build_memory_store_service(config: MemoryStoreConfig, *, keyring_backend: Any, hmac_key: bytes,
                                journal_root: Path | None = None,
-                               inventory: Callable[[float], Inventory] | None = None) -> MemoryStoreService:
+                               inventory: Callable[[float, tuple[str, ...]], Inventory] | None = None) -> MemoryStoreService:
     """The service for the approved configuration. Nothing connects until the first request. A missing password serves a
     stable refusal, so the Agent Panel can say setup is incomplete while models keep working. The purge journal lives under
     `journal_root`, outside the Redis volume; without one (or without a password) purge is refused. A purge's disk step ends

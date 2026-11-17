@@ -225,10 +225,12 @@ def admission(provisioned: Any, work: Path) -> dict[str, Any]:
     cases: list[tuple[str, mx.TurnInput, Any, str]] = []
 
     def user(name: str, reply: Any, expected: str, *, utterance: str = text, trusted: bool = True, sources: tuple[str, ...] = ()) -> None:
-        cases.append((name, mx.TurnInput(f"adm:{name}", "project", (mx.UserBlock("b", utterance),), None, sources, trusted), reply, expected))
+        # each case in its own scope: the same words in one scope are extracted once while their item stands
+        cases.append((name, mx.TurnInput(f"adm:{name}", f"adm-{name}", (mx.UserBlock("b", utterance),), None, sources, trusted), reply, expected))
 
     def agent(name: str, reply: Any, expected: str, evidence: tuple[mx.Evidence, ...]) -> None:
-        cases.append((name, mx.TurnInput(f"adm:{name}", "project", (mx.UserBlock("b", "Fix the flaky test."),), mx.CompletedWork("done", evidence), (), True), reply, expected))
+        cases.append((name, mx.TurnInput(f"adm:{name}", f"adm-{name}", (mx.UserBlock("b", "Fix the flaky test."),), mx.CompletedWork("done", evidence), (), True),
+                      reply, expected))
 
     user("genuine_user_statement", pref("New commits run ruff first."), "ADMITTED")
     user("question_creates_no_rule", pref("Do we run ruff?", act="question"), "NO_RULE")

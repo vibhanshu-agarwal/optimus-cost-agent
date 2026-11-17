@@ -127,15 +127,18 @@ def test_a_purge_leaves_the_text_in_no_key_and_no_file(visible: Provisioned, tmp
 
 def test_a_file_the_rewrite_left_behind_holds_the_purge_pending_until_it_is_gone(visible: Provisioned, tmp_path: Path) -> None:
     """Codex CP2 review 1, finding 2: Redis can report a rewrite done while an old AOF file it failed to unlink still holds the
-    text. A copy of the increment, outside the manifest, stands in for that file: the purge never completes while it is there."""
+    text. Two copies of the increment, outside the manifest, stand in for that file: one under a name Redis gives its AOF parts,
+    which the Gateway removes as abandoned, and one under a name Redis never gives, which holds the purge pending until it is
+    gone."""
     service, project = _service(visible, tmp_path), _project()
     token = _lease(service, project)
     item, canary, control = _saved_pair(service, project, token)
     names = docker("exec", CONTAINER, "ls", "-1A", "/data/appendonlydir", check=True).stdout.split()
     increment = next(name for name in names if name.endswith(".incr.aof"))
-    left = "/data/appendonlydir/left-behind.incr.aof"
-    docker("exec", CONTAINER, "cp", f"/data/appendonlydir/{increment}", left, check=True)
-    assert left in _files_with(canary)
+    owned, left = "/data/appendonlydir/appendonly.aof.99.incr.aof", "/data/appendonlydir/left-behind.incr.aof"
+    for copy in (owned, left):
+        docker("exec", CONTAINER, "cp", f"/data/appendonlydir/{increment}", copy, check=True)
+    assert {owned, left} <= _files_with(canary)
     assert _purge(service, project, token, item, "f" * 64)[0] == 200
     deadline = time.monotonic() + 120
     while (reply := _status(service, project, item)).get("files") != "retained_files":

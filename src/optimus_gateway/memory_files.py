@@ -5,11 +5,16 @@ that purged text left the declared boundary. After both have run, the directory 
 names (no history file), the snapshot and the AOF directory: anything else may still hold the text, and the purge stays
 pending. The inventory is read through the local Docker engine from the provisioned container, which must carry the
 configured resource label and publish the configured port.
+
+A fork killed mid-run leaves its temporary file behind, and Redis never removes another process's (found on the real store
+in the CP2 rerun on 1051ae5): a purge after such a crash would stay pending forever. So files Redis itself names and no longer
+uses are removed by the Gateway, while no fork runs: see `abandoned`.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -23,6 +28,8 @@ _DATA: Final = "/data"
 _AOF_DIR: Final = "appendonlydir"
 _SNAPSHOT: Final = "dump.rdb"
 _SEPARATOR: Final = "--optimus-inventory--"
+_REDIS_TEMP: Final = re.compile(r"temp-\d+\.rdb|temp-rewriteaof-(bg-)?\d+\.aof")  # a snapshot or rewrite fork's working file
+_AOF_PART: Final = re.compile(r"(?P<prefix>[A-Za-z0-9._-]+)\.\d+\.(base\.(rdb|aof)|incr\.aof)")
 
 
 @dataclass(frozen=True)
@@ -59,6 +66,20 @@ def residue(inventory: Inventory) -> str | None:
     return None
 
 
+def abandoned(inventory: Inventory) -> tuple[str, ...]:
+    """Files under the data directory that Redis itself names and no longer uses: a fork's temporary snapshot or rewrite, and
+    AOF parts the manifest no longer lists. A part outside the manifest is never in use: Redis lists a new increment before
+    writing to it and renames a new base in with the manifest. Removing a running fork's temporary file only fails that fork,
+    which the next disk step reissues; so the caller removes these only while no fork runs. Anything else stays residue."""
+    listed = {fields[fields.index("file") + 1] for fields in map(str.split, inventory.manifest.splitlines())
+              if "file" in fields[:-1]}
+    prefixes = {match["prefix"] for name in listed if (match := _AOF_PART.fullmatch(name))}
+    found = [name for name in inventory.top if _REDIS_TEMP.fullmatch(name)]
+    found += [f"{_AOF_DIR}/{name}" for name in inventory.aof
+              if name not in listed and (match := _AOF_PART.fullmatch(name)) and match["prefix"] in prefixes]
+    return tuple(found)
+
+
 def parse(output: str) -> Inventory:
     parts = output.split(_SEPARATOR + "\n")
     if len(parts) != 3:
@@ -67,10 +88,11 @@ def parse(output: str) -> Inventory:
     return Inventory(tuple(top.split()), tuple(aof.split()), manifest)
 
 
-def docker_inventory(config: MemoryStoreConfig) -> Callable[[float], Inventory]:
-    """An inventory of the provisioned container's data directory, read with `docker exec`, each step within `timeout`."""
+def docker_inventory(config: MemoryStoreConfig) -> Callable[[float, tuple[str, ...]], Inventory]:
+    """An inventory of the provisioned container's data directory, read with `docker exec`, each step within `timeout`. The
+    `remove` paths (relative to the data directory, from `abandoned`) are deleted first, passed as arguments, never as script."""
 
-    def read(timeout: float) -> Inventory:
+    def read(timeout: float, remove: tuple[str, ...]) -> Inventory:
         docker = shutil.which("docker")
         if docker is None:
             raise InventoryUnavailable("docker not found")
@@ -83,9 +105,9 @@ def docker_inventory(config: MemoryStoreConfig) -> Callable[[float], Inventory]:
             bindings = (details.get("HostConfig") or {}).get("PortBindings") or {}
             if not any(str(binding.get("HostPort")) == str(config.port) for spec in bindings.values() for binding in spec or ()):
                 raise InventoryUnavailable("container does not publish the configured port")
-            script = (f"ls -1A {_DATA} && echo {_SEPARATOR} && ls -1A {_DATA}/{_AOF_DIR} && echo {_SEPARATOR} && "
-                      f"cat {_DATA}/{_AOF_DIR}/*.manifest")
-            listing = subprocess.run([docker, "exec", config.container, "sh", "-c", script],
+            script = (f'cd {_DATA} && {{ [ "$#" -eq 0 ] || rm -f -- "$@"; }} && ls -1A {_DATA} && echo {_SEPARATOR} && '
+                      f"ls -1A {_DATA}/{_AOF_DIR} && echo {_SEPARATOR} && cat {_DATA}/{_AOF_DIR}/*.manifest")
+            listing = subprocess.run([docker, "exec", config.container, "sh", "-c", script, "sh", *remove],
                                      capture_output=True, text=True, check=False, timeout=timeout)
         except (OSError, subprocess.TimeoutExpired, ValueError, IndexError, TypeError, AttributeError) as exc:
             raise InventoryUnavailable(type(exc).__name__) from None
