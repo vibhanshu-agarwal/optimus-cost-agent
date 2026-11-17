@@ -1,7 +1,7 @@
 {
   "schema": "plan12-memory-m3.extraction-overhead.v2",
   "source": {
-    "head": "git:6930366029d3119b52c411ba9b2cf8c5e2e54883",
+    "head": "git:9509e2d31a49cb15f8a52dad90e47d75d0aa7b5c",
     "dirty": false
   },
   "upstream": "controlled, 0.200 s per call, nothing billed",
@@ -21,24 +21,24 @@
   "settlement_s": {
     "count": 20,
     "p50": 0.23,
-    "p95": 0.24,
-    "max": 0.24
+    "p95": 0.27,
+    "max": 0.27
   },
   "first_response": {
     "off_ms": {
       "count": 100,
-      "p50": 15.67,
-      "p95": 28.8,
-      "max": 44.39
+      "p50": 11.43,
+      "p95": 22.39,
+      "max": 23.98
     },
     "on_ms": {
       "count": 100,
-      "p50": 14.69,
-      "p95": 27.33,
-      "max": 33.92
+      "p50": 12.86,
+      "p95": 21.06,
+      "max": 22.18
     }
   },
-  "added_first_response_p95_ms": -1.47,
+  "added_first_response_p95_ms": -1.33,
   "outcomes": {
     "appended_by_action": {
       "admit": 10,

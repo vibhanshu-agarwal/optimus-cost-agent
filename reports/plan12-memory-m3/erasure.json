@@ -1,8 +1,8 @@
 {
   "schema": "plan12-memory-m3.erasure.v1",
   "source": {
-    "head": "git:6930366029d3119b52c411ba9b2cf8c5e2e54883",
-    "run_id": "20261117T160539-50492-0f057d",
+    "head": "git:9509e2d31a49cb15f8a52dad90e47d75d0aa7b5c",
+    "run_id": "20261117T165045-28024-3c8026",
     "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_store.py tests/integration/memory/test_lifecycle.py",
     "exit_status": 0,
     "completeness": "COMPLETE"
