@@ -17,16 +17,22 @@
   "runs": {
     "dedicated_store": {
       "command": "P1211_MEMORY_DOCKER_RELEASED=1 pytest -m requires_plan12_memory_redis tests/integration/memory/test_store.py",
-      "run": "20261117T004533-43936-4207dd",
-      "result": "32 passed, after the Codex review 7 round",
+      "run": "20261117T005558-10092-fb5f59",
+      "head": "git:7ca33bfa45d901bc4a382df1b230d0a43a89580a",
+      "worktree": "clean before and after",
+      "result": "32 passed",
       "ack_latency_s": {
         "saves": 50,
-        "p50": 0.0073,
-        "p95": 0.0105,
-        "max": 0.0115,
+        "p50": 0.0079,
+        "max": 0.0095,
         "policy": "appendfsync always"
       },
-      "superseded_measurement": {
+      "superseded": {
+        "run": "20261117T004533-43936-4207dd",
+        "head": "git:5f50746ece3b6d9257f73335ca5089e6f5ba3d2f",
+        "note": "ran on the working tree before 7ca33bf was committed; first reported as on 7ca33bf, withdrawn (Codex CP1 review 8)"
+      },
+      "everysec_measurement": {
         "run": "20261116T201743-42348-455d0c",
         "policy": "appendfsync everysec",
         "p50": 1.0032,
@@ -37,15 +43,23 @@
     },
     "native_keyring": {
       "command": "pytest -m requires_os_keyring_write tests/integration/memory/test_native_keyring.py",
-      "run": "20261117T004554-21904-cd8104",
+      "run": "20261117T005618-29680-ceff47",
       "result": "3 passed",
-      "residue": "none: keyring.get_password('optimus-p1211-test', 'redis-password') is None after the run"
+      "residue": "none: keyring.get_password('optimus-p1211-test', 'redis-password') is None after the run",
+      "head": "git:7ca33bfa45d901bc4a382df1b230d0a43a89580a",
+      "worktree": "clean before and after",
+      "superseded": {
+        "run": "20261117T004554-21904-cd8104",
+        "note": "pre-commit working tree; withdrawn as exact-head evidence"
+      }
     },
     "broad_unit": {
-      "sha": "git:5f50746ece3b6d9257f73335ca5089e6f5ba3d2f",
+      "run": "20261117T005026-54528-28e60a",
+      "head": "git:7ca33bfa45d901bc4a382df1b230d0a43a89580a",
       "launcher": "PowerShell",
-      "result": "9413 passed, 46 skipped, 0 failed (1:02:12)",
-      "suites": "tests/unit/{optimus_gateway,security,gateway,context,context_engine,tools,guardrails,docs,acp}"
+      "result": "9416 passed, 46 skipped, 0 failed (1:02:57)",
+      "suites": "tests/unit/{optimus_gateway,security,gateway,context,context_engine,tools,guardrails,docs,acp}",
+      "ruff": "ruff 0.15.20, ruff check . clean on the same head"
     }
   },
   "covered": [
