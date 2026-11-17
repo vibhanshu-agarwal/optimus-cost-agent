@@ -159,8 +159,8 @@ def test_a_turn_that_read_a_document_or_anything_outside_vouches_for_nothing(tai
 
 def test_a_cut_down_span_is_widened_to_the_user_s_whole_sentence() -> None:
     """Fable CP2 M3: the model chooses where the words are, never which of them count."""
-    text = "Fine by me. Never push to main; open a pull request instead."
-    candidate = _user("push to main", [{"block": "b-1", "start": 18, "end": 30}], text=text)
+    text = "Never push to main; open a pull request instead."
+    candidate = _user("push to main", [{"block": "b-1", "start": 6, "end": 18}], text=text)
     assert candidate.verdict.spans_verified and candidate.candidate.statement == "Never push to main; open a pull request instead."
     assert candidate.candidate.title == candidate.candidate.statement  # the user's words, never the model's title
 
@@ -253,14 +253,18 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
         ("decision", "Actually, we now push to main after review."), ("decision", "Correction: pushing to main is fine after review."),
         ("decision", "Instead of never pushing to main, push to main after review."),
         ("decision", "Change the rule about pushing to main to stay the same."), ("decision", "Change the rule about pushing to main to review."),
+        # review 6, finding 1: a condition on the replacement, or a second sentence, leaves the rule standing
+        ("decision", "Actually, change the rule about pushing to main to allow direct pushes, but only after I approve this change."),
+        ("decision", "Change the rule about pushing to main to allow it after review."),
+        ("retraction", "Cancel the rule about pushing to main. That needs operator approval."),
     ):
         assert _act(act, words, target="m-" + "a" * 16, existing=rule) == "SPANS_UNVERIFIED", words
     for act, words, reason in (("retraction", "Cancel the rule about pushing to main.", "RETRACTED"),
                                ("retraction", "Ignore what I said about pushing to main.", "RETRACTED"),
                                ("retraction", "Actually, ignore what I said about pushing to main.", "RETRACTED"),
                                ("retraction", "We want to drop the rule about pushing to main.", "RETRACTED"),
-                               ("decision", "Change the rule about pushing to main to allow it after review.", "SUPERSEDED"),
-                               ("decision", "Replace the rule about pushing to main with pushing after a green build.", "SUPERSEDED")):
+                               ("decision", "Change the rule about pushing to main to allow pushes from release branches.", "SUPERSEDED"),
+                               ("decision", "Replace the rule about pushing to main with pushing from release branches.", "SUPERSEDED")):
         assert _act(act, words, target="m-" + "a" * 16, existing=rule) == reason, words  # controls
     ruff = (mx.ExistingItem("m-" + "a" * 16, "From now on we always run ruff before every commit."),)  # K1's retraction
     assert _act("retraction", "Actually, ignore what I said about running ruff before every commit.", target="m-" + "a" * 16,
@@ -282,6 +286,8 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
     ("Please explain \u201cNever push to main.\u201d", "Never push to main."),
     ("The wiki's rule is 'Never push to main.'", "Never push to main."),
     ("> Never push to main.\nWhat does that mean?", "Never push to main."),
+    ("An old README contains this rule. Never push to main. Please explain it.", "Never push to main."),  # review 6, finding 3
+    ("Our README requires never pushing to main.", "Our README requires never pushing to main."),
 ])
 def test_someone_else_s_words_anywhere_in_the_block_stay_theirs(block: str, chosen: str) -> None:
     start = block.index(chosen)
@@ -299,6 +305,9 @@ def test_someone_else_s_words_anywhere_in_the_block_stay_theirs(block: str, chos
     ("Rules:\n- Never push to main\n- Run ruff first", "Never push to main"),
     ("Only after operator approval. We always deploy to main.", "We always deploy to main."),  # a qualifying sentence
     ("We always deploy to main. That needs operator approval.", "We always deploy to main."),
+    ("We always deploy to main. Operator approval is required first.", "We always deploy to main."),  # review 6, finding 4
+    ("Fine by me. Never push to main.", "Never push to main."),  # a second sentence, however harmless it looks
+    ("Never push to main.\nRun ruff before every commit.", "Run ruff before every commit."),
 ])
 def test_a_rule_whose_reach_the_block_leaves_open_goes_off(block: str, chosen: str) -> None:
     start = block.index(chosen)
@@ -308,13 +317,11 @@ def test_a_rule_whose_reach_the_block_leaves_open_goes_off(block: str, chosen: s
 
 @pytest.mark.parametrize(("block", "chosen", "kept"), [
     ("We always deploy to main, only after operator approval.", "We always deploy to main,", "We always deploy to main, only after operator approval."),
-    ("Fine by me. Never push to main.", "Never push to main.", "Never push to main."),
     ("Never push to `main`; don't skip CI.", "Never push to", "Never push to `main`; don't skip CI."),  # a code token, an apostrophe
-    ("Never push to main.\nRun ruff before every commit.", "Run ruff", "Run ruff before every commit."),
-    ("Never push to main.\nRun ruff before every commit.", "main.\nRun", "Never push to main. Run ruff before every commit."),
+    ("Run ruff before every commit.", "Run ruff", "Run ruff before every commit."),
 ])
 def test_a_plain_sentence_is_kept_whole(block: str, chosen: str, kept: str) -> None:
-    """Controls: plain sentences of the user's own are admitted whole, the condition with them."""
+    """Controls: one plain sentence of the user's own is admitted whole, the condition with it."""
     start = block.index(chosen)
     candidate = _user(chosen, [{"block": "b-1", "start": start, "end": start + len(chosen)}], text=block)
     assert candidate.candidate.statement == kept and memory_gate.admit(candidate.candidate, candidate.verdict).reason == "ADMITTED"

@@ -82,9 +82,10 @@ _ATTRIBUTION = re.compile(r"\b(according to|as (?:the|a|an|this|that|my|our|thei
 _CODE_TOKEN = re.compile(r"`[^`\s]{1,60}`")  # an inline code token (`main`, `ruff`) names a thing; it quotes no one
 # A quote mark anywhere, an apostrophe that is not inside a word ("don't" is the user's own word) among them.
 _QUOTE_CHARS = re.compile(r"[\"\u201c\u201d\u00ab\u00bb`]|(?<![A-Za-z])['\u2018\u2019]|['\u2018\u2019](?![A-Za-z])")
-# A sentence that qualifies or points at another one: its reach is not the user's to read off one sentence (review 5, finding 3).
-_QUALIFIER = re.compile(r"\s*(only|if|unless|except|excluding|when|whenever|until|after|before|once|provided|as long as|but|however|"
-                        r"otherwise|then|that|this|it|these|those|there)\b", re.IGNORECASE)
+# A source whose words the user may be passing on (Codex CP2 review 6, finding 3): a block that mentions one is someone else's
+# until shown otherwise, and nothing here can show it.
+_SOURCE = re.compile(r"\b(readme|docs?|documentation|wiki|spec|specification|ticket|issue|email|e-mail|message|comment|thread|chat|"
+                     r"transcript|changelog|guide|manual|article|post|blog|page|log|logs|output|book|paper|policy)\b", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"[.!?]+(?=\s|$)")
 _TASK_VERBS = frozenset({
     "add", "remove", "fix", "rename", "refactor", "move", "update", "write", "run", "check", "make", "implement", "replace", "extract",
@@ -294,7 +295,7 @@ def _content_words(text: str) -> set[str]:
 
 def _said(proposal: Proposal, blocks: dict[str, str]) -> list[str]:
     """What the user actually said, span by span: a user-authored memory's statement is their own words, never the model's
-    paraphrase, kept on one line."""
+    paraphrase, on one line: a quotation across lines still reaches the Gate, which refuses it as one."""
     return [" ".join(blocks[span.block][span.start : span.end].split()) for span in proposal.spans if span.block in blocks]
 
 
@@ -309,24 +310,18 @@ def _bounds(text: str) -> list[tuple[int, int]]:
 
 
 def _reading(text: str) -> str | None:
-    """How the user's whole block may be read (Codex CP2 review 5, findings 2 and 3). "quotation": it holds someone else's words
-    somewhere, a quote mark, a fence or "> " line, or a sentence that attributes or introduces a source. "unclear": its shape
-    leaves a sentence's reach open, a colon or a line that does not end a sentence. None: plain sentences of the user's own."""
-    bare = _CODE_TOKEN.sub("x", text)
-    sentences = [bare[start:end].strip() for start, end in _bounds(bare)]
-    if _QUOTE_CHARS.search(bare) or any(line.lstrip().startswith(">") for line in bare.splitlines()) or any(
-            _QUOTED.search(sentence) or _INTRODUCES.search(sentence) or _ATTRIBUTION.search(sentence) for sentence in sentences):
+    """How the user's whole block may be read, by an allow-list (Codex CP2 reviews 5 and 6, findings 2 to 4): None only for one
+    plain sentence of the user's own on one line, which is then the whole statement. "quotation": it may hold someone else's
+    words, a quote mark, a fence or "> " line, a source it names, attributes or introduces. "unclear": anything else, a colon,
+    a line break, a second sentence; no pattern can show that another sentence carries no condition or attribution, so none
+    is read as independent of it."""
+    bare = _CODE_TOKEN.sub("x", text).strip()
+    if _QUOTE_CHARS.search(bare) or any(line.lstrip().startswith(">") for line in bare.splitlines()) or _SOURCE.search(bare) or (
+            _QUOTED.search(bare) or _INTRODUCES.search(bare) or _ATTRIBUTION.search(bare)):
         return "quotation"
-    if ":" in bare or any(line.strip() and not line.rstrip().endswith((".", "!", "?")) for line in bare.splitlines()):
+    if ":" in bare or "\n" in bare or len(_bounds(bare)) != 1 or not bare.endswith((".", "!", "?")):
         return "unclear"
     return None
-
-
-def _qualified(text: str, chosen: Sequence[Span]) -> bool:
-    """Whether a sentence of the block the proposal did not choose qualifies or points at another: "Only after approval. We
-    deploy to main." Then no one sentence is the rule, and it goes off."""
-    return any(_QUALIFIER.match(text[start:end]) for start, end in _bounds(text)
-               if not any(span.start < end and start < span.end for span in chosen))
 
 
 def _sentences(said: Sequence[str]) -> list[str]:
@@ -354,7 +349,8 @@ def _withdrawn(said: Sequence[str], title: str) -> str | None:
 
 def _changed(said: Sequence[str], title: str) -> str | None:
     """The words a sentence of the user's changes when, whole, it replaces this item alone with something new: "Change the rule
-    about pushing to main to allow it after review." What replaces it holds at least two words the item does not."""
+    about pushing to main to allow pushes from release branches." What replaces it holds at least two words the item does not,
+    and no condition or second clause: "..., but only after I approve this change." would change it now (review 6, finding 1)."""
     for sentence in _sentences(said):
         sentence = sentence.rstrip(" .!")
         head = _CHANGES.match(sentence)
@@ -364,7 +360,7 @@ def _changed(said: Sequence[str], title: str) -> str | None:
         for split in _CHANGED_TO.finditer(rest):
             words, new = rest[: split.start()], rest[split.end():]
             fresh = _content_words(new) - _content_words(title.removesuffix("…"))
-            if _only_names(words, title) and len(fresh) >= 2 and not _NOOP.search(new):
+            if _only_names(words, title) and len(fresh) >= 2 and not _NOOP.search(new) and not _CONDITION.search(new):
                 return words
     return None
 
@@ -380,8 +376,8 @@ def _names(text: str, title: str) -> bool:
 def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | None) -> tuple[str | None, str | None]:
     """The speech act the user's own words bear out, and for a retraction or an update the words that name its target (Codex
     CP2 reviews 1 to 5). A quotation anywhere in a block makes it all someone else's; a question or hypothetical is that,
-    whatever the model labels it; a block whose shape leaves a sentence's reach open, or that qualifies the chosen sentence
-    elsewhere, bears nothing. A retraction needs `_withdrawn`, and an update `_changed`, for the item it names. None: the words
+    whatever the model labels it; a block that is not one plain sentence
+    bears nothing. A retraction needs `_withdrawn`, and an update `_changed`, for the item it names. None: the words
     do not bear the model out, so it goes off."""
     said = []
     for span in proposal.spans:
@@ -394,7 +390,7 @@ def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | N
         part = " ".join(text[span.start : span.end].split())
         if part.endswith("?") or _HYPOTHETICAL.match(part) or (_QUESTION_START.match(part) and not _DURABLE.search(part)):
             return "question", None
-        if reading == "unclear" or _qualified(text, [item for item in proposal.spans if item.block == span.block]):
+        if reading == "unclear":
             return None, None
         said.append(part)
     if proposal.target is None:
@@ -768,6 +764,7 @@ class MemoryExtractor:
                     written = None
                     continue
                 notices.append(MemoryNotice.of(result, decision.draft.action))
+                live = None  # this write may have changed what the next target's words name (Codex CP2 review 6, finding 2)
                 if written is not None and result.durable_state == "confirmed":
                     written.append((result.item, result.version))
                 else:

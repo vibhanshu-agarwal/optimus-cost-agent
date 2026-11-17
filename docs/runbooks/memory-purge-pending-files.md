@@ -27,29 +27,40 @@ docker inspect --format '{{index .Config.Labels "optimus.memory.resource"}}' <co
 
 The label must equal `resource`. If it does not, stop: this is not the store's container.
 
-## 2. Stop the store
+## 2. Stop the store, and keep it stopped
+
+An Optimus launch starts the store again when it finds it stopped. So first close every Optimus client on this machine:
+every IDE window or agent session that uses Optimus. Start none until step 5. Then stop the store and check that it
+stopped:
 
 ```bash
 docker stop <container>
 ```
 
-Memory is unavailable until step 5: the Gateway answers `MEMORY_UNAVAILABLE`, and nothing is lost. With Redis stopped,
-nothing writes to the volume, so nothing you check below can change before you act on it.
+```bash
+docker inspect --format '{{.State.Running}} {{.State.StartedAt}}' <container>
+```
+
+It must print `false`. Note the `StartedAt` value it prints. If a command fails, or prints anything else, stop here and
+start again from step 1.
+
+Memory is unavailable until step 5, and nothing is lost. While Redis is stopped nothing writes to the volume, so nothing
+you check below can change before you act on it.
 
 ## 3. Look at what is there
 
 Use a one-off container on the store's volume, with the store's own image:
 
 ```bash
-docker run --rm -v <volume>:/data <image> find /data -mindepth 1 -maxdepth 2 -printf '%i %y %s %TY-%Tm-%TdT%TT %P\n'
+docker run --rm -v <volume>:/data <image> find /data -mindepth 1 -maxdepth 2 -printf '%i %n %y %s %TY-%Tm-%TdT%TT %P\n'
 ```
 
 ```bash
 docker run --rm -v <volume>:/data <image> sh -c 'cat /data/appendonlydir/*.manifest'
 ```
 
-Each line gives the entry's inode number, type, size, modification time and path relative to `/data`. Find each
-`blocking` label among them.
+Each line gives the entry's inode number, its link count, type, size, modification time and path relative to `/data`. Find
+each `blocking` label among them.
 
 ## 4. Decide, by reason
 
@@ -61,14 +72,26 @@ Each line gives the entry's inode number, type, size, modification time and path
 | `manifest_unreadable` | The manifest is not one Redis writes: a malformed line, no base or two, increments out of sequence, a name that does not match its type or sequence, or a listed file that is missing. | Remove and edit nothing. Keep a copy of the manifest and the listing, and report it. The purge stays pending. |
 | `file_inventory_unavailable` | The Gateway could not list the directory: Docker is not reachable, the container lacks the label or does not publish the configured port, or the listing failed or was malformed. | Nothing in `/data` is at fault. Fix the cause from step 1, then start the store. |
 
+Only a regular file (`f`) with a link count of `1` may be removed. An entry with more links is another name for a file that
+may be current, such as a hard link to the current base: leave it, and report it like `manifest_unreadable`.
+
 To remove one entry, use its inode number from step 3, so the command acts on exactly that entry whatever its name holds.
-Never use a wildcard:
+Never use a wildcard. First check, without removing anything, that the store is still stopped and that exactly one path
+matches:
 
 ```bash
-docker run --rm -v <volume>:/data <image> find /data -mindepth 1 -maxdepth 2 -xdev -inum <inode> -print -delete
+docker inspect --format '{{.State.Running}}' <container> | grep -qx false && docker run --rm -v <volume>:/data <image> find /data -mindepth 1 -maxdepth 2 -xdev -type f -inum <inode> -links 1 -print
 ```
 
-It prints the one path it removed. If it prints anything else, or nothing, stop and look again.
+It must print exactly the one path you chose. If it prints nothing, more than one path or another path, stop. Then remove
+it with the same check:
+
+```bash
+docker inspect --format '{{.State.Running}}' <container> | grep -qx false && docker run --rm -v <volume>:/data <image> find /data -mindepth 1 -maxdepth 2 -xdev -type f -inum <inode> -links 1 -print -delete
+```
+
+Before step 5, run the `docker inspect` command from step 2 again. It must still print `false` and the same `StartedAt`. If
+it does not, the store started during maintenance: stop it, then start again from step 3.
 
 ## 5. Start the store and check again
 

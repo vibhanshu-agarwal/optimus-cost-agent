@@ -349,6 +349,32 @@ def test_a_target_the_words_no_longer_name_alone_under_the_lease_is_left_standin
     assert outcomes[1].reasons == ("SPANS_UNVERIFIED",) and store.read(saved.item).event.status == "active"
 
 
+def test_a_target_resolved_after_an_earlier_write_of_the_same_batch_sees_that_write() -> None:
+    """Codex CP2 review 6, finding 2: an update in the batch can make the next withdrawal's words name two items; the live
+    items are read again after each write, so that withdrawal goes off."""
+    def saved(text: str, n: int) -> SummarizerResponse:
+        return _completed(json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "t", "statement": text,
+                                                      "spans": [{"block": "b-1", "start": 0, "end": len(text)}]}]}), n)
+
+    upstream = _Upstream(saved("Never push main nightly.", 1), saved("Always deploy main.", 2))
+    extractor, _settlement, outcomes, _receipts = _harness(upstream)
+    extractor.submit(_turn(1, text="Never push main nightly."))
+    _until(outcomes, 1)
+    extractor.submit(_turn(2, text="Always deploy main."))
+    _until(outcomes, 2)
+    (a,), (b,) = outcomes[0].notices, outcomes[1].notices
+    change, cancel = "Actually, change deploy main to push main nightly.", "Cancel push main nightly."
+    upstream.replies.append(_completed(json.dumps({"candidates": [
+        {"speech_act": "decision", "kind": "constraint", "title": "t", "statement": change, "spans": [{"block": "b-1", "start": 0, "end": len(change)}],
+         "target": b.item},
+        {"speech_act": "retraction", "kind": "constraint", "title": "t", "statement": cancel, "spans": [{"block": "b-2", "start": 0, "end": len(cancel)}],
+         "target": a.item}]}), 3))
+    extractor.submit(mx.TurnInput("s:3", "s-1", (mx.UserBlock("b-1", change), mx.UserBlock("b-2", cancel)), None, (), True))
+    _until(outcomes, 3)
+    extractor.close()
+    assert outcomes[2].reasons == ("SUPERSEDED", "SPANS_UNVERIFIED") and extractor._store.read(a.item).event.status == "active"
+
+
 def test_a_target_the_words_name_alone_is_withdrawn() -> None:
     """Control for the lease-time resolution: with the one rule live, the same words withdraw it."""
     rule = json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "main", "statement": "Never push to main.",
