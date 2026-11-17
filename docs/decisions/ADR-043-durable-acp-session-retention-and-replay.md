@@ -155,6 +155,8 @@ unmeasured. The operator adopted them as part of the package, not one by one.
 - **This record:** drafted by Claude on 2026-11-16 from Codex's local draft (SHA-256
   `f67c2489a1fbb021c526a466135029dd511cc440d59e4a06760249f02dabc4ad`). It reorganizes that draft, adds the operator's
   words, the value sources and the authority boundaries, and changes no mechanism. Codex reviewed it locally on
-  2026-11-16 in the consolidated review of the local candidate; its two documentation findings are addressed here,
-  pending Codex's final readback. That review is not operator approval of publication, commit or merge.
+  2026-11-16 and again after the move to 043 on 2026-11-17. Its documentation findings were addressed, and Codex's
+  final readback on 2026-11-17 closed them before the record was committed as part of `11d7f779` (draft PR #476).
+  Changes made after that readback are reviewed separately. No review is operator approval of publication, commit or
+  merge.
 - Private planning artifacts are archival provenance only, never a dependency of this record.

@@ -301,7 +301,9 @@ Any publication of those facts as the Plan 11.7 execution contract must be one c
 
 ## Archived moved plans
 
-`Moved` plans whose issues record a terminal state. Each plan is in the flat `archive/` directory.
+`Moved` plans whose issues record a terminal state for that plan file (completed, superseded, retired, abandoned
+or reviewed-disposition); the issue itself may stay open, for example when a successor plan continues the work.
+Each plan is in the flat `archive/` directory.
 Each row is its migration pointer, kept byte for byte, so its plan link still names the file at the
 plans root (the archive-aware link check resolves it there) and its issue owns the record.
 

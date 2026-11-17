@@ -431,3 +431,25 @@ def test_an_unparseable_manifest_without_a_signal_is_invalid_not_an_exception(tm
     bundle.manifest.write_bytes(b"{not json")
     code, out, _ = bundle.run(capsys)
     assert code == 2 and out["disposition"] == D.INVALID_CURRENT_CLIENT_GATE.value
+
+
+def test_unrelated_deep_material_cannot_hide_a_readable_stop(tmp_path, monkeypatch, capsys, windows_shaped_paths):
+    bundle = Bundle(tmp_path, monkeypatch, host_mod.FakeHostOptions(reopen_load_arm="a_prime"))
+    payload = bundle.manifest.read_bytes()
+    assert b'"pid":4242' in payload
+    bundle.manifest.write_bytes(payload.replace(b'"pid":4242', b'"pid":' + b"[" * 2_000 + b"]" * 2_000, 1))
+    code, out, err = bundle.run(capsys)
+    assert code == 2 and err == ""
+    assert out["integrity"] == "failed" and "manifest_invalid" in out["failures"]
+    assert out["disposition"] == D.ZERO_ENTRY_REACHABLE_STOP.value
+
+
+# F1: 2,000 levels parse but exceed the recursive document walkers; 100,000 exceed the JSON parser itself.
+@pytest.mark.parametrize("depth", [2_000, 100_000])
+def test_a_deeply_nested_manifest_is_a_reported_integrity_failure_not_a_crash(tmp_path, monkeypatch, capsys, windows_shaped_paths, depth):
+    bundle = Bundle(tmp_path, monkeypatch)
+    bundle.manifest.write_bytes(b"[" * depth + b"]" * depth)
+    code, out, err = bundle.run(capsys)
+    assert code == 2 and err == ""
+    assert out["integrity"] == "failed" and "manifest_invalid" in out["failures"]
+    assert out["disposition"] == D.INVALID_CURRENT_CLIENT_GATE.value

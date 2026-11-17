@@ -146,7 +146,7 @@ def strict_json_loads(payload: bytes) -> Any:
         raise ContractError("invalid_utf8") from None
     try:
         return json.loads(text, object_pairs_hook=_no_duplicate_pairs, parse_constant=_reject_constant, parse_float=_finite_float)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):  # nesting past the parser's depth is invalid input, not a crash
         raise ContractError("invalid_json") from None
 
 
@@ -1526,15 +1526,18 @@ _TOKEN_SPLIT = re.compile(r"[^0-9a-z]+")
 
 
 def _strings(value: Any) -> Iterable[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, Mapping):
-        for key, item in value.items():
-            yield str(key)
-            yield from _strings(item)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            yield from _strings(item)
+    # Iterative depth-first walk, same order as recursion, so a deeply nested document cannot exhaust the stack (F1).
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            yield item
+        elif isinstance(item, Mapping):
+            for key, child in reversed(list(item.items())):
+                stack.append(child)
+                stack.append(str(key))
+        elif isinstance(item, (list, tuple)):
+            stack.extend(reversed(item))
 
 
 def find_privacy_violations(

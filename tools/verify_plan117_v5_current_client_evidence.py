@@ -60,7 +60,7 @@ def _parse(payload: bytes | None) -> Any:
 def _permissive(payload: bytes) -> Any:
     try:
         return json.loads(payload.decode("utf-8", "replace"))
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
 
 

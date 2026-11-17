@@ -3,8 +3,9 @@
 This record makes the delivery of Plan 11.7 v5 understandable from tracked files. It is provenance, not a status
 record: [#240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240) owns the plan's status, owner and
 next gate ([ADR-022](../../decisions/ADR-022-github-issues-as-the-work-register.md)). Drafted by Claude on 2026-11-16;
-reviewed locally by Codex the same day, with its two documentation findings addressed pending Codex's final readback.
-Unpublished draft.
+reviewed locally by Codex on 2026-11-16 and 2026-11-17, whose final readback on 2026-11-17 closed its documentation
+findings before this record was committed as part of `11d7f779` (draft PR #476). Changes made after that readback are
+reviewed separately. Unpublished draft.
 
 ## The adopted plan
 

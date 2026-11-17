@@ -1261,6 +1261,23 @@ def test_strict_json_rejects_numeric_overflow_to_infinity(payload):
     assert excinfo.value.code == "non_finite_number"
 
 
+def test_strict_json_maps_parser_recursion_to_invalid_json():
+    # Deep enough that the JSON parser itself exceeds the interpreter's recursion limit (F1).
+    payload = b"[" * 100_000 + b"]" * 100_000
+    with pytest.raises(c.ContractError) as excinfo:
+        c.strict_json_loads(payload)
+    assert excinfo.value.code == "invalid_json"
+
+
+def test_privacy_scan_finds_private_keys_and_values_at_any_parseable_depth():
+    # F1: the scan must still see a private key and value nested deeper than the interpreter's recursion limit.
+    leaf = b'{"/home/alice/notes":["D:/data","secret-token"]}'
+    shallow = c.find_privacy_violations(c.strict_json_loads(leaf), forbidden_strings=("secret-token",))
+    assert set(shallow) == {"posix_home_path", "windows_path_material", "forbidden_value"}
+    deep = c.strict_json_loads(b"[" * 3_000 + leaf + b"]" * 3_000)
+    assert c.find_privacy_violations(deep, forbidden_strings=("secret-token",)) == shallow
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
