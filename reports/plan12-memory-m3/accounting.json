@@ -1,7 +1,7 @@
 {
   "schema": "plan12-memory-m3.accounting.v1",
   "source": {
-    "head": "git:36232145b771bf3610cc74f89f29c6babaddbb4e",
+    "head": "git:6930366029d3119b52c411ba9b2cf8c5e2e54883",
     "dirty": false
   },
   "upstream": "controlled, nothing billed",
