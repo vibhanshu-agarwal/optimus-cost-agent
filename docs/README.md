@@ -106,7 +106,6 @@ relevant records before proposing a change in their area.
 
 | Document | What it is |
 |---|---|
-| [Plan 11.33 v2: search-independent metadata](superpowers/plans/2026-11-17-plan-11-33-search-independent-metadata-implementation_v2.md) | Operator-adopted whole-issue plan for #361; issue owns current status |
 | [Plan 11.32: work-status Bugs table](superpowers/plans/2026-11-03-plan-11-32-work-status-bugs.md) | Approved scope for #354 |
 | [Issue #354 classification and validation](superpowers/reports/2026-11-03-issue354-work-status-bugs.md) | Dated classification proposal, authority and evidence |
 
