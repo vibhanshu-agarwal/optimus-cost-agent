@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from types import SimpleNamespace
 
 import pytest
 
@@ -444,7 +445,15 @@ def test_unrelated_deep_material_cannot_hide_a_readable_stop(tmp_path, monkeypat
     assert out["disposition"] == D.ZERO_ENTRY_REACHABLE_STOP.value
 
 
-# F1: 2,000 levels parse but exceed the recursive document walkers; 100,000 exceed the JSON parser itself.
+def test_permissive_json_maps_parser_recursion_to_none(monkeypatch):
+    def too_deep(*_args, **_kwargs):
+        raise RecursionError
+
+    monkeypatch.setattr(verifier, "json", SimpleNamespace(loads=too_deep))
+    assert verifier._permissive(b"[]") is None
+
+
+# F1: deep arrays are invalid manifests whether the parser accepts or rejects their depth.
 @pytest.mark.parametrize("depth", [2_000, 100_000])
 def test_a_deeply_nested_manifest_is_a_reported_integrity_failure_not_a_crash(tmp_path, monkeypatch, capsys, windows_shaped_paths, depth):
     bundle = Bundle(tmp_path, monkeypatch)

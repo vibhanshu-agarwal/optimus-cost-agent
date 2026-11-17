@@ -9,6 +9,7 @@ import copy
 import hashlib
 import hmac
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -1261,16 +1262,19 @@ def test_strict_json_rejects_numeric_overflow_to_infinity(payload):
     assert excinfo.value.code == "non_finite_number"
 
 
-def test_strict_json_maps_parser_recursion_to_invalid_json():
-    # Deep enough that the JSON parser itself exceeds the interpreter's recursion limit (F1).
-    payload = b"[" * 100_000 + b"]" * 100_000
+def test_strict_json_maps_parser_recursion_to_invalid_json(monkeypatch):
+    # F1: exercise parser failure without assuming a runtime-specific nesting limit.
+    def too_deep(*_args, **_kwargs):
+        raise RecursionError
+
+    monkeypatch.setattr(c, "json", SimpleNamespace(JSONDecodeError=json.JSONDecodeError, loads=too_deep))
     with pytest.raises(c.ContractError) as excinfo:
-        c.strict_json_loads(payload)
+        c.strict_json_loads(b"[]")
     assert excinfo.value.code == "invalid_json"
 
 
 def test_privacy_scan_finds_private_keys_and_values_at_any_parseable_depth():
-    # F1: the scan must still see a private key and value nested deeper than the interpreter's recursion limit.
+    # F1: the iterative scan must retain private keys and values in a deeply nested parsed document.
     leaf = b'{"/home/alice/notes":["D:/data","secret-token"]}'
     shallow = c.find_privacy_violations(c.strict_json_loads(leaf), forbidden_strings=("secret-token",))
     assert set(shallow) == {"posix_home_path", "windows_path_material", "forbidden_value"}
