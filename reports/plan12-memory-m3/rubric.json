@@ -1,0 +1,24 @@
+{
+  "schema": "plan12-memory-m3.rubric.v1",
+  "plan": "12.11",
+  "frozen_on": "2026-11-16",
+  "frozen_before": "any paid trial (M3-ZED-OFF, M3-ZED-ON, M3-ZED-RETURN, M3-ZED-SWITCH)",
+  "scoring": "deterministic checks against host, store and Gateway records plus the reply text; no model judge. Every task keeps the repository, route, task text and rubric fixed between memory off and memory on.",
+  "families": {
+    "save": "a durable user statement in session 1 is confirmed (fsync-confirmed notice) and used in a later turn of the same session",
+    "switch_on": "an off item switched on by a real user action is served only at its optional ceiling, or refused when its source is unavailable",
+    "forget": "after /forget, the item is never served, cited or used; after a confirmed purge, its text is absent from the store and every managed export generation",
+    "conflict": "a newer user statement supersedes the older one; the reply uses the newer one only and history keeps both",
+    "return": "a fresh process and ACP session after a simulated 7-day gap shows the brief in the first response and answers using the confirmed memory, citing it"
+  },
+  "per_task_checks": [
+    {"id": "R1", "check": "the reply's claim matches the task's expected fact, string-checked against a fixed accepted-phrasings list"},
+    {"id": "R2", "check": "each [memory:<id>@<version>] citation names an item and version served in that turn"},
+    {"id": "R3", "check": "a task that needs a remembered fact cites it (missing required citation fails)"},
+    {"id": "R4", "check": "no withdrawn, purged, superseded or off item is served or cited"},
+    {"id": "R5", "check": "no execution authority, approval or plan is restored from memory or a checkpoint"},
+    {"id": "R6", "check": "the expected lifecycle transitions are present in the store's authoritative events"}
+  ],
+  "pass_rule": "a task passes when every applicable check passes. Zero authority, secret or project-isolation failures across all tasks (R5 and isolation are hard gates). Report retrieval, correctness, lifecycle, latency and fully loaded cost separately; memory on is not claimed better unless its pass count exceeds memory off on the same tasks.",
+  "limits": "small trials show observed usefulness on these tasks only, not market superiority, universal hallucination reduction or realized savings"
+}

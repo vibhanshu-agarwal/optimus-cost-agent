@@ -46,6 +46,7 @@ from optimus.acp.local_infra import (
     ensure_local_phoenix,
     gateway_accounting,
     gateway_memory_index,
+    gateway_memory_store,
     gateway_tool_environ,
 )
 from optimus.acp.operator_paths import (
@@ -97,6 +98,7 @@ from optimus_model_policy.test_profiles import TEST_PROFILE_NAMES
 from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTING_LITERAL_NAME
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from optimus_security.memory_index_config import SECURITY_LITERAL_NAME as MEMORY_INDEX_LITERAL_NAME
+from optimus_security.memory_store_config import SECURITY_LITERAL_NAME as MEMORY_STORE_LITERAL_NAME
 from optimus_security.sanitization import mask_uri_userinfo
 
 
@@ -174,9 +176,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     subparsers.add_parser("setup-credentials", help="Interactively store provider credentials.")
 
     # memory-setup
-    subparsers.add_parser(
+    memory_setup_parser = subparsers.add_parser(
         "memory-setup",
         help="One-time opt-in to the context index: download the configured embedding artifact and provision the index password.",
+    )
+    memory_setup_parser.add_argument(
+        "--store",
+        action="store_true",
+        help="Opt in to the memory store instead (Plan 12.11): its own Redis resource and password; no download.",
     )
 
     # run (with optional --elevated-debug)
@@ -299,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "setup-credentials":
             return _cmd_setup_credentials(workspace_root)
         if args.command == "memory-setup":
-            return _cmd_memory_setup(workspace_root)
+            return _cmd_memory_setup(workspace_root, store=args.store)
         if args.command == "run":
             return _cmd_run(
                 workspace_root,
@@ -880,29 +887,33 @@ def _cmd_rotate_key(workspace_root: Path) -> int:
     return 0
 
 
-def _cmd_memory_setup(workspace_root: Path) -> int:
-    """Plan 12.10 (ADR-037): the one place the artifact is downloaded and the index password created."""
+def _cmd_memory_setup(workspace_root: Path, *, store: bool = False) -> int:
+    """Plan 12.10 (ADR-037): the one place the artifact is downloaded and the index password created. With `store`
+    (Plan 12.11, ADR-042), the one place the memory store's password is created."""
     _require_tty()
 
     import keyring as keyring_backend
 
-    from optimus.acp.memory_setup import MemorySetupError, run_setup
+    from optimus.acp.memory_setup import MemorySetupError, run_setup, run_store_setup
+
+    feature = "the memory store" if store else "the context index"
 
     def confirm(description: str) -> bool:
-        print(f"optimus-trust: this opts this machine into the context index:\n{description}")
+        print(f"optimus-trust: this opts this machine into {feature}:\n{description}")
         return input("optimus-trust: continue? [y/N]: ").strip().lower() == "y"
 
     # The same resolution a launch uses, or a launch with OPTIMUS_CONFIG_ROOT never finds what this configured.
     try:
         _snapshot, paths = _prepare_candidate_context(workspace_root)
-        path = run_setup(paths.config_root, keyring_backend=keyring_backend, confirm=confirm)
+        setup = run_store_setup if store else run_setup
+        path = setup(paths.config_root, keyring_backend=keyring_backend, confirm=confirm)
     except OperatorPathConfigurationError as exc:
         print(f"optimus-trust: {exc.user_message}", file=sys.stderr)
         return exc.exit_code
     except MemorySetupError as exc:
         print(f"optimus-trust: {exc}", file=sys.stderr)
         return 2
-    print(f"optimus-trust: the context index is configured at {path}. Approve the launch again to turn it on.")
+    print(f"optimus-trust: {feature} is configured at {path}. Approve the launch again to turn it on.")
     return 0
 
 
@@ -1160,6 +1171,11 @@ def _cmd_run_gateway(
         None if approval is None else approval.security_literals.get(MEMORY_INDEX_LITERAL_NAME),
         log=lambda msg: print(msg, file=sys.stderr),
     )
+    store_dir, memory_store = gateway_memory_store(
+        operator_paths.config_root,
+        None if approval is None else approval.security_literals.get(MEMORY_STORE_LITERAL_NAME),
+        log=lambda msg: print(msg, file=sys.stderr),
+    )
 
     manifest = build_gateway_child_manifest(
         workspace_digest=workspace_identity.digest,
@@ -1176,6 +1192,7 @@ def _cmd_run_gateway(
         model_registry=model_registry,
         accounting=accounting,
         memory_index=memory_index,
+        memory_store=memory_store,
     )
     serialized_manifest = serialize_gateway_child_manifest(manifest)
 
@@ -1214,6 +1231,7 @@ def _cmd_run_gateway(
             *(["--auto-composition"] if auto else []),
             *([] if accounting_dir is None else ["--accounting-root", str(accounting_dir)]),
             *([] if memory_dir is None else ["--memory-index-root", str(memory_dir)]),
+            *([] if store_dir is None else ["--memory-store-root", str(store_dir)]),
         ],
         env=child_env,
         shell=False,

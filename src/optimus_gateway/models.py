@@ -10,6 +10,7 @@ from optimus_security.launch_manifest import resolve_effective_base_url
 
 if TYPE_CHECKING:
     from optimus_gateway.memory_index import IndexService
+    from optimus_gateway.memory_store import MemoryStoreService
     from optimus_gateway.model_policy import GatewayModelPolicy
     from optimus_gateway.usage_store import UsageStore
     from optimus_model_policy.stage_c import StageCGuard
@@ -53,6 +54,8 @@ class GatewayServiceConfig:
     local_identity: ServedIdentity | None = field(default=None, repr=False)
     # Plan 12.10 (ADR-037): the context-index route's service; None serves no index route.
     memory_index: IndexService | None = field(default=None, repr=False)
+    # Plan 12.11 (ADR-042): the memory-store route's service; None serves no memory route.
+    memory_store: MemoryStoreService | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if self.bind_host.lower() not in _LOOPBACK_HOSTS:

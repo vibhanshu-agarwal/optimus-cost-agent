@@ -1,4 +1,4 @@
-# ADR-042: Durable ACP sessions keep sealed history only, replay it exactly and refuse interrupted state
+# ADR-043: Durable ACP sessions keep sealed history only, replay it exactly and refuse interrupted state
 
 **Status:** Accepted-with-open-items. The operator accepted the decision package D1–D13, including the mechanisms and
 values below, by adopting Plan 11.7 v5 at its exact hash on 2026-11-14 (verbatim below). No further mechanism or
@@ -9,9 +9,11 @@ custody: [#230](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/2
 local v5 draft. **Publication:** this file is an unpublished draft, editable in review until its first merge to
 `main`, then frozen byte for byte; filing it needs publication authority, which is held.
 
-**Number:** 042 is the next number in the decision index at `main` `71d1c1ef` (ADR-039 is provider caching and ADR-041
-is the prefix-caching default). It is not reserved; recheck the index before publication. Codex's local draft was
-written as "ADR-039" against `main` `6e5478a0`, where that number was free; that number was never filed for this record.
+**Number:** 043 is the next free number in the decision index at `main` `84fb87ca`, where ADR-042 is the memory store's
+topology record. This record was first drafted locally as "ADR-042" against `main` `71d1c1ef`, where 042 was free. That
+draft was never pushed or published, and main's ADR-042 took the number first, so this record moved to 043 without any
+change to its decision, mechanisms or values. No number is reserved; recheck the index before publication. Codex's
+earlier local draft was written as "ADR-039" against `main` `6e5478a0`; that number was never filed for this record.
 
 **Relationship:**
 - **Implements a decision anticipated by** [ADR-027](ADR-027-idle-client-mcp-lifetime-contract.md), which kept main's
@@ -21,6 +23,10 @@ written as "ADR-039" against `main` `6e5478a0`, where that number was free; that
   [ADR-003](ADR-003-context-ceiling-and-history-limits.md); the privacy and storage boundaries of
   [ADR-031](ADR-031-project-memory-and-evidence.md), [ADR-037](ADR-037-context-index-storage-setup-and-worker.md) and
   [ADR-038](ADR-038-context-index-retrieval-tools-and-caching.md) (the memory-index Redis is not the ACP session store);
+  the memory store of [ADR-042](ADR-042-memory-store-topology-commit-and-recovery.md), which keeps accepted memory on
+  its own Redis behind the Gateway and can store and serve continuation checkpoint records, is a separate service and
+  is not the ACP session store either (automatic checkpoint capture and new-session continuation are later Plan 12.11
+  work, not established by it);
   durable usage capture ([ADR-032](ADR-032-durable-usage-capture-and-gateway-drain.md)); alerts, not limits
   ([ADR-005](ADR-005-cost-alerts-not-limits.md)); the checkpoint cadence ([ADR-016](ADR-016-checkpoint-review-cadence.md)).
 - **The plan is the contract.** The exact field lists, outcome map and task gates are in

@@ -85,6 +85,9 @@ from optimus_security.accounting_config import AccountingConfigError, accounting
 from optimus_security.memory_index_config import SECURITY_LITERAL_NAME as MEMORY_INDEX_LITERAL_NAME
 from optimus_security.memory_index_config import MemoryIndexConfigError, memory_index_root
 from optimus_security.memory_index_config import config_literal as memory_index_config_literal
+from optimus_security.memory_store_config import SECURITY_LITERAL_NAME as MEMORY_STORE_LITERAL_NAME
+from optimus_security.memory_store_config import MemoryStoreConfigError, memory_store_root
+from optimus_security.memory_store_config import config_literal as memory_store_config_literal
 from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
@@ -770,6 +773,15 @@ def resolve_launch_candidate(
     if memory_index_literal is not None:
         security_literals[MEMORY_INDEX_LITERAL_NAME] = memory_index_literal
 
+    # 2h. Plan 12.11 (ADR-042): the memory store's configuration, the same way. Its digest covers the ACL file. Without the
+    # file the feature is off and existing approvals stay valid.
+    try:
+        memory_store_literal = memory_store_config_literal(memory_store_root(operator_paths.config_root))
+    except MemoryStoreConfigError as exc:
+        raise LaunchGateError(code="MEMORY_STORE_CONFIG_INVALID", detail=exc.code) from exc
+    if memory_store_literal is not None:
+        security_literals[MEMORY_STORE_LITERAL_NAME] = memory_store_literal
+
     # 3. Compute security snapshot digest using the SINGLE shared function
     # also used by build_approval_record(). This is required — using two
     # independent hash computations (even with equivalent inputs) produces
@@ -820,6 +832,16 @@ def resolve_launch_candidate(
                 tier=LaunchVariableTier.SECURITY,
                 source_class="memory-index-configuration",
                 display_value=memory_index_literal,
+                decision="requires exact approval",
+            )
+        )
+    if memory_store_literal is not None:
+        display_rows.append(
+            LaunchDisplayRow(
+                name=MEMORY_STORE_LITERAL_NAME,
+                tier=LaunchVariableTier.SECURITY,
+                source_class="memory-store-configuration",
+                display_value=memory_store_literal,
                 decision="requires exact approval",
             )
         )

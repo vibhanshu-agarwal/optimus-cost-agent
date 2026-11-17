@@ -29,7 +29,7 @@ is dated history, kept because a frozen plan is never edited. This record and #2
 bytes, including every unchecked box, stay exactly as approved; progress is recorded in #240 and the review records, not
 in this file.
 
-[ADR-042](../../decisions/ADR-042-durable-acp-session-retention-and-replay.md) records the rationale for D1–D13, which
+[ADR-043](../../decisions/ADR-043-durable-acp-session-retention-and-replay.md) records the rationale for D1–D13, which
 the adoption accepted, the agent-selected values and their limits.
 
 ## Released scope and holds
@@ -79,15 +79,26 @@ and PR #476. A later source, including a refresh from main, needs its own result
 
 ## Applicability of later main (D1, D12)
 
-v5 was assessed against `main` `6e5478a0`. The E1–E2 branch started there and later merged `main` at `5715ff1a` and
-`a92f45a0`; the refresh candidate merges `main` at `71d1c1ef`. The E1–E2 files touch none of
-`src/optimus/acp/local_infra.py`, `memory_session.py` or `memory_workspace.py`. Main changed `local_infra.py` after
-`a92f45a0` (#480, local Redis attach identity). D12's release for P1 therefore needs a reviewed integrated pin that
-includes it, or exact owner clearance; nothing here gives that release.
+v5 was assessed against `main` `6e5478a0`. The E1–E2 branch started there and later merged `main` at `5715ff1a`,
+`a92f45a0` and `71d1c1ef`; the current candidate merges `main` at `84fb87ca`. The E1–E2 files touch none of
+`src/optimus/acp/local_infra.py`, `src/optimus/context/memory_session.py` or `src/optimus/context/memory_workspace.py`.
+Main changed `local_infra.py` after `a92f45a0` (#480, local Redis attach identity) and again by `84fb87ca` (Plan 12.11,
+the memory store's own Redis). D12's release for P1 therefore needs a reviewed integrated pin that includes these
+changes, or exact owner clearance. Importing main gives neither.
+
+At `84fb87ca`, main has a durable project memory store behind the Gateway
+([ADR-042](../../decisions/ADR-042-memory-store-topology-commit-and-recovery.md), Plan 12.11). It holds accepted memory, and its
+route can store and list continuation checkpoint records; main also has a pure helper that picks a predecessor checkpoint
+(`src/context_engine/continuity.py`), which nothing in production calls yet. Automatic checkpoint capture and a new
+session reading one are Plan 12.11's later continuity task (Task 4), not part of this import. It is not ACP session
+persistence either: the agent still does not advertise `loadSession`, and nothing in it restores a session's
+conversation or replays it. Three Redis roles therefore
+stay distinct: the memory-index Redis (ADR-037), the project-memory store (ADR-042), and the future ACP session store
+that [ADR-043](../../decisions/ADR-043-durable-acp-session-retention-and-replay.md) describes, which does not exist yet.
 
 ## Publication order
 
 The v3 archive move and its registry row are a proposed version disposition, not a closure of #240, which stays open.
 At the operator's later publication grant: first record v5's adoption, v3's supersession, the owner and the next gate
-in #240; then merge the change that delivers v5, moves v3, updates the indexes and files ADR-042. Private planning and
+in #240; then merge the change that delivers v5, moves v3, updates the indexes and files ADR-043. Private planning and
 review artifacts stay outside the repository as archival provenance; this record does not depend on them.

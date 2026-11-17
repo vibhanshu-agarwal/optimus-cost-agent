@@ -1,0 +1,138 @@
+{
+  "schema": "plan12-memory-m3.setup.v1",
+  "plan": "12.11",
+  "issue": 490,
+  "release": "Operator, Claude chat 2026-11-16: \"Release all three\": test Redis p1211-memory-test-redis / p1211-memory-test-data on 127.0.0.1:6396 with maxmemory 512 MiB and a 1 GiB container, removed when checkpoint 1 closes; the isolated keyring service optimus-p1211-test; one Z0 zero-paid Zed session. Real Optimus keyring entries, optimus-redis, the index's Redis and every other container were not touched.",
+  "image": "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5",
+  "product_defaults": {
+    "container": "optimus-memory-store-redis",
+    "volume": "optimus-memory-store-data",
+    "port": 6394,
+    "user": "optimus-memory",
+    "maxmemory_mb": 512,
+    "admission_ceiling_mb": 384,
+    "container_memory_mib": 1024,
+    "persistence": "AOF with appendfsync always, noeviction (Codex CP1 review 1; the plan proposed everysec)"
+  },
+  "runs": {
+    "dedicated_store": {
+      "command": "P1211_MEMORY_DOCKER_RELEASED=1 pytest -m requires_plan12_memory_redis tests/integration/memory/test_store.py",
+      "run": "20261117T005558-10092-fb5f59",
+      "head": "git:7ca33bfa45d901bc4a382df1b230d0a43a89580a",
+      "worktree": "clean before and after",
+      "result": "32 passed",
+      "ack_latency_s": {
+        "saves": 50,
+        "p50": 0.0079,
+        "max": 0.0095,
+        "policy": "appendfsync always"
+      },
+      "superseded": {
+        "run": "20261117T004533-43936-4207dd",
+        "head": "git:5f50746ece3b6d9257f73335ca5089e6f5ba3d2f",
+        "note": "ran on the working tree before 7ca33bf was committed; first reported as on 7ca33bf, withdrawn (Codex CP1 review 8)"
+      },
+      "everysec_measurement": {
+        "run": "20261116T201743-42348-455d0c",
+        "policy": "appendfsync everysec",
+        "p50": 1.0032,
+        "p95": 1.0049,
+        "max": 1.0063,
+        "cause": "WAITAOF waited for the next periodic fsync"
+      }
+    },
+    "native_keyring": {
+      "command": "pytest -m requires_os_keyring_write tests/integration/memory/test_native_keyring.py",
+      "run": "20261117T005618-29680-ceff47",
+      "result": "3 passed",
+      "residue": "none: keyring.get_password('optimus-p1211-test', 'redis-password') is None after the run",
+      "head": "git:7ca33bfa45d901bc4a382df1b230d0a43a89580a",
+      "worktree": "clean before and after",
+      "superseded": {
+        "run": "20261117T004554-21904-cd8104",
+        "note": "pre-commit working tree; withdrawn as exact-head evidence"
+      }
+    },
+    "broad_unit": {
+      "run": "20261117T005026-54528-28e60a",
+      "head": "git:7ca33bfa45d901bc4a382df1b230d0a43a89580a",
+      "launcher": "PowerShell",
+      "result": "9416 passed, 46 skipped, 0 failed (1:02:57)",
+      "suites": "tests/unit/{optimus_gateway,security,gateway,context,context_engine,tools,guardrails,docs,acp}",
+      "ruff": "ruff 0.15.20, ruff check . clean on the same head"
+    }
+  },
+  "covered": [
+    "setup writes only the non-secret configuration and a hash-only ACL; the password is only in the keyring, never in a file or the container's arguments",
+    "the container is created from the approved configuration with a 1 GiB cap, AOF on and noeviction; one with other settings is never adopted",
+    "without the password nothing can be read; the memory user cannot run administrative commands or touch keys outside omem:*",
+    "the Gateway marks an empty store as its resource, refuses another resource and refuses unmarked data",
+    "a confirmed write survives a container kill",
+    "leases fence an old holder; versions move one at a time; a retry appends nothing; a different change under one key conflicts",
+    "an event whose fsync was never confirmed is not served until a later confirmed one covers it",
+    "list cursors work only for the project, scope and key that issued them; any holder of the Gateway key can name any project (pinned residual)",
+    "checkpoints are kept once and served newest first; the writer is one connection without retries"
+  ],
+  "revert_checks": {
+    "real_store": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_cp1.py",
+      "killed": [
+        "serve the head instead of the confirmed watermark",
+        "skip the fence check",
+        "replay ignores the digest",
+        "cursor not bound to its project"
+      ]
+    },
+    "default_run": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_fable1.py",
+      "killed": [
+        "no reply bound",
+        "withdraw may come first",
+        "caches kept after an outage",
+        "unexpected error escapes",
+        "probe waits without writing",
+        "fence handed out unconfirmed",
+        "ceiling refuses a retry",
+        "client id not compared",
+        "bidi stored"
+      ],
+      "not_mutated": "the read lock around list answers: the race it closes is not deterministic, so no mutant can show it reliably"
+    },
+    "survived": [],
+    "codex_review_1": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex1.py"
+    },
+    "codex_review_2": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex2.py",
+      "killed": 8,
+      "survived": 0
+    },
+    "codex_review_3": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex3.py",
+      "killed": 5,
+      "survived": 0
+    },
+    "codex_review_4": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex4.py",
+      "killed": 5,
+      "survived": 0
+    },
+    "codex_review_5": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex5.py",
+      "killed": 7,
+      "survived": 0
+    },
+    "codex_review_6": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex6.py",
+      "killed": 10,
+      "survived": 0
+    },
+    "codex_review_7": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex7.py",
+      "killed": 5,
+      "survived": 0
+    }
+  },
+  "not_covered_here": "Competing writers, disconnections around the append, fsync timeout, AOF-off and OOM at runtime, purge and capacity under load are Task 2 (checkpoint 2).",
+  "connection_paths": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/connection-paths.md (v3: 20 paths, guards G1-G8, each with its test)"
+}
