@@ -2823,6 +2823,8 @@ class AcpDuplexAdapter:
             return
         call, record = hooks
         evidence = evidence_from(turn.run_id, result.tool_calls) if turn.execution_mode is ExecutionMode.AGENT else ()
+        if evidence:  # earlier turns, attached documents and unreported context taint what the work learned
+            evidence = (*evidence, *turn.attached.memory_lineage(turn.run_id))
         work = CompletedWork(completion, evidence) if evidence else None
         with contextlib.suppress(Exception):
             extractor.submit(TurnInput(turn.run_id, "project", (UserBlock(f"{turn.run_id}:user", sanitized_user_prompt),), work,

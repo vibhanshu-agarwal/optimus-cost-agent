@@ -86,6 +86,8 @@ def admit(candidate: MemoryCandidate, verdict: HostVerdict, target: ItemState | 
         return _off(candidate, "SPANS_UNVERIFIED", scanned=True)  # model assertions outside the spans gain no user provenance
     if candidate.trust == "agent-derived" and not verdict.lineage_complete:
         return _off(candidate, "LINEAGE_UNRESOLVED", scanned=True)
+    if candidate.trust == "agent-derived" and verdict.conflicts_with_user:
+        return _off(candidate, "CONFLICTS_WITH_USER", scanned=True)  # a lesson against a standing user rule goes off, unprompted
 
     if candidate.target is not None:
         if target is None or target.item != candidate.target or target.project != candidate.project or not target.live:

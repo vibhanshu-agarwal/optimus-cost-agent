@@ -96,10 +96,7 @@ def _assert_erased(provisioned: Provisioned, project: str, canary: str, control:
     assert all(canary.encode() not in fields[b"e"] for _, fields in stream)
     assert all(canary.encode() not in value for value in payloads.values())
     assert any(control.encode() in value for value in payloads.values())
-    deadline = time.monotonic() + 10  # Redis unlinks the replaced AOF files just after the rewrite reports done
-    while _files_with(canary) and time.monotonic() < deadline:
-        time.sleep(0.25)
-    assert _files_with(canary) == set()
+    assert _files_with(canary) == set()  # no wait: a completed purge has seen the directory hold only the manifest's files
     holders = _files_with(control)  # the same search finds the item that was kept, in the snapshot and in the AOF base
     assert "/data/dump.rdb" in holders and any(name.startswith("/data/appendonlydir/") and name.endswith(".base.rdb") for name in holders)
 
@@ -126,6 +123,28 @@ def test_a_purge_leaves_the_text_in_no_key_and_no_file(visible: Provisioned, tmp
     physical = _until_completed(service, project, item)
     _assert_erased(visible, project, canary, control)
     assert logical <= 1.0 and physical <= 120  # K2: logical purge <= 1 s after the confirmed tombstone; rewrite <= 120 s
+
+
+def test_a_file_the_rewrite_left_behind_holds_the_purge_pending_until_it_is_gone(visible: Provisioned, tmp_path: Path) -> None:
+    """Codex CP2 review 1, finding 2: Redis can report a rewrite done while an old AOF file it failed to unlink still holds the
+    text. A copy of the increment, outside the manifest, stands in for that file: the purge never completes while it is there."""
+    service, project = _service(visible, tmp_path), _project()
+    token = _lease(service, project)
+    item, canary, control = _saved_pair(service, project, token)
+    names = docker("exec", CONTAINER, "ls", "-1A", "/data/appendonlydir", check=True).stdout.split()
+    increment = next(name for name in names if name.endswith(".incr.aof"))
+    left = "/data/appendonlydir/left-behind.incr.aof"
+    docker("exec", CONTAINER, "cp", f"/data/appendonlydir/{increment}", left, check=True)
+    assert left in _files_with(canary)
+    assert _purge(service, project, token, item, "f" * 64)[0] == 200
+    deadline = time.monotonic() + 120
+    while (reply := _status(service, project, item)).get("files") != "retained_files":
+        assert reply["purge_state"] == "pending" and time.monotonic() < deadline, reply
+        time.sleep(0.25)
+    assert _status(service, project, item)["purge_state"] == "pending"  # the rewrite and snapshot are done; the file is not
+    docker("exec", CONTAINER, "rm", left, check=True)
+    _until_completed(service, project, item)
+    _assert_erased(visible, project, canary, control)
 
 
 def test_a_purge_interrupted_before_its_transaction_sends_nothing_and_a_retry_finishes_it(

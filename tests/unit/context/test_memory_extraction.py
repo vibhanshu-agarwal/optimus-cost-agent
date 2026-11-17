@@ -200,3 +200,79 @@ def test_the_overlap_source_keeps_the_newest_part_of_a_long_request() -> None:
     turn.record_dispatch("old " * 100_000 + "my words" + " FRESH-TOOL-RESULT")
     (source,) = turn.memory_sources()
     assert source.endswith("FRESH-TOOL-RESULT") and "my words" not in source and len(source) <= assembly._SOURCE_CHARS
+
+
+def _act(speech_act: str, text: str, *, target: str | None = None, existing: tuple[mx.ExistingItem, ...] = ()) -> str:
+    """The Gate's reason for one proposal whose spans cover all of `text`."""
+    reply = mx.parse_reply(json.dumps({"candidates": [{"speech_act": speech_act, "kind": "constraint", "title": "t", "statement": text,
+                                                       "spans": [{"block": "b-1", "start": 0, "end": len(text)}], "target": target}]}))
+    (candidate,) = mx.user_candidates(reply, project=PROJECT, scope=SCOPE, blocks=[mx.UserBlock("b-1", text)], trusted=True,
+                                      sanitize=lambda value: value, sources=(), existing=existing)
+    from context_engine.memory_projection import ItemState
+
+    state = ItemState(PROJECT, "m-" + "a" * 16, 1, "user-authored", "active", "constraint", "main", "Never push to main.", SCOPE, (), (), 0, 0)
+    return memory_gate.admit(candidate.candidate, candidate.verdict, state if target else None).reason
+
+
+def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() -> None:
+    """Codex CP2 review 1, finding 1: a reaffirmation labelled a retraction withdraws nothing, and a question or a quotation
+    labelled an assertion is still a question or a quotation."""
+    existing = (mx.ExistingItem("m-" + "a" * 16, "main"),)
+    assert _act("retraction", "Never push to main.", target="m-" + "a" * 16, existing=existing) == "SPANS_UNVERIFIED"
+    assert _act("decision", "Never push to main.", target="m-" + "a" * 16, existing=existing) == "SPANS_UNVERIFIED"  # no change in the words
+    assert _act("retraction", "Ignore what I said: pushing to main is fine.", target="m-" + "a" * 16, existing=existing) == "RETRACTED"
+    assert _act("decision", "Actually, we now push to main after review.", target="m-" + "a" * 16, existing=existing) == "SUPERSEDED"
+    assert _act("decision", "Should we never push to main?") == "NO_RULE"
+    assert _act("decision", '"Never push to main" is what the old wiki says.') == "QUOTATION"
+    assert _act("decision", "Never push to main.") == "ADMITTED"
+
+
+def test_a_statement_too_long_to_keep_whole_is_never_clipped_into_a_rule() -> None:
+    """Codex CP2 review 1, finding 7: the restriction past character 2,000 would be lost."""
+    text = "Deploys to production are allowed " + "and so on " * 200 + "only after the operator approves."
+    assert len(text) > 2000
+    assert _act("decision", text) == "SPANS_UNVERIFIED"
+    work = mx.CompletedWork("done", (mx.Evidence("ev-1", "verification"),))
+    reply = mx.parse_reply(json.dumps({"candidates": [{"speech_act": "assertion", "kind": "lesson", "title": "t", "statement": text,
+                                                       "evidence": ["ev-1"]}]}))
+    (lesson,) = mx.agent_candidates(reply, project=PROJECT, scope=SCOPE, work=work, trusted=True, sanitize=lambda value: value, sources=())
+    assert memory_gate.admit(lesson.candidate, lesson.verdict).reason == "LINEAGE_UNRESOLVED"
+
+
+def _turn_with(prompt: str) -> object:
+    from optimus.context import assembly
+    from tests.unit.acp.test_context_engine_admission import make_attachment
+
+    turn = assembly.AttachedTurn.__new__(assembly.AttachedTurn)
+    turn._attachment, turn._dispatches, turn._dispatched, turn._current_prompt = make_attachment(), [], [], prompt
+    turn._records, turn._checkpoint, turn._context_paths = {}, None, None
+    return turn
+
+
+def test_words_the_user_pasted_from_a_file_stay_source_text() -> None:
+    """Codex CP2 review 1, finding 3: the user pastes a line that is also in the file; only the user's own slot comes out."""
+    line = "retries are capped at three attempts before the gateway gives up"
+    turn = _turn_with(line)
+    turn.record_dispatch(f"<file name='gateway.py'># {line}</file>\n<user>{line}</user>")  # type: ignore[attr-defined]
+    (source,) = turn.memory_sources()  # type: ignore[attr-defined]
+    assert source.count(line) == 1 and mx.overlaps_source(line, (source,))
+    candidate = _user(line, [{"block": "b-1", "start": 0, "end": len(line)}], text=line, sources=(source,))
+    assert memory_gate.admit(candidate.candidate, candidate.verdict).reason == "SCAN_BLOCKED"
+
+
+def test_context_the_turn_inherited_taints_what_its_work_learned() -> None:
+    """Codex CP2 review 1, finding 4: earlier turns, attached documents and unreported context leave lineage unresolved."""
+    from types import SimpleNamespace
+
+    turn = _turn_with("p")
+    assert [item.ref for item in turn.memory_lineage("r")] == ["r:context:unreported"]  # type: ignore[attr-defined]
+    turn.record_context(SimpleNamespace(prioritized_paths=("src/app.py",)))  # type: ignore[attr-defined]
+    assert turn.memory_lineage("r") == ()  # type: ignore[attr-defined]
+    turn.record_context(SimpleNamespace(prioritized_paths=("docs\\deploy.md",)))  # type: ignore[attr-defined]
+    turn._records = {1: object()}  # type: ignore[attr-defined]
+    lineage = turn.memory_lineage("r")  # type: ignore[attr-defined]
+    assert [item.ref for item in lineage] == ["r:context:documents", "r:context:history"]
+    work = mx.CompletedWork("fixed", (mx.Evidence("ev-1", "verification"), *lineage))
+    (candidate,) = _agent(["ev-1"], work)
+    assert memory_gate.admit(candidate.candidate, candidate.verdict).reason == "LINEAGE_UNRESOLVED"
+    assert mx.prefilter_agent(work) == mx.Decision(False, "tainted_by_document")

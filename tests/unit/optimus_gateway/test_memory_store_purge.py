@@ -13,6 +13,7 @@ from redis.exceptions import OutOfMemoryError
 
 from context_engine import memory_contracts as engine
 from optimus_gateway import memory_store
+from optimus_gateway.memory_files import Inventory, InventoryUnavailable
 from optimus_gateway.memory_journal import PurgeJournal, journal_key
 from optimus_security import memory_store_contract as msc
 from tests.unit.optimus_gateway.test_memory_store_commit import RESOURCE, Client, Server, append, event, lease, read
@@ -24,11 +25,22 @@ STREAM = memory_store.MemoryStore._key("p-1", "events")
 PROJECT = memory_store.MemoryStore._project_hash("p-1")
 
 
+CLEAN = Inventory(("appendonlydir", "dump.rdb"), ("appendonly.aof.2.base.rdb", "appendonly.aof.2.incr.aof", "appendonly.aof.manifest"),
+                  "file appendonly.aof.2.base.rdb seq 2 type b\nfile appendonly.aof.2.incr.aof seq 2 type i\n")
+
+
 def store(root: Path, server: Server | None = None, *, journal: bool = True) -> tuple[memory_store.MemoryStoreService, Server, PurgeJournal]:
     server = server or Server()
+    server.files = CLEAN  # type: ignore[attr-defined]  # what the data directory holds; a test may leave an old file in it
     purge_journal = PurgeJournal(root / "journal", journal_key("pw"))
+
+    def inventory(_timeout: float) -> Inventory:
+        if server.files is None:  # type: ignore[attr-defined]
+            raise InventoryUnavailable("docker not found")
+        return server.files  # type: ignore[attr-defined,no-any-return]
+
     inner = memory_store.MemoryStore(Client(server, 9), Client(server), admission_ceiling_mb=384, cursor_key=b"k",  # type: ignore[arg-type]
-                                     journal=purge_journal if journal else None)
+                                     journal=purge_journal if journal else None, inventory=inventory)
 
     def verify(deadline: float) -> None:
         inner.verify(RESOURCE, deadline=deadline)
@@ -92,6 +104,52 @@ def test_the_disk_step_completes_only_after_fresh_rewrites_finish_well(tmp_path:
     assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED
     assert phases(journal)[-1] == "completed"
     assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED and len(server.background) == 2
+
+
+RETAINED = Inventory(CLEAN.top, (*CLEAN.aof, "appendonly.aof.1.base.rdb"), CLEAN.manifest)  # an unlink Redis could not do
+HISTORY = Inventory(CLEAN.top, (*CLEAN.aof, "appendonly.aof.1.base.rdb"), CLEAN.manifest + "file appendonly.aof.1.base.rdb seq 1 type h\n")
+LEFTOVER = Inventory((*CLEAN.top, "temp-4242.rdb"), CLEAN.aof, CLEAN.manifest)
+
+
+@pytest.mark.parametrize(("files", "why"), [(RETAINED, "retained_files"), (HISTORY, "history_files"), (LEFTOVER, "unexpected_files"),
+                                            (None, "file_inventory_unavailable")])
+def test_a_rewrite_that_left_an_old_file_behind_never_completes_the_purge(tmp_path: Path, files: Inventory | None, why: str) -> None:
+    """Codex CP2 review 1, finding 2: Redis reports a rewrite as done even when it could not delete the old AOF file."""
+    service, server, journal = store(tmp_path)
+    token = lease(service)
+    saved(service, token)
+    purge(service, token)
+    finish_background(server)
+    server.files = files  # type: ignore[attr-defined]
+    reply = status(service)
+    assert (reply["purge_state"], reply["files"]) == ("pending", why) and "completed" not in phases(journal)
+    server.files = CLEAN  # type: ignore[attr-defined]  # the old file is gone: the same purge now completes
+    assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED
+
+
+def test_the_inventory_reads_only_the_provisioned_container(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    from optimus.acp import local_infra
+    from optimus_gateway import memory_files
+
+    assert memory_files.RESOURCE_LABEL == local_infra._MEMORY_RESOURCE_LABEL
+    config = SimpleNamespace(container="c", resource="r-1", port=6394)
+    listing = "appendonlydir\ndump.rdb\n--optimus-inventory--\nappendonly.aof.2.base.rdb\nappendonly.aof.manifest\n--optimus-inventory--\n" \
+              "file appendonly.aof.2.base.rdb seq 2 type b\n"
+    inspected = {"Config": {"Labels": {"optimus.memory.resource": "r-1"}}, "HostConfig": {"PortBindings": {"6379/tcp": [{"HostPort": "6394"}]}}}
+    calls = []
+
+    def run(argv, **_kwargs):  # type: ignore[no-untyped-def]
+        calls.append(argv[1])
+        return SimpleNamespace(returncode=0, stdout=json.dumps([inspected]) if argv[1] == "inspect" else listing)
+
+    monkeypatch.setattr(memory_files.shutil, "which", lambda _name: "docker")
+    monkeypatch.setattr(memory_files.subprocess, "run", run)
+    assert memory_files.residue(memory_files.docker_inventory(config)(5.0)) is None and calls == ["inspect", "exec"]  # type: ignore[arg-type]
+    inspected["Config"]["Labels"]["optimus.memory.resource"] = "someone-else"
+    with pytest.raises(memory_files.InventoryUnavailable):
+        memory_files.docker_inventory(config)(5.0)  # type: ignore[arg-type]
 
 
 def test_a_rewrite_already_running_at_the_purge_is_never_counted(tmp_path: Path) -> None:

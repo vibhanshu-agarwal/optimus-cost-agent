@@ -63,10 +63,12 @@ def _invalidate_dependants(items: dict[str, ItemState]) -> dict[str, ItemState]:
     while changed:
         changed = False
         for item, state in items.items():
-            if state.live and state.status != "reverify" and gone.intersection(state.lineage):
+            if item in gone or not state.live or not gone.intersection(state.lineage):
+                continue
+            if state.status != "reverify":  # one already marked still passes the loss on to what rests on it
                 items[item] = replace(state, status="reverify")
-                gone.add(item)
-                changed = True
+            gone.add(item)
+            changed = True
     return items
 
 

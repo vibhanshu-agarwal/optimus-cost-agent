@@ -24,7 +24,7 @@ from typing import Any, Final
 
 from context_engine import memory_gate
 from context_engine.contracts import ContractError
-from context_engine.memory_contracts import AGENT_KINDS, USER_KINDS, HostVerdict, MemoryCandidate, MemoryNotice, Span
+from context_engine.memory_contracts import AGENT_KINDS, MAX_STATEMENT_CHARS, USER_KINDS, HostVerdict, MemoryCandidate, MemoryNotice, Span
 from context_engine.memory_projection import ItemState
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject
 
@@ -35,6 +35,7 @@ MAX_INPUT_TOKENS: Final = 8192  # frozen in reports/plan12-memory-m3/targets.jso
 MAX_OUTPUT_TOKENS: Final = 512
 MAX_CANDIDATES: Final = 8
 MAX_EXISTING_ITEMS: Final = 20  # current user items a retraction may name
+MAX_CONFLICT_ITEMS: Final = 500  # live user items an agent lesson is checked against; more, and every lesson goes off
 _OVERLAP_TOKENS: Final = 8  # a verbatim run this long from a file or tool result is source text, never memory (B1)
 _COVERAGE: Final = 0.7  # share of a statement's content words its spans must hold
 
@@ -51,6 +52,12 @@ _DURABLE = re.compile(
 _QUESTION_START = re.compile(r"^\s*(what|where|why|how|who|whom|which|when|does|do|did|is|are|was|were|can|could|would|should|will|"
                              r"if)\b", re.IGNORECASE)
 _HYPOTHETICAL = re.compile(r"^\s*(suppose|imagine|what if|hypothetically)\b", re.IGNORECASE)
+# What a retraction's or an update's own words must hold: the model may locate the words, never decide what they do.
+_WITHDRAW = re.compile(r"\b(no longer|not any ?more|scratch that|forget (that|what|about)|ignore (what|that|my)|disregard|withdraw\w*|"
+                       r"retract\w*|changed? (my|our) minds?|undo|cancel\w*|drop (that|the))\b", re.IGNORECASE)
+_CHANGE = re.compile(_WITHDRAW.pattern + r"|\b(correction|actually|instead|rather than|switch(ed)? to|moved? to|replaced?|now)\b",
+                     re.IGNORECASE)
+_QUOTE_MARKS: Final = "\"'“‘`«"
 _TASK_VERBS = frozenset({
     "add", "remove", "fix", "rename", "refactor", "move", "update", "write", "run", "check", "make", "implement", "replace", "extract",
     "convert", "bump", "guard", "shorten", "lengthen", "split", "sort", "inline", "delete", "create", "change", "test", "document",
@@ -99,7 +106,7 @@ class Evidence:
     """One host-issued evidence reference from the completed work: what kind, and whether it came from outside the workspace."""
 
     ref: str
-    kind: str  # "verification", "command", "edit", "read", "document" or "web"
+    kind: str  # "verification", "command", "edit", "read", "document", "web" or "inherited"
     external: bool = False
 
 
@@ -253,10 +260,34 @@ def _content_words(text: str) -> set[str]:
     return {_stem(word) for word in _WORD.findall(text.lower()) if len(word) >= 3 and word not in _STOPWORDS}
 
 
-def _span_text(proposal: Proposal, blocks: dict[str, str]) -> str:
-    """What the user actually said, in span order: a user-authored memory's statement is their own words, never the model's
+def _touches(candidate: MemoryCandidate, rule: set[str]) -> bool:
+    """Whether an agent lesson is about what a user rule governs: it shares at least two of the rule's content words and half
+    of them. Deterministic and deliberately broad; a lesson that only might conflict goes off, since agent memory is optional."""
+    shared = _content_words(f"{candidate.title} {candidate.statement}") & rule
+    return len(shared) >= 2 and 2 * len(shared) >= len(rule)
+
+
+def _said(proposal: Proposal, blocks: dict[str, str]) -> list[str]:
+    """What the user actually said, span by span: a user-authored memory's statement is their own words, never the model's
     paraphrase."""
-    return " ".join(blocks[span.block][span.start : span.end].strip() for span in proposal.spans if span.block in blocks)
+    return [blocks[span.block][span.start : span.end].strip() for span in proposal.spans if span.block in blocks]
+
+
+def _borne_act(proposal: Proposal, said: Sequence[str]) -> str | None:
+    """The speech act the user's own words bear out (Codex CP2 review 1, finding 1). A question, hypothetical or quotation is
+    that, whatever the model labels it. A retraction needs a withdrawal in the words, and an update of a named item needs a
+    change; "Never push to main." said again withdraws nothing. None: the words do not bear the model out, so it goes off."""
+    for part in said:
+        if part.endswith("?") or _HYPOTHETICAL.match(part) or (_QUESTION_START.match(part) and not _DURABLE.search(part)):
+            return "question"
+        if _QUOTED.search(part) or part[:1] in _QUOTE_MARKS:
+            return "quotation"
+    text = " ".join(said)
+    if proposal.speech_act == "retraction":
+        return "retraction" if _WITHDRAW.search(text) else None
+    if proposal.target is not None and not _CHANGE.search(text):
+        return None
+    return proposal.speech_act
 
 
 def _spans_support(proposal: Proposal, blocks: dict[str, str]) -> bool:
@@ -343,14 +374,20 @@ def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, 
         if proposal.kind not in USER_KINDS or (proposal.target is not None and proposal.target not in known):
             continue
         proposal = _snapped(proposal, texts)
-        supported = _spans_support(proposal, texts)
-        # The persisted statement and title are the user's own span text; the model's sentence only has to agree with it. An
-        # unsupported proposal becomes an off record, whose title is scanned and shown as off, never as the user's.
-        statement = _span_text(proposal, texts) if supported else proposal.statement
+        said = _said(proposal, texts)
+        act = _borne_act(proposal, said)
+        statement = " ".join(said)
+        # The persisted statement and title are the user's own span text; the model's sentence only has to agree with it. A
+        # statement too long to keep whole is never clipped (its condition may be at the end). An unsupported proposal becomes
+        # an off record, whose title is scanned and shown as off, never as the user's.
+        supported = act is not None and len(statement) <= MAX_STATEMENT_CHARS and _spans_support(proposal, texts)
+        if not supported:
+            statement = proposal.statement[:MAX_STATEMENT_CHARS]  # reaches only an off record, which keeps no statement
         title = _title_of(statement) if supported else proposal.title[:120]
-        key = keyed(f"user\0{project}\0{scope}\0{proposal.speech_act}\0{statement}\0{proposal.target}")  # one statement, one item per scope
+        speech_act = act or proposal.speech_act
+        key = keyed(f"user\0{project}\0{scope}\0{speech_act}\0{statement}\0{proposal.target}")  # one statement, one item per scope
         try:
-            candidate = MemoryCandidate(project, scope, "user-authored", proposal.kind, proposal.speech_act, statement[:2000],
+            candidate = MemoryCandidate(project, scope, "user-authored", proposal.kind, speech_act, statement,
                                         title, spans=proposal.spans, target=proposal.target, idempotency_key=key)
         except ContractError:
             continue
@@ -374,11 +411,12 @@ def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str,
         # Tainted by presence: a turn that read a document or anything from outside may be following its instructions, whatever
         # the model chose to cite, so nothing it learned is vouched for.
         tainted = any(item.external or item.kind in _TAINTING for item in work.evidence)
-        complete = bool(cited) and all(item is not None for item in cited) and not tainted
+        whole = len(proposal.statement) <= MAX_STATEMENT_CHARS  # a clipped lesson may have lost its condition
+        complete = bool(cited) and all(item is not None for item in cited) and not tainted and whole
         key = keyed(f"agent\0{project}\0{scope}\0{proposal.statement}\0{','.join(sorted(proposal.evidence))}")
         evidence = tuple(ref for ref in proposal.evidence if ref in issued)
         try:
-            candidate = MemoryCandidate(project, scope, "agent-derived", proposal.kind, "assertion", proposal.statement[:2000],
+            candidate = MemoryCandidate(project, scope, "agent-derived", proposal.kind, "assertion", proposal.statement[:MAX_STATEMENT_CHARS],
                                         proposal.title[:120], evidence=evidence, idempotency_key=key)
         except ContractError:
             continue
@@ -425,7 +463,7 @@ class Outcome:
     refusals: tuple[str, ...] = ()  # Gate reasons and store codes for candidates not appended
     reasons: tuple[str, ...] = ()  # the Gate's reason for every candidate it decided (an off record is appended, but not as memory)
     incomplete: str | None = None
-    skipped: str | None = None  # a job never run: the queue was full or the extractor closed
+    skipped: str | None = None  # no call made: the queue was full, the extractor closed, or the text's changes all still stand
 
 
 class MemoryExtractor:
@@ -440,7 +478,8 @@ class MemoryExtractor:
         self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
         self._sanitize, self._report, self._keyed = sanitize, report, keyed
         self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
-        self._extracted: set[str] = set()
+        self._extracted: set[str] = set()  # evidence refs whose work was extracted
+        self._said: dict[str, tuple[tuple[str, int], ...]] = {}  # user text digest -> each (item, version) it confirmed
         self._closed = False
         self._lock = threading.Lock()
         self._commit_lock = threading.Lock()  # one session writes under one lease at a time: its jobs never fence each other out
@@ -453,8 +492,8 @@ class MemoryExtractor:
         text = "\n".join(block.text for block in turn.blocks)
         with self._lock:
             extracted = frozenset(self._extracted)
-        user = prefilter_user(text, extracted=extracted)
-        agent = prefilter_agent(turn.work, extracted=extracted)
+        user = prefilter_user(text)  # text said before is checked in the job, against what its changes became since
+        agent =prefilter_agent(turn.work, extracted=extracted)
         for purpose, decision in ((USER_PURPOSE, user), (AGENT_PURPOSE, agent)):
             if decision.call:
                 self._enqueue(purpose, turn)
@@ -492,7 +531,10 @@ class MemoryExtractor:
     def _run(self, purpose: str, turn: TurnInput) -> Outcome:
         from optimus.context.authored_memory import MemoryStoreRefused, MemoryStoreUnavailable
 
+        said = digest(turn.scope + "\0" + "\n".join(block.text for block in turn.blocks).strip())  # per scope: another is another item
         try:
+            if purpose == USER_PURPOSE and self._still_stands(said):
+                return Outcome(turn.turn_id, purpose, skipped="already_extracted")
             existing = self._store.user_items(turn.scope, limit=MAX_EXISTING_ITEMS) if purpose == USER_PURPOSE else []
             if purpose == USER_PURPOSE:
                 prompt, _kept = user_prompt(turn.blocks, existing)
@@ -504,11 +546,17 @@ class MemoryExtractor:
             if call is None or record is None:
                 return Outcome(turn.turn_id, purpose, incomplete="no_summarizer")  # nothing was sent
             response = call(prompt=prompt, max_output_tokens=MAX_OUTPUT_TOKENS, purpose=purpose)
-            for attempt in response.attempts:  # every attempt settles, whatever the reply turns out to be
-                record(turn.turn_id, purpose, attempt, response.finish_status if attempt.outcome == "completed" else None)
+            errors: list[Exception] = []
+            for attempt in response.attempts:  # every attempt is offered, even after one is refused: none loses its charge
+                try:
+                    record(turn.turn_id, purpose, attempt, response.finish_status if attempt.outcome == "completed" else None)
+                except Exception as exc:  # noqa: BLE001 - raised below, once every attempt has been offered
+                    errors.append(exc)
             if getattr(response, "diagnostic", None) is not None:
                 with contextlib.suppress(Exception):
                     response.diagnostic()
+            if errors:
+                raise errors[0]
             if response.integrity_error is not None:
                 return Outcome(turn.turn_id, purpose, incomplete="unattributable_report")
             proposals = parse_reply(response.text)
@@ -520,7 +568,7 @@ class MemoryExtractor:
                 assert turn.work is not None
                 candidates = agent_candidates(proposals, project=self._store.project, scope=turn.scope, work=turn.work,
                                               trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources, keyed=self._keyed)
-            notices, refusals, reasons, store_refused = self._commit(candidates)
+            notices, refusals, reasons, store_refused, written = self._commit(candidates)
         except ExtractionIncomplete as incomplete:
             return Outcome(turn.turn_id, purpose, incomplete=incomplete.reason)
         except MemoryStoreUnavailable:
@@ -528,32 +576,67 @@ class MemoryExtractor:
         except MemoryStoreRefused as refused:
             return Outcome(turn.turn_id, purpose, incomplete=f"store_refused:{refused.code}")
         with self._lock:
-            if store_refused:
-                pass  # the store refused a write (a lost lease, a moved head): this text stays worth trying again
+            if written is None:
+                pass  # a write was refused or not proven on disk: this text stays worth trying again
             elif purpose == USER_PURPOSE:
-                self._extracted.add(digest("\n".join(block.text for block in turn.blocks).strip()))
+                self._said[said] = tuple(written)
             elif turn.work is not None:
                 self._extracted.update(item.ref for item in turn.work.evidence)
         return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals), tuple(reasons))
 
-    def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str], list[str], bool]:
+    def _still_stands(self, said: str) -> bool:
+        """Whether this text was extracted before and every change it made is still the item's current version: then a call
+        could only repeat it. A later withdrawal, update or purge makes the same words worth extracting again."""
+        with self._lock:
+            prior = self._said.get(said)
+        if prior is None:
+            return False
+        for item, version in prior:
+            stored = self._store.read(item)
+            if stored is None or stored.event.version != version:
+                return False
+        return True
+
+    def _user_rules(self, scope: str) -> list[set[str]] | None:
+        """The content words of every live user item in the scope, each read whole when its title is cut; None when there are
+        more than can be checked, so nothing an agent proposes can be shown not to conflict."""
+        items = self._store.user_items(scope, limit=MAX_CONFLICT_ITEMS + 1)
+        if len(items) > MAX_CONFLICT_ITEMS:
+            return None
+        rules = []
+        for item in items:
+            text = item.title
+            if text.endswith("…"):
+                stored = self._store.read(item.item)
+                text = "" if stored is None else stored.event.statement
+            rules.append(_content_words(text))
+        return rules
+
+    def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str], list[str], bool, list[tuple[str, int]] | None]:
         """The Gate decides each candidate against the item's current state, read now: a decision taken on a moved head is
         refused by the store's expected version, never forced. A new item whose id is taken by a withdrawn or purged one
-        (the same words said again) gets a fresh id; one still live is replayed by the store. The last value says whether the
-        store refused any write."""
+        (the same words said again) gets a fresh id; one still live is replayed by the store. An agent candidate that touches
+        a live user rule goes off as a conflict (Codex CP2 review 1, finding 5). The last two values: whether the store
+        refused any write, and each (item, version) written, or None unless every write was confirmed on disk."""
         from optimus.context.authored_memory import MemoryStoreRefused
 
         notices: list[Any] = []
         refusals: list[str] = []
         reasons: list[str] = []
+        written: list[tuple[str, int]] | None = []
         store_refused = False
         if not candidates:
-            return notices, refusals, reasons, store_refused
+            return notices, refusals, reasons, store_refused, written
         with self._commit_lock, self._store.lease() as token:
+            rules: list[set[str]] | None = []
+            if any(entry.candidate.trust == "agent-derived" for entry in candidates):
+                rules = self._user_rules(candidates[0].candidate.scope)
             for entry in candidates:
-                candidate = entry.candidate
+                candidate, verdict = entry.candidate, entry.verdict
+                if candidate.trust == "agent-derived" and (rules is None or any(_touches(candidate, rule) for rule in rules)):
+                    verdict = dataclasses.replace(verdict, conflicts_with_user=True)
                 target = _state(self._store.read(candidate.target)) if candidate.target else None
-                decision = memory_gate.admit(candidate, entry.verdict, target)
+                decision = memory_gate.admit(candidate, verdict, target)
                 for _ in range(3):  # an id is taken only by an earlier item that is no longer live; a bounded walk to a free one
                     if decision.outcome != "append" or decision.draft is None or decision.draft.expected_version != 0:
                         break
@@ -561,7 +644,7 @@ class MemoryExtractor:
                     if taken is None or taken.event.status in ("active", "reverify", "conflicted"):
                         break  # free, or the same save again: the store replays its first result and proves it on disk
                     candidate = dataclasses.replace(candidate, idempotency_key=self._keyed(f"{candidate.idempotency_key}\0{taken.event.version}"))
-                    decision = memory_gate.admit(candidate, entry.verdict, target)
+                    decision = memory_gate.admit(candidate, verdict, target)
                 reasons.append(decision.reason)
                 if decision.outcome != "append" or decision.draft is None:
                     refusals.append(decision.reason)
@@ -571,9 +654,14 @@ class MemoryExtractor:
                 except MemoryStoreRefused as refused:
                     refusals.append(refused.code)
                     store_refused = True
+                    written = None
                     continue
                 notices.append(MemoryNotice.of(result, decision.draft.action))
-        return notices, refusals, reasons, store_refused
+                if written is not None and result.durable_state == "confirmed":
+                    written.append((result.item, result.version))
+                else:
+                    written = None  # not proven on disk: never counted as extracted
+        return notices, refusals, reasons, store_refused, written
 
     def close(self, timeout: float = 5.0) -> None:
         """Stop taking jobs; queued ones never run and release their turns; running ones finish (bounded by the store's own
@@ -606,8 +694,8 @@ def _state(stored: Any) -> ItemState | None:
 
 
 _TOOL_EVIDENCE: Final = {"test_runner": "verification", "write_file": "edit", "file_reader": "read"}
-_TAINTING: Final = frozenset({"document", "web"})
-_DOCUMENT_NAMES: Final = re.compile(r"(^|/)(readme|contributing|changelog|agents|claude|license|notice)[^/]*$|(^|/)docs?/|\.(md|rst|txt|adoc)$",
+_TAINTING: Final = frozenset({"document", "web", "inherited"})  # inherited: context the host cannot trace to this turn's own work
+DOCUMENT_NAMES: Final = re.compile(r"(^|/)(readme|contributing|changelog|agents|claude|license|notice)[^/]*$|(^|/)docs?/|\.(md|rst|txt|adoc)$",
                                     re.IGNORECASE)
 
 
@@ -621,7 +709,7 @@ def evidence_from(run_id: str, tool_calls: Sequence[Any]) -> tuple[Evidence, ...
             continue
         external = call.tool_name.startswith("mcp")
         kind = _TOOL_EVIDENCE.get(call.tool_name, "document" if external else "read")
-        if kind == "read" and _DOCUMENT_NAMES.search(call.summary.removeprefix("read ").strip()):
+        if kind == "read" and DOCUMENT_NAMES.search(call.summary.removeprefix("read ").strip()):
             kind = "document"
         found.append(Evidence(f"{run_id}:tool:{number}", kind, external))
     return tuple(found)

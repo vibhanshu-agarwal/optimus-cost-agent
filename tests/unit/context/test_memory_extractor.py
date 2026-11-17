@@ -216,24 +216,69 @@ def test_a_write_the_store_refused_leaves_the_text_worth_trying_again() -> None:
     extractor.submit(_turn())
     _until(outcomes, 1)
     assert outcomes[0].refusals == ("LEASE_LOST",)
-    assert extractor.submit(_turn(2))[0].call  # not marked extracted
+    assert extractor._said == {}  # not marked extracted: the same words are tried again
     extractor.close()
 
 
 def test_the_same_words_after_a_withdrawal_are_a_new_item() -> None:
-    """Fable CP2 minor: an item id derived from the words is taken by the withdrawn item, so the new one gets a fresh id."""
+    """Fable CP2 minor and Codex CP2 review 1, finding 8, through `submit`: words said again while their item stands make no
+    call; once it is withdrawn they make a fresh item, never a replay of the withdrawn one."""
     upstream = _Upstream(_completed(_GOOD, 1), _completed(_GOOD, 2))
     extractor, _settlement, outcomes, _receipts = _harness(upstream)
-    extractor._enqueue(mx.USER_PURPOSE, _turn(1))
+    extractor.submit(_turn(1))
     _until(outcomes, 1)
     first = outcomes[0].notices[0]
+    extractor.submit(_turn(3))
+    _until(outcomes, 2)
+    assert outcomes[1].skipped == "already_extracted" and len(upstream.calls) == 1
+    del outcomes[1]
     with extractor._store.lease() as token:
         extractor._store.call("append", project="p-1", token=token, expected_version=1, idempotency_key="9" * 64,
                               event={"event_id": "e-withdraw", "item": first.item, "version": 2, "action": "withdraw", "trust": "user-authored",
                                      "status": "withdrawn", "kind": "preference", "scope": "s-1", "title": "", "statement": "", "anchors": [],
                                      "lineage": [], "valid_from_ms": 0, "valid_until_ms": 0})
-    extractor._enqueue(mx.USER_PURPOSE, _turn(2))
+    extractor.submit(_turn(2))
     _until(outcomes, 2)
     extractor.close()
     second = outcomes[1]
     assert not second.refusals and second.notices[0].item != first.item and second.notices[0].saved
+
+
+_RULE = json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "main", "statement": "Never push directly to main.",
+                                    "spans": [{"block": "b-1", "start": 0, "end": 28}]}]})
+_AGAINST = json.dumps({"candidates": [{"speech_act": "assertion", "kind": "procedure", "title": "release",
+                                       "statement": "Push the release directly to main once the tests pass.", "evidence": ["ev-1"]}]})
+
+
+def test_an_agent_lesson_against_a_standing_user_rule_goes_off() -> None:
+    """Codex CP2 review 1, finding 5, through the extractor: the lesson names no target, and still meets the user's rule."""
+    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(_RULE, 1), _completed(_AGAINST, 2)))
+    extractor.submit(_turn(1, text="Never push directly to main."))
+    _until(outcomes, 1)
+    assert outcomes[0].reasons == ("ADMITTED",)
+    work = mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"),))
+    extractor.submit(_turn(2, text="Release it.", work=work))
+    _until(outcomes, 2)
+    extractor.close()
+    assert outcomes[1].reasons == ("CONFLICTS_WITH_USER",)
+    (off,) = outcomes[1].notices
+    assert extractor._store.read(off.item).event.trust == "off"  # appended as an off record, never as memory
+
+
+def test_a_refused_receipt_never_drops_the_attempts_after_it() -> None:
+    """Codex CP2 review 1, finding 6: every attempt is offered to settlement before the first refusal is reported."""
+    two = SummarizerResponse(text=_GOOD, finish_status="stop", attempts=(SummarizerAttempt("a-1", "gw-1", "rejected", Decimal("0.001")),
+                                                                         SummarizerAttempt("a-2", "gw-2", "completed", Decimal("0.002"))))
+    extractor, _settlement, outcomes, receipts = _harness(_Upstream(two))
+    offered: list[str] = []
+
+    def record(turn_id: str, purpose: str, attempt: SummarizerAttempt, finish: str | None) -> None:
+        offered.append(attempt.attempt_id)
+        if attempt.attempt_id == "a-1":
+            raise RuntimeError("ledger refused")
+
+    extractor._record = record
+    extractor.submit(_turn())
+    _until(outcomes, 1)
+    extractor.close()
+    assert offered == ["a-1", "a-2"] and outcomes[0].incomplete == "extractor_fault" and not outcomes[0].notices

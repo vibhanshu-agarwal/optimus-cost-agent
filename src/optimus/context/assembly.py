@@ -69,6 +69,7 @@ from optimus.context.maintenance import (
     SummarizerRoute,
     first_error,
 )
+from optimus.context.memory_extraction import DOCUMENT_NAMES, Evidence
 from optimus.runtime.modes import ExecutionMode
 from optimus_security.failure_facts import exception_fact, slug
 
@@ -452,6 +453,7 @@ class AttachedTurn:
         self._dispatched: list[str] = []
         self._memory_call: SummarizerCall | None = None
         self._memory_identity: MaintenanceIdentity | None = None
+        self._context_paths: tuple[str, ...] | None = None  # the automatic context's paths, once the runner reports them
         # The turn's own receipt sink (its session's settlement), alongside the attachment's.
         self._record_receipt = record_receipt
         # Told of a receipt the attachment's ledger refused, so the turn's settlement never reads complete.
@@ -788,8 +790,27 @@ class AttachedTurn:
 
     def memory_sources(self) -> tuple[str, ...]:
         """What this turn sent besides the user's own words (files, tool results, index passages, earlier answers): the text a
-        memory must never copy. RAM only, for the source-overlap check (Plan 12.11)."""
-        return tuple(text.replace(self._current_prompt, "") for text in self._dispatched)
+        memory must never copy. RAM only, for the source-overlap check (Plan 12.11). Only the user's own slot is taken out,
+        once: a file or tool result that holds the same words keeps them (Codex CP2 review 1, finding 3)."""
+        prompt = self._current_prompt
+        return tuple(text if not prompt else "".join(text.rpartition(prompt)[::2]) for text in self._dispatched)
+
+    def record_context(self, context: Any) -> None:
+        """The runner reports each automatic workspace or index context it attached, by its paths (Plan 12.11)."""
+        self._context_paths = (*(self._context_paths or ()), *context.prioritized_paths)
+
+    def memory_lineage(self, run_id: str) -> tuple[Evidence, ...]:
+        """What this turn carried that the host cannot trace to the turn's own tool calls (Codex CP2 review 1, finding 4):
+        earlier turns, which may pass on a directive; automatically attached documents; or context never reported, whose lineage
+        is unknown. Each taints an agent lesson."""
+        found = []
+        if self._context_paths is None:
+            found.append(Evidence(f"{run_id}:context:unreported", "inherited"))
+        elif any(DOCUMENT_NAMES.search(path.replace("\\", "/")) for path in self._context_paths):
+            found.append(Evidence(f"{run_id}:context:documents", "inherited"))
+        if self._records or self._checkpoint is not None:
+            found.append(Evidence(f"{run_id}:context:history", "inherited"))
+        return tuple(found)
 
     def memory_hooks(self) -> tuple[Callable[..., SummarizerResponse], Callable[[str, str, SummarizerAttempt, str | None], None]] | None:
         """The turn's bound summarizer and a receipt sink for a memory call's attempts (Plan 12.11 Task 3): the same route,

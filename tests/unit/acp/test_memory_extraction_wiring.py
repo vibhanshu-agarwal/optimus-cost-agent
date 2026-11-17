@@ -5,12 +5,15 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from optimus.acp.session_retention import RetirementReason
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+from optimus.agent.models import AgentToolCall
 from optimus.context.maintenance import SummarizerResponse
-from optimus.context.memory_extraction import Decision, TurnInput
+from optimus.context.memory_extraction import Decision, Evidence, TurnInput
+from optimus.runtime.modes import ExecutionMode
 from tests.support.contract_doubles import checked_agent_runner
 from tests.unit.acp.test_context_engine_admission import Runner, make_attachment, new_session, prompt_request, rpc
 
@@ -93,6 +96,19 @@ def test_a_workspace_without_an_extractor_runs_its_turns_unchanged(tmp_path: Pat
         assert (await rpc(adapter, prompt_request(session_id, "We always tag releases.", "p-1")))["result"]["stopReason"] == "end_turn"
 
     asyncio.run(scenario())
+
+
+def test_an_agent_turn_s_inherited_context_reaches_the_extractor_as_lineage() -> None:
+    """Codex CP2 review 1, finding 4: the adapter adds what the attached context reports it carried to the work's evidence."""
+    extractor = RecordingExtractor()
+    attached = SimpleNamespace(memory_hooks=lambda: (_summarizer, lambda *args: None), memory_sources=lambda: (),
+                               memory_lineage=lambda run_id: (Evidence(f"{run_id}:context:history", "inherited"),))
+    turn = SimpleNamespace(session_id="s", run_id="s:2", execution_mode=ExecutionMode.AGENT, attached=attached)
+    result = SimpleNamespace(tool_calls=(AgentToolCall(tool_name="test_runner", summary="ran the tests"),))
+    host = SimpleNamespace(_sessions={"s": SimpleNamespace(memory_extractor=extractor)})
+    AcpDuplexAdapter._submit_memory(host, turn, "Fix the build.", result, "Done.")  # type: ignore[arg-type]
+    (submitted,) = extractor.submitted
+    assert submitted.work is not None and [item.kind for item in submitted.work.evidence] == ["verification", "inherited"]
 
 
 def test_removing_a_session_closes_its_extractor(tmp_path: Path) -> None:

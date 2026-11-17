@@ -29,6 +29,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import OutOfMemoryError, RedisError, ResponseError, TimeoutError, WatchError
 from redis.retry import Retry
 
+from optimus_gateway.memory_files import Inventory, InventoryUnavailable, docker_inventory, residue
 from optimus_gateway.memory_journal import JournalError, PurgeJournal, journal_key
 from optimus_security import memory_store_contract as msc
 from optimus_security.memory_store_config import KEYRING_SERVICE, MemoryStoreConfig
@@ -375,8 +376,9 @@ class MemoryStore:
     `verify` shows the resource is still the provisioned one."""
 
     def __init__(self, client: redis.Redis, writer: redis.Redis, *, admission_ceiling_mb: int, cursor_key: bytes,
-                 journal: PurgeJournal | None = None) -> None:
+                 journal: PurgeJournal | None = None, inventory: Callable[[float], Inventory] | None = None) -> None:
         self._purge_journal = journal
+        self._inventory = inventory  # lists the data directory; without one no purge's disk step is ever shown complete
         self._redis = client
         self._writer = writer
         self._write_lock = threading.Lock()
@@ -937,10 +939,10 @@ class MemoryStore:
                     fold.apply(stream_id, record)
                     result = _result(stream_id, record)
                     outcome = self._confirm(project, stream_id, connection)
-                state = "pending"
+                state, why = "pending", None
                 if outcome["durable_state"] == "confirmed":
-                    state = self._settle(journal, name, item, result["stream_id"])
-                return {"status": "ok", **result, **outcome, "purge_state": state}
+                    state, why = self._settle(journal, name, item, result["stream_id"])
+                return {"status": "ok", **result, **outcome, "purge_state": state, **({"files": why} if why else {})}
             raise msc.MemoryRequestError("MEMORY_CONTENDED", 409)
 
     def _op_purge_status(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -965,7 +967,8 @@ class MemoryStore:
             if not self._durable(connection):
                 return {"status": "ok", "item": item, "purge_state": "pending"}
             self._advance_watermark(project, current["stream_id"], connection)
-            return {"status": "ok", "item": item, "purge_state": self._settle(journal, name, item, current["stream_id"])}
+            state, why = self._settle(journal, name, item, current["stream_id"])
+            return {"status": "ok", "item": item, "purge_state": state, **({"files": why} if why else {})}
 
     def _fold_at_head(self, project: str) -> _Fold:
         """The writer's fold advanced to the stream's head, read only (no lease, no WATCH), while the write lock is held."""
@@ -978,14 +981,15 @@ class MemoryStore:
         fold.advance(self._writer, stream, self._key(project, "payloads"), head, self._on_time)
         return fold
 
-    def _settle(self, journal: PurgeJournal, name: str, item: str, tombstone: str) -> str:
+    def _settle(self, journal: PurgeJournal, name: str, item: str, tombstone: str) -> tuple[str, str | None]:
         """Drive the disk step of a confirmed purge. Each of the AOF rewrite and the RDB snapshot is complete only when one that
         started after the deletion has finished well: so nothing is counted while one is already running (it may predate the
         deletion); an idle store gets a fresh one, whose target is the counter read while idle plus one. A restarted Redis
-        (another run id) starts over, since it may have loaded files that still hold the text."""
+        (another run id) starts over, since it may have loaded files that still hold the text. Then the data directory must
+        hold nothing but the current files. Returns the state and, while pending after both ran, why."""
         entries = self._entries(journal, name, item)
         if any(entry["phase"] == "completed" for entry in entries):
-            return PURGE_COMPLETED
+            return PURGE_COMPLETED, None
         if not any(entry["phase"] == "tombstoned" for entry in entries):
             self._journal(journal, name, item, "tombstoned", stream_id=tombstone)
         self._on_time()
@@ -1013,10 +1017,24 @@ class MemoryStore:
             done.append(False)
         if targets != before:
             self._journal(journal, name, item, "physical", run_id=run_id, **{f"{kind}_target": value for kind, value in targets.items()})
-        if all(done):
-            self._journal(journal, name, item, "completed", run_id=run_id)
-            return PURGE_COMPLETED
-        return "pending"
+        if not all(done):
+            return "pending", None
+        why = self._residue()
+        if why is not None:
+            return "pending", why  # both ran, but a file outside the current set may still hold the text
+        self._journal(journal, name, item, "completed", run_id=run_id)
+        return PURGE_COMPLETED, None
+
+    def _residue(self) -> str | None:
+        """Why the data directory may still hold deleted text, read after the rewrite and the snapshot have both finished;
+        None only when it holds the current snapshot and AOF set alone (Codex CP2 review 1, finding 2)."""
+        if self._inventory is None:
+            return "file_inventory_unavailable"
+        self._on_time()
+        try:
+            return residue(self._inventory(max(1.0, min(10.0, self._remaining()))))
+        except InventoryUnavailable:
+            return "file_inventory_unavailable"
 
     def _need_journal(self) -> PurgeJournal:
         if self._purge_journal is None:
@@ -1109,10 +1127,12 @@ class MemoryStoreService:
 
 
 def build_memory_store_service(config: MemoryStoreConfig, *, keyring_backend: Any, hmac_key: bytes,
-                               journal_root: Path | None = None) -> MemoryStoreService:
+                               journal_root: Path | None = None,
+                               inventory: Callable[[float], Inventory] | None = None) -> MemoryStoreService:
     """The service for the approved configuration. Nothing connects until the first request. A missing password serves a
     stable refusal, so the Agent Panel can say setup is incomplete while models keep working. The purge journal lives under
-    `journal_root`, outside the Redis volume; without one (or without a password) purge is refused."""
+    `journal_root`, outside the Redis volume; without one (or without a password) purge is refused. A purge's disk step ends
+    only once `inventory` (by default, the provisioned container's data directory read through Docker) shows no old file."""
     try:
         password = keyring_backend.get_password(KEYRING_SERVICE, config.credential_name)
     except Exception:  # noqa: BLE001 - any backend failure means the same thing here: no usable credential
@@ -1121,7 +1141,7 @@ def build_memory_store_service(config: MemoryStoreConfig, *, keyring_backend: An
     cursor_key = hashlib.sha256(b"optimus-memory-store-cursor-v1\0" + hmac_key).digest()
     journal = PurgeJournal(journal_root, journal_key(password)) if journal_root is not None and password else None
     store = MemoryStore(connect(endpoint), connect(endpoint), admission_ceiling_mb=config.admission_ceiling_mb, cursor_key=cursor_key,
-                        journal=journal)
+                        journal=journal, inventory=inventory or docker_inventory(config))
 
     def verify(deadline: float) -> None:
         if not password:

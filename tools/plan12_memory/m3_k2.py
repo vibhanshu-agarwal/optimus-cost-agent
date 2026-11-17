@@ -189,16 +189,41 @@ def _sampler(provisioned: Provisioned, stop: threading.Event, out: dict[str, Any
     out.update({name: round(value, 1) for name, value in peaks.items()}, samples=samples)
 
 
+def _item(n: int, slot: int) -> str:
+    return f"m-{n:04x}{slot:012x}"
+
+
+def _statement(n: int, slot: int, version: int) -> str:
+    return f"k2 client {n} item {slot} version {version}"
+
+
+def schedule(*, events: int, items: int) -> list[dict[str, tuple[str, int, str]]]:
+    """What the store must hold once every scheduled write is in, derived from the schedule alone (never from the store's
+    replies): per client, each item's status, final version and statement digest (Codex CP2 review 1, finding 10)."""
+    per_items = items // CLIENTS
+    expected: list[dict[str, tuple[str, int, str]]] = []
+    for n in range(CLIENTS):
+        writes = events // CLIENTS
+        wanted = {}
+        for slot in range(min(per_items, writes)):
+            version = len(range(slot, writes, per_items))
+            wanted[_item(n, slot)] = ("active", version, _digest(_statement(n, slot, version)))
+        expected.append(wanted)
+    return expected
+
+
 def _write_load(provisioned: Provisioned, work: Path, *, events: int, items: int, observe_every: int) -> dict[str, Any]:
-    """CLIENTS Gateways, one project each, each writing events/CLIENTS events round-robin over items/CLIENTS items."""
+    """CLIENTS Gateways, one project each, each writing events/CLIENTS events round-robin over items/CLIENTS items. A write not
+    confirmed is retried at once, as a host would; one still unconfirmed after that is a failure, and the identity check
+    against the schedule shows what it cost."""
     services = [_service(provisioned, work / f"journal-{n}") for n in range(CLIENTS)]
     observer = _service(provisioned, work / "journal-observer")
     projects = [f"p-k2-{n}" for n in range(CLIENTS)]
-    expected: list[dict[str, tuple[int, str]]] = [{} for _ in range(CLIENTS)]
+    written: list[dict[str, int]] = [{} for _ in range(CLIENTS)]
     acks: list[float] = []
     projection: list[float] = []
     refusals: dict[str, int] = {}
-    unconfirmed: list[tuple[int, str, dict[str, Any], int]] = []
+    failed: list[tuple[int, str, int]] = []
     lock = threading.Lock()
 
     def client(n: int) -> None:
@@ -212,17 +237,25 @@ def _write_load(provisioned: Provisioned, work: Path, *, events: int, items: int
         for number in range(events // CLIENTS):
             if number and number % 2000 == 0:
                 _call(service, {"op": "lease", "project": project, "owner": f"k2-{n}", "action": "renew", "ttl_ms": 300_000, "token": token})
-            item = f"m-{n:04x}{number % per_items:012x}"
-            version = expected[n].get(item, (0, ""))[0] + 1
-            statement = f"k2 client {n} item {number % per_items} version {version}"
+            slot = number % per_items
+            item = _item(n, slot)
+            version = written[n].get(item, 0) + 1  # the schedule's next version, whatever the store answered before
+            written[n][item] = version
+            statement = _statement(n, slot, version)
             key = hashlib.sha256(f"{project}:{item}:{version}".encode()).hexdigest()
             body = {"op": "append", "project": project, "token": token, "expected_version": version - 1, "idempotency_key": key,
                     "event": _event(item, version, statement)}
             started = time.perf_counter()
             code, reply = _call(service, body)
-            elapsed = time.perf_counter() - started
+            retries = 0
+            while not (code == 200 and reply.get("durable_state") == "confirmed") and retries < 3:
+                reason = reply.get("error") or f"durable_state={reply.get('durable_state')}"
+                with lock:
+                    refusals[reason] = refusals.get(reason, 0) + 1
+                retries += 1
+                code, reply = _call(service, body)  # the same key: a written but unproven event is replayed and proven
+            elapsed = time.perf_counter() - started  # an acknowledgement's latency includes its retries
             if code == 200 and reply.get("durable_state") == "confirmed":
-                expected[n][item] = (version, _digest(statement))
                 with lock:
                     acks.append(elapsed)
                 if number % observe_every == 0:
@@ -237,12 +270,8 @@ def _write_load(provisioned: Provisioned, work: Path, *, events: int, items: int
                     with lock:
                         projection.append(time.perf_counter() - seen_at)
             else:
-                reason = reply.get("error") or f"durable_state={reply.get('durable_state')}"
                 with lock:
-                    refusals[reason] = refusals.get(reason, 0) + 1
-                    unconfirmed.append((n, key, body, version))
-                if code == 200:  # written but not proven: the retry below reconciles it, as a host would
-                    expected[n][item] = (version, _digest(statement))
+                    failed.append((n, item, version))
 
     started = time.perf_counter()
     threads = [threading.Thread(target=client, args=(n,)) for n in range(CLIENTS)]
@@ -251,20 +280,19 @@ def _write_load(provisioned: Provisioned, work: Path, *, events: int, items: int
     for thread in threads:
         thread.join()
     seconds = time.perf_counter() - started
-    retried = sum(1 for n, _key, body, _v in unconfirmed if _call(services[n], body)[1].get("durable_state") == "confirmed")
-    return {"services": services, "projects": projects, "expected": expected, "seconds": round(seconds, 1),
+    return {"services": services, "projects": projects, "seconds": round(seconds, 1),
             "ack_ms": _summary(acks, 1000), "projection_after_ack_ms": _summary(projection, 1000), "refusals": refusals,
-            "unconfirmed": len(unconfirmed), "unconfirmed_retried_confirmed": retried,
-            "events_acknowledged": len(acks) + retried}
+            "unconfirmed_after_retries": len(failed), "events_acknowledged": len(acks)}
 
 
-def _identity_check(provisioned: Provisioned, work: Path, projects: Sequence[str], expected: Sequence[dict[str, tuple[int, str]]],
+def _identity_check(provisioned: Provisioned, work: Path, projects: Sequence[str], expected: Sequence[dict[str, tuple[str, int, str]]],
                     label: str) -> dict[str, Any]:
-    """A fresh Gateway lists every item and compares it with what this tool was told; every difference is reported."""
+    """A fresh Gateway lists every item and compares it, status, version and content, with the schedule. An item missing, one
+    the schedule never wrote, and any difference are each counted; a purged item is expected only where this tool purged."""
     fresh = _service(provisioned, work / f"journal-check-{label}")
-    misses = wrong = 0
+    misses = wrong = unexpected = live = 0
     for project, wanted in zip(projects, expected, strict=True):
-        seen: dict[str, tuple[int, str]] = {}
+        seen: dict[str, tuple[str, int, str]] = {}
         cursor = None
         while True:
             body = {"op": "list", "project": project, "scope": "s-k2", "limit": 100, **({"cursor": cursor} if cursor else {})}
@@ -273,37 +301,45 @@ def _identity_check(provisioned: Provisioned, work: Path, projects: Sequence[str
                 code, reply = _call(fresh, body)  # the first request after a restart is refused while the store re-verifies
             assert code == 200, reply
             for record in reply["items"]:
-                seen[record["item"]] = (record["version"], _digest(record["statement"]) if record["status"] != "purged" else "purged")
+                content = "" if record["status"] == "purged" else _digest(record["statement"])
+                seen[record["item"]] = (record["status"], record["version"], content)
             cursor = reply["cursor"]
             if cursor is None:
                 break
-        for item, (version, digest) in wanted.items():
+        live += sum(1 for status, _version, _content in seen.values() if status == "active")
+        unexpected += len(set(seen) - set(wanted))
+        for item, state in wanted.items():
             got = seen.get(item)
             if got is None:
                 misses += 1
-            elif got != (version, digest) and got[1] != "purged":
+            elif got != state:
                 wrong += 1
-    return {"items_expected": sum(len(w) for w in expected), "missing": misses, "wrong": wrong}
+    return {"items_expected": sum(len(w) for w in expected), "live_items": live, "missing": misses, "wrong": wrong, "unexpected": unexpected}
 
 
 def _purges(services: Sequence[memory_store.MemoryStoreService], projects: Sequence[str],
-            expected: Sequence[dict[str, tuple[int, str]]]) -> dict[str, Any]:
+            expected: Sequence[dict[str, tuple[str, int, str]]]) -> dict[str, Any]:
+    """One purge per project; the schedule then expects that item as a tombstone one version on, and nothing else changed."""
     logical: list[float] = []
     physical: list[float] = []
+    completed = 0
     for n, (service, project) in enumerate(zip(services, projects, strict=True)):
         token = _call(service, {"op": "lease", "project": project, "owner": f"k2-{n}", "action": "acquire", "ttl_ms": 300_000})[1]["token"]
-        item = next(iter(expected[n]))
+        item = _item(n, 0)
         started = time.perf_counter()
         code, reply = _call(service, {"op": "purge", "project": project, "token": token, "item": item, "idempotency_key": "f" * 63 + str(n)})
         assert code == 200 and reply["durable_state"] == "confirmed", reply
         logical.append(time.perf_counter() - started)
-        while _call(service, {"op": "purge_status", "project": project, "item": item})[1].get("purge_state") != memory_store.PURGE_COMPLETED:
-            if time.perf_counter() - started > 600:
-                break
-            time.sleep(0.25)
+        state = None
+        while state != memory_store.PURGE_COMPLETED and time.perf_counter() - started <= 600:
+            state = _call(service, {"op": "purge_status", "project": project, "item": item})[1].get("purge_state")
+            if state != memory_store.PURGE_COMPLETED:
+                time.sleep(0.25)
+        completed += state == memory_store.PURGE_COMPLETED
         physical.append(time.perf_counter() - started)
-        expected[n].pop(item)
-    return {"logical_s": _summary(logical), "rewrite_and_snapshot_s": _summary(physical)}
+        _status, version, _content = expected[n][item]
+        expected[n][item] = ("purged", version + 1, "")
+    return {"logical_s": _summary(logical), "rewrite_and_snapshot_s": _summary(physical), "purges": len(projects), "completed": completed}
 
 
 def _restart(provisioned: Provisioned, work: Path, project: str, item: str) -> float:
@@ -338,39 +374,43 @@ def run(output: Path, *, events: int, items: int, slow_events: int, slow_bps: st
         thread.start()
     try:
         load = _write_load(provisioned, work, events=events, items=items, observe_every=50)
-        after_load = _identity_check(provisioned, work, load["projects"], load["expected"], "load")
-        purges = _purges(load["services"], load["projects"], load["expected"])
-        restart_s = _restart(provisioned, work, load["projects"][0], next(iter(load["expected"][0])))
-        after_restart = _identity_check(provisioned, work, load["projects"], load["expected"], "restart")
+        expected = schedule(events=events, items=items)
+        after_load = _identity_check(provisioned, work, load["projects"], expected, "load")
+        purges = _purges(load["services"], load["projects"], expected)
+        restart_s = _restart(provisioned, work, load["projects"][0], _item(0, 1))
+        after_restart = _identity_check(provisioned, work, load["projects"], expected, "restart")
     finally:
         stop.set()
         for thread in background:
             thread.join()
-    report["main"] = {key: value for key, value in load.items() if key not in ("services", "projects", "expected")}
+    report["main"] = {key: value for key, value in load.items() if key not in ("services", "projects")}
     report["main"].update(identity_after_load=after_load, identity_after_restart=after_restart, purge=purges,
                           restart_to_usable_s=round(restart_s, 1), resources=sample_out, index_load=index_out)
 
     device = docker("exec", CONTAINER, "sh", "-c", "grep ' /data ' /proc/mounts | cut -d' ' -f1").stdout.strip()
     with _throttled(["--device-write-bps", f"{device}:{slow_bps}"]):
         slow = _provision(work / "slow")
-        slow_load = _write_load(slow, work / "slow-journals", events=slow_events, items=min(items, slow_events // 2), observe_every=25)
-        slow_identity = _identity_check(slow, work, slow_load["projects"], slow_load["expected"], "slow")
+        slow_items = min(items, slow_events // 2)
+        slow_load = _write_load(slow, work / "slow-journals", events=slow_events, items=slow_items, observe_every=25)
+        slow_identity = _identity_check(slow, work, slow_load["projects"], schedule(events=slow_events, items=slow_items), "slow")
     report["slow_persistence"] = {"device_write_bps": f"{device}:{slow_bps}", "events": slow_events,
-                                  **{key: value for key, value in slow_load.items() if key not in ("services", "projects", "expected")},
+                                  **{key: value for key, value in slow_load.items() if key not in ("services", "projects")},
                                   "identity": slow_identity}
 
     main = report["main"]
     report["verdicts"] = {
-        "events": main["events_acknowledged"] >= targets["events"],
+        "events": main["events_acknowledged"] == targets["events"] and main["unconfirmed_after_retries"] == 0,
+        "live_items_before_purges": after_load["live_items"] == targets["live_items"],
         "ack_p95": (main["ack_ms"].get("p95") or 1e9) <= targets["ack_p95_s"] * 1000,
         "projection_after_ack_p95": (main["projection_after_ack_ms"].get("p95") or 1e9) <= targets["projection_after_ack_p95_ms"],
         "restart_to_usable": main["restart_to_usable_s"] <= targets["restart_to_usable_s"],
         "logical_purge": (purges["logical_s"].get("max") or 1e9) <= targets["logical_purge_after_confirmed_tombstone_s"],
-        "rewrite_and_snapshot": (purges["rewrite_and_snapshot_s"].get("max") or 1e9) <= targets["rewrite_and_snapshot_s"],
+        "rewrite_and_snapshot": purges["completed"] == purges["purges"] and (purges["rewrite_and_snapshot_s"].get("max") or 1e9) <= targets["rewrite_and_snapshot_s"],
         "physical_ram": max(sample_out.get("container_ram_mib", 1e9), sample_out.get("used_memory_rss_mib", 1e9)) <= targets["physical_ram_gib"] * 1024,
         "peak_disk": sample_out.get("disk_kib", 1e12) <= targets["peak_persistence_disk_gib"] * 1024 * 1024,
-        "acknowledged_write_loss": after_load["missing"] + after_load["wrong"] + after_restart["missing"] + after_restart["wrong"] == targets["acknowledged_write_loss"],
-        "slow_persistence_loss": slow_identity["missing"] + slow_identity["wrong"] == 0,
+        "acknowledged_write_loss": sum(check[name] for check in (after_load, after_restart) for name in ("missing", "wrong", "unexpected")) == targets["acknowledged_write_loss"],
+        "purges_exact_after_restart": after_restart["live_items"] == targets["live_items"] - purges["purges"],
+        "slow_persistence_loss": slow_identity["missing"] + slow_identity["wrong"] + slow_identity["unexpected"] == 0 and slow_load["unconfirmed_after_retries"] == 0,
     }
     report["passed"] = all(report["verdicts"].values())
     output.write_text(json.dumps(report, indent=2, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")

@@ -213,6 +213,17 @@ def test_what_rested_on_a_withdrawn_or_purged_item_is_reverified_transitively(en
     assert not view[lesson].servable and not view[deeper].servable and view[unrelated].servable
 
 
+def test_an_item_already_marked_for_reverification_passes_the_loss_on() -> None:
+    """Codex CP2 review 1, finding 9: A -> B -> C with B already "reverify"; withdrawing A must reach C."""
+    source, lesson, deeper = ("m-" + c * 16 for c in "abc")
+    events = [_event(item=source),
+              _event(event_id="2-0", item=lesson, trust="agent-derived", kind="lesson", lineage=(source,), anchors=(), status="reverify"),
+              _event(event_id="3-0", item=deeper, trust="agent-derived", kind="procedure", lineage=(lesson,), anchors=())]
+    assert fold(events)[deeper].servable
+    view = fold([*events, _event(event_id="4-0", item=source, version=2, action="withdraw", status="withdrawn", title="", statement="")])
+    assert (view[lesson].status, view[deeper].status) == ("reverify", "reverify") and not view[deeper].servable
+
+
 @pytest.mark.parametrize(
     "events",
     [[_event(version=1), _event(event_id="2-0", version=3, action="update")],

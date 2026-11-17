@@ -42,3 +42,29 @@ def test_the_throttle_reaches_only_the_released_store_s_own_launch(monkeypatch: 
         m3_k2.local_infra.subprocess.run(["docker", "run", "-d", "--name", "other", "image"])
     assert seen == [["docker", "run", "-d", "--device-write-bps", "/dev/sdd:256kb", "--name", m3_k2.CONTAINER, "image"],
                     ["docker", "run", "-d", "--name", "other", "image"]]
+
+
+def test_the_expected_inventory_comes_from_the_schedule_alone() -> None:
+    """Codex CP2 review 1, finding 10: the frozen population is 10,000 live items, each at the version the schedule gives it."""
+    expected = m3_k2.schedule(events=100_000, items=10_000)
+    assert sum(len(per_client) for per_client in expected) == 10_000
+    assert {version for per_client in expected for _status, version, _content in per_client.values()} == {10}
+    small = m3_k2.schedule(events=12, items=8)  # 3 writes over 2 slots per client: one item twice, one once
+    assert small[0] == {m3_k2._item(0, 0): ("active", 2, m3_k2._digest(m3_k2._statement(0, 0, 2))),
+                        m3_k2._item(0, 1): ("active", 1, m3_k2._digest(m3_k2._statement(0, 1, 1)))}
+
+
+def test_an_unintended_purge_or_a_short_population_fails_the_identity_check(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    expected = m3_k2.schedule(events=8, items=8)
+    items = []
+    for n, per_client in enumerate(expected):
+        for item, (status, version, _content) in per_client.items():
+            slot = int(item[-12:], 16)
+            purged = n == 0 and slot == 0  # the store returns client 0's item as purged although nothing purged it
+            items.append((n, {"item": item, "status": "purged" if purged else status, "version": version + purged,
+                              "statement": "" if purged else m3_k2._statement(n, slot, version)}))
+    replies = {f"p-{n}": [record for owner, record in items if owner == n] for n in range(m3_k2.CLIENTS)}
+    monkeypatch.setattr(m3_k2, "_service", lambda *_a: None)
+    monkeypatch.setattr(m3_k2, "_call", lambda _s, body: (200, {"items": replies[body["project"]], "cursor": None}))
+    check = m3_k2._identity_check(None, tmp_path, list(replies), expected, "t")  # type: ignore[arg-type]
+    assert (check["wrong"], check["live_items"], check["missing"], check["unexpected"]) == (1, 7, 0, 0)
