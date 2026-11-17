@@ -57,6 +57,7 @@ _REPLIES = {
     b"INCRBY": b":1\r\n",
     b"WAITAOF": b"*2\r\n:1\r\n:0\r\n",
     b"CLIENT": b":7\r\n",
+    b"DBSIZE": b":0\r\n",
     b"PING": b"+PONG\r\n",
 }
 
@@ -105,6 +106,23 @@ class FakeRedis:
                     reply = b"+QUEUED\r\n"
                 elif name == b"EXEC":
                     reply, queued = b"*%d\r\n" % queued + b"+OK\r\n" * queued, None
+                if mode == "replace-before-set":  # the original instance is empty and unmarked, then dies before the marker
+                    if command[:2] == [b"GET", b"omem:resource"]:
+                        reply = b"$-1\r\n"
+                    if name == b"DBSIZE":
+                        reply = b":0\r\n" if not self.dropped else b":5\r\n"  # the replacement holds data
+                        if not self.dropped:
+                            self.dropped = True
+                            conn.sendall(reply)
+                            return
+                    conn.sendall(reply)
+                    continue
+                if mode == "stall-unwatch" and name == b"UNWATCH":
+                    self.stop.wait(10)
+                    return
+                if mode == "stall-unwatch":
+                    conn.sendall(reply)
+                    continue
                 if mode == "drop-after-client-id" and not self.dropped and command[:2] == [b"CLIENT", b"ID"]:
                     self.dropped = True
                     conn.sendall(reply)
@@ -240,7 +258,7 @@ def test_verification_refuses_a_proof_gathered_across_a_reconnect(fake: Callable
         store.verify(endpoint.resource, deadline=time.monotonic() + 5)
     assert refused.value.code == "MEMORY_STORE_RECONNECTED" and store.suspect is False and store._verified_connects == (0, 0)
     store.verify(endpoint.resource, deadline=time.monotonic() + 5)  # later connections stay up, so the proof holds
-    assert store._verified_connects == (2, 1)
+    assert store._verified_connects == (3, 1)  # the original, the refused reconnect, then the one the proof held
 
 
 def test_a_failed_first_handshake_does_not_keep_its_longer_budget(fake: Callable[[str], FakeRedis]) -> None:
@@ -435,7 +453,7 @@ def test_a_pool_wait_gets_exactly_what_is_left_and_localhost_is_one_address(fake
     server = fake("fast")
     client = memory_store.connect(_endpoint(server.port))
     memory_store.set_budget(client, 0.01)
-    assert client.connection_pool.timeout == 0.01  # no 50 ms floor on the queue
+    assert client.connection_pool.timeout == 0  # a checkout never waits: the store's locks already keep its one connection free
     local = memory_store.connect(memory_store.MemoryStoreEndpoint("localhost", server.port, "u", "p" * 32, "r"))  # pragma: allowlist secret
     assert local.connection_pool.connection_kwargs["host"] == "127.0.0.1"
 
@@ -473,3 +491,64 @@ def test_an_unavailable_operation_never_reaches_verification(fake: Callable[[str
     body = {"op": "export", "project": "p-1", "limit": 10}
     assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 5) == (501, msc.error_body("MEMORY_OPERATION_UNAVAILABLE"))
     assert checks == [] and server.connections == 0
+
+
+def test_verification_writes_nothing_to_a_replacement_it_reconnected_to(fake: Callable[[str], FakeRedis]) -> None:
+    """The original instance answers unmarked and empty, then dies right before the marker would be written; a populated,
+    unmarked replacement takes the port. No SET reaches it, and verification then still refuses its unidentified data."""
+    server = fake("replace-before-set")
+    store, endpoint = _store(server)
+    with pytest.raises(memory_store.MemoryStoreStartupError):
+        store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    assert server.dropped is True
+    sets = [name for names in server.logs.values() for name in names if name == b"SET"]
+    assert sets == []
+    with pytest.raises(memory_store.MemoryStoreStartupError) as refused:
+        store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    assert refused.value.code == "MEMORY_STORE_UNIDENTIFIED_DATA"
+    assert [name for names in server.logs.values() for name in names if name == b"SET"] == []
+
+
+def test_pipeline_cleanup_that_times_out_finishes_inside_the_guarded_scope(fake: Callable[[str], FakeRedis]) -> None:
+    """A local refusal while WATCHing leaves redis-py to send UNWATCH; its reply never comes. The cleanup ends with the budget,
+    returns the connection, and leaves nothing for a finalizer to send once the guards are gone."""
+    import gc
+
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    server.mode = "stall-unwatch"
+    store._local.deadline = time.monotonic() + 0.4
+    started = time.monotonic()
+    captured = None
+    try:
+        with pytest.raises(RuntimeError), store._writing():
+            with memory_store._pipeline(store._writer) as pipe:
+                captured = pipe
+                pipe.watch("omem:p:x:lease")
+                raise RuntimeError("a local refusal while watching")
+    finally:
+        store._local.deadline = None
+    assert time.monotonic() - started < 0.7
+    assert captured is not None and captured.connection is None and captured.watching is False
+    sent = sum(len(names) for names in server.logs.values())
+    del captured, pipe
+    gc.collect()
+    time.sleep(0.1)
+    assert sum(len(names) for names in server.logs.values()) == sent  # finalization sent nothing
+
+
+def test_an_unavailable_operation_answered_after_the_deadline_is_a_timeout(fake: Callable[[str], FakeRedis],
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    server = fake("fast")
+    store, _endpoint_ = _store(server)
+    real_parse = msc.parse_request
+
+    def slow_parse(raw: bytes) -> dict[str, object]:
+        time.sleep(0.1)  # parsing crosses the deadline
+        return real_parse(raw)
+
+    monkeypatch.setattr(msc, "parse_request", slow_parse)
+    service = memory_store.MemoryStoreService(store, verify=lambda _deadline: None)
+    body = {"op": "export", "project": "p-1", "limit": 10}
+    assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 0.05) == (503, msc.error_body("MEMORY_TIMEOUT"))

@@ -142,7 +142,7 @@ def connect(endpoint: MemoryStoreEndpoint) -> redis.Redis:
     and one for reads, each used under its own lock."""
     link = Link()
     host = "127.0.0.1" if endpoint.host == "localhost" else endpoint.host  # one literal address: no resolver, no address fallback
-    pool = redis.BlockingConnectionPool(max_connections=1, timeout=msc.DEADLINE_SECONDS, retry=Retry(NoBackoff(), 0),
+    pool = redis.BlockingConnectionPool(max_connections=1, timeout=0, retry=Retry(NoBackoff(), 0),
                                         connection_class=_TrackedConnection, optimus_link=link,
                                         host=host, port=endpoint.port, username=endpoint.username, password=endpoint.password,
                                         socket_timeout=msc.DEADLINE_SECONDS, socket_connect_timeout=_CONNECT_SECONDS, protocol=2,
@@ -159,7 +159,6 @@ def set_budget(client: Any, seconds: float) -> None:
     link = getattr(client, "optimus_link", None)
     if not isinstance(link, Link):  # an in-memory stand-in
         return
-    client.connection_pool.timeout = max(0.0, seconds)  # a checkout waits for the pool's one connection only for what is left
     seconds = max(_MIN_SOCKET_SECONDS, seconds)
     client.connection_pool.connection_kwargs.update(socket_timeout=seconds, socket_connect_timeout=min(_CONNECT_SECONDS, seconds))
     connection = link.connection
@@ -177,6 +176,30 @@ def set_budget(client: Any, seconds: float) -> None:
     buffer = getattr(getattr(connection, "_parser", None), "_buffer", None)
     if buffer is not None:
         buffer.socket_timeout = seconds
+
+
+@contextlib.contextmanager
+def _pipeline(client: Any) -> Iterator[Any]:
+    """A transaction pipeline whose cleanup finishes here, inside the holding request's guards. redis-py's own reset sends
+    UNWATCH and catches only connection errors: a timeout while it waits for the reply would leave the WATCH state and the
+    checked-out connection for a later finalizer, which would run after the guards are gone. Any cleanup failure disconnects,
+    returns the connection to the pool and clears the pipeline, so finalization has nothing left to send."""
+    pipe = client.pipeline()
+    try:
+        yield pipe
+    finally:
+        try:
+            pipe.reset()
+        except Exception:  # noqa: BLE001 - whatever stopped the UNWATCH, the connection is no longer trustworthy
+            connection = getattr(pipe, "connection", None)
+            if connection is not None:
+                try:
+                    connection.disconnect()
+                finally:
+                    pipe.connection_pool.release(connection)
+            pipe.connection = None
+            pipe.watching = False
+            pipe.command_stack = []
 
 
 def _connects(client: Any) -> int:
@@ -401,6 +424,8 @@ class MemoryStore:
         except (RedisError, OSError, MemoryStoreStartupError) as exc:  # a cut at the deadline included, however it was wrapped
             if self._remaining() <= 0:
                 raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503) from None
+            if isinstance(exc, Reconnected) or isinstance(exc.__cause__, Reconnected):  # refused at the send, before writing
+                raise MemoryStoreStartupError("MEMORY_STORE_RECONNECTED") from exc
             if isinstance(exc, MemoryStoreStartupError):
                 raise
             raise MemoryStoreStartupError("MEMORY_STORE_UNREACHABLE") from exc
@@ -413,6 +438,10 @@ class MemoryStore:
             self._writer.ping()
             self._redis.ping()
             generations = (_connects(self._writer), _connects(self._redis))
+            for client, generation in ((self._writer, generations[0]), (self._redis, generations[1])):
+                link = getattr(client, "optimus_link", None)
+                if isinstance(link, Link):
+                    link.expected = generation  # nothing in the proof, the marker write included, reaches a reconnected server
 
             def step() -> None:
                 self._on_time()
@@ -481,7 +510,7 @@ class MemoryStore:
             self._check_links()
             for _ in range(_WATCH_ATTEMPTS):
                 token = 0
-                with self._writer.pipeline() as pipe:
+                with _pipeline(self._writer) as pipe:
                     try:
                         pipe.watch(key)
                         held = _text(pipe.get(key) or b"")
@@ -575,7 +604,7 @@ class MemoryStore:
             self._check_links()  # the baseline connection is the verified one, not one the pool re-established just now
             for _ in range(_WATCH_ATTEMPTS):
                 replay_at = None
-                with self._writer.pipeline() as pipe:  # a watching pipeline holds the writer's only connection until it closes
+                with _pipeline(self._writer) as pipe:  # a watching pipeline holds the writer's only connection until it closes
                     try:
                         pipe.watch(lease, stream)
                         if _text(pipe.get(lease) or b"").split(":", 1)[0] != str(token):
@@ -682,7 +711,7 @@ class MemoryStore:
         key = self._key(project, "durable")
         try:
             for _ in range(_WATCH_ATTEMPTS):
-                with self._writer.pipeline() as pipe:
+                with _pipeline(self._writer) as pipe:
                     try:
                         pipe.watch(key)
                         current = pipe.get(key)
@@ -788,7 +817,7 @@ class MemoryStoreService:
                 return 503, msc.error_body("MEMORY_TIMEOUT")
             request = msc.parse_request(raw_body)
             if request["op"] in msc.UNAVAILABLE:  # answered before verification, which would connect and write
-                return 501, msc.error_body("MEMORY_OPERATION_UNAVAILABLE")
+                return self._late(deadline) or (501, msc.error_body("MEMORY_OPERATION_UNAVAILABLE"))
             if not self._verified or self._store.suspect:
                 if self._verify is None:
                     raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)

@@ -17,13 +17,13 @@
   "runs": {
     "dedicated_store": {
       "command": "P1211_MEMORY_DOCKER_RELEASED=1 pytest -m requires_plan12_memory_redis tests/integration/memory/test_store.py",
-      "run": "20261116T232807-36328-22473d",
-      "result": "32 passed, after the connection-layer round (Codex review 6)",
+      "run": "20261117T004533-43936-4207dd",
+      "result": "32 passed, after the Codex review 7 round",
       "ack_latency_s": {
         "saves": 50,
-        "p50": 0.0079,
-        "p95": 0.0104,
-        "max": 0.0112,
+        "p50": 0.0073,
+        "p95": 0.0105,
+        "max": 0.0115,
         "policy": "appendfsync always"
       },
       "superseded_measurement": {
@@ -37,9 +37,15 @@
     },
     "native_keyring": {
       "command": "pytest -m requires_os_keyring_write tests/integration/memory/test_native_keyring.py",
-      "run": "20261116T232755-48056-fae5f1",
+      "run": "20261117T004554-21904-cd8104",
       "result": "3 passed",
       "residue": "none: keyring.get_password('optimus-p1211-test', 'redis-password') is None after the run"
+    },
+    "broad_unit": {
+      "sha": "git:5f50746ece3b6d9257f73335ca5089e6f5ba3d2f",
+      "launcher": "PowerShell",
+      "result": "9413 passed, 46 skipped, 0 failed (1:02:12)",
+      "suites": "tests/unit/{optimus_gateway,security,gateway,context,context_engine,tools,guardrails,docs,acp}"
     }
   },
   "covered": [
@@ -106,8 +112,13 @@
       "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex6.py",
       "killed": 10,
       "survived": 0
+    },
+    "codex_review_7": {
+      "tool": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/revert_checks_codex7.py",
+      "killed": 5,
+      "survived": 0
     }
   },
   "not_covered_here": "Competing writers, disconnections around the append, fsync timeout, AOF-off and OOM at runtime, purge and capacity under load are Task 2 (checkpoint 2).",
-  "connection_paths": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/connection-paths.md (v2: 20 paths, guards G1-G7, each with its test)"
+  "connection_paths": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-105-m3-cp1/connection-paths.md (v3: 20 paths, guards G1-G8, each with its test)"
 }

@@ -95,6 +95,11 @@ class Pipeline:
         return self
 
     def __exit__(self, *_exc: object) -> None:
+        self.reset()
+
+    connection = None
+
+    def reset(self) -> None:
         self.watched, self.queued = {}, []
 
     def watch(self, *keys: str) -> None:

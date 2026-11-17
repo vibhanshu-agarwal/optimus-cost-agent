@@ -96,10 +96,12 @@ connection itself so they hold for every command, redis-py's own cleanup include
 and every attempt to establish it, failed or not, is a new generation, including the silent reconnect redis-py's pool makes at checkout.
 While the store holds a connection, a command on any generation but the verified one, or one that would have to connect first, is refused
 before it leaves, so nothing reaches an unverified Redis; verification establishes both connections first and refuses a proof gathered
-across a reconnect. While held, the connection's connect, socket and parser timeouts are the request's remaining budget, refreshed before
-each command and again at the moment redis-py connects; `localhost` is connected as `127.0.0.1`, so there is one address and no resolver;
-the pool's wait takes exactly what is left; a watchdog closes the socket at the absolute deadline; and after the deadline the connection
-neither connects nor sends. Any outcome the service returns after the deadline is `MEMORY_TIMEOUT`, and a write already sent stays
+across a reconnect, enforcing its fixed generations at the send so the marker write cannot reach a replacement. While held, the connection's
+connect, socket and parser timeouts are set from the remaining budget (with a 50 ms floor) when it is taken and at each deadline check, and the
+connect timeouts again at the moment redis-py connects; these are soft bounds. The hard bound is a watchdog that closes the socket at the
+absolute deadline, and after the deadline the connection neither connects nor sends. `localhost` is connected as `127.0.0.1`, so resolution
+returns one numeric address without a DNS query. A pool checkout never waits: the store's locks keep each pool's one connection free. Every
+watching pipeline finishes its cleanup inside the guarded scope, so nothing is left for a finalizer once the guards are gone. Any outcome the service returns after the deadline is `MEMORY_TIMEOUT`, and a write already sent stays
 uncertain, reconciled by a retry under the same key. Unavailable operations are refused before verification, which would connect and write.
 
 A retry under the same key with the same content returns the first result and appends nothing; different content under that key is
