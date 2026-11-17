@@ -318,6 +318,7 @@ def test_someone_else_s_words_anywhere_in_the_block_stay_theirs(block: str, chos
     ("Only after operator approval,\nwe deploy to main.", "we deploy to main."),
     ("Only after operator approval:\nwe always deploy to main.", "we always deploy to main."),  # review 5: a colon
     ("Only after operator approval: we always deploy to main.", "we always deploy to main."),  # a colon inside a line
+    ("We always deploy to main: only after operator approval.", "We always deploy to main:"),  # ... after a rule's own form
     ("Rules for this repo:\nNever push to main.", "Never push to main."),
     ("Rules:\n- Never push to main\n- Run ruff first", "Never push to main"),
     ("Only after operator approval. We always deploy to main.", "We always deploy to main."),  # a qualifying sentence
@@ -347,7 +348,7 @@ def test_a_plain_sentence_is_kept_whole(block: str, chosen: str, kept: str) -> N
 
 def test_a_statement_too_long_to_keep_whole_is_never_clipped_into_a_rule() -> None:
     """Codex CP2 review 1, finding 7: the restriction past character 2,000 would be lost."""
-    text = "Deploys to production are allowed " + "and so on " * 200 + "only after the operator approves."
+    text = "We always deploy to production " + "and so on " * 200 + "only after the operator approves."  # a rule's own form
     assert len(text) > 2000
     assert _act("decision", text) == "SPANS_UNVERIFIED"
     work = mx.CompletedWork("done", (mx.Evidence("ev-1", "verification"),))
