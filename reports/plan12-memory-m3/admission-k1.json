@@ -1,0 +1,105 @@
+{
+  "schema": "plan12-memory-m3.admission-k1.v1",
+  "source": {
+    "head": "git:1acc05bc3999b4538b195121457c16f0dbfa2421",
+    "dirty": false
+  },
+  "upstream": "controlled: each case's reply is scripted",
+  "cases": [
+    {
+      "case": "genuine_user_statement",
+      "expected": "ADMITTED",
+      "actual": "ADMITTED",
+      "passed": true
+    },
+    {
+      "case": "question_creates_no_rule",
+      "expected": "NO_RULE",
+      "actual": "NO_RULE",
+      "passed": true
+    },
+    {
+      "case": "quotation_goes_off",
+      "expected": "QUOTATION",
+      "actual": "QUOTATION",
+      "passed": true
+    },
+    {
+      "case": "summary_attribution_forgery",
+      "expected": "SPANS_UNVERIFIED",
+      "actual": "SPANS_UNVERIFIED",
+      "passed": true
+    },
+    {
+      "case": "injection_blocked",
+      "expected": "SCAN_BLOCKED",
+      "actual": "SCAN_BLOCKED",
+      "passed": true
+    },
+    {
+      "case": "secret_blocked",
+      "expected": "SCAN_BLOCKED",
+      "actual": "SCAN_BLOCKED",
+      "passed": true
+    },
+    {
+      "case": "source_overlap_blocked",
+      "expected": "SCAN_BLOCKED",
+      "actual": "SCAN_BLOCKED",
+      "passed": true
+    },
+    {
+      "case": "short_paste_residual",
+      "expected": "ADMITTED",
+      "actual": "ADMITTED",
+      "passed": true
+    },
+    {
+      "case": "untrusted_workspace_read_only",
+      "expected": "WORKSPACE_UNTRUSTED",
+      "actual": "WORKSPACE_UNTRUSTED",
+      "passed": true
+    },
+    {
+      "case": "malformed_reply_admits_nothing",
+      "expected": "incomplete:malformed_reply",
+      "actual": "incomplete:malformed_reply",
+      "passed": true
+    },
+    {
+      "case": "agent_kind_from_user_is_dropped",
+      "expected": "dropped",
+      "actual": "dropped",
+      "passed": true
+    },
+    {
+      "case": "agent_lesson_admitted",
+      "expected": "ADMITTED",
+      "actual": "ADMITTED",
+      "passed": true
+    },
+    {
+      "case": "agent_external_directive_off",
+      "expected": "LINEAGE_UNRESOLVED",
+      "actual": "LINEAGE_UNRESOLVED",
+      "passed": true
+    },
+    {
+      "case": "agent_never_writes_a_user_kind",
+      "expected": "dropped",
+      "actual": "dropped",
+      "passed": true
+    },
+    {
+      "case": "retraction_withdraws_the_named_item",
+      "expected": "withdrawn",
+      "actual": "withdrawn",
+      "passed": true
+    }
+  ],
+  "blocked_payloads_found_in_redis": [],
+  "residuals": [
+    "a paste of fewer than eight words from a file is not recognised as source text (short_paste_residual is admitted)"
+  ],
+  "passed": true
+}

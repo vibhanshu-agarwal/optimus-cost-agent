@@ -1,0 +1,46 @@
+{
+  "schema": "plan12-memory-m3.erasure.v1",
+  "source": {
+    "head": "git:1acc05bc3999b4538b195121457c16f0dbfa2421",
+    "run_id": "20261117T055500-18592-023d12",
+    "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_store.py tests/integration/memory/test_lifecycle.py",
+    "exit_status": 0,
+    "completeness": "COMPLETE"
+  },
+  "release": "operator 2026-11-17 'Release both' on #490 (released test store p1211-memory-test-redis only)",
+  "boundary": "this store's live data and its AOF and RDB files, searched byte for byte with rdbcompression off and a kept control per file",
+  "not_covered": [
+    "freed allocator pages in the Redis process",
+    "deleted-file blocks on the Docker volume",
+    "the host's notices, summaries and export copies (Task 4)",
+    "anything copied outside the store"
+  ],
+  "probe": "round-106-m3-cp2/probe-xdel-result.md: XDEL leaves an entry's bytes in dump.rdb; HDEL does not",
+  "cases": [
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_purge_interrupted_before_its_transaction_sends_nothing_and_a_retry_finishes_it",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_purge_leaves_the_text_in_no_key_and_no_file",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_redis_killed_between_the_tombstone_and_its_fsync_proof_is_finished_by_a_retry",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_redis_killed_during_the_rewrite_or_the_snapshot_starts_the_disk_step_over[aof_rewrite_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_redis_killed_during_the_rewrite_or_the_snapshot_starts_the_disk_step_over[rdb_bgsave_in_progress]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_saves_stop_at_the_ceiling_and_the_reserve_still_takes_withdrawals_and_purges",
+      "outcome": "passed"
+    }
+  ],
+  "passed": true
+}
