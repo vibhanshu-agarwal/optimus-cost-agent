@@ -6455,6 +6455,14 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m3_k2.py::test_summaries_report_the_tail_not_only_the_middle",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.authored_memory:GatewayMemoryStore.call:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: serializes one closed memory-route request (an operation and its validated fields, the Gate's draft for an append) for the host's own Gateway; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_authored_memory.py::test_a_gate_draft_is_appended_once_and_read_back_as_the_engine_s_event",
+      "evidence_tier": "unit"
     }
   ]
 }

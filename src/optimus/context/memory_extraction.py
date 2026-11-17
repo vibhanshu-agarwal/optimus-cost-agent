@@ -3,21 +3,27 @@
 A user extraction sees only the turn's raw user blocks (sanitized, each with a host-issued id); an agent extraction sees only
 completed work and host-issued evidence references. A deterministic prefilter decides whether a turn is worth a call at all.
 The model's reply is parsed strictly; whatever it says, the host establishes the verdict itself (spans, coverage, injection,
-secret and source-overlap scans, lineage) and only the engine's Gate decides what is appended. Nothing here calls a model,
-touches the store or reads a file.
+secret and source-overlap scans, lineage) and only the engine's Gate decides what is appended. The parts above the
+extractor call no model, touch no store and read no file; `MemoryExtractor` runs them per session after the answer, with the
+summarizer call, the settlement and the store adapter injected.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
+import queue
 import re
+import threading
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
+from context_engine import memory_gate
 from context_engine.contracts import ContractError
-from context_engine.memory_contracts import AGENT_KINDS, USER_KINDS, HostVerdict, MemoryCandidate, Span
+from context_engine.memory_contracts import AGENT_KINDS, USER_KINDS, HostVerdict, MemoryCandidate, MemoryNotice, Span
+from context_engine.memory_projection import ItemState
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject
 
 USER_PURPOSE: Final = "memory.extract_user"
@@ -327,3 +333,182 @@ def summary(decisions: Iterable[Any]) -> dict[str, int]:
     for decision in decisions:
         counts[decision.reason] = counts.get(decision.reason, 0) + 1
     return counts
+
+
+# --- the per-session extractor ----------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TurnInput:
+    """What one settled turn gives extraction: the turn's id, the scope its memory goes to, this turn's raw user blocks, the
+    completed work (None for a chat turn without evidence), what files and tool results it held in RAM, and workspace trust."""
+
+    turn_id: str
+    scope: str
+    blocks: tuple[UserBlock, ...]
+    work: CompletedWork | None
+    sources: tuple[str, ...]
+    trusted: bool
+
+
+@dataclass(frozen=True)
+class Outcome:
+    """One job's result, for notices and measurement. `incomplete` names why nothing (more) could be decided."""
+
+    turn_id: str
+    purpose: str
+    proposals: int = 0
+    dropped: int = 0
+    notices: tuple[Any, ...] = ()  # engine MemoryNotice, one per appended change
+    refusals: tuple[str, ...] = ()  # Gate reasons and store codes for candidates not appended
+    incomplete: str | None = None
+    skipped: str | None = None  # a job never run: the queue was full or the extractor closed
+
+
+class MemoryExtractor:
+    """One session's extraction, after the answer: two threads of its own (never the prompt's workers, whose custody the
+    request waits for) and a short queue. A job takes a settlement invocation before it is queued, so the turn's accounting
+    closes only once the job has settled; a job that never runs abandons it. At most one user and one agent call per turn; a
+    reply is used once, never retried."""
+
+    def __init__(self, *, store: Any, settlement: Any, bind: Callable[[str], Callable[..., Any]],
+                 record: Callable[[str, str, Any, str | None], None], sanitize: Callable[[str], str],
+                 report: Callable[[Outcome], None], workers: int = 2, depth: int = 4) -> None:
+        self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
+        self._sanitize, self._report = sanitize, report
+        self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
+        self._extracted: set[str] = set()
+        self._closed = False
+        self._lock = threading.Lock()
+        self._threads = [threading.Thread(target=self._loop, name=f"memory-extract-{n}", daemon=True) for n in range(workers)]
+        for thread in self._threads:
+            thread.start()
+
+    def submit(self, turn: TurnInput) -> tuple[Decision, Decision]:
+        """Decide both prefilters now (cheap, deterministic) and queue what they call for. Returns the two decisions."""
+        text = "\n".join(block.text for block in turn.blocks)
+        with self._lock:
+            extracted = frozenset(self._extracted)
+        user = prefilter_user(text, extracted=extracted)
+        agent = prefilter_agent(turn.work, extracted=extracted)
+        for purpose, decision in ((USER_PURPOSE, user), (AGENT_PURPOSE, agent)):
+            if decision.call:
+                self._enqueue(purpose, turn)
+        return user, agent
+
+    def _enqueue(self, purpose: str, turn: TurnInput) -> None:
+        invocation = self._settlement.open_invocation(turn.turn_id)
+        try:
+            if self._closed:
+                raise queue.Full
+            self._jobs.put_nowait((purpose, turn, invocation))
+        except queue.Full:
+            invocation.abandon_unstarted()
+            self._report(Outcome(turn.turn_id, purpose, skipped="closed" if self._closed else "queue_full"))
+
+    def _loop(self) -> None:
+        while True:
+            job = self._jobs.get()
+            if job is None:
+                return
+            purpose, turn, invocation = job
+            if not invocation.start():
+                continue
+            try:
+                self._report(self._run(purpose, turn))
+            except Exception:  # noqa: BLE001 - a fault in one job never stops the extractor; nothing was admitted from it
+                self._report(Outcome(turn.turn_id, purpose, incomplete="extractor_fault"))
+            finally:
+                invocation.end()
+
+    def _run(self, purpose: str, turn: TurnInput) -> Outcome:
+        from optimus.context.authored_memory import MemoryStoreRefused, MemoryStoreUnavailable
+
+        try:
+            existing = self._store.user_items(turn.scope, limit=MAX_EXISTING_ITEMS) if purpose == USER_PURPOSE else []
+            if purpose == USER_PURPOSE:
+                prompt, _kept = user_prompt(turn.blocks, existing)
+            else:
+                assert turn.work is not None
+                prompt = agent_prompt(turn.work)
+            response = self._bind(turn.turn_id)(prompt=prompt, max_output_tokens=MAX_OUTPUT_TOKENS, purpose=purpose)
+            for attempt in response.attempts:  # every attempt settles, whatever the reply turns out to be
+                self._record(turn.turn_id, purpose, attempt, response.finish_status if attempt.outcome == "completed" else None)
+            if getattr(response, "diagnostic", None) is not None:
+                with contextlib.suppress(Exception):
+                    response.diagnostic()
+            if response.integrity_error is not None:
+                return Outcome(turn.turn_id, purpose, incomplete="unattributable_report")
+            proposals = parse_reply(response.text)
+            if purpose == USER_PURPOSE:
+                candidates = user_candidates(proposals, project=self._store.project, scope=turn.scope, blocks=turn.blocks,
+                                             trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources, existing=existing)
+            else:
+                assert turn.work is not None
+                candidates = agent_candidates(proposals, project=self._store.project, scope=turn.scope, work=turn.work,
+                                              trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources)
+            notices, refusals = self._commit(candidates)
+        except ExtractionIncomplete as incomplete:
+            return Outcome(turn.turn_id, purpose, incomplete=incomplete.reason)
+        except MemoryStoreUnavailable:
+            return Outcome(turn.turn_id, purpose, incomplete="store_unavailable")
+        except MemoryStoreRefused as refused:
+            return Outcome(turn.turn_id, purpose, incomplete=f"store_refused:{refused.code}")
+        with self._lock:
+            if purpose == USER_PURPOSE:
+                self._extracted.add(digest("\n".join(block.text for block in turn.blocks).strip()))
+            elif turn.work is not None:
+                self._extracted.update(item.ref for item in turn.work.evidence)
+        return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals))
+
+    def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str]]:
+        """The Gate decides each candidate against the item's current state, read now: a decision taken on a moved head is
+        refused by the store's expected version, never forced."""
+        from optimus.context.authored_memory import MemoryStoreRefused
+
+        notices: list[Any] = []
+        refusals: list[str] = []
+        if not candidates:
+            return notices, refusals
+        with self._store.lease() as token:
+            for entry in candidates:
+                target = _state(self._store.read(entry.candidate.target)) if entry.candidate.target else None
+                decision = memory_gate.admit(entry.candidate, entry.verdict, target)
+                if decision.outcome != "append" or decision.draft is None:
+                    refusals.append(decision.reason)
+                    continue
+                try:
+                    result = self._store.append(token, entry.candidate, decision.draft)
+                except MemoryStoreRefused as refused:
+                    refusals.append(refused.code)
+                    continue
+                notices.append(MemoryNotice.of(result, decision.draft.action))
+        return notices, refusals
+
+    def close(self, timeout: float = 5.0) -> None:
+        """Stop taking jobs; queued ones never run and release their turns; running ones finish (bounded by the store's own
+        deadlines and the Gateway client's timeout)."""
+        self._closed = True
+        while True:
+            try:
+                job = self._jobs.get_nowait()
+            except queue.Empty:
+                break
+            if job is not None:
+                purpose, turn, invocation = job
+                invocation.abandon_unstarted()
+                self._report(Outcome(turn.turn_id, purpose, skipped="closed"))
+        for _thread in self._threads:
+            with contextlib.suppress(queue.Full):
+                self._jobs.put_nowait(None)
+        for thread in self._threads:
+            thread.join(timeout)
+
+
+def _state(stored: Any) -> ItemState | None:
+    """The engine's view of one item from its latest stored event, for the Gate."""
+    if stored is None:
+        return None
+    event = stored.event
+    return ItemState(event.project, event.item, event.version, event.trust, event.status, event.kind, event.title, event.statement,
+                     event.scope, event.anchors, event.lineage, event.valid_from_ms, event.valid_until_ms)
