@@ -29,7 +29,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import OutOfMemoryError, RedisError, ResponseError, TimeoutError, WatchError
 from redis.retry import Retry
 
-from optimus_gateway.memory_files import Inventory, InventoryUnavailable, docker_inventory, residue
+from optimus_gateway.memory_files import Inventory, InventoryUnavailable, Residue, docker_inventory, residue
 from optimus_gateway.memory_journal import JournalError, PurgeJournal, journal_key
 from optimus_security import memory_store_contract as msc
 from optimus_security.memory_store_config import KEYRING_SERVICE, MemoryStoreConfig
@@ -57,6 +57,18 @@ _PERSISTENCE: Final = (
     ("rdb", "rdb_saves", ("rdb_bgsave_in_progress",), "rdb_last_bgsave_status", ("BGSAVE", "SCHEDULE")),
 )
 
+
+
+_RUNBOOK = "docs/runbooks/memory-purge-pending-files.md"
+
+
+def _held(why: Residue | None) -> dict[str, Any]:
+    """What a purge held pending by the data directory tells the operator (Codex CP2 review 4): the reason, the entries that
+    hold it (at most 16, non-printable characters shown as "?") and the runbook that says how to check and retire them."""
+    if why is None:
+        return {}
+    shown = ["".join(c if c.isprintable() else "?" for c in entry)[:200] for entry in why.entries[:16]]
+    return {"files": why.reason, "blocking": shown, "next": "inspect_data_files", "runbook": _RUNBOOK}
 
 class MemoryStoreStartupError(RuntimeError):
     """The configured Redis is not the approved durable resource. `code` is stable and carries no secret."""
@@ -942,7 +954,7 @@ class MemoryStore:
                 state, why = "pending", None
                 if outcome["durable_state"] == "confirmed":
                     state, why = self._settle(journal, name, item, result["stream_id"])
-                return {"status": "ok", **result, **outcome, "purge_state": state, **({"files": why} if why else {})}
+                return {"status": "ok", **result, **outcome, "purge_state": state, **_held(why)}
             raise msc.MemoryRequestError("MEMORY_CONTENDED", 409)
 
     def _op_purge_status(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -968,7 +980,7 @@ class MemoryStore:
                 return {"status": "ok", "item": item, "purge_state": "pending"}
             self._advance_watermark(project, current["stream_id"], connection)
             state, why = self._settle(journal, name, item, current["stream_id"])
-            return {"status": "ok", "item": item, "purge_state": state, **({"files": why} if why else {})}
+            return {"status": "ok", "item": item, "purge_state": state, **_held(why)}
 
     def _fold_at_head(self, project: str) -> _Fold:
         """The writer's fold advanced to the stream's head, read only (no lease, no WATCH), while the write lock is held."""
@@ -981,7 +993,7 @@ class MemoryStore:
         fold.advance(self._writer, stream, self._key(project, "payloads"), head, self._on_time)
         return fold
 
-    def _settle(self, journal: PurgeJournal, name: str, item: str, tombstone: str) -> tuple[str, str | None]:
+    def _settle(self, journal: PurgeJournal, name: str, item: str, tombstone: str) -> tuple[str, Residue | None]:
         """Drive the disk step of a confirmed purge. Each of the AOF rewrite and the RDB snapshot is complete only when one that
         started after the deletion has finished well: so nothing is counted while one is already running (it may predate the
         deletion); an idle store gets a fresh one, whose target is the counter read while idle plus one. A restarted Redis
@@ -1025,16 +1037,16 @@ class MemoryStore:
         self._journal(journal, name, item, "completed", run_id=run_id)
         return PURGE_COMPLETED, None
 
-    def _residue(self) -> str | None:
+    def _residue(self) -> Residue | None:
         """Why the data directory may still hold deleted text, read after the rewrite and the snapshot have both finished;
         None only when it holds the current snapshot and AOF set alone (Codex CP2 review 1, finding 2)."""
         if self._inventory is None:
-            return "file_inventory_unavailable"
+            return Residue("file_inventory_unavailable", ())
         self._on_time()
         try:
             return residue(self._inventory(max(1.0, min(10.0, self._remaining()))))
         except InventoryUnavailable:
-            return "file_inventory_unavailable"
+            return Residue("file_inventory_unavailable", ())
 
     def _need_journal(self) -> PurgeJournal:
         if self._purge_journal is None:

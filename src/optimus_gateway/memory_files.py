@@ -9,7 +9,8 @@ configured resource label and publish the configured port.
 Nothing is ever removed (Codex CP2 review 3, finding 2): no listing can show that Redis made a file and has retired it, so a
 fork's working file that a killed Redis left behind holds the purge pending, with its reason, until the operator removes it.
 Names are listed NUL-delimited with their type (review 2, finding 3), and a listing that is not exactly what `find` and the
-manifest produce is unavailable, never clean (review 3, finding 4).
+manifest produce is unavailable, never clean (review 3, finding 4). The manifest is checked whole, and a pending purge names
+what holds it, for docs/runbooks/memory-purge-pending-files.md (review 4).
 """
 
 from __future__ import annotations
@@ -49,35 +50,64 @@ class InventoryUnavailable(Exception):
     """The files could not be listed, or the listing is malformed: the disk step cannot be shown complete."""
 
 
-def residue(inventory: Inventory) -> str | None:
-    """Why the files may still hold deleted text, or None when they hold only the current snapshot and AOF set."""
+@dataclass(frozen=True)
+class Residue:
+    reason: str
+    entries: tuple[str, ...]  # what holds the purge pending, relative to the data directory, for the operator's runbook
+
+
+def residue(inventory: Inventory) -> Residue | None:
+    """Why the files may still hold deleted text, and which, or None when they hold only the current snapshot and AOF set."""
     top = {entry.path: entry.kind for entry in inventory.entries if "/" not in entry.path}
-    if set(top) - {_SNAPSHOT, _AOF_DIR} or top.get(_AOF_DIR) != "d" or top.get(_SNAPSHOT, "f") != "f":
-        return "unexpected_files"  # a fork's working file a killed Redis left behind, or anything else
+    odd = sorted(path for path, kind in top.items() if path not in (_SNAPSHOT, _AOF_DIR) or kind != ("d" if path == _AOF_DIR else "f"))
     aof = [entry for entry in inventory.entries if "/" in entry.path]
-    if any(entry.kind != "f" or not entry.path.startswith(_AOF_DIR + "/") for entry in aof):
-        return "unexpected_files"
-    listed: set[str] = set()
-    for line in inventory.manifest.splitlines():
+    odd += sorted(entry.path for entry in aof if entry.kind != "f" or not entry.path.startswith(_AOF_DIR + "/"))
+    if odd or _AOF_DIR not in top:
+        return Residue("unexpected_files", tuple(odd))  # a fork's working file a killed Redis left behind, or anything else
+    names = {entry.path.removeprefix(_AOF_DIR + "/") for entry in aof}
+    manifests = sorted(name for name in names if name.endswith(".manifest"))
+    shown = tuple(f"{_AOF_DIR}/{name}" for name in manifests)
+    records = _manifest(inventory.manifest)
+    if records is None or len(manifests) != 1:
+        return Residue("manifest_unreadable", shown)
+    history = [file for file, kind, _seq in records if kind == "h"]
+    if history:
+        return Residue("history_files", tuple(f"{_AOF_DIR}/{file}" for file in history))  # Redis kept a superseded file
+    files = [_AOF_NAME.fullmatch(file) for file, _kind, _seq in records]
+    # The manifest Redis writes, checked whole (Codex CP2 review 4, finding 4): one base, then increments in rising sequence,
+    # each named for its own type and sequence under one prefix that also names the manifest, and each one present.
+    if (any(match is None for match in files) or [kind for _file, kind, _seq in records] != ["b", *["i"] * (len(records) - 1)]
+            or any(match["type"] != {"b": "base", "i": "incr"}[kind] or int(match["seq"]) != seq or (kind == "i" and match["ext"] != "aof")
+                   for match, (_file, kind, seq) in zip(files, records, strict=True) if match)
+            or [seq for _file, kind, seq in records if kind == "i"] != sorted({seq for _file, kind, seq in records if kind == "i"})
+            or {match["prefix"] for match in files if match} != {manifests[0].removesuffix(".manifest")}
+            or {file for file, _kind, _seq in records} - names):
+        return Residue("manifest_unreadable", shown)
+    retained = sorted(names - set(manifests) - {file for file, _kind, _seq in records})
+    if retained:
+        return Residue("retained_files", tuple(f"{_AOF_DIR}/{name}" for name in retained))  # an old base or increment left behind
+    return None
+
+
+_AOF_NAME = re.compile(r"(?P<prefix>[^/]+)\.(?P<seq>[0-9]+)\.(?P<type>base|incr)\.(?P<ext>rdb|aof)")
+
+
+def _manifest(text: str) -> list[tuple[str, str, int]] | None:
+    """The manifest's (file, type, seq) records in order, or None when a line is not one Redis writes. A file named twice needs
+    no check of its own: its name fixes its type and sequence, so `residue`'s base and sequence rules refuse it."""
+    records = []
+    for line in text.splitlines():
         fields = line.split()
         if not fields:
             continue
         keys = fields[::2]
         if len(fields) % 2 or len(set(keys)) != len(keys) or not all(_FIELD.fullmatch(key) for key in keys):
-            return "manifest_unreadable"  # a field without its value, or one twice: not the manifest Redis writes
+            return None  # a field without its value, or one twice
         entry = dict(zip(keys, fields[1::2], strict=True))
         if "file" not in entry or "/" in entry["file"] or entry.get("type") not in ("b", "i", "h") or not entry.get("seq", "").isdigit():
-            return "manifest_unreadable"
-        if entry["type"] == "h":
-            return "history_files"  # Redis kept a superseded file in its manifest
-        listed.add(entry["file"])
-    if not listed:
-        return "manifest_unreadable"
-    names = {entry.path.removeprefix(_AOF_DIR + "/") for entry in aof}
-    manifests = {name for name in names if name.endswith(".manifest")}
-    if len(manifests) != 1 or names - manifests - listed:
-        return "retained_files"  # an old base or increment the rewrite left behind, or a file Redis does not name
-    return None
+            return None
+        records.append((entry["file"], entry["type"], int(entry["seq"])))
+    return records or None
 
 
 def parse(output: str) -> Inventory:

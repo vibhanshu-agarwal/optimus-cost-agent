@@ -154,7 +154,9 @@ def test_a_file_the_rewrite_left_behind_holds_the_purge_pending_until_it_is_gone
     assert set(kept) <= _files_with(canary)
     assert _purge(service, project, token, item, "f" * 64)[0] == 200
     _until_held(service, project, item, ("unexpected_files", "retained_files"), seconds=120)
-    assert _status(service, project, item)["purge_state"] == "pending"  # the rewrite and snapshot are done; the files are not
+    held = _status(service, project, item)
+    assert held["purge_state"] == "pending"  # the rewrite and snapshot are done; the files are not
+    assert set(held["blocking"]) & {"temp-4242.rdb", "temp-4243.rdb", "dump.rdb dump.rdb", "appendonlydir/appendonly.aof.99.incr.aof"}, held
     assert set(kept) <= _files_with(canary)  # every copy is still there: the Gateway removed none
     docker("exec", CONTAINER, "rm", *kept, check=True)  # what the operator does with the reason
     _until_completed(service, project, item)

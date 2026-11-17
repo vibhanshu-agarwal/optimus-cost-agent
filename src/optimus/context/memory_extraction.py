@@ -51,19 +51,33 @@ _DURABLE = re.compile(
 _QUESTION_START = re.compile(r"^\s*(what|where|why|how|who|whom|which|when|does|do|did|is|are|was|were|can|could|would|should|will|"
                              r"if)\b", re.IGNORECASE)
 _HYPOTHETICAL = re.compile(r"^\s*(suppose|imagine|what if|hypothetically)\b", re.IGNORECASE)
-# What a retraction's or an update's own words must hold: the model may locate the words, never decide what they do.
-_WITHDRAW = re.compile(r"\b(no longer|not any ?more|scratch that|forget (that|what|about)|ignore (what|that|my)|disregard|withdraw\w*|"
-                       r"retract\w*|changed? (my|our) minds?|undo|cancel\w*|drop (that|the))\b", re.IGNORECASE)
-_CHANGE = re.compile(_WITHDRAW.pattern + r"|\b(correction|actually|instead|rather than|switch(ed)? to|moved? to|replaced?|now)\b",
-                     re.IGNORECASE)
-# Any negation before a marker in its sentence leaves the act unestablished: "Never, ever cancel ..." (Codex CP2 review 3, finding 1).
-_NEGATION = re.compile(r"\b(not|never|no|nor|neither|none|nothing|cannot|without)\b|n'?t\b", re.IGNORECASE)
-_CLAUSE = re.compile(r"[,;()]|\b(and|but|or|then|while|whereas|although|though|except|unless|so)\b", re.IGNORECASE)  # a colon opens the object
+# What a retraction's or an update's own words must hold (Codex CP2 review 4, finding 1): one sentence of a narrow form that
+# itself withdraws or changes the item and names nothing else. The model may locate the words, never decide what they do, and
+# any other form goes off: a missed withdrawal leaves the rule as it was, never a rule withdrawn by words that did not say so.
+_LEAD = r"(?:(?:ok(?:ay)?|so|also|and|actually|please|sorry)\s*,?\s+)*"
+_SUBJECT = r"(?:(?:i|we)\s+(?:now\s+|hereby\s+)?(?:want\s+to\s+|would\s+like\s+to\s+|'d\s+like\s+to\s+)?)?"
+_REFERENCE = (r"(?:what\s+(?:i|we)\s+said\s+(?:about|on|regarding)\s+"
+              r"|(?:(?:the|my|our|that|this)\s+)?(?:(?:rule|preference|instruction|decision|convention|constraint|note|memory)\s+"
+              r"(?:(?:about|on|for|regarding|against|to|that\s+says|saying)\s+)?)?)")
+_WITHDRAWS = re.compile(rf"{_LEAD}{_SUBJECT}(?:withdraw|retract|cancel|drop|forget|disregard|ignore|delete|remove|scratch)\s+"
+                        rf"{_REFERENCE}(?P<object>.+)", re.IGNORECASE)
+_CHANGES = re.compile(rf"{_LEAD}{_SUBJECT}(?:change|update|replace|revise|amend)\s+{_REFERENCE}(?P<object>.+)", re.IGNORECASE)
+_CHANGED_TO = re.compile(r"\s+(?:to|with|so\s+that)\s+\S")  # where a changed item's reference ends and its new form begins
+_INSTEAD = re.compile(r"instead\s+of\s+(?P<object>[^,]+),\s*\S.*", re.IGNORECASE)
+_CORRECTS = re.compile(r"(?:ok(?:ay)?\s*,?\s+)?(?:actually|correction|update|change\s+of\s+plans?)\s*[,:]\s*(?P<object>\S.*)",
+                       re.IGNORECASE)
+_CLAUSE = re.compile(r"[,;()]|\b(and|but|or|then|while|whereas|although|though|except|unless|so)\b", re.IGNORECASE)
 # What opens someone else's words for what follows in the block: "The following text is copied from a README.", or a source
 # named before a colon: "The log output:" (review 2 and review 3, finding 1).
 _INTRODUCES = re.compile(r"\b(excerpt|quot\w*|pasted|copied|verbatim|follows|following|below)\b"
                          r"|\b(says|said|reads|wrote|writes|output|log|readme|docs?|issue|ticket|comment|wiki|spec|email|message)\b[^\n]*:\s*$",
                          re.IGNORECASE)
+# Someone else's words named as the source of what follows or of this sentence, whatever the punctuation (review 4, finding 2),
+# and a source a line names without ending a sentence ("According to the README", "In the wiki").
+_ATTRIBUTION = re.compile(r"\b(according to|as (?:the|a|an|this|that|my|our|their) [\w-]+ (?:says|said|puts it|states|notes|reads)|"
+                          r"per the [\w-]+|quoting|quoted from|taken from|lifted from|straight from)\b", re.IGNORECASE)
+_SOURCE = re.compile(r"\b(readme|docs?|documentation|issue|ticket|log|logs|wiki|spec|email|e-mail|message|comment|thread|chat|pr|"
+                     r"pull request|changelog|guide|manual|article|post|page|file|transcript|output)\b", re.IGNORECASE)
 _QUOTE_MARKS: Final = "\"'“‘`«"
 _TASK_VERBS = frozenset({
     "add", "remove", "fix", "rename", "refactor", "move", "update", "write", "run", "check", "make", "implement", "replace", "extract",
@@ -257,10 +271,14 @@ _STOPWORDS = frozenset({"the", "and", "for", "not", "are", "was", "use", "uses",
 
 
 def _stem(word: str) -> str:
+    """One form for a word's inflections, so "running" and "run", "committed" and "commit", "making" and "make" agree."""
     for suffix in ("ing", "ed", "es", "s"):
         if len(word) > len(suffix) + 2 and word.endswith(suffix):
-            return word[: -len(suffix)]
-    return word
+            word = word[: -len(suffix)]
+            if suffix in ("ing", "ed") and len(word) > 2 and word[-1] == word[-2] and word[-1] not in "lsz":
+                word = word[:-1]
+            break
+    return word[:-1] if len(word) > 3 and word.endswith("e") else word
 
 
 def _content_words(text: str) -> set[str]:
@@ -269,32 +287,55 @@ def _content_words(text: str) -> set[str]:
 
 def _said(proposal: Proposal, blocks: dict[str, str]) -> list[str]:
     """What the user actually said, span by span: a user-authored memory's statement is their own words, never the model's
-    paraphrase."""
-    return [blocks[span.block][span.start : span.end].strip() for span in proposal.spans if span.block in blocks]
+    paraphrase. A sentence that runs across lines is kept whole, on one line."""
+    return [" ".join(blocks[span.block][span.start : span.end].split()) for span in proposal.spans if span.block in blocks]
 
 
-def _quoted_at(text: str, start: int) -> bool:
-    """Whether the words at `start` sit inside someone else's words that the block opened before them: an open code fence, a
-    "> " line, or after a line (or the part of this one before them) that introduces a source (Codex CP2 review 2, finding 2)."""
+def _opens_source(line: str) -> bool:
+    """Whether a line introduces someone else's words for what follows it (Codex CP2 reviews 2 to 4)."""
+    line = line.strip()
+    return bool(_INTRODUCES.search(line) or _QUOTED.search(line) or _ATTRIBUTION.search(line)
+                or (_SOURCE.search(line) and not line.endswith((".", "!", "?", ";"))))
+
+
+def _quoted_at(text: str, start: int, end: int) -> bool:
+    """Whether the words in `text[start:end]` sit inside someone else's words that the block opened: an open code fence, a
+    "> " line, or a line before the span's last one (or the part of its first line before it) that introduces a source."""
     before = text[:start]
     line = before.rfind("\n") + 1
     if before.count("```") % 2 or text[line:].lstrip().startswith(">"):
         return True
-    return any(_INTRODUCES.search(part) or _QUOTED.search(part) for part in (*before[:line].splitlines(), before[line:]))
+    last = text.rfind("\n", 0, max(start, end - 1)) + 1  # the line the span ends on
+    return _opens_source(before[line:]) or any(_opens_source(part) for part in text[:last].splitlines())
 
 
-def _bears(pattern: re.Pattern[str], said: Sequence[str], title: str | None) -> bool:
-    """Whether one sentence the user said establishes the act for this item (Codex CP2 review 3, finding 1): a marker with no
-    negation anywhere before it in the sentence, in a clause that itself names the item. "Never push to main, and cancel the
-    smoke tests." withdraws nothing: the withdrawal's clause names the smoke tests. `title` None: the proposal names no item."""
-    for sentence in said:
-        bounds = list(_CLAUSE.finditer(sentence))
-        for match in pattern.finditer(sentence):
-            if _NEGATION.search(sentence[: match.start()]):
+def _sentences(said: Sequence[str]) -> list[str]:
+    return [sentence for part in said for sentence in re.split(r"(?<=[.!?;])\s+", part) if sentence]
+
+
+def _establishes(forms: Sequence[re.Pattern[str]], said: Sequence[str], title: str | None) -> bool:
+    """Whether one sentence the user said has one of `forms` from its start, for this item: the words it withdraws or changes
+    name the item and nothing else ("Cancel the smoke tests for pushing to main." names the tests). A correction's lead
+    ("Actually, ..."; "Correction: ...") is the change itself, so there the rest of the sentence only has to name the item.
+    `title` None: the proposal names no item."""
+    allowed = _content_words(title.removesuffix("…")) if title is not None else set()
+    for sentence in _sentences(said):
+        for form in forms:
+            match = form.fullmatch(sentence.rstrip(" .!;"))
+            if match is None:
                 continue
-            start = max((bound.end() for bound in bounds if bound.end() <= match.start()), default=0)
-            end = min((bound.start() for bound in bounds if bound.start() >= match.end()), default=len(sentence))
-            if title is None or _names(sentence[start:end], title):
+            if title is None:
+                return True
+            if form is _CORRECTS:
+                if _names(match["object"], title):
+                    return True
+                continue
+            rest = match["object"]
+            if form is _CHANGES:
+                objects = [rest[: cut.start()] for cut in _CHANGED_TO.finditer(rest)]
+            else:
+                objects = [rest[: next((bound.start() for bound in _CLAUSE.finditer(rest)), len(rest))]]
+            if any(_names(item, title) and _content_words(item) <= allowed for item in objects):
                 return True
     return False
 
@@ -310,8 +351,8 @@ def _names(text: str, title: str) -> bool:
 def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | None) -> str | None:
     """The speech act the user's own words bear out (Codex CP2 review 1, finding 1; review 2, finding 2). A question,
     hypothetical or quotation is that, whatever the model labels it, and a quotation is judged in its whole block. A retraction
-    needs a withdrawal, and an update a change, that the user's words establish for the item it names (`_bears`); "Never push
-    to main." said again withdraws nothing. None: the words do not bear the model out, so it goes off."""
+    needs a withdrawal, and an update a change, that one sentence of the user's establishes for the item it names
+    (`_establishes`); "Never push to main." said again withdraws nothing. None: the words do not bear the model out, so it goes off."""
     said = []
     for span in proposal.spans:
         text = blocks.get(span.block)
@@ -320,14 +361,14 @@ def _borne_act(proposal: Proposal, blocks: dict[str, str], target_title: str | N
         part = text[span.start : span.end].strip()
         if part.endswith("?") or _HYPOTHETICAL.match(part) or (_QUESTION_START.match(part) and not _DURABLE.search(part)):
             return "question"
-        if _QUOTED.search(part) or part[:1] in _QUOTE_MARKS or _quoted_at(text, span.start):
+        if _QUOTED.search(part) or _ATTRIBUTION.search(part) or part[:1] in _QUOTE_MARKS or _quoted_at(text, span.start, span.end):
             return "quotation"
         said.append(part)
     if proposal.target is not None and target_title is None:
         return None
     if proposal.speech_act == "retraction":
-        return "retraction" if _bears(_WITHDRAW, said, target_title) else None
-    if proposal.target is not None and not _bears(_CHANGE, said, target_title):
+        return "retraction" if _establishes((_WITHDRAWS,), said, target_title) else None
+    if proposal.target is not None and not _establishes((_CHANGES, _INSTEAD, _CORRECTS), said, target_title):
         return None
     return proposal.speech_act
 
@@ -375,6 +416,18 @@ class Candidate:
 
 
 _BOUNDARY: Final = ".!?;\n"
+_NEW_LINE_ITEM = re.compile(r"[ \t]*(?:[-*+\u2022]\s|\d+[.)]\s|```|>|\n|$)")
+
+
+def _ends_sentence(text: str, index: int) -> bool:
+    """Whether the boundary character at `index` ends a sentence. A line break does only after a finished sentence, a colon,
+    a blank line or a fence, or before a new list item, fence or quote: "We always deploy to main,\nonly after operator
+    approval." is one sentence, and its condition stays with it (Codex CP2 review 4, finding 3)."""
+    if text[index] != "\n":
+        return True
+    before = text[:index].rstrip(" \t")
+    return (not before or before.endswith(("\n", ".", "!", "?", ";", ":", "```"))
+            or _NEW_LINE_ITEM.match(text, index + 1) is not None)
 
 
 def _snapped(proposal: Proposal, blocks: dict[str, str]) -> Proposal:
@@ -386,11 +439,11 @@ def _snapped(proposal: Proposal, blocks: dict[str, str]) -> Proposal:
         if text is None or span.end > len(text):
             spans.append(span)  # refused by the support check
             continue
-        start = max((text.rfind(mark, 0, span.start) for mark in _BOUNDARY), default=-1) + 1
+        breaks = [index for index, mark in enumerate(text) if mark in _BOUNDARY and _ends_sentence(text, index)]
+        start = max((index for index in breaks if index < span.start), default=-1) + 1
         while start < span.start and text[start].isspace():
             start += 1
-        ends = [index for mark in _BOUNDARY if (index := text.find(mark, max(span.start, span.end - 1))) >= 0]
-        end = min(ends) + 1 if ends else len(text)
+        end = min((index for index in breaks if index >= max(span.start, span.end - 1)), default=len(text) - 1) + 1
         spans.append(Span(span.block, start, max(end, start + 1)))
     return dataclasses.replace(proposal, spans=tuple(spans))
 

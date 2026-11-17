@@ -123,8 +123,9 @@ HISTORY = files("appendonlydir/appendonly.aof.1.base.rdb", manifest=MANIFEST + "
 LEFTOVER = files("dump.rdb.bak")
 SPACED = files("dump.rdb dump.rdb")  # Codex CP2 review 2, finding 3: split on whitespace, this was two allowed names
 NOT_A_FILE = files(Entry("d", "appendonlydir/old"))
-# Review 3, finding 4: a field without its value. The line is otherwise whole, so only the pairing check refuses it.
-UNPAIRED = files(manifest=MANIFEST + "file appendonly.aof.2.incr.aof seq 2 type i startoffset\n")
+# Review 3, finding 4: a field without its value. The line is otherwise a whole next increment, present, so only the pairing
+# check refuses it.
+UNPAIRED = files("appendonlydir/appendonly.aof.3.incr.aof", manifest=MANIFEST + "file appendonly.aof.3.incr.aof seq 3 type i startoffset\n")
 
 
 # Review 3, finding 2: no listing shows that Redis made a file and has retired it, so nothing is ever removed. What a Redis
@@ -148,9 +149,41 @@ def test_a_file_outside_the_current_set_holds_the_purge_pending_until_it_is_gone
     server.files = inventory  # type: ignore[attr-defined]
     reply = status(service)
     assert (reply["purge_state"], reply["files"]) == ("pending", why) and "completed" not in phases(journal)
+    # Codex CP2 review 4: the reply names what holds it and the runbook that says how to check and retire it
+    assert bool(reply["blocking"]) == (why != "file_inventory_unavailable") and reply["next"] == "inspect_data_files"
+    assert (Path(__file__).parents[3] / reply["runbook"]).is_file()
     assert status(service)["files"] == why  # asked again, nothing changed it: the Gateway removes nothing
     server.files = CLEAN  # type: ignore[attr-defined]  # the operator removed it: the same purge now completes
     assert status(service)["purge_state"] == memory_store.PURGE_COMPLETED
+
+
+BASE, INCR = "file appendonly.aof.2.base.rdb seq 2 type b\n", "file appendonly.aof.2.incr.aof seq 2 type i\n"
+OLD_BASE = "appendonlydir/appendonly.aof.1.base.rdb"
+
+
+@pytest.mark.parametrize(("inventory", "blocking"), [
+    # Codex CP2 review 4, finding 4: a retained old base the manifest lists as a second base is not the manifest Redis writes
+    (files(OLD_BASE, manifest=MANIFEST + "file appendonly.aof.1.base.rdb seq 1 type b\n"), ["appendonlydir/appendonly.aof.manifest"]),
+    (files(manifest=INCR), ["appendonlydir/appendonly.aof.manifest"]),  # no base
+    (files(manifest=INCR + BASE), ["appendonlydir/appendonly.aof.manifest"]),  # the base after an increment
+    (files("appendonlydir/appendonly.aof.1.incr.aof", manifest=MANIFEST + "file appendonly.aof.1.incr.aof seq 1 type i\n"),
+     ["appendonlydir/appendonly.aof.manifest"]),  # increments out of sequence
+    (files(manifest=MANIFEST + INCR), ["appendonlydir/appendonly.aof.manifest"]),  # a file named twice
+    (files(manifest="file appendonly.aof.2.incr.aof seq 2 type b\nfile appendonly.aof.2.base.rdb seq 2 type i\n"),
+     ["appendonlydir/appendonly.aof.manifest"]),  # a file named for another type
+    (files(manifest="file appendonly.aof.2.base.rdb seq 3 type b\n" + INCR), ["appendonlydir/appendonly.aof.manifest"]),  # seq
+    (files("appendonlydir/other.aof.2.base.rdb", manifest="file other.aof.2.base.rdb seq 2 type b\n" + INCR),
+     ["appendonlydir/appendonly.aof.manifest"]),  # another prefix than the manifest's
+    (files(manifest=MANIFEST + "file appendonly.aof.3.incr.aof seq 3 type i\n"), ["appendonlydir/appendonly.aof.manifest"]),  # missing
+    (files(OLD_BASE), [OLD_BASE]), (files("temp-4242.rdb", "dump.rdb.bak"), ["dump.rdb.bak", "temp-4242.rdb"]),
+])
+def test_only_the_manifest_redis_writes_bounds_what_may_stay(inventory: Inventory, blocking: list[str]) -> None:
+    """The manifest is checked whole, and a pending residue names what holds it."""
+    from optimus_gateway import memory_files
+
+    assert memory_files.residue(files()) is None  # control: the current set
+    why = memory_files.residue(inventory)
+    assert why is not None and list(why.entries) == blocking, why
 
 
 LISTING = ("\0--optimus-inventory--\0d appendonlydir\0f dump.rdb\0f appendonlydir/appendonly.aof.2.base.rdb\0"
@@ -185,7 +218,8 @@ def test_the_inventory_reads_only_the_provisioned_container(monkeypatch: pytest.
     config = SimpleNamespace(container="c", resource="r-1", port=6394)
     # Codex CP2 review 2, finding 3: a name with spaces or a newline is one entry, never two allowed ones
     odd = memory_files.parse(LISTING.replace("f dump.rdb\0", "f dump.rdb dump.rdb\0f a\nb\0", 1))
-    assert [entry.path for entry in odd.entries][1:3] == ["dump.rdb dump.rdb", "a\nb"] and memory_files.residue(odd) == "unexpected_files"
+    assert [entry.path for entry in odd.entries][1:3] == ["dump.rdb dump.rdb", "a\nb"] and memory_files.residue(odd) == memory_files.Residue(
+        "unexpected_files", ("a\nb", "dump.rdb dump.rdb"))
     inspected = {"Config": {"Labels": {"optimus.memory.resource": "r-1"}}, "HostConfig": {"PortBindings": {"6379/tcp": [{"HostPort": "6394"}]}}}
     argvs: list[list[str]] = []
 

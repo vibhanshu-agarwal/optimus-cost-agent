@@ -227,7 +227,7 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
     existing = (mx.ExistingItem("m-" + "a" * 16, "main"),)
     assert _act("retraction", "Never push to main.", target="m-" + "a" * 16, existing=existing) == "SPANS_UNVERIFIED"
     assert _act("decision", "Never push to main.", target="m-" + "a" * 16, existing=existing) == "SPANS_UNVERIFIED"  # no change in the words
-    assert _act("retraction", "Ignore what I said: pushing to main is fine.", target="m-" + "a" * 16, existing=existing) == "RETRACTED"
+    assert _act("retraction", "Ignore what I said about main.", target="m-" + "a" * 16, existing=existing) == "RETRACTED"
     assert _act("decision", "Actually, we now push to main after review.", target="m-" + "a" * 16, existing=existing) == "SUPERSEDED"
     assert _act("decision", "Should we never push to main?") == "NO_RULE"
     assert _act("decision", '"Never push to main" is what the old wiki says.') == "QUOTATION"
@@ -259,6 +259,44 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
     start = copied.index("Never")
     quoted = _user("Never push to main.", [{"block": "b-1", "start": start, "end": start + 19}], text=copied)
     assert memory_gate.admit(quoted.candidate, quoted.verdict).reason == "QUOTATION"
+    # Codex CP2 review 4, finding 1: only a sentence that itself withdraws or changes the item, and names nothing else, does
+    for act, words in (("retraction", "Cancelling the rule about pushing to main is forbidden."),
+                       ("retraction", "Cancel the smoke tests for pushing to main."),
+                       ("retraction", "Cancel the rule about pushing to main is forbidden."),
+                       ("retraction", "Ignore what I said: never push to main."),  # a reaffirmation after a colon
+                       ("decision", "We now document the rule about pushing to main."),
+                       ("decision", "Change the smoke tests for pushing to main to run nightly.")):
+        assert _act(act, words, target="m-" + "a" * 16, existing=rule) == "SPANS_UNVERIFIED", words
+    for act, words, reason in (("retraction", "Ignore what I said about pushing to main.", "RETRACTED"),
+                               ("retraction", "Actually, ignore what I said about pushing to main.", "RETRACTED"),
+                               ("retraction", "We want to drop the rule about pushing to main.", "RETRACTED"),
+                               ("retraction", "Cancel the rule about pushing to main, it is out of date.", "RETRACTED"),
+                               ("decision", "Change the rule about pushing to main to allow it after review.", "SUPERSEDED"),
+                               ("decision", "Instead of never pushing to main, push to main after review.", "SUPERSEDED"),
+                               ("decision", "Correction: pushing to main is fine after review.", "SUPERSEDED")):
+        assert _act(act, words, target="m-" + "a" * 16, existing=rule) == reason, words  # controls
+    ruff = (mx.ExistingItem("m-" + "a" * 16, "From now on we always run ruff before every commit."),)  # K1's retraction
+    assert _act("retraction", "Actually, ignore what I said about running ruff before every commit.", target="m-" + "a" * 16,
+                existing=ruff) == "RETRACTED"
+    # ... finding 2: a line naming the source opens it, whatever its punctuation
+    for block in ("According to the README\nNever push to main.\nPlease explain it.", "In the wiki\nNever push to main.",
+                  "According to the README, never push to main.", "According to the README, these are the rules.\nNever push to main."):
+        start = block.index("ever push") - 1
+        quoted = _user("Never push to main.", [{"block": "b-1", "start": start, "end": start + 19}], text=block)
+        assert memory_gate.admit(quoted.candidate, quoted.verdict).reason == "QUOTATION", block
+
+
+@pytest.mark.parametrize(("block", "chosen", "kept"), [
+    ("We always deploy to main,\nonly after operator approval.", "We always deploy to main,", "We always deploy to main, only after operator approval."),
+    ("Only after operator approval,\nwe deploy to main.", "we deploy to main.", "Only after operator approval, we deploy to main."),
+    ("Rules for this repo:\nNever push to main.", "Never push to main.", "Never push to main."),  # control: a heading ends there
+    ("Rules:\n- Never push to main\n- Run ruff first", "Never push to main", "- Never push to main"),  # control: list items
+])
+def test_a_sentence_that_runs_across_lines_keeps_its_condition(block: str, chosen: str, kept: str) -> None:
+    """Codex CP2 review 4, finding 3: a line break inside a sentence never cuts its condition off."""
+    start = block.index(chosen)
+    candidate = _user(chosen, [{"block": "b-1", "start": start, "end": start + len(chosen)}], text=block)
+    assert candidate.candidate.statement == kept and memory_gate.admit(candidate.candidate, candidate.verdict).reason == "ADMITTED"
 
 
 def test_a_statement_too_long_to_keep_whole_is_never_clipped_into_a_rule() -> None:
