@@ -304,6 +304,7 @@ class _Fold:
         self.event_ids: set[str] = set()
         self.history: dict[str, list[str]] = {}
         self.checkpoints: list[dict[str, Any]] = []
+        self.off: dict[str, int] = {}  # live off records and the bytes each holds: the cap counts these
 
     def apply(self, stream_id: str, record: dict[str, Any], payload: dict[str, Any] | None = None) -> None:
         digest = record.get("digest")
@@ -320,6 +321,10 @@ class _Fold:
                 self.items[item] = {**event, **(payload or {}), "stream_id": stream_id}  # no payload: refused when served
                 self.history.setdefault(item, []).append(event["event_id"])
             self.event_ids.add(event["event_id"])
+            if event["trust"] == "off" and event["status"] == "active":
+                self.off[item] = len(_json(self.items[item]))
+            else:
+                self.off.pop(item, None)
         else:
             self.checkpoints.append({**record["checkpoint"], "stream_id": stream_id})
         self.keys[record["key"]] = (digest, _result(stream_id, record))
@@ -590,11 +595,11 @@ class MemoryStore:
             raise msc.MemoryRequestError("LEASE_CONTENDED", 409)
 
     @contextlib.contextmanager
-    def _writing(self, *, verifying: bool = False) -> Iterator[None]:
-        """The writer, for the rest of the request's budget. A store under suspicion refuses, so a request queued behind the
-        one that lost the connection cannot write to an unverified replacement."""
+    def _writing(self, *, verifying: bool = False, share: float = 1.0) -> Iterator[None]:
+        """The writer, for the rest of the request's budget (`share` of it for the wait). A store under suspicion refuses, so a
+        request queued behind the one that lost the connection cannot write to an unverified replacement."""
         self._on_time()
-        if not self._write_lock.acquire(timeout=max(0.0, self._remaining())):
+        if not self._write_lock.acquire(timeout=max(0.0, self._remaining() * share)):
             raise msc.MemoryRequestError("MEMORY_BUSY", 503)
         try:
             self._on_time()  # the wait for the lock may have used up the budget
@@ -681,6 +686,10 @@ class MemoryStore:
                         if record["key"] in fold.keys:
                             pipe.unwatch()
                             replay_at = head
+                        elif record.get("event", {}).get("trust") == "off" and (
+                                len(fold.off) >= msc.MAX_OFF_RECORDS or sum(fold.off.values()) >= msc.MAX_OFF_BYTES):
+                            pipe.unwatch()  # off records carry no payload, so refusing one loses no knowledge; a growth alert
+                            raise msc.MemoryRequestError("OFF_RECORDS_FULL", 507)
                         elif gated and (self._fsync_failed or self._used() >= self._ceiling_bytes):
                             pipe.unwatch()
                             raise msc.MemoryRequestError("MEMORY_NOT_ADMITTING", 503)
@@ -820,14 +829,18 @@ class MemoryStore:
                     fold.advance(self._redis, self._key(project, "events"), self._key(project, "payloads"), watermark, self._on_time)
                     self._check_links()  # nothing read from a connection re-established since verification is served
                     return answer(fold)
-            self._reconcile(project, head)  # outside the read lock: writers take it while they hold the write lock
+            try:
+                self._reconcile(project, head)  # outside the read lock: writers take it while they hold the write lock
+            except msc.MemoryRequestError:
+                pass  # the writer is busy or out of time: serve what the watermark already proves
         raise AssertionError("unreachable")
 
     def _reconcile(self, project: str, head: str) -> None:
         """Prove the stream's tail is on disk and move the watermark over it: one write on the writer's own connection after the
         tail, then WAITAOF there. The AOF is ordered, so that fsync covers every entry before it. If it cannot be proven, reads
-        stay at the watermark and the tail's projection stays pending."""
-        with self._writing():
+        stay at the watermark and the tail's projection stays pending. It waits for the writer at most half the budget, so the
+        read can still be served."""
+        with self._writing(share=0.5):
             connection = int(self._writer.client_id())
             self._check_links()
             self._writer.incr(self._key(project, "sync"))
@@ -877,11 +890,12 @@ class MemoryStore:
         project, item, key = body["project"], body["item"], body["idempotency_key"]
         name, digest = self._project_hash(project), _digest(["purge", item])
         stream, payloads = self._key(project, "events"), self._key(project, "payloads")
+        outcome: dict[str, Any]
         with self._writing():
             connection = int(self._writer.client_id())
             self._check_links()
             for _ in range(_WATCH_ATTEMPTS):
-                replay_at = None
+                replay_at = already = None
                 with _pipeline(self._writer) as pipe:
                     try:
                         fold, head = self._writer_fold(pipe, project, body["token"])
@@ -894,7 +908,7 @@ class MemoryStore:
                             raise msc.MemoryRequestError("ITEM_UNKNOWN", 404)
                         elif current["status"] == "purged":
                             pipe.unwatch()
-                            raise msc.MemoryRequestError("ITEM_PURGED", 409)
+                            already = current  # purged under another key: finish what it left, never refuse it
                         else:
                             tombstone = {**{field: current[field] for field in _TOMBSTONE_KEEPS}, "event_id": f"purge-{key}",
                                          "version": current["version"] + 1, "action": "tombstone", "status": "purged"}
@@ -909,12 +923,16 @@ class MemoryStore:
                     except WatchError:
                         self._after_watch_error(connection)
                         continue
-                if replay_at is not None:
+                if already is not None:
+                    self._writer.incr(self._key(project, "sync"))
+                    result = {"item": item, "version": already["version"], "event_id": already["event_id"], "stream_id": already["stream_id"]}
+                    outcome = {"already_purged": True, **self._confirm(project, head, connection)}
+                elif replay_at is not None:
                     seen, result = fold.keys[key]
                     if seen != digest:
                         raise msc.MemoryRequestError("IDEMPOTENCY_CONFLICT", 409)
                     self._writer.incr(self._key(project, "sync"))  # this connection's offset past the tombstone, wherever it came from
-                    outcome: dict[str, Any] = {"replayed": True, **self._confirm(project, replay_at, connection)}
+                    outcome = {"replayed": True, **self._confirm(project, replay_at, connection)}
                 else:
                     fold.apply(stream_id, record)
                     result = _result(stream_id, record)
@@ -926,20 +944,39 @@ class MemoryStore:
             raise msc.MemoryRequestError("MEMORY_CONTENDED", 409)
 
     def _op_purge_status(self, body: dict[str, Any]) -> dict[str, Any]:
-        """Where a purge stands, moving its disk step on when it can. "none": nothing journalled. "pending": the tombstone is not
-        yet journalled as confirmed (the host retries the purge under its key) or the rewrite and snapshot have not both
-        completed after the deletion. The declared boundary is this store's live data and its AOF and RDB files."""
+        """Where a purge stands, moving it on when it can. Redis is the record of whether the tombstone landed, so a journal
+        missing a step never makes a purge read "none": a tombstone in the stream is proven on disk (a write and WAITAOF on
+        the writer's connection) and its disk step driven. "none": no tombstone and nothing journalled. "pending": a journalled
+        intent whose tombstone never landed (the host retries the purge), a tombstone not yet proven, or a rewrite and
+        snapshot not both completed after the deletion. The declared boundary is this store's live data and its AOF and RDB
+        files."""
         journal = self._need_journal()
         project, item = body["project"], body["item"]
         name = self._project_hash(project)
         with self._writing():
-            entries = self._entries(journal, name, item)
-            if not entries:
+            connection = int(self._writer.client_id())
+            self._check_links()
+            current = self._fold_at_head(project).items.get(item)
+            if current is None or current["status"] != "purged":
+                if self._entries(journal, name, item):
+                    return {"status": "ok", "item": item, "purge_state": "pending", "next": "retry_purge"}
                 return {"status": "ok", "item": item, "purge_state": "none"}
-            tombstone = next((entry["stream_id"] for entry in entries if entry["phase"] == "tombstoned"), None)
-            if tombstone is None:
-                return {"status": "ok", "item": item, "purge_state": "pending", "next": "retry_purge"}
-            return {"status": "ok", "item": item, "purge_state": self._settle(journal, name, item, tombstone)}
+            self._writer.incr(self._key(project, "sync"))
+            if not self._durable(connection):
+                return {"status": "ok", "item": item, "purge_state": "pending"}
+            self._advance_watermark(project, current["stream_id"], connection)
+            return {"status": "ok", "item": item, "purge_state": self._settle(journal, name, item, current["stream_id"])}
+
+    def _fold_at_head(self, project: str) -> _Fold:
+        """The writer's fold advanced to the stream's head, read only (no lease, no WATCH), while the write lock is held."""
+        stream = self._key(project, "events")
+        newest = self._writer.xrevrange(stream, count=1)
+        head = _text(newest[0][0]) if newest else "0-0"
+        fold = self._writer_folds.setdefault(project, _Fold())
+        if _order(head) < _order(fold.head):
+            fold = self._writer_folds[project] = _Fold()
+        fold.advance(self._writer, stream, self._key(project, "payloads"), head, self._on_time)
+        return fold
 
     def _settle(self, journal: PurgeJournal, name: str, item: str, tombstone: str) -> str:
         """Drive the disk step of a confirmed purge. Each of the AOF rewrite and the RDB snapshot is complete only when one that

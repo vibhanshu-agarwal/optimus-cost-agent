@@ -170,3 +170,70 @@ def test_the_same_words_in_two_scopes_are_two_items_never_a_conflict() -> None:
     extractor.close()
     assert [len(outcome.notices) for outcome in outcomes] == [1, 1] and not any(outcome.refusals for outcome in outcomes)
     assert outcomes[0].notices[0].item != outcomes[1].notices[0].item
+
+
+class _SlowLease:
+    """The adapter, with time spent inside each lease, so two jobs of one session overlap there."""
+
+    def __init__(self, inner: Any) -> None:
+        self.inner, self.project = inner, inner.project
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.inner, name)
+
+    def lease(self) -> Any:
+        import contextlib
+
+        @contextlib.contextmanager
+        def held() -> Any:
+            with self.inner.lease() as token:
+                time.sleep(0.2)
+                yield token
+        return held()
+
+
+def test_two_jobs_of_one_session_never_fence_each_other_out() -> None:
+    """Fable CP2 M4: one session commits under one lease at a time."""
+    upstream = _Upstream(_completed(_GOOD, 1), _completed(_LESSON, 2))
+    extractor, _settlement, outcomes, _receipts = _harness(upstream)
+    extractor._store = _SlowLease(extractor._store)
+    work = mx.CompletedWork("done", (mx.Evidence("ev-1", "verification"),))
+    extractor.submit(_turn(text=_TEXT, work=work))
+    _until(outcomes, 2)
+    extractor.close()
+    assert sorted(len(outcome.notices) for outcome in outcomes) == [1, 1] and not any(outcome.refusals for outcome in outcomes)
+
+
+def test_a_write_the_store_refused_leaves_the_text_worth_trying_again() -> None:
+    from optimus.context.authored_memory import MemoryStoreRefused
+
+    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(_GOOD, 1)))
+
+    def refused(*_args: Any, **_kwargs: Any) -> Any:
+        raise MemoryStoreRefused("LEASE_LOST")
+
+    extractor._store.append = refused  # type: ignore[method-assign]
+    extractor.submit(_turn())
+    _until(outcomes, 1)
+    assert outcomes[0].refusals == ("LEASE_LOST",)
+    assert extractor.submit(_turn(2))[0].call  # not marked extracted
+    extractor.close()
+
+
+def test_the_same_words_after_a_withdrawal_are_a_new_item() -> None:
+    """Fable CP2 minor: an item id derived from the words is taken by the withdrawn item, so the new one gets a fresh id."""
+    upstream = _Upstream(_completed(_GOOD, 1), _completed(_GOOD, 2))
+    extractor, _settlement, outcomes, _receipts = _harness(upstream)
+    extractor._enqueue(mx.USER_PURPOSE, _turn(1))
+    _until(outcomes, 1)
+    first = outcomes[0].notices[0]
+    with extractor._store.lease() as token:
+        extractor._store.call("append", project="p-1", token=token, expected_version=1, idempotency_key="9" * 64,
+                              event={"event_id": "e-withdraw", "item": first.item, "version": 2, "action": "withdraw", "trust": "user-authored",
+                                     "status": "withdrawn", "kind": "preference", "scope": "s-1", "title": "", "statement": "", "anchors": [],
+                                     "lineage": [], "valid_from_ms": 0, "valid_until_ms": 0})
+    extractor._enqueue(mx.USER_PURPOSE, _turn(2))
+    _until(outcomes, 2)
+    extractor.close()
+    second = outcomes[1]
+    assert not second.refusals and second.notices[0].item != first.item and second.notices[0].saved

@@ -784,7 +784,7 @@ class AttachedTurn:
     def record_dispatch(self, text: str) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""
         self._dispatches.append(DispatchReading(tokens=self._attachment.estimate_request(text), capacity=self._attachment.usable_input_tokens))
-        self._dispatched = [*self._dispatched[-1:], text[:_SOURCE_CHARS]]  # bounded: the turn's last two requests
+        self._dispatched = [*self._dispatched[-1:], text[-_SOURCE_CHARS:]]  # bounded: the turn's last two requests, newest content kept
 
     def memory_sources(self) -> tuple[str, ...]:
         """What this turn sent besides the user's own words (files, tool results, index passages, earlier answers): the text a

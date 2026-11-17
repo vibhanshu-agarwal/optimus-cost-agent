@@ -576,3 +576,30 @@ def test_a_read_proves_a_tail_left_behind_the_watermark_and_never_serves_one_it_
     assert read(service)["version"] == 1  # the tail cannot be proven: served only up to the watermark
     server.fsync = 1
     assert read(service)["version"] == 2 and server.strings[watermark] != kept
+
+
+def test_a_read_whose_reconciliation_cannot_get_the_writer_serves_the_watermark() -> None:
+    """Fable CP2 minor: a busy writer never turns a read into a refusal; it serves what the watermark already proves."""
+    service, server, _ = store()
+    token = lease(service)
+    append(service, token, event())
+    watermark = memory_store.MemoryStore._key("p-1", "durable")
+    kept = server.strings[watermark]
+    append(service, token, event(version=2))
+    server.strings[watermark] = kept
+    held, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with service._store._writing():
+            held.set()
+            release.wait(5)
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    held.wait(5)
+    try:
+        code, reply = service.handle(json.dumps({"op": "read", "project": "p-1", "item": "m-0123456789abcdef"}).encode(), deadline=time.monotonic() + 0.5)
+    finally:
+        release.set()
+        holder.join(5)
+    assert code == 200 and reply["item"]["version"] == 1

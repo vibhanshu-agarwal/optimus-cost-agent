@@ -85,7 +85,7 @@ def test_a_genuine_user_statement_is_admitted_in_the_user_s_own_words() -> None:
     candidate = _user("New tests use plain pytest asserts.", [{"block": "b-1", "start": 0, "end": 54}])
     decision = memory_gate.admit(candidate.candidate, candidate.verdict)
     assert (decision.outcome, decision.reason, decision.draft.trust) == ("append", "ADMITTED", "user-authored")  # type: ignore[union-attr]
-    assert decision.draft.statement == "From now on, new tests should use plain pytest asserts"  # exactly the span  # type: ignore[union-attr]
+    assert decision.draft.statement == decision.draft.title == "From now on, new tests should use plain pytest asserts."  # type: ignore[union-attr]
 
 
 def test_a_fair_paraphrase_agrees_through_word_forms() -> None:
@@ -138,11 +138,65 @@ def _agent(evidence: list[str], work: mx.CompletedWork, kind: str = "lesson") ->
 
 
 def test_an_optional_agent_lesson_needs_complete_inside_lineage() -> None:
-    work = mx.CompletedWork("fixed", (mx.Evidence("ev-1", "verification"), mx.Evidence("ev-2", "document", external=True)))
+    work = mx.CompletedWork("fixed", (mx.Evidence("ev-1", "verification"), mx.Evidence("ev-3", "read")))
     (good,) = _agent(["ev-1"], work)
     decision = memory_gate.admit(good.candidate, good.verdict)
     assert (decision.outcome, decision.reason, decision.draft.trust, decision.draft.lineage) == ("append", "ADMITTED", "agent-derived", ("ev-1",))  # type: ignore[union-attr]
-    for refs in (["ev-2"], ["ev-1", "ev-9"], []):  # a README's directive, an evidence id the host never issued, nothing cited
+    for refs in (["ev-1", "ev-9"], []):  # an evidence id the host never issued, nothing cited
         (candidate,) = _agent(refs, work)
         assert memory_gate.admit(candidate.candidate, candidate.verdict).reason == "LINEAGE_UNRESOLVED"
     assert _agent(["ev-1"], work, kind="preference") == []  # an agent never proposes a user kind
+
+
+@pytest.mark.parametrize("tainting", [mx.Evidence("ev-2", "document"), mx.Evidence("ev-2", "command", external=True)])
+def test_a_turn_that_read_a_document_or_anything_outside_vouches_for_nothing(tainting: mx.Evidence) -> None:
+    """Tainted by presence: citing only the test run does not hide that the work may be following a README's instruction."""
+    work = mx.CompletedWork("fixed", (mx.Evidence("ev-1", "verification"), tainting))
+    (candidate,) = _agent(["ev-1"], work)
+    assert memory_gate.admit(candidate.candidate, candidate.verdict).reason == "LINEAGE_UNRESOLVED"
+    assert mx.prefilter_agent(work) == mx.Decision(False, "tainted_by_document")
+
+
+def test_a_cut_down_span_is_widened_to_the_user_s_whole_sentence() -> None:
+    """Fable CP2 M3: the model chooses where the words are, never which of them count."""
+    text = "Fine by me. Never push to main; open a pull request instead."
+    candidate = _user("push to main", [{"block": "b-1", "start": 18, "end": 30}], text=text)
+    assert candidate.verdict.spans_verified and candidate.candidate.statement == "Never push to main;"
+    assert candidate.candidate.title == candidate.candidate.statement  # the user's words, never the model's title
+
+
+def test_reading_a_document_is_document_evidence() -> None:
+    from types import SimpleNamespace
+
+    calls = [SimpleNamespace(tool_name="file_reader", summary=f"read {path}", authorization_outcome="ALLOW")
+             for path in ("README.md", "docs/setup.txt", "src/app.py", "CONTRIBUTING", "notes/plan.rst")]
+    assert [item.kind for item in mx.evidence_from("r", calls)] == ["document", "document", "read", "document", "document"]
+
+
+@pytest.mark.parametrize("text", ["Do not ever commit secrets.", "If you touch the DB layer, always run migrations.",
+                                  "When deploying, never skip the smoke test.", "Correction: 'main' is protected now."])
+def test_rules_that_look_like_questions_or_quotes_are_still_worth_a_call(text: str) -> None:
+    """Fable CP2 minor: a durable marker outranks a question-like start, and a colon before a quote is not a quotation."""
+    assert mx.prefilter_user(text).call
+
+
+def test_a_keyed_digest_names_another_item_than_the_bare_one() -> None:
+    reply = mx.parse_reply(json.dumps({"candidates": [{"speech_act": "preference", "kind": "preference", "title": "t", "statement": "New tests use plain pytest asserts.",
+                                                       "spans": [{"block": "b-1", "start": 0, "end": 54}]}]}))
+    common = dict(project=PROJECT, scope=SCOPE, blocks=[mx.UserBlock("b-1", "From now on, new tests should use plain pytest asserts.")],
+                  trusted=True, sanitize=lambda value: value, sources=(), existing=())
+    (bare,) = mx.user_candidates(reply, **common)  # type: ignore[arg-type]
+    (keyed,) = mx.user_candidates(reply, keyed=lambda text: mx.digest("secret" + text), **common)  # type: ignore[arg-type]
+    assert bare.candidate.idempotency_key != keyed.candidate.idempotency_key
+
+
+def test_the_overlap_source_keeps_the_newest_part_of_a_long_request() -> None:
+    """Fable CP2 M6: the freshest tool results sit at the end of a request."""
+    from optimus.context import assembly
+    from tests.unit.acp.test_context_engine_admission import make_attachment
+
+    turn = assembly.AttachedTurn.__new__(assembly.AttachedTurn)
+    turn._attachment, turn._dispatches, turn._dispatched, turn._current_prompt = make_attachment(), [], [], "my words"
+    turn.record_dispatch("old " * 100_000 + "my words" + " FRESH-TOOL-RESULT")
+    (source,) = turn.memory_sources()
+    assert source.endswith("FRESH-TOOL-RESULT") and "my words" not in source and len(source) <= assembly._SOURCE_CHARS

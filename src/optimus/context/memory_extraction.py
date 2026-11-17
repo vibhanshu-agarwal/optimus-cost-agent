@@ -11,7 +11,9 @@ summarizer call, the settlement and the store adapter injected.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
+import hmac
 import json
 import queue
 import re
@@ -40,13 +42,15 @@ _COVERAGE: Final = 0.7  # share of a statement's content words its spans must ho
 
 _QUOTED = re.compile(
     r"^\s*(here is|here's|pasted|copied from|from the (issue|docs?|readme|ticket|log|chat|pr)|the (readme|docs?|issue|ticket|log|"
-    r"comment|wiki|spec)( \w+)? (says|said|quotes?|reads|states))\b|^[^'\"]*:\s*['\"\[]", re.IGNORECASE)
+    r"comment|wiki|spec)( \w+)? (says|said|quotes?|reads|states))\b"
+    r"|^\s*(?:\w+\s+){0,4}?(?:output|log|error|message|comment|quote)\b[^:\n]{0,30}:\s*['\"\[]", re.IGNORECASE)
 _DURABLE = re.compile(
     r"\b(from now on|going forward|always|never|we use|we decided|we have decided|we've decided|i prefer|i want|i'd like|please never|"
-    r"don't ever|do not ever|is owned by|are owned by|without (asking|telling) me|correction:|actually,? ignore|ignore what i said|"
+    r"don't ever|do not ever|is owned by|are owned by|without (asking|telling) me|correction|actually,? ignore|ignore what i said|"
     r"(our|the) \w+ (is|are|uses|runs on)|by default we|must not|must always|should always|should never)\b", re.IGNORECASE)
 _QUESTION_START = re.compile(r"^\s*(what|where|why|how|who|whom|which|when|does|do|did|is|are|was|were|can|could|would|should|will|"
-                             r"if|suppose|imagine|what if)\b", re.IGNORECASE)
+                             r"if)\b", re.IGNORECASE)
+_HYPOTHETICAL = re.compile(r"^\s*(suppose|imagine|what if|hypothetically)\b", re.IGNORECASE)
 _TASK_VERBS = frozenset({
     "add", "remove", "fix", "rename", "refactor", "move", "update", "write", "run", "check", "make", "implement", "replace", "extract",
     "convert", "bump", "guard", "shorten", "lengthen", "split", "sort", "inline", "delete", "create", "change", "test", "document",
@@ -77,10 +81,11 @@ def prefilter_user(text: str, *, extracted: frozenset[str] = frozenset()) -> Dec
         return Decision(False, "already_extracted")
     if _QUOTED.search(stripped):
         return Decision(False, "quoted_or_pasted")  # someone else's words: never user provenance
-    if stripped.endswith("?") or _QUESTION_START.match(stripped):
-        return Decision(False, "question_or_hypothetical")  # asks; a marker inside a question ("could we use...") states nothing
-    if _DURABLE.search(stripped):
-        return Decision(True, "durable_marker")
+    durable = _DURABLE.search(stripped)
+    if stripped.endswith("?") or _HYPOTHETICAL.match(stripped) or (_QUESTION_START.match(stripped) and not durable):
+        return Decision(False, "question_or_hypothetical")  # asks; a marker inside a question ("could we use...?") states nothing
+    if durable:
+        return Decision(True, "durable_marker")  # "If you touch the DB, always migrate." and "Do not ever..." are rules
     words = _WORD.findall(stripped.lower())
     if len(words) <= 4:
         return Decision(False, "acknowledgement_or_status")
@@ -112,7 +117,9 @@ def prefilter_agent(work: CompletedWork | None, *, extracted: frozenset[str] = f
     that ran), never for a turn that only read or edited."""
     if work is None:
         return Decision(False, "no_completed_work")
-    fresh = [item for item in work.evidence if item.kind in _NEW_EVIDENCE and not item.external and item.ref not in extracted]
+    if any(item.external or item.kind in _TAINTING for item in work.evidence):
+        return Decision(False, "tainted_by_document")  # its lessons could only go off: no call is worth making
+    fresh = [item for item in work.evidence if item.kind in _NEW_EVIDENCE and item.ref not in extracted]
     return Decision(True, "new_evidence") if fresh else Decision(False, "no_new_evidence")
 
 
@@ -294,23 +301,57 @@ class Candidate:
     verdict: HostVerdict
 
 
+_BOUNDARY: Final = ".!?;\n"
+
+
+def _snapped(proposal: Proposal, blocks: dict[str, str]) -> Proposal:
+    """Each span widened to the whole sentence or line around it: the model chooses where the user's words are, never which of
+    them count, so "never push to main" can never be kept as "push to main"."""
+    spans = []
+    for span in proposal.spans:
+        text = blocks.get(span.block)
+        if text is None or span.end > len(text):
+            spans.append(span)  # refused by the support check
+            continue
+        start = max((text.rfind(mark, 0, span.start) for mark in _BOUNDARY), default=-1) + 1
+        while start < span.start and text[start].isspace():
+            start += 1
+        ends = [index for mark in _BOUNDARY if (index := text.find(mark, max(span.start, span.end - 1))) >= 0]
+        end = min(ends) + 1 if ends else len(text)
+        spans.append(Span(span.block, start, max(end, start + 1)))
+    return dataclasses.replace(proposal, spans=tuple(spans))
+
+
+def _title_of(statement: str) -> str:
+    """A user item's title is its own words, shortened at a word boundary: nothing the model wrote is shown as the user's."""
+    if len(statement) <= 120:
+        return statement
+    cut = statement[:119].rsplit(" ", 1)[0]
+    return f"{cut}…"
+
+
 def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, blocks: Sequence[UserBlock], trusted: bool,
-                    sanitize: Callable[[str], str], sources: Sequence[str], existing: Sequence[ExistingItem]) -> list[Candidate]:
+                    sanitize: Callable[[str], str], sources: Sequence[str], existing: Sequence[ExistingItem],
+                    keyed: Callable[[str], str] = digest) -> list[Candidate]:
     """Each proposal as a user-origin candidate with the host's verdict. A proposal outside the contract (unknown kind, an agent
-    kind, an unknown target) is dropped here and counted by the caller; it never reaches the Gate."""
+    kind, an unknown target) is dropped here and counted by the caller; it never reaches the Gate. `keyed` makes the item's
+    key, so ids derived from what the user said cannot be checked against a guess without the host's key."""
     texts = {block.block: block.text for block in blocks}
     known = {item.item for item in existing}
     out = []
     for proposal in proposals:
         if proposal.kind not in USER_KINDS or (proposal.target is not None and proposal.target not in known):
             continue
+        proposal = _snapped(proposal, texts)
         supported = _spans_support(proposal, texts)
-        # The persisted statement is the user's own span text; the model's sentence only has to agree with it.
+        # The persisted statement and title are the user's own span text; the model's sentence only has to agree with it. An
+        # unsupported proposal becomes an off record, whose title is scanned and shown as off, never as the user's.
         statement = _span_text(proposal, texts) if supported else proposal.statement
-        key = digest(f"user\0{project}\0{scope}\0{proposal.speech_act}\0{statement}\0{proposal.target}")  # one statement, one item per scope
+        title = _title_of(statement) if supported else proposal.title[:120]
+        key = keyed(f"user\0{project}\0{scope}\0{proposal.speech_act}\0{statement}\0{proposal.target}")  # one statement, one item per scope
         try:
             candidate = MemoryCandidate(project, scope, "user-authored", proposal.kind, proposal.speech_act, statement[:2000],
-                                        proposal.title[:120], spans=proposal.spans, target=proposal.target, idempotency_key=key)
+                                        title, spans=proposal.spans, target=proposal.target, idempotency_key=key)
         except ContractError:
             continue
         verdict = HostVerdict(workspace_trusted=trusted, scope_valid=True, spans_verified=supported,
@@ -321,7 +362,7 @@ def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, 
 
 
 def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, work: CompletedWork, trusted: bool,
-                     sanitize: Callable[[str], str], sources: Sequence[str]) -> list[Candidate]:
+                     sanitize: Callable[[str], str], sources: Sequence[str], keyed: Callable[[str], str] = digest) -> list[Candidate]:
     """Each proposal as an optional agent-derived candidate. Lineage is complete only when every cited reference is evidence the
     host issued for this work and none of it came from outside (a document's or a tool's directive goes off)."""
     issued = {item.ref: item for item in work.evidence}
@@ -330,8 +371,11 @@ def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str,
         if proposal.kind not in AGENT_KINDS or proposal.spans or proposal.target is not None:
             continue
         cited = [issued.get(ref) for ref in proposal.evidence]
-        complete = bool(cited) and all(item is not None and not item.external for item in cited)
-        key = digest(f"agent\0{project}\0{scope}\0{proposal.statement}\0{','.join(sorted(proposal.evidence))}")
+        # Tainted by presence: a turn that read a document or anything from outside may be following its instructions, whatever
+        # the model chose to cite, so nothing it learned is vouched for.
+        tainted = any(item.external or item.kind in _TAINTING for item in work.evidence)
+        complete = bool(cited) and all(item is not None for item in cited) and not tainted
+        key = keyed(f"agent\0{project}\0{scope}\0{proposal.statement}\0{','.join(sorted(proposal.evidence))}")
         evidence = tuple(ref for ref in proposal.evidence if ref in issued)
         try:
             candidate = MemoryCandidate(project, scope, "agent-derived", proposal.kind, "assertion", proposal.statement[:2000],
@@ -392,13 +436,14 @@ class MemoryExtractor:
 
     def __init__(self, *, store: Any, settlement: Any, bind: Callable[[str], Callable[..., Any]] | None = None,
                  record: Callable[[str, str, Any, str | None], None] | None = None, sanitize: Callable[[str], str],
-                 report: Callable[[Outcome], None], workers: int = 2, depth: int = 4) -> None:
+                 report: Callable[[Outcome], None], workers: int = 2, depth: int = 4, keyed: Callable[[str], str] = digest) -> None:
         self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
-        self._sanitize, self._report = sanitize, report
+        self._sanitize, self._report, self._keyed = sanitize, report, keyed
         self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
         self._extracted: set[str] = set()
         self._closed = False
         self._lock = threading.Lock()
+        self._commit_lock = threading.Lock()  # one session writes under one lease at a time: its jobs never fence each other out
         self._threads = [threading.Thread(target=self._loop, name=f"memory-extract-{n}", daemon=True) for n in range(workers)]
         for thread in self._threads:
             thread.start()
@@ -417,13 +462,17 @@ class MemoryExtractor:
 
     def _enqueue(self, purpose: str, turn: TurnInput) -> None:
         invocation = self._settlement.open_invocation(turn.turn_id)
-        try:
-            if self._closed:
-                raise queue.Full
-            self._jobs.put_nowait((purpose, turn, invocation))
-        except queue.Full:
-            invocation.abandon_unstarted()
-            self._report(Outcome(turn.turn_id, purpose, skipped="closed" if self._closed else "queue_full"))
+        with self._lock:  # with close's flag: a job is either queued before close drains the queue, or refused
+            closed = self._closed
+            try:
+                if closed:
+                    raise queue.Full
+                self._jobs.put_nowait((purpose, turn, invocation))
+                return
+            except queue.Full:
+                pass
+        invocation.abandon_unstarted()
+        self._report(Outcome(turn.turn_id, purpose, skipped="closed" if closed else "queue_full"))
 
     def _loop(self) -> None:
         while True:
@@ -465,12 +514,13 @@ class MemoryExtractor:
             proposals = parse_reply(response.text)
             if purpose == USER_PURPOSE:
                 candidates = user_candidates(proposals, project=self._store.project, scope=turn.scope, blocks=turn.blocks,
-                                             trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources, existing=existing)
+                                             trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources, existing=existing,
+                                             keyed=self._keyed)
             else:
                 assert turn.work is not None
                 candidates = agent_candidates(proposals, project=self._store.project, scope=turn.scope, work=turn.work,
-                                              trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources)
-            notices, refusals, reasons = self._commit(candidates)
+                                              trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources, keyed=self._keyed)
+            notices, refusals, reasons, store_refused = self._commit(candidates)
         except ExtractionIncomplete as incomplete:
             return Outcome(turn.turn_id, purpose, incomplete=incomplete.reason)
         except MemoryStoreUnavailable:
@@ -478,42 +528,58 @@ class MemoryExtractor:
         except MemoryStoreRefused as refused:
             return Outcome(turn.turn_id, purpose, incomplete=f"store_refused:{refused.code}")
         with self._lock:
-            if purpose == USER_PURPOSE:
+            if store_refused:
+                pass  # the store refused a write (a lost lease, a moved head): this text stays worth trying again
+            elif purpose == USER_PURPOSE:
                 self._extracted.add(digest("\n".join(block.text for block in turn.blocks).strip()))
             elif turn.work is not None:
                 self._extracted.update(item.ref for item in turn.work.evidence)
         return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals), tuple(reasons))
 
-    def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str], list[str]]:
+    def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str], list[str], bool]:
         """The Gate decides each candidate against the item's current state, read now: a decision taken on a moved head is
-        refused by the store's expected version, never forced."""
+        refused by the store's expected version, never forced. A new item whose id is taken by a withdrawn or purged one
+        (the same words said again) gets a fresh id; one still live is replayed by the store. The last value says whether the
+        store refused any write."""
         from optimus.context.authored_memory import MemoryStoreRefused
 
         notices: list[Any] = []
         refusals: list[str] = []
         reasons: list[str] = []
+        store_refused = False
         if not candidates:
-            return notices, refusals, reasons
-        with self._store.lease() as token:
+            return notices, refusals, reasons, store_refused
+        with self._commit_lock, self._store.lease() as token:
             for entry in candidates:
-                target = _state(self._store.read(entry.candidate.target)) if entry.candidate.target else None
-                decision = memory_gate.admit(entry.candidate, entry.verdict, target)
+                candidate = entry.candidate
+                target = _state(self._store.read(candidate.target)) if candidate.target else None
+                decision = memory_gate.admit(candidate, entry.verdict, target)
+                for _ in range(3):  # an id is taken only by an earlier item that is no longer live; a bounded walk to a free one
+                    if decision.outcome != "append" or decision.draft is None or decision.draft.expected_version != 0:
+                        break
+                    taken = self._store.read(decision.draft.item)
+                    if taken is None or taken.event.status in ("active", "reverify", "conflicted"):
+                        break  # free, or the same save again: the store replays its first result and proves it on disk
+                    candidate = dataclasses.replace(candidate, idempotency_key=self._keyed(f"{candidate.idempotency_key}\0{taken.event.version}"))
+                    decision = memory_gate.admit(candidate, entry.verdict, target)
                 reasons.append(decision.reason)
                 if decision.outcome != "append" or decision.draft is None:
                     refusals.append(decision.reason)
                     continue
                 try:
-                    result = self._store.append(token, entry.candidate, decision.draft)
+                    result = self._store.append(token, candidate, decision.draft)
                 except MemoryStoreRefused as refused:
                     refusals.append(refused.code)
+                    store_refused = True
                     continue
                 notices.append(MemoryNotice.of(result, decision.draft.action))
-        return notices, refusals, reasons
+        return notices, refusals, reasons, store_refused
 
     def close(self, timeout: float = 5.0) -> None:
         """Stop taking jobs; queued ones never run and release their turns; running ones finish (bounded by the store's own
         deadlines and the Gateway client's timeout)."""
-        self._closed = True
+        with self._lock:
+            self._closed = True
         while True:
             try:
                 job = self._jobs.get_nowait()
@@ -540,17 +606,23 @@ def _state(stored: Any) -> ItemState | None:
 
 
 _TOOL_EVIDENCE: Final = {"test_runner": "verification", "write_file": "edit", "file_reader": "read"}
+_TAINTING: Final = frozenset({"document", "web"})
+_DOCUMENT_NAMES: Final = re.compile(r"(^|/)(readme|contributing|changelog|agents|claude|license|notice)[^/]*$|(^|/)docs?/|\.(md|rst|txt|adoc)$",
+                                    re.IGNORECASE)
 
 
 def evidence_from(run_id: str, tool_calls: Sequence[Any]) -> tuple[Evidence, ...]:
     """Host-issued evidence for the work a run completed: one reference per allowed tool call. A check that ran is new evidence;
-    anything from an MCP server came from outside the workspace."""
+    reading a document (a README, the docs, prose files) or anything from an MCP server taints what the turn learned, since
+    the work may be following its instructions. The file reader's summary is "read <relative path>"."""
     found = []
     for number, call in enumerate(tool_calls):
         if call.authorization_outcome != "ALLOW":
             continue
         external = call.tool_name.startswith("mcp")
         kind = _TOOL_EVIDENCE.get(call.tool_name, "document" if external else "read")
+        if kind == "read" and _DOCUMENT_NAMES.search(call.summary.removeprefix("read ").strip()):
+            kind = "document"
         found.append(Evidence(f"{run_id}:tool:{number}", kind, external))
     return tuple(found)
 
@@ -563,6 +635,12 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
     from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError
 
     registry = ProjectRegistry(config_root)
+    # Ids derived from what was said are keyed with the host's own secret, which the store never holds: an id kept after a
+    # purge cannot confirm a guess at the purged words.
+    secret = hashlib.sha256(b"optimus-memory-candidate-v1\0" + settings.optimus_api_key.get_secret_value().encode("utf-8")).digest()
+
+    def keyed(text: str) -> str:
+        return hmac.new(secret, text.encode("utf-8"), hashlib.sha256).hexdigest()
 
     def open_extractor(workspace: Any, *, settlement: Any, sanitize: Callable[[str], str], session_id: str,
                        report: Callable[[Outcome], None]) -> MemoryExtractor | None:
@@ -571,6 +649,6 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
         except (ProjectRegistryError, TrustedPathError, OSError, ValueError):
             return None
         store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
-        return MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report)
+        return MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed)
 
     return open_extractor

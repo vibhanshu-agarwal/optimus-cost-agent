@@ -63,8 +63,10 @@ class PurgeJournal:
                 raise JournalError("MEMORY_JOURNAL_UNAVAILABLE") from None
 
     def entries(self, project: str, item: str) -> list[dict[str, Any]]:
-        """Every verified record for one item, from every Gateway's stream, in time order. An unverified tail of a dead writer's
-        stream is left out: its fsync never returned, so nothing it named was dispatched."""
+        """Every record for one item, from every Gateway's stream, in time order. A dead writer's last record is kept too when its
+        HMAC verifies: the outbox withholds it only because it cannot tell whether its fsync returned, and every phase records
+        a fact that already holds or is conservative (an intent may be followed by nothing), so believing it never loses a
+        purge. A journal that names a purge Redis never received only makes purge_status ask for the retry."""
         found: list[dict[str, Any]] = []
         for directory in ob.stream_dirs(self._root):
             own = self._writer is not None and directory.name == self._writer.stream_id
@@ -74,7 +76,7 @@ class PurgeJournal:
             finally:
                 if handle is not None:
                     ob.release(handle)
-            for record in scan.records:
+            for record in (*scan.records, *((scan.unverified_tail,) if scan.unverified_tail is not None else ())):
                 payload = dict(record.payload)
                 if payload.get("kind") != KIND:
                     continue

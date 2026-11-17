@@ -545,7 +545,8 @@ class InMemoryAcpSpecSessionStore:
         if session.memory is not None:
             session.memory.stop()  # closing the session pauses its indexing
         if session.memory_extractor is not None:
-            session.memory_extractor.close(timeout=1.0)  # queued jobs release their turns; a running one finishes on its own
+            # Off the event loop: queued jobs release their turns at once; a running one finishes on its own.
+            threading.Thread(target=session.memory_extractor.close, kwargs={"timeout": 5.0}, name="memory-extract-close", daemon=True).start()
         return True
 
     def get(self, session_id: str) -> AcpSpecSession | None:
