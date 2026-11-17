@@ -80,10 +80,17 @@ def _user(statement: str, spans: list[dict], *, sources: tuple[str, ...] = (), t
     return candidate
 
 
-def test_a_genuine_user_statement_is_admitted_with_user_provenance() -> None:
+def test_a_genuine_user_statement_is_admitted_in_the_user_s_own_words() -> None:
+    """The model's sentence only has to agree with the spans; what is kept is what the user said."""
     candidate = _user("New tests use plain pytest asserts.", [{"block": "b-1", "start": 0, "end": 54}])
     decision = memory_gate.admit(candidate.candidate, candidate.verdict)
     assert (decision.outcome, decision.reason, decision.draft.trust) == ("append", "ADMITTED", "user-authored")  # type: ignore[union-attr]
+    assert decision.draft.statement == "From now on, new tests should use plain pytest asserts"  # exactly the span  # type: ignore[union-attr]
+
+
+def test_a_fair_paraphrase_agrees_through_word_forms() -> None:
+    candidate = _user("Plain pytest asserting in new tests.", [{"block": "b-1", "start": 0, "end": 54}])
+    assert candidate.verdict.spans_verified and candidate.candidate.statement.startswith("From now on")
 
 
 @pytest.mark.parametrize("spans", [[{"block": "b-1", "start": 0, "end": 12}], [{"block": "b-9", "start": 0, "end": 5}],

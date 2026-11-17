@@ -235,8 +235,21 @@ _STOPWORDS = frozenset({"the", "and", "for", "not", "are", "was", "use", "uses",
                         "all", "new", "should", "must", "now", "every", "its", "you", "your", "they", "their", "has", "have", "been"})
 
 
+def _stem(word: str) -> str:
+    for suffix in ("ing", "ed", "es", "s"):
+        if len(word) > len(suffix) + 2 and word.endswith(suffix):
+            return word[: -len(suffix)]
+    return word
+
+
 def _content_words(text: str) -> set[str]:
-    return {word for word in _WORD.findall(text.lower()) if len(word) >= 3 and word not in _STOPWORDS}
+    return {_stem(word) for word in _WORD.findall(text.lower()) if len(word) >= 3 and word not in _STOPWORDS}
+
+
+def _span_text(proposal: Proposal, blocks: dict[str, str]) -> str:
+    """What the user actually said, in span order: a user-authored memory's statement is their own words, never the model's
+    paraphrase."""
+    return " ".join(blocks[span.block][span.start : span.end].strip() for span in proposal.spans if span.block in blocks)
 
 
 def _spans_support(proposal: Proposal, blocks: dict[str, str]) -> bool:
@@ -291,13 +304,16 @@ def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, 
     for proposal in proposals:
         if proposal.kind not in USER_KINDS or (proposal.target is not None and proposal.target not in known):
             continue
-        key = digest(f"user\0{project}\0{proposal.speech_act}\0{proposal.statement}\0{proposal.target}")
+        supported = _spans_support(proposal, texts)
+        # The persisted statement is the user's own span text; the model's sentence only has to agree with it.
+        statement = _span_text(proposal, texts) if supported else proposal.statement
+        key = digest(f"user\0{project}\0{scope}\0{proposal.speech_act}\0{statement}\0{proposal.target}")  # one statement, one item per scope
         try:
-            candidate = MemoryCandidate(project, scope, "user-authored", proposal.kind, proposal.speech_act, proposal.statement[:2000],
+            candidate = MemoryCandidate(project, scope, "user-authored", proposal.kind, proposal.speech_act, statement[:2000],
                                         proposal.title[:120], spans=proposal.spans, target=proposal.target, idempotency_key=key)
         except ContractError:
             continue
-        verdict = HostVerdict(workspace_trusted=trusted, scope_valid=True, spans_verified=_spans_support(proposal, texts),
+        verdict = HostVerdict(workspace_trusted=trusted, scope_valid=True, spans_verified=supported,
                               lineage_complete=True,
                               scans_passed=scans_pass(candidate.title, candidate.statement, sanitize=sanitize, sources=sources))
         out.append(Candidate(candidate, verdict))
@@ -315,7 +331,7 @@ def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str,
             continue
         cited = [issued.get(ref) for ref in proposal.evidence]
         complete = bool(cited) and all(item is not None and not item.external for item in cited)
-        key = digest(f"agent\0{project}\0{proposal.statement}\0{','.join(sorted(proposal.evidence))}")
+        key = digest(f"agent\0{project}\0{scope}\0{proposal.statement}\0{','.join(sorted(proposal.evidence))}")
         evidence = tuple(ref for ref in proposal.evidence if ref in issued)
         try:
             candidate = MemoryCandidate(project, scope, "agent-derived", proposal.kind, "assertion", proposal.statement[:2000],
@@ -363,6 +379,7 @@ class Outcome:
     dropped: int = 0
     notices: tuple[Any, ...] = ()  # engine MemoryNotice, one per appended change
     refusals: tuple[str, ...] = ()  # Gate reasons and store codes for candidates not appended
+    reasons: tuple[str, ...] = ()  # the Gate's reason for every candidate it decided (an off record is appended, but not as memory)
     incomplete: str | None = None
     skipped: str | None = None  # a job never run: the queue was full or the extractor closed
 
@@ -453,7 +470,7 @@ class MemoryExtractor:
                 assert turn.work is not None
                 candidates = agent_candidates(proposals, project=self._store.project, scope=turn.scope, work=turn.work,
                                               trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources)
-            notices, refusals = self._commit(candidates)
+            notices, refusals, reasons = self._commit(candidates)
         except ExtractionIncomplete as incomplete:
             return Outcome(turn.turn_id, purpose, incomplete=incomplete.reason)
         except MemoryStoreUnavailable:
@@ -465,21 +482,23 @@ class MemoryExtractor:
                 self._extracted.add(digest("\n".join(block.text for block in turn.blocks).strip()))
             elif turn.work is not None:
                 self._extracted.update(item.ref for item in turn.work.evidence)
-        return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals))
+        return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals), tuple(reasons))
 
-    def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str]]:
+    def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str], list[str]]:
         """The Gate decides each candidate against the item's current state, read now: a decision taken on a moved head is
         refused by the store's expected version, never forced."""
         from optimus.context.authored_memory import MemoryStoreRefused
 
         notices: list[Any] = []
         refusals: list[str] = []
+        reasons: list[str] = []
         if not candidates:
-            return notices, refusals
+            return notices, refusals, reasons
         with self._store.lease() as token:
             for entry in candidates:
                 target = _state(self._store.read(entry.candidate.target)) if entry.candidate.target else None
                 decision = memory_gate.admit(entry.candidate, entry.verdict, target)
+                reasons.append(decision.reason)
                 if decision.outcome != "append" or decision.draft is None:
                     refusals.append(decision.reason)
                     continue
@@ -489,7 +508,7 @@ class MemoryExtractor:
                     refusals.append(refused.code)
                     continue
                 notices.append(MemoryNotice.of(result, decision.draft.action))
-        return notices, refusals
+        return notices, refusals, reasons
 
     def close(self, timeout: float = 5.0) -> None:
         """Stop taking jobs; queued ones never run and release their turns; running ones finish (bounded by the store's own

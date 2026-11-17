@@ -160,3 +160,13 @@ def test_a_skipped_turn_takes_no_invocation_and_makes_no_call() -> None:
     assert extractor.submit(_turn(text="carry on")) == (mx.Decision(False, "acknowledgement_or_status"), mx.Decision(False, "no_completed_work"))
     extractor.close()
     assert upstream.calls == [] and outcomes == [] and settlement.settle_turn("s:1").pending_invocations == 0
+
+
+def test_the_same_words_in_two_scopes_are_two_items_never_a_conflict() -> None:
+    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(_GOOD, 1), _completed(_GOOD, 2)))
+    for n, scope in ((1, "s-1"), (2, "s-2")):  # queued directly: one session's own dedupe would skip the repeated text
+        extractor._enqueue(mx.USER_PURPOSE, mx.TurnInput(f"s:{n}", scope, (mx.UserBlock("b-1", _TEXT),), None, (), True))
+        _until(outcomes, n)
+    extractor.close()
+    assert [len(outcome.notices) for outcome in outcomes] == [1, 1] and not any(outcome.refusals for outcome in outcomes)
+    assert outcomes[0].notices[0].item != outcomes[1].notices[0].item

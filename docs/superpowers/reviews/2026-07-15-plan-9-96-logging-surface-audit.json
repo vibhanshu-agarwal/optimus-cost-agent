@@ -6463,6 +6463,54 @@
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/context/test_authored_memory.py::test_a_gate_draft_is_appended_once_and_read_back_as_the_engine_s_event",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_admission:Upstream.__call__:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the controlled upstream's scripted reply, built from the synthetic prompt it was given; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_admission.py::test_the_controlled_upstream_answers_from_the_prompt_alone",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_admission:accounting:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement on the released test store with a controlled upstream and synthetic statements; reports hold counts, timings, codes and digests, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_admission.py::test_the_controlled_upstream_answers_from_the_prompt_alone",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_admission:accounting:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: the measurement reads the released store's payload hash to confirm no blocked payload was kept; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_admission.py::test_the_controlled_upstream_answers_from_the_prompt_alone",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_admission:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement on the released test store with a controlled upstream and synthetic statements; reports hold counts, timings, codes and digests, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_admission.py::test_without_the_release_nothing_runs",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_admission:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints per-report pass flags (booleans) or the UNRUN line; no statement or secret.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_admission.py::test_without_the_release_nothing_runs",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_admission:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a measurement on the released test store with a controlled upstream and synthetic statements; reports hold counts, timings, codes and digests, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_admission.py::test_without_the_release_nothing_runs",
+      "evidence_tier": "unit"
     }
   ]
 }
