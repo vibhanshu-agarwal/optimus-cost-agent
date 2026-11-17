@@ -272,26 +272,84 @@ _AGAINST = json.dumps({"candidates": [{"speech_act": "assertion", "kind": "proce
                                        "statement": "Deploy after tests pass.", "evidence": ["ev-1"]}]})
 
 
+def _seed(extractor: mx.MemoryExtractor, text: str, scope: str = "s-1") -> str:
+    """A real user item made through the checked host path (the Gate, then the store under the lease), never by automatic
+    extraction, which D9 keeps from making one."""
+    from context_engine import memory_gate
+    from context_engine.memory_contracts import HostVerdict, MemoryCandidate, Span
+
+    store = extractor._store
+    candidate = MemoryCandidate(store.project, scope, "user-authored", "constraint", "decision", text, text,
+                                spans=(Span("seed", 0, len(text)),), idempotency_key=mx.digest("seed\0" + text))
+    decision = memory_gate.admit(candidate, HostVerdict(True, True, True, True, True))
+    assert decision.reason == "ADMITTED" and decision.draft is not None
+    with store.lease() as token:
+        return store.append(token, candidate, decision.draft).item
+
+
+def _proposal(act: str, text: str, block: str = "b-1", target: str | None = None) -> dict[str, Any]:
+    return {"speech_act": act, "kind": "constraint", "title": "t", "statement": text,
+            "spans": [{"block": block, "start": 0, "end": len(text)}], "target": target}
+
+
+def test_no_automatic_user_proposal_admits_updates_or_withdraws_anything() -> None:
+    """D9 (Codex CP2 review 9): whatever its words, label, spans or target, an automatic user-origin proposal goes off. A real
+    user item stays exactly as it was, and no Remembered, Updated or Forgotten notice comes of it."""
+    extractor, _settlement, outcomes, _receipts = _harness(_Upstream())
+    kept = _seed(extractor, "Never push to main.")
+    before = extractor._store.read(kept).event
+    texts = ("Always run ruff before every commit.", "Cancel the rule about pushing to main.", "Actually, push to main after review.",
+             "Never push to main.")
+    extractor._bind = None
+    upstream = _Upstream(_completed(json.dumps({"candidates": [_proposal("decision", texts[0], "b-1"),
+                                                               _proposal("retraction", texts[1], "b-2", kept),
+                                                               _proposal("decision", texts[2], "b-3", kept),
+                                                               _proposal("assertion", texts[3], "b-4", kept)]}), 1))
+    extractor._bind = upstream.bind
+    extractor.submit(mx.TurnInput("s:1", "s-1", tuple(mx.UserBlock(f"b-{n + 1}", text) for n, text in enumerate(texts)), None, (), True))
+    _until(outcomes, 1)
+    extractor.close()
+    # the admission and the withdrawal the Gate would let through are what D9 stops; the update and the forged target were
+    # already off
+    assert outcomes[0].reasons == ("USER_AUTOMATIC_OFF", "USER_AUTOMATIC_OFF", "SPANS_UNVERIFIED", "SPANS_UNVERIFIED"), outcomes[0].reasons
+    assert {notice.action for notice in outcomes[0].notices} == {"off"}
+    after = extractor._store.read(kept).event
+    assert (after.version, after.status, after.statement) == (before.version, "active", before.statement)
+    assert [item.item for item in extractor._store.user_items("s-1", limit=10)] == [kept]
+
+
+def test_an_off_user_record_never_makes_an_agent_call_skip() -> None:
+    """D9: an off record is no user item. A user rule that went off leaves the scope empty, so the agent call is made and its
+    optional lesson kept."""
+    upstream = _Upstream(_completed(_RULE, 1), _completed(_AGAINST, 2))
+    extractor, _settlement, outcomes, _receipts = _harness(upstream)
+    extractor.submit(_turn(1, text="Never deploy."))
+    _until(outcomes, 1)
+    extractor.submit(_turn(2, text="Release it.", work=mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"),))))
+    _until(outcomes, 2)
+    extractor.close()
+    assert (outcomes[0].reasons, outcomes[1].reasons) == (("USER_AUTOMATIC_OFF",), ("ADMITTED",))
+    assert [purpose for _turn_id, purpose, _tokens, _prompt in upstream.calls] == [mx.USER_PURPOSE, mx.AGENT_PURPOSE]
+
+
 def test_no_agent_call_is_made_in_a_scope_with_a_user_rule() -> None:
     """Codex CP2 review 1, finding 5, and review 2, finding 6, through the extractor: the lesson names no target and shares one
     word with the rule, and no check can show it leaves the rule standing; so in a scope holding a user item it could only go
-    off, and the call is skipped (review 3's decision)."""
+    off, and the call is skipped (review 3's decision). The rule is a real one, made through the host path."""
     control = _AGAINST.replace("Deploy after tests pass.", "Run the smoke tests before a deploy.")
-    upstream = _Upstream(_completed(control, 1), _completed(_RULE, 2), _completed(_AGAINST, 3))
+    upstream = _Upstream(_completed(control, 1), _completed(_AGAINST, 2))
     extractor, settlement, outcomes, _receipts = _harness(upstream)
     work = mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"),))
     extractor.submit(_turn(1, text="Release it.", work=work))
     _until(outcomes, 1)
     assert outcomes[0].reasons == ("ADMITTED",)  # control: no user item in the scope yet, so the optional lesson is kept
-    extractor.submit(_turn(2, text="Never deploy."))
-    _until(outcomes, 2)
-    assert outcomes[1].reasons == ("ADMITTED",)
+    _seed(extractor, "Never deploy.")
     work = mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"), mx.Evidence("ev-2", "verification")))
     extractor.submit(_turn(3, text="Release it again.", work=work))
-    _until(outcomes, 3)
+    _until(outcomes, 2)
     extractor.close()
-    assert (outcomes[2].skipped, outcomes[2].notices) == ("user_items_in_scope", ())
-    assert [purpose for _turn_id, purpose, _tokens, _prompt in upstream.calls] == [mx.AGENT_PURPOSE, mx.USER_PURPOSE]
+    assert (outcomes[1].skipped, outcomes[1].notices) == ("user_items_in_scope", ())
+    assert [purpose for _turn_id, purpose, _tokens, _prompt in upstream.calls] == [mx.AGENT_PURPOSE]
     settlement.finalize_turn("s:3")
     assert settlement.settle_turn("s:3").pending_invocations == 0  # the skipped job still released its turn
 
@@ -299,9 +357,8 @@ def test_no_agent_call_is_made_in_a_scope_with_a_user_rule() -> None:
 def test_a_user_rule_saved_while_the_agent_call_is_out_sends_its_lesson_off() -> None:
     """The skip reads the scope before the call; the commit reads it again under the lease, so a rule saved meanwhile still
     sends the lesson off."""
-    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(_RULE, 1), _completed(_AGAINST, 2)))
-    extractor.submit(_turn(1, text="Never deploy."))
-    _until(outcomes, 1)
+    extractor, _settlement, outcomes, _receipts = _harness(_Upstream(_completed(_AGAINST, 1)))
+    _seed(extractor, "Never deploy.")
     store = extractor._store
     real, seen = store.user_items, []
 
@@ -311,29 +368,23 @@ def test_a_user_rule_saved_while_the_agent_call_is_out_sends_its_lesson_off() ->
 
     store.user_items = first_empty
     extractor.submit(_turn(2, text="Release it.", work=mx.CompletedWork("released", (mx.Evidence("ev-1", "verification"),))))
-    _until(outcomes, 2)
+    _until(outcomes, 1)
     extractor.close()
-    assert outcomes[1].reasons == ("USER_ITEMS_IN_SCOPE",) and len(seen) == 2
-    (off,) = outcomes[1].notices
+    assert outcomes[0].reasons == ("USER_ITEMS_IN_SCOPE",) and len(seen) == 2
+    (off,) = outcomes[0].notices
     assert store.read(off.item).event.trust == "off"  # appended as an off record, never as memory
 
 
 def _retract(item: str) -> SummarizerResponse:
-    text = "Cancel the rule about pushing to main."
-    return _completed(json.dumps({"candidates": [{"speech_act": "retraction", "kind": "constraint", "title": "main", "statement": text,
-                                                  "spans": [{"block": "b-1", "start": 0, "end": len(text)}], "target": item}]}), 2)
+    return _completed(json.dumps({"candidates": [_proposal("retraction", "Cancel the rule about pushing to main.", target=item)]}), 1)
 
 
 def test_a_target_the_words_no_longer_name_alone_under_the_lease_is_left_standing() -> None:
     """Codex CP2 review 5, finding 1: the host resolves the target again among every live user item under the lease, so a
-    second rule the same words name, saved while the call was out, leaves both standing."""
-    rule = json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "main", "statement": "Never push to main.",
-                                       "spans": [{"block": "b-1", "start": 0, "end": 19}]}]})
-    upstream = _Upstream(_completed(rule, 1))
+    second rule the same words name, seen only then, leaves both standing (and under D9 a resolved one goes off anyway)."""
+    upstream = _Upstream()
     extractor, _settlement, outcomes, _receipts = _harness(upstream)
-    extractor.submit(_turn(1, text="Never push to main."))
-    _until(outcomes, 1)
-    (saved,) = outcomes[0].notices
+    saved = _seed(extractor, "Never push to main.")
     store = extractor._store
     real = store.user_items
 
@@ -342,58 +393,23 @@ def test_a_target_the_words_no_longer_name_alone_under_the_lease_is_left_standin
         return found if limit <= mx.MAX_EXISTING_ITEMS else [*found, mx.ExistingItem("m-" + "b" * 16, "Never push to main without review.")]
 
     store.user_items = another_too
-    upstream.replies.append(_retract(saved.item))
+    upstream.replies.append(_retract(saved))
     extractor.submit(_turn(2, text="Cancel the rule about pushing to main."))
-    _until(outcomes, 2)
-    extractor.close()
-    assert outcomes[1].reasons == ("SPANS_UNVERIFIED",) and store.read(saved.item).event.status == "active"
-
-
-def test_a_target_resolved_after_an_earlier_write_of_the_same_batch_sees_that_write() -> None:
-    """Codex CP2 review 6, finding 2: a write in the batch can make a later withdrawal's words name two items; the live items
-    are read again after each write, so that withdrawal goes off. The first withdrawal reads them; the new rule then written
-    is one the third block's words also name."""
-    def saved(text: str, n: int) -> SummarizerResponse:
-        return _completed(json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "t", "statement": text,
-                                                      "spans": [{"block": "b-1", "start": 0, "end": len(text)}]}]}), n)
-
-    upstream = _Upstream(saved("Never push main nightly.", 1), saved("Never deploy on Fridays.", 2))
-    extractor, _settlement, outcomes, _receipts = _harness(upstream)
-    extractor.submit(_turn(1, text="Never push main nightly."))
     _until(outcomes, 1)
-    extractor.submit(_turn(2, text="Never deploy on Fridays."))
-    _until(outcomes, 2)
-    (a,), (x,) = outcomes[0].notices, outcomes[1].notices
-    first, rule, cancel = "Cancel the rule about deploying on Fridays.", "Never push main nightly without review.", "Cancel push main nightly."
-
-    def proposal(act: str, text: str, block: str, target: str | None) -> dict[str, Any]:
-        return {"speech_act": act, "kind": "constraint", "title": "t", "statement": text,
-                "spans": [{"block": block, "start": 0, "end": len(text)}], "target": target}
-
-    upstream.replies.append(_completed(json.dumps({"candidates": [proposal("retraction", first, "b-1", x.item),
-                                                                  proposal("decision", rule, "b-2", None),
-                                                                  proposal("retraction", cancel, "b-3", a.item)]}), 3))
-    extractor.submit(mx.TurnInput("s:3", "s-1", (mx.UserBlock("b-1", first), mx.UserBlock("b-2", rule), mx.UserBlock("b-3", cancel)),
-                                  None, (), True))
-    _until(outcomes, 3)
     extractor.close()
-    assert outcomes[2].reasons == ("RETRACTED", "ADMITTED", "SPANS_UNVERIFIED") and extractor._store.read(a.item).event.status == "active"
+    assert outcomes[0].reasons == ("SPANS_UNVERIFIED",) and store.read(saved).event.status == "active"
 
 
-def test_a_target_the_words_name_alone_is_withdrawn() -> None:
-    """Control for the lease-time resolution: with the one rule live, the same words withdraw it."""
-    rule = json.dumps({"candidates": [{"speech_act": "decision", "kind": "constraint", "title": "main", "statement": "Never push to main.",
-                                       "spans": [{"block": "b-1", "start": 0, "end": 19}]}]})
-    upstream = _Upstream(_completed(rule, 1))
+def test_a_withdrawal_whose_words_name_its_target_alone_still_goes_off() -> None:
+    """D9: the words name the one live rule, so the host resolves it, and still nothing is withdrawn."""
+    upstream = _Upstream()
     extractor, _settlement, outcomes, _receipts = _harness(upstream)
-    extractor.submit(_turn(1, text="Never push to main."))
-    _until(outcomes, 1)
-    (saved,) = outcomes[0].notices
-    upstream.replies.append(_retract(saved.item))
+    saved = _seed(extractor, "Never push to main.")
+    upstream.replies.append(_retract(saved))
     extractor.submit(_turn(2, text="Cancel the rule about pushing to main."))
-    _until(outcomes, 2)
+    _until(outcomes, 1)
     extractor.close()
-    assert outcomes[1].reasons == ("RETRACTED",) and extractor._store.read(saved.item).event.status == "withdrawn"
+    assert outcomes[0].reasons == ("USER_AUTOMATIC_OFF",) and extractor._store.read(saved).event.status == "active"
 
 
 def test_a_refused_receipt_never_drops_the_attempts_after_it() -> None:

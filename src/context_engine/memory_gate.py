@@ -66,6 +66,12 @@ def _off(candidate: MemoryCandidate, reason: str, *, scanned: bool) -> GateDecis
     return GateDecision("append", reason, draft)
 
 
+def automatic_user_off(candidate: MemoryCandidate) -> GateDecision:
+    """D9 (Plan 12.11 CP2, Codex review 9): an automatic user-origin proposal cannot admit, update or withdraw an item, so one
+    the Gate would let through becomes an off record instead, scanned title only. Explicit host actions keep `admit`."""
+    return _off(candidate, "USER_AUTOMATIC_OFF", scanned=True)
+
+
 def admit(candidate: MemoryCandidate, verdict: HostVerdict, target: ItemState | None = None) -> GateDecision:
     """Decide one candidate. `target` is the current authoritative state of `candidate.target`, or None when it names none or
     the item does not exist."""

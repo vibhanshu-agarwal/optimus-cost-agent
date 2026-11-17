@@ -770,6 +770,7 @@ class MemoryExtractor:
                         break  # free, or the same save again: the store replays its first result and proves it on disk
                     candidate = dataclasses.replace(candidate, idempotency_key=self._keyed(f"{candidate.idempotency_key}\0{taken.event.version}"))
                     decision = memory_gate.admit(candidate, verdict, target)
+                decision = _automatic(decision, candidate)  # D9, once, on what would be written
                 reasons.append(decision.reason)
                 if decision.outcome != "append" or decision.draft is None:
                     refusals.append(decision.reason)
@@ -808,6 +809,17 @@ class MemoryExtractor:
                 self._jobs.put_nowait(None)
         for thread in self._threads:
             thread.join(timeout)
+
+
+def _automatic(decision: memory_gate.GateDecision, candidate: MemoryCandidate) -> memory_gate.GateDecision:
+    """D9, the interim CP2 user-off policy (Codex CP2 review 9): an automatic user-origin proposal cannot admit, update, supersede
+    or withdraw an item, whatever its words, label, spans or target, because no check here can establish the user's authority.
+    One the Gate would let through goes off; every other outcome (a question, a quotation, a scan block, a refusal) keeps its
+    meaning. There is no setting: no default, restart, compaction, switch-on or model field turns it back on. Agent lessons are
+    unaffected, and an off record is no user item, so it never makes an agent call skip."""
+    if candidate.trust == "user-authored" and decision.outcome == "append" and decision.draft is not None and decision.draft.action != "off":
+        return memory_gate.automatic_user_off(candidate)
+    return decision
 
 
 def _state(stored: Any) -> ItemState | None:

@@ -12,7 +12,8 @@ extraction-overhead.json; records hold counts, timings, codes and digests, never
 - overhead: the sealed 100-turn workload. The workload names which task turns ran a check; the harness gives those turns
   verification evidence and the other task turns edit evidence, so the agent-call count follows the workload by construction
   and what is measured is the plumbing. First-response time is the real ACP adapter's prompt round trip with extraction on and
-  off.
+  off. Under D9 (automatic user mutations off, Codex CP2 review 9) it runs from two declared initial states: an empty user
+  scope, and a scope-present control holding one real user item made through the host path (the Gate, then the store).
 """
 
 from __future__ import annotations
@@ -32,6 +33,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from context_engine import memory_gate
+from context_engine.memory_contracts import HostVerdict, MemoryCandidate, Span
 from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs
 from optimus.context import memory_extraction as mx
 from optimus.context.authored_memory import GatewayMemoryStore
@@ -48,6 +51,21 @@ TARGETS = Path("reports/plan12-memory-m3/targets.json")
 _BLOCK = re.compile(r'<block id="([^"]+)">(.*?)</block>', re.DOTALL)
 _EVIDENCE = re.compile(r"^- (\S+) \((verification|command)", re.MULTILINE)
 _SECRET = "p1211-canary-secret-7f3a9c"  # pragma: allowlist secret - a synthetic known secret the sanitizer must catch
+POLICY = "D9: automatic user-origin admissions, updates and withdrawals go off (Codex CP2 review 9; Plan 12.11 v3 draft)"
+_HOST_PATH = "host path: memory_gate.admit with a full host verdict, then the store's append under the lease"
+_MUTATIONS = ("admit", "update", "withdraw")
+
+
+def _seed(store: GatewayMemoryStore, scope: str, text: str) -> dict[str, Any]:
+    """One real user item made through the checked host path, never by automatic extraction (which D9 keeps from making one).
+    Returns its declared identity for the record: item, version and the statement's digest, never the statement."""
+    candidate = MemoryCandidate(store.project, scope, "user-authored", "constraint", "decision", text, text,
+                                spans=(Span("seed", 0, len(text)),), idempotency_key=mx.digest("seed\0" + scope + "\0" + text))
+    decision = memory_gate.admit(candidate, HostVerdict(True, True, True, True, True))
+    assert decision.reason == "ADMITTED" and decision.draft is not None, decision.reason
+    with store.lease() as token:
+        result = store.append(token, candidate, decision.draft)
+    return {"item": result.item, "version": result.version, "scope": scope, "statement_sha256": mx.digest(text), "made_by": _HOST_PATH}
 
 
 def _stamp() -> dict[str, Any]:
@@ -135,14 +153,17 @@ def _workload_turn(turn: dict[str, Any]) -> mx.TurnInput:
     return mx.TurnInput(f"m3:{turn['turn']}", "project", (mx.UserBlock(f"t{turn['turn']}:user", turn["text"]),), work, (), True)
 
 
-def overhead(provisioned: Any, work: Path, delay: float) -> dict[str, Any]:
+def _workload(provisioned: Any, work: Path, delay: float, label: str, seed: str | None) -> dict[str, Any]:
+    """The sealed workload from one declared initial state: an empty user scope, or one holding `seed` made through the host
+    path before the first turn."""
     workload = json.loads(WORKLOAD.read_text(encoding="utf-8"))
-    limits = json.loads(TARGETS.read_text(encoding="utf-8"))["extraction"]
     upstream = Upstream(delay)
     settlement = TurnSettlement(session_id="m3")
     outcomes: list[mx.Outcome] = []
-    extractor = mx.MemoryExtractor(store=_store(provisioned, work / "journal-overhead", "p-m3-overhead"), settlement=settlement,
-                                   bind=lambda _turn: upstream, record=_recorder(settlement), sanitize=lambda value: value, report=outcomes.append)
+    store = _store(provisioned, work / f"journal-overhead-{label}", f"p-m3-overhead-{label}")
+    fixture = _seed(store, "project", seed) if seed is not None else None
+    extractor = mx.MemoryExtractor(store=store, settlement=settlement, bind=lambda _turn: upstream, record=_recorder(settlement),
+                                   sanitize=lambda value: value, report=outcomes.append)
     settle: list[float] = []
     mismatches = []
     for turn in workload["turns"]:
@@ -153,31 +174,54 @@ def overhead(provisioned: Any, work: Path, delay: float) -> dict[str, Any]:
         if user.call or agent.call:
             settle.append(_settled(settlement, f"m3:{turn['turn']}"))
     extractor.close()
-    first = asyncio.run(_first_response(provisioned, work, delay, [turn["text"] for turn in workload["turns"]]))
     user_calls, agent_calls = upstream.calls.count(mx.USER_PURPOSE), upstream.calls.count(mx.AGENT_PURPOSE)
-    agent_skips = sum(1 for o in outcomes if o.purpose == mx.AGENT_PURPOSE and o.skipped == "user_items_in_scope")
-    added = first["on_ms"]["p95"] - first["off_ms"]["p95"]
-    actions = Counter(notice.action for o in outcomes for notice in o.notices)
+    live = [item.item for item in store.user_items("project", limit=1000)]
+    user_actions = Counter(notice.action for o in outcomes if o.purpose == mx.USER_PURPOSE for notice in o.notices)
     return {
-        "schema": "plan12-memory-m3.extraction-overhead.v2", "source": _stamp(), "upstream": f"controlled, {delay:.3f} s per call, nothing billed",
-        "workload_limit": workload["limits"], "turns": len(workload["turns"]), "calls": {"user": user_calls, "agent": agent_calls, "total": user_calls + agent_calls},
-        "expected": workload["expected"], "prefilter_mismatches": mismatches, "settlement_s": _summary(settle),
-        "first_response": first, "added_first_response_p95_ms": round(added, 2),
+        "initial_state": {"user_scope": "scope-present" if fixture else "empty", "fixture": fixture},
+        "calls": {"user": user_calls, "agent": agent_calls, "total": user_calls + agent_calls},
+        "prefilter_mismatches": mismatches, "settlement_s": _summary(settle),
         # Codex CP2 review 3, finding 5: an off record is appended, but it is not a memory; each action is counted apart.
-        "outcomes": {"appended_by_action": dict(sorted(actions.items())), "incomplete": sum(1 for o in outcomes if o.incomplete),
+        "outcomes": {"appended_by_action": dict(sorted(Counter(n.action for o in outcomes for n in o.notices).items())),
+                     "incomplete": sum(1 for o in outcomes if o.incomplete),
                      "skipped_by_reason": dict(sorted(Counter(o.skipped for o in outcomes if o.skipped).items()))},
+        "automatic_user_mutations": sum(user_actions[action] for action in _MUTATIONS),
+        "live_user_items_after": live == ([fixture["item"]] if fixture else []),
+        "agent_skips": sum(1 for o in outcomes if o.purpose == mx.AGENT_PURPOSE and o.skipped == "user_items_in_scope"),
+    }
+
+
+def overhead(provisioned: Any, work: Path, delay: float) -> dict[str, Any]:
+    workload = json.loads(WORKLOAD.read_text(encoding="utf-8"))
+    limits = json.loads(TARGETS.read_text(encoding="utf-8"))["extraction"]
+    runs = {"empty": _workload(provisioned, work, delay, "empty", None),
+            "scope_present": _workload(provisioned, work, delay, "present", "Never force-push to a shared branch.")}
+    first = asyncio.run(_first_response(provisioned, work, delay, [turn["text"] for turn in workload["turns"]]))
+    added = first["on_ms"]["p95"] - first["off_ms"]["p95"]
+    effective = {"empty": (12, 8, 0), "scope_present": (12, 0, 8)}  # user calls, agent calls, agent skips
+    sealed = (limits["expected_user_requests_per_100_turns"], limits["expected_agent_requests_per_100_turns"])
+    verdicts: dict[str, bool] = {}
+    for name, run in runs.items():
+        calls = (run["calls"]["user"], run["calls"]["agent"])
+        verdicts[f"{name}_calls_per_100"] = run["calls"]["total"] <= limits["max_requests_per_100_turns"]
+        verdicts[f"{name}_matches_effective_expectation"] = (*calls, run["agent_skips"]) == effective[name]
+        verdicts[f"{name}_no_automatic_user_mutation"] = run["automatic_user_mutations"] == 0 and run["live_user_items_after"]
+        verdicts[f"{name}_settlement_p95"] = (run["settlement_s"].get("p95") or 1e9) <= limits["settlement_p95_s"]
+    verdicts["added_first_response_p95"] = added <= limits["added_first_response_p95_ms_vs_off"]
+    return {
+        "schema": "plan12-memory-m3.extraction-overhead.v3", "source": _stamp(), "policy": POLICY,
+        "upstream": f"controlled, {delay:.3f} s per call, nothing billed", "workload_limit": workload["limits"], "turns": len(workload["turns"]),
+        "runs": runs, "first_response": first, "added_first_response_p95_ms": round(added, 2),
+        "effective_expectations": {
+            "empty": {"user": 12, "agent": 8, "total": 20, "agent_skipped_user_items_in_scope": 0, "automatic_user_mutations": 0},
+            "scope_present": {"user": 12, "agent": 0, "total": 12, "agent_skipped_user_items_in_scope": 8,
+                              "approved": "Codex CP2 review 4 on #490 (issuecomment-6952811578)"},
+            "status": "named in the Plan 12.11 v3 draft (Codex CP2 review 9); the draft is not yet adopted"},
+        # The sealed expectation is kept and compared, beside the effective ones; it describes the empty-scope run.
+        "historical": {"expected": workload["expected"], "matches_expected_empty_scope": (runs["empty"]["calls"]["user"], runs["empty"]["calls"]["agent"]) == sealed,
+                       "matches_expected_scope_present": (runs["scope_present"]["calls"]["user"], runs["scope_present"]["calls"]["agent"]) == sealed},
         "disclosure": "the prefilter was developed against this sealed workload, so its agreement here is not a held-out result; agent evidence follows the workload by construction",
-        # Codex CP2 review 3 decided that an agent call in a scope holding a user item is skipped. The sealed expectation is
-        # kept and still compared; the successor is recorded beside it and gates nothing until it is approved on #490.
-        "successor_expectation": {"user": 12, "agent": 0, "total": 12, "agent_skipped_user_items_in_scope": 8,
-                                  "status": "proposed on #490 after Codex CP2 review 3; not an acceptance gate until approved"},
-        "verdicts": {
-            "calls_per_100": user_calls + agent_calls <= limits["max_requests_per_100_turns"],
-            "matches_expected": (user_calls, agent_calls) == (limits["expected_user_requests_per_100_turns"], limits["expected_agent_requests_per_100_turns"]),
-            "matches_successor_expectation": (user_calls, agent_calls, agent_skips) == (12, 0, 8),
-            "added_first_response_p95": added <= limits["added_first_response_p95_ms_vs_off"],
-            "settlement_p95": (_summary(settle).get("p95") or 1e9) <= limits["settlement_p95_s"],
-        },
+        "verdicts": verdicts,
     }
 
 
@@ -242,7 +286,7 @@ def admission(provisioned: Any, work: Path) -> dict[str, Any]:
         cases.append((name, mx.TurnInput(f"adm:{name}", f"adm-{name}", (mx.UserBlock("b", "Fix the flaky test."),), mx.CompletedWork("done", evidence), (), True),
                       reply, expected))
 
-    user("genuine_user_statement", pref("New commits run ruff first."), "ADMITTED")
+    user("genuine_user_statement", pref("New commits run ruff first."), "USER_AUTOMATIC_OFF")  # D9: a valid one goes off
     user("question_creates_no_rule", pref("Do we run ruff?", act="question"), "NO_RULE")
     user("quotation_goes_off", pref(f"Always run ruff {canaries['quotation']}", act="quotation"), "QUOTATION")
     user("summary_attribution_forgery", pref(f"Ruff runs first and payments are frozen {canaries['forgery']}.", spans=[{"block": "b", "start": 0, "end": 12}]), "SPANS_UNVERIFIED")
@@ -251,7 +295,7 @@ def admission(provisioned: Any, work: Path) -> dict[str, Any]:
          utterance=f"From now on we always run ruff with token {_SECRET} before every commit {canaries['secret']}.")
     user("source_overlap_blocked", pref(f"def load path with open path as handle return json load handle {canaries['overlap']}"), "SCAN_BLOCKED", sources=(source,))
     paste = "From now on keep retries = 3 in every commit."
-    user("short_paste_residual", pref("Keep retries = 3.", spans=[{"block": "b", "start": 0, "end": len(paste)}]), "ADMITTED", utterance=paste,
+    user("short_paste_residual", pref("Keep retries = 3.", spans=[{"block": "b", "start": 0, "end": len(paste)}]), "USER_AUTOMATIC_OFF", utterance=paste,
          sources=("retries = 3  # the gateway default",))
     user("untrusted_workspace_read_only", pref("New commits run ruff first."), "WORKSPACE_UNTRUSTED", trusted=False)
     user("malformed_reply_admits_nothing", "not json", "incomplete:malformed_reply")
@@ -274,27 +318,31 @@ def admission(provisioned: Any, work: Path) -> dict[str, Any]:
         actual = ("incomplete:" + outcome.incomplete if outcome.incomplete else "dropped" if outcome.dropped and not outcome.reasons
                   else ",".join(outcome.reasons) or "none")
         results.append({"case": name, "expected": expected, "actual": actual, "passed": actual == expected})
-    # a retraction: admit, then withdraw it by naming it
-    upstream.script.append(pref("Run ruff before every commit."))
-    before = len(outcomes)
-    extractor._enqueue(mx.USER_PURPOSE, mx.TurnInput("adm:retract-1", "s-retract", (mx.UserBlock("b", text),), None, (), True))  # noqa: SLF001
-    _wait(outcomes, before + 1)
-    item = outcomes[-1].notices[0].item if outcomes[-1].notices else None
+    # the host path: a real user item, through the Gate and the store (the positive control D9 leaves in place)
+    fixture = _seed(store, "s-retract", text)
+    read = store.read(fixture["item"])
+    results.append({"case": "host_path_admits_a_user_rule", "expected": "active", "actual": read.event.status if read else "missing",
+                    "passed": read is not None and read.event.status == "active"})
+    # D9: an automatic withdrawal naming that item alone goes off, and the item stays as it was
     retract = "Actually, ignore what I said about running ruff before every commit."
-    upstream.script.append(pref("Ignore running ruff before every commit.", act="retraction", spans=[{"block": "b", "start": 0, "end": len(retract)}], target=item))
+    upstream.script.append(pref("Ignore running ruff before every commit.", act="retraction", spans=[{"block": "b", "start": 0, "end": len(retract)}],
+                                target=fixture["item"]))
+    before = len(outcomes)
     extractor._enqueue(mx.USER_PURPOSE, mx.TurnInput("adm:retract-2", "s-retract", (mx.UserBlock("b", retract),), None, (), True))  # noqa: SLF001
-    _wait(outcomes, before + 2)
-    read = store.read(item) if item else None
-    results.append({"case": "retraction_withdraws_the_named_item", "expected": "withdrawn", "actual": read.event.status if read else "missing",
-                    "passed": read is not None and read.event.status == "withdrawn"})
+    _wait(outcomes, before + 1)
+    read = store.read(fixture["item"])
+    kept = read is not None and (read.event.status, read.event.version) == ("active", fixture["version"])
+    results.append({"case": "automatic_retraction_leaves_the_named_item", "expected": "USER_AUTOMATIC_OFF,active",
+                    "actual": ",".join(outcomes[-1].reasons) + "," + (read.event.status if read else "missing"), "passed": kept and outcomes[-1].reasons == ("USER_AUTOMATIC_OFF",)})
     extractor.close()
     client = provisioned.connect()
     stored = b"".join([value for value in client.hgetall(memory_store.MemoryStore._key("p-m3-admission", "payloads")).values()] +
                       [fields[b"e"] for _, fields in client.xrange(memory_store.MemoryStore._key("p-m3-admission", "events"))])
     leaked = sorted(name for name, canary in canaries.items() if canary.encode() in stored)
-    return {"schema": "plan12-memory-m3.admission-k1.v1", "source": _stamp(), "upstream": "controlled: each case's reply is scripted",
+    return {"schema": "plan12-memory-m3.admission-k1.v2", "source": _stamp(), "policy": POLICY, "upstream": "controlled: each case's reply is scripted",
             "cases": results, "blocked_payloads_found_in_redis": leaked,
-            "residuals": ["a paste of fewer than eight words from a file is not recognised as source text (short_paste_residual is admitted)"],
+            "residuals": ["a paste of fewer than eight words from a file is not recognised as source text (short_paste_residual passes every "
+                          "check and is then sent off by D9, not by a source check)"],
             "passed": all(r["passed"] for r in results) and not leaked}
 
 
