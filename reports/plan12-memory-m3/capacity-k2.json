@@ -18,22 +18,22 @@
   "release": "operator 2026-11-17 'Release both' on #490",
   "loss_scope": "tested crashes with the volume intact; not hardware, power or volume loss",
   "source": {
-    "head": "git:669d50a86911c8d6b6a2e44ff0179eb2d9ee9d3f",
+    "head": "git:0dcc3597c45a46eb4f7b44bc6534465c40e71cc3",
     "dirty": false
   },
   "main": {
-    "seconds": 820.3,
+    "seconds": 704.6,
     "ack_ms": {
       "count": 100000,
-      "p50": 28.89,
-      "p95": 52.32,
-      "max": 2126.7
+      "p50": 26.05,
+      "p95": 39.43,
+      "max": 1068.1
     },
     "projection_after_ack_ms": {
       "count": 2000,
-      "p50": 12.63,
-      "p95": 23.86,
-      "max": 213.61
+      "p50": 11.31,
+      "p95": 19.06,
+      "max": 142.98
     },
     "refusals": {},
     "unconfirmed_after_retries": 0,
@@ -55,48 +55,48 @@
     "purge": {
       "logical_s": {
         "count": 4,
-        "p50": 0.07,
-        "p95": 0.12,
-        "max": 0.12
+        "p50": 0.08,
+        "p95": 0.1,
+        "max": 0.1
       },
       "rewrite_and_snapshot_s": {
         "count": 4,
-        "p50": 1.52,
-        "p95": 1.94,
-        "max": 1.94
+        "p50": 1.46,
+        "p95": 1.5,
+        "max": 1.5
       },
       "purges": 4,
       "completed": 4
     },
     "restart_to_usable_s": 2.0,
     "resources": {
-      "container_ram_mib": 64.1,
-      "used_memory_rss_mib": 78.4,
-      "disk_kib": 85936,
-      "aof_last_cow_mib": 1.7,
+      "container_ram_mib": 64.2,
+      "used_memory_rss_mib": 78.5,
+      "disk_kib": 80216,
+      "aof_last_cow_mib": 1.8,
       "rdb_last_cow_mib": 1.7,
-      "samples": 232
+      "samples": 203
     },
     "index_load": {
-      "records": 17560064,
-      "generations": 439
+      "records": 17216128,
+      "generations": 430
     }
   },
   "slow_persistence": {
     "device_write_bps": "/dev/sdd:256kb",
     "events": 4000,
-    "seconds": 127.8,
+    "seconds": 127.1,
     "ack_ms": {
       "count": 4000,
-      "p50": 106.11,
-      "p95": 194.54,
-      "max": 706.89
+      "p50": 106.04,
+      "p95": 194.81,
+      "max": 587.61
     },
     "projection_after_ack_ms": {
       "count": 160,
-      "p50": 9.46,
-      "p95": 101.41,
-      "max": 196.05
+      "p50": 8.8,
+      "p95": 102.63,
+      "max": 189.9
     },
     "refusals": {},
     "unconfirmed_after_retries": 0,
