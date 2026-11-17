@@ -307,6 +307,7 @@ def test_someone_else_s_words_anywhere_in_the_block_stay_theirs(block: str, chos
     ("We always deploy to main. That needs operator approval.", "We always deploy to main."),
     ("We always deploy to main. Operator approval is required first.", "We always deploy to main."),  # review 6, finding 4
     ("Fine by me. Never push to main.", "Never push to main."),  # a second sentence, however harmless it looks
+    ("Never push to main", "Never push to main"),  # no sentence end: it may have been cut off
     ("Never push to main.\nRun ruff before every commit.", "Run ruff before every commit."),
 ])
 def test_a_rule_whose_reach_the_block_leaves_open_goes_off(block: str, chosen: str) -> None:
