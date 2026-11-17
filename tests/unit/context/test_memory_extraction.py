@@ -247,7 +247,7 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
         ("retraction", "Cancel the rule about pushing to main, never."),  # a comma, and only the item's own words after it
         ("retraction", "Cancel the rule about pushing to main if so."),  # a condition in words too short to count as content
         ("retraction", "Cancel the rule about main."),  # one word of the item does not name it
-        ("decision", "Never change the rule about pushing to main to allow it after review."),  # the act mid-sentence
+        ("decision", "Never change the rule about pushing to main to allow pushes from release branches."),  # the act mid-sentence
         ("decision", "We now document the rule about pushing to main."), ("decision", "Change the smoke tests for pushing to main to run nightly."),
         ("decision", "Actually, the rule about pushing to main is unchanged."),  # review 5: a lead and a mention change nothing
         ("decision", "Actually, we now push to main after review."), ("decision", "Correction: pushing to main is fine after review."),
@@ -288,6 +288,10 @@ def test_the_user_s_words_decide_what_a_proposal_does_never_the_model_s_label() 
     ("> Never push to main.\nWhat does that mean?", "Never push to main."),
     ("An old README contains this rule. Never push to main. Please explain it.", "Never push to main."),  # review 6, finding 3
     ("Our README requires never pushing to main.", "Our README requires never pushing to main."),
+    # one sentence, no source named: only the attribution or introduction words show the words are someone else's
+    ("Per the team lead, never push to main.", "Per the team lead, never push to main."),
+    ("As the lead says, never push to main.", "As the lead says, never push to main."),
+    ("Copied verbatim, never push to main.", "Copied verbatim, never push to main."),
 ])
 def test_someone_else_s_words_anywhere_in_the_block_stay_theirs(block: str, chosen: str) -> None:
     start = block.index(chosen)
