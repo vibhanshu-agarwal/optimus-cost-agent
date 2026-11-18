@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 import uuid
@@ -141,6 +142,15 @@ def build_plan117_v5_redact_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def build_plan117_v5_recovery_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="evidence_gather recover-plan117-v5-approvals")
+    parser.add_argument("--control-dir", type=Path, required=True)
+    parser.add_argument("--run-root", type=Path, required=True)
+    parser.add_argument("--confirm-processes-stopped", action="store_true", required=True,
+                        help="Attest that the original collector and all its Zed, relay, agent and trust processes have stopped.")
+    return parser
+
+
 def _scenario_flag_values(argv: Sequence[str]) -> list[str]:
     values = []
     for index, token in enumerate(argv):
@@ -199,25 +209,43 @@ def main(argv: Sequence[str] | None = None) -> int:
         except plan117_contract.ContractError as exc:
             print(exc.code, file=sys.stderr)
             return 2
-    parser = build_parser()
-    args = parser.parse_args(argv_list)
-    handlers = {
-        "validate": _handle_validate,
-        "prepare": _handle_prepare,
-        "check": _handle_check,
-        "collect": _handle_collect,
-        "classify": _handle_classify,
-        "redact": _handle_redact,
-        "inspect": _handle_inspect,
-    }
+    if argv_list[:1] == ["recover-plan117-v5-approvals"]:
+        args = build_plan117_v5_recovery_parser().parse_args(argv_list[1:])
+        handler = _handle_recover_plan117_v5_approvals
+    else:
+        args = build_parser().parse_args(argv_list)
+        handler = {
+            "validate": _handle_validate,
+            "prepare": _handle_prepare,
+            "check": _handle_check,
+            "collect": _handle_collect,
+            "classify": _handle_classify,
+            "redact": _handle_redact,
+            "inspect": _handle_inspect,
+        }[args.command]
     try:
-        return handlers[args.command](args)
+        return handler(args)
     except HostError as exc:
         print(exc.code, file=sys.stderr)
         return 2
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+
+
+def _handle_recover_plan117_v5_approvals(args: argparse.Namespace) -> int:
+    from tools.evidence_gather_support.plan117_workspace_approval import NativeWorkspaceApprovals, scoped_process_environment
+
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        raise HostError("plan117_v5_real_actions_forbidden_in_pytest")
+    environment = scoped_process_environment(os.environ)
+    session = NativeWorkspaceApprovals.resume(
+        require_absolute_path(args.control_dir), require_absolute_path(args.run_root), environment,
+    )
+    if not session.recover(processes_stopped=args.confirm_processes_stopped):
+        raise HostError("scoped_approval_recovery_incomplete")
+    print("Scoped approval recovery complete.")
+    return 0
 
 
 def _handle_validate(args: argparse.Namespace) -> int:
@@ -828,7 +856,11 @@ def _handle_collect_plan117_v5(args: argparse.Namespace) -> int:
     plan117_mod.verify_invocation_record(Path(args.invocation_record), checkout_root=checkout, checkout_commit=_plan117_v5_checkout_head(checkout),
                                          forbidden_roots=(context.capture_root, scratch), run_id=context.run_id)
     fixture, fixture_sha = plan117_mod.load_descriptor_fixture(checkout)
-    inputs = plan117_mod.CollectInputs(context, spec, fixture, fixture_sha, require_absolute_path(Path(args.normal_source_root)).resolve(), scratch)
+    normal = require_absolute_path(Path(args.normal_source_root)).resolve()
+    control = Path(args.invocation_record).resolve(strict=True).parent / f"workspace-approvals-{context.run_id}"
+    if any(control == root or control.is_relative_to(root) for root in (normal, checkout, context.capture_root, scratch)):
+        raise HostError("approval_control_root_overlap")
+    inputs = plan117_mod.CollectInputs(context, spec, fixture, fixture_sha, normal, scratch, control)
     batch = plan117_mod.collect_current_client_gate(inputs, PLAN117_V5_HOST_ACTIONS_FACTORY(checkout))
     try:
         write_raw_bundle(context=context, batches=(batch,))

@@ -165,6 +165,21 @@ def kill_tree(process: subprocess.Popen[Any]) -> None:
             pass  # every member of the group has already exited
 
 
+def wait_for_empty(process: subprocess.Popen[Any], *, deadline: float) -> bool:
+    """Wait for the tracked process tree, including children whose root already exited."""
+    with _lock:
+        if process not in _jobs or (sys.platform == "win32" and _jobs[process] is None):
+            raise ValueError("process tree is not tracked")
+    while True:
+        process.poll()
+        if _tree_stopped(process):
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.05, remaining))
+
+
 def _tree_stopped(process: subprocess.Popen[Any]) -> bool:
     """Whether no member of the job (Windows) or the process group (POSIX) that `popen` gave `process` still runs."""
     with _lock:

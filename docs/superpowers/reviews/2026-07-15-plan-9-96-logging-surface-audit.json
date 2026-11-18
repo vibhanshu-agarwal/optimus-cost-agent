@@ -497,6 +497,62 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_approval_cli:_cmd_scoped_preflight:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Private scoped preflight returns an allowlisted workspace identity to its local collector. The canonical path is private control data. Credentials and the signing key are excluded.",
+      "sanitizer": "fixed workspace identity fields over the private trust subprocess pipe",
+      "test_node": "tests/unit/acp/test_scoped_launch_approvals.py::test_scoped_cli_preflight_verify_and_revoke_with_a_fake_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_scoped_preflight:stdout_export",
+      "policy": "protocol-only",
+      "rationale": "Private scoped preflight returns an allowlisted workspace identity to its local collector. The canonical path is private control data. Credentials and the signing key are excluded.",
+      "sanitizer": "fixed workspace identity fields over the private trust subprocess pipe",
+      "test_node": "tests/unit/acp/test_scoped_launch_approvals.py::test_scoped_cli_preflight_verify_and_revoke_with_a_fake_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_scoped_verify:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "The private verification response carries only an authenticated approval identifier and workspace, record, and configuration digests. It is consumed by the collector.",
+      "sanitizer": "fixed approval identifiers and digest fields over the private trust subprocess pipe",
+      "test_node": "tests/unit/acp/test_scoped_launch_approvals.py::test_scoped_cli_preflight_verify_and_revoke_with_a_fake_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approval_cli:_cmd_scoped_verify:stdout_export",
+      "policy": "protocol-only",
+      "rationale": "The private verification response carries only an authenticated approval identifier and workspace, record, and configuration digests. It is consumed by the collector.",
+      "sanitizer": "fixed approval identifiers and digest fields over the private trust subprocess pipe",
+      "test_node": "tests/unit/acp/test_scoped_launch_approvals.py::test_scoped_cli_preflight_verify_and_revoke_with_a_fake_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approvals:DurableWriteIntent.persist:file_open",
+      "policy": "protocol-only",
+      "rationale": "The private signed recovery receipt binds exact ownership before keyring publication. It contains the approved identifiers, generation and digests needed for reconciliation.",
+      "sanitizer": "authenticated intent schema, no key or configuration values, exclusive publication in private custody",
+      "test_node": "tests/unit/acp/test_scoped_launch_approvals.py::test_scoped_cli_preflight_verify_and_revoke_with_a_fake_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approvals:DurableWriteIntent.persist:text_write",
+      "policy": "protocol-only",
+      "rationale": "The private signed recovery receipt binds exact ownership before keyring publication. It contains the approved identifiers, generation and digests needed for reconciliation.",
+      "sanitizer": "authenticated intent schema, no key or configuration values, exclusive publication in private custody",
+      "test_node": "tests/unit/acp/test_scoped_launch_approvals.py::test_scoped_cli_preflight_verify_and_revoke_with_a_fake_store",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.launch_approvals:DurableWriteIntent.read:file_open",
+      "policy": "protocol-only",
+      "rationale": "Reads the private signed intent required for scoped verification or exact revocation. The scope authenticates it before using it.",
+      "sanitizer": "bounded typed intent parser and scoped signature verification",
+      "test_node": "tests/unit/acp/test_scoped_launch_approvals.py::test_scoped_cli_preflight_verify_and_revoke_with_a_fake_store",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.local_infra:_redis_run_id:logger_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: AST overmatch. client.info(\"server\") is the Redis INFO command that reads the listener's run_id for #480's identity check, not a logger call; it exports nothing.",
@@ -2089,6 +2145,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.evidence_gather:_handle_recover_plan117_v5_approvals:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Reports successful exact recovery with fixed operator status text.",
+      "sanitizer": "fixed literal completion text",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_recovery_command_requires_explicit_stop_attestation",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.evidence_gather:_handle_redact_plan117_v5:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.evidence_gather:_handle_redact_plan117_v5:json_serialization serializes a schema-limited redact-result document (run ID, staging status and the gate's fixed disposition/reason codes); paths, keys and artifact bodies are omitted.",
@@ -2222,6 +2286,86 @@
       "rationale": "Inspection: tools.evidence_gather_support.ndjson:suffix_sha256:file_open opens an explicit NDJSON path only to digest the run-scoped suffix bytes after the pre-captured offset.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_evidence_gather.py::test_ndjson_bounded_reads_do_not_load_prefix",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_current_client_collector:_read_scoped_launch_audit:file_open",
+      "policy": "protocol-only",
+      "rationale": "Reads the private audit stream at the recorded offset. Only the single matching scoped authorization event supplies evidence.",
+      "sanitizer": "bounded private audit read with approval, workspace and launch session binding",
+      "test_node": "tests/unit/tools/test_plan117_current_client_collector.py::test_audit_observer_excludes_stale_and_ambiguous_authorizations",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_current_client_collector:readiness:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "The readiness notice contains the registered arm and launch labels and a fixed operator instruction.",
+      "sanitizer": "fixed format using the registered arm and launch labels",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_scoped_zed_waits_for_job_drain_before_final_observation",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_workspace_approval:NativeWorkspaceApprovals._command:file_open",
+      "policy": "protocol-only",
+      "rationale": "Retains exit status and bounded trust stderr in the private control directory for recovery. The control directory is outside capture and promotion.",
+      "sanitizer": "private diagnostic custody and 4096-character stderr bound",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_noninteractive_command_keeps_diagnostics_in_private_control_directory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_workspace_approval:NativeWorkspaceApprovals._command:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Retains exit status and bounded trust stderr in the private control directory for recovery. The control directory is outside capture and promotion.",
+      "sanitizer": "private diagnostic custody and 4096-character stderr bound",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_noninteractive_command_keeps_diagnostics_in_private_control_directory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_workspace_approval:NativeWorkspaceApprovals._command:text_write",
+      "policy": "protocol-only",
+      "rationale": "Retains exit status and bounded trust stderr in the private control directory for recovery. The control directory is outside capture and promotion.",
+      "sanitizer": "private diagnostic custody and 4096-character stderr bound",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_noninteractive_command_keeps_diagnostics_in_private_control_directory",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_workspace_approval:NativeWorkspaceApprovals.approve_all:file_open",
+      "policy": "protocol-only",
+      "rationale": "Writes the source-matched trust launcher in the private control directory. Its deterministic template carries only the isolated source path.",
+      "sanitizer": "exclusive creation and verified launcher bytes",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_journal_recovers_the_exact_owned_scopes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_workspace_approval:NativeWorkspaceApprovals.approve_all:text_write",
+      "policy": "protocol-only",
+      "rationale": "Writes the source-matched trust launcher in the private control directory. Its deterministic template carries only the isolated source path.",
+      "sanitizer": "exclusive creation and verified launcher bytes",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_journal_recovers_the_exact_owned_scopes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_workspace_approval:NativeWorkspaceApprovals.resume:file_open",
+      "policy": "protocol-only",
+      "rationale": "Reads private recovery state before validating its workspace, source, launcher and interpreter pins. It requires explicit process-stop attestation to reconcile.",
+      "sanitizer": "bounded private journal read and exact source and launcher validation",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_journal_recovers_the_exact_owned_scopes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_workspace_approval:_write_journal:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Keeps exact scope, transition and recovery metadata in the private control directory, outside public evidence.",
+      "sanitizer": "atomic journal replacement after flush in private custody",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_journal_recovers_the_exact_owned_scopes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.evidence_gather_support.plan117_workspace_approval:_write_journal:text_write",
+      "policy": "protocol-only",
+      "rationale": "Keeps exact scope, transition and recovery metadata in the private control directory, outside public evidence.",
+      "sanitizer": "atomic journal replacement after flush in private custody",
+      "test_node": "tests/unit/tools/test_plan117_workspace_approval.py::test_journal_recovers_the_exact_owned_scopes",
       "evidence_tier": "unit"
     },
     {

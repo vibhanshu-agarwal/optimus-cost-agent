@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import re
 import secrets
 import sys
 import time
@@ -25,7 +26,14 @@ from optimus.acp.debug_trace import (
 from optimus.acp.gateway_refusal import GatewayRefusalServer
 from optimus.acp.launch_approvals import LAUNCH_POLICY_COMPATIBILITY, ApprovalError, KeyringApprovalStore
 from optimus.acp.launch_audit import LaunchAuditError, LaunchAuditEvent, append_launch_audit_event
-from optimus.acp.launch_gate import AuthorizedLaunch, LaunchCandidate, LaunchGateError, authorize_launch, resolve_launch_candidate
+from optimus.acp.launch_gate import (
+    AuthorizedLaunch,
+    LaunchCandidate,
+    LaunchGateError,
+    authorize_launch,
+    resolve_launch_candidate,
+    verify_exact_durable,
+)
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.lifecycle import NoticeControl
 from optimus.acp.local_gateway_secrets import run_setup_wizard
@@ -418,12 +426,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # {launch_session_id} placeholders into the target argv it spawns.
     parser.add_argument("--launch-approval-id", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--launch-session-id", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--expected-durable-approval", default=None, help=argparse.SUPPRESS)
     # Plan 9.96, Task 6 Batch 2: same internal-only slot pattern as the two
     # arguments above. The only intended caller is optimus-trust's
     # `run --elevated-debug`, which substitutes {diagnostic_grant_id} into
     # the argv it spawns.
     parser.add_argument("--diagnostic-grant-id", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.expected_durable_approval is not None:
+        match = re.fullmatch(r"(appr_[0-9a-f]{24}):([0-9a-f]{64})", args.expected_durable_approval)
+        if match is None or not Path(args.workspace_root).is_absolute():
+            parser.error("exact durable approval requires an approval ID, digest and absolute workspace")
+        if args.launch_approval_id or args.diagnostic_grant_id or args.setup or args.check_config:
+            parser.error("exact durable approval is only available for a scoped serving launch")
+        args.expected_durable_approval = match.groups()
     if args.with_local_phoenix and args.no_auto_start:
         parser.error("--with-local-phoenix cannot be combined with --no-auto-start")
     if args.with_local_phoenix and args.check_config and not args.strict:
@@ -544,7 +560,8 @@ def _authorize_or_exit(
     # function) so tests can monkeypatch acp_main.keyring with a fake
     # backend without touching the real OS keychain.
     try:
-        store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=roots.approval_runtime_root)
+        open_store = KeyringApprovalStore.open_existing if args.expected_durable_approval else KeyringApprovalStore
+        store = open_store(keyring_backend=keyring, runtime_root=roots.approval_runtime_root)
     except ApprovalError as exc:  # #433: a keyring failure reading or creating the HMAC key
         print(f"optimus-agent: {exc}", file=sys.stderr)
         return 2
@@ -565,12 +582,15 @@ def _authorize_or_exit(
     launch_session_id = args.launch_session_id or f"sess_{secrets.token_hex(12)}"
 
     try:
-        authorized = authorize_launch(
-            candidate=candidate,
-            store=store,
-            approval_id=args.launch_approval_id,
-            launch_session_id=launch_session_id,
-        )
+        if args.expected_durable_approval:
+            approval_id, record_digest = args.expected_durable_approval
+            authorized = verify_exact_durable(
+                candidate, store, approval_id=approval_id, record_digest=record_digest, launch_session_id=launch_session_id,
+            )
+        else:
+            authorized = authorize_launch(
+                candidate=candidate, store=store, approval_id=args.launch_approval_id, launch_session_id=launch_session_id,
+            )
     except LaunchGateError as exc:
         if exc.code == "NO_APPROVAL":
             print(_no_approval_remediation(workspace_root), file=sys.stderr)

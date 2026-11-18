@@ -11,6 +11,7 @@ delete the one-shot record if spawning fails.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import secrets
 import subprocess
@@ -23,6 +24,7 @@ from optimus.acp.launch_approvals import (
     ApprovalError,
     ApprovalMode,
     ClientMcpReviewDisplay,
+    DurableWriteIntent,
     KeyringApprovalStore,
     build_approval_record,
     compute_secret_fingerprint,
@@ -34,6 +36,7 @@ from optimus.acp.launch_gate import (
     authorize_launch,
     resolve_launch_candidate,
     validate_config_file_permissions,
+    verify_exact_durable,
 )
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.local_gateway_secrets import (
@@ -162,6 +165,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=[],
         help="Target command for one-shot (after --).",
     )
+
+    scoped = subparsers.add_parser("scoped-preflight", help="Inspect the exact scoped workspace without creating approval state.")
+    scoped.add_argument("expected_workspace", nargs="?")
+    for command in ("scoped-approve", "scoped-verify", "scoped-revoke"):
+        scoped = subparsers.add_parser(command)
+        scoped.add_argument("receipt", type=Path)
+        if command != "scoped-revoke":
+            scoped.add_argument("expected_workspace")
 
     # inspect
     subparsers.add_parser("inspect", help="Display approval metadata (no secrets).")
@@ -297,6 +308,19 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_approve(
                 workspace_root, mode=args.mode, target_argv=args.target_argv, test_profile=args.plan12_test_profile, stage_c=args.plan12_stage_c
             )
+        if args.command == "scoped-approve":
+            return _cmd_approve(
+                workspace_root, mode="durable", target_argv=[], scope=(args.receipt, args.expected_workspace)
+            )
+        if args.command == "scoped-preflight":
+            return _cmd_scoped_preflight(workspace_root, args.expected_workspace)
+        if args.command == "scoped-verify":
+            return _cmd_scoped_verify(workspace_root, args.receipt, args.expected_workspace)
+        if args.command == "scoped-revoke":
+            _require_tty()
+            store, _ = _resolve_store(workspace_root, existing_only=True)
+            removed = store.revoke_exact_durable(DurableWriteIntent.read(args.receipt))
+            return 0 if removed else 3
         if args.command == "inspect":
             return _cmd_inspect(workspace_root)
         if args.command == "revoke":
@@ -373,15 +397,13 @@ def _resolve_trusted_roots() -> TrustedOperatorRoots:
     return resolve_trusted_operator_roots(platform_name=sys.platform)
 
 
-def _resolve_store(workspace_root: Path) -> tuple[KeyringApprovalStore, Path]:
+def _resolve_store(workspace_root: Path, *, existing_only: bool = False) -> tuple[KeyringApprovalStore, Path]:
     """Resolve the approval store from trusted roots."""
     import keyring as keyring_backend
 
     roots = _resolve_trusted_roots()
-    store = KeyringApprovalStore(
-        keyring_backend=keyring_backend,
-        runtime_root=roots.approval_runtime_root,
-    )
+    open_store = KeyringApprovalStore.open_existing if existing_only else KeyringApprovalStore
+    store = open_store(keyring_backend=keyring_backend, runtime_root=roots.approval_runtime_root)
     return store, roots.approval_runtime_root
 
 
@@ -539,16 +561,58 @@ def _keep_existing_stage_c_ledger(ledger: Path, envelope: StageCEnvelope) -> Non
     )
 
 
+def _cmd_scoped_preflight(workspace_root: Path, expected_workspace: str | None) -> int:
+    state = resolve_workspace_security_state(workspace_root)
+    identity = state.identity
+    digest = identity.digest
+    if expected_workspace is not None and digest != expected_workspace:
+        raise ApprovalError(code="WORKSPACE_IDENTITY_CHANGED")
+    store, _ = _resolve_store(workspace_root, existing_only=True)
+    store.require_empty_durable(digest, state.legacy_v2_digest)
+    print(json.dumps({
+        "workspace_digest": digest, "canonical_path": identity.canonical_path,
+        "device": identity.device, "inode": identity.inode, "git_context": identity.git_context.disposition.value,
+    }))
+    return 0
+
+
+def _cmd_scoped_verify(workspace_root: Path, receipt: Path, expected_workspace: str) -> int:
+    intent = DurableWriteIntent.read(receipt)
+    snapshot, paths = _prepare_candidate_context(workspace_root)
+    store, _ = _resolve_store(workspace_root, existing_only=True)
+    store.verify_intent(intent)
+    candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths)
+    if candidate.workspace_identity.digest != expected_workspace or intent.workspace_digest != expected_workspace:
+        raise ApprovalError(code="WORKSPACE_IDENTITY_CHANGED")
+    verify_exact_durable(
+        candidate, store, approval_id=intent.approval_id, record_digest=intent.record_digest, launch_session_id="scoped-check",
+    )
+    print(json.dumps({
+        "approval_id": intent.approval_id, "record_digest": intent.record_digest,
+        "workspace_digest": expected_workspace, "configuration_sha256": candidate.security_snapshot_digest,
+    }))
+    return 0
+
+
 def _cmd_approve(
-    workspace_root: Path, *, mode: ApprovalMode, target_argv: list[str], test_profile: str | None = None, stage_c: bool = False
+    workspace_root: Path, *, mode: ApprovalMode, target_argv: list[str], test_profile: str | None = None,
+    stage_c: bool = False, scope: tuple[Path, str] | None = None,
 ) -> int:
     """Author a durable or one-shot approval."""
     _require_tty()
     target_argv = _strip_separator(target_argv)
 
+    if scope is not None:
+        if mode != "durable" or target_argv or test_profile is not None or stage_c or scope[0].exists():
+            raise ApprovalError(code="APPROVAL_INTENT_INVALID")
+        _cmd_scoped_preflight(workspace_root, scope[1])
+        store, _ = _resolve_store(workspace_root, existing_only=True)
     snapshot, paths = _prepare_approval_context(workspace_root)
-    store, _ = _resolve_store(workspace_root)
+    if scope is None:
+        store, _ = _resolve_store(workspace_root)
     candidate = _resolve_candidate(workspace_root, store, snapshot=snapshot, operator_paths=paths, test_profile=test_profile, stage_c=stage_c)
+    if scope is not None and candidate.workspace_identity.digest != scope[1]:
+        raise ApprovalError(code="WORKSPACE_IDENTITY_CHANGED")
 
     # Display the effective configuration for operator review.
     _display_candidate(candidate)
@@ -584,7 +648,11 @@ def _cmd_approve(
         _initialize_stage_c_ledger(candidate)
 
     if mode == "durable":
-        store.write_durable(record)
+        if scope is None:
+            store.write_durable(record)
+        else:
+            receipt, _ = scope
+            store.publish_durable_if_absent(record, candidate.workspace_state.legacy_v2_digest, lambda intent: intent.persist(receipt))
         print(f"optimus-trust: durable approval written (id: {record.approval_id})")
         return 0
 

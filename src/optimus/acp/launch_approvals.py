@@ -16,12 +16,14 @@ import getpass
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
+import tempfile
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -604,6 +606,74 @@ def _manifest_metadata(record: ApprovalRecord) -> tuple[str, str | None]:
 # --- Keyring Approval Store ---
 
 
+@dataclass(frozen=True, slots=True)
+class DurableWriteIntent:
+    """Authenticated receipt for one exclusive durable publication."""
+
+    workspace_digest: str
+    legacy_digest: str
+    approval_id: str
+    record_digest: str
+    generation: str | None
+    part_digests: tuple[str, ...]
+    signature: str
+
+    def persist(self, path: Path) -> None:
+        """Flush the receipt and publish it exclusively before keyring mutation."""
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(_canonical_json(asdict(self)).encode())
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.link(temporary, path)
+            # On Windows, flush the linked file by its final name as well.
+            with path.open("r+b") as stream:
+                os.fsync(stream.fileno())
+            if os.name != "nt":
+                directory = os.open(path.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+        except OSError as exc:
+            raise ApprovalError(code="APPROVAL_INTENT_WRITE_FAILED") from exc
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    @classmethod
+    def read(cls, path: Path) -> DurableWriteIntent:
+        try:
+            with path.open("rb") as stream:
+                data = json.loads(stream.read(4097))
+            if len(data) != 7 or type(data["part_digests"]) is not list:
+                raise ValueError
+            intent = cls(**{**data, "part_digests": tuple(data["part_digests"])})
+            if not all(re.fullmatch(r"[0-9a-f]{64}", value) for value in (
+                intent.workspace_digest, intent.legacy_digest, intent.record_digest, intent.signature, *intent.part_digests
+            )) or not re.fullmatch(r"appr_[0-9a-f]{24}", intent.approval_id):
+                raise ValueError
+            if intent.generation is None:
+                if intent.part_digests:
+                    raise ValueError
+            elif not _GENERATION_RE.fullmatch(intent.generation) or len(intent.part_digests) != _MAX_PARTS:
+                raise ValueError
+        except (KeyError, OSError, TypeError, ValueError) as exc:
+            raise ApprovalError(code="APPROVAL_INTENT_INVALID") from exc
+        return intent
+
+
+def _record_digest(serialized: str) -> str:
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def _part_payloads(serialized: str) -> tuple[str, str]:
+    middle = len(serialized) // 2
+    return serialized[:middle], serialized[middle:]
+
+
 class KeyringApprovalStore:
     """Manages approval records in the OS keyring with HMAC integrity.
 
@@ -618,10 +688,32 @@ class KeyringApprovalStore:
         keyring_backend: Any,
         runtime_root: Path,
         hmac_key: bytes | None = None,
+        existing_only: bool = False,
     ) -> None:
         self._keyring = keyring_backend
         self._runtime_root = runtime_root
-        self._hmac_key = hmac_key or self._ensure_hmac_key()
+        self._existing_only = existing_only
+        self._hmac_key = self._read_existing_key() if existing_only else hmac_key or self._ensure_hmac_key()
+
+    @classmethod
+    def open_existing(cls, *, keyring_backend: Any, runtime_root: Path) -> KeyringApprovalStore:
+        return cls(keyring_backend=keyring_backend, runtime_root=runtime_root, existing_only=True)
+
+    def _read_existing_key(self) -> bytes:
+        raw = self._get(_HMAC_KEY_ENTRY)
+        if raw is None:
+            raise ApprovalError(code="HMAC_KEY_MISSING")
+        try:
+            key = base64.b64decode(raw, altchars=b"-_", validate=True)
+        except ValueError as exc:
+            raise ApprovalError(code="HMAC_KEY_INVALID") from exc
+        if len(key) != 32:
+            raise ApprovalError(code="HMAC_KEY_INVALID")
+        return key
+
+    def _check_scoped_key(self) -> None:
+        if self._existing_only and not hmac.compare_digest(self._read_existing_key(), self._hmac_key):
+            raise ApprovalError(code="HMAC_KEY_CHANGED")
 
     @property
     def hmac_key(self) -> bytes:
@@ -661,6 +753,108 @@ class KeyringApprovalStore:
         if loaded.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
             raise ApprovalError(code="POLICY_MISMATCH")
         return loaded
+
+    def _require_empty_durable(self, workspace_digest: str, legacy_digest: str) -> None:
+        if any(self._get(f"durable:{digest}") is not None for digest in (workspace_digest, legacy_digest)):
+            raise ApprovalError(code="APPROVAL_ALREADY_EXISTS")
+
+    def require_empty_durable(self, workspace_digest: str, legacy_digest: str) -> None:
+        with self._service_lock():
+            self._check_scoped_key()
+            self._require_empty_durable(workspace_digest, legacy_digest)
+
+    @staticmethod
+    def _require_exact_record(record: ApprovalRecord, workspace_digest: str, approval_id: str) -> None:
+        if record.workspace_digest != workspace_digest or record.approval_id != approval_id:
+            raise ApprovalError(code="APPROVAL_ID_MISMATCH")
+        if record.policy_compatibility != LAUNCH_POLICY_COMPATIBILITY:
+            raise ApprovalError(code="POLICY_MISMATCH")
+        if (
+            record.mode != "durable" or record.migration_provenance is not None or record.consumed
+            or record.expires_at is not None or record.schema_version != APPROVAL_SCHEMA_VERSION
+            or record.identity_format_version != 3
+        ):
+            raise ApprovalError(code="APPROVAL_NOT_EXACT_DURABLE")
+
+    def read_exact_durable(
+        self, workspace_digest: str, legacy_digest: str, approval_id: str, record_digest: str | None = None,
+    ) -> ApprovalRecord:
+        with self._service_lock():
+            self._check_scoped_key()
+            if self._get(f"durable:{legacy_digest}") is not None:
+                raise ApprovalError(code="LEGACY_APPROVAL_PRESENT")
+            record = self._load(f"durable:{workspace_digest}")
+            if record is None:
+                raise ApprovalError(code="NO_APPROVAL")
+            self._require_exact_record(record, workspace_digest, approval_id)
+            if record_digest is not None and _record_digest(serialize_approval_record(record)) != record_digest:
+                raise ApprovalError(code="APPROVAL_RECORD_MISMATCH")
+            return record
+
+    def _intent_signature(self, intent: DurableWriteIntent) -> str:
+        values = asdict(intent)
+        del values["signature"]
+        return hmac.new(self._hmac_key, b"optimus-scoped-durable-intent-v1\0" + _canonical_json(values).encode(), hashlib.sha256).hexdigest()
+
+    def publish_durable_if_absent(
+        self, record: ApprovalRecord, legacy_digest: str, persist_intent: Callable[[DurableWriteIntent], None],
+    ) -> DurableWriteIntent:
+        self._require_exact_record(record, record.workspace_digest, record.approval_id)
+        serialized = _policy_serialization(record)
+        generation = secrets.token_hex(16) if _utf16_len(serialized) > MAX_KEYRING_VALUE_UTF16_BYTES else None
+        part_digests = tuple(_record_digest(part) for part in _part_payloads(serialized)) if generation else ()
+        intent = DurableWriteIntent(
+            record.workspace_digest, legacy_digest, record.approval_id, _record_digest(serialized), generation, part_digests, ""
+        )
+        intent = replace(intent, signature=self._intent_signature(intent))
+        key = f"durable:{intent.workspace_digest}"
+        with self._service_lock():
+            self._check_scoped_key()
+            self._require_empty_durable(intent.workspace_digest, intent.legacy_digest)
+            if generation and any(self._get(_part_key(key, generation, i)) is not None for i in range(_MAX_PARTS)):
+                raise ApprovalError(code="APPROVAL_PART_CONFLICT")
+            persist_intent(intent)
+            self._publish(key, record, generation=generation)
+        return intent
+
+    def verify_intent(self, intent: DurableWriteIntent) -> None:
+        if not hmac.compare_digest(self._intent_signature(intent), intent.signature):
+            raise ApprovalError(code="APPROVAL_INTENT_INVALID")
+
+    def revoke_exact_durable(self, intent: DurableWriteIntent) -> bool:
+        key = f"durable:{intent.workspace_digest}"
+        with self._service_lock():
+            self._check_scoped_key()
+            self.verify_intent(intent)
+            if self._get(f"durable:{intent.legacy_digest}") is not None:
+                raise ApprovalError(code="LEGACY_APPROVAL_PRESENT")
+            published = self._get(key)
+            if published is not None:
+                manifest = _parse_manifest(published, publication_key=key, hmac_key=self._hmac_key)
+                if manifest is None:
+                    record = _deserialize_approval_record(published, hmac_key=self._hmac_key)
+                    self._require_exact_record(record, intent.workspace_digest, intent.approval_id)
+                    if intent.generation is not None or _record_digest(published) != intent.record_digest:
+                        raise ApprovalError(code="APPROVAL_RECORD_MISMATCH")
+                elif (
+                    manifest.generation != intent.generation or manifest.payload_sha256 != intent.record_digest
+                    or manifest.workspace_digest != intent.workspace_digest or manifest.legacy_source_digest is not None
+                ):
+                    raise ApprovalError(code="APPROVAL_RECORD_MISMATCH")
+            parts = []
+            if intent.generation is not None:
+                for index, digest in enumerate(intent.part_digests):
+                    name = _part_key(key, intent.generation, index)
+                    value = self._get(name)
+                    if value is not None:
+                        if _record_digest(value) != digest:
+                            raise ApprovalError(code="APPROVAL_PART_CONFLICT")
+                        parts.append(name)
+            if published is not None:
+                self._delete(key)
+            for part in parts:
+                self._delete(part)
+            return published is not None or bool(parts)
 
     def write_durable(self, record: ApprovalRecord) -> None:
         """Write a durable approval record.
@@ -747,7 +941,7 @@ class KeyringApprovalStore:
             raise ApprovalError(code="RECORD_CORRUPT", detail="approval record exceeds the size limit")
         return payload, manifest
 
-    def _publish(self, key: str, record: ApprovalRecord) -> str:
+    def _publish(self, key: str, record: ApprovalRecord, *, generation: str | None = None) -> str:
         """Publish a record at `key` and return its canonical JSON.
 
         A record that fits one keyring value is stored inline, as before #433. A larger one is written as two
@@ -758,9 +952,8 @@ class KeyringApprovalStore:
         serialized = _policy_serialization(record)
         value, parts = serialized, {}
         if _utf16_len(serialized) > MAX_KEYRING_VALUE_UTF16_BYTES:
-            generation = secrets.token_hex(16)
-            middle = len(serialized) // 2
-            chunks = (serialized[:middle], serialized[middle:])
+            generation = generation or secrets.token_hex(16)
+            chunks = _part_payloads(serialized)
             parts = {_part_key(key, generation, index): chunk for index, chunk in enumerate(chunks)}
             workspace_digest, legacy_source_digest = _manifest_metadata(record)
             body: dict[str, object] = {

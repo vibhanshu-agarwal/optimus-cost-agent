@@ -931,6 +931,47 @@ def test_openrouter_provider_key_reaches_gateway_child_but_not_agent_settings(mo
     assert "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET" not in agent_environ_seen
 
 
+@pytest.mark.parametrize("case,reason", [
+    ("id", "APPROVAL_ID_MISMATCH"), ("digest", "APPROVAL_RECORD_MISMATCH"), ("snapshot", "effective configuration changed"),
+    ("workspace", "no launch approval"), ("no-key", "HMAC_KEY_MISSING"), ("legacy", "LEGACY_APPROVAL_PRESENT"),
+])
+def test_scoped_child_refuses_before_audit_or_startup(monkeypatch, tmp_path, capsys, case, reason):
+    from optimus.acp.launch_approvals import KeyringApprovalStore, serialize_approval_record
+    from optimus.acp.trusted_paths import resolve_workspace_security_state
+    from tools.evidence_gather_support.plan117_current_client_contract import sha256_hex
+
+    _authorize(monkeypatch, tmp_path, _base_env())
+    ring = acp_main.keyring
+    store = KeyringApprovalStore(keyring_backend=ring, runtime_root=tmp_path / ".approval-lock")
+    state = resolve_workspace_security_state(tmp_path)
+    record = store.read_durable(state.identity.digest)
+    approval_id = record.approval_id
+    digest = sha256_hex(serialize_approval_record(record).encode())
+    workspace = tmp_path
+    if case == "id":
+        approval_id = "appr_" + "b" * 24
+    elif case == "digest":
+        digest = "b" * 64
+    elif case == "snapshot":
+        monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "http://127.0.0.1:8766")
+    elif case == "workspace":
+        workspace = tmp_path / "other"
+        (workspace / ".optimus").mkdir(parents=True)
+    elif case == "no-key":
+        monkeypatch.setattr(acp_main, "keyring", FakeKeyring())
+    elif case == "legacy":
+        ring.set_password(store._service_name, f"durable:{state.legacy_v2_digest}", serialize_approval_record(record))
+    sinks = _side_effect_sinks(monkeypatch)
+    events = []
+    monkeypatch.setattr(acp_main, "append_launch_audit_event", lambda *args, **kwargs: events.append(args))
+    before = acp_main.keyring._store.copy()
+    result = acp_main.main(["--workspace-root", str(workspace), "--expected-durable-approval", f"{approval_id}:{digest}", "--no-auto-start"])
+    assert result == 2
+    assert reason.lower() in capsys.readouterr().err.lower()
+    assert not events and not any(sinks.values())
+    assert acp_main.keyring._store == before
+
+
 def test_audit_event_appended_before_redis_or_gateway_startup(monkeypatch, tmp_path) -> None:
     """Plan 9.96, Task 5 Step 6: the LaunchAuditEvent must be appended
     BEFORE any Redis/Gateway/agent startup side effect."""
