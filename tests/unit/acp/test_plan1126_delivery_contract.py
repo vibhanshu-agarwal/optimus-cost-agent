@@ -1324,6 +1324,31 @@ def test_h4_verifier_preserves_record_level_human_review_fields(tmp_path: Path) 
     assert verified.evidence_records[0].reviewer_status.value == "ACCEPTED"
 
 
+def test_h4_verifier_rejects_mechanical_record_drift_without_binding(tmp_path: Path) -> None:
+    delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
+    cli = importlib.import_module("tools.run_plan1126_runtime_audit")
+    payload = delivery_module.build_h4_audit_artifact(
+        replay=_sealed_replay(),
+        merged=_baseline(_MERGED),
+        overlay=_overlay_baseline(),
+        merged_commit=_MERGED,
+        overlay_commit=_OVERLAY,
+    ).to_dict()
+    canonical_path = tmp_path / "h4-canonical.json"
+    canonical_path.write_text(json.dumps(payload), encoding="utf-8")
+    cli._verify_artifact(str(canonical_path))
+
+    payload["evidence_records"][0]["commands"][0] = "python -m fixture_h4_record_mutation"
+    schema_path = cli._SCHEMA_PATHS_BY_ENVELOPE[payload["schema_version"]]
+    Draft202012Validator(json.loads(schema_path.read_text(encoding="utf-8"))).validate(payload)
+    AuditArtifact.from_dict(payload)
+
+    mutated_path = tmp_path / "h4-mechanical-record-drift.json"
+    mutated_path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(ValueError, match="^H4 evidence record does not match immutable-source rebuild$"):
+        cli._verify_artifact(str(mutated_path))
+
+
 def test_h4_verifier_rejects_generated_finding_ruling_drift(tmp_path: Path) -> None:
     delivery_module = importlib.import_module("tools.plan1126_runtime_audit.delivery")
     payload = delivery_module.build_h4_audit_artifact(
