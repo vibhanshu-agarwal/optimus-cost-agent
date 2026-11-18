@@ -740,8 +740,23 @@ def test_an_item_whose_file_changed_needs_reverification_and_is_not_served(tmp_p
     assert commands.served().reverify == ((pinned[0], 2, "config.py"),)  # a pinned file that is gone also needs re-verification
 
 
+def test_a_pinned_file_the_policy_now_ignores_needs_reverification(tmp_path: Path) -> None:
+    store = _adapter(purge_store(tmp_path)[0])
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "config.py").write_text("def parse_config():\n    pass\n", encoding="utf-8")
+    commands = _workspace_commands(store, workspace)
+    pinned = _remembered(commands, "parse_config lives in config.py.")
+    assert [item.item for item in commands.served().items] == [pinned[0]]
+    (workspace / ".gitignore").write_text("config.py\n", encoding="utf-8")  # unchanged bytes, but no longer readable as an anchor
+    served = commands.served()
+    assert served.items == () and served.reverify == ((pinned[0], 1, "config.py"),)
+    (workspace / ".gitignore").unlink()
+    assert [item.item for item in commands.served().items] == [pinned[0]]  # each turn reads the ignore files afresh
+
+
 @pytest.mark.parametrize("named", ["../outside.py", "src/../../outside.py", ".git/config", ".GIT/config",
-                                   ".optimus/memory-recovery/x.json", "missing.py", "nofile"])
+                                   ".optimus/memory-recovery/x.json", "missing.py", "nofile", ".env", "ignored.py", "blank.py"])
 def test_only_existing_workspace_files_are_pinned(tmp_path: Path, named: str) -> None:
     from optimus.context import memory_serving
 
@@ -751,6 +766,10 @@ def test_only_existing_workspace_files_are_pinned(tmp_path: Path, named: str) ->
     (workspace / ".optimus" / "memory-recovery").mkdir(parents=True)
     (workspace / ".optimus" / "memory-recovery" / "x.json").write_text("{}", encoding="utf-8")
     (tmp_path / "outside.py").write_text("x", encoding="utf-8")
+    (workspace / ".env").write_text("TOKEN=x\n", encoding="utf-8")  # a secret file: denied by the policy
+    (workspace / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
+    (workspace / "ignored.py").write_text("x", encoding="utf-8")
+    (workspace / "blank.py").write_text("", encoding="utf-8")
     assert memory_serving.file_refs(f"The rule is in {named}.", workspace) == ()
     (workspace / "app.py").write_text("x", encoding="utf-8")
     (ref,) = memory_serving.file_refs("The rule is in app.py.", workspace)

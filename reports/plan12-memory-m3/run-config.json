@@ -784,6 +784,13 @@
       "lesson": "Squash commits before merging."
      }
     ]
+   },
+   "control": {
+    "steps": {
+     "2": [
+      "off_arrival"
+     ]
+    }
    }
   },
   "M15-b-D10": {

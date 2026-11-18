@@ -616,11 +616,15 @@ class Recovery:
                                 "mapping is chosen for you. Nothing was changed.")
         return chosen.project
 
-    def restore(self, name: str, *, seal: str, directory: Path | None = None, source: str | None = None) -> dict[str, Any]:
+    def restore(self, name: str, *, seal: str, directory: Path | None = None, source: str | None = None,
+                workspace: Path | None = None) -> dict[str, Any]:
         """Restore exactly the generation the user confirmed (its seal must match: Codex CP3 review 1, finding 3) into the empty
-        store, after checking its registry mapping is this project's current one. The Gateway verifies every entry, the seal
-        over the entries and the metadata, refuses a project holding anything, applies the deletion journal and this host's
-        later deletions, and publishes only on the last batch."""
+        store, after checking its registry mapping is this project's current one. Then, before anything is written, each restored
+        live item's pinned files are validated in `workspace` (plan v5 Recovery: "validate anchors"; Codex CP4 review 2, F8);
+        the reply's `anchors` says which hold and which need re-verification. An item whose pin no longer holds is still restored:
+        serving keeps it out until the user edits it. The Gateway verifies every entry, the seal over the entries and the
+        metadata, refuses a project holding anything, applies the deletion journal and this host's later deletions, and publishes
+        only on the last batch."""
         if source is not None and (directory is None or self.mapping_source(name, directory.parent) != source):  # rechecked now
             raise RecoveryError("RECOVERY_MAPPING_REJECTED", "Not restored: the mapping you confirmed no longer holds. Nothing was changed.")
         manifest, entries = (read_generation(directory, source or self._store.project) if directory is not None
@@ -636,6 +640,7 @@ class Recovery:
             raise RecoveryError("RECOVERY_MAPPING_MISMATCH", "That copy was written for another workspace's registration; nothing was restored.")
         known = self._state.load()
         withdrawn, purged = sorted(set(known.withdrawn)), sorted(set(known.purged))
+        held, changed = check_anchors(entries, workspace, excluded=set(withdrawn) | set(purged))
         batches = [entries[n:n + BATCH] for n in range(0, len(entries), BATCH)] or [[]]
         if len(batches[-1]) == BATCH:
             batches.append([])
@@ -656,7 +661,7 @@ class Recovery:
             if source is not None:
                 state.mapped_from = source
         self._state.update(change)
-        return reply
+        return {**reply, "anchors": {"held": held, "changed": changed}}
 
     # --- what `/memory` says -------------------------------------------------------------------------------------------
 
@@ -727,8 +732,36 @@ class RegistryRecovery:
         state = self._state_for(project)
         state.update(lambda s: setattr(s, "held_memory", True))
         recovery = Recovery(store, state, registry=lambda: snapshot)
-        reply = recovery.restore(name, seal=seal, directory=location(self.workspace) / name)
+        reply = recovery.restore(name, seal=seal, directory=location(self.workspace) / name, workspace=self.workspace)
         return f"Restored the project registry and {reply.get('restored', 0)} items from `{name}`."
+
+
+def check_anchors(entries: list[dict[str, Any]], workspace: Path | None, *,
+                  excluded: set[str]) -> tuple[list[list[Any]], list[list[Any]]]:
+    """Each live item's newest restored version that rests on workspace files (`file:` lineage), checked now in `workspace`
+    through the anchor file policy: ([item, version] whose files hold, [item, version, path] whose file changed, is gone or is no
+    longer readable as an anchor). Items this host already withdrew or purged are not checked: they will not be served."""
+    from optimus.context import memory_serving
+    from optimus.guardrails.file_policy import FilePolicy
+
+    newest: dict[str, dict[str, Any]] = {}
+    for entry in (shaped["entry"] for shaped in entries):
+        if entry["item"] not in newest or entry["version"] > newest[entry["item"]]["version"]:
+            newest[entry["item"]] = entry
+    policy = FilePolicy(workspace) if workspace is not None else None
+    held: list[list[Any]] = []
+    changed: list[list[Any]] = []
+    for item, entry in sorted(newest.items()):
+        lineage = entry.get("lineage") or ()
+        if item in excluded or entry.get("status") not in ("active", "reverify") or not any(
+                ref.startswith(memory_serving.FILE_PREFIX) for ref in lineage):
+            continue
+        path = memory_serving.changed_file(lineage, workspace, policy)
+        if path is None:
+            held.append([item, entry["version"]])
+        else:
+            changed.append([item, entry["version"], path])
+    return held, changed
 
 
 class Scheduler:

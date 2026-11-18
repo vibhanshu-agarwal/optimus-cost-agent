@@ -142,7 +142,7 @@ def test_an_optional_agent_lesson_needs_complete_inside_lineage() -> None:
     (good,) = _agent(["ev-1"], work)
     decision = memory_gate.admit(good.candidate, good.verdict)
     assert (decision.outcome, decision.reason, decision.draft.trust, decision.draft.lineage) == ("append", "ADMITTED", "agent-derived", ("ev-1",))  # type: ignore[union-attr]
-    for refs in (["ev-1", "ev-9"], []):  # an evidence id the host never issued, nothing cited
+    for refs in (["ev-1", "ev-9"], [], ["ev-3"]):  # an evidence id the host never issued, nothing cited, only what a read showed
         (candidate,) = _agent(refs, work)
         assert memory_gate.admit(candidate.candidate, candidate.verdict).reason == "LINEAGE_UNRESOLVED"
     assert _agent(["ev-1"], work, kind="preference") == []  # an agent never proposes a user kind

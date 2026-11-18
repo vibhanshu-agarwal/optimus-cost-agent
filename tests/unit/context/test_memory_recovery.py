@@ -719,6 +719,35 @@ def test_an_earlier_registration_s_copy_is_mapped_into_this_project_only_on_conf
     assert new.items() == before and new.items()[gone[0]][2:] == ("purged", "")
     assert [item.item for item in new.commands.served().items] == [indent[0]]  # its pinned file holds here: served
     assert new.recovery.state().mapped_from == "u-alpha-old"
+    text = answer.text  # in the order the restore did them: mapping, pins, deletions
+    assert text.index("is mapped to this one") < text.index(f"Pinned files hold for `{indent[0]}@1`") < text.index("stay deleted")
+
+
+@pytest.mark.parametrize("change", ["edited", "ignored"])
+def test_a_restore_validates_each_pin_before_it_writes_and_reports_what_no_longer_holds(
+        tmp_path: Path, repo: Path, change: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    (repo / ".editorconfig").write_text("indent_style = tab\n", encoding="utf-8")
+    old = _earlier(tmp_path, repo, "u-alpha-old")
+    indent = old.remember("Use tabs for indentation, as .editorconfig says.")
+    old.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    if change == "edited":
+        (repo / ".editorconfig").write_text("indent_style = space\n", encoding="utf-8")
+    else:  # unchanged bytes, but no longer a file an anchor may read
+        (repo / ".gitignore").write_text(".editorconfig\n", encoding="utf-8")
+    new = _Host(tmp_path, repo, Server(), project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}))
+    order: list[str] = []
+    check, call = mr.check_anchors, new.store.call
+    monkeypatch.setattr(mr, "check_anchors", lambda *a, **k: order.append("anchors") or check(*a, **k))
+    monkeypatch.setattr(new.store, "call", lambda op, **body: order.append(op) or call(op, **body))
+    question = new.commands.run(mc.parse_command(f"/memory restore {generation.name} --map", attachments=False), block="b")
+    answer = new.commands.confirmed(question.confirm)
+    assert f"`{indent[0]}@1` needs re-verification: `.editorconfig` changed" in answer.text, answer.text
+    assert "Pinned files hold" not in answer.text
+    assert order.index("anchors") < order.index("restore")  # validated before anything is written
+    assert new.items()[indent[0]][2] == "active"  # still restored: nothing the user saved is dropped
+    served = new.commands.served()
+    assert served.items == () and served.reverify == ((indent[0], 1, ".editorconfig"),)
 
 
 @pytest.mark.parametrize("later", ["withdraw", "purge"])

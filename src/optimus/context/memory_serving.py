@@ -11,8 +11,11 @@ served is obsolete. Nothing the model writes can add to the served set.
 
 An item's lineage can also carry host conditions (Plan 12.11 Task 5). `branch:<name>` limits it to that branch.
 `file:<path>@<digest>` names a workspace file it rests on, as that file was when the item was saved. An item limited to another
-branch is not served here. An item whose file changed or is gone needs re-verification and is not served until the user edits
-it. Both are checked now, at serving, and never stored as a status.
+branch is not served here. An item whose file changed, is gone, or is no longer one the includable-files policy lets an anchor
+read (ignored since, or denied) needs re-verification and is not served until the user edits it. Files are pinned and
+re-checked only through that policy (ADR-031, `FilePurpose.ANCHOR`), so a secret, an ignored file, Git's or Optimus's own
+tree, or a target outside the workspace is never pinned. Both conditions are checked now, at serving, and never stored as a
+status.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from context_engine.memory_contracts import ServedMemory
+from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 
 MAX_OPTIONAL: Final = 3  # optional agent memories per turn (plan v5, Serving: initially three)
 MAX_PROTECTED: Final = 50  # user items served; beyond this the block says how many it could not hold
@@ -42,7 +46,6 @@ MAX_FILE_REFS: Final = 8
 MAX_HASHED_BYTES: Final = 4 * 1024 * 1024  # a larger file is not pinned: hashing it at every turn would cost too much
 _PATH_WORD: Final = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")  # a leading dot: `.editorconfig` is a file too
 _REFERENCE: Final = re.compile(r"[A-Za-z0-9._:@/-]{1,128}")  # the contracts' host-reference form
-_UNPINNED: Final = (".git", ".optimus")  # Git's own files and Optimus's runtime tree are never evidence
 
 
 @dataclass(frozen=True)
@@ -79,43 +82,28 @@ def select(served: Iterable[ServedMemory], *, complete: bool = True, reverify: t
                      max(0, len(protected) - MAX_PROTECTED), complete, reverify, elsewhere)
 
 
-def _digest(path: Path) -> str | None:
-    try:
-        if not path.is_file() or path.stat().st_size > MAX_HASHED_BYTES:
-            return None
-        return hashlib.sha256(path.read_bytes()).hexdigest()[:32]
-    except OSError:
+def _digest(policy: FilePolicy, relative: str) -> str | None:
+    """The digest of a workspace file an anchor may read, through the validated handle the policy opens. None for anything
+    the policy refuses (outside the workspace, a secret, a skipped or runtime tree, ignored, empty, binary or gone) and for a
+    file larger than MAX_HASHED_BYTES."""
+    decision, content = policy.read(relative, purpose=FilePurpose.ANCHOR)
+    if not decision.allowed or content is None or len(content) > MAX_HASHED_BYTES:
         return None
-
-
-def _inside(root: Path, relative: str) -> Path | None:
-    """The workspace file `relative` names. None for anything outside the workspace (`..`, an absolute path, a link out) or
-    inside Git's or Optimus's own trees."""
-    if relative.startswith("/") or ".." in relative.split("/"):
-        return None
-    try:
-        base = root.resolve()
-        path = (base / relative).resolve()
-        parts = path.relative_to(base).parts
-    except (OSError, ValueError):
-        return None
-    if not parts or parts[0].lower() in _UNPINNED:
-        return None
-    return path
+    return hashlib.sha256(content).hexdigest()[:32]
 
 
 def file_refs(statement: str, root: Path | None) -> tuple[str, ...]:
     """The workspace files a statement names (`config.py`, `src/app.py`), each pinned as `file:<path>@<digest>` of its bytes
-    now. A word that is not an existing file inside the workspace pins nothing."""
+    now. A word that is not a file the policy lets an anchor read pins nothing."""
     if root is None:
         return ()
+    policy = FilePolicy(root)
     refs: list[str] = []
     for word in _PATH_WORD.findall(statement):
         relative = word.rstrip(".")
         if "." not in relative and "/" not in relative:
             continue
-        path = _inside(root, relative)
-        digest = _digest(path) if path is not None else None
+        digest = _digest(policy, relative)
         reference = f"{FILE_PREFIX}{relative}@{digest}"
         if digest is not None and _REFERENCE.fullmatch(reference) and reference not in refs:
             refs.append(reference)
@@ -134,15 +122,18 @@ def branch_of(lineage: Iterable[str]) -> str | None:
     return next((ref[len(BRANCH_PREFIX):] for ref in lineage if ref.startswith(BRANCH_PREFIX)), None)
 
 
-def changed_file(lineage: Iterable[str], root: Path | None) -> str | None:
-    """The first pinned file that is no longer as it was saved (changed, gone or outside the workspace), or None when all hold.
-    Without a workspace nothing can be checked, so a pinned item counts as changed."""
+def changed_file(lineage: Iterable[str], root: Path | None, policy: FilePolicy | None = None) -> str | None:
+    """The first pinned file that is no longer as it was saved (changed, gone, or no longer readable as an anchor under the
+    policy), or None when all hold. Without a workspace nothing can be checked, so a pinned item counts as changed. `policy`
+    lets one turn's checks share one reading of the ignore files."""
     for ref in lineage:
         if not ref.startswith(FILE_PREFIX):
             continue
         relative, _, digest = ref[len(FILE_PREFIX):].rpartition("@")
-        path = _inside(root, relative) if root is not None else None
-        if path is None or _digest(path) != digest:
+        if root is None:
+            return relative
+        policy = policy or FilePolicy(root)
+        if _digest(policy, relative) != digest:
             return relative
     return None
 
@@ -155,6 +146,7 @@ def from_store(store: Any, scope: str, *, root: Path | None = None, branch: str 
     found: list[ServedMemory] = []
     reverify: list[tuple[str, int, str]] = []
     elsewhere: list[tuple[str, int, str]] = []
+    policy = FilePolicy(root) if root is not None else None  # read afresh each turn: an ignore file may have changed
     cursor: str | None = None
     for _ in range(MAX_PAGES):
         rows, cursor = store.items(scope, limit=100, cursor=cursor)
@@ -168,7 +160,7 @@ def from_store(store: Any, scope: str, *, root: Path | None = None, branch: str 
             if limited is not None and limited != branch:
                 elsewhere.append((state.item, state.version, limited))
                 continue
-            changed = changed_file(state.lineage, root)
+            changed = changed_file(state.lineage, root, policy)
             if changed is not None:
                 reverify.append((state.item, state.version, changed))
                 continue

@@ -528,7 +528,9 @@ def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, 
 def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, work: CompletedWork, trusted: bool,
                      sanitize: Callable[[str], str], sources: Sequence[str] | None, keyed: Callable[[str], str] = digest) -> list[Candidate]:
     """Each proposal as an optional agent-derived candidate. Lineage is complete only when every cited reference is evidence the
-    host issued for this work and none of it came from outside (a document's or a tool's directive goes off)."""
+    host issued for this work, at least one of them is new evidence of the work's outcome (a check or a command that ran), and
+    none of it came from outside (a document's or a tool's directive goes off). A lesson resting only on what a read or an edit
+    showed is that text's claim, not a lesson the work proved (Codex CP4 review 2, F5: M05-a), so it goes off too."""
     issued = {item.ref: item for item in work.evidence}
     out = []
     for proposal in proposals:
@@ -539,7 +541,8 @@ def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str,
         # the model chose to cite, so nothing it learned is vouched for.
         tainted = any(item.external or item.kind in _TAINTING for item in work.evidence)
         whole = len(proposal.statement) <= MAX_STATEMENT_CHARS  # a clipped lesson may have lost its condition
-        complete = bool(cited) and all(item is not None for item in cited) and not tainted and whole
+        proven = any(item is not None and item.kind in _NEW_EVIDENCE for item in cited)
+        complete = bool(cited) and all(item is not None for item in cited) and proven and not tainted and whole
         key = keyed(f"agent\0{project}\0{scope}\0{proposal.statement}\0{','.join(sorted(proposal.evidence))}")
         evidence = tuple(ref for ref in proposal.evidence if ref in issued)
         try:

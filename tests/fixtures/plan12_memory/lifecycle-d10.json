@@ -1,5 +1,6 @@
 {
  "schema": "plan12-memory-fixtures/1",
+ "base": "tests/fixtures/plan12_memory/lifecycle.json",
  "decision": {
   "path": "docs/decisions/ADR-044-explicit-user-actions-for-user-memory.md",
   "sha256": "hex:debf502e410ba4dbf467e2ca2cfbeebcb8b184f335e2144c471d1265fa342168",

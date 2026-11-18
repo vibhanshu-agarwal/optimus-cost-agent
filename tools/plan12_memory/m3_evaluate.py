@@ -3,22 +3,27 @@
 
 Each case is driven through the production host: the real ACP adapter, the host memory commands, the launch's own extractor
 factory and the Gateway's memory handler on the released test store (`p1211-cp4-test-redis`). Its trace is built only from what
-that run observably did, never from the case's expectations:
+that run observably did, never from the case's expectations, and every observation is recorded at its own boundary, in the
+order it happened (Codex CP4 review 2, F3):
 
-- the store's own event stream: every append, with its action, trust, status and version, and each item's version history;
-- the Gateway's commit result for each append, as the host received it (durably confirmed or not);
-- the host's memory cards on the ACP channel (`memory/<event_id>`): the headline and citation;
-- the memory block each model turn was served, and the items left out with their reason;
-- checkpoints, the welcome brief, command answers and recovery replies, read from the host's own output.
+- each Gateway request and its reply, at the host's store client: an append's commit result is bound to its project, request
+  and event (F2), and the store's event stream is read right after each reply, so each entry is placed after the request that
+  wrote it;
+- each memory card and answer the host sends on its ACP channel, as it is sent (a card that cannot be sent, and whether the
+  project's durable backlog kept it), and each permission request the host makes;
+- the serving decision the host made for each turn (`MemoryCommands.served`), and the block each model request carried;
+- each extraction call the stand-in received, and each outcome the extractor reported (skips and refusals included).
 
-One fixed table (`EVENT_OF`) turns those observations into the grader's event names. A needed name the run cannot observe goes
-into `missing_coverage`, so the case cannot pass. The models are local stand-ins with zero paid calls: answer quality and
-extraction quality stay with the released paid Zed sessions, so the answer layer is INCONCLUSIVE here by the grader's own rule.
+One fixed table (`EVENT_OF`) turns those observations into the grader's event names; every name in it has a detector here, so
+its absence was observed (F4). A needed name the run cannot observe goes into `missing_coverage`, as does anything the run did
+not exercise (a crash without real process loss: F6; earlier versions of an item it never saw: F7), so the case cannot pass.
+The models are local stand-ins with zero paid calls: the answer layer, and retrieval of evidence, stay with the released paid
+Zed sessions.
 
 Case inputs are natural-language scenarios. A user input is said as written. Every other input names, in the run config, the one
-real operation that carries it out (`OPS`): a paused store, a dropped card, a changed file, a killed host, a git rebase, a clock
-shift, the agent's completed work, a lost store volume. Case keys (`pref-indent`) name the item a given case input created, as
-the run config declares; a `{key}` or `{key@v}` in a command is the id (and current version) the user would read in `/memory`.
+real operation that carries it out (`OPS`): a paused store, a dropped card, a changed file, a git rebase, a clock shift, the
+agent's completed work, a lost store volume. Case keys (`pref-indent`) name the item a given case input created, as the run
+config declares; a `{key}` or `{key@v}` in a command is the id (and current version) the user would read in `/memory`.
 """
 
 from __future__ import annotations
@@ -26,12 +31,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import traceback
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -46,7 +53,7 @@ from pydantic import SecretStr
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.context.maintenance import SummarizerAttempt, SummarizerResponse
-from optimus.context.memory_extraction import CompletedWork, Evidence, TurnInput, UserBlock, extractor_factory
+from optimus.context.memory_extraction import AGENT_PURPOSE, CompletedWork, Evidence, TurnInput, UserBlock, extractor_factory
 from optimus.runtime.modes import ExecutionMode
 from optimus_gateway import memory_store
 from tools.plan12_memory.contracts import (
@@ -62,27 +69,34 @@ from tools.plan12_memory.evaluate import grade_trace
 
 SCHEMA = "plan12-memory-m3.qualification-run.v1"
 CARD = "memory/"
+_REAL_TIME = time.time
 # The fixed translation from an observation to the grader's event name. An observation of an item carries that item's case key.
 EVENT_OF: Mapping[str, str] = {
-    "commit.admit": "memory.committed",  # an append the store's commit result confirmed durable
+    "commit.admit": "memory.committed",  # the Gateway's confirmed result for this project's append of this event
     "commit.update": "memory.committed",
     "store.update": "memory.superseded",
     "store.withdraw": "memory.withdrawn",
     "store.tombstone": "memory.purged",
     "store.off": "memory.candidate.off",
     "store.off.archived": "memory.archived_overflow",
-    "store.off.conflict": "memory.conflict.off",
+    "store.off.conflict": "memory.conflict.off",  # an append with status conflicted
     "store.off.blocked": "memory.secret_refused",
+    "store.trust_changed": "memory.trust_changed",  # an item's append whose trust differs from its previous version's
+    "store.trust_promoted": "memory.trust_promoted",  # ... to the user's own trust
+    "store.pointer": "memory.pointer_only",
+    "store.body": "memory.body_persisted",  # a saved statement holds a workspace file's text
     "card.Remembered": "memory.notice.remembered",
     "card.Updated": "memory.notice.remembered",
-    "notice.unconfirmed": "memory.notice.unconfirmed",
-    "notice.backlogged": "memory.notice.backlogged",
+    "card.unconfirmed": "memory.notice.unconfirmed",
+    "card.backlogged": "memory.notice.backlogged",  # a card that could not be sent, which the project's durable backlog kept
     "answer.refused_secret": "memory.secret_refused",  # pragma: allowlist secret
     "answer.read_only": "memory.blocked_untrusted_workspace",
     "answer.switched_on": "memory.switched_on",
     "answer.switch_on_unavailable": "memory.switch_on_unavailable",
+    "host.prompt": "memory.prompt_user",  # a permission request the user's own command did not ask for
     "served": "memory.served",
     "served.reverify": "memory.reverify",
+    "served.expired": "memory.expired",  # a live item the serving decision left out with no stated reason
     "checkpoint": "checkpoint.written",
     "brief.first": "brief.shown.first_response",
     "brief.request": "brief.shown.on_request",
@@ -90,41 +104,51 @@ EVENT_OF: Mapping[str, str] = {
     "brief.rewritten": "continuation.baseline_rewritten",
     "restore.published": "restore.published",
     "restore.mapped": "restore.rekey_mapped",
-    "restore.tombstones": "restore.tombstones_applied",
+    "restore.unmapped": "restore.rekey_unmapped",  # a restore published into another project than the copy's, without a mapping
     "restore.anchor": "restore.anchor_mapped",
+    "restore.tombstones": "restore.tombstones_applied",
     "restore.rejected": "restore.mapping_rejected",
     "restore.held": "restore.held_unserved",
     "prompt.from_summary": "memory.extracted_from_summary",
-    "store.pointer": "memory.pointer_only",
-    "store.body": "memory.body_persisted",  # a saved statement holds a workspace file's text
 }
 # Names this harness can observe: when one is absent, the run observed its absence. Any other needed name is missing coverage.
-OBSERVABLE = frozenset(EVENT_OF.values()) | {"memory.trust_promoted", "memory.trust_changed", "memory.expired", "memory.prompt_user",
-                                              "restore.rekey_unmapped"}
+OBSERVABLE = frozenset(EVENT_OF.values())
 # Never observable here, with the owner of the evidence (plan v5 Evaluation): reported UNRUN, never PASS.
 UNRUN_EVENTS = {"memory.strength_faded": "#235 M6 (decay)", "memory.strength_raised": "#235 M6 (decay)"}
+# A decay case's own safety obligations stay with #490 (plan v5): these must not be seen however much time passes.
+SAFETY_EVENTS = ("memory.expired", "memory.trust_promoted", "memory.trust_changed")
+_LIVE = ("active", "reverify", "conflicted")
 
 
 @dataclass
 class Observation:
-    seq: int
-    kind: str  # an EVENT_OF key
+    seq: int  # the case input it belongs to
+    kind: str  # an EVENT_OF key, or a harness record (extraction calls and outcomes, restore pin results)
     item: str | None = None
     version: int | None = None
+    project: str | None = None
 
 
 @dataclass
 class Run:
-    """What one case's run observed, in order."""
+    """What one case's run observed, in the order it happened."""
 
     observations: list[Observation] = field(default_factory=list)
-    served: list[list[tuple[str, int]]] = field(default_factory=list)  # per model turn: (item, version) served
-    created_by: dict[str, int] = field(default_factory=dict)  # item -> the case input whose turn first appended it
+    served: list[list[tuple[str, int]]] = field(default_factory=list)  # per model request: (item, version) served
+    created_by: dict[tuple[str, str], int] = field(default_factory=dict)  # (project, item) -> the case input that first appended it
+    history: dict[tuple[str, str], dict[int, dict[str, Any]]] = field(default_factory=dict)  # (project, item) -> version -> entry seen
+    mapped: dict[str, str] = field(default_factory=dict)  # project -> the project a published restore mapped into it
+    outcomes: list[dict[str, Any]] = field(default_factory=list)  # each extraction outcome the extractor reported
+    calls: list[str] = field(default_factory=list)  # each extraction call the stand-in received: agent, user or summary
+    uncovered: list[str] = field(default_factory=list)  # what the run did not exercise, as missing coverage
     answers: list[str] = field(default_factory=list)
     steps: list[str] = field(default_factory=list)  # what each input did, for the report
+    seq: int = -1  # the case input being carried out
+    lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
-    def add(self, kind: str, item: str | None = None, version: int | None = None) -> None:
-        self.observations.append(Observation(len(self.observations), kind, item, version))
+    def add(self, kind: str, item: str | None = None, version: int | None = None, project: str | None = None) -> None:
+        with self.lock:
+            self.observations.append(Observation(self.seq, kind, item, version, project))
 
 
 class _Keyring:
@@ -141,16 +165,25 @@ class _Keyring:
         self.values.pop((service, name), None)
 
 
+_SERVED_LINE = re.compile(r"^- \[memory:(m-[0-9a-f]{16})@([0-9]+)\]", re.M)
+
+
 class _Model:
     """The zero-paid stand-in for the session's model: a Chat answer that states no fact, so the answer layer cannot pass here.
-    `say_next` makes the next answer a given text (an assistant input of a case)."""
+    `say_next` makes the next answer a given text (an assistant input of a case). Each request's memory block is recorded as it
+    arrives."""
 
-    def __init__(self) -> None:
+    def __init__(self, run: Run) -> None:
+        self.run_record = run
         self.requests: list[Any] = []
         self.say_next: str | None = None
 
     def run(self, request: Any, **_kwargs: Any) -> AgentRunResult:
         self.requests.append(request)
+        served = [(item, int(version)) for item, version in _SERVED_LINE.findall(request.memory_context or "")]
+        self.run_record.served.append(served)
+        for item, version in served:
+            self.run_record.add("served", item, version, getattr(self, "project", None))
         text, self.say_next = self.say_next or "(controlled stand-in answer)", None
         common = dict(run_id=request.run_id, session_id=request.session_id, tool_calls=(), mutation_count=0, provider_keys_resolvable=())
         return AgentRunResult(execution_mode=ExecutionMode.CHAT, status=AgentRunStatus.COMPLETED, final_state="CHAT_ONLY",
@@ -160,42 +193,70 @@ class _Model:
 class _Extraction:
     """The zero-paid stand-in for the summarizer route. For user extraction it proposes each block whole, as a question when it
     asks one and as a preference otherwise; D9 sends every automatic user proposal off, so its wording never becomes memory. For
-    agent extraction it proposes the lessons the case's completed work queued. Context summaries get a fixed valid summary."""
+    agent extraction it proposes the lessons the case's work queued, each citing the evidence it names (a tool's or document's
+    evidence for a hostile lesson, F5), or the first evidence listed. Context summaries get a fixed valid summary. Each call is
+    recorded."""
 
-    def __init__(self) -> None:
+    def __init__(self, run: Run) -> None:
+        self.run = run
         self.calls = 0
-        self.lessons: list[str] = []
-        self.prompts: list[str] = []
+        self.lessons: list[tuple[str, str | None]] = []
 
     def __call__(self, *, prompt: str, max_output_tokens: int, purpose: str = "") -> SummarizerResponse:
         self.calls += 1
-        self.prompts.append(prompt)
         attempt = SummarizerAttempt(f"stand-in-{self.calls}", f"gw-stand-in-{self.calls}", "completed", Decimal("0"))
+        if "<summary" in prompt or "Summary of earlier" in prompt:
+            self.run.add("prompt.from_summary")
         if prompt.startswith("You extract at most a few optional lessons"):
+            self.run.calls.append("agent")
             refs = re.findall(r"^- (\S+) \(", prompt, re.M)
-            candidates = [{"speech_act": "assertion", "kind": "lesson", "title": text[:60], "statement": text, "evidence": refs[:1]}
-                          for text in self.lessons]
+            candidates = [{"speech_act": "assertion", "kind": "lesson", "title": text[:60], "statement": text,
+                           "evidence": [ref] if ref else refs[:1]} for text, ref in self.lessons]
             self.lessons = []
         elif prompt.startswith("You extract"):
+            self.run.calls.append("user")
             candidates = []
             for block, text in re.findall(r'<block id="([^"]+)">(.*?)</block>', prompt, re.S):
                 act = "question" if text.rstrip().endswith("?") else "preference"
                 candidates.append({"speech_act": act, "kind": "preference", "title": text[:60], "statement": text,
                                    "spans": [{"block": block, "start": 0, "end": len(text)}]})
         else:
+            self.run.calls.append("summary")
             from tests.unit.acp.test_context_engine_admission import SUMMARY
 
             return SummarizerResponse(text=SUMMARY, finish_status="stop", attempts=(attempt,))
         return SummarizerResponse(text=json.dumps({"candidates": candidates}), finish_status="stop", attempts=(attempt,))
 
 
-class _CardsFail(RecordingOutboundChannel):
-    """A client connection whose memory cards cannot be sent: the client went away after the commit."""
+class _Channel(RecordingOutboundChannel):
+    """The host's ACP channel to its client, recording each memory card, answer and permission request as the host sends it.
+    `fail_cards`: the client went away after the commit, so a memory card cannot be sent."""
+
+    def __init__(self, rig: Rig) -> None:
+        super().__init__()
+        self.rig = rig
+        self.host: Host | None = None
+        self.fail_cards = False
 
     async def notify(self, method: str, params: dict[str, Any], **kwargs: Any) -> Any:
-        if params.get("update", {}).get("sessionUpdate") == "tool_call":
+        update = params.get("update", {}) if method == "session/update" else {}
+        card = update.get("sessionUpdate") == "tool_call" and str(update.get("toolCallId", "")).startswith(CARD)
+        if card and self.fail_cards:
+            self.rig.card_failed(self.host, update)
             raise ConnectionError("the client went away")
-        return await super().notify(method, params, **kwargs)
+        before = len(self.notifications)
+        result = await super().notify(method, params, **kwargs)
+        if len(self.notifications) > before:  # delivered (a suppressed progress write is not)
+            if card:
+                self.rig.card(self.host, update)
+            elif update.get("sessionUpdate") == "agent_message_chunk":
+                self.rig.answer(self.host, update.get("content", {}).get("text", ""))
+        return result
+
+    async def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        if method == "session/request_permission" and not self.rig.asking:
+            self.rig.run.add("host.prompt", project=self.host.project if self.host else None)
+        return await super().request(method, params)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -272,9 +333,10 @@ class Store:
 class Host:
     """One host process's view: an adapter with its own config root on one workspace, opening one Chat session."""
 
-    def __init__(self, rig: Rig, workspace: Path, config: Path, *, outbound: RecordingOutboundChannel | None = None) -> None:
+    def __init__(self, rig: Rig, workspace: Path, config: Path) -> None:
         self.rig, self.workspace, self.config = rig, workspace, config
-        self.outbound = outbound or RecordingOutboundChannel()
+        self.outbound = _Channel(rig)
+        self.outbound.host = self
         settings = SimpleNamespace(optimus_api_key=SecretStr("m3-qualification"))
         factory = extractor_factory(config_root=config, settings=settings, post=rig.post)
         from tests.unit.acp.test_context_engine_admission import make_attachment
@@ -283,7 +345,6 @@ class Host:
                                         outbound=self.outbound, context_attachment=make_attachment(summarizer=rig.extraction),
                                         memory_extractor_factory=factory)
         self.session: str | None = None
-        self.seen_updates = 0
 
     async def rpc(self, request: dict[str, Any]) -> dict[str, Any]:
         return (await self.adapter.handle_client_request(request)).response
@@ -292,6 +353,11 @@ class Host:
         reply = await self.rpc({"jsonrpc": "2.0", "id": "new", "method": "session/new", "params": {"cwd": str(self.workspace), "mcpServers": []}})
         self.session = reply["result"]["sessionId"]
         await self.rpc({"jsonrpc": "2.0", "id": "mode", "method": "session/set_mode", "params": {"sessionId": self.session, "modeId": "chat"}})
+        extractor = self.extractor
+        if extractor is not None:  # the extractor's own outcome sink, teed: every skip, refusal and decision is recorded
+            report = extractor._report
+            extractor._report = lambda outcome: (self.rig.outcome(outcome), report(outcome))
+        self.rig.model.project = self.project  # type: ignore[attr-defined]
 
     @property
     def state(self) -> Any:
@@ -313,22 +379,25 @@ class Host:
     async def say_confirming(self, text: str, request_id: str, choice: str) -> dict[str, Any]:
         """A command that asks the user for a one-shot confirmation (purge, recovery location, restore), answered `choice`.
         A command refused before it asks (a rejected mapping) simply answers."""
-        task = asyncio.create_task(self.rpc({"jsonrpc": "2.0", "id": request_id, "method": "session/prompt",
-                                             "params": {"sessionId": self.session, "prompt": [{"type": "text", "text": text}]}}))
-        asked = asyncio.create_task(self.outbound.wait_for_request("session/request_permission"))
-        done, _pending = await asyncio.wait({task, asked}, timeout=30, return_when=asyncio.FIRST_COMPLETED)
-        if asked not in done:
-            asked.cancel()
+        self.rig.asking = True
+        try:
+            task = asyncio.create_task(self.say(text, request_id))
+            asked = asyncio.create_task(self.outbound.wait_for_request("session/request_permission"))
+            done, _pending = await asyncio.wait({task, asked}, timeout=30, return_when=asyncio.FIRST_COMPLETED)
+            if asked not in done:
+                asked.cancel()
+                return await asyncio.wait_for(task, timeout=60)
+            request = asked.result()
+            options = request["params"]["options"]
+            picked = next(option["optionId"] for option in options if option["kind"].startswith(choice))
+            self.outbound.respond(request["id"], {"outcome": {"outcome": "selected", "optionId": picked}})
+            self.outbound.requests.clear()
             return await asyncio.wait_for(task, timeout=60)
-        request = asked.result()
-        options = request["params"]["options"]
-        picked = next(option["optionId"] for option in options if option["kind"].startswith(choice))
-        self.outbound.respond(request["id"], {"outcome": {"outcome": "selected", "optionId": picked}})
-        self.outbound.requests.clear()
-        return await asyncio.wait_for(task, timeout=60)
+        finally:
+            self.rig.asking = False
 
     def settle(self, timeout: float = 20.0) -> None:
-        """Wait for the session's extraction and checkpoint jobs, so what they append is observed with the turn that caused it."""
+        """Wait for the session's extraction and checkpoint jobs, so what they append belongs to the input that caused it."""
         extractor = self.extractor
         deadline = time.monotonic() + timeout
         jobs = getattr(extractor, "_jobs", None)
@@ -337,8 +406,12 @@ class Host:
         time.sleep(0.2)  # the checkpoint for a settled turn is written after its answer
 
 
+_WRITES = frozenset({"append", "restore", "purge", "checkpoint"})
+
+
 class Rig:
-    """One case's fresh world: its workspace repository and host config root, the stand-in models, and the store."""
+    """One case's fresh world: its workspace repository and host config root, the stand-in models, the store, and the record
+    of what happened."""
 
     def __init__(self, store: Store, base: Path, case_id: str) -> None:
         self.store = store
@@ -346,73 +419,180 @@ class Rig:
         self.workspace = _new_repo(self.root / "ws")
         self.config = self.root / "config"
         self.config.mkdir()
-        self.model = _Model()
-        self.extraction = _Extraction()
+        self.run = Run()
+        self.model = _Model(self.run)
+        self.extraction = _Extraction(self.run)
         self.host = Host(self, self.workspace, self.config)
         self.items: dict[str, str] = {}  # case key -> item id, as the run created them
         self.seen_stream: dict[str, str] = {}
-        self.checkpoints: dict[str, int] = {}
         self.pending: dict[str, Any] = {}  # an operation an input arms for the next user input
         self.earlier: list[str] = []  # project ids of earlier registrations of this workspace (M21)
-        self.confirmed: set[tuple[str, int]] = set()  # (item, version) appends whose commit result the Gateway gave as durable
+        self.exporter: dict[str, str] = {}  # recovery generation seal -> the project whose export wrote it
+        self.asking = False  # the user's own command is asking for a confirmation now
+        self.clock_seconds = 0.0  # how far the clock was moved on (`_op_clock`)
+
+    # --- the host's store client: each request and its reply, then what it wrote ----------------------------------------
 
     def post(self, _settings: Any, *, timeout: float, path: str) -> Callable[[bytes], tuple[int, Any]]:
         def send(body: bytes) -> tuple[int, Any]:
             status, reply = self.store.service.handle(body, deadline=time.monotonic() + 5)
-            if isinstance(reply, dict) and reply.get("durable_state") == "confirmed" and "item" in reply:
-                self.confirmed.add((reply["item"], reply["version"]))
+            with self.run.lock:
+                self.exchanged(json.loads(body), status, reply)
             return status, reply
 
         return send
 
-    def observe(self, run: Run, seq: int, host: Host | None = None) -> None:
-        """Everything this case input caused, in causal order: the store's appends, then the host's output and served blocks."""
+    def exchanged(self, request: Mapping[str, Any], status: int, reply: Any) -> None:
+        """One request the host sent its store and the reply it got. Whatever the request wrote is read from the store's stream
+        now, so it is placed right after the request; an append's commit counts only when this reply confirmed it durable, for
+        this project's own event (F2)."""
+        op, project = request.get("op"), request.get("project")
+        if status != 200 or not isinstance(reply, dict) or not isinstance(project, str):
+            return
+        if op in _WRITES:
+            confirmed = reply.get("event_id") if op == "append" and reply.get("durable_state") == "confirmed" else None
+            self._stream(project, confirmed)
+        if op == "checkpoint" and reply.get("durable_state") == "confirmed":
+            self.run.add("checkpoint", project=project)
+        if op == "export" and reply.get("cursor") is None and reply.get("seal"):
+            self.exporter[str(reply["seal"])] = project
+        if op == "restore" and request.get("final") and reply.get("state") == "published":
+            source = str(request.get("source", project))
+            if source != project:
+                self.run.mapped[project] = source
+            wrote = self.exporter.get(str(request.get("generation")))
+            if wrote is not None and wrote != project and source != wrote:
+                self.run.add("restore.unmapped", project=project)
+
+    def _stream(self, project: str, confirmed: str | None = None) -> None:
+        key = memory_store.MemoryStore._key(project, "events")
+        for stream_id, fields in self.store.observer.xrange(key, min=f"({self.seen_stream.get(project, '0-0')}"):
+            self.seen_stream[project] = stream_id.decode() if isinstance(stream_id, bytes) else stream_id
+            event = json.loads(fields[b"e"]).get("event") or {}
+            item, version, action, status = event.get("item"), event.get("version"), event.get("action"), event.get("status")
+            if item is None:
+                continue
+            self.run.created_by.setdefault((project, item), self.run.seq)
+            seen = self.run.history.setdefault((project, item), {})
+            before = seen[max(seen)] if seen else None
+            seen.setdefault(version, {name: event.get(name) for name in ("version", "action", "status", "trust", "kind")})
+            if before is not None and before["trust"] != event.get("trust") and event.get("trust") != "off":
+                self.run.add("store.trust_changed", item, version, project)
+                if event.get("trust") == "user-authored":
+                    self.run.add("store.trust_promoted", item, version, project)
+            payload = self._payload(project, event)  # title, statement and lineage live in the payload hash, not the stream
+            if action == "off":
+                kind = ("store.off.archived" if status == "superseded" else "store.off.conflict" if status == "conflicted"
+                        else "store.off.blocked" if str(payload.get("title", "")).startswith("(blocked") else "store.off")
+                self.run.add(kind, item, version, project)
+                continue
+            self.run.add("store.off.conflict" if status == "conflicted" else f"store.{action}", item, version, project)
+            if action not in ("admit", "update"):
+                continue
+            statement = str(payload.get("statement", ""))
+            if self._points_at_a_file(payload.get("lineage") or (), statement):
+                self.run.add("store.pointer", item, version, project)
+            if self._holds_a_file(statement):
+                self.run.add("store.body", item, version, project)
+            if confirmed is not None and event.get("event_id") == confirmed:
+                self.run.add(f"commit.{action}", item, version, project)
+
+    def _payload(self, project: str, event: Mapping[str, Any]) -> dict[str, Any]:
+        """What the store holds for an event in its payload hash: title, statement, anchors and lineage ({} once purged)."""
+        raw = self.store.observer.hget(memory_store.MemoryStore._key(project, "payloads"), str(event.get("event_id")))
+        return dict(json.loads(raw)) if raw else {}
+
+    def _holds_a_file(self, statement: str) -> bool:
+        """Whether a saved statement holds the text of a file tracked in the workspace."""
+        workspace = self.host.workspace
+        for name in _git(workspace, "ls-files").splitlines():
+            body = (workspace / name).read_text(encoding="utf-8", errors="replace").strip()
+            if len(body) >= 8 and body in statement:
+                return True
+        return False
+
+    def _points_at_a_file(self, lineage: Sequence[str], statement: str) -> bool:
+        """Whether a saved item rests on a workspace file by reference (`file:` lineage) without holding that file's text."""
+        for ref in lineage:
+            if ref.startswith("file:"):
+                path = self.host.workspace / ref[len("file:"):].rpartition("@")[0]
+                body = path.read_text(encoding="utf-8", errors="replace").strip() if path.is_file() else ""
+                if not body or body not in statement:
+                    return True
+        return False
+
+    # --- the host's ACP channel ---------------------------------------------------------------------------------------
+
+    def card(self, host: Host | None, update: Mapping[str, Any]) -> None:
+        item, version, durable = _citation(_card_text(update))
+        head = str(update.get("title", "")).split(":")[0]
+        kind = "card.unconfirmed" if durable == "unconfirmed" or head.startswith("Not saved yet") else f"card.{head}"
+        self.run.add(kind, item, version, host.project if host else None)
+
+    def card_failed(self, host: Host | None, update: Mapping[str, Any]) -> None:
+        """A memory card the client never got: backlogged only if the project's durable backlog still holds that event."""
+        item, version, _durable = _citation(_card_text(update))
+        backlog = getattr(host.state, "memory_backlog", None) if host else None
+        held = {record.get("event_id") for record in backlog.pending()} if backlog is not None else set()
+        if str(update.get("toolCallId", ""))[len(CARD):] in held:
+            self.run.add("card.backlogged", item, version, host.project if host else None)
+
+    def answer(self, host: Host | None, text: str) -> None:
+        """A command answer or reply the host sent, read in the order its parts say things happened."""
+        project = host.project if host else None
+        self.run.answers.append(text)
+        if text.startswith("Not saved: the statement looks like it holds a secret"):
+            self.run.add("answer.refused_secret", project=project)
+        if " cannot be switched on:" in text:
+            self.run.add("answer.switch_on_unavailable", project=project)
+        if "is retired." in text and text.startswith("Remembered"):
+            self.run.add("answer.switched_on", project=project)
+        if text.startswith("**Welcome back.**"):
+            self.run.add("brief.request" if self.pending.pop("welcome_requested", False) else "brief.first", project=project)
+        if "more than one earlier project claims this one" in text or "another workspace's registration" in text:
+            self.run.add("restore.rejected", project=project)
+        if "a deletion could be undone" in text or "a deletion is unfinished" in text:
+            self.run.add("restore.held", project=project)
+        if text.startswith("Restored "):  # the restore's own report, in the order it did things (Recovery.restore)
+            steps: list[tuple[int, str, str | None, int | None]] = [(0, "restore.published", None, None)]
+            if (at := text.find("is mapped to this one")) >= 0:
+                steps.append((at, "restore.mapped", None, None))
+            if (at := text.find("Pinned files hold for ")) >= 0:
+                listed = text[at:text.find(".", at)]  # item ids and versions hold no dot: the sentence ends at the first
+                steps += [(at, "restore.anchor", ref, int(version)) for ref, version in re.findall(r"`(m-[0-9a-f]{16})@([0-9]+)`", listed)]
+            if (at := text.find("stay deleted")) >= 0:
+                steps.append((at, "restore.tombstones", None, None))
+            for _at, kind, item, version in sorted(steps, key=lambda step: step[0]):
+                self.run.add(kind, item, version, project)
+
+    # --- the host's own decisions ---------------------------------------------------------------------------------------
+
+    def outcome(self, outcome: Any) -> None:
+        self.run.outcomes.append({"seq": self.run.seq, "turn": outcome.turn_id, "purpose": outcome.purpose, "proposals": outcome.proposals,
+                                  "skipped": outcome.skipped, "incomplete": outcome.incomplete, "refusals": list(outcome.refusals),
+                                  "reasons": list(outcome.reasons)})
+
+    def served_decision(self, commands: Any, served: Any) -> None:
+        """The serving decision a turn's host made: what needs re-verification, and any live item it left out unexplained."""
+        project = getattr(commands.store, "project", None)
+        for item, version, _path in served.reverify:
+            self.run.add("served.reverify", item, version, project)
+        if served.omitted_optional or served.omitted_protected or not served.complete:
+            return
+        accounted = {item.item for item in served.items} | {r[0] for r in served.reverify} | {e[0] for e in served.elsewhere}
+        rows, _cursor = commands.store.items("project", limit=100)
+        for row in rows:
+            if row.event.status == "active" and row.event.trust != "off" and row.event.statement and row.event.item not in accounted:
+                self.run.add("served.expired", row.event.item, row.event.version, project)
+
+    def finish_input(self, host: Host | None = None) -> None:
+        """What a case input left: its extraction and checkpoint jobs settled, the session's continuity, whether the host gave
+        this session memory at all."""
         host = host or self.host
         host.settle()
         project = host.project
-        updates = [n["params"]["update"] for n in host.outbound.notifications if n["method"] == "session/update"]
-        new_updates = updates[host.seen_updates:]
-        host.seen_updates = len(updates)
-        if project is not None:
-            self._stream(run, seq, project)
-            self._checkpoints(run, project, host)
-        elif self.pending.pop("said", False) and getattr(host.state, "memory_commands", None) is None:
-            run.add("answer.read_only")  # the host attached no memory to this session: its workspace could not be trusted
-        for update in new_updates:
-            if update.get("sessionUpdate") == "tool_call" and str(update.get("toolCallId", "")).startswith(CARD):
-                title = str(update.get("title", ""))
-                item, version, durable = _citation(_card_text(update))
-                head = title.split(":")[0]
-                run.add("notice.unconfirmed" if durable == "unconfirmed" or head.startswith("Not saved yet") else f"card.{head}", item, version)
-            elif update.get("sessionUpdate") == "agent_message_chunk":
-                text = update.get("content", {}).get("text", "")
-                run.answers.append(text)
-                self._answer(run, text)
-        for request in self.model.requests[len(run.served):]:
-            served = [(ref.split("@")[0], int(ref.split("@")[1])) for ref in re.findall(r"^- \[memory:(m-[0-9a-f]{16}@[0-9]+)\]",
-                                                                                         request.memory_context or "", re.M)]
-            run.served.append(served)
-            for item, version in served:
-                run.add("served", item, version)
-            for item in _reverify(host, request):
-                run.add("served.reverify", item[0], item[1])
-        for prompt in self.extraction.prompts:
-            if "<summary" in prompt or "Summary of earlier" in prompt:
-                run.add("prompt.from_summary")
-        self.extraction.prompts.clear()
-        self._continuity(run, host)
-        if self.pending.pop("restored_now", False) and host.extractor is not None:
-            from optimus.context import memory_serving
-
-            for item, made in run.created_by.items():
-                stored = host.extractor.store.read(item) if made == seq else None
-                lineage = stored.event.lineage if stored is not None else ()
-                if any(ref.startswith("file:") for ref in lineage) and memory_serving.changed_file(lineage, host.workspace) is None:
-                    run.add("restore.anchor", item, stored.event.version)  # its pinned file holds in this workspace
-
-    def _continuity(self, run: Run, host: Host) -> None:
-        """What the host's continuity resolved for this session: an earlier session's checkpoint it continues from, and whether
-        that checkpoint's baseline commit is gone (the brief would say so)."""
+        if self.pending.pop("said", False) and getattr(host.state, "memory_commands", None) is None and host.extractor is None:
+            self.run.add("answer.read_only")  # the host attached no memory to this session: its workspace could not be trusted
         continuity = getattr(host.state, "continuity", None)
         if continuity is None or self.pending.get(f"continuity:{host.session}"):
             return
@@ -420,99 +600,10 @@ class Rig:
             _stored, found = continuity.previous()
             if found is not None and found.checkpoint.session != host.session:
                 self.pending[f"continuity:{host.session}"] = True
-                run.add("brief.resumed")
+                self.run.add("brief.resumed", project=project)
                 brief = continuity.brief()
                 if "is not in this repository any more" in brief or "is not an ancestor of the current one" in brief:
-                    run.add("brief.rewritten")
-
-    def _stream(self, run: Run, seq: int, project: str) -> None:
-        key = memory_store.MemoryStore._key(project, "events")
-        for stream_id, fields in self.store.observer.xrange(key, min=f"({self.seen_stream.get(project, '0-0')}"):
-            self.seen_stream[project] = stream_id.decode() if isinstance(stream_id, bytes) else stream_id
-            event = json.loads(fields[b"e"]).get("event") or {}
-            item, version, action = event.get("item"), event.get("version"), event.get("action")
-            if item is None:
-                continue
-            run.created_by.setdefault(item, seq)
-            if action == "off":
-                status, title = event.get("status"), event.get("title", "")
-                kind = "store.off.archived" if status == "superseded" else "store.off.blocked" if title.startswith("(blocked") else "store.off"
-                run.add(kind, item, version)
-                continue
-            run.add(f"store.{action}", item, version)
-            if action not in ("admit", "update"):
-                continue
-            stored = self.host.extractor.store.read(item)
-            if stored is not None and self._points_at_a_file(stored):
-                run.add("store.pointer", item, version)
-            if stored is not None and self._holds_a_file(stored):
-                run.add("store.body", item, version)
-            if (item, version) in self.confirmed:
-                run.add(f"commit.{action}", item, version)  # the Gateway's commit result, as the host received it
-
-    def _holds_a_file(self, stored: Any) -> bool:
-        """Whether a saved statement holds the text of a file tracked in the workspace."""
-        workspace = self.host.workspace
-        for name in _git(workspace, "ls-files").splitlines():
-            body = (workspace / name).read_text(encoding="utf-8", errors="replace").strip()
-            if len(body) >= 8 and body in stored.event.statement:
-                return True
-        return False
-
-    def _points_at_a_file(self, stored: Any) -> bool:
-        """Whether a saved item rests on a workspace file by reference (`file:` lineage) without holding that file's text."""
-        for ref in stored.event.lineage:
-            if ref.startswith("file:"):
-                path = self.host.workspace / ref[len("file:"):].rpartition("@")[0]
-                body = path.read_text(encoding="utf-8", errors="replace").strip() if path.is_file() else ""
-                if not body or body not in stored.event.statement:
-                    return True
-        return False
-
-    def _checkpoints(self, run: Run, project: str, host: Host) -> None:
-        from optimus_security.memory_store_contract import MAX_CHECKPOINTS
-
-        for stored in host.extractor.store.checkpoints(limit=MAX_CHECKPOINTS):  # the newest; this harness writes far fewer per step
-            identity = f"{project}/{stored.checkpoint.session}/{stored.checkpoint.sequence}"
-            if identity not in self.checkpoints:
-                self.checkpoints[identity] = 1
-                run.add("checkpoint")
-
-    def _answer(self, run: Run, text: str) -> None:
-        from optimus.acp import memory_commands as mc
-
-        if text.startswith("Not saved: the statement looks like it holds a secret"):
-            run.add("answer.refused_secret")
-        if text.startswith(mc.READ_ONLY[:40]):
-            run.add("answer.read_only")
-        if text.startswith(mc.UNAVAILABLE[:40]):
-            run.add("notice.unconfirmed")
-        if " cannot be switched on:" in text:
-            run.add("answer.switch_on_unavailable")
-        if "is retired." in text and text.startswith("Remembered"):
-            run.add("answer.switched_on")
-        if text.startswith("**Welcome back.**"):
-            run.add("brief.request" if self.pending.pop("welcome_requested", False) else "brief.first")
-        if text.startswith("Restored "):
-            run.add("restore.published")
-            self.pending["restored_now"] = True
-            if "is mapped to this one" in text:
-                run.add("restore.mapped")
-            if "were deleted since and stay deleted" in text:
-                run.add("restore.tombstones")
-        if "more than one earlier project claims this one" in text or "another workspace's registration" in text:
-            run.add("restore.rejected")
-        if "a deletion could be undone" in text or "a deletion is unfinished" in text:
-            run.add("restore.held")
-
-
-def _reverify(host: Host, request: Any) -> list[tuple[str, int]]:
-    commands = getattr(host.state, "memory_commands", None)
-    if commands is None or getattr(commands, "store", None) is None:
-        return []
-    with contextlib.suppress(Exception):
-        return [(item, version) for item, version, _path in commands.served().reverify]
-    return []
+                    self.run.add("brief.rewritten", project=project)
 
 
 def _card_text(update: Mapping[str, Any]) -> str:
@@ -530,33 +621,19 @@ async def _op_none(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
     """The input describes a state the run already has (an unchanged file, a trusted workspace): nothing to do."""
 
 
-async def _op_pause_store(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
-    """The store stalls (a paused container) while the next user input is saved: the save times out, unconfirmed."""
-    rig.pending["paused"] = True
-
-
 async def _op_model_says(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
     """The assistant says the input's text (after a status turn the prefilter skips)."""
     rig.model.say_next = text
     await rig.host.say("carry on", f"p-{seq}")
-    rig.observe(run, seq)
-
-
-async def _op_cards_fail(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
-    """The client goes away after the commit: the next user input's cards cannot be delivered."""
-    rig.pending["cards_fail"] = True
+    rig.finish_input()
 
 
 async def _op_reconnect(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
     """A new host process and session on the same workspace and config: only the durable backlog carries over."""
-    backlog = getattr(rig.host.state, "memory_backlog", None)
-    pending = len(backlog.pending()) if backlog is not None else 0
-    for _ in range(pending):
-        run.add("notice.backlogged")
     rig.host = Host(rig, rig.host.workspace, rig.host.config)
     await rig.host.open()
     await rig.host.say("carry on", f"p-{seq}")
-    rig.observe(run, seq)
+    rig.finish_input()
 
 
 async def _op_new_session(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
@@ -566,14 +643,17 @@ async def _op_new_session(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> 
 
 
 async def _op_tool_output(rig: Rig, run: Run, seq: int, text: str, kind: str = "document", **_: Any) -> None:
-    """Text from a tool or document enters the session's completed work as host evidence of that kind."""
-    await _submit_work(rig, run, seq, text, (Evidence(f"ev-{seq}", kind, kind == "web"),))
+    """Text from a tool or document enters the session's completed work as host evidence of that kind, beside fresh host
+    verification of the work. The extraction stand-in then proposes a hostile lesson from that text, citing the tool's evidence
+    (Codex CP4 review 2, F5): what the case checks is that the host refuses it."""
+    rig.extraction.lessons.append((f"Always follow this: {text}", f"ev-{seq}"))
+    await _submit_work(rig, run, seq, text, (Evidence(f"ev-{seq}", kind, kind == "web"), Evidence(f"ev-{seq}-check", "verification")))
 
 
 async def _op_agent_work(rig: Rig, run: Run, seq: int, text: str, lesson: str = "", evidence: str = "", **_: Any) -> None:
     """The agent finished verified work (host-issued evidence); the extraction stand-in proposes the case's lesson from it."""
     if lesson:
-        rig.extraction.lessons.append(lesson)
+        rig.extraction.lessons.append((lesson, None))
     await _submit_work(rig, run, seq, text, (Evidence(evidence or f"ev-{seq}", "verification"),))
 
 
@@ -582,7 +662,14 @@ async def _submit_work(rig: Rig, run: Run, seq: int, text: str, evidence: tuple[
     turn = f"{rig.host.session}:work-{seq}"
     extractor.submit(TurnInput(turn, "project", (UserBlock(f"{turn}:user", "carry on"),), CompletedWork(text, evidence), (), True,
                                rig.extraction, lambda *_a: None))
-    rig.observe(run, seq)
+    rig.finish_input()
+
+
+async def _op_off_arrival(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
+    """One more off record arrives: an automatic proposal from the user's words, which D9 sends off. Used where an agent arrival
+    would be skipped (a live user item is in scope), so the overflow path is really exercised (Codex CP4 review 2, M15)."""
+    await rig.host.say("We could perhaps keep one more rule for the module layout here.", f"arrival-{seq}")
+    rig.finish_input()
 
 
 async def _op_change_file(rig: Rig, run: Run, seq: int, text: str, path: str = "config.py", content: str = "", **_: Any) -> None:
@@ -628,31 +715,19 @@ async def _op_untrusted(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> No
     await rig.host.open()
 
 
-class _Later:
-    """The `time` module as the host's continuity reads it, `seconds` later: time passing for the host, nothing re-dated."""
-
-    def __init__(self, seconds: float) -> None:
-        self.seconds = seconds
-
-    def time(self) -> float:
-        return time.time() + self.seconds
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(time, name)
-
-
 async def _op_clock(rig: Rig, run: Run, seq: int, text: str, days: float = 0, **_: Any) -> None:
-    """`days` pass: from now on the host's continuity clock reads that much later (run_case puts it back); a new session begins."""
-    from optimus.context import memory_continuity
-
-    passed = getattr(memory_continuity.time, "seconds", 0)
-    memory_continuity.time = _Later(passed + days * 24 * 3600)  # type: ignore[assignment]
+    """`days` pass: from now on the process clock (`time.time`, which the host, its continuity and the Gateway read) is that
+    much later; run_case puts it back. Nothing is re-dated. Then a new session begins."""
+    rig.clock_seconds += days * 24 * 3600
+    time.time = lambda: _REAL_TIME() + rig.clock_seconds  # type: ignore[assignment]
     await _op_new_session(rig, run, seq, text)
 
 
 async def _op_crash(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
-    """The host process dies during a turn after an earlier one settled: its in-flight turn is abandoned unsettled."""
-    rig.pending["crash"] = True
+    """The host process dies during a turn. In process this run cannot kill the host mid-turn, so the crash is not exercised:
+    it is recorded as missing coverage, owned by the live acpx kill proof (Codex CP4 review 2, F6)."""
+    run.uncovered.append("crash: an interrupted, unsettled turn and real host process loss are not exercised in process "
+                         "(owned by the Task 5 acpx kill proof)")
 
 
 async def _op_restart(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
@@ -676,7 +751,7 @@ async def _op_overflow(rig: Rig, run: Run, seq: int, text: str, count: int = 200
     for n in range(count):
         await rig.host.say(f"We could perhaps keep rule number {n} for the module layout here.", f"fill-{seq}-{n}")
         rig.host.settle(5)
-    rig.observe(run, seq)
+    rig.finish_input()
 
 
 async def _op_compact(rig: Rig, run: Run, seq: int, text: str, turns: int = 3, **_: Any) -> None:
@@ -684,13 +759,13 @@ async def _op_compact(rig: Rig, run: Run, seq: int, text: str, turns: int = 3, *
     puts a summary in their place and hands their raw user text to extraction."""
     for n in range(turns):
         await rig.host.say("carry on", f"compact-{seq}-{n}")
-        rig.observe(run, seq)
+        rig.finish_input()
 
 
 async def _op_prior_off(rig: Rig, run: Run, seq: int, text: str, said: str = "I would probably go with tabs.", **_: Any) -> None:
     """An earlier session said `said` (D9 sent it off), then ended: its RAM-only source text went with it."""
     await rig.host.say(said, f"prior-{seq}")
-    rig.observe(run, seq)
+    rig.finish_input()
     await _op_new_session(rig, run, seq, text)
 
 
@@ -718,7 +793,7 @@ async def _op_earlier_registration(rig: Rig, run: Run, seq: int, text: str, reme
     await _op_new_machine(rig, run, seq, text)
     if restore:
         await rig.host.say_confirming(_resolve("/memory restore {gen} --map", rig), f"p-{seq}", "allow")
-        rig.observe(run, seq)
+        rig.finish_input()
 
 
 async def _op_new_machine(rig: Rig, run: Run, seq: int, text: str, **_: Any) -> None:
@@ -737,11 +812,11 @@ async def _op_delete_then_lose(rig: Rig, run: Run, seq: int, text: str, key: str
         await rig.host.say_confirming(command, f"p-{seq}-delete", "allow")
     else:
         await rig.host.say(command, f"p-{seq}-delete")
-    rig.observe(run, seq)
+    rig.finish_input()
     rig.store.lose_volume()
     await _op_new_session(rig, run, seq, text)
     await rig.host.say_confirming(_resolve("/memory restore {gen} --map", rig), f"p-{seq}-again", "allow")
-    rig.observe(run, seq)
+    rig.finish_input()
 
 
 OPS: Mapping[str, Callable[..., Any]] = {name[4:]: value for name, value in globals().items() if name.startswith("_op_")}
@@ -750,29 +825,38 @@ OPS: Mapping[str, Callable[..., Any]] = {name[4:]: value for name, value in glob
 # --- trace ---------------------------------------------------------------------------------------------------------------
 
 def to_trace(case: GoldenCase, run: Run, named: Mapping[str, str], items: Mapping[str, Any], *, source_id: str, config_id: str,
-             reverify: Sequence[tuple[str, int]] = (), history: Mapping[str, Sequence[Mapping[str, Any]]] = {}) -> ObservedTrace:
-    """The grader's trace from what the run observed. `named` is case key -> the item the case input declared for that key
-    created; `items` is the store's final state of every item the run touched; `history` is each named item's versions as
-    the store lists them."""
+             reverify: Sequence[tuple[str, int]] = (), history: Mapping[str, Sequence[Mapping[str, Any]]] = {},
+             project: str | None = None) -> ObservedTrace:
+    """The grader's trace from what the run observed, for `project` (the case's project: the one whose final state is graded).
+    `named` is case key -> the item the case input declared for that key created; `items` is the store's final state of every
+    item in that project; `history` is each named item's versions as the store lists them now. An observation of another
+    project's items is not this project's event. An item's versions are those the run saw being written, in this project or,
+    under a published mapped restore, in the project mapped into it, then the store's own list; a version none of them shows is
+    missing coverage, never reconstructed (Codex CP4 review 2, F7)."""
     key_of = {item: key for key, item in named.items()}
     events: list[TraceEvent] = []
     for observation in run.observations:
         name = EVENT_OF.get(observation.kind)
-        if name is None:
+        if name is None or (project is not None and observation.project not in (None, project)):
             continue
         key = key_of.get(observation.item or "")
         events.append(TraceEvent(seq=len(events), type=name, memory_key=key, project_id=case.project_id if key else None,
                                  version=observation.version, rotation_id=None))
     stale = {item for item, _version in reverify}
     state = []
+    unseen: list[str] = []
     for item, row in sorted(items.items()):
         if item not in key_of:
             continue
-        versions = sorted(history.get(item) or [{"version": row.version, "action": row.action, "status": row.status, "trust": row.trust,
-                                           "kind": row.kind}], key=lambda entry: entry["version"])
-        if versions[0]["action"] in ("withdraw", "tombstone"):
-            # A restore that re-applies a recorded withdrawal or purge publishes only that entry; it covers every version below.
-            versions = [{**versions[0], "version": n} for n in range(1, versions[0]["version"])] + versions
+        known: dict[int, Mapping[str, Any]] = {entry["version"]: entry for entry in history.get(item, ())}
+        source = run.mapped.get(project or "")
+        if source is not None:
+            known.update(run.history.get((source, item), {}))
+        known.update(run.history.get((project or "", item), {}))
+        known.setdefault(row.version, {"version": row.version, "action": row.action, "status": row.status, "trust": row.trust,
+                                       "kind": row.kind})
+        unseen += [f"history: {key_of[item]} v{n} was never observed" for n in range(1, max(known)) if n not in known]
+        versions = [known[n] for n in sorted(known)]
         for entry, status in zip(versions, version_statuses(versions), strict=True):
             latest = entry["version"] == row.version
             state.append(MemoryStateObservation(
@@ -782,12 +866,12 @@ def to_trace(case: GoldenCase, run: Run, named: Mapping[str, str], items: Mappin
     served = [MemoryRef(memory_id=key_of[item], version=version, project_id=case.project_id)
               for item, version in (run.served[-1] if run.served else []) if item in key_of]
     needed = (*case.required_events, *case.prohibited_events)
-    missing = tuple(sorted({name for name in needed if name.split(":")[0] not in OBSERVABLE}))
+    missing = tuple(sorted({name for name in needed if name.split(":")[0] not in OBSERVABLE})) + tuple(unseen) + tuple(run.uncovered)
     return ObservedTrace(
         schema="plan12-memory-trace/1", case_id=case.case_id, case_version=case.version, source_id=source_id, config_id=config_id,
         events=tuple(events), evidence=(), served_memory=tuple(served), memory_state=tuple(state),
         answer=AnswerObservation(action="answer", claims=(), supported_by=(), support_extracted=False, citations=(), judge_status="uncertain"),
-        attempts=(), provenance=(), reported_cost=ReportedCost(known_usd=Decimal("0"), complete=True, savings=None),
+        attempts=(), provenance=(), reported_cost=ReportedCost(known_usd=Decimal("0"), complete=not missing, savings=None),
         coverage_complete=not missing, missing_coverage=missing, timing_ms=None)
 
 
@@ -804,9 +888,6 @@ def version_statuses(versions: Sequence[Mapping[str, Any]]) -> list[str]:
             if purge or (statuses[earlier] in _LIVE and new not in _LIVE):
                 statuses[earlier] = new
     return statuses
-
-
-_LIVE = ("active", "reverify", "conflicted")
 
 
 def _origin(trust: str, kind: str) -> str:
@@ -849,35 +930,37 @@ def _resolve(text: str, rig: Rig) -> str:
     return re.sub(r"\{([a-z0-9-]+)(@v)?\}", one, text)
 
 
-async def drive(rig: Rig, case: GoldenCase, steps: Mapping[int, Sequence[Any]], keys: Mapping[int, Sequence[str]], run: Run) -> None:
+async def drive(rig: Rig, case: GoldenCase, steps: Mapping[int, Sequence[Any]], keys: Mapping[int, Sequence[str]]) -> None:
+    run = rig.run
     await rig.host.open()
     for item in case.inputs:
         step = list(steps.get(item.seq, ["say"] if item.actor == "user" else []))
         if not step:
             raise NotImplementedError(f"{case.case_id}: input {item.seq} ({item.actor}) names no operation in the run config")
         name, options = step[0], (step[1] if len(step) > 1 else {})
+        run.seq = item.seq
         run.steps.append(f"{item.seq}:{item.actor}:{name}")
         if name in ("say", "confirm"):
             text = _resolve(options.get("text", item.text or ""), rig)
             rig.pending["said"] = True
-            if options.get("cards_fail"):  # the client goes away after the commit: this input's cards cannot be delivered
-                rig.host.outbound.__class__ = _CardsFail
-            if options.get("pause"):  # the store stalls (a paused container) while this input is saved
-                with rig.store.paused():
+            rig.host.outbound.fail_cards = bool(options.get("cards_fail"))  # the client goes away after the commit
+            try:
+                if options.get("pause"):  # the store stalls (a paused container) while this input is saved
+                    with rig.store.paused():
+                        await rig.host.say(text, f"p-{item.seq}")
+                elif name == "confirm":
+                    await rig.host.say_confirming(text, f"p-{item.seq}", options.get("choice", "allow"))
+                else:
+                    if text.strip() == "/welcome":
+                        rig.pending["welcome_requested"] = True
                     await rig.host.say(text, f"p-{item.seq}")
-            elif name == "confirm":
-                await rig.host.say_confirming(text, f"p-{item.seq}", options.get("choice", "allow"))
-            else:
-                if text.strip() == "/welcome":
-                    rig.pending["welcome_requested"] = True
-                await rig.host.say(text, f"p-{item.seq}")
-            if rig.host.outbound.__class__ is _CardsFail:
-                rig.host.outbound.__class__ = RecordingOutboundChannel
-            rig.observe(run, item.seq)
+            finally:
+                rig.host.outbound.fail_cards = False
+            rig.finish_input()
         else:
             await OPS[name](rig, run, item.seq, item.text or "", **options)
         for seq, named in keys.items():
-            created = [i for i, s in run.created_by.items() if s == seq]  # in the order the store appended them
+            created = [made for (_project, made), at in run.created_by.items() if at == seq]  # in the order the store appended them
             for key, made in zip(named, created, strict=False):
                 rig.items.setdefault(key, made)
 
@@ -904,56 +987,164 @@ def final_items(rig: Rig) -> tuple[dict[str, Any], dict[str, list[dict[str, Any]
     return found, history
 
 
-def run_case(store: Store, base: Path, case: GoldenCase, entry: Mapping[str, Any], *, source_id: str, config_id: str) -> dict[str, Any]:
-    rig = Rig(store, base, case.case_id)
-    run = Run()
+def _played(store: Store, base: Path, case: GoldenCase, entry: Mapping[str, Any], name: str) -> tuple[Rig, str | None, str | None, Any]:
+    """One play of a case: its rig, any error and its cause, and the host's own serving function (for the final state)."""
+    from optimus.acp import memory_commands as mc
+
+    rig = Rig(store, base, name)
     keys = {int(seq): [key] if isinstance(key, str) else list(key) for seq, key in entry.get("keys", {}).items()}
     steps = {int(seq): step for seq, step in entry.get("steps", {}).items()}
-    started = time.monotonic()
-    error = cause = None
-    from optimus.context import memory_continuity
+    original = mc.MemoryCommands.served
 
+    def served(commands: Any) -> Any:  # the decision each turn's host makes, recorded as it makes it
+        result = original(commands)
+        rig.served_decision(commands, result)
+        return result
+
+    error = cause = None
+    mc.MemoryCommands.served = served  # type: ignore[method-assign]
     try:
-        asyncio.run(drive(rig, case, steps, keys, run))
+        asyncio.run(drive(rig, case, steps, keys))
     except Exception as failure:  # noqa: BLE001 - a run that could not finish is reported with its cause, never graded PASS
         error, cause = f"{type(failure).__name__}: {failure}", traceback.format_exc()
     finally:
-        memory_continuity.time = time  # type: ignore[assignment]  # the clock an `_op_clock` moved
-    reverify = _reverify(rig.host, None) if error is None else []
+        mc.MemoryCommands.served = original  # type: ignore[method-assign]
+        time.time = _REAL_TIME  # type: ignore[assignment]  # the clock an `_op_clock` moved
+    return rig, error, cause, original
+
+
+def run_case(store: Store, base: Path, case: GoldenCase, entry: Mapping[str, Any], *, source_id: str, config_id: str) -> dict[str, Any]:
+    started = time.monotonic()
+    rig, error, cause, serving = _played(store, base, case, entry, case.case_id)
+    run = rig.run
+    commands = getattr(rig.host.state, "memory_commands", None)
+    reverify = []
+    if error is None and commands is not None and getattr(commands, "store", None) is not None:
+        reverify = [(item, version) for item, version, _path in serving(commands).reverify]
     items, history = final_items(rig) if error is None else ({}, {})
-    trace = to_trace(case, run, rig.items, items, source_id=source_id, config_id=config_id, reverify=reverify, history=history)
+    project = rig.host.project or next((o.project for o in reversed(run.observations) if o.project), None)
+    trace = to_trace(case, run, rig.items, items, source_id=source_id, config_id=config_id, reverify=reverify, history=history,
+                     project=project)
     if error is not None:
         trace = trace.model_copy(update={"missing_coverage": (*trace.missing_coverage, f"run did not finish: {error}"), "coverage_complete": False})
     verdict = grade_trace(case, trace)
     unrun = sorted({UNRUN_EVENTS[n.split(":")[0]] for n in case.required_events if n.split(":")[0] in UNRUN_EVENTS})
-    return {"case_id": case.case_id, "steps": run.steps, "error": error, "cause": cause, "seconds": round(time.monotonic() - started, 1),
-            "unrun_owner": unrun, "qualification": qualification_view(case, verdict, unrun),
-            "trace": json.loads(trace.model_dump_json(by_alias=True)), "verdict": json.loads(verdict.model_dump_json())}
+    result = {"case_id": case.case_id, "steps": run.steps, "error": error, "cause": cause, "seconds": round(time.monotonic() - started, 1),
+              "unrun_owner": unrun, "clock_days": rig.clock_seconds / 86400,
+              "qualification": qualification_view(case, verdict, unrun, trace),
+              "outcomes": run.outcomes, "extraction_calls": run.calls,
+              "trace": json.loads(trace.model_dump_json(by_alias=True)), "verdict": json.loads(verdict.model_dump_json())}
+    check = EFFECTIVE.get(case.case_id)
+    if check is not None:
+        control = entry.get("control")
+        if control is not None:  # the effective policy is exercised by its own play, never by the gold case's
+            played = {**entry, "steps": {**entry.get("steps", {}), **control.get("steps", {})}}
+            rig, error, cause, _serving = _played(store, base, case, played, f"{case.case_id}-control")
+            items, _history = final_items(rig) if error is None else ({}, {})
+        result["effective"] = {"control": control, "error": error, **check(rig, items)}
+    return result
 
+
+# --- what a zero-paid run decides ------------------------------------------------------------------------------------------
 
 PAID = "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+_EVIDENCE_REASON = re.compile(r"^requirement \S+ has no supporting evidence")
 
 
-def qualification_view(case: GoldenCase, verdict: Any, unrun: Sequence[str]) -> dict[str, Any]:
-    """What this zero-paid run decides (Codex CP4 gate 1, Q3); the grader's own verdict is kept beside it, unchanged. The
-    authority and cost layers stand on what the host and store did. The answer layer is UNRUN: the stand-in model neither
-    answers nor abstains on evidence; the paid Zed sessions own it. So is the retrieval layer of a case that requires retrieved
-    evidence: the stand-in runs no tools, so none is retrieved. A case is therefore never PASS here: at best INCONCLUSIVE, with
-    any FAIL of a decided layer kept. A case whose required events the product cannot show yet (decay, #235 M6) is UNRUN whole,
-    with that owner: its other layers rest on the same missing behaviour."""
+def qualification_view(case: GoldenCase, verdict: Any, unrun: Sequence[str], trace: ObservedTrace | None = None) -> dict[str, Any]:
+    """What this zero-paid run decides (Codex CP4 gate 1, Q3; review 2, Q3); the grader's own verdict is kept beside it,
+    unchanged. The authority and cost layers stand on what the host and store did. The answer layer is UNRUN: the stand-in model
+    neither answers nor abstains on evidence; the paid Zed sessions own it. So is retrieval of evidence in a case that requires
+    it (the stand-in runs no tools); any other retrieval failure (rank, scope) stays a FAIL. A case is never PASS here: at best
+    INCONCLUSIVE, with any FAIL of a decided layer kept. A decay case (#235 M6) is UNRUN for its decay, but its own safety
+    obligations stay decided here: no item expired, none was promoted or changed trust, every item expected active is."""
     layers = {name: layer.status for name, layer in verdict.layers.items()}
     owners = {"answer": PAID}
+    layers["answer"] = "UNRUN"
     if case.required_evidence:
         owners["retrieval"] = PAID
-    layers.update({name: "UNRUN" for name in owners})
+        other = [reason for reason in verdict.layers["retrieval"].reasons if not _EVIDENCE_REASON.match(reason)]
+        layers["retrieval"] = "FAIL" if verdict.layers["retrieval"].status == "FAIL" and other else "UNRUN"
     if unrun:
-        return {"status": "UNRUN", "layers": layers, "owners": {**owners, "case": ", ".join(unrun)}}
+        safety = _safety(case, trace)
+        return {"status": "FAIL" if safety["status"] == "FAIL" else "UNRUN", "layers": layers,
+                "owners": {**owners, "case": ", ".join(unrun)}, "safety": safety}
     return {"status": "FAIL" if "FAIL" in layers.values() else "INCONCLUSIVE", "layers": layers, "owners": owners}
 
 
+def _safety(case: GoldenCase, trace: ObservedTrace | None) -> dict[str, Any]:
+    if trace is None or not trace.coverage_complete and any(not name.startswith("memory.strength_") for name in trace.missing_coverage):
+        return {"status": "INCONCLUSIVE", "reasons": ["the run did not observe everything the safety checks need"]}
+    reasons = [f"{event.type} at seq {event.seq}" for event in trace.events if event.type in SAFETY_EVENTS]
+    state = {(item.key, item.version): item for item in trace.memory_state}
+    reasons += [f"{expected.key} v{expected.version} is not active" for expected in case.expected_memory
+                if expected.status == "active" and getattr(state.get((expected.key, expected.version)), "status", None) != "active"]
+    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "checked": [*SAFETY_EVENTS, "expected active items stay active"]}
+
+
+def _m09_skip(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
+    """M09 effective oracle (Codex CP4 review 2, Q4): with a live user item in scope the host skips agent extraction (the
+    adopted scope-present skip), so no conflict record is paid for. Shown: the skip, no agent call, the user item unchanged and
+    no agent admission."""
+    run = rig.run
+    skipped = [o for o in run.outcomes if o["purpose"] == AGENT_PURPOSE and o["skipped"] == "user_items_in_scope"]
+    indent = items.get(rig.items.get("pref-indent", ""))
+    reasons = ([] if skipped else ["no agent extraction was skipped for the user item in scope"]) + \
+              (["an agent extraction call was made"] if "agent" in run.calls else []) + \
+              ([] if indent is not None and (indent.version, indent.status, indent.trust) == (1, "active", "user-authored")
+               else ["pref-indent is not v1 active user-authored"]) + \
+              [f"agent item {item} was admitted" for item, row in items.items() if row.trust == "agent-derived"]
+    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "policy": "scope-present agent skip (Codex CP2 review 3)"}
+
+
+def _m15_overflow(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
+    """M15 effective oracle (Codex CP4 review 2, Q4): at the off-record cap, one more off arrival moves the oldest live off
+    record to the unserved archive; nothing is purged; the arrival stays an off record."""
+    run = rig.run
+    arrival = [made for (_project, made), at in run.created_by.items() if at == 2]
+    archived = [o.item for o in run.observations if o.kind == "store.off.archived" and o.seq == 2]
+    reasons = ([] if archived and not set(archived) & set(arrival) else ["no older off record was archived at the arrival"]) + \
+              (["an item was purged"] if any(o.kind == "store.tombstone" for o in run.observations) else []) + \
+              ([] if arrival and all(items.get(made) is not None and items[made].trust == "off" and items[made].status == "active"
+                                     for made in arrival) else ["the arrival is not a live off record"])
+    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "archived": archived, "arrival": arrival,
+            "policy": "oldest live off record archived at the cap (memory_store._archived)"}
+
+
+EFFECTIVE: Mapping[str, Callable[[Rig, Mapping[str, Any]], dict[str, Any]]] = {"M09-a-D10": _m09_skip, "M15-a-D10": _m15_overflow}
+
+
+# --- inputs ----------------------------------------------------------------------------------------------------------------
+
 def load_cases(path: Path) -> dict[str, GoldenCase]:
+    """A fixture's cases. A variant fixture (one with a `decision`) is checked first (Codex CP4 gate 1, Q2; review 2, F10): the
+    decision file it names has the digest it pins, and every variant's gold equals its original's in the `base` fixture."""
     document = json.loads(path.read_text(encoding="utf-8"))
+    if "decision" in document:
+        check_variants(document)
     return {raw["case_id"]: GoldenCase.model_validate(raw) for raw in document["cases"]}
+
+
+def check_variants(document: Mapping[str, Any]) -> None:
+    decision = document["decision"]
+    digest = "hex:" + hashlib.sha256(Path(decision["path"]).read_bytes()).hexdigest()
+    if digest != decision["sha256"]:
+        raise ValueError(f"{decision['path']} does not have the digest the variant fixture pins")
+    originals = {raw["case_id"]: raw for raw in json.loads(Path(document["base"]).read_text(encoding="utf-8"))["cases"]}
+    for variant in document["cases"]:
+        original = originals.get(str(variant["case_id"]).removesuffix("-D10"))
+        if not str(variant["case_id"]).endswith("-D10") or original is None:
+            raise ValueError(f"{variant['case_id']} is not a -D10 variant of a case in {document['base']}")
+        if _gold(variant) != _gold(original):
+            raise ValueError(f"{variant['case_id']} changes its original's gold")
+
+
+def _gold(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Everything a variant must keep: all but its id, its provenance and the words of its user inputs."""
+    kept = {name: value for name, value in raw.items() if name not in ("case_id", "provenance", "inputs")}
+    kept["inputs"] = [{name: value for name, value in item.items() if not (name == "text" and item.get("actor") == "user")}
+                      for item in raw["inputs"]]
+    return kept
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -981,7 +1172,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = run_case(store, work / "cases", cases[case_id], config["cases"].get(case_id, {}), source_id=source,
                               config_id=config["config_id"])
             results.append(result)
-            print(case_id, result["qualification"]["status"], result["qualification"]["layers"], result["error"] or "", flush=True)
+            print(case_id, result["qualification"]["status"], result["qualification"]["layers"],
+                  (result.get("effective") or {}).get("status", ""), result["error"] or "", flush=True)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     args.output.mkdir(parents=True, exist_ok=True)

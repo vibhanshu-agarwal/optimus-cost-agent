@@ -6597,7 +6597,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection: the zero-paid extraction stand-in's scripted candidates, built from the synthetic prompt it was given; nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_hostile_lesson_from_tool_text_is_offered_with_fresh_verification",
       "evidence_tier": "unit"
     },
     {
@@ -6605,7 +6605,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
       "evidence_tier": "unit"
     },
     {
@@ -6613,7 +6613,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
       "evidence_tier": "unit"
     },
     {
@@ -6621,7 +6621,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
       "evidence_tier": "unit"
     },
     {
@@ -6629,7 +6629,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
       "evidence_tier": "unit"
     },
     {
@@ -6637,7 +6637,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
       "evidence_tier": "unit"
     },
     {
@@ -6645,7 +6645,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
       "evidence_tier": "unit"
     },
     {
@@ -6653,7 +6653,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
       "evidence_tier": "unit"
     },
     {
@@ -6661,7 +6661,7 @@
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
       "evidence_tier": "unit"
     },
     {

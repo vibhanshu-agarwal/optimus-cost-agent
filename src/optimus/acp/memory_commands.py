@@ -753,12 +753,17 @@ class MemoryCommands:
             source = confirmation.meta.get("source")
             directory = Path(confirmation.meta["place"]) / confirmation.meta["generation"] if source else None
             reply = recovery.restore(confirmation.meta["generation"], seal=confirmation.meta["seal"], source=source,
-                                     directory=directory)  # exactly what was confirmed
-            mapped = f" Project `{source}` is mapped to this one." if source else ""
-            return MemoryAnswer(f"Restored `{confirmation.meta['generation']}`{' into this project' if source else ''}: "
-                                f"{reply.get('restored', 0)} items, "
-                                f"{reply.get('durable_state')} on disk." + (f" {len(reply['purged'])} were deleted since and stay "
-                                                                            "deleted." if reply.get("purged") else "") + mapped)
+                                     directory=directory, workspace=self._workspace)  # exactly what was confirmed
+            # In the order the restore did them: the mapping was confirmed, the pins were validated, the deletions applied.
+            steps = [f"Project `{source}` is mapped to this one."] if source else []
+            anchors = reply.get("anchors") or {}
+            if anchors.get("held"):
+                steps.append("Pinned files hold for " + ", ".join(f"`{item}@{version}`" for item, version in anchors["held"]) + ".")
+            steps += [f"`{item}@{version}` needs re-verification: `{path}` changed." for item, version, path in anchors.get("changed", ())]
+            if reply.get("purged"):
+                steps.append(f"{len(reply['purged'])} were deleted since and stay deleted.")
+            return MemoryAnswer(" ".join([f"Restored `{confirmation.meta['generation']}`{' into this project' if source else ''}: "
+                                          f"{reply.get('restored', 0)} items, {reply.get('durable_state')} on disk.", *steps]))
         except mr.RecoveryError as failure:
             return MemoryAnswer(failure.message)
         except MemoryStoreUnavailable:
