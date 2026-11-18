@@ -96,7 +96,7 @@ def test_a_fair_paraphrase_agrees_through_word_forms() -> None:
 @pytest.mark.parametrize("spans", [[{"block": "b-1", "start": 0, "end": 12}], [{"block": "b-9", "start": 0, "end": 5}],
                                    [{"block": "b-1", "start": 0, "end": 999}], []])
 def test_a_statement_its_spans_do_not_hold_never_gains_user_provenance(spans: list[dict]) -> None:
-    """The summary-attribution forgery: the model credits the user with what the cited text does not say."""
+    """The summary-attribution forgery: the model attributes to the user what the cited text does not say."""
     candidate = _user("New tests use plain pytest asserts and the payments module is frozen.", spans)
     decision = memory_gate.admit(candidate.candidate, candidate.verdict)
     assert (decision.outcome, decision.reason, decision.draft.statement) == ("append", "SPANS_UNVERIFIED", "")  # type: ignore[union-attr]
