@@ -1,0 +1,39 @@
+{
+ "schema": "plan12-memory-m3.citations.v1",
+ "sources": [
+  {
+   "head": "git:be83ecf0b57e68f1fc88474738c6085ce7b0660e",
+   "run_id": "20261118T055850-21228-89ef88",
+   "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  },
+  {
+   "head": "git:be83ecf0b57e68f1fc88474738c6085ce7b0660e",
+   "run_id": "20261118T060013-25296-950547",
+   "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  }
+ ],
+ "release": "operator 2026-11-18 Docker release on #490: p1211-cp3-test-redis and p1211-cp3-test-data only, with fault injection",
+ "claims": [
+  "only what the turn was served can be cited",
+  "an invented id or an obsolete version is carded as unsupported",
+  "nothing the model writes extends the served set; no footer repairs support"
+ ],
+ "not_covered": [
+  "missing required citations fail qualification: Task 5's grader (m3_evaluate)"
+ ],
+ "cases": [
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_turn_is_served_its_project_memory_bound_into_its_digest_and_its_citations_are_checked",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_serving.py::test_only_what_was_served_can_be_cited",
+   "outcome": "passed"
+  }
+ ],
+ "passed": true
+}
