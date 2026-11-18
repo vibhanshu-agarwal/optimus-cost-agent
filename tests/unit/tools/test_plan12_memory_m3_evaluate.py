@@ -398,6 +398,29 @@ def test_an_aborted_decay_run_without_a_final_snapshot_is_undecided_not_failed()
     assert m3.qualification_view(decay, grade_trace(decay, trace), ["#235 M6 (decay)"], trace)["safety"]["status"] == "FAIL"
 
 
+def test_an_item_no_case_key_names_is_still_graded_as_an_item() -> None:
+    """An admitted lesson the case does not name: its commit, notice and serving bind by its own id."""
+    case = _cases()["M15-b"]
+    run = m3.Run()
+    for kind in ("store.admit", "commit.admit", "card.Remembered"):
+        run.add(kind, OTHER, 1)
+    run.served.append([(OTHER, 1)])
+    run.add("served", OTHER, 1)
+    items = {OTHER: _row(1, "admit", "active", trust="agent-derived", kind="lesson")}
+    trace = m3.to_trace(case, run, {}, items, source_id="g", config_id="c")
+    assert [(e.memory_key, e.project_id) for e in trace.events][-1] == (OTHER, case.project_id)
+    reasons = grade_trace(case, trace).layers["authority"].reasons
+    assert not any("durable commit" in r or "names no served item" in r or "no observed state" in r for r in reasons), reasons
+
+
+def test_a_decay_item_never_admitted_cannot_have_expired() -> None:
+    decay = _cases()["M20-a"]  # the original: the user's words were captured off, so nothing was ever live
+    named = {"pref-indent": ITEM, "pref-ruff": OTHER}
+    off = {ITEM: _row(1, "off", "active", trust="off")}  # pref-ruff was never even captured
+    verdict, trace = _verdict(decay, m3.Run(), named, off)
+    assert m3.qualification_view(decay, verdict, ["#235 M6 (decay)"], trace)["safety"]["status"] == "PASS"
+
+
 def test_a_failed_run_claims_no_complete_cost() -> None:
     case = _cases()["M03-b-D10"]
     trace = m3.unfinished(m3.to_trace(case, m3.Run(), {}, {}, source_id="g", config_id="c"), "TimeoutError: lost")

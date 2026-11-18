@@ -847,22 +847,25 @@ def to_trace(case: GoldenCase, run: Run, named: Mapping[str, str], items: Mappin
     item in that project; `history` is each named item's versions as the store lists them now. An observation of another
     project's items is not this project's event. An item's versions are those the run saw being written, in this project or,
     under a published mapped restore, in the project mapped into it, then the store's own list; a version none of them shows is
-    missing coverage, never reconstructed (Codex CP4 review 2, F7)."""
+    missing coverage, never reconstructed (Codex CP4 review 2, F7). An item no case key names is still an item: its own id
+    keys it, so the grader's commit, notice and serving checks bind for it too."""
     key_of = {item: key for key, item in named.items()}
+
+    def keyed(item: str | None) -> str | None:
+        return None if item is None else key_of.get(item, item)
+
     events: list[TraceEvent] = []
     for observation in run.observations:
         name = EVENT_OF.get(observation.kind)
         if name is None or (project is not None and observation.project not in (None, project)):
             continue
-        key = key_of.get(observation.item or "")
+        key = keyed(observation.item)
         events.append(TraceEvent(seq=len(events), type=name, memory_key=key, project_id=case.project_id if key else None,
                                  version=observation.version, rotation_id=None))
     stale = {item for item, _version in reverify}
     state = []
     unseen: list[str] = []
     for item, row in sorted(items.items()):
-        if item not in key_of:
-            continue
         known: dict[int, Mapping[str, Any]] = {entry["version"]: entry for entry in history.get(item, ())}
         source = run.mapped.get(project or "")
         if source is not None:
@@ -870,16 +873,16 @@ def to_trace(case: GoldenCase, run: Run, named: Mapping[str, str], items: Mappin
         known.update(run.history.get((project or "", item), {}))
         known.setdefault(row.version, {"version": row.version, "action": row.action, "status": row.status, "trust": row.trust,
                                        "kind": row.kind})
-        unseen += [f"history: {key_of[item]} v{n} was never observed" for n in range(1, max(known)) if n not in known]
+        unseen += [f"history: {keyed(item)} v{n} was never observed" for n in range(1, max(known)) if n not in known]
         versions = [known[n] for n in sorted(known)]
         for entry, status in zip(versions, version_statuses(versions), strict=True):
             latest = entry["version"] == row.version
             state.append(MemoryStateObservation(
-                key=key_of[item], project_id=case.project_id, version=entry["version"], trust=_origin(entry["trust"], entry["kind"]),
+                key=keyed(item) or item, project_id=case.project_id, version=entry["version"], trust=_origin(entry["trust"], entry["kind"]),
                 status=_status(entry["trust"], status, stale=latest and item in stale), off=entry["trust"] == "off",
                 supersedes=entry["version"] - 1 if entry["action"] == "update" else None))
-    served = [MemoryRef(memory_id=key_of[item], version=version, project_id=case.project_id)
-              for item, version in (run.served[-1] if run.served else []) if item in key_of]
+    served = [MemoryRef(memory_id=keyed(item) or item, version=version, project_id=case.project_id)
+              for item, version in (run.served[-1] if run.served else [])]
     needed = (*case.required_events, *case.prohibited_events)
     missing = tuple(sorted({name for name in needed if name.split(":")[0] not in OBSERVABLE})) + tuple(unseen) + tuple(run.uncovered)
     return ObservedTrace(
@@ -1100,11 +1103,13 @@ def _safety(case: GoldenCase, trace: ObservedTrace | None) -> dict[str, Any]:
     if trace is None:
         return {"status": "INCONCLUSIVE", "reasons": ["the run produced no trace"], "checked": checked}
     reasons = [f"{event.type} at seq {event.seq}" for event in trace.events if event.type in SAFETY_EVENTS]
-    # A run that did not finish has no final snapshot: an item missing from it was not observed going inactive (review 4).
-    snapshot = not any(name.startswith("run did not finish:") for name in trace.missing_coverage)
+    # Only an item the final snapshot shows was admitted can have expired: one never admitted (captured off) did not, and a run
+    # that did not finish has no snapshot, so nothing in it was observed going inactive (review 4).
     state = {(item.key, item.version): item for item in trace.memory_state}
-    reasons += [f"{expected.key} v{expected.version} is not active" for expected in case.expected_memory if snapshot
-                and expected.status == "active" and getattr(state.get((expected.key, expected.version)), "status", None) != "active"]
+    admitted = {item.key for item in trace.memory_state if not item.off}
+    reasons += [f"{expected.key} v{expected.version} is not active" for expected in case.expected_memory
+                if expected.status == "active" and expected.key in admitted
+                and getattr(state.get((expected.key, expected.version)), "status", None) != "active"]
     if reasons:
         return {"status": "FAIL", "reasons": reasons, "checked": checked}
     gaps = [name for name in trace.missing_coverage if not name.startswith("memory.strength_")]
