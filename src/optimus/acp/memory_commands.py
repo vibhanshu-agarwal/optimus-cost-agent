@@ -236,6 +236,20 @@ class MemoryCommands:
     def project(self) -> str:
         return str(self._store.project)
 
+    @property
+    def store(self) -> Any:
+        return self._store
+
+    def label(self, item: str) -> str:
+        """An item's title for its card, from the store; empty when it cannot be read (the card still names the item)."""
+        from optimus.context.authored_memory import MemoryStoreRefused, MemoryStoreUnavailable
+
+        try:
+            stored = self._store.read(item)
+        except (MemoryStoreUnavailable, MemoryStoreRefused):
+            return ""
+        return "" if stored is None else str(stored.event.title)
+
     # --- dispatch ------------------------------------------------------------------------------------------------------
 
     def run(self, command: MemoryCommand, *, block: str) -> MemoryAnswer:

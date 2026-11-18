@@ -123,6 +123,7 @@ from optimus.agent.planning_loop import (
     PlanningEscalationCallback,
     PlanningProgressEvent,
 )
+from optimus.context import memory_serving
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
@@ -170,6 +171,7 @@ class _PlanningRequestFields(TypedDict):
     selection_text: NotRequired[str]
     context_digest: NotRequired[str]
     max_planning_turns: NotRequired[int]
+    memory_context: NotRequired[str]
 
 
 ACP_PROTOCOL_VERSION = 1
@@ -280,6 +282,7 @@ MEMORY_COMMAND_WAIT_SECONDS = 30.0  # Plan 12.11: a memory command's wait; each 
 MEMORY_COMMAND_TIMEOUT_TEXT = ("The memory store took too long, so the wait was stopped. The change may still have been made: "
                                "`/memory` shows what is stored. Running the same command again never makes a second change.")
 PURGE_CONFIRM_SECONDS = 120.0  # a purge question expires; a later answer deletes nothing
+MEMORY_SERVE_SECONDS = 4.0  # a turn waits at most this long for its memory; then it is served none
 _LocalWait = Callable[[asyncio.Task[Any], float | None], Awaitable[bool]]
 _LocalAnswer = tuple[list[dict[str, Any]], Callable[[], None]]
 
@@ -468,6 +471,8 @@ class AcpSpecSession:
     memory_extractor: Any = field(default=None, repr=False, compare=False)
     memory_outcomes: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
     memory_commands: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: None leaves memory read-only
+    # Plan 12.11 Task 4: extraction's changes not yet shown, as host cards at the next turn (never an off record's)
+    memory_pending: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
     memory_state_shown: str | None = None
     memory_probe: asyncio.Future[Any] | None = field(default=None, repr=False, compare=False)
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
@@ -497,6 +502,7 @@ class AcpPromptTurn:
     permission_handle: Any | None = None
     # Plan 12.2: an attached turn's captured context, its packer and its dispatch readings.
     attached: AttachedTurn | None = None
+    served_memory: Any = None  # Plan 12.11 Task 4: the memory this turn was served (`memory_serving.ServedSet`)
     # Codex CP3 ruling R4: the turn's request binder for the trusted planning/answer route, captured
     # before any await. None while no route policy is configured (registry enforcement inactive).
     route_binder: TurnRouteBinder | None = None
@@ -1839,7 +1845,7 @@ class AcpDuplexAdapter:
                 session.memory_extractor = await asyncio.to_thread(
                     self._memory_extractor_factory, Path(cwd), settlement=session.cost_settlement,
                     sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize, session_id=session.session_id,
-                    report=session.memory_outcomes.append)
+                    report=_memory_report(session))
                 if session.memory_extractor is not None:
                     extractor = session.memory_extractor
                     session.memory_commands = MemoryCommands(
@@ -2069,6 +2075,8 @@ class AcpDuplexAdapter:
                 await self._prepare_memory(session, turn, attached_turn)
             elif session.memory is None and (self._memory_notice is not None or self._memory_factory is not None):
                 await self._emit_index_line(session, turn, self._memory_notice or INDEX_NOT_REGISTERED_NOTICE)
+            if session.memory_pending:
+                await self._emit_memory_notices(session, turn)
             if self._auto_router is not None:
                 try:
                     routed = await self._route_auto_turn(
@@ -2137,6 +2145,12 @@ class AcpDuplexAdapter:
                     "selection_text": admitted.selection_text,
                     "context_digest": admitted.digest,
                 }
+                if session.memory_commands is not None:
+                    # Plan 12.11 Task 4: served memory goes after the cache prefix and binds the plan's context digest.
+                    turn.served_memory, block = await self._serve_memory(session)
+                    if block:
+                        planning_fields["memory_context"] = block
+                        planning_fields["context_digest"] = memory_serving.bind_digest(admitted.digest, block)
             if self._max_planning_turns is not None:
                 planning_fields["max_planning_turns"] = self._max_planning_turns
             planning_request = AgentRunRequest(**planning_fields)
@@ -2213,6 +2227,8 @@ class AcpDuplexAdapter:
                 turn_control.record_outcome(Settlement(_conversation_outcome(planning_result).value))
             if attached_turn is not None and attached_turn.memory is not None:
                 await self._emit_grounding(turn, attached_turn.memory, planning_result.output_text)
+            if turn.served_memory is not None:
+                await self._emit_citation_check(turn, planning_result.output_text)
             if turn.execution_mode is ExecutionMode.CHAT:
                 return await self._finish_chat_turn(
                     request_id=request.get("id"),
@@ -2670,6 +2686,44 @@ class AcpDuplexAdapter:
             await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=status), require_flushed=True)
         except Exception:  # noqa: BLE001 - informational, like the Auto line
             return
+
+    async def _serve_memory(self, session: AcpSpecSession) -> tuple[Any, str]:
+        """The project's servable memory for this turn, read now from the store's confirmed view and rendered as untrusted data.
+        An outage or a slow store serves none: memory degrades on its own and never stops the turn."""
+        commands = session.memory_commands
+        sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
+        try:
+            served = await asyncio.wait_for(asyncio.to_thread(memory_serving.from_store, commands.store, "project"),
+                                            timeout=MEMORY_SERVE_SECONDS)
+        except Exception:  # noqa: BLE001 - no memory this turn; the turn goes on as it would without a store
+            return memory_serving.EMPTY, ""
+        return served, memory_serving.render(served, sanitize=sanitize)
+
+    async def _emit_citation_check(self, turn: AcpPromptTurn, text: str) -> None:
+        """A host card when the answer cites memory it was not served, or an old version: such citations are unsupported. It
+        reports; it changes nothing, and nothing the answer adds can extend what was served."""
+        note = memory_serving.citation_note(memory_serving.check_citations(text or "", turn.served_memory))
+        if note is None or turn.turn_control.transport_abandoned():
+            return
+        with contextlib.suppress(Exception):  # informational
+            await self._outbound.notify("session/update", build_tool_call_notification(
+                session_id=turn.session_id, tool_call_id=f"{memory_notices.CARD_PREFIX}citations-{turn.run_id}",
+                title="Unsupported memory citations", summary=note, kind="other", status="failed"))
+
+    async def _emit_memory_notices(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
+        """Plan 12.11 Task 4: a host card for each change extraction confirmed or left uncertain since the last turn, with the
+        store's own words (an agent lesson's title). D9 keeps every automatic user change off, and an off record never gets
+        a card: nothing here asks the user to approve anything. Informational: a card that cannot be sent waits for the next
+        turn; `/memory` always lists what the store holds. The card's id is the event's, so a resend replaces, never repeats."""
+        commands = session.memory_commands
+        while session.memory_pending and not turn.turn_control.transport_abandoned():
+            notice = session.memory_pending[0]
+            label = "" if commands is None else await asyncio.to_thread(commands.label, notice.item)
+            try:
+                await self._outbound.notify("session/update", memory_notices.card(turn.session_id, notice, label), require_flushed=True)
+            except Exception:  # noqa: BLE001 - informational; it stays pending for the next turn
+                return
+            session.memory_pending.popleft()
 
     async def _emit_grounding(self, turn: AcpPromptTurn, memory: Any, text: str) -> None:
         """A card naming what the reply cited that the inspected scope does not hold. It reports; it decides nothing, and it never fails a turn."""
@@ -3696,6 +3750,16 @@ def _client_mcp_service(session: AcpSpecSession) -> object | None:
     if state is None:
         return None
     return state.tool_service
+
+
+def _memory_report(session: AcpSpecSession) -> Callable[[Any], None]:
+    """Where a session's extraction outcomes go (worker threads): kept for measurement, and every change that is not an off
+    record queued for its card at the next turn."""
+    def report(outcome: Any) -> None:
+        session.memory_outcomes.append(outcome)
+        session.memory_pending.extend(notice for notice in outcome.notices if notice.action != "off")
+
+    return report
 
 
 def checkin_decision(response: Any) -> CheckInDecision:

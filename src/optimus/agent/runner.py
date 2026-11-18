@@ -86,7 +86,8 @@ def _chat_builder(request: AgentRunRequest, files: str, *, memory: Any, repo_map
 
     def build(conversation_envelope: str) -> str:
         if memory is None:
-            return build_agent_planner_input(request.task, workspace_context=files, conversation_envelope=conversation_envelope, advisory=True)
+            return build_agent_planner_input(request.task, workspace_context=files, conversation_envelope=conversation_envelope, advisory=True,
+                                             memory_context=request.memory_context)
         return build_indexed_chat_input(
             request.task,
             workspace_context=files,
@@ -95,6 +96,7 @@ def _chat_builder(request: AgentRunRequest, files: str, *, memory: Any, repo_map
             index_results=index_results,
             tools_enabled=tools_open,
             limit_observation="" if tools_open else LIMIT_OBSERVATION,
+            memory_context=request.memory_context,
         )
 
     return build
@@ -728,6 +730,8 @@ class AgentRunner:
             # Only an attached turn's planner renders history in its own section; every other
             # caller keeps its existing input (design spec 7; Fable CP3 review MINOR-8).
             conversation_envelope=request.conversation_envelope if request.selection_text is not None else "",
+            # Plan 12.11: only a turn with served memory passes it, so every other planner keeps its signature
+            **({"memory_context": request.memory_context} if request.memory_context else {}),
         )
         scope = current[0]  # the plan's result names the model that produced it
         if planning_result.stop_reason is not None:

@@ -124,6 +124,9 @@ class AgentRunRequest(BaseModel):
     # None for every engine-absent and non-ACP caller, which keep their existing behavior.
     selection_text: str | None = Field(default=None, min_length=1)
     context_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # Plan 12.11 Task 4: the project memory served this turn, rendered by the host (`memory_serving.render`) and already bound
+    # into ``context_digest``. Empty for every turn without a memory store; the prompt is then byte-identical to before.
+    memory_context: str = ""
 
     @model_validator(mode="before")
     @classmethod

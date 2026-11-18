@@ -456,3 +456,82 @@ def test_only_inbound_user_commands_authorize_memory_mutation(tmp_path: Path) ->
             ("user-authored", "Never push to main.")]
         assert len(runner.requests) == 3
     asyncio.run(scenario())
+
+
+class _CitingRunner(Runner):
+    """A Chat answer that cites one served item correctly, one at an old version and one the turn was never given."""
+
+    def run(self, request: Any, **kwargs: Any) -> Any:
+        served = [line.split(" ", 2)[1] for line in request.memory_context.splitlines() if line.startswith("- [memory:")]
+        old = served[0].replace("@2]", "@1]") if served else ""
+        text = f"Following {' '.join(served)} {old} and [memory:m-00000000000000ff@1]."
+        return super().run(request, **kwargs).model_copy(update={"output_text": text})
+
+
+def test_a_turn_is_served_its_project_memory_bound_into_its_digest_and_its_citations_are_checked(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        store = _adapter(purge_store(tmp_path)[0])
+        runner = _CitingRunner()
+        outbound = RecordingOutboundChannel()
+        adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                   outbound=outbound, context_attachment=make_attachment(),
+                                   memory_extractor_factory=lambda _workspace, **_kwargs: _PurgeSource(store))
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        await rpc(adapter, prompt_request(session_id, "/remember Never push to main.", "p-1"))
+        ((item, _version, *_),) = _events_any(store)
+        await rpc(adapter, prompt_request(session_id, f"/memory edit {item}@1 Never push to main or release.", "p-2"))
+        assert runner.requests == []
+        await rpc(adapter, prompt_request(session_id, "May I push?", "p-3"))
+        (request,) = runner.requests
+        assert f"- [memory:{item}@2] (the user's fact) Never push to main or release." in request.memory_context
+        assert request.context_digest is not None and request.memory_context in request.memory_context
+        cards = [u for u in _updates(outbound) if u["sessionUpdate"] == "tool_call" and u["title"] == "Unsupported memory citations"]
+        (card,) = cards
+        summary = card["content"][0]["content"]["text"]
+        assert "m-00000000000000ff" in summary and f"{item}@1 (current 2)" in summary
+    asyncio.run(scenario())
+
+
+def test_a_store_that_cannot_answer_serves_no_memory_and_the_turn_goes_on(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        service, server, _journal = purge_store(tmp_path)
+        store = _adapter(service)
+        runner = Runner()
+        adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                   outbound=RecordingOutboundChannel(), context_attachment=make_attachment(),
+                                   memory_extractor_factory=lambda _workspace, **_kwargs: _PurgeSource(store))
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        await rpc(adapter, prompt_request(session_id, "/remember Never push to main.", "p-1"))
+        _adapter_items = store.items  # a store that fails every read from now on
+        store.items = lambda *_a, **_k: (_ for _ in ()).throw(OSError("down"))  # type: ignore[method-assign]
+        response = await rpc(adapter, prompt_request(session_id, "May I push?", "p-2"))
+        assert response["result"]["stopReason"] == "end_turn" and runner.requests[-1].memory_context == ""
+        store.items = _adapter_items  # type: ignore[method-assign]
+    asyncio.run(scenario())
+
+
+def test_extraction_changes_get_their_cards_at_the_next_turn_and_off_records_get_none(tmp_path: Path) -> None:
+    from context_engine.memory_contracts import MemoryNotice
+
+    async def scenario() -> None:
+        store = _adapter(purge_store(tmp_path)[0])
+        reports: list[Any] = []
+
+        def factory(_workspace: Path, **kwargs: Any) -> Any:
+            reports.append(kwargs["report"])
+            return _PurgeSource(store)
+
+        runner = Runner()
+        outbound = RecordingOutboundChannel()
+        adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                   outbound=outbound, context_attachment=make_attachment(), memory_extractor_factory=factory)
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        lesson = MemoryNotice("e-lesson", "m-00000000000000a1", 1, "admit", "confirmed", "current")
+        off = MemoryNotice("e-off", "m-00000000000000b2", 1, "off", "confirmed", "current")
+        reports[0](mx.Outcome("s:1", mx.AGENT_PURPOSE, notices=(lesson, off)))  # what an extraction worker reports
+        await rpc(adapter, prompt_request(session_id, "Next question?", "p-1"))
+        cards = [u["toolCallId"] for u in _updates(outbound) if u["sessionUpdate"] == "tool_call"]
+        assert cards == ["memory/e-lesson"]  # the lesson's card once; the off record none
+        await rpc(adapter, prompt_request(session_id, "Another?", "p-2"))
+        assert [u["toolCallId"] for u in _updates(outbound) if u["sessionUpdate"] == "tool_call"] == ["memory/e-lesson"]
+    asyncio.run(scenario())
