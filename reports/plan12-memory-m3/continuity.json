@@ -1,0 +1,120 @@
+{
+ "schema": "plan12-memory-m3.continuity.v1",
+ "sources": [
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100122-43296-5dacf1",
+   "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  },
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100234-46596-8541ca",
+   "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  }
+ ],
+ "release": "operator 2026-11-18 Docker release on #490: p1211-cp3-test-redis and p1211-cp3-test-data only, with fault injection",
+ "claims": [
+  "a checkpoint per committed turn, host references only",
+  "a status question never replaces the objective",
+  "a killed turn leaves the last settled checkpoint",
+  "predecessor: same branch and worktree, then branch, then any",
+  "checkpoints survive a killed store process; a fresh host continues",
+  "brief at >= 7 days, never below; 30 and 120 days the same; /welcome always",
+  "gap measured before the session's own write",
+  "N of M commits; rewritten, missing and shallow baselines explicit",
+  "linked worktrees share a project; a clone does not",
+  "historical approvals and plans are history, not authority"
+ ],
+ "controlled_bindings": "checkpoints and the served memory block carry no model or route identity, so a binding switch cannot change them; actual second-model proof is UNRUN under D6 (owner #491)",
+ "cases": [
+  {
+   "node": "tests/integration/memory/test_continuity.py::test_a_fresh_host_continues_from_the_last_settled_checkpoint_after_the_store_process_is_killed",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/integration/memory/test_continuity.py::test_a_killed_host_process_leaves_its_last_settled_checkpoint_for_a_fresh_host_process",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/integration/memory/test_continuity.py::test_linked_worktrees_share_continuity_and_a_clone_does_not",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_the_brief_comes_at_the_first_response_after_a_week_and_every_turn_is_checkpointed",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_a_killed_turn_leaves_the_last_settled_checkpoint_as_the_predecessor",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_a_rewritten_or_missing_baseline_is_said_plainly",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_a_session_s_own_checkpoints_are_never_its_predecessor",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_a_shallow_clone_says_its_history_may_be_missing",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_each_settled_turn_is_checkpointed_from_host_state_and_a_status_question_never_replaces_the_objective",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_historical_approvals_and_unfinished_work_are_history_not_authority",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_linked_worktrees_share_the_project_and_a_clone_does_not",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_lists_commits_since_the_baseline_n_of_m",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_lists_memory_changes_but_never_an_off_record",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_shows_after_seven_days_and_nothing_expires[0-False]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_shows_after_seven_days_and_nothing_expires[120-True]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_shows_after_seven_days_and_nothing_expires[30-True]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_shows_after_seven_days_and_nothing_expires[6-False]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_shows_after_seven_days_and_nothing_expires[7-True]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_gap_is_measured_before_this_session_writes_its_own_checkpoint",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_predecessor_is_the_same_branch_and_worktree_first_then_the_branch_then_any",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_preferred_predecessor_is_found_beneath_newer_checkpoints_elsewhere",
+   "outcome": "passed"
+  }
+ ],
+ "passed": true
+}

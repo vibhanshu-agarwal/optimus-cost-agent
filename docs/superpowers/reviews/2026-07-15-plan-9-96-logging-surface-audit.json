@@ -5961,9 +5961,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.spec:AcpDuplexAdapter._handle_savings:redis_hash_write",
+      "key": "optimus.acp.spec:AcpDuplexAdapter._answer_locally:redis_hash_write",
       "policy": "safe-by-construction",
-      "rationale": "AST overmatch (Plan 12.9): `progress_submission.set(...)` sets a ContextVar so the report's one chunk goes out under its own suppressible send owner; no Redis or other write.",
+      "rationale": "AST overmatch (Plan 12.9; moved by Plan 12.11 into the shared local-answer path of `/savings` and the memory commands): `progress_submission.set(...)` sets a ContextVar so each update goes out under its own suppressible send owner; no Redis or other write.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_savings_command.py::test_a_cancel_during_delivery_suppresses_an_unwritten_report_only",
       "evidence_tier": "unit"
@@ -6590,6 +6590,126 @@
       "rationale": "Inspection: a measurement on the released test store with a controlled upstream and synthetic statements; reports hold counts, timings, codes and digests, never a statement.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m3_admission.py::test_without_the_release_nothing_runs",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:Recovery._export:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11 recovery copy (D5, D8): writes one generation of the Gateway-signed export (active items that passed the Gate's scans and the persistence sanitizer; every other item payload-free) into the one user-confirmed, Git-ignored location; no diagnostic, prompt or model text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_the_first_export_asks_where_and_writes_one_ignored_generation_of_active_payloads_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:Recovery._export:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11 recovery copy (D5, D8): writes one generation of the Gateway-signed export (active items that passed the Gate's scans and the persistence sanitizer; every other item payload-free) into the one user-confirmed, Git-ignored location; no diagnostic, prompt or model text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_withdrawal_retires_every_older_generation_and_cleanup_is_shown_until_then",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_write:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11 recovery copy (D5, D8): writes one generation of the Gateway-signed export (active items that passed the Gate's scans and the persistence sanitizer; every other item payload-free) into the one user-confirmed, Git-ignored location; no diagnostic, prompt or model text. Exclusive create, fsynced.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_the_first_export_asks_where_and_writes_one_ignored_generation_of_active_payloads_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_write:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11 recovery copy (D5, D8): writes one generation of the Gateway-signed export (active items that passed the Gate's scans and the persistence sanitizer; every other item payload-free) into the one user-confirmed, Git-ignored location; no diagnostic, prompt or model text. Exclusive create, fsynced.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_the_first_export_asks_where_and_writes_one_ignored_generation_of_active_payloads_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_fsync_dir:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.11): opens a directory read-only to fsync it; nothing is written or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_the_first_export_asks_where_and_writes_one_ignored_generation_of_active_payloads_only",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_durable_json:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11: the host's private per-project recovery state and its memory-notice backlog under the config root (ids, counts, a canonical path, stable codes and event ids with their states); fsynced then atomically replaced; no payload, prompt or diagnostic text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_durable_json:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11: the host's private per-project recovery state and its memory-notice backlog under the config root (ids, counts, a canonical path, stable codes and event ids with their states); fsynced then atomically replaced; no payload, prompt or diagnostic text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_durable_json:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11: the host's private per-project recovery state and its memory-notice backlog under the config root (ids, counts, a canonical path, stable codes and event ids with their states); fsynced then atomically replaced; no payload, prompt or diagnostic text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:check_git_exclusion:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11: creates the recovery location's own `.gitignore` exclusively (never overwriting a user's file).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_user_gitignore_that_does_not_ignore_and_tracked_content_refuse_before_any_payload",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:check_git_exclusion:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11: writes the fixed bytes `*` and a newline into a new `.gitignore`; nothing else.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_user_gitignore_that_does_not_ignore_and_tracked_content_refuse_before_any_payload",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:Scheduler.close:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.11): `self._stop.set()` sets a threading.Event to stop the export timer; no Redis or other write.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_only_the_newest_generations_are_kept",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:MemoryStore._op_restore:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11 restore staging: HSETs Gateway-verified generation entries (each with its HMAC) into an unserved per-generation staging hash in the memory store's own Redis; no diagnostic text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_an_interrupted_restore_stays_unserved_and_a_fresh_attempt_completes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_gateway.memory_store:MemoryStore._publish_restore:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11 restore publication: writes the verified generation into the empty project's stream and payload hash in one fenced transaction (payloads only for active items); no diagnostic text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_lost_store_is_recovery_required_refuses_writes_keeps_the_copy_and_restores",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_file_lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11: opens the lock file beside the recovery state, the notice backlog or a recovery location, to hold an OS lock on it; nothing is written.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_held_lock_is_never_taken_over_by_its_age",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:bind_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.11): serializes a generation's host metadata only to hash it for the Gateway's seal; nothing is written or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_generation_is_an_agent_memory_repo_and_its_metadata_cannot_be_changed",
       "evidence_tier": "unit"
     }
   ]

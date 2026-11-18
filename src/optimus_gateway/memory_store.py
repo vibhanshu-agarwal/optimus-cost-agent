@@ -316,6 +316,7 @@ class _Fold:
         self.keys: dict[str, tuple[str | None, dict[str, Any]]] = {}
         self.event_ids: set[str] = set()
         self.history: dict[str, list[str]] = {}
+        self.versions: dict[str, list[dict[str, Any]]] = {}  # each item's stream entries, oldest first, payload-free (Q4)
         self.checkpoints: list[dict[str, Any]] = []
         self.off: dict[str, int] = {}  # live off records and the bytes each holds: the cap counts these
 
@@ -334,6 +335,7 @@ class _Fold:
                 self.items[item] = {**event, **(payload or {}), "stream_id": stream_id}  # no payload: refused when served
                 self.history.setdefault(item, []).append(event["event_id"])
             self.event_ids.add(event["event_id"])
+            self.versions.setdefault(item, []).append({**event, "stream_id": stream_id})
             if event["trust"] == "off" and event["status"] == "active":
                 self.off[item] = len(_json(self.items[item]))
             else:
@@ -357,6 +359,47 @@ class _Fold:
             for stream_id, record in records:
                 raw = found.get(record["event"]["event_id"]) if record["type"] == "event" else None
                 self.apply(stream_id, record, json.loads(raw) if raw is not None else None)
+
+
+def _archived(fold: _Fold) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The oldest live off record's next version, archived: still off, now `superseded`, so it is unserved and no longer counts
+    against the cap, with its scanned title and source locator kept and marked `archived:overflow`. Nothing is deleted; the user
+    can still list, forget or re-remember it. Returned as (stream record, payload)."""
+    oldest = next(iter(fold.off))
+    current = fold.items[oldest]
+    lineage = [*current["lineage"], "archived:overflow"][-msc.MAX_REFERENCES:]
+    event = {"event_id": f"archive-{oldest}-{current['version'] + 1}", "item": oldest, "version": current["version"] + 1,
+             "action": "off", "trust": "off", "status": "superseded", "kind": current["kind"], "scope": current["scope"],
+             "title": current["title"], "statement": "", "anchors": list(current["anchors"]), "lineage": lineage,
+             "valid_from_ms": current["valid_from_ms"], "valid_until_ms": current["valid_until_ms"]}
+    entry, payload = _split(event)
+    payload["digest"] = _digest([current["version"], event])
+    key = hashlib.sha256(f"omem/archive/v1\0{oldest}\0{current['version']}".encode()).hexdigest()
+    return {"type": "event", "key": key, "event": entry}, payload
+
+
+def recovery_key(password: str) -> bytes:
+    """The recovery generations' HMAC key: domain-separated from the journal's, derived from the Gateway's generated ACL password,
+    so no new secret exists and a host without the store's credential cannot forge or alter a generation."""
+    return hashlib.sha256(b"optimus-memory-recovery-v1\0" + password.encode("utf-8")).digest()
+
+
+def _exported(record: dict[str, Any]) -> dict[str, Any]:
+    """One item as a recovery generation keeps it (D8): an active vouched-for item whole; any other only its payload-free
+    lifecycle, with no title, statement, anchors or lineage (an off record's scanned title included)."""
+    keep = record["status"] == "active" and record["trust"] != "off"
+    entry = {name: record[name] for name in ("event_id", "item", "version", "action", "trust", "status", "kind", "scope",
+                                             "valid_from_ms", "valid_until_ms", "stream_id")}
+    if keep:
+        return {**entry, "title": record["title"], "statement": record["statement"], "anchors": list(record["anchors"]),
+                "lineage": list(record["lineage"])}
+    return {**entry, "title": "", "statement": "", "anchors": [], "lineage": []}
+
+
+def _frontier(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """How far deletion had gone in a generation: how many items it holds withdrawn or purged, and the newest such entry."""
+    gone = [entry for entry in entries if entry["status"] in ("withdrawn", "purged")]
+    return {"deletions": len(gone), "last": max((entry["stream_id"] for entry in gone), key=_order, default="")}
 
 
 def _order(stream_id: str) -> tuple[int, int]:
@@ -388,8 +431,10 @@ class MemoryStore:
     `verify` shows the resource is still the provisioned one."""
 
     def __init__(self, client: redis.Redis, writer: redis.Redis, *, admission_ceiling_mb: int, cursor_key: bytes,
-                 journal: PurgeJournal | None = None, inventory: Callable[[float], Inventory] | None = None) -> None:
+                 journal: PurgeJournal | None = None, inventory: Callable[[float], Inventory] | None = None,
+                 recovery_key: bytes | None = None) -> None:
         self._purge_journal = journal
+        self._recovery_key = recovery_key  # HMAC key for recovery generations, derived from the ACL password; None refuses them
         self._inventory = inventory  # lists the data directory; without one no purge's disk step is ever shown complete
         self._redis = client
         self._writer = writer
@@ -693,35 +738,44 @@ class MemoryStore:
             connection = int(self._writer.client_id())
             self._check_links()  # the baseline connection is the verified one, not one the pool re-established just now
             for _ in range(_WATCH_ATTEMPTS):
-                replay_at = None
+                replay_at = archive = None
                 with _pipeline(self._writer) as pipe:  # a watching pipeline holds the writer's only connection until it closes
                     try:
                         fold, head = self._writer_fold(pipe, project, token)
                         if record["key"] in fold.keys:
                             pipe.unwatch()
                             replay_at = head
-                        elif record.get("event", {}).get("trust") == "off" and (
-                                len(fold.off) >= msc.MAX_OFF_RECORDS or sum(fold.off.values()) >= msc.MAX_OFF_BYTES):
-                            pipe.unwatch()  # off records carry no payload, so refusing one loses no knowledge; a growth alert
-                            raise msc.MemoryRequestError("OFF_RECORDS_FULL", 507)
                         elif gated and (self._fsync_failed or self._used() >= self._ceiling_bytes):
                             pipe.unwatch()
                             raise msc.MemoryRequestError("MEMORY_NOT_ADMITTING", 503)
                         else:
                             self._check(fold, record, expected)
+                            if record.get("event", {}).get("trust") == "off" and record["event"]["action"] == "off" and (
+                                    len(fold.off) >= msc.MAX_OFF_RECORDS or sum(fold.off.values()) >= msc.MAX_OFF_BYTES):
+                                if self._used() >= self._ceiling_bytes:  # the archive grows only below the ceiling (Fable CP2 M5)
+                                    pipe.unwatch()
+                                    raise msc.MemoryRequestError("OFF_RECORDS_FULL", 507)
+                                archive = _archived(fold)  # the oldest live off record moves to the unserved archive first
                             self._on_time()  # past the deadline nothing is appended; once EXEC is sent the outcome may be uncertain
                             pipe.multi()
+                            if archive is not None:
+                                pipe.xadd(stream, {"e": _json(archive[0])})
+                                pipe.hset(payloads, archive[0]["event"]["event_id"], _json(archive[1]))
                             pipe.xadd(stream, {"e": _json(record)})
                             if payload is not None:
                                 pipe.hset(payloads, record["event"]["event_id"], _json(payload))
-                            stream_id = _text(self._execute(pipe)[0])
+                            replies = self._execute(pipe)
+                            stream_id = _text(replies[2 if archive is not None else 0])
+                            if archive is not None:
+                                fold.apply(_text(replies[0]), archive[0], dict(archive[1]))
                     except WatchError:
                         self._after_watch_error(connection)
                         continue
                 if replay_at is not None:
                     return self._replay(project, fold, record, payload, replay_at, connection)
                 fold.apply(stream_id, record, None if payload is None else dict(payload))
-                return {"status": "ok", **_result(stream_id, record), **self._confirm(project, stream_id, connection)}
+                archived = {"archived": archive[0]["event"]["item"]} if archive is not None else {}  # growth stays visible
+                return {"status": "ok", **_result(stream_id, record), **archived, **self._confirm(project, stream_id, connection)}
             raise msc.MemoryRequestError("MEMORY_CONTENDED", 409)
 
     @staticmethod
@@ -890,8 +944,227 @@ class MemoryStore:
 
         return self._served(body["project"], page)
 
+    def _op_history(self, body: dict[str, Any]) -> dict[str, Any]:
+        """One page of an item's versions, newest first (Q4). Each version's text is read from the payload hash, so a withdrawal
+        keeps the earlier versions and a purge, which removes every payload the item had, leaves only payload-free entries."""
+        project = body["project"]
+
+        def page(fold: _Fold) -> dict[str, Any]:
+            before = body.get("before", msc.MAX_VERSION + 1)
+            older = [entry for entry in reversed(fold.versions.get(body["item"], [])) if entry["version"] < before]
+            shown = older[: body["limit"]]
+            ids = [entry["event_id"] for entry in shown]
+            found = dict(zip(ids, self._redis.hmget(self._key(project, "payloads"), ids), strict=True)) if ids else {}
+            versions = []
+            for entry in shown:
+                raw = found.get(entry["event_id"])
+                text = json.loads(raw) if raw is not None else None
+                versions.append({name: entry[name] for name in ("event_id", "version", "action", "status", "trust", "kind", "stream_id")}
+                                | {"title": text["title"] if text else "", "statement": text["statement"] if text else "",
+                                   "text": "kept" if text else "none"})
+            return {"status": "ok", "versions": versions, "more": len(older) > len(shown)}
+
+        return self._served(project, page)
+
     def _op_checkpoints(self, body: dict[str, Any]) -> dict[str, Any]:
-        return self._served(body["project"], lambda fold: {"status": "ok", "checkpoints": fold.checkpoints[-body["limit"]:][::-1]})
+        def page(fold: _Fold) -> dict[str, Any]:
+            chosen = [point for point in fold.checkpoints if all(point[name] == body[name] for name in ("branch", "worktree") if name in body)]
+            return {"status": "ok", "checkpoints": chosen[-body["limit"]:][::-1]}
+
+        return self._served(body["project"], page)
+
+    # --- the recovery copy (D5, D8) --------------------------------------------------------------------------------------
+
+    def _need_recovery(self) -> bytes:
+        if self._recovery_key is None:
+            raise msc.MemoryRequestError("MEMORY_RECOVERY_UNAVAILABLE", 503)
+        return self._recovery_key
+
+    def _entry_mac(self, key: bytes, project: str, entry: dict[str, Any]) -> str:
+        return hmac.new(key, b"omem/recovery-entry/v1\0" + project.encode() + b"\0" + _json(entry).encode(), hashlib.sha256).hexdigest()
+
+    def _generation_seal(self, key: bytes, project: str, head: str, macs: list[tuple[str, str]], frontier: dict[str, Any], bind: str,
+                         journal: int) -> str:
+        """The seal over a whole generation: its head, every entry's MAC, its deletion frontier, the host's metadata digest (format,
+        registry mapping, layout files; Codex CP3 review 1) and how many deletion-journal records the project had."""
+        body = _json({"project": project, "head": head, "entries": sorted(macs), "frontier": frontier, "bind": bind, "journal": journal})
+        return hmac.new(key, b"omem/recovery-generation/v2\0" + body.encode(), hashlib.sha256).hexdigest()
+
+    def _bind_mac(self, key: bytes, project: str, bind: str) -> str:
+        return hmac.new(key, b"omem/recovery-bind/v1\0" + project.encode() + b"\0" + bind.encode(), hashlib.sha256).hexdigest()
+
+    def _journal_count(self, project: str) -> int:
+        journal = self._need_journal()
+        try:
+            return len(journal.project_entries(self._project_hash(project)))
+        except JournalError as refusal:
+            raise msc.MemoryRequestError(refusal.code, 503) from None
+
+    def _op_verify_bind(self, body: dict[str, Any]) -> dict[str, Any]:
+        key = self._need_recovery()
+        return {"status": "ok", "valid": hmac.compare_digest(body["mac"], self._bind_mac(key, body["project"], body["bind"]))}
+
+    def _op_export(self, body: dict[str, Any]) -> dict[str, Any]:
+        """One page of the project's recovery generation at the confirmed head, every item in id order, each with its HMAC. The
+        last page also carries the head, the deletion frontier and the seal over all of it, so a restore can tell a whole,
+        unaltered generation this Gateway wrote. Pages read at different heads do not seal: the host starts again."""
+        key = self._need_recovery()
+        project = body["project"]
+        after = self._unseal(project, "recovery", body["cursor"]) if "cursor" in body else ""
+        journal = self._journal_count(project)  # how many deletion-journal records the seal binds
+
+        def page(fold: _Fold) -> dict[str, Any]:
+            ids = sorted(item for item in fold.items if item > after)
+            entries: list[dict[str, Any]] = []
+            size = _LIST_ENVELOPE_BYTES
+            for item in ids[: body["limit"]]:
+                entry = _exported(self._whole(fold.items[item]))
+                shaped = {"entry": entry, "mac": self._entry_mac(key, project, entry)}
+                size += len(_json(shaped)) + 1
+                if entries and size > msc.MAX_RESPONSE_BYTES - 4096:
+                    break
+                entries.append(shaped)
+            more = len(ids) > len(entries)
+            reply: dict[str, Any] = {"status": "ok", "head": fold.head, "entries": entries,
+                                     "cursor": self._seal(project, "recovery", entries[-1]["entry"]["item"]) if more else None}
+            if not more:
+                every = [_exported(self._whole(record)) for record in fold.items.values()]
+                frontier = _frontier(every)
+                macs = [(entry["item"], self._entry_mac(key, project, entry)) for entry in every]
+                reply |= {"frontier": frontier, "journal": journal, "bind_mac": self._bind_mac(key, project, body["bind"]),
+                          "seal": self._generation_seal(key, project, fold.head, macs, frontier, body["bind"], journal)}
+            return reply
+
+        return self._served(project, page)
+
+    def _restore_keys(self, project: str, generation: str) -> tuple[str, str]:
+        return self._key(project, f"restore:{generation}"), self._key(project, f"restore:{generation}:next")
+
+    def _op_restore(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Stage one verified batch of a generation, unserved; on the last, verify the whole generation's seal and publish it
+        into the empty project in one fenced transaction. Never into a project holding anything (`RESTORE_TARGET_NOT_EMPTY`,
+        before any live event or idempotency record is touched); never over an uncertain deletion. The deletion journal and
+        the host's own later withdrawals apply whatever the generation's age: they only take payloads away."""
+        key = self._need_recovery()
+        project, generation, batch = body["project"], body["generation"], body["batch"]
+        staged, cursor_key = self._restore_keys(project, generation)
+        stream, payloads, lease = self._key(project, "events"), self._key(project, "payloads"), self._key(project, "lease")
+        for shaped in body["entries"]:
+            if not hmac.compare_digest(shaped["mac"], self._entry_mac(key, project, shaped["entry"])):
+                raise msc.MemoryRequestError("RESTORE_ENTRY_INVALID", 422)
+        with self._writing():
+            connection = int(self._writer.client_id())
+            self._check_links()
+            if _text(self._writer.get(lease) or b"").split(":", 1)[0] != str(body["token"]):
+                raise msc.MemoryRequestError("LEASE_LOST", 409)
+            if int(self._writer.xlen(stream)):
+                raise msc.MemoryRequestError("RESTORE_TARGET_NOT_EMPTY", 409)
+            expected = int(self._writer.get(cursor_key) or 0)
+            if batch > expected:
+                raise msc.MemoryRequestError("RESTORE_BATCH_OUT_OF_ORDER", 409)
+            if batch == 0 and expected:
+                self._writer.delete(staged, cursor_key)  # a new attempt at this generation discards the interrupted one
+                expected = 0
+            if batch == expected:
+                self._on_time()
+                with _pipeline(self._writer) as pipe:
+                    pipe.multi()
+                    for shaped in body["entries"]:
+                        pipe.hset(staged, shaped["entry"]["item"], _json(shaped))
+                    pipe.set(cursor_key, batch + 1)
+                    self._execute(pipe)
+            if not body["final"]:
+                return {"status": "ok", "state": "staged", "next_batch": max(expected, batch + 1)}
+            return self._publish_restore(key, body, staged, cursor_key, stream, payloads, lease, connection)
+
+    def _publish_restore(self, key: bytes, body: dict[str, Any], staged: str, cursor_key: str, stream: str, payloads: str, lease: str,
+                         connection: int) -> dict[str, Any]:
+        project = body["project"]
+        raw = self._writer.hgetall(staged)
+        entries = [json.loads(value)["entry"] for value in raw.values()]
+        macs = [(entry["item"], self._entry_mac(key, project, entry)) for entry in entries]
+        seal = self._generation_seal(key, project, body["head"], macs, body["frontier"], body["bind"], body["journal"])
+        if not hmac.compare_digest(body["generation"], seal) or body["frontier"] != _frontier(entries):
+            raise msc.MemoryRequestError("RESTORE_GENERATION_INVALID", 422)  # a missing, extra or altered entry, or another head
+        purged = self._journalled_purges(project, body["journal"], body["purged"])
+        withdrawn = set(body["withdrawn"])
+        records: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+        for entry in sorted(entries, key=lambda value: _order(value["stream_id"])):
+            event = {name: value for name, value in entry.items() if name != "stream_id"}
+            # a later deletion is the item's next version, as it was in the lost store, with nothing of its payload
+            gone = {"version": event["version"] + 1, "event_id": f"restored-{event['item']}-{event['version'] + 1}", "title": "",
+                    "statement": "", "anchors": [], "lineage": []}
+            if event["item"] in purged and event["status"] != "purged":
+                event = {**event, **gone, "action": "tombstone", "status": "purged"}
+            elif event["item"] in withdrawn and event["status"] == "active":
+                event = {**event, **gone, "action": "withdraw", "status": "withdrawn"}
+            restore_key = hashlib.sha256(f"omem/restored/v1\0{event['event_id']}".encode()).hexdigest()
+            if event["action"] == "tombstone":
+                records.append(({"type": "event", "key": restore_key, "digest": _digest(["purge", event["item"]]), "event": event}, None))
+                continue
+            entry_part, payload = _split(event)
+            payload["digest"] = _digest([event["version"] - 1, event])
+            records.append(({"type": "event", "key": restore_key, "event": entry_part}, payload))
+        with _pipeline(self._writer) as pipe:
+            try:
+                pipe.watch(lease, stream)
+                if _text(pipe.get(lease) or b"").split(":", 1)[0] != str(body["token"]):
+                    raise msc.MemoryRequestError("LEASE_LOST", 409)
+                if int(pipe.xlen(stream)):
+                    raise msc.MemoryRequestError("RESTORE_TARGET_NOT_EMPTY", 409)  # a write landed meanwhile: nothing is merged
+                self._on_time()
+                pipe.multi()
+                for record, kept in records:
+                    pipe.xadd(stream, {"e": _json(record)})
+                    if kept is not None:
+                        pipe.hset(payloads, record["event"]["event_id"], _json(kept))
+                pipe.delete(staged, cursor_key)
+                pipe.set(self._key(project, "restored"), body["generation"])
+                replies = self._execute(pipe)
+            except WatchError:
+                raise msc.MemoryRequestError("RESTORE_TARGET_NOT_EMPTY", 409) from None
+        del replies
+        newest = self._writer.xrevrange(stream, count=1)
+        head = _text(newest[0][0]) if newest else "0-0"
+        self._writer_folds.pop(project, None)
+        self._serving_folds.pop(project, None)
+        confirmed = self._confirm(project, head, connection) if records else {"durable_state": "confirmed", "projection_state": "current"}
+        return {"status": "ok", "state": "published", "restored": len(records), "purged": sorted(purged & {r[0]["event"]["item"] for r in records}),
+                **confirmed}
+
+    def _journalled_purges(self, project: str, expected: int, known: list[str]) -> set[str]:
+        """Items the deletion journal says were purged in this project. An intent with no later step is uncertain: the
+        generation may hold text a purge was destroying, so nothing is published until that purge is retried."""
+        journal = self._need_journal()
+        try:
+            records = journal.project_entries(self._project_hash(project))
+        except JournalError as refusal:
+            raise msc.MemoryRequestError("RESTORE_DELETION_UNKNOWN" if refusal.code == "MEMORY_JOURNAL_DAMAGED" else refusal.code, 409) from None
+        if len(records) < expected:  # fewer records than when the generation was written: the journal was lost or cut
+            raise msc.MemoryRequestError("RESTORE_DELETION_UNKNOWN", 409)
+        phases: dict[str, set[str]] = {}
+        for record in records:
+            phases.setdefault(record["item"], set()).add(record["phase"])
+        if any(found == {"intent"} for found in phases.values()):
+            raise msc.MemoryRequestError("RESTORE_DELETION_UNCERTAIN", 409)
+        purged = {item for item, found in phases.items() if found & {"tombstoned", "physical", "completed"}}
+        if not set(known) <= purged:  # the host saw a purge the journal no longer shows: it was lost (Codex CP3 review 1, finding 1)
+            raise msc.MemoryRequestError("RESTORE_DELETION_UNKNOWN", 409)
+        return purged
+
+    def _op_restore_status(self, body: dict[str, Any]) -> dict[str, Any]:
+        project, generation = body["project"], body["generation"]
+        staged, cursor_key = self._restore_keys(project, generation)
+        with self._writing():
+            self._check_links()
+            restored = _text(self._writer.get(self._key(project, "restored")) or b"")
+            if restored == generation:
+                return {"status": "ok", "state": "published"}
+            next_batch = int(self._writer.get(cursor_key) or 0)
+            empty = not int(self._writer.xlen(self._key(project, "events")))
+        if next_batch:
+            return {"status": "ok", "state": "staged", "next_batch": next_batch, "target_empty": empty}
+        return {"status": "ok", "state": "none", "target_empty": empty}
 
     # --- purge ---------------------------------------------------------------------------------------------------------
 
@@ -1153,7 +1426,8 @@ def build_memory_store_service(config: MemoryStoreConfig, *, keyring_backend: An
     cursor_key = hashlib.sha256(b"optimus-memory-store-cursor-v1\0" + hmac_key).digest()
     journal = PurgeJournal(journal_root, journal_key(password)) if journal_root is not None and password else None
     store = MemoryStore(connect(endpoint), connect(endpoint), admission_ceiling_mb=config.admission_ceiling_mb, cursor_key=cursor_key,
-                        journal=journal, inventory=inventory or docker_inventory(config))
+                        journal=journal, inventory=inventory or docker_inventory(config),
+                        recovery_key=recovery_key(password) if password else None)
 
     def verify(deadline: float) -> None:
         if not password:

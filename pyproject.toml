@@ -81,7 +81,7 @@ markers = [
   "requires_evidence_handoff_postgres: integration test that needs real PostgreSQL started via Docker Desktop on loopback",
   "requires_evidence_handoff_service: integration test that needs real Docker Desktop PostgreSQL on loopback plus a real evidence-handoff Streamable HTTP service subprocess",
   "requires_real_agents: end-to-end evidence that needs real native Claude Code, Codex, and Cursor clients with distinct credentials",
-  "requires_plan12_memory_redis: Plan 12.11 memory store on the released dedicated Redis p1211-memory-test-redis, enabled by P1211_MEMORY_DOCKER_RELEASED; never the shared test Redis, the index Redis or the product store",
+  "requires_plan12_memory_redis: Plan 12.11 memory store on the checkpoint's released dedicated Redis (p1211-cp3-test-redis in CP3), enabled by P1211_MEMORY_DOCKER_RELEASED; never the shared test Redis, the index Redis or the product store",
   "requires_plan12_index_redis: Plan 12.10 context index on a released dedicated Redis named by P1210_INDEX_REDIS_URL; never the shared test Redis",
   "requires_plan12_probe_redis: Plan 12.7 synthetic K2 load on a released dedicated Redis named by OPTIMUS_PLAN12_PROBE_CONFIG; never the shared test Redis",
   "requires_plan12_capture_postgres: Plan 12.8 K3 on a released disposable Postgres named by P128_CAPTURE_K3_CONFIG; never another plan's database",

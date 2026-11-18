@@ -1144,6 +1144,7 @@ class PlanningLoopRunner:
         conversation_envelope: str = "",
         required_file_sizes: dict[str, int] | None = None,
         initial_workspace_sha256s: dict[str, str] | None = None,
+        memory_context: str = "",
     ) -> PlanningLoopResult:
         # Only an evaluation caller's explicit cap can stop planning on money (Plan 12.2 Task 11).
         if self._max_cost_usd is not None and self._max_cost_usd <= Decimal("0"):
@@ -1179,6 +1180,7 @@ class PlanningLoopRunner:
             mcp_permission_broker=broker,
             operation_control=self._operation_control,
             conversation_envelope=conversation_envelope,
+            memory_context=memory_context,
             context_packer=self._context_packer,
             attempt_callback=self._attempt_callback,
             route_binder=self._route_binder,
@@ -1288,6 +1290,7 @@ class _PlanningIterationRunner:
         mcp_permission_broker: object | None = None,
         operation_control: TurnOperationControl | None = None,
         conversation_envelope: str = "",
+        memory_context: str = "",
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
         route_binder: TurnRouteBinder | None = None,
@@ -1330,6 +1333,7 @@ class _PlanningIterationRunner:
         # The previous turn's closed parse-failure code, for the next turn's notice; None once a turn parses (#403).
         self._parse_failure_code: str | None = None
         self._conversation_envelope = conversation_envelope
+        self._memory_context = memory_context
         self._context_packer = context_packer
         self._initial_workspace_context = initial_workspace_context
         self._initial_workspace_file_sizes = initial_workspace_file_sizes
@@ -1850,6 +1854,7 @@ class _PlanningIterationRunner:
                 repo_map=None if self._memory is None else repo_map,
                 index_results=self._index_results,
                 index_tools_enabled=self._index_tools_open(),
+                memory_context=self._memory_context,
                 initial_workspace_context=self._initial_workspace_context if planning_turn == 1 else "",
                 # The sizes stay until the first guarded read: a turn that read nothing still needs
                 # them to size its re-read (#388). The raw context stays turn-1-only (Plan 9.87).

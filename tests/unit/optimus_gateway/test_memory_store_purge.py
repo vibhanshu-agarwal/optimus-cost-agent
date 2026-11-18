@@ -52,7 +52,8 @@ def store(root: Path, server: Server | None = None, *, journal: bool = True) -> 
         return files
 
     inner = memory_store.MemoryStore(Client(server, 9), Client(server), admission_ceiling_mb=384, cursor_key=b"k",  # type: ignore[arg-type]
-                                     journal=purge_journal if journal else None, inventory=inventory)
+                                     journal=purge_journal if journal else None, inventory=inventory,
+                                     recovery_key=memory_store.recovery_key("pw"))
 
     def verify(deadline: float) -> None:
         inner.verify(RESOURCE, deadline=deadline)
@@ -393,14 +394,24 @@ def test_a_tombstone_redis_holds_is_driven_even_when_the_journal_lost_it(tmp_pat
     assert status(fresh)["purge_state"] == memory_store.PURGE_COMPLETED
 
 
-def test_off_records_stop_at_the_cap_and_withdrawals_still_go_through(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fable CP2 M5: a misbehaving model cannot fill the store with off records."""
+def test_off_records_over_the_cap_archive_the_oldest_and_stop_at_the_ceiling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Plan 12.11 Task 4: past the active cap, the oldest live off record moves to the unserved archive (still off, now
+    superseded, its scanned title kept and marked) and the reply names it, so the growth is visible. Fable CP2 M5 still holds:
+    at the store's ceiling a misbehaving model cannot fill it with off records; refusing one loses no knowledge."""
     monkeypatch.setattr(msc, "MAX_OFF_RECORDS", 3)
-    service, _server, _journal = store(tmp_path)
+    service, server, _journal = store(tmp_path)
     token = lease(service)
     for n in range(3):
         off = event(item=f"m-{n:016x}", event_id=f"e-off-{n}", action="off", trust="off", statement="", title="(withheld)")
         assert append(service, token, off)[0] == 200
     extra = event(item="m-00000000000000ff", event_id="e-off-x", action="off", trust="off", statement="", title="(withheld)")
-    assert append(service, token, extra) == (507, msc.error_body("OFF_RECORDS_FULL"))
+    code, reply = append(service, token, extra)
+    assert code == 200 and reply["archived"] == f"m-{0:016x}"
+    archived = read(service, f"m-{0:016x}")
+    assert (archived["version"], archived["trust"], archived["status"], archived["title"]) == (2, "off", "superseded", "(withheld)")
+    assert "archived:overflow" in archived["lineage"] and archived["statement"] == ""
+    server.used = 400 * 1024 * 1024  # type: ignore[attr-defined]  # over the 384 MiB admission ceiling
+    more = event(item="m-00000000000000fe", event_id="e-off-y", action="off", trust="off", statement="", title="(withheld)")
+    assert append(service, token, more) == (507, msc.error_body("OFF_RECORDS_FULL"))
+    server.used = 0  # type: ignore[attr-defined]
     assert append(service, token, event())[0] == 200  # a real memory is not an off record

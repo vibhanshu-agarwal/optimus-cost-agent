@@ -1,0 +1,63 @@
+{
+ "schema": "plan12-memory-m3.prompt-layout.v1",
+ "sources": [
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100122-43296-5dacf1",
+   "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  },
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100234-46596-8541ca",
+   "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  }
+ ],
+ "release": "operator 2026-11-18 Docker release on #490: p1211-cp3-test-redis and p1211-cp3-test-data only, with fault injection",
+ "claims": [
+  "memory follows ADR-039's cache prefix and precedes history in both indexed builders",
+  "without the index, memory follows the fixed instructions and precedes history",
+  "no memory leaves every prompt byte-identical",
+  "changed and non-ASCII memory never moves a prefix byte or its boundary",
+  "the block binds the stored plan's context digest",
+  "user items are protected; at most three agent lessons, ranked with stable ties; omissions stated"
+ ],
+ "cases": [
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_turn_is_served_its_project_memory_bound_into_its_digest_and_its_citations_are_checked",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_serving.py::test_both_prefix_builders_keep_their_cache_prefix_whatever_the_memory_holds",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_serving.py::test_memory_binds_the_plan_context_digest_and_none_leaves_it_alone",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_serving.py::test_no_memory_leaves_every_builder_byte_identical_to_before",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_serving.py::test_nothing_served_renders_nothing_so_the_prompt_is_unchanged",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_serving.py::test_the_block_cites_each_item_and_states_what_was_left_out",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_serving.py::test_the_block_is_sanitized_and_kept_to_one_line_per_item",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_serving.py::test_user_items_are_protected_and_agent_lessons_are_optional_and_bounded",
+   "outcome": "passed"
+  }
+ ],
+ "passed": true
+}

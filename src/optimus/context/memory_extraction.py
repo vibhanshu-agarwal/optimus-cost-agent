@@ -10,6 +10,7 @@ summarizer call, the settlement and the store adapter injected.
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import dataclasses
 import hashlib
@@ -18,7 +19,7 @@ import json
 import queue
 import re
 import threading
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -34,6 +35,7 @@ COMPACTION_PURPOSE: Final = "memory.compaction"  # shares the user slot: never a
 MAX_INPUT_TOKENS: Final = 8192  # frozen in reports/plan12-memory-m3/targets.json, framing included
 MAX_OUTPUT_TOKENS: Final = 512
 MAX_CANDIDATES: Final = 8
+MAX_SOURCES: Final = 64  # raw user blocks a session keeps in RAM for switch-on (agent-selected)
 MAX_EXISTING_ITEMS: Final = 20  # current user items a retraction may name
 _ALL_LIVE: Final = 1_000_000  # every live user item in a scope (a project holds at most 200 active)
 _OVERLAP_TOKENS: Final = 8  # a verbatim run this long from a file or tool result is source text, never memory (B1)
@@ -333,7 +335,7 @@ def _said(proposal: Proposal, blocks: dict[str, str]) -> list[str]:
     return [" ".join(blocks[span.block][span.start : span.end].split()) for span in proposal.spans if span.block in blocks]
 
 
-def _bounds(text: str) -> list[tuple[int, int]]:
+def sentence_bounds(text: str) -> list[tuple[int, int]]:
     """The block's sentences as (start, end): a sentence ends only at ".", "!" or "?" before a space or the end."""
     bounds, start = [], 0
     for match in _SENTENCE_END.finditer(text):
@@ -353,7 +355,7 @@ def _reading(text: str) -> str | None:
     if _QUOTE_CHARS.search(bare) or any(line.lstrip().startswith(">") for line in bare.splitlines()) or _SOURCE.search(bare) or (
             _QUOTED.search(bare) or _INTRODUCES.search(bare) or _ATTRIBUTION.search(bare)):
         return "quotation"
-    if ":" in bare or "\n" in bare or len(_bounds(bare)) != 1 or not bare.endswith((".", "!", "?")):
+    if ":" in bare or "\n" in bare or len(sentence_bounds(bare)) != 1 or not bare.endswith((".", "!", "?")):
         return "unclear"
     return None
 
@@ -471,12 +473,12 @@ def _snapped(proposal: Proposal, blocks: dict[str, str]) -> Proposal:
         if text is None or span.end > len(text):
             spans.append(span)  # refused by the support check
             continue
-        touched = [(start, end) for start, end in _bounds(text) if start < max(span.end, span.start + 1) and span.start < end]
+        touched = [(start, end) for start, end in sentence_bounds(text) if start < max(span.end, span.start + 1) and span.start < end]
         spans.append(Span(span.block, min(start for start, _ in touched), max(end for _, end in touched)) if touched else span)
     return dataclasses.replace(proposal, spans=tuple(spans))
 
 
-def _title_of(statement: str) -> str:
+def title_of(statement: str) -> str:
     """A user item's title is its own words, shortened at a word boundary: nothing the model wrote is shown as the user's."""
     if len(statement) <= 120:
         return statement
@@ -508,7 +510,7 @@ def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, 
         supported = act is not None and len(statement) <= MAX_STATEMENT_CHARS and _spans_support(proposal, texts)
         if not supported:
             statement = proposal.statement[:MAX_STATEMENT_CHARS]  # reaches only an off record, which keeps no statement
-        title = _title_of(statement) if supported else proposal.title[:120]
+        title = title_of(statement) if supported else proposal.title[:120]
         speech_act = act or proposal.speech_act
         key = keyed(f"user\0{project}\0{scope}\0{speech_act}\0{statement}\0{proposal.target}")  # one statement, one item per scope
         try:
@@ -590,6 +592,7 @@ class Outcome:
     incomplete: str | None = None
     skipped: str | None = None  # no call made: the queue was full, the extractor closed, the text's changes all still stand, or
     # (agent) the scope holds a user item
+    gaps: tuple[str, ...] = ()  # compaction: "<block>:<reason>" for covered text that could not be extracted (over the input cap)
 
 
 class MemoryExtractor:
@@ -600,12 +603,19 @@ class MemoryExtractor:
 
     def __init__(self, *, store: Any, settlement: Any, bind: Callable[[str], Callable[..., Any]] | None = None,
                  record: Callable[[str, str, Any, str | None], None] | None = None, sanitize: Callable[[str], str],
-                 report: Callable[[Outcome], None], workers: int = 2, depth: int = 4, keyed: Callable[[str], str] = digest) -> None:
+                 report: Callable[[Outcome], None], workers: int = 2, depth: int = 4, keyed: Callable[[str], str] = digest,
+                 worktree: str = "worktree:unknown") -> None:
         self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
+        self.worktree = worktree  # the registry's opaque worktree identity, for continuity checkpoints
+        self.recovery: Any = None  # the project's recovery copy (`memory_recovery.Recovery`), set by the launch's factory
+        self.notices: Any = None  # the project's durable notice backlog (`memory_recovery.NoticeBacklog`), set by the factory
         self._sanitize, self._report, self._keyed = sanitize, report, keyed
         self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
         self._extracted: set[str] = set()  # evidence refs whose work was extracted
         self._said: dict[str, tuple[tuple[str, int], ...]] = {}  # user text digest -> each (item, version) it confirmed
+        self._sources: collections.OrderedDict[str, str] = collections.OrderedDict()  # this session's raw user blocks, in RAM only
+        self._attempted: set[str] = set()  # per-scope digests of user text a completed job decided (whatever it decided)
+        self._covered: list[UserBlock] = []  # covered by a summary since the last turn and not yet decided (compaction)
         self._closed = False
         self._lock = threading.Lock()
         self._commit_lock = threading.Lock()  # one session writes under one lease at a time: its jobs never fence each other out
@@ -613,17 +623,68 @@ class MemoryExtractor:
         for thread in self._threads:
             thread.start()
 
+    @property
+    def store(self) -> Any:
+        """The session's store client, which the host's memory commands share."""
+        return self._store
+
+    @property
+    def keyed(self) -> Callable[[str], str]:
+        return self._keyed
+
+    def source(self, block: str) -> str | None:
+        """A raw user block this session still holds, for an explicit switch-on (D10). RAM only: gone with the session, and the
+        oldest go first once `MAX_SOURCES` are held. Never a diagnostic or a transcript."""
+        with self._lock:
+            return self._sources.get(block)
+
+    def source_digest(self, text: str) -> str:
+        """The keyed digest an off record keeps of its source block: it shows the text is unchanged without holding it."""
+        return self._keyed(f"memory-source\0{text}")
+
     def submit(self, turn: TurnInput) -> tuple[Decision, Decision]:
         """Decide both prefilters now (cheap, deterministic) and queue what they call for. Returns the two decisions."""
         text = "\n".join(block.text for block in turn.blocks)
         with self._lock:
             extracted = frozenset(self._extracted)
+            for block in turn.blocks:
+                self._sources[block.block] = block.text
+                self._sources.move_to_end(block.block)
+            while len(self._sources) > MAX_SOURCES:
+                self._sources.popitem(last=False)
         user = prefilter_user(text)  # text said before is checked in the job, against what its changes became since
         agent =prefilter_agent(turn.work, extracted=extracted)
-        for purpose, decision in ((USER_PURPOSE, user), (AGENT_PURPOSE, agent)):
-            if decision.call:
-                self._enqueue(purpose, turn)
+        with self._lock:
+            covered, self._covered = tuple(self._covered), []
+        if covered:
+            # Compaction shares the user slot (plan v5): covered raw text and this turn's own go in one call, never a third.
+            self._enqueue(COMPACTION_PURPOSE, dataclasses.replace(turn, blocks=covered + (turn.blocks if user.call else ())))
+        elif user.call:
+            self._enqueue(USER_PURPOSE, turn)
+        if agent.call:
+            self._enqueue(AGENT_PURPOSE, turn)
         return user, agent
+
+    def covered(self, blocks: Sequence[UserBlock], scope: str) -> int:
+        """A summary is about to stand in for these turns in the model's view: their raw user text, never the summary, is
+        extracted at the next turn, in the user slot. Text a completed job already decided, or that the prefilter skips, is not
+        extracted again; nor is text already queued. Returns how many blocks were queued."""
+        queued = 0
+        with self._lock:
+            known = {block.block for block in self._covered}
+            for block in blocks:
+                if block.block in known or digest(scope + "\0" + block.text.strip()) in self._attempted:
+                    continue
+                if not prefilter_user(block.text).call:
+                    continue
+                self._covered.append(block)
+                known.add(block.block)
+                self._sources[block.block] = block.text
+                self._sources.move_to_end(block.block)
+                queued += 1
+            while len(self._sources) > MAX_SOURCES:
+                self._sources.popitem(last=False)
+        return queued
 
     def _enqueue(self, purpose: str, turn: TurnInput) -> None:
         invocation = self._settlement.open_invocation(turn.turn_id)
@@ -659,14 +720,16 @@ class MemoryExtractor:
 
         said = digest(turn.scope + "\0" + "\n".join(block.text for block in turn.blocks).strip())  # per scope: another is another item
         try:
+            user_slot = purpose in (USER_PURPOSE, COMPACTION_PURPOSE)
             if purpose == USER_PURPOSE and self._still_stands(said):
                 return Outcome(turn.turn_id, purpose, skipped="already_extracted")
             if purpose == AGENT_PURPOSE and self._store.user_items(turn.scope, limit=1):
                 # Its lessons could only go off (`_commit`), so no call is paid for (Codex CP2 review 3, on finding 6).
                 return Outcome(turn.turn_id, purpose, skipped="user_items_in_scope")
-            existing = self._store.user_items(turn.scope, limit=MAX_EXISTING_ITEMS) if purpose == USER_PURPOSE else []
-            if purpose == USER_PURPOSE:
-                prompt, _kept = user_prompt(turn.blocks, existing)
+            existing = self._store.user_items(turn.scope, limit=MAX_EXISTING_ITEMS) if user_slot else []
+            kept: tuple[str, ...] = ()
+            if user_slot:
+                prompt, kept = user_prompt(turn.blocks, existing)
             else:
                 assert turn.work is not None
                 prompt = agent_prompt(turn.work)
@@ -689,7 +752,7 @@ class MemoryExtractor:
             if response.integrity_error is not None:
                 return Outcome(turn.turn_id, purpose, incomplete="unattributable_report")
             proposals = parse_reply(response.text)
-            if purpose == USER_PURPOSE:
+            if user_slot:
                 candidates = user_candidates(proposals, project=self._store.project, scope=turn.scope, blocks=turn.blocks,
                                              trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources, existing=existing,
                                              keyed=self._keyed)
@@ -697,21 +760,26 @@ class MemoryExtractor:
                 assert turn.work is not None
                 candidates = agent_candidates(proposals, project=self._store.project, scope=turn.scope, work=turn.work,
                                               trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources, keyed=self._keyed)
-            notices, refusals, reasons, store_refused, written = self._commit(candidates)
+            located = {block.block: self.source_digest(block.text) for block in turn.blocks}
+            notices, refusals, reasons, store_refused, written = self._commit(candidates, located)
         except ExtractionIncomplete as incomplete:
             return Outcome(turn.turn_id, purpose, incomplete=incomplete.reason)
         except MemoryStoreUnavailable:
             return Outcome(turn.turn_id, purpose, incomplete="store_unavailable")
         except MemoryStoreRefused as refused:
             return Outcome(turn.turn_id, purpose, incomplete=f"store_refused:{refused.code}")
+        gaps = tuple(f"{block.block}:over_input_cap" for block in turn.blocks if user_slot and block.block not in kept)
         with self._lock:
             if written is None:
                 pass  # a write was refused or not proven on disk: this text stays worth trying again
-            elif purpose == USER_PURPOSE:
-                self._said[said] = tuple(written)
+            elif user_slot:
+                if purpose == USER_PURPOSE:
+                    self._said[said] = tuple(written)
+                self._attempted.update(digest(turn.scope + "\0" + block.text.strip()) for block in turn.blocks if block.block in kept)
             elif turn.work is not None:
                 self._extracted.update(item.ref for item in turn.work.evidence)
-        return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals), tuple(reasons))
+        return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals), tuple(reasons),
+                       gaps=gaps)
 
     def _still_stands(self, said: str) -> bool:
         """Whether this text was extracted before and every change it made is still the item's current version: then a call
@@ -726,7 +794,8 @@ class MemoryExtractor:
                 return False
         return True
 
-    def _commit(self, candidates: Sequence[Candidate]) -> tuple[list[Any], list[str], list[str], bool, list[tuple[str, int]] | None]:
+    def _commit(self, candidates: Sequence[Candidate], located: Mapping[str, str] | None = None
+                ) -> tuple[list[Any], list[str], list[str], bool, list[tuple[str, int]] | None]:
         """The Gate decides each candidate against the item's current state, read now: a decision taken on a moved head is
         refused by the store's expected version, never forced. A new item whose id is taken by a withdrawn or purged one
         (the same words said again) gets the next free id along its chain; one still live is replayed by the store. An agent
@@ -770,7 +839,7 @@ class MemoryExtractor:
                         break  # free, or the same save again: the store replays its first result and proves it on disk
                     candidate = dataclasses.replace(candidate, idempotency_key=self._keyed(f"{candidate.idempotency_key}\0{taken.event.version}"))
                     decision = memory_gate.admit(candidate, verdict, target)
-                decision = _automatic(decision, candidate)  # D9, once, on what would be written
+                decision = _located(_automatic(decision, candidate), candidate, located or {})  # D9, once, on what would be written
                 reasons.append(decision.reason)
                 if decision.outcome != "append" or decision.draft is None:
                     refusals.append(decision.reason)
@@ -822,6 +891,20 @@ def _automatic(decision: memory_gate.GateDecision, candidate: MemoryCandidate) -
     return decision
 
 
+def _located(decision: memory_gate.GateDecision, candidate: MemoryCandidate, located: Mapping[str, str]) -> memory_gate.GateDecision:
+    """An off record keeps a payload-free source locator (D10), so an explicit switch-on can find its exact source again or
+    refuse: who proposed it, the act, the target it named, each span's block and range, and a keyed digest of each block.
+    No text. A scan-blocked record keeps no spans: its source must never be offered back."""
+    draft = decision.draft
+    if decision.outcome != "append" or draft is None or draft.action != "off" or draft.title == memory_gate.BLOCKED_TITLE:
+        return decision
+    lineage = [f"origin:{candidate.trust}", f"act:{candidate.speech_act}"] + ([f"target:{candidate.target}"] if candidate.target else [])
+    spans = [span for span in candidate.spans if span.block in located][:8]
+    lineage += sorted({f"src:{span.block}@{located[span.block]}" for span in spans if len(span.block) + 69 <= 128})
+    anchors = tuple(f"{span.block}:{span.start}-{span.end}" for span in spans if len(span.block) + 24 <= 128)
+    return dataclasses.replace(decision, draft=dataclasses.replace(draft, anchors=anchors, lineage=tuple(lineage)))
+
+
 def _state(stored: Any) -> ItemState | None:
     """The engine's view of one item from its latest stored event, for the Gate."""
     if stored is None:
@@ -854,12 +937,36 @@ def evidence_from(run_id: str, tool_calls: Sequence[Any]) -> tuple[Evidence, ...
     return tuple(found)
 
 
+class RegistryRepair:
+    """What a session gets when the project registry is lost: no extraction, only the registry's repair (`/memory restore`)."""
+
+    def __init__(self, registry_recovery: Any) -> None:
+        self.registry_recovery = registry_recovery
+
+    def submit(self, _turn: Any) -> tuple[Decision, Decision]:
+        return Decision(False, "registry_lost"), Decision(False, "registry_lost")
+
+    def covered(self, _blocks: Any, _scope: str) -> int:
+        return 0
+
+    def close(self, timeout: float = 5.0) -> None:
+        return None
+
+
+def worktree_id(canonical_path: str) -> str:
+    """The opaque worktree identity a checkpoint carries: a digest of the registry's canonical path, never the path itself."""
+    return "worktree:" + hashlib.sha256(f"optimus-memory-worktree-v1\0{canonical_path}".encode()).hexdigest()[:32]
+
+
 def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., MemoryExtractor | None]:
     """How a launch with an approved, ready memory store opens one extractor per session. A workspace that cannot be
     registered (an untrusted or unresolvable path) gets none: memory stays read-only there."""
+    from pathlib import Path
+
     from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
     from optimus.context.authored_memory import GatewayMemoryStore
-    from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError
+    from optimus.context.memory_recovery import NoticeBacklog, Recovery, RegistryRecovery, StateFile
+    from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError, project_key
 
     registry = ProjectRegistry(config_root)
     # Ids derived from what was said are keyed with the host's own secret, which the store never holds: an id kept after a
@@ -870,12 +977,29 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
         return hmac.new(secret, text.encode("utf-8"), hashlib.sha256).hexdigest()
 
     def open_extractor(workspace: Any, *, settlement: Any, sanitize: Callable[[str], str], session_id: str,
-                       report: Callable[[Outcome], None]) -> MemoryExtractor | None:
+                       report: Callable[[Outcome], None]) -> Any:
         try:
-            registration = registry.resolve(resolve_workspace_identity(workspace), create=True)
-        except (ProjectRegistryError, TrustedPathError, OSError, ValueError):
+            identity = resolve_workspace_identity(workspace)
+            registration = registry.resolve(identity, create=True)
+        except ProjectRegistryError as refusal:
+            if refusal.code != "RECOVERY_REQUIRED":
+                return None
+            # the registry is lost although projects were registered: only its authenticated repair is offered
+            return RegistryRepair(RegistryRecovery(
+                Path(workspace), key=project_key(identity), restore_registry=registry.restore,
+                open_store=lambda project: GatewayMemoryStore(settings, project=project, owner=f"session:{session_id}"),
+                state_for=lambda project: StateFile.shared(Path(config_root), project)))
+        except (TrustedPathError, OSError, ValueError):
             return None
         store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
-        return MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed)
+        project = registration.project_id
+        recovery = Recovery(store, StateFile.shared(Path(config_root), project),
+                            registry=registry.snapshot)
+        store.guard, store.written = recovery.recovery_required, recovery.written  # Q3: nothing is written before a restore
+        extractor = MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed,
+                                    worktree=worktree_id(registration.worktree))
+        extractor.recovery = recovery
+        extractor.notices = NoticeBacklog.shared(Path(config_root), project)
+        return extractor
 
     return open_extractor

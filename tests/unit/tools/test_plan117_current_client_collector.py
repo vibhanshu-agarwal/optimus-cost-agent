@@ -30,11 +30,22 @@ def test_current_source_census_matches_the_frozen_fixture():
     col.verify_census(FIXTURE, SPEC_TEXT)
 
 
+def test_only_malformed_or_unknown_session_requests_are_negative_controls():
+    """Plan 11.7 v5: every well-formed pre-admission branch maps to its wire class's descriptor (one per class, whatever its
+    message); malformed or unknown-session requests are the only negative controls."""
+    controls = {e.site for e in FIXTURE.census if e.disposition == "negative_control"}
+    assert controls == {"error:INVALID_REQUEST:invalid request", "error:INVALID_REQUEST:unknown session", "error:METHOD_NOT_FOUND:*"}
+
+
 def test_census_is_traced_from_source_not_copied_from_the_fixture():
     traced = col.trace_first_prompt_census(SPEC_TEXT)
     assert ("_handle_session_prompt", "error:INVALID_REQUEST:empty prompt", False, 1) in traced
     assert ("_refuse_prompt", "stop_reason:refusal", False, 1) in traced
     assert ("_handle_savings", "stop_reason:cancelled", False, 3) in traced
+    # the host's shared local answer is counted at each caller with that caller's own message (Plan 12.11 CP3)
+    assert ("_handle_savings", "error:INTERNAL_ERROR:the usage report could not be delivered", False, 1) in traced
+    assert ("_handle_memory_command", "error:INTERNAL_ERROR:the memory answer could not be delivered", False, 1) in traced
+    assert ("_handle_session_prompt", "memory_command", False, 1) in traced
     # post-admission branches (after allocate_turn_seq) are not part of the first-refusal census
     assert not any(site == "stop_reason:*" for _, site, _, _ in traced)
 

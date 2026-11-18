@@ -6,9 +6,9 @@ as the index's scopes are (ADR-037): the Gateway authenticates the shared key, n
 can name another project. The trusted host binds them and the model never selects one.
 
 One stream per project is authoritative: `append` (admit, update, withdraw, off) and `checkpoint` add one event under the
-project's fenced lease; `read`, `list` and `checkpoints` serve only what `WAITAOF` confirmed. `purge` destroys one item's text
-behind a journalled tombstone and `purge_status` reports and drives its disk step (Task 2). `export`, `restore` and
-`restore_status` have their shapes here and answer `MEMORY_OPERATION_UNAVAILABLE` until Task 4's recovery copy backs them.
+project's fenced lease; `read`, `list`, `history` and `checkpoints` serve only what `WAITAOF` confirmed. `purge` destroys one item's text
+behind a journalled tombstone and `purge_status` reports and drives its disk step (Task 2). `export` pages a signed recovery
+generation, `restore` stages one into an empty project and publishes it, and `restore_status` reports where that stands (Task 4).
 Limits are agent-selected, frozen in `reports/plan12-memory-m3/targets.json`.
 """
 
@@ -39,6 +39,7 @@ MAX_LIST: Final = 100
 MAX_OFF_RECORDS: Final = 200  # live off records per project (targets.json admission); the overflow archive is Task 4's
 MAX_OFF_BYTES: Final = 524_288
 MAX_CHECKPOINTS: Final = 20
+MAX_HISTORY: Final = 20  # versions per `/memory view` page (Q4)
 MAX_RESTORE_BATCH: Final = 10  # ten maximal events stay well inside the request bound
 MAX_VERSION: Final = 2**31 - 1
 LEASE_TTL_MS: Final = (1_000, 300_000)
@@ -140,7 +141,8 @@ def event(value: Any) -> dict[str, Any]:
     end = _integer(value["valid_until_ms"], 0, 2**53)  # 0: still valid
     if end and end <= start:
         raise _refuse()
-    if (trust == "off") != (action == "off") or (trust == "off" and statement):
+    # an off record is written off and may later be withdrawn (D10: `/forget`, or retired by switch-on); never anything else
+    if (action == "off") != (trust == "off" and action != "withdraw") or (trust == "off" and statement):
         raise _refuse()
     if action == "withdraw" and (title or statement):
         raise _refuse()
@@ -229,6 +231,16 @@ def _list(body: dict[str, Any]) -> None:
         _match(body["cursor"], _CURSOR)
 
 
+def _history(body: dict[str, Any]) -> None:
+    """One page of an item's versions, newest first, for `/memory view` (Q4): `before` is the version the page starts below."""
+    _fields(body, {"op", "project", "item", "limit"}, frozenset({"before"}))
+    _opaque(body["project"])
+    _match(body["item"], _ITEM)
+    _integer(body["limit"], 1, MAX_HISTORY)
+    if "before" in body:
+        _integer(body["before"], 2, MAX_VERSION)
+
+
 def _checkpoint(body: dict[str, Any]) -> None:
     _fields(body, {"op", "project", "token", "checkpoint"})
     _opaque(body["project"])
@@ -237,9 +249,15 @@ def _checkpoint(body: dict[str, Any]) -> None:
 
 
 def _checkpoints(body: dict[str, Any]) -> None:
-    _fields(body, {"op", "project", "limit"})
+    """The newest checkpoints, optionally only those on one branch, or one branch and worktree (Codex CP3 review 1, finding 5)."""
+    _fields(body, {"op", "project", "limit"}, frozenset({"branch", "worktree"}))
     _opaque(body["project"])
     _integer(body["limit"], 1, MAX_CHECKPOINTS)
+    if "worktree" in body and "branch" not in body:
+        raise _refuse()
+    for name in ("branch", "worktree"):
+        if name in body:
+            _opaque(body[name])
 
 
 def _purge(body: dict[str, Any]) -> None:
@@ -257,26 +275,95 @@ def _purge_status(body: dict[str, Any]) -> None:
 
 
 def _export(body: dict[str, Any]) -> None:
-    """A page of the project's active payloads for the plaintext recovery copy (D5); the host writes the one fixed location."""
-    _fields(body, {"op", "project", "limit"}, frozenset({"cursor"}))
+    """A page of the project's recovery generation (D5); the host writes the one fixed location. `bind` is the digest of the host's
+    generation metadata, which the seal binds."""
+    _fields(body, {"op", "project", "limit", "bind"}, frozenset({"cursor"}))
     _opaque(body["project"])
     _integer(body["limit"], 1, MAX_LIST)
+    _match(body["bind"], _DIGEST)
     if "cursor" in body:
         _match(body["cursor"], _CURSOR)
 
 
+def _verify_bind(body: dict[str, Any]) -> None:
+    """Whether a generation's metadata digest carries this Gateway's MAC: authenticates a manifest without restoring it."""
+    _fields(body, {"op", "project", "bind", "mac"})
+    _opaque(body["project"])
+    _match(body["bind"], _DIGEST)
+    _match(body["mac"], _DIGEST)
+
+
+_ENTRY_FIELDS = {"event_id", "item", "version", "action", "trust", "status", "kind", "scope", "title", "statement", "anchors",
+                 "lineage", "valid_from_ms", "valid_until_ms", "stream_id"}
+_STREAM = re.compile(r"[0-9]{1,20}-[0-9]{1,20}")
+
+
+def recovery_entry(value: Any) -> dict[str, Any]:
+    """One item of a recovery generation: its latest event and the store's entry id. Only an active item keeps a payload; every
+    other carries none (D8: active payloads only). Its HMAC is checked by the Gateway, not here."""
+    if not isinstance(value, dict) or set(value) != _ENTRY_FIELDS:
+        raise _refuse()
+    _match(value["stream_id"], _STREAM)
+    action = _choice(value["action"], (*APPEND_ACTIONS, "tombstone"))
+    status = _choice(value["status"], STATUS)
+    if (action == "tombstone") != (status == "purged"):
+        raise _refuse()
+    payload_free = status != "active" or value["trust"] == "off"
+    if payload_free and (value["statement"] or (value["title"] and value["trust"] != "off") or value["anchors"]):
+        raise _refuse()
+    if value["trust"] == "off" and value["title"]:
+        raise _refuse()  # an off record's scanned title is not exported either
+    shaped = {name: value[name] for name in _ENTRY_FIELDS - {"stream_id"}}
+    if action == "tombstone":
+        shaped = {**shaped, "action": "withdraw", "status": "withdrawn"}  # the shape check below knows no tombstone
+    event(shaped)
+    return value
+
+
+def _entries(value: Any) -> None:
+    if type(value) is not list or not 1 <= len(value) <= MAX_RESTORE_BATCH:
+        raise _refuse()
+    for entry in value:
+        if not isinstance(entry, dict) or set(entry) != {"entry", "mac"}:
+            raise _refuse()
+        recovery_entry(entry["entry"])
+        _match(entry["mac"], _DIGEST)
+
+
 def _restore(body: dict[str, Any]) -> None:
-    """One batch of a recovery generation into an empty store (D8): batches are numbered, the last says so, and every event has
-    the append contract's shape."""
-    _fields(body, {"op", "project", "token", "generation", "batch", "final", "events"})
+    """One batch of a recovery generation into an empty project (D8): batches are numbered from 0 and the last says so. The last
+    names the generation's head and deletion frontier, which its seal binds, and the items the host withdrew since (each can
+    only remove a payload, never add one)."""
+    final = body.get("final")
+    if final is True:
+        _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries", "head", "frontier", "withdrawn", "bind",
+                       "journal", "purged"})
+        _match(body["head"], _STREAM)
+        _match(body["bind"], _DIGEST)
+        _integer(body["journal"], 0, MAX_VERSION)
+        frontier = body["frontier"]
+        if not isinstance(frontier, dict) or set(frontier) != {"deletions", "last"}:
+            raise _refuse()
+        _integer(frontier["deletions"], 0, MAX_VERSION)
+        if frontier["last"] != "" and not _STREAM.fullmatch(str(frontier["last"])):
+            raise _refuse()
+        if type(body["withdrawn"]) is not list or len(body["withdrawn"]) > MAX_LIST * 100:
+            raise _refuse()
+        for name in ("withdrawn", "purged"):
+            if type(body[name]) is not list or len(body[name]) > MAX_LIST * 100:
+                raise _refuse()
+            for item in body[name]:
+                _match(item, _ITEM)
+    elif final is False:
+        _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries"})
+    else:
+        raise _refuse()
     _opaque(body["project"])
     _integer(body["token"], 1, 2**63 - 1)
     _match(body["generation"], _DIGEST)
     _integer(body["batch"], 0, MAX_VERSION)
-    if type(body["final"]) is not bool or type(body["events"]) is not list or not 1 <= len(body["events"]) <= MAX_RESTORE_BATCH:
-        raise _refuse()
-    for value in body["events"]:
-        event(value)
+    if not (final and body["entries"] == []):  # only the last batch may be empty (a generation of one full batch)
+        _entries(body["entries"])
 
 
 def _restore_status(body: dict[str, Any]) -> None:
@@ -286,10 +373,10 @@ def _restore_status(body: dict[str, Any]) -> None:
 
 
 _SHAPES: Final[dict[str, Callable[[dict[str, Any]], None]]] = {
-    "capabilities": _capabilities, "lease": _lease, "append": _append, "read": _read, "list": _list, "checkpoint": _checkpoint,
+    "capabilities": _capabilities, "lease": _lease, "append": _append, "read": _read, "list": _list, "history": _history,
+    "checkpoint": _checkpoint,
     "checkpoints": _checkpoints, "purge": _purge, "purge_status": _purge_status, "export": _export, "restore": _restore,
-    "restore_status": _restore_status,
+    "restore_status": _restore_status, "verify_bind": _verify_bind,
 }
 OPERATIONS: Final = frozenset(_SHAPES)
-# Shapes fixed now; Task 4 serves the recovery copy and restore.
-UNAVAILABLE: Final = frozenset({"export", "restore", "restore_status"})
+UNAVAILABLE: Final[frozenset[str]] = frozenset()  # every operation is served since Task 4

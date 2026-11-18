@@ -36,8 +36,10 @@ MODULE_CLOSURE_SCHEMA = "plan-11-7-v5-module-closure-report-v1"
 # --------------------------------------------------------------------------- R census tracing
 
 _CENSUS_CLASS = "AcpDuplexAdapter"
-_CENSUS_FUNCTIONS = ("handle_client_request", "_handle_client_request", "_handle_session_prompt", "_refuse_prompt", "_mcp_refusal", "_handle_savings")
+_CENSUS_FUNCTIONS = ("handle_client_request", "_handle_client_request", "_handle_session_prompt", "_refuse_prompt", "_mcp_refusal", "_handle_savings",
+                     "_handle_memory_command")
 _ADMISSION_ANCHOR = "allocate_turn_seq"
+_LOCAL_ANSWER = "_answer_locally"  # the host's own command answers share its responses; each call site counts them with its own message
 
 
 def _stop_reasons(value: ast.expr) -> list[object]:
@@ -48,7 +50,7 @@ def _stop_reasons(value: ast.expr) -> list[object]:
     return ["*"]
 
 
-def _sites(node: ast.AST, prior_idle: bool) -> list[tuple[str, bool]]:
+def _sites(node: ast.AST, prior_idle: bool, local: tuple[str, ...] = ()) -> list[tuple[str, bool]]:
     found: list[tuple[str, bool]] = []
     for child in ast.iter_child_nodes(node):
         idle = prior_idle or (isinstance(child, ast.If) and "state.suspended" in ast.unparse(child.test))
@@ -67,11 +69,17 @@ def _sites(node: ast.AST, prior_idle: bool) -> list[tuple[str, bool]]:
                 found.append(("refuse_prompt", idle))
             elif name.endswith("._handle_savings"):
                 found.append(("savings", idle))
+            elif name.endswith("._handle_memory_command"):
+                found.append(("memory_command", idle))
+            elif name.endswith("." + _LOCAL_ANSWER):
+                last = child.args[-1] if child.args else None
+                message = last.value if isinstance(last, ast.Constant) and isinstance(last.value, str) else "*"
+                found.extend((site[:-1] + message if site.startswith("error:") and site.endswith(":*") else site, idle) for site in local)
         elif isinstance(child, ast.Dict):
             for key, value in zip(child.keys, child.values, strict=True):
                 if isinstance(key, ast.Constant) and key.value == "stopReason":
                     found.extend((f"stop_reason:{item}", idle) for item in _stop_reasons(value))
-        found.extend(_sites(child, idle))
+        found.extend(_sites(child, idle, local))
     return found
 
 
@@ -85,6 +93,8 @@ def trace_first_prompt_census(spec_text: str) -> tuple[tuple[str, str, bool, int
     for node in ast.parse(spec_text).body:
         if not isinstance(node, ast.ClassDef) or node.name != _CENSUS_CLASS:
             continue
+        local = tuple(site for function in node.body if isinstance(function, ast.AsyncFunctionDef) and function.name == _LOCAL_ANSWER
+                      for statement in function.body for site, _ in _sites(ast.Module(body=[statement], type_ignores=[]), False))
         for function in node.body:
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)) or function.name not in _CENSUS_FUNCTIONS:
                 continue
@@ -95,7 +105,7 @@ def trace_first_prompt_census(spec_text: str) -> tuple[tuple[str, str, bool, int
                     raise HostError("r_census_anchor_missing")
                 body = body[:cut]
             for statement in body:
-                for site, idle in _sites(ast.Module(body=[statement], type_ignores=[]), False):
+                for site, idle in _sites(ast.Module(body=[statement], type_ignores=[]), False, local):
                     counts[(function.name, site, idle)] = counts.get((function.name, site, idle), 0) + 1
     return tuple(sorted((f, s, idle, n) for (f, s, idle), n in counts.items()))
 

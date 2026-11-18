@@ -69,7 +69,7 @@ from optimus.context.maintenance import (
     SummarizerRoute,
     first_error,
 )
-from optimus.context.memory_extraction import DOCUMENT_NAMES, Evidence
+from optimus.context.memory_extraction import DOCUMENT_NAMES, Evidence, UserBlock
 from optimus.runtime.modes import ExecutionMode
 from optimus_security.failure_facts import exception_fact, slug
 
@@ -803,6 +803,16 @@ class AttachedTurn:
             return None
         prompt = self._current_prompt
         return tuple(text if not prompt else "".join(text.rpartition(prompt)[::2]) for text in self._dispatched)
+
+    def covered_user_blocks(self, checkpoint: SummaryCheckpoint) -> tuple[UserBlock, ...]:
+        """The raw user text of the turns a published summary covers, from this turn's committed snapshot (Plan 12.11
+        compaction): extraction reads these, never the summary. A turn missing from the snapshot gives nothing."""
+        if self._snapshot is None:
+            return ()
+        turns = {turn.seq: turn for turn in self._snapshot.turns}
+        session = self._snapshot.revision.session_key
+        return tuple(UserBlock(f"turn:{hashlib.sha256(session.encode()).hexdigest()[:16]}:{seq}:user", turns[seq].user_prompt)
+                     for seq in checkpoint.covered_turn_ids if seq in turns and turns[seq].user_prompt.strip())
 
     def record_context(self, context: Any) -> None:
         """The runner reports each automatic workspace or index context it attached (Plan 12.11): every file it delivered, the

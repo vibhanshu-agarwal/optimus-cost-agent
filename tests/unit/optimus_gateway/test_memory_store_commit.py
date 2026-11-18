@@ -55,9 +55,18 @@ class Server:
         self.set(key, value)
         return value
 
-    def delete(self, key: str) -> int:
-        self.touch(key)
-        return int(self.strings.pop(key, None) is not None)
+    def delete(self, *keys: str) -> int:
+        removed = 0
+        for key in keys:
+            self.touch(key)
+            removed += int(self.strings.pop(key, None) is not None) + int(self.hashes.pop(key, None) is not None)
+        return removed
+
+    def xlen(self, key: str) -> int:
+        return len(self.streams.get(key, []))
+
+    def hgetall(self, key: str) -> dict[bytes, bytes]:
+        return {field.encode(): value for field, value in self.hashes.get(key, {}).items()}
 
     def pexpire(self, key: str, _ms: int) -> bool:
         self.touch(key)

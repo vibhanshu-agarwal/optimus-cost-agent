@@ -20,6 +20,7 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, Protocol, TypedDict
 
 from context_engine import SummaryCheckpoint
+from optimus.acp import memory_notices
 from optimus.acp.admission import AdmissionClass
 from optimus.acp.conversation import (
     AttachedConversationState,
@@ -62,6 +63,10 @@ from optimus.acp.lifecycle import (
     TurnResponseEnvelope,
     TurnSendKey,
 )
+from optimus.acp.memory_commands import DESCRIPTIONS as MEMORY_COMMAND_DESCRIPTIONS
+from optimus.acp.memory_commands import PURGE_CANCEL, Confirmation, MemoryAnswer, MemoryCommand, MemoryCommands, PurgeRequest
+from optimus.acp.memory_commands import READ_ONLY as MEMORY_READ_ONLY
+from optimus.acp.memory_commands import parse_command as parse_memory_command
 from optimus.acp.session_config import (
     SLIDING_ACTIVE_TEXT,
     STRATEGY_CONFIG_ID,
@@ -118,9 +123,12 @@ from optimus.agent.planning_loop import (
     PlanningEscalationCallback,
     PlanningProgressEvent,
 )
+from optimus.context import memory_serving
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
+from optimus.context.memory_continuity import Continuity, Settled
 from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
+from optimus.context.memory_recovery import Scheduler as RecoveryScheduler
 from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_disposition import (
@@ -165,6 +173,7 @@ class _PlanningRequestFields(TypedDict):
     selection_text: NotRequired[str]
     context_digest: NotRequired[str]
     max_planning_turns: NotRequired[int]
+    memory_context: NotRequired[str]
 
 
 ACP_PROTOCOL_VERSION = 1
@@ -271,6 +280,14 @@ _CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
 # Plan 12.4 Task 4: an Auto turn refused before any answer call; the thread stays open.
 SAVINGS_WAIT_SECONDS = 17.0  # Plan 12.9: a `/savings` report's wait; the host transport's own deadline is 15 s
 SAVINGS_TIMEOUT_TEXT = "The usage report took too long and was stopped. Try again, or ask for one turn with `/savings turn <run-id>`."
+MEMORY_COMMAND_WAIT_SECONDS = 30.0  # Plan 12.11: a memory command's wait; each store call has its own 5 s deadline
+MEMORY_COMMAND_TIMEOUT_TEXT = ("The memory store took too long, so the wait was stopped. The change may still have been made: "
+                               "`/memory` shows what is stored. Running the same command again never makes a second change.")
+PURGE_CONFIRM_SECONDS = 120.0  # a purge question expires; a later answer deletes nothing
+MEMORY_SERVE_SECONDS = 4.0  # a turn waits at most this long for its memory; then it is served none
+MEMORY_RECOVERY_WAIT_SECONDS = 120.0  # an export or restore of a large project pages through the store
+_LocalWait = Callable[[asyncio.Task[Any], float | None], Awaitable[bool]]
+_LocalAnswer = tuple[list[dict[str, Any]], Callable[[], None]]
 
 
 class _SavingsSendOwner:
@@ -456,6 +473,12 @@ class AcpSpecSession:
     # Plan 12.11 Task 3: the session's automatic memory extraction, after each answer, and its recent outcomes for notices.
     memory_extractor: Any = field(default=None, repr=False, compare=False)
     memory_outcomes: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
+    memory_commands: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: None leaves memory read-only
+    continuity: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: checkpoints, predecessor and brief
+    recovery_scheduler: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: the recovery copy's exports
+    # Plan 12.11 Task 4: extraction's changes not yet shown, as host cards at the next turn (never an off record's)
+    memory_pending: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
+    memory_backlog: Any = field(default=None, repr=False, compare=False)  # the project's durable notice backlog (NoticeBacklog)
     memory_state_shown: str | None = None
     memory_probe: asyncio.Future[Any] | None = field(default=None, repr=False, compare=False)
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
@@ -485,6 +508,7 @@ class AcpPromptTurn:
     permission_handle: Any | None = None
     # Plan 12.2: an attached turn's captured context, its packer and its dispatch readings.
     attached: AttachedTurn | None = None
+    served_memory: Any = None  # Plan 12.11 Task 4: the memory this turn was served (`memory_serving.ServedSet`)
     # Codex CP3 ruling R4: the turn's request binder for the trusted planning/answer route, captured
     # before any await. None while no route policy is configured (registry enforcement inactive).
     route_binder: TurnRouteBinder | None = None
@@ -547,6 +571,8 @@ class InMemoryAcpSpecSessionStore:
         if session.memory_extractor is not None:
             # Off the event loop: queued jobs release their turns at once; a running one finishes on its own.
             threading.Thread(target=session.memory_extractor.close, kwargs={"timeout": 5.0}, name="memory-extract-close", daemon=True).start()
+        if session.recovery_scheduler is not None:  # a last export at clean shutdown, best effort, off the loop
+            threading.Thread(target=session.recovery_scheduler.close, name="memory-recovery-close", daemon=True).start()
         return True
 
     def get(self, session_id: str) -> AcpSpecSession | None:
@@ -1394,11 +1420,136 @@ class AcpDuplexAdapter:
     async def _handle_savings(self, request: dict[str, Any], session_id: str, command: SavingsCommand | str,
                               ownership_slot: ResponseOwnershipSlot | None) -> ResponseEnvelope:
         """Plan 12.9 `/savings`: answered locally, before admission or classification. It enters no conversation,
-        creates no accounting epoch, calls no model or tool and changes no mode or strategy. It holds the session's
-        prompt slot while it runs; a cancel, a retired session or the server's close ends the wait and nothing late is
-        sent. The request's own session lease (`handle_client_request`) keeps the session while it runs."""
+        creates no accounting epoch, calls no model or tool and changes no mode or strategy (`_answer_locally`)."""
         reports = self._usage_reports
         assert reports is not None
+
+        async def compute(wait: _LocalWait) -> _LocalAnswer | None:
+            if isinstance(command, str):
+                answer = SavingsAnswer(command)
+            else:
+                # The transport ends by its own deadline (`savings_report.READ_SECONDS`), so its thread exits by then.
+                fetch = asyncio.create_task(asyncio.to_thread(reports.answer, session_id, command))
+                if not await wait(fetch, SAVINGS_WAIT_SECONDS):
+                    return None
+                answer = fetch.result() if fetch.done() else SavingsAnswer(SAVINGS_TIMEOUT_TEXT)
+            text = build_agent_message_chunk_notification(session_id=session_id, text=answer.text)
+            return [text], lambda: reports.delivered(session_id, answer)
+
+        return await self._answer_locally(request, session_id, compute, ownership_slot, "the usage report could not be delivered")
+
+    async def _handle_memory_command(self, request: dict[str, Any], session_id: str, command: MemoryCommand | str,
+                                     ownership_slot: ResponseOwnershipSlot | None) -> ResponseEnvelope:
+        """Plan 12.11 v4 D10: a memory command, answered locally like `/savings` and calling no model. A change's notice is a
+        host card (`memory/<event_id>`) followed by the answer text; a purge first asks the user's one-shot confirmation."""
+        session = self._sessions.get(session_id)
+        commands = None if session is None else session.memory_commands
+        block = f"command:{uuid.uuid4().hex}"  # the host's id for the command's raw text, its span's block
+
+        async def compute(wait: _LocalWait) -> _LocalAnswer | None:
+            if isinstance(command, str):
+                answer = MemoryAnswer(command)
+            elif commands is None:
+                answer = MemoryAnswer(MEMORY_READ_ONLY)
+            else:
+                work = asyncio.create_task(asyncio.to_thread(commands.run, command, block=block))
+                if not await wait(work, MEMORY_COMMAND_WAIT_SECONDS):
+                    return None
+                answer = work.result() if work.done() else MemoryAnswer(MEMORY_COMMAND_TIMEOUT_TEXT)
+                if answer.purge is not None:
+                    confirmed = await self._confirm_purge(session_id, commands, answer.purge, wait)
+                    if confirmed is None:
+                        return None
+                    answer = confirmed
+                elif answer.confirm is not None:
+                    confirmed = await self._confirm_recovery(session_id, commands, answer.confirm, wait)
+                    if confirmed is None:
+                        return None
+                    answer = confirmed
+            updates = [memory_notices.card(session_id, notice, label) for notice, label in answer.notices]
+            updates.append(build_agent_message_chunk_notification(session_id=session_id, text=answer.text))
+            backlog = None if session is None else session.memory_backlog
+            shown = [_notice_record(notice) for notice, _label in answer.notices]
+            if backlog is not None and shown:  # kept until its card is confirmed sent; else a later turn or session shows it
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(backlog.add, shown)
+
+            def delivered() -> None:
+                if backlog is not None and shown:
+                    with contextlib.suppress(Exception):
+                        backlog.remove([record["event_id"] for record in shown])
+
+            return updates, delivered
+
+        return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered")
+
+    async def _ask_once(self, params: dict[str, Any], option: str, wait: _LocalWait) -> bool | None:
+        """One host-generated `session/request_permission`: True only for its own response choosing `option`; False for cancel,
+        another option, an error or expiry; None when the command itself was cancelled."""
+        ask = asyncio.create_task(self._outbound.request("session/request_permission", params))
+        await asyncio.sleep(0)
+        pending = None
+        if hasattr(self._outbound, "requests") and self._outbound.requests:
+            pending = self._outbound.requests[-1]["id"]
+        else:
+            pending = getattr(self._outbound, "last_outbound_request_id", None)
+        answered = await wait(ask, PURGE_CONFIRM_SECONDS)
+        if not ask.done():
+            if pending is not None:
+                self._outbound.cancel_request(pending, {"outcome": {"outcome": "cancelled"}})
+            ask.cancel()
+            return None if not answered else False
+        try:
+            response = ask.result()
+        except Exception:  # noqa: BLE001 - a client that cannot answer agrees to nothing
+            return False
+        outcome = response.get("outcome") if isinstance(response, dict) else None
+        return isinstance(outcome, dict) and outcome.get("outcome") == "selected" and outcome.get("optionId") == option
+
+    async def _confirm_recovery(self, session_id: str, commands: MemoryCommands, confirmation: Confirmation,
+                                wait: _LocalWait) -> MemoryAnswer | None:
+        """Plan 12.11 recovery: setting the copy's location (with sync consent when it is synced) or restoring one generation
+        needs the user's fresh one-shot confirmation, bound to exactly what they were shown."""
+        params = memory_notices.confirm_permission_params(session_id, kind=confirmation.kind, title=confirmation.title,
+                                                          text=confirmation.text, meta=confirmation.meta, nonce=confirmation.nonce,
+                                                          option=confirmation.option, cancel_option=f"memory-{confirmation.kind}-cancel")
+        agreed = await self._ask_once(params, confirmation.option, wait)
+        if agreed is None:
+            return None
+        if not agreed:
+            return MemoryAnswer("Not confirmed, so nothing was changed.")
+        work = asyncio.create_task(asyncio.to_thread(commands.confirmed, confirmation))
+        if not await wait(work, MEMORY_RECOVERY_WAIT_SECONDS):
+            return None
+        return work.result() if work.done() else MemoryAnswer(MEMORY_COMMAND_TIMEOUT_TEXT)
+
+    async def _confirm_purge(self, session_id: str, commands: MemoryCommands, purge: PurgeRequest,
+                             wait: _LocalWait) -> MemoryAnswer | None:
+        """The purge's one-shot confirmation (plan v4, Commands): a host-generated request and tool-call id bound to the
+        project, item, version and deletion boundary. Only this request's own response can answer it, and only its Purge
+        option with this nonce counts; cancel, expiry, an error or anything else deletes nothing. None: the command was
+        cancelled."""
+        params = memory_notices.purge_permission_params(session_id, project=commands.project, item=purge.item,
+                                                        version=purge.version, title=purge.title, nonce=purge.nonce,
+                                                        option=purge.option, cancel_option=PURGE_CANCEL)
+        agreed = await self._ask_once(params, purge.option, wait)
+        if agreed is None:
+            return None
+        if not agreed:
+            return MemoryAnswer(f"Not deleted: `{purge.item}` stays as it was.")
+        work = asyncio.create_task(asyncio.to_thread(commands.purge, purge))
+        if not await wait(work, MEMORY_COMMAND_WAIT_SECONDS):
+            return None
+        return work.result() if work.done() else MemoryAnswer(MEMORY_COMMAND_TIMEOUT_TEXT)
+
+    async def _answer_locally(self, request: dict[str, Any], session_id: str,
+                              compute: Callable[[_LocalWait], Awaitable[_LocalAnswer | None]],
+                              ownership_slot: ResponseOwnershipSlot | None, undelivered: str) -> ResponseEnvelope:
+        """A command answered by the host itself, before admission or classification: `/savings` and the memory commands. It
+        enters no conversation, creates no accounting epoch and calls no model or tool. It holds the session's prompt slot
+        while it runs; a cancel, a retired session or the server's close ends the wait and nothing late is sent. The request's
+        own session lease (`handle_client_request`) keeps the session while it runs. `compute` returns the updates to send and
+        what to record once they are delivered, or None when cancelled."""
         cancel = self._report_cancels[session_id] = asyncio.Event()
 
         abandoned = False  # the request task itself was cancelled (server teardown)
@@ -1408,45 +1559,44 @@ class AcpDuplexAdapter:
             return (abandoned or cancel.is_set() or self._closed or self._sessions.get(session_id) is None
                     or not self.retention.is_active(session_id))
 
+        async def wait(work: asyncio.Task[Any], limit: float | None) -> bool:
+            return await self._until_cancelled(work, cancel, limit)
+
         try:
-            if isinstance(command, str):
-                answer = SavingsAnswer(command)
-            else:
-                # The transport ends by its own deadline (`savings_report.READ_SECONDS`), so its thread exits by then.
-                fetch = asyncio.create_task(asyncio.to_thread(reports.answer, session_id, command))
-                if not await self._until_cancelled(fetch, cancel, SAVINGS_WAIT_SECONDS):
-                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
-                answer = fetch.result() if fetch.done() else SavingsAnswer(SAVINGS_TIMEOUT_TEXT)
-            # One send of its own, decided where the writer claims it: a cancel, a retiring session, a closing server
-            # or a torn-down request before its write begins suppresses it (`_SavingsSendOwner`); a write already begun
-            # is authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
-            owner = _SavingsSendOwner(lambda: not gone())
-            submission = ProgressSubmission(control=owner, send_key=owner.key, admission=ProgressAdmission(),  # type: ignore[arg-type]
-                                            admission_class=AdmissionClass.REQUIRED)
-            token = progress_submission.set(submission)
-            try:
-                send = asyncio.create_task(self._outbound.notify(
-                    "session/update", build_agent_message_chunk_notification(session_id=session_id, text=answer.text), require_flushed=True))
-            finally:
-                progress_submission.reset(token)
-            try:
-                await asyncio.shield(send)
-            except asyncio.CancelledError:
-                # The request itself is torn down: an unwritten report never starts, and the send stays in custody
-                # until it physically completes, so its outcome is still observed.
-                abandoned = True
-                owner.suppress(owner.key)
-                self._report_sends.add(send)
-                send.add_done_callback(self._report_send_done)
-                raise
-            except Exception:  # noqa: BLE001 - an undelivered report is this request's outcome only
-                if not owner.started and gone():
-                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
-                return self._non_turn(error_response(request.get("id"), JsonRpcError(
-                    code=INTERNAL_ERROR, message="the usage report could not be delivered")), ownership_slot)
-            if not owner.started:  # a channel that dropped the suppressed send without raising
+            computed = await compute(wait)
+            if computed is None:
                 return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
-            reports.delivered(session_id, answer)
+            updates, delivered = computed
+            for update in updates:
+                # One send of its own each, decided where the writer claims it: a cancel, a retiring session, a closing
+                # server or a torn-down request before its write begins suppresses it (`_SavingsSendOwner`); a write
+                # already begun is authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
+                owner = _SavingsSendOwner(lambda: not gone())
+                submission = ProgressSubmission(control=owner, send_key=owner.key, admission=ProgressAdmission(),  # type: ignore[arg-type]
+                                                admission_class=AdmissionClass.REQUIRED)
+                token = progress_submission.set(submission)
+                try:
+                    send = asyncio.create_task(self._outbound.notify("session/update", update, require_flushed=True))
+                finally:
+                    progress_submission.reset(token)
+                try:
+                    await asyncio.shield(send)
+                except asyncio.CancelledError:
+                    # The request itself is torn down: an unwritten answer never starts, and the send stays in custody
+                    # until it physically completes, so its outcome is still observed.
+                    abandoned = True
+                    owner.suppress(owner.key)
+                    self._report_sends.add(send)
+                    send.add_done_callback(self._report_send_done)
+                    raise
+                except Exception:  # noqa: BLE001 - an undelivered answer is this request's outcome only
+                    if not owner.started and gone():
+                        return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+                    return self._non_turn(error_response(request.get("id"), JsonRpcError(code=INTERNAL_ERROR, message=undelivered)),
+                                          ownership_slot)
+                if not owner.started:  # a channel that dropped the suppressed send without raising
+                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+            delivered()
             return self._non_turn(success_response(request.get("id"), {"stopReason": "end_turn"}), ownership_slot)
         finally:
             if self._report_cancels.get(session_id) is cancel:
@@ -1469,8 +1619,8 @@ class AcpDuplexAdapter:
 
     async def after_response(self, method: str, response: dict[str, Any]) -> None:
         """Called by the transport once a response is written. After a successful `session/new`, advertise `/savings`:
-        Zed drops commands sent before the session's own response (zed-industries/zed#60199)."""
-        if method != "session/new" or self._usage_reports is None:
+        Zed drops commands sent before the session's own response (zed-industries/zed#60199). The memory commands join it."""
+        if method != "session/new" or (self._usage_reports is None and self._memory_extractor_factory is None):
             return
         result = response.get("result")
         session_id = result.get("sessionId") if isinstance(result, dict) else None
@@ -1479,9 +1629,19 @@ class AcpDuplexAdapter:
         with contextlib.suppress(Exception):  # an unadvertised command still works when typed
             await self._outbound.notify("session/update", {"sessionId": session_id, "update": {
                 "sessionUpdate": "available_commands_update",
-                "availableCommands": [{"name": SAVINGS_COMMAND, "description": SAVINGS_DESCRIPTION,
-                                       "input": {"hint": SAVINGS_HINT}}],
+                "availableCommands": self._available_commands(),
             }})
+
+    def _available_commands(self) -> list[dict[str, Any]]:
+        """The host's own commands: `/savings` with durable capture (Plan 12.9), the memory commands with a memory store
+        (Plan 12.11), each independently of the other."""
+        commands: list[dict[str, Any]] = []
+        if self._usage_reports is not None:
+            commands.append({"name": SAVINGS_COMMAND, "description": SAVINGS_DESCRIPTION, "input": {"hint": SAVINGS_HINT}})
+        if self._memory_extractor_factory is not None:
+            commands += [{"name": name, "description": description, **({"input": {"hint": hint}} if hint else {})}
+                         for name, (description, hint) in MEMORY_COMMAND_DESCRIPTIONS.items()]
+        return commands
 
     def close_all(self) -> None:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
@@ -1732,7 +1892,24 @@ class AcpDuplexAdapter:
                 session.memory_extractor = await asyncio.to_thread(
                     self._memory_extractor_factory, Path(cwd), settlement=session.cost_settlement,
                     sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize, session_id=session.session_id,
-                    report=session.memory_outcomes.append)
+                    report=_memory_report(session))
+                repair = getattr(session.memory_extractor, "registry_recovery", None)
+                if repair is not None:  # the project registry is lost: only its repair is offered
+                    session.memory_commands = MemoryCommands(None, trusted=True, registry_recovery=repair,
+                                                             sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize)
+                elif session.memory_extractor is not None:
+                    extractor = session.memory_extractor
+                    session.memory_backlog = getattr(extractor, "notices", None)
+                    session.continuity = Continuity(extractor.store, workspace=Path(cwd), worktree=extractor.worktree,
+                                                    session=session.session_id)
+                    recovery = getattr(extractor, "recovery", None)
+                    session.memory_commands = MemoryCommands(
+                        extractor.store, trusted=True, keyed=extractor.keyed, source=extractor.source,
+                        source_digest=extractor.source_digest, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize,
+                        brief=session.continuity.welcome, recovery=recovery, workspace=Path(cwd))
+                    if recovery is not None:
+                        session.recovery_scheduler = RecoveryScheduler(recovery)
+                        session.recovery_scheduler.start()
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
             completed = True
@@ -1797,6 +1974,12 @@ class AcpDuplexAdapter:
                 not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
             if command is not None:
                 return await self._handle_savings(request, session_id, command, ownership_slot)
+        if self._memory_extractor_factory is not None:
+            # Plan 12.11 Task 4: the user's own memory commands, before admission, classification or any model call.
+            memory_command = parse_memory_command(task, attachments=any(
+                not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
+            if memory_command is not None:
+                return await self._handle_memory_command(request, session_id, memory_command, ownership_slot)
 
         idle = self._idle_mcp.get(session_id)
         if self._closed or (idle is not None and idle.phase == "MCP_CLOSING"):
@@ -1951,6 +2134,10 @@ class AcpDuplexAdapter:
                 await self._prepare_memory(session, turn, attached_turn)
             elif session.memory is None and (self._memory_notice is not None or self._memory_factory is not None):
                 await self._emit_index_line(session, turn, self._memory_notice or INDEX_NOT_REGISTERED_NOTICE)
+            if session.memory_pending or session.memory_backlog is not None:
+                await self._emit_memory_notices(session, turn)
+            if session.continuity is not None:
+                await self._emit_brief(session, turn)
             if self._auto_router is not None:
                 try:
                     routed = await self._route_auto_turn(
@@ -2019,6 +2206,12 @@ class AcpDuplexAdapter:
                     "selection_text": admitted.selection_text,
                     "context_digest": admitted.digest,
                 }
+                if session.memory_commands is not None:
+                    # Plan 12.11 Task 4: served memory goes after the cache prefix and binds the plan's context digest.
+                    turn.served_memory, block = await self._serve_memory(session)
+                    if block:
+                        planning_fields["memory_context"] = block
+                        planning_fields["context_digest"] = memory_serving.bind_digest(admitted.digest, block)
             if self._max_planning_turns is not None:
                 planning_fields["max_planning_turns"] = self._max_planning_turns
             planning_request = AgentRunRequest(**planning_fields)
@@ -2095,6 +2288,8 @@ class AcpDuplexAdapter:
                 turn_control.record_outcome(Settlement(_conversation_outcome(planning_result).value))
             if attached_turn is not None and attached_turn.memory is not None:
                 await self._emit_grounding(turn, attached_turn.memory, planning_result.output_text)
+            if turn.served_memory is not None:
+                await self._emit_citation_check(turn, planning_result.output_text)
             if turn.execution_mode is ExecutionMode.CHAT:
                 return await self._finish_chat_turn(
                     request_id=request.get("id"),
@@ -2553,6 +2748,83 @@ class AcpDuplexAdapter:
         except Exception:  # noqa: BLE001 - informational, like the Auto line
             return
 
+    async def _serve_memory(self, session: AcpSpecSession) -> tuple[Any, str]:
+        """The project's servable memory for this turn, read now from the store's confirmed view and rendered as untrusted data.
+        An outage or a slow store serves none: memory degrades on its own and never stops the turn."""
+        commands = session.memory_commands
+        sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
+        try:
+            served = await asyncio.wait_for(asyncio.to_thread(memory_serving.from_store, commands.store, "project"),
+                                            timeout=MEMORY_SERVE_SECONDS)
+        except Exception:  # noqa: BLE001 - no memory this turn; the turn goes on as it would without a store
+            return memory_serving.EMPTY, ""
+        return served, memory_serving.render(served, sanitize=sanitize)
+
+    async def _emit_citation_check(self, turn: AcpPromptTurn, text: str) -> None:
+        """A host card when the answer cites memory it was not served, or an old version: such citations are unsupported. It
+        reports; it changes nothing, and nothing the answer adds can extend what was served."""
+        note = memory_serving.citation_note(memory_serving.check_citations(text or "", turn.served_memory))
+        if note is None or turn.turn_control.transport_abandoned():
+            return
+        with contextlib.suppress(Exception):  # informational
+            await self._outbound.notify("session/update", build_tool_call_notification(
+                session_id=turn.session_id, tool_call_id=f"{memory_notices.CARD_PREFIX}citations-{turn.run_id}",
+                title="Unsupported memory citations", summary=note, kind="other", status="failed"))
+
+    async def _emit_brief(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
+        """Plan 12.11 Task 4 (P5-b): the welcome-back brief at this session's first response, when the project was left at least
+        seven days ago. Informational, once per session; an unreadable store shows none (`/welcome` asks again)."""
+        try:
+            text = await asyncio.wait_for(asyncio.to_thread(session.continuity.first_response_brief), timeout=MEMORY_SERVE_SECONDS)
+        except Exception:  # noqa: BLE001 - informational
+            return
+        if text is None or turn.turn_control.transport_abandoned():
+            return
+        with contextlib.suppress(Exception):
+            await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=text),
+                                        require_flushed=True)
+
+    def _checkpoint_turn(self, turn: AcpPromptTurn, sanitized_user_prompt: str, result: AgentRunResult, outcome: ConversationOutcome) -> None:
+        """Plan 12.11 Task 4: the settled turn's continuation checkpoint, written on a thread of its own so the turn never
+        waits on the store. References only; the prompt only decides whether the turn sets the objective."""
+        session = self._sessions.get(turn.session_id)
+        continuity = None if session is None else session.continuity
+        if continuity is None:
+            return
+        plan_hash = result.plan_hash or ""
+        settled = Settled(
+            sequence=max(1, int(turn.turn_seq)), run_id=turn.run_id, outcome=str(outcome.value).lower(), prompt=sanitized_user_prompt,
+            plan_hash=plan_hash if re.fullmatch(r"[0-9a-f]{64}", plan_hash) else "",
+            verification=tuple(item.ref for item in evidence_from(turn.run_id, result.tool_calls) if item.kind == "verification"),
+            pending=result.status is AgentRunStatus.AWAITING_APPROVAL)
+        continuity.submit(settled)  # one ordered writer per session, off the turn's path
+
+    async def _emit_memory_notices(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
+        """Plan 12.11 Task 4: a host card for each change extraction confirmed or left uncertain since the last turn, with the
+        store's own words (an agent lesson's title). D9 keeps every automatic user change off, and an off record never gets
+        a card: nothing here asks the user to approve anything. Informational: a card that cannot be sent waits for the next
+        turn; `/memory` always lists what the store holds. The card's id is the event's, so a resend replaces, never repeats."""
+        commands, backlog = session.memory_commands, session.memory_backlog
+        due: list[Any] = list(session.memory_pending)
+        if backlog is not None:  # what any session of the project left undelivered, durably (Codex CP3 review 1, finding 6)
+            with contextlib.suppress(Exception):
+                known = {notice.event_id for notice in due}
+                due += [notice for notice in (_notice_of(record) for record in await asyncio.to_thread(backlog.pending))
+                        if notice is not None and notice.event_id not in known]
+        for notice in due:
+            if turn.turn_control.transport_abandoned():
+                return
+            label = "" if commands is None else await asyncio.to_thread(commands.label, notice.item)
+            try:
+                await self._outbound.notify("session/update", memory_notices.card(turn.session_id, notice, label), require_flushed=True)
+            except Exception:  # noqa: BLE001 - informational; it stays pending for the next turn
+                return
+            with contextlib.suppress(ValueError):
+                session.memory_pending.remove(notice)
+            if backlog is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(backlog.remove, [notice.event_id])
+
     async def _emit_grounding(self, turn: AcpPromptTurn, memory: Any, text: str) -> None:
         """A card naming what the reply cited that the inspected scope does not hold. It reports; it decides nothing, and it never fails a turn."""
         try:
@@ -2669,6 +2941,10 @@ class AcpDuplexAdapter:
         checkpoint = attached_turn.checkpoint_to_publish(current_generation=conversation.generation, cancelled=halted)
         if checkpoint is not None:
             session.context_checkpoint = checkpoint
+            if session.memory_extractor is not None:
+                # Plan 12.11 compaction: the covered turns' raw user text is extracted at this turn's user slot, never the summary.
+                with contextlib.suppress(Exception):
+                    session.memory_extractor.covered(attached_turn.covered_user_blocks(checkpoint), "project")
         if outcome.kind == "fallback":
             # Live-only and best-effort, before any dispatch; never stored in the canonical history.
             with contextlib.suppress(Exception):
@@ -2863,6 +3139,8 @@ class AcpDuplexAdapter:
         if not committed:
             await self._emit_exit_cost_alerts(turn)
             return
+        with contextlib.suppress(Exception):  # a checkpoint never fails the turn
+            self._checkpoint_turn(turn, sanitized_user_prompt, result, outcome)
         if outcome is ConversationOutcome.COMPLETED:
             self._submit_memory(turn, sanitized_user_prompt, result, completion)
         if turn.auto_decision is not None and outcome in (ConversationOutcome.COMPLETED, ConversationOutcome.REJECTED):
@@ -3578,6 +3856,35 @@ def _client_mcp_service(session: AcpSpecSession) -> object | None:
     if state is None:
         return None
     return state.tool_service
+
+
+def _memory_report(session: AcpSpecSession) -> Callable[[Any], None]:
+    """Where a session's extraction outcomes go (worker threads): kept for measurement, and every change that is not an off
+    record queued for its card at the next turn."""
+    def report(outcome: Any) -> None:
+        session.memory_outcomes.append(outcome)
+        shown = [notice for notice in outcome.notices if notice.action != "off"]
+        if session.memory_backlog is not None:  # durable first, so a restart before the next turn loses no notice
+            with contextlib.suppress(Exception):
+                session.memory_backlog.add([_notice_record(notice) for notice in shown])
+        session.memory_pending.extend(shown)
+
+    return report
+
+
+def _notice_record(notice: Any) -> dict[str, Any]:
+    return {"event_id": notice.event_id, "item": notice.item, "version": notice.version, "action": notice.action,
+            "durable_state": notice.durable_state, "projection_state": notice.projection_state}
+
+
+def _notice_of(record: dict[str, Any]) -> Any:
+    from context_engine.memory_contracts import MemoryNotice
+
+    try:
+        return MemoryNotice(record["event_id"], record["item"], record["version"], record["action"], record["durable_state"],
+                            record["projection_state"])
+    except Exception:  # noqa: BLE001 - a record that no longer parses is skipped, never delivered wrongly
+        return None
 
 
 def checkin_decision(response: Any) -> CheckInDecision:

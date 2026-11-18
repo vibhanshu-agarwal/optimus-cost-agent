@@ -1,0 +1,263 @@
+{
+ "schema": "plan12-memory-m3.user-authority.v1",
+ "sources": [
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100122-43296-5dacf1",
+   "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  },
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100234-46596-8541ca",
+   "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  }
+ ],
+ "release": "operator 2026-11-18 Docker release on #490: p1211-cp3-test-redis and p1211-cp3-test-data only, with fault injection",
+ "authority": {
+  "plan": "docs/superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v5.md",
+  "plan_sha256": "hex:db61651d4301077a218260a7539ab5576ad04df53f7c54de3b8dfb73c47e9c06",
+  "decision_record": "docs/decisions/ADR-044-explicit-user-actions-for-user-memory.md",
+  "decision_record_sha256": "hex:debf502e410ba4dbf467e2ca2cfbeebcb8b184f335e2144c471d1265fa342168",
+  "effective_policy": "D9 (automatic user-origin admissions, updates and withdrawals off) + D10 (fresh version-bound host commands are the only user authority)"
+ },
+ "initial_state": "each case starts from an empty project scope on the store it names; seeded items are made through the host commands themselves",
+ "bindings": {
+  "channel": "the user's own inbound session/prompt text, leading command word, no attachment",
+  "mutation_reference": "<id>@<version>, rechecked under the project's fenced lease",
+  "switch_on": "the off record's payload-free locator: origin, act, target, span anchors and a keyed digest of its source block held in session RAM",
+  "purge": "one-shot session/request_permission bound to project, item, version, boundary and a host nonce"
+ },
+ "named_regressions": [
+  "test_only_inbound_user_commands_authorize_memory_mutation",
+  "test_commands_do_not_infer_targets_or_supersession",
+  "test_stale_or_mismatched_memory_action_writes_nothing",
+  "test_switch_on_cannot_execute_inferred_update_or_withdrawal",
+  "test_switch_on_and_edit_preserve_origin_ceiling",
+  "test_authorized_command_still_requires_gate_and_durable_commit",
+  "test_commands_do_not_enable_automatic_user_mutation",
+  "test_memory_commands_are_model_free_and_off_is_not_pending"
+ ],
+ "refusals": [
+  "stale version",
+  "bare id without version",
+  "another project's id",
+  "competing writer before a purge confirmation",
+  "agent or off record edited",
+  "agent-origin off record switched on",
+  "proposed withdrawal or update switched on",
+  "altered, missing or multi-sentence switch-on source",
+  "scan-blocked statement",
+  "untrusted workspace",
+  "lease held",
+  "store not proving fsync",
+  "attachment",
+  "model or quoted text"
+ ],
+ "not_covered": [
+  "real Zed and independent acpx protocol proof (zed-ui.json)",
+  "final automatic-user-admission completion is not claimed (D10 replaces it)"
+ ],
+ "cases": [
+  {
+   "node": "tests/integration/memory/test_user_authority.py::test_authorized_command_still_requires_gate_and_durable_commit",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/integration/memory/test_user_authority.py::test_commands_do_not_enable_automatic_user_mutation",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/integration/memory/test_user_authority.py::test_commands_do_not_infer_targets_or_supersession",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/integration/memory/test_user_authority.py::test_stale_or_mismatched_memory_action_writes_nothing",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/integration/memory/test_user_authority.py::test_switch_on_and_edit_preserve_origin_ceiling",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/integration/memory/test_user_authority.py::test_switch_on_cannot_execute_inferred_update_or_withdrawal",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_binding_switch_keeps_the_served_memory_and_the_objective",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_cancelled_purge_question_deletes_nothing",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_change_without_its_version_is_refused_with_how_to_name_it[/forget_m-0123456789abcdef]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_change_without_its_version_is_refused_with_how_to_name_it[/forget_m-0123456789abcdef_--purge]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_change_without_its_version_is_refused_with_how_to_name_it[/memory_edit_m-0123456789abcdef_New_words.]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_change_without_its_version_is_refused_with_how_to_name_it[/memory_forget_m-0123456789abcdef]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_change_without_its_version_is_refused_with_how_to_name_it[/memory_switch-on_m-0123456789abcdef]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_command_with_an_attachment_gets_its_usage",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_store_that_cannot_answer_serves_no_memory_and_the_turn_goes_on",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_turn_is_served_its_project_memory_bound_into_its_digest_and_its_citations_are_checked",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_authorized_command_still_requires_gate_and_durable_commit",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_commands_do_not_enable_automatic_user_mutation",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_commands_do_not_infer_targets_or_supersession",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_each_command_names_exactly_what_the_user_typed",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_extraction_changes_get_their_cards_at_the_next_turn_and_off_records_get_none",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_malformed_commands_get_their_usage[/forget_m-0123456789abcdef_0]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_malformed_commands_get_their_usage[/forget_m-xyz_1]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_malformed_commands_get_their_usage[/memory_edit_m-0123456789abcdef_1]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_malformed_commands_get_their_usage[/memory_frobnicate]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_malformed_commands_get_their_usage[/remember]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_malformed_commands_get_their_usage[/remember_a_nb]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_malformed_commands_get_their_usage[/remember_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_malformed_commands_get_their_usage[/welcome_now]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_memory_commands_are_model_free_and_off_is_not_pending",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_memory_view_keeps_history_through_withdrawal_and_respects_purge",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_only_a_leading_command_word_is_a_command[/forgetting_m-0123456789abcdef_1]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_only_a_leading_command_word_is_a_command[/remembering_x]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_only_a_leading_command_word_is_a_command[Never_push_to_main._/remember_it]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_only_a_leading_command_word_is_a_command[_/remember_never_push_]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_only_a_leading_command_word_is_a_command[__/remember_never_push_to_main]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_only_a_leading_command_word_is_a_command[please_/remember_never_push_to_main]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_only_inbound_user_commands_authorize_memory_mutation",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_purge_happens_only_on_its_own_confirmation[cancel]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_purge_happens_only_on_its_own_confirmation[other]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_purge_happens_only_on_its_own_confirmation[purge]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_purge_happens_only_on_its_own_confirmation[wrong-nonce]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_stale_or_mismatched_memory_action_writes_nothing",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_switch_on_and_edit_preserve_origin_ceiling",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_switch_on_cannot_execute_inferred_update_or_withdrawal",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_the_brief_comes_at_the_first_response_after_a_week_and_every_turn_is_checkpointed",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_the_recovery_location_is_set_only_on_its_own_confirmation[cancel]",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_the_recovery_location_is_set_only_on_its_own_confirmation[go]",
+   "outcome": "passed"
+  }
+ ],
+ "passed": true
+}

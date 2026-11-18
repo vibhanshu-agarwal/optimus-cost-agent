@@ -1,0 +1,80 @@
+{
+ "schema": "plan12-memory-m3.copy-inventory.v1",
+ "sources": [
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100122-43296-5dacf1",
+   "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  },
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100234-46596-8541ca",
+   "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  }
+ ],
+ "release": "operator 2026-11-18 Docker release on #490: p1211-cp3-test-redis and p1211-cp3-test-data only, with fault injection",
+ "location": ".optimus/memory-recovery/ in the confirmed trusted worktree; recorded privately in the host config; shared by linked worktrees with a writer lock",
+ "contents": {
+  "active_items": "whole",
+  "off_withdrawn_purged_superseded": "payload-free lifecycle only, no title or text",
+  "manifest": [
+   "format",
+   "project",
+   "head",
+   "frontier",
+   "seal",
+   "count",
+   "created_ms",
+   "entries_sha256",
+   "excluded",
+   "registry"
+  ]
+ },
+ "protection": [
+  "the reserved runtime tree: model READ and WRITE blocked, under other casings on Windows and through a junction or symlink",
+  "shell tokens naming it blocked",
+  "its own .gitignore holding * (never overwriting a user's), git check-ignore and ls-files before any payload"
+ ],
+ "residuals": [
+  "not an execution sandbox: an authorized TEST or shell command can read it",
+  "same-drive plaintext is not a backup",
+  "a sync service, recycle bin or external copy can keep text Optimus cannot erase",
+  "forced adds, later ignore edits or pushing old commits cannot be prevented"
+ ],
+ "withdrawal_cleanup": "every older generation is removed after the next generation is written without the item; /memory shows cleanup pending until then",
+ "cases": [
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_synced_location_needs_consent_bound_to_it",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_user_gitignore_that_does_not_ignore_and_tracked_content_refuse_before_any_payload",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_withdrawal_retires_every_older_generation_and_cleanup_is_shown_until_then",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_only_the_newest_generations_are_kept",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_outside_git_no_git_check_is_needed",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_the_first_export_asks_where_and_writes_one_ignored_generation_of_active_payloads_only",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_the_model_cannot_read_write_or_be_given_the_recovery_copy",
+   "outcome": "passed"
+  }
+ ],
+ "passed": true
+}

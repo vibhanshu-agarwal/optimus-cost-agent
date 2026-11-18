@@ -83,6 +83,7 @@ relevant records before proposing a change in their area.
 | [ADR-041: Prefix prompt caching on by default](decisions/ADR-041-prefix-prompt-caching-on-by-default.md) | The shipped Haiku 5.5 route sets `prompt_cache: prefix`; launches re-approve the new registry hash once (#485) |
 | [ADR-042: Memory store topology, commit and recovery](decisions/ADR-042-memory-store-topology-commit-and-recovery.md) | Accepted memory lives in one fenced stream per project on its own durable Redis, served only once fsync is confirmed on the appending connection; Proposed under Plan 12.11 (#490) |
 | [ADR-043: Durable ACP session retention, replay and interrupted-state refusal](decisions/ADR-043-durable-acp-session-retention-and-replay.md) | Plan 11.7 v5's D1–D13 mechanisms for #240: schema 2 over the existing Redis runtime, sealed-only resume, retained healthy uncommitted replay, sliding TTL and no purge API; accepted with the plan's exact-hash adoption, with empirical open items |
+| [ADR-044: Explicit user actions for user memory](decisions/ADR-044-explicit-user-actions-for-user-memory.md) | Fresh, version-bound host commands are the only authority for user memory; automatic extraction captures off metadata; accepted with Plan 12.11 v4's exact-hash approval (#490) |
 | [Ordering/lifecycle/signals and queue decision](decisions/2026-10-27-ordering-lifecycle-signals-queue-contract.md) | Exact operator authority, accepted proposals, alternatives and scoped ADR-027 supersession |
 | [Evidence, 2026-09-30](decisions/2026-09-30-industry-context-cost-and-model-evidence.md) | Industry practice, OpenRouter controls, model catalog snapshot |
 
@@ -127,7 +128,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
-| [Plan 12.11 v3: memory and continuity (M3)](superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v3.md) | #490; automatic memory, commands, continuity and same-drive recovery |
+| [Plan 12.11 v5: memory and continuity (M3)](superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v5.md) | #490; automatic capture with explicit user activation (ADR-044), commands, continuity and same-drive recovery |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v5: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v5.md) | #240; durable ACP sessions and Zed resume ([adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md)). v1 to v3 are in `archive/`; v4 is a local frozen predecessor |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |

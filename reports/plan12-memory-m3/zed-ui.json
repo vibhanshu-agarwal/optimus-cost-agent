@@ -1,0 +1,146 @@
+{
+ "schema": "plan12-memory-m3.zed-ui.v1",
+ "sources": [
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100122-43296-5dacf1",
+   "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  },
+  {
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100234-46596-8541ca",
+   "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
+   "exit_status": 0,
+   "completeness": "COMPLETE"
+  }
+ ],
+ "release": "operator 2026-11-18 Docker release on #490: p1211-cp3-test-redis and p1211-cp3-test-data only, with fault injection",
+ "session": {
+  "code_head": "c01c5ab",
+  "client": "Zed (operator-typed, Chat mode) and acpx 0.12.0 (scripted)",
+  "agent": "optimus-agent from the CP3 worktree venv; own Gateway port 18768; own config root",
+  "upstream": "local stub http://127.0.0.1:18794/api/v1 only (never forwards); provider key a dummy",
+  "paid_calls": 0,
+  "paid_calls_basis": "every Gateway in the proof had base_url http://127.0.0.1:18794/api/v1; the p397 agent Zed auto-started (OpenRouter upstream) received no prompt, its Gateway log has no request after its 13:04 start, and it was stopped with the operator's approval",
+  "stub_requests": 905,
+  "stub_served": 884,
+  "stub_log_sha256": "hex:1e51a62a319b8278a28ac3bf2b431098dffe635d7072db057607bc97cd555636",
+  "stub_versions": {
+   "v1": "hex:597d51861453bfcdf5b4cd89272b076c6bf68398d7a3a785f5b0069116f5b99c",
+   "v2": "hex:766735cae4afd5199042e264a219809e0dd2b609c289feade9f9b8e59b96d66f"
+  },
+  "zed_steps": [
+   {
+    "n": 1,
+    "prompt": "Hello [p1211:H1]",
+    "observed": "stub reply",
+    "pass": true
+   },
+   {
+    "n": 2,
+    "prompt": "/remember Never push to main.",
+    "observed": "Remembered card, [memory:m-8a0aed6ffa20e132@1]",
+    "pass": true
+   },
+   {
+    "n": 3,
+    "prompt": "May I push my change straight to main? [p1211:C1]",
+    "observed": "v1 stub cited the header example and the product's citation check flagged it; with stub v2 the answer cites [memory:m-8a0aed6ffa20e132@1] with no card",
+    "pass": true
+   },
+   {
+    "n": 4,
+    "prompt": "From now on we use uv for every command.",
+    "observed": "nothing remembered automatically (D9)",
+    "pass": true
+   },
+   {
+    "n": 5,
+    "prompt": "/memory",
+    "observed": "rule active; two off (not used) items, the uv one 'source held: switch-on can save it', the question 'cannot be switched on'; recovery copy not set up",
+    "pass": true
+   },
+   {
+    "n": 6,
+    "prompt": "/memory switch-on m-c0f9ae1c85acf05a@1",
+    "observed": "Remembered [memory:m-360fa7f9c9160811@1]; the off record is retired",
+    "pass": true
+   },
+   {
+    "n": 7,
+    "prompt": "/memory export",
+    "observed": "set-up confirmation card; gen-1794989002606-4e501ff5ce12 saved, 4 items, MEMORY.md + entries.jsonl + manifest.json",
+    "pass": true
+   },
+   {
+    "n": 8,
+    "prompt": "/forget m-8a0aed6ffa20e132@1",
+    "observed": "Forgotten card, [memory:m-8a0aed6ffa20e132@2]",
+    "pass": true
+   },
+   {
+    "n": 9,
+    "prompt": "/memory view m-8a0aed6ffa20e132",
+    "observed": "@2 forgotten (history kept): v2 withdraw, v1 admit",
+    "pass": true
+   },
+   {
+    "n": 10,
+    "prompt": "/welcome (new thread)",
+    "observed": "Welcome back, turn 2 completed, objective amended once, the uv item applies, the rule forgotten; before c01c5ab it also called the retired off record forgotten (fixed in c01c5ab, shot 06)",
+    "pass": true
+   },
+   {
+    "n": 11,
+    "prompt": "/memory (new thread)",
+    "observed": "recovery: last saved, changes since not in it, cleanup pending for 1 item",
+    "pass": true
+   }
+  ],
+  "screenshots": {
+   "00-ready-chat-mode.jpg": "hex:84d6fd254ab85c5d97d2e25f377f5d4527ea82f06f69e2109bea112d8722c140",
+   "01-steps-1-5.jpg": "hex:9c29c6dccf995fd72a092e45b62318597ffa5863d40afb5d1572fdbef4b3f91d",
+   "02-gateway-lost.jpg": "hex:11f859c23e82e569ec589ed82e7c3929ed252abd503c49dbf17d10830d62708e",
+   "03-cite-off-records.jpg": "hex:954c4703c51bf14135ea711d381ec1ed000e9ee622480a8d835b06c9f5054552",
+   "04-switch-on-export-forget-view.jpg": "hex:5d04ac84657b2b395196ee22a0c90767d1857271e599fccf088339c04b8e5072",
+   "05-welcome-memory-new-thread.jpg": "hex:bbcfc545c91d3c7e106479d1d9b1e895b17c451ba1274c7c9de36f01577d2c7f",
+   "06-welcome-fixed-c01c5ab.jpg": "hex:6a454cf2482651fa8138ba10093742e3dc15f6f07dcbef44048f2f80bb05529c"
+  },
+  "acp_trace_sha256": "hex:8e80d1bbd7f38644232b007efeb227d69b4f0cbeef35594ce346c4aeb4451496",
+  "kill_proof": {
+   "label": "kill-3",
+   "steps_sha256": "hex:c0016d48fc8b342e923bd58bf26f4c65f670318336a03007bab0f1ccaccb30f5",
+   "welcome_sha256": "hex:f793dd4e19f9e27cb61957d4de362d849cf324c1c913b98f08c8e1eb014d3215",
+   "asserted": true,
+   "in_flight_observed": true
+  },
+  "kill_proof_control_no_checkpoint_wiring": {
+   "label": "nowire-2",
+   "steps_sha256": "hex:87244906696cef00f54bdb3830f58d4a9212efd97d4771f8d4ac5690206e1c82",
+   "welcome_sha256": "hex:dd38a43933e6fe8ea93f2ff791cbca5fb11e71d685a6eec43ee24ec9f39e3441",
+   "asserted": false,
+   "in_flight_observed": true
+  },
+  "defects_found_and_fixed": [
+   "c01c5ab: the welcome brief listed a retired off record as forgotten; sections folded into bullets"
+  ],
+  "harness_gaps_fixed_in_the_stub": [
+   "cited the served header's format example",
+   "took an earlier turn's case tag",
+   "named the router provider 'Stub' so the Gateway refused extraction (EMPIRICAL_PROVIDER_MISMATCH)"
+  ],
+  "observations_outside_cp3": [
+   "Auto's classifier path /systemone is not served by the stub, so Auto fell back to its default route",
+   "an agent process that reuses another's local Gateway does not recover when that owner exits",
+   "MCP-server permission requests at session/new reach Zed before the session exists, so Zed refuses them",
+   "Zed restored an older proof window and started the last-used agent; the product refused the foreign cwd"
+  ],
+  "passed": true
+ },
+ "paid_calls": 0,
+ "evidence_head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+ "product_source_unchanged_from_proof_head": true,
+ "passed": true
+}

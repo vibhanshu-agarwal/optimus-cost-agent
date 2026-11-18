@@ -106,6 +106,9 @@ def parameter(project_root):
 # have no place in this map: they must use tracked_repository_files instead.
 ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tests/integration/context/test_memory_b1_canaries.py:_persisted_files:rglob:*": "Reads the AOF and RDB files copied out of the released test container into tmp_path.",
+    "tests/unit/context/test_memory_recovery.py:_files:rglob:*": "Reads every file of the recovery location this test wrote under tmp_path, to show withdrawn text is gone.",
+    "tests/unit/context/test_memory_recovery.py:test_a_lost_or_damaged_deletion_journal_publishes_nothing:rglob:*": "Finds a segment of the deletion journal this test's store wrote under tmp_path, to damage it.",
+    "tests/unit/context/test_memory_recovery.py:test_a_removed_location_moves_only_on_confirmation_and_the_old_one_is_cleaned:glob:gen-*": "Checks that no generation is left in the old recovery location this test made under tmp_path.",
     "tests/integration/context/test_memory_b1_canaries.py:test_the_canaries_really_are_in_the_source:rglob:*": "Reads the canary repository this test module wrote under tmp_path.",
     "tests/integration/context/test_memory_b1_canaries.py:test_the_host_side_writes_no_cache_or_journal_with_source_text:rglob:*": "Scans the test's own config root and canary repository for leaked text and leftovers.",
     "tests/integration/context/test_memory_native_keyring.py:test_the_real_keyring_holds_the_password_and_no_file_does:rglob:*": "Scans the configuration folder setup wrote under tmp_path for the password.",
