@@ -167,7 +167,7 @@ def test_each_detector_reports_what_it_was_built_to_see(tmp_path: Path) -> None:
     app = (rig.host.workspace / "src" / "app.py").read_text(encoding="utf-8")
     redis.write("proj", _event("m-" + "c" * 16, 1), statement=f"src/app.py holds {app}")
     redis.write("proj", _event("m-" + "d" * 16, 1), statement="Read src/app.py for the entry point.", lineage=("file:src/app.py@0123",))
-    redis.write("proj", _event("m-" + "e" * 16, 1, action="off", trust="off", title="(blocked)"))
+    redis.write("proj", _event("m-" + "e" * 16, 1, action="off", trust="off", title=m3.memory_gate.BLOCKED_TITLE))  # the product's own
     rig.exchanged({"op": "append", "project": "proj"}, 200, {"event_id": "none", "durable_state": "confirmed"})
     rig.exporter["seal-1"] = "earlier"
     rig.exchanged({"op": "restore", "project": "proj", "final": True, "generation": "seal-1"}, 200, {"state": "published"})

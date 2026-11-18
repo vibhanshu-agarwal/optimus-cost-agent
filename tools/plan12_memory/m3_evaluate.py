@@ -50,6 +50,7 @@ from typing import Any
 
 from pydantic import SecretStr
 
+from context_engine import memory_gate
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.context.maintenance import SummarizerAttempt, SummarizerResponse
@@ -493,7 +494,7 @@ class Rig:
             payload = self._payload(project, event)  # title, statement and lineage live in the payload hash, not the stream
             if action == "off":
                 kind = ("store.off.archived" if status == "superseded" else "store.off.conflict" if status == "conflicted"
-                        else "store.off.blocked" if str(payload.get("title", "")).startswith("(blocked") else "store.off")
+                        else "store.off.blocked" if payload.get("title") == memory_gate.BLOCKED_TITLE else "store.off")
                 self.run.add(kind, item, version, project)
                 continue
             self.run.add("store.off.conflict" if status == "conflicted" else f"store.{action}", item, version, project)
