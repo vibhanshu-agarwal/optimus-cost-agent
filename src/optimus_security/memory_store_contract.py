@@ -6,7 +6,7 @@ as the index's scopes are (ADR-037): the Gateway authenticates the shared key, n
 can name another project. The trusted host binds them and the model never selects one.
 
 One stream per project is authoritative: `append` (admit, update, withdraw, off) and `checkpoint` add one event under the
-project's fenced lease; `read`, `list` and `checkpoints` serve only what `WAITAOF` confirmed. `purge` destroys one item's text
+project's fenced lease; `read`, `list`, `history` and `checkpoints` serve only what `WAITAOF` confirmed. `purge` destroys one item's text
 behind a journalled tombstone and `purge_status` reports and drives its disk step (Task 2). `export`, `restore` and
 `restore_status` have their shapes here and answer `MEMORY_OPERATION_UNAVAILABLE` until Task 4's recovery copy backs them.
 Limits are agent-selected, frozen in `reports/plan12-memory-m3/targets.json`.
@@ -39,6 +39,7 @@ MAX_LIST: Final = 100
 MAX_OFF_RECORDS: Final = 200  # live off records per project (targets.json admission); the overflow archive is Task 4's
 MAX_OFF_BYTES: Final = 524_288
 MAX_CHECKPOINTS: Final = 20
+MAX_HISTORY: Final = 20  # versions per `/memory view` page (Q4)
 MAX_RESTORE_BATCH: Final = 10  # ten maximal events stay well inside the request bound
 MAX_VERSION: Final = 2**31 - 1
 LEASE_TTL_MS: Final = (1_000, 300_000)
@@ -140,7 +141,8 @@ def event(value: Any) -> dict[str, Any]:
     end = _integer(value["valid_until_ms"], 0, 2**53)  # 0: still valid
     if end and end <= start:
         raise _refuse()
-    if (trust == "off") != (action == "off") or (trust == "off" and statement):
+    # an off record is written off and may later be withdrawn (D10: `/forget`, or retired by switch-on); never anything else
+    if (action == "off") != (trust == "off" and action != "withdraw") or (trust == "off" and statement):
         raise _refuse()
     if action == "withdraw" and (title or statement):
         raise _refuse()
@@ -229,6 +231,16 @@ def _list(body: dict[str, Any]) -> None:
         _match(body["cursor"], _CURSOR)
 
 
+def _history(body: dict[str, Any]) -> None:
+    """One page of an item's versions, newest first, for `/memory view` (Q4): `before` is the version the page starts below."""
+    _fields(body, {"op", "project", "item", "limit"}, frozenset({"before"}))
+    _opaque(body["project"])
+    _match(body["item"], _ITEM)
+    _integer(body["limit"], 1, MAX_HISTORY)
+    if "before" in body:
+        _integer(body["before"], 2, MAX_VERSION)
+
+
 def _checkpoint(body: dict[str, Any]) -> None:
     _fields(body, {"op", "project", "token", "checkpoint"})
     _opaque(body["project"])
@@ -286,7 +298,8 @@ def _restore_status(body: dict[str, Any]) -> None:
 
 
 _SHAPES: Final[dict[str, Callable[[dict[str, Any]], None]]] = {
-    "capabilities": _capabilities, "lease": _lease, "append": _append, "read": _read, "list": _list, "checkpoint": _checkpoint,
+    "capabilities": _capabilities, "lease": _lease, "append": _append, "read": _read, "list": _list, "history": _history,
+    "checkpoint": _checkpoint,
     "checkpoints": _checkpoints, "purge": _purge, "purge_status": _purge_status, "export": _export, "restore": _restore,
     "restore_status": _restore_status,
 }

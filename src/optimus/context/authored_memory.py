@@ -78,6 +78,22 @@ class GatewayMemoryStore:
         record = self.call("read", project=self.project, item=item)["item"]
         return None if record is None else StoredEvent.from_record(self.project, record)
 
+    def items(self, scope: str, *, limit: int, cursor: str | None = None) -> tuple[list[StoredEvent], str | None]:
+        """One page of every confirmed item in a scope (live, off, withdrawn and purged), for `/memory`."""
+        reply = self.call("list", project=self.project, scope=scope, limit=limit, **({"cursor": cursor} if cursor else {}))
+        return [StoredEvent.from_record(self.project, record) for record in reply["items"]], reply["cursor"]
+
+    def history(self, item: str, *, limit: int, before: int | None = None) -> tuple[list[dict[str, Any]], bool]:
+        """One page of an item's versions, newest first, and whether older ones remain (Q4)."""
+        reply = self.call("history", project=self.project, item=item, limit=limit, **({"before": before} if before else {}))
+        return list(reply["versions"]), bool(reply["more"])
+
+    def purge(self, token: int, item: str, key: str) -> dict[str, Any]:
+        return self.call("purge", project=self.project, token=token, item=item, idempotency_key=key)
+
+    def purge_status(self, item: str) -> dict[str, Any]:
+        return self.call("purge_status", project=self.project, item=item)
+
     def user_items(self, scope: str, *, limit: int) -> list[ExistingItem]:
         """Live user-authored items in one scope, for a retraction to name; at most `limit`, never the payloads."""
         found: list[ExistingItem] = []

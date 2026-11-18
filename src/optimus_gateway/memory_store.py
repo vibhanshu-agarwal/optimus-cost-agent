@@ -316,6 +316,7 @@ class _Fold:
         self.keys: dict[str, tuple[str | None, dict[str, Any]]] = {}
         self.event_ids: set[str] = set()
         self.history: dict[str, list[str]] = {}
+        self.versions: dict[str, list[dict[str, Any]]] = {}  # each item's stream entries, oldest first, payload-free (Q4)
         self.checkpoints: list[dict[str, Any]] = []
         self.off: dict[str, int] = {}  # live off records and the bytes each holds: the cap counts these
 
@@ -334,6 +335,7 @@ class _Fold:
                 self.items[item] = {**event, **(payload or {}), "stream_id": stream_id}  # no payload: refused when served
                 self.history.setdefault(item, []).append(event["event_id"])
             self.event_ids.add(event["event_id"])
+            self.versions.setdefault(item, []).append({**event, "stream_id": stream_id})
             if event["trust"] == "off" and event["status"] == "active":
                 self.off[item] = len(_json(self.items[item]))
             else:
@@ -889,6 +891,28 @@ class MemoryStore:
             return {"status": "ok", "items": items, "cursor": cursor}
 
         return self._served(body["project"], page)
+
+    def _op_history(self, body: dict[str, Any]) -> dict[str, Any]:
+        """One page of an item's versions, newest first (Q4). Each version's text is read from the payload hash, so a withdrawal
+        keeps the earlier versions and a purge, which removes every payload the item had, leaves only payload-free entries."""
+        project = body["project"]
+
+        def page(fold: _Fold) -> dict[str, Any]:
+            before = body.get("before", msc.MAX_VERSION + 1)
+            older = [entry for entry in reversed(fold.versions.get(body["item"], [])) if entry["version"] < before]
+            shown = older[: body["limit"]]
+            ids = [entry["event_id"] for entry in shown]
+            found = dict(zip(ids, self._redis.hmget(self._key(project, "payloads"), ids), strict=True)) if ids else {}
+            versions = []
+            for entry in shown:
+                raw = found.get(entry["event_id"])
+                text = json.loads(raw) if raw is not None else None
+                versions.append({name: entry[name] for name in ("event_id", "version", "action", "status", "trust", "kind", "stream_id")}
+                                | {"title": text["title"] if text else "", "statement": text["statement"] if text else "",
+                                   "text": "kept" if text else "none"})
+            return {"status": "ok", "versions": versions, "more": len(older) > len(shown)}
+
+        return self._served(project, page)
 
     def _op_checkpoints(self, body: dict[str, Any]) -> dict[str, Any]:
         return self._served(body["project"], lambda fold: {"status": "ok", "checkpoints": fold.checkpoints[-body["limit"]:][::-1]})

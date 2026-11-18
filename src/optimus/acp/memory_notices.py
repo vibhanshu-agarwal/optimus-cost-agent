@@ -14,7 +14,7 @@ import unicodedata
 from typing import Any, Final
 
 from context_engine.memory_contracts import MemoryNotice
-from optimus.acp.shapes import build_tool_call_notification
+from optimus.acp.shapes import build_tool_call_notification, tool_call_text_content
 
 CARD_PREFIX: Final = "memory/"
 MAX_LABEL_CHARS: Final = 60
@@ -39,15 +39,20 @@ def is_memory_card(tool_call_id: object) -> bool:
 
 
 def escape_label(text: str) -> str:
+    """One line of plain text that renders as itself, at most `MAX_LABEL_CHARS` characters before escaping."""
+    return escape_text(text, MAX_LABEL_CHARS)
+
+
+def escape_text(text: str, limit: int) -> str:
     """One line of plain text that renders as itself: no controls, bidi overrides or zero-width marks, Markdown escaped,
-    at most `MAX_LABEL_CHARS` characters before escaping."""
+    at most `limit` characters before escaping."""
     kept = "".join(" " if unicodedata.category(c).startswith("Z") or unicodedata.category(c) == "Cc" else c
                    for c in text if c not in _INVISIBLE and unicodedata.category(c) not in ("Cf", "Co", "Cs", "Cn"))
     kept = " ".join(kept.split())
     # Zed auto-links bare addresses even when Markdown is escaped (Z0, Zed 1.28.1): show them inert, as `http[:]//x`
     kept = _WWW.sub(r"\1[.]", _SCHEME.sub(r"\1[:]", kept))
-    if len(kept) > MAX_LABEL_CHARS:
-        kept = kept[: MAX_LABEL_CHARS - 1].rstrip() + "\u2026"
+    if len(kept) > limit:
+        kept = kept[: limit - 1].rstrip() + "\u2026"
     return _MARKDOWN.sub(r"\\\1", kept)
 
 
@@ -75,3 +80,22 @@ def appended_text(notice: MemoryNotice, label: str) -> str:
     """The fallback for a client without cards: a final paragraph of host text, after the model's answer."""
     named = f" \u201c{escape_label(label)}\u201d" if label else ""
     return f"\n\n> **Memory:** {headline(notice)}{named} {citation(notice)}"
+
+
+def purge_permission_params(session_id: str, *, project: str, item: str, version: int, title: str, nonce: str, option: str,
+                            cancel_option: str) -> dict[str, Any]:
+    """The purge's one-shot `session/request_permission` (plan v4, Commands): a host-only tool-call id, the project, item,
+    version and deletion boundary it is bound to, and exactly two options, never an "always" one. Nothing the model writes can
+    create it, and only the response to this request can answer it."""
+    named = f" \u201c{escape_label(title)}\u201d" if title else ""
+    text = (f"Delete the text of memory {item} version {version}{named}? It is withdrawn from use first. Its text is then removed "
+            "from the memory store and its disk files; copies outside the store (synced folders, recycle bins, other copies) "
+            "cannot be checked. This cannot be undone.")
+    return {
+        "sessionId": session_id,
+        "toolCall": {"toolCallId": f"{CARD_PREFIX}purge-{nonce}", "title": f"Delete memory {item}@{version}?", "kind": "delete",
+                     "status": "pending", "content": [tool_call_text_content(text)]},
+        "options": [{"optionId": option, "name": "Purge", "kind": "allow_once"},
+                    {"optionId": cancel_option, "name": "Cancel", "kind": "reject_once"}],
+        "_meta": {"memoryPurge": {"project": project, "item": item, "version": version, "boundary": "memory-store-and-its-disk-files"}},
+    }

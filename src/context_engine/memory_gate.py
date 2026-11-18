@@ -22,7 +22,7 @@ from context_engine.memory_contracts import (
 from context_engine.memory_projection import ItemState
 
 OUTCOMES = ("append", "none", "refuse")
-_BLOCKED_TITLE = "(withheld: blocked by a scan)"
+BLOCKED_TITLE = "(withheld: blocked by a scan)"
 
 
 @dataclass(frozen=True)
@@ -60,7 +60,7 @@ def item_id(project: str, idempotency_key: str) -> str:
 
 def _off(candidate: MemoryCandidate, reason: str, *, scanned: bool) -> GateDecision:
     """An off record: pointer and scanned title only, never the payload (§4)."""
-    title = candidate.title if scanned else _BLOCKED_TITLE
+    title = candidate.title if scanned else BLOCKED_TITLE
     draft = EventDraft(item_id(candidate.project, candidate.idempotency_key), 0, "off", "off", "active", candidate.kind, title, "",
                        candidate.scope, (), ())
     return GateDecision("append", reason, draft)

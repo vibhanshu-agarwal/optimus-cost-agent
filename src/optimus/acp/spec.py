@@ -20,6 +20,7 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any, Final, Literal, NotRequired, Protocol, TypedDict
 
 from context_engine import SummaryCheckpoint
+from optimus.acp import memory_notices
 from optimus.acp.admission import AdmissionClass
 from optimus.acp.conversation import (
     AttachedConversationState,
@@ -62,6 +63,10 @@ from optimus.acp.lifecycle import (
     TurnResponseEnvelope,
     TurnSendKey,
 )
+from optimus.acp.memory_commands import DESCRIPTIONS as MEMORY_COMMAND_DESCRIPTIONS
+from optimus.acp.memory_commands import PURGE_CANCEL, MemoryAnswer, MemoryCommand, MemoryCommands, PurgeRequest
+from optimus.acp.memory_commands import READ_ONLY as MEMORY_READ_ONLY
+from optimus.acp.memory_commands import parse_command as parse_memory_command
 from optimus.acp.session_config import (
     SLIDING_ACTIVE_TEXT,
     STRATEGY_CONFIG_ID,
@@ -271,6 +276,12 @@ _CONTEXT_CANCELLED_TEXT = "Cancelled before the model was asked."
 # Plan 12.4 Task 4: an Auto turn refused before any answer call; the thread stays open.
 SAVINGS_WAIT_SECONDS = 17.0  # Plan 12.9: a `/savings` report's wait; the host transport's own deadline is 15 s
 SAVINGS_TIMEOUT_TEXT = "The usage report took too long and was stopped. Try again, or ask for one turn with `/savings turn <run-id>`."
+MEMORY_COMMAND_WAIT_SECONDS = 30.0  # Plan 12.11: a memory command's wait; each store call has its own 5 s deadline
+MEMORY_COMMAND_TIMEOUT_TEXT = ("The memory store took too long, so the wait was stopped. The change may still have been made: "
+                               "`/memory` shows what is stored. Running the same command again never makes a second change.")
+PURGE_CONFIRM_SECONDS = 120.0  # a purge question expires; a later answer deletes nothing
+_LocalWait = Callable[[asyncio.Task[Any], float | None], Awaitable[bool]]
+_LocalAnswer = tuple[list[dict[str, Any]], Callable[[], None]]
 
 
 class _SavingsSendOwner:
@@ -456,6 +467,7 @@ class AcpSpecSession:
     # Plan 12.11 Task 3: the session's automatic memory extraction, after each answer, and its recent outcomes for notices.
     memory_extractor: Any = field(default=None, repr=False, compare=False)
     memory_outcomes: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
+    memory_commands: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: None leaves memory read-only
     memory_state_shown: str | None = None
     memory_probe: asyncio.Future[Any] | None = field(default=None, repr=False, compare=False)
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
@@ -1394,11 +1406,97 @@ class AcpDuplexAdapter:
     async def _handle_savings(self, request: dict[str, Any], session_id: str, command: SavingsCommand | str,
                               ownership_slot: ResponseOwnershipSlot | None) -> ResponseEnvelope:
         """Plan 12.9 `/savings`: answered locally, before admission or classification. It enters no conversation,
-        creates no accounting epoch, calls no model or tool and changes no mode or strategy. It holds the session's
-        prompt slot while it runs; a cancel, a retired session or the server's close ends the wait and nothing late is
-        sent. The request's own session lease (`handle_client_request`) keeps the session while it runs."""
+        creates no accounting epoch, calls no model or tool and changes no mode or strategy (`_answer_locally`)."""
         reports = self._usage_reports
         assert reports is not None
+
+        async def compute(wait: _LocalWait) -> _LocalAnswer | None:
+            if isinstance(command, str):
+                answer = SavingsAnswer(command)
+            else:
+                # The transport ends by its own deadline (`savings_report.READ_SECONDS`), so its thread exits by then.
+                fetch = asyncio.create_task(asyncio.to_thread(reports.answer, session_id, command))
+                if not await wait(fetch, SAVINGS_WAIT_SECONDS):
+                    return None
+                answer = fetch.result() if fetch.done() else SavingsAnswer(SAVINGS_TIMEOUT_TEXT)
+            text = build_agent_message_chunk_notification(session_id=session_id, text=answer.text)
+            return [text], lambda: reports.delivered(session_id, answer)
+
+        return await self._answer_locally(request, session_id, compute, ownership_slot, "the usage report could not be delivered")
+
+    async def _handle_memory_command(self, request: dict[str, Any], session_id: str, command: MemoryCommand | str,
+                                     ownership_slot: ResponseOwnershipSlot | None) -> ResponseEnvelope:
+        """Plan 12.11 v4 D10: a memory command, answered locally like `/savings` and calling no model. A change's notice is a
+        host card (`memory/<event_id>`) followed by the answer text; a purge first asks the user's one-shot confirmation."""
+        session = self._sessions.get(session_id)
+        commands = None if session is None else session.memory_commands
+        block = f"command:{uuid.uuid4().hex}"  # the host's id for the command's raw text, its span's block
+
+        async def compute(wait: _LocalWait) -> _LocalAnswer | None:
+            if isinstance(command, str):
+                answer = MemoryAnswer(command)
+            elif commands is None:
+                answer = MemoryAnswer(MEMORY_READ_ONLY)
+            else:
+                work = asyncio.create_task(asyncio.to_thread(commands.run, command, block=block))
+                if not await wait(work, MEMORY_COMMAND_WAIT_SECONDS):
+                    return None
+                answer = work.result() if work.done() else MemoryAnswer(MEMORY_COMMAND_TIMEOUT_TEXT)
+                if answer.purge is not None:
+                    confirmed = await self._confirm_purge(session_id, commands, answer.purge, wait)
+                    if confirmed is None:
+                        return None
+                    answer = confirmed
+            updates = [memory_notices.card(session_id, notice, label) for notice, label in answer.notices]
+            updates.append(build_agent_message_chunk_notification(session_id=session_id, text=answer.text))
+            return updates, lambda: None
+
+        return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered")
+
+    async def _confirm_purge(self, session_id: str, commands: MemoryCommands, purge: PurgeRequest,
+                             wait: _LocalWait) -> MemoryAnswer | None:
+        """The purge's one-shot confirmation (plan v4, Commands): a host-generated request and tool-call id bound to the
+        project, item, version and deletion boundary. Only this request's own response can answer it, and only its Purge
+        option with this nonce counts; cancel, expiry, an error or anything else deletes nothing. None: the command was
+        cancelled."""
+        params = memory_notices.purge_permission_params(session_id, project=commands.project, item=purge.item,
+                                                        version=purge.version, title=purge.title, nonce=purge.nonce,
+                                                        option=purge.option, cancel_option=PURGE_CANCEL)
+        ask = asyncio.create_task(self._outbound.request("session/request_permission", params))
+        await asyncio.sleep(0)
+        pending = None
+        if hasattr(self._outbound, "requests") and self._outbound.requests:
+            pending = self._outbound.requests[-1]["id"]
+        else:
+            pending = getattr(self._outbound, "last_outbound_request_id", None)
+        answered = await wait(ask, PURGE_CONFIRM_SECONDS)
+        if not ask.done():
+            if pending is not None:
+                self._outbound.cancel_request(pending, {"outcome": {"outcome": "cancelled"}})
+            ask.cancel()
+            if not answered:
+                return None
+            return MemoryAnswer(f"The deletion of `{purge.item}` was not confirmed in time, so nothing was deleted.")
+        try:
+            response = ask.result()
+        except Exception:  # noqa: BLE001 - a client that cannot answer deletes nothing
+            return MemoryAnswer(f"The deletion of `{purge.item}` could not be confirmed, so nothing was deleted.")
+        outcome = response.get("outcome") if isinstance(response, dict) else None
+        if not (isinstance(outcome, dict) and outcome.get("outcome") == "selected" and outcome.get("optionId") == purge.option):
+            return MemoryAnswer(f"Not deleted: `{purge.item}` stays as it was.")
+        work = asyncio.create_task(asyncio.to_thread(commands.purge, purge))
+        if not await wait(work, MEMORY_COMMAND_WAIT_SECONDS):
+            return None
+        return work.result() if work.done() else MemoryAnswer(MEMORY_COMMAND_TIMEOUT_TEXT)
+
+    async def _answer_locally(self, request: dict[str, Any], session_id: str,
+                              compute: Callable[[_LocalWait], Awaitable[_LocalAnswer | None]],
+                              ownership_slot: ResponseOwnershipSlot | None, undelivered: str) -> ResponseEnvelope:
+        """A command answered by the host itself, before admission or classification: `/savings` and the memory commands. It
+        enters no conversation, creates no accounting epoch and calls no model or tool. It holds the session's prompt slot
+        while it runs; a cancel, a retired session or the server's close ends the wait and nothing late is sent. The request's
+        own session lease (`handle_client_request`) keeps the session while it runs. `compute` returns the updates to send and
+        what to record once they are delivered, or None when cancelled."""
         cancel = self._report_cancels[session_id] = asyncio.Event()
 
         abandoned = False  # the request task itself was cancelled (server teardown)
@@ -1408,45 +1506,44 @@ class AcpDuplexAdapter:
             return (abandoned or cancel.is_set() or self._closed or self._sessions.get(session_id) is None
                     or not self.retention.is_active(session_id))
 
+        async def wait(work: asyncio.Task[Any], limit: float | None) -> bool:
+            return await self._until_cancelled(work, cancel, limit)
+
         try:
-            if isinstance(command, str):
-                answer = SavingsAnswer(command)
-            else:
-                # The transport ends by its own deadline (`savings_report.READ_SECONDS`), so its thread exits by then.
-                fetch = asyncio.create_task(asyncio.to_thread(reports.answer, session_id, command))
-                if not await self._until_cancelled(fetch, cancel, SAVINGS_WAIT_SECONDS):
-                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
-                answer = fetch.result() if fetch.done() else SavingsAnswer(SAVINGS_TIMEOUT_TEXT)
-            # One send of its own, decided where the writer claims it: a cancel, a retiring session, a closing server
-            # or a torn-down request before its write begins suppresses it (`_SavingsSendOwner`); a write already begun
-            # is authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
-            owner = _SavingsSendOwner(lambda: not gone())
-            submission = ProgressSubmission(control=owner, send_key=owner.key, admission=ProgressAdmission(),  # type: ignore[arg-type]
-                                            admission_class=AdmissionClass.REQUIRED)
-            token = progress_submission.set(submission)
-            try:
-                send = asyncio.create_task(self._outbound.notify(
-                    "session/update", build_agent_message_chunk_notification(session_id=session_id, text=answer.text), require_flushed=True))
-            finally:
-                progress_submission.reset(token)
-            try:
-                await asyncio.shield(send)
-            except asyncio.CancelledError:
-                # The request itself is torn down: an unwritten report never starts, and the send stays in custody
-                # until it physically completes, so its outcome is still observed.
-                abandoned = True
-                owner.suppress(owner.key)
-                self._report_sends.add(send)
-                send.add_done_callback(self._report_send_done)
-                raise
-            except Exception:  # noqa: BLE001 - an undelivered report is this request's outcome only
-                if not owner.started and gone():
-                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
-                return self._non_turn(error_response(request.get("id"), JsonRpcError(
-                    code=INTERNAL_ERROR, message="the usage report could not be delivered")), ownership_slot)
-            if not owner.started:  # a channel that dropped the suppressed send without raising
+            computed = await compute(wait)
+            if computed is None:
                 return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
-            reports.delivered(session_id, answer)
+            updates, delivered = computed
+            for update in updates:
+                # One send of its own each, decided where the writer claims it: a cancel, a retiring session, a closing
+                # server or a torn-down request before its write begins suppresses it (`_SavingsSendOwner`); a write
+                # already begun is authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
+                owner = _SavingsSendOwner(lambda: not gone())
+                submission = ProgressSubmission(control=owner, send_key=owner.key, admission=ProgressAdmission(),  # type: ignore[arg-type]
+                                                admission_class=AdmissionClass.REQUIRED)
+                token = progress_submission.set(submission)
+                try:
+                    send = asyncio.create_task(self._outbound.notify("session/update", update, require_flushed=True))
+                finally:
+                    progress_submission.reset(token)
+                try:
+                    await asyncio.shield(send)
+                except asyncio.CancelledError:
+                    # The request itself is torn down: an unwritten answer never starts, and the send stays in custody
+                    # until it physically completes, so its outcome is still observed.
+                    abandoned = True
+                    owner.suppress(owner.key)
+                    self._report_sends.add(send)
+                    send.add_done_callback(self._report_send_done)
+                    raise
+                except Exception:  # noqa: BLE001 - an undelivered answer is this request's outcome only
+                    if not owner.started and gone():
+                        return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+                    return self._non_turn(error_response(request.get("id"), JsonRpcError(code=INTERNAL_ERROR, message=undelivered)),
+                                          ownership_slot)
+                if not owner.started:  # a channel that dropped the suppressed send without raising
+                    return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
+            delivered()
             return self._non_turn(success_response(request.get("id"), {"stopReason": "end_turn"}), ownership_slot)
         finally:
             if self._report_cancels.get(session_id) is cancel:
@@ -1469,8 +1566,8 @@ class AcpDuplexAdapter:
 
     async def after_response(self, method: str, response: dict[str, Any]) -> None:
         """Called by the transport once a response is written. After a successful `session/new`, advertise `/savings`:
-        Zed drops commands sent before the session's own response (zed-industries/zed#60199)."""
-        if method != "session/new" or self._usage_reports is None:
+        Zed drops commands sent before the session's own response (zed-industries/zed#60199). The memory commands join it."""
+        if method != "session/new" or (self._usage_reports is None and self._memory_extractor_factory is None):
             return
         result = response.get("result")
         session_id = result.get("sessionId") if isinstance(result, dict) else None
@@ -1479,9 +1576,19 @@ class AcpDuplexAdapter:
         with contextlib.suppress(Exception):  # an unadvertised command still works when typed
             await self._outbound.notify("session/update", {"sessionId": session_id, "update": {
                 "sessionUpdate": "available_commands_update",
-                "availableCommands": [{"name": SAVINGS_COMMAND, "description": SAVINGS_DESCRIPTION,
-                                       "input": {"hint": SAVINGS_HINT}}],
+                "availableCommands": self._available_commands(),
             }})
+
+    def _available_commands(self) -> list[dict[str, Any]]:
+        """The host's own commands: `/savings` with durable capture (Plan 12.9), the memory commands with a memory store
+        (Plan 12.11), each independently of the other."""
+        commands: list[dict[str, Any]] = []
+        if self._usage_reports is not None:
+            commands.append({"name": SAVINGS_COMMAND, "description": SAVINGS_DESCRIPTION, "input": {"hint": SAVINGS_HINT}})
+        if self._memory_extractor_factory is not None:
+            commands += [{"name": name, "description": description, **({"input": {"hint": hint}} if hint else {})}
+                         for name, (description, hint) in MEMORY_COMMAND_DESCRIPTIONS.items()]
+        return commands
 
     def close_all(self) -> None:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
@@ -1733,6 +1840,11 @@ class AcpDuplexAdapter:
                     self._memory_extractor_factory, Path(cwd), settlement=session.cost_settlement,
                     sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize, session_id=session.session_id,
                     report=session.memory_outcomes.append)
+                if session.memory_extractor is not None:
+                    extractor = session.memory_extractor
+                    session.memory_commands = MemoryCommands(
+                        extractor.store, trusted=True, keyed=extractor.keyed, source=extractor.source,
+                        source_digest=extractor.source_digest, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize)
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
             completed = True
@@ -1797,6 +1909,12 @@ class AcpDuplexAdapter:
                 not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
             if command is not None:
                 return await self._handle_savings(request, session_id, command, ownership_slot)
+        if self._memory_extractor_factory is not None:
+            # Plan 12.11 Task 4: the user's own memory commands, before admission, classification or any model call.
+            memory_command = parse_memory_command(task, attachments=any(
+                not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
+            if memory_command is not None:
+                return await self._handle_memory_command(request, session_id, memory_command, ownership_slot)
 
         idle = self._idle_mcp.get(session_id)
         if self._closed or (idle is not None and idle.phase == "MCP_CLOSING"):
