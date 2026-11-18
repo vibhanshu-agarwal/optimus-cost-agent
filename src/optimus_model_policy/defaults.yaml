@@ -1,6 +1,7 @@
 # Optimus model policy: reviewed defaults (ADR-004 decision 8; Plan 12.2 spec 9.2; Task 1 contracts §4).
 #
-# Prices are ADR-004's pinned-route USD per million tokens (input / output), 2026-09-30.
+# Prices are ADR-004's pinned-route USD per million tokens (input / output), 2026-09-30, except entries whose
+# evidence names a later catalogue read.
 # Endpoint windows and max outputs come from the OpenRouter catalog snapshot of 2026-09-30
 # (docs/decisions/2026-09-30-industry-context-cost-and-model-evidence.md, section C). They are
 # recorded but NOT verified: the free drift check (tools/check_model_registry_drift.py) must confirm
@@ -132,18 +133,20 @@ models:
         - {provider: z-ai, quantization: fp8, context_window_tokens: 1048575, max_output_tokens: 943717, verified: false, observed_on: "2026-09-30"}
     evidence: ["Listed without a role so the operator can re-enable it (ADR-004 item 5)"]
 
-  google/gemini-3.8-flash:
+  google/gemini-4-hydrogen:
     origin: non-china
     tier: cheap
-    prices: {input_usd_per_million: "0.75", output_usd_per_million: "3.75"}
+    prices: {input_usd_per_million: "1.50", output_usd_per_million: "7.50"}
     data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
     capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: []}
     default_reasoning: null
     route:
       estimator: unmeasured
       endpoints:
-        - {provider: google, quantization: null, context_window_tokens: null, max_output_tokens: null, verified: false}
-    evidence: ["Replaces 3.7 at the same price (ADR-004 item 6); window and max output not yet recorded"]
+        - {provider: google, quantization: null, context_window_tokens: 1048576, max_output_tokens: 943718, verified: false, observed_on: "2026-11-18"}
+    evidence:
+      - "Operator, 2026-11-18: replaces Gemini 3.8 Flash, whose introductory $0.75 / $3.75 price ends 2026-12-31 ($1.50 / $7.50 from 2027-01-01, Google's launch post)"
+      - "2026-11-18 free OpenRouter catalogue read: standard tier $1.50 / $7.50; text_planning_grammar carried over from 3.8 Flash, not re-checked"
 
   z-ai/glm-5.3:
     origin: china
@@ -197,23 +200,40 @@ models:
         - {provider: anthropic, quantization: null, context_window_tokens: 1000000, max_output_tokens: 128000, verified: false, observed_on: "2026-09-30"}
     evidence: ["2026-09-30 catalog snapshot, section C; reviewer role is dormant until its artifact contract"]
 
-  moonshotai/kimi-k3:
-    origin: china
+  openai/gpt-6.1-terra:
+    origin: non-china
     tier: review
-    prices: {input_usd_per_million: "3.00", output_usd_per_million: "15.00"}
+    prices: {input_usd_per_million: "1.00", output_usd_per_million: "5.00"}
     data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
     capabilities: {native_tools: true, text_planning_grammar: false, structured_output: true, reasoning_levels: []}
     default_reasoning: null
     route:
       estimator: unmeasured
       endpoints:
-        - {provider: moonshotai, quantization: null, context_window_tokens: 1048576, max_output_tokens: 943718, verified: false, observed_on: "2026-09-30"}
-    evidence: ["2026-09-30 catalog snapshot, section C; 'probably' listed (ADR-004 open item 1)"]
+        - {provider: openai, quantization: null, context_window_tokens: 1050000, max_output_tokens: 128000, verified: false, observed_on: "2026-11-18"}
+    evidence:
+      - "Operator, 2026-11-18: added as a reviewer; 2026-11-18 free OpenRouter catalogue read, first-party openai route"
+      - "MacroscopeBench (vendor-run code-review board, read 2026-11-18): 81.2 at medium effort, 82.3 at high; reviewer role is dormant until its artifact contract"
+
+  moonshotai/kimi-k3.1-pro:
+    origin: china
+    tier: review
+    prices: {input_usd_per_million: "2.00", output_usd_per_million: "10.00"}
+    data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
+    capabilities: {native_tools: true, text_planning_grammar: false, structured_output: true, reasoning_levels: []}
+    default_reasoning: null
+    route:
+      estimator: unmeasured
+      endpoints:
+        - {provider: moonshotai/mxfp4, quantization: mxfp4, context_window_tokens: 1048576, max_output_tokens: 943718, verified: false, observed_on: "2026-11-18"}
+    evidence:
+      - "Operator, 2026-11-18: replaces Kimi K3 ($3.00 / $15.00); 2026-11-18 free OpenRouter catalogue read, first-party moonshotai/mxfp4 route"
+      - "No code-review benchmark result yet; coding scores are the publisher's own (model card)"
 
 roles:
-  medium: [meta/muse-spark-1.3-contributor, deepseek/deepseek-v4.1-flash, google/gemini-3.8-flash, meta/muse-spark-1.3]
-  complex: [google/gemini-3.8-flash, z-ai/glm-5.3]
-  escalation: [google/gemini-3.8-flash, z-ai/glm-5.3]
+  medium: [meta/muse-spark-1.3-contributor, deepseek/deepseek-v4.1-flash, google/gemini-4-hydrogen, meta/muse-spark-1.3]
+  complex: [google/gemini-4-hydrogen, z-ai/glm-5.3]
+  escalation: [google/gemini-4-hydrogen, z-ai/glm-5.3]
   easy: [anthropic/claude-haiku-5.5]
   summarizer: [anthropic/claude-haiku-5.5]
-  reviewer: [anthropic/claude-sonnet-5.5, moonshotai/kimi-k3]
+  reviewer: [openai/gpt-6.1-terra, anthropic/claude-sonnet-5.5, moonshotai/kimi-k3.1-pro]

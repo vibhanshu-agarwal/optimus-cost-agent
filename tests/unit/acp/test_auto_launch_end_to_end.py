@@ -43,7 +43,7 @@ from tests.unit.acp.test_ordinary_compaction_flow import FACT, synthetic_notes
 from tests.unit.agent.test_route_binding import InProcessGateway
 from tests.unit.optimus_gateway.model_policy_support import SHARED_SECRET
 
-LUNA, HAIKU, GEMINI, JEV = "openai/gpt-6-luna", "anthropic/claude-haiku-5.5", "google/gemini-3.8-flash", "typesafe/jev-1.14"
+LUNA, HAIKU, GEMINI, JEV = "openai/gpt-6-luna", "anthropic/claude-haiku-5.5", "google/gemini-4-hydrogen", "typesafe/jev-1.14"
 PLAN = "WRITE a.py\nCODE_NAME = 'TANGERINE-47'\n"
 
 

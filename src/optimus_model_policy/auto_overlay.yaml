@@ -6,8 +6,9 @@
 # approval; no code changes (ADR-025).
 #
 # Facts from OpenRouter's free catalogue read of 2026-10-25 (models/<id>/endpoints), one exact endpoint each:
-# - Gemini 3.8 Flash on google-vertex/global: $0.75 / $3.75 per M (the standard tier; the flex and priority tiers
-#   are other variants), context 1,048,576, max completion 65,536, quantization "unknown", reasoning controls.
+# - Gemini 4 Hydrogen on google-vertex/global (free catalogue read of 2026-11-18; it replaces Gemini 3.8 Flash):
+#   $1.50 / $7.50 per M (the standard tier; the flex and priority tiers are other variants), context 1,048,576,
+#   max completion 943,718, quantization "unknown", reasoning controls.
 # - GPT-6 Luna on openai/fast: $0.20 / $1.00 per M below 272,000 prompt tokens (above the 262,144 ceiling it would
 #   be dearer), context 1,050,000, max completion 128,000, quantization "unknown", reasoning controls. openai/fast is
 #   the exact variant Plan 12.2's qualification contract named; the base "openai" slug could reach the flex or fast
@@ -21,17 +22,17 @@
 output_reserve_tokens: {classifier: 256}
 
 models:
-  google/gemini-3.8-flash:
-    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [low, medium, high]}
+  google/gemini-4-hydrogen:
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [low, medium, high, xhigh]}
     default_reasoning: low
     route:
       estimator: conservative-utf8
       endpoints:
-        - {provider: google-vertex/global, quantization: unknown, context_window_tokens: 1048576, max_output_tokens: 65536, verified: true, observed_on: "2026-10-25"}
+        - {provider: google-vertex/global, quantization: unknown, context_window_tokens: 1048576, max_output_tokens: 943718, verified: true, observed_on: "2026-11-18"}
     admission:
       empirical_estimate:
         evidence:
-          - "2026-10-25 free OpenRouter catalogue read: tokenizer listed as Gemini; no tokenizer the registry can use"
+          - "2026-11-18 free OpenRouter catalogue read; Google publishes no tokenizer the registry can use"
         assumptions:
           - "text-only input"
           - "one token per UTF-8 byte of message and tool text, plus 16 per message and 256 fixed, covers tokenization and framing"
@@ -40,8 +41,8 @@ models:
           - "a first call can exceed its estimate, or be charged, before the per-reply check stops later calls"
           - "the router pipeline check accepts one unflagged guardrail stage (#400 option b1, ADR-026); that does not prove the request or reply unchanged, or how the guardrail handled the data"
     evidence:
-      - "2026-10-25 free OpenRouter catalogue read (models/google/gemini-3.8-flash/endpoints): google-vertex/global, standard tier"
-      - "ADR-004: complex 1st, escalation 1st, medium 3rd; coding benchmarks in evidence section H"
+      - "2026-11-18 free OpenRouter catalogue read (models/google/gemini-4-hydrogen/endpoints): google-vertex/global, standard tier"
+      - "Operator, 2026-11-18: takes Gemini 3.8 Flash's medium, complex and escalation places; no independent coding benchmark yet"
 
   openai/gpt-6-luna:
     prices: {input_usd_per_million: "0.20", output_usd_per_million: "1.00"}

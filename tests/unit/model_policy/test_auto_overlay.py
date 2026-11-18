@@ -1,6 +1,6 @@
 """Plan 12.4 v7 Design 2: the Auto overlay's first inputs, as data.
 
-Composed over the shipped defaults by the ``auto`` composition only (A5(a)). Gemini 3.8 Flash fills medium, complex
+Composed over the shipped defaults by the ``auto`` composition only (A5(a)). Gemini 4 Hydrogen fills medium, complex
 and escalation; Luna leads easy on price, with Haiku next; Haiku stays the summarizer. Both route to one exact
 endpoint from the free 2026-10-25 catalogue read, on the conservative empirical estimator.
 """
@@ -15,7 +15,7 @@ from optimus_model_policy.binding import packaged_defaults, trusted_snapshot
 from optimus_model_policy.experimental import experimental_route
 from optimus_model_policy.registry import RegistrySnapshot, load_registry
 
-GEMINI, LUNA, HAIKU = "google/gemini-3.8-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"
+GEMINI, LUNA, HAIKU = "google/gemini-4-hydrogen", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"
 JEV = "typesafe/jev-1.14"
 
 

@@ -40,7 +40,7 @@ from tests.unit.acp.test_context_engine_admission import Runner, new_session, pr
 from tests.unit.agent.test_route_binding import STANDARD, InProcessGateway, Notices, ScriptedUpstream, _client, _policy, _request
 from tests.unit.optimus_gateway.model_policy_support import verified_snapshot
 
-LUNA, HAIKU, GEMINI = "openai/gpt-6-luna", "anthropic/claude-haiku-5.5", "google/gemini-3.8-flash"
+LUNA, HAIKU, GEMINI = "openai/gpt-6-luna", "anthropic/claude-haiku-5.5", "google/gemini-4-hydrogen"
 SECRET = "s" * 32
 
 

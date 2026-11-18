@@ -45,14 +45,14 @@ def _decision(**changes: Any) -> AutoDecision:
 @pytest.mark.parametrize(
     ("changes", "text"),
     [
-        ({}, "Auto: medium → google/gemini-3.8-flash"),
-        ({"routed_up_for_confidence": True, "predicted_tier": "easy"}, "Auto: medium → google/gemini-3.8-flash (unsure, so one tier up from easy)"),
-        ({"escalations": (Escalation(from_tier="easy", reason="stopped"),)}, "Auto: medium → google/gemini-3.8-flash (no easy model available: stopped)"),
-        ({"tier": "complex", "failure_kind": "timeout"}, "Auto: complex → google/gemini-3.8-flash (the classifier failed: timeout)"),
-        ({"default_fallback": True}, "Auto: medium → google/gemini-3.8-flash (the default model: no tier was available)"),
+        ({}, "Auto: medium → google/gemini-4-hydrogen"),
+        ({"routed_up_for_confidence": True, "predicted_tier": "easy"}, "Auto: medium → google/gemini-4-hydrogen (unsure, so one tier up from easy)"),
+        ({"escalations": (Escalation(from_tier="easy", reason="stopped"),)}, "Auto: medium → google/gemini-4-hydrogen (no easy model available: stopped)"),
+        ({"tier": "complex", "failure_kind": "timeout"}, "Auto: complex → google/gemini-4-hydrogen (the classifier failed: timeout)"),
+        ({"default_fallback": True}, "Auto: medium → google/gemini-4-hydrogen (the default model: no tier was available)"),
         (
             {"failure_kind": "abstention", "escalations": (Escalation(from_tier="complex", reason="empty"),), "default_fallback": True},
-            "Auto: medium → google/gemini-3.8-flash (the classifier failed: no confident answer; no complex model available: "
+            "Auto: medium → google/gemini-4-hydrogen (the classifier failed: no confident answer; no complex model available: "
             "none configured; the default model: no tier was available)",
         ),
     ],

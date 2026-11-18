@@ -91,7 +91,7 @@ async def test_an_easy_turn_escalates_once_then_its_plan_is_approved_and_applied
     texts = _texts(writer)
     [escalation] = [t for t in texts if t.startswith("Auto: escalating to ")]
     assert escalation.startswith(f"Auto: escalating to {GEMINI}: the model repeated the read of a.py#bytes=0:5")
-    assert "and one nudge did not help. Price per million tokens: $0.75 in / $3.75 out (was $0.20 in / $1.00 out)." in escalation
+    assert "and one nudge did not help. Price per million tokens: $1.50 in / $7.50 out (was $0.20 in / $1.00 out)." in escalation
     routed_line = next(i for i, text in enumerate(texts) if text.startswith(f"Auto: easy → {LUNA}"))
     assert texts.index(escalation) > routed_line
     checkin_text = checkin["params"]["toolCall"]["content"][0]["content"]["text"]
