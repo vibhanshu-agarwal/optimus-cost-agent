@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
@@ -27,6 +27,8 @@ from optimus.gateway.models import (
 )
 from optimus_model_policy.binding import HOST_GATEWAY_TIMEOUT_SECONDS
 from optimus_security.failure_facts import exception_fact
+from optimus_security.url_schemes import URLPolicyError, http_url_allowed
+from optimus_security.url_schemes import open_http_url as urlopen
 from optimus_security.usage_capture_contract import CAPTURE_REQUEST_HEADER, CAPTURE_REQUEST_ID
 
 if TYPE_CHECKING:
@@ -104,6 +106,8 @@ class GatewayTransport(Protocol):
 # Tests inject a fake transport instead; release-gate E2E can add outbound intercept later.
 class UrllibGatewayTransport:
     def post_json(self, request: GatewayRequest) -> dict[str, Any]:
+        if not http_url_allowed(request.url):
+            raise ValueError("Gateway URL must use HTTP or HTTPS")
         urllib_request = Request(
             request.url,
             data=request.body_bytes(),
@@ -128,6 +132,8 @@ class UrllibGatewayTransport:
                 route_attempts_malformed=_route_attempts_dropped(detail, route_attempts),
                 error_envelope=_error_envelope(raw, detail),
             ) from exc
+        except URLPolicyError as exc:
+            raise GatewayHttpError(0, "gateway redirect rejected by scheme policy", failure={"kind": "transport", **exception_fact(exc)}) from None
         except URLError as exc:
             raise GatewayHttpError(0, str(exc.reason), failure={"kind": "transport", **exception_fact(exc)}) from exc
 

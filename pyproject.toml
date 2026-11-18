@@ -118,7 +118,7 @@ ignore = ["E501"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
-skips = ["B101", "B105", "B310", "B404", "B603"]
+skips = ["B101", "B105", "B404", "B603"]
 
 [tool.mypy]
 files = ["src"]

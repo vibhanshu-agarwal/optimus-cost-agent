@@ -1,5 +1,7 @@
+import ast
 import copy
 import hashlib
+import io
 import json
 import os
 import re
@@ -9,6 +11,8 @@ import signal
 import subprocess
 import sys
 import time
+import tokenize
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -1457,3 +1461,182 @@ def test_timeout_script_preserves_two_path_arguments(tmp_path: Path, component: 
     python = tmp_path / component / "python.exe"
     grandchild = tmp_path / component / "grandchild.py"
     assert shlex.split(_timeout_script(str(python), grandchild)) == [python.as_posix(), grandchild.as_posix(), "&", "wait"]
+
+_B310_CALLS = frozenset({
+    "_build_attempt_opener", "_open_watched", "_read_reply", "_urlopen_json",
+    "build_http_opener", "open_http_url", "request_bytes", "request_json", "urlopen_fn",
+    "watched_https_urlopen", "watched_urlopen", "self.do_open",
+})
+_B310_GUARDS = frozenset({"_model_url_allowed", "_require_model_url", "allows", "http_url_allowed", "https_url_allowed", "self._allows"})
+_B310_URL_NAMES = frozenset({"urlopen", "urlretrieve", "URLopener", "FancyURLopener", "build_opener", "OpenerDirector"})
+
+_B310_GATEWAY = "src/optimus/gateway/client.py"
+_B310_PHOENIX = "src/optimus/acp/local_infra.py"
+_B310_SHARED = "src/optimus_security/url_schemes.py"
+_B310_UPSTREAM = "src/optimus_gateway/upstream_client.py"
+_B310_TOOLS = "src/optimus_gateway/tool_provider_http.py"
+_B310_PROVIDERS = "src/optimus_gateway/tool_providers.py"
+_B310_PROVIDER_FACTORY = "src/optimus_gateway/providers.py"
+_B310_PROVIDER_CLASS_NAMES = frozenset({"TavilyWebToolProvider", "PackageRegistryToolProvider", "OsvAdvisoryToolProvider"})
+
+# Each owner records its guard before its opener or hand-off. Nested provider
+# callable sites have separate keys so Bandit's direct-call check cannot hide them.
+_B310_OPENERS = {
+    (_B310_GATEWAY, "UrllibGatewayTransport.post_json"): ("http_url_allowed", "open_http_url"),
+    (_B310_PHOENIX, "_phoenix_health_ready"): ("open_http_url",),
+    (_B310_SHARED, "_SchemeRedirectHandler.http_error_302"): ("self._allows",),
+    (_B310_SHARED, "_SchemeRedirectHandler.redirect_request"): ("self._allows",),
+    (_B310_SHARED, "build_http_opener"): ("urllib.request.OpenerDirector",),
+    (_B310_SHARED, "_http_opener"): ("build_http_opener",),
+    (_B310_SHARED, "open_http_url"): ("http_url_allowed", "_http_opener().open"),
+    (_B310_UPSTREAM, "UrllibOpenAICompatibleClient.__init__"): ("_model_url_allowed",),
+    (_B310_UPSTREAM, "UrllibOpenAICompatibleClient.create_message.call"): ("_urlopen_json",),
+    (_B310_UPSTREAM, "UrllibOpenAICompatibleClient.create_message_once"): ("_build_attempt_opener", "_read_reply"),
+    (_B310_UPSTREAM, "UrllibOpenAICompatibleClient.create_decision_once"): ("_build_attempt_opener", "_read_reply"),
+    (_B310_UPSTREAM, "_AttemptHTTPHandler.http_open"): ("self.do_open",),
+    (_B310_UPSTREAM, "_AttemptHTTPSHandler.https_open"): ("self.do_open",),
+    (_B310_UPSTREAM, "_model_url_allowed"): ("https_url_allowed", "http_url_allowed"),
+    (_B310_UPSTREAM, "_require_model_url"): ("_model_url_allowed",),
+    (_B310_UPSTREAM, "_build_attempt_opener"): ("build_http_opener",),
+    (_B310_UPSTREAM, "_WatchedHTTPHandler.http_open"): ("self.do_open",),
+    (_B310_UPSTREAM, "_WatchedHTTPSHandler.https_open"): ("self.do_open",),
+    (_B310_UPSTREAM, "_watched_opener"): ("build_http_opener",),
+    (_B310_UPSTREAM, "_open_watched"): ("allows", "_watched_opener(allows).open"),
+    (_B310_UPSTREAM, "watched_urlopen"): ("_open_watched",),
+    (_B310_UPSTREAM, "watched_https_urlopen"): ("_open_watched",),
+    (_B310_UPSTREAM, "_read_reply"): ("_require_model_url", "opener.open"),
+    (_B310_UPSTREAM, "_urlopen_json"): ("_require_model_url", "watched_urlopen"),
+    (_B310_TOOLS, "request_json"): ("https_url_allowed",),
+    (_B310_TOOLS, "request_json.call"): ("urlopen_fn",),
+    (_B310_TOOLS, "request_bytes"): ("https_url_allowed",),
+    (_B310_TOOLS, "request_bytes.call"): ("urlopen_fn",),
+    (_B310_PROVIDERS, "TavilyWebToolProvider._post_json"): ("request_json",),
+    (_B310_PROVIDERS, "PackageRegistryToolProvider._lookup_maven"): ("request_bytes",),
+    (_B310_PROVIDERS, "PackageRegistryToolProvider._get_json"): ("request_json",),
+    (_B310_PROVIDERS, "OsvAdvisoryToolProvider.lookup"): ("request_json", "request_json"),
+}
+_B310_EXPECTED_DEFAULTS = {
+    (_B310_TOOLS, "request_json"), (_B310_TOOLS, "request_bytes"),
+    (_B310_PROVIDERS, "TavilyWebToolProvider.__init__"),
+    (_B310_PROVIDERS, "PackageRegistryToolProvider.__init__"),
+    (_B310_PROVIDERS, "OsvAdvisoryToolProvider.__init__"),
+}
+
+
+_B310_EXPECTED_BINDINGS = {
+    (_B310_PROVIDER_FACTORY, "build_tool_dependencies", name): ((),) for name in _B310_PROVIDER_CLASS_NAMES
+} | {
+    (_B310_PROVIDERS, "TavilyWebToolProvider._post_json", "request_json"): (("self._urlopen",),),
+    (_B310_PROVIDERS, "PackageRegistryToolProvider._lookup_maven", "request_bytes"): (("self._urlopen",),),
+    (_B310_PROVIDERS, "PackageRegistryToolProvider._get_json", "request_json"): (("self._urlopen",),),
+    (_B310_PROVIDERS, "OsvAdvisoryToolProvider.lookup", "request_json"): (("self._urlopen",), ("self._urlopen",)),
+}
+
+
+class _B310Inventory(ast.NodeVisitor):
+    def __init__(self, tree: ast.Module) -> None:
+        self.owners: list[str] = []
+        self.calls: dict[str, list[str]] = {}
+        self.defaults: dict[str, str] = {}
+        self.bindings: dict[tuple[str, str], list[tuple[str, ...]]] = {}
+        self.aliases: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                self.aliases.update((item.asname, item.name) for item in node.names if item.asname)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                self.aliases.update((item.asname or item.name, f"{node.module}.{item.name}") for item in node.names)
+        self.visit(tree)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.owners.append(node.name)
+        self.generic_visit(node)
+        self.owners.pop()
+
+    def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self.owners.append(node.name)
+        for argument, default in zip(node.args.kwonlyargs, node.args.kw_defaults, strict=True):
+            if argument.arg in {"urlopen", "urlopen_fn"} and default is not None:
+                self.defaults[".".join(self.owners)] = ast.unparse(default)
+        self.generic_visit(node)
+        self.owners.pop()
+
+    visit_AsyncFunctionDef = visit_FunctionDef
+
+    def visit_Call(self, node: ast.Call) -> None:
+        callee = ast.unparse(node.func)
+        root, dot, suffix = callee.partition(".")
+        qualified = self.aliases.get(root, root) + dot + suffix
+        name = qualified.rsplit(".", 1)[-1]
+        owner = ".".join(self.owners)
+        if name in _B310_PROVIDER_CLASS_NAMES | {"request_json", "request_bytes"}:
+            parameter = "urlopen" if name in _B310_PROVIDER_CLASS_NAMES else "urlopen_fn"
+            binding = tuple(ast.unparse(keyword.value) for keyword in node.keywords if keyword.arg in {parameter, None})
+            self.bindings.setdefault((owner, name), []).append(binding)
+        if qualified.startswith(("urllib.", "urllib2.", "six.moves.urllib.")) and name in _B310_URL_NAMES:
+            disposition = qualified
+        elif name in _B310_CALLS | _B310_GUARDS:
+            disposition = name
+        elif callee in {"self._allows", "self.do_open", "opener.open", "_http_opener().open", "_watched_opener(allows).open"}:
+            disposition = callee
+        else:
+            self.generic_visit(node)
+            return
+        self.calls.setdefault(owner, []).append(disposition)
+        self.generic_visit(node)
+
+
+def _assert_b310_inventory(sources: dict[str, str]) -> None:
+    calls = {}
+    defaults = {}
+    bindings = {}
+    for file, source in sources.items():
+        result = _B310Inventory(ast.parse(source, filename=file))
+        calls.update({(file, owner): tuple(sites) for owner, sites in result.calls.items()})
+        defaults.update({(file, owner): binding for owner, binding in result.defaults.items()})
+        bindings.update({(file, owner, name): tuple(values) for (owner, name), values in result.bindings.items()})
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT and (match := re.match(r"(?i)#\s*nosec\b(.*)", token.string)):
+                codes = re.findall(r"\bB\d{3}\b", match[1].upper())
+                assert codes and "B310" not in codes, f"Unreviewed B310 suppression in {file}:{token.start[0]}"
+    assert calls == _B310_OPENERS
+    assert defaults == dict.fromkeys(_B310_EXPECTED_DEFAULTS, "watched_https_urlopen")
+    assert bindings == _B310_EXPECTED_BINDINGS
+
+
+def _assert_b310_configuration(config: str) -> None:
+    assert tomllib.loads(config)["tool"]["bandit"]["skips"] == ["B101", "B105", "B404", "B603"]
+
+
+@pytest.fixture(scope="module")
+def b310_sources() -> dict[str, str]:
+    return {path: (ROOT / path).read_text(encoding="utf-8") for path in _python_json(_TRACKED_PROGRAM, ROOT)
+            if path.startswith("src/") and path.endswith(".py")}
+
+
+def test_b310_current_inventory_and_configuration(b310_sources: dict[str, str]) -> None:
+    _assert_b310_inventory(b310_sources)
+    _assert_b310_configuration((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("file", "before", "after"),
+    [
+        (_B310_GATEWAY, "from urllib.request import Request", "from urllib.request import Request, urlopen as new_open\nnew_open('https://fixture.invalid')"),
+        (_B310_UPSTREAM, "_require_model_url(request.full_url)", "pass"),
+        (_B310_PROVIDERS, "urlopen: ToolUrlOpen = watched_https_urlopen", "urlopen: ToolUrlOpen = unreviewed_opener"),
+        (_B310_PROVIDERS, "urlopen_fn=self._urlopen", "urlopen_fn=unreviewed_opener"),
+        (_B310_PROVIDER_FACTORY, "web_provider=TavilyWebToolProvider(", "web_provider=TavilyWebToolProvider(urlopen=unreviewed_opener,"),
+        (_B310_SHARED, "return _http_opener().open(request, timeout=timeout)", "return _http_opener().open(request, timeout=timeout)  # nosec B310"),
+    ],
+)
+def test_b310_inventory_rejects_unreviewed_changes(b310_sources: dict[str, str], file: str, before: str, after: str) -> None:
+    assert before in b310_sources[file]
+    mutated = {**b310_sources, file: b310_sources[file].replace(before, after, 1)}
+    with pytest.raises(AssertionError):
+        _assert_b310_inventory(mutated)
+
+
+def test_b310_configuration_rejects_the_old_global_skip() -> None:
+    config = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    with pytest.raises(AssertionError):
+        _assert_b310_configuration(config.replace('"B105",', '"B105", "B310",', 1))

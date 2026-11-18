@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -3942,20 +3943,23 @@ def test_establishing_applicability_rejects_dirty_execution_surface(tmp_path: Pa
     assert probe.execution_surface_clean(repo, ("tracked.txt",)) is False
 
 
-def test_current_retention_import_closure_and_unlisted_refusal(monkeypatch) -> None:
+_CANDIDATE_IMPORT_PATHS = ("src/optimus/acp/session_retention.py", "src/optimus_security/url_schemes.py")
+
+
+@pytest.mark.parametrize("omitted", _CANDIDATE_IMPORT_PATHS)
+def test_current_candidate_import_closure_and_unlisted_refusal(monkeypatch, omitted: str) -> None:
     import tools.probe_p11_zed_session_load as probe
 
-    # The strict walker reads committed blobs in production. This candidate-source control supplies
-    # actual checkout bytes through the same source-provider seam, including its new untracked file.
-    tracked = probe._tracked_py_paths(REPO_ROOT, 'HEAD') | {'src/optimus/acp/session_retention.py'}
-    monkeypatch.setattr(probe, '_tracked_py_paths', lambda *_args: tracked)
-    monkeypatch.setattr(probe, 'git_cat_file_blob', lambda _root, _commit, path: (REPO_ROOT / path).read_bytes())
+    # Use checked-out candidate bytes through the same source-provider seam,
+    # including new paths that the committed HEAD does not have yet.
+    tracked = probe._tracked_py_paths(REPO_ROOT, "HEAD") | frozenset(_CANDIDATE_IMPORT_PATHS)
+    monkeypatch.setattr(probe, "_tracked_py_paths", lambda *_args: tracked)
+    monkeypatch.setattr(probe, "git_cat_file_blob", lambda _root, _commit, path: (REPO_ROOT / path).read_bytes())
     closure = probe.compute_establishing_import_closure(REPO_ROOT)
-    allowed = frozenset(path for path in probe.ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith('.py'))
+    allowed = frozenset(path for path in probe.ESTABLISHING_EXECUTION_GIT_PATHS if path.endswith(".py"))
     assert closure == allowed
-    with pytest.raises(probe.ProbeError, match='session_retention'):
-        probe.compute_establishing_import_closure(REPO_ROOT,
-            allowed_py_paths=allowed - {'src/optimus/acp/session_retention.py'})
+    with pytest.raises(probe.ProbeError, match="unlisted module path: " + re.escape(omitted.removesuffix(".py"))):
+        probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=allowed - {omitted})
 
 
 def test_establishing_import_closure_equals_explicit_module_path_subset() -> None:
@@ -4219,6 +4223,12 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     assert (report_contract_path in closure) is report_contract_committed
     assert (savings_path in closure) is savings_committed
     assert (retention_path in closure) is retention_committed
+    url_schemes_path = "src/optimus_security/url_schemes.py"
+    head_gateway = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/gateway/client.py")
+    url_schemes_committed = b"from optimus_security.url_schemes import" in head_gateway
+    if not url_schemes_committed:
+        expected -= {url_schemes_path}
+    assert (url_schemes_path in closure) is url_schemes_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4249,7 +4259,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         8 if capture_committed else 0
     ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
         5 if memory_session_committed else 0
-    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0)
+    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

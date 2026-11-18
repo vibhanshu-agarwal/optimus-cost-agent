@@ -342,14 +342,14 @@ def test_a_plain_http_base_url_is_classified_by_phase_too(monkeypatch, make_wire
 
 @pytest.mark.parametrize("base_url", ["ftp://127.0.0.1/api/v1", "file:///api/v1"])
 def test_another_scheme_fails_before_anything_is_sent(monkeypatch, base_url) -> None:
-    """The attempt opener has only HTTP and HTTPS handlers, so no other scheme can open a connection
-    whose phase goes unrecorded; it fails as an unknown URL type, certainly unsent."""
+    """The actual request is still checked if it differs from the admitted configuration."""
     wire = Wire().install(monkeypatch)
-    client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url=base_url, sleep=lambda _s: None)
+    client = _client()
+    monkeypatch.setattr(client, "_base_url", base_url)
     with pytest.raises(UpstreamAttemptFailure) as caught:
         _once(client)
     assert caught.value.outcome == "not_sent"
-    assert "unknown url type" in str(caught.value.__cause__)
+    assert str(caught.value.__cause__) == "model upstream URL rejected by scheme policy"
     assert wire.connects == 0
 
 

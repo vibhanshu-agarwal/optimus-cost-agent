@@ -22,6 +22,7 @@ from optimus.acp.local_gateway_secrets import (
     ProviderCredentialResolution,
     ProviderSecrets,
 )
+from optimus_security import url_schemes
 
 _HMAC_KEY = b"test-local-infra-hmac-key-32byt!"
 
@@ -1258,3 +1259,11 @@ def test_ensure_local_gateway_omits_otlp_when_endpoint_none(tmp_path, monkeypatc
     )
 
     assert "OTEL_EXPORTER_OTLP_ENDPOINT" not in captured["env"]
+
+
+def test_phoenix_approved_scheme_rejects_before_the_opener(monkeypatch):
+    def unexpected_open(*args, **kwargs):
+        pytest.fail("the Phoenix opener must not receive a rejected URL")
+
+    monkeypatch.setattr(url_schemes, "_http_opener", lambda: MagicMock(open=unexpected_open))
+    assert local_infra._phoenix_health_ready("policy-test://fixture.invalid") is False  # noqa: SLF001

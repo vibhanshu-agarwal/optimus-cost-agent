@@ -308,7 +308,7 @@ def test_tools_routes_return_not_found_when_dependencies_are_not_configured():
         _stop_server(server, thread)
 
 
-def test_config_built_metadata_routes_work_without_search_and_preserve_controls(monkeypatch):
+def test_config_built_metadata_routes_work_without_search_and_preserve_controls(monkeypatch, provider_server_tls):
     for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
@@ -349,9 +349,10 @@ def test_config_built_metadata_routes_work_without_search_and_preserve_controls(
     store = InMemoryGatewayToolStateStore()
     monkeypatch.setattr("optimus_gateway.providers.RedisGatewayToolStateStore.from_url", lambda _url: store)
     upstream = ThreadingHTTPServer(("127.0.0.1", 0), RegistryStub)
+    upstream.socket = provider_server_tls.wrap_socket(upstream.socket, server_side=True)
     upstream_thread = threading.Thread(target=upstream.serve_forever, daemon=True)
     upstream_thread.start()
-    base_url = f"http://127.0.0.1:{upstream.server_port}"
+    base_url = f"https://127.0.0.1:{upstream.server_port}"
     config = dataclasses.replace(_config(), tavily_api_key=None, tool_redis_url="redis://unused-unit-boundary/0",
                                  tool_allowed_domains=("pypi.org", "osv.dev"), tool_max_calls_per_tool=2,
                                  pypi_base_url=base_url, osv_base_url=base_url)
