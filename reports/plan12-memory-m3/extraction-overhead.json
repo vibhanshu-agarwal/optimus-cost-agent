@@ -1,0 +1,131 @@
+{
+  "schema": "plan12-memory-m3.extraction-overhead.v3",
+  "source": {
+    "head": "git:9b3530f9aa6995ea52b329a621cf857d55c75fc4",
+    "dirty": false
+  },
+  "policy": "D9: automatic user-origin admissions, updates and withdrawals go off (Codex CP2 review 9; Plan 12.11 v3 draft)",
+  "upstream": "controlled, 0.200 s per call, nothing billed",
+  "workload_limit": "synthetic English text; the real frequency of durable statements in operator sessions is unknown, so passing these targets says nothing about production call rates",
+  "turns": 100,
+  "runs": {
+    "empty": {
+      "initial_state": {
+        "user_scope": "empty",
+        "fixture": null
+      },
+      "calls": {
+        "user": 12,
+        "agent": 8,
+        "total": 20
+      },
+      "prefilter_mismatches": [],
+      "settlement_s": {
+        "count": 20,
+        "p50": 0.23,
+        "p95": 0.24,
+        "max": 0.24
+      },
+      "outcomes": {
+        "appended_by_action": {
+          "admit": 8,
+          "off": 12
+        },
+        "incomplete": 0,
+        "skipped_by_reason": {}
+      },
+      "automatic_user_mutations": 0,
+      "live_user_items_after": true,
+      "agent_skips": 0
+    },
+    "scope_present": {
+      "initial_state": {
+        "user_scope": "scope-present",
+        "fixture": {
+          "item": "m-a165e22762b2bce8",
+          "version": 1,
+          "scope": "project",
+          "statement_sha256": "hex:4052831828b2c150197dad310b69433ffa677b7e555ea6060faea319b0d3a444",
+          "made_by": "host path: memory_gate.admit with a full host verdict, then the store's append under the lease"
+        }
+      },
+      "calls": {
+        "user": 12,
+        "agent": 0,
+        "total": 12
+      },
+      "prefilter_mismatches": [],
+      "settlement_s": {
+        "count": 20,
+        "p50": 0.22,
+        "p95": 0.23,
+        "max": 0.23
+      },
+      "outcomes": {
+        "appended_by_action": {
+          "off": 12
+        },
+        "incomplete": 0,
+        "skipped_by_reason": {
+          "user_items_in_scope": 8
+        }
+      },
+      "automatic_user_mutations": 0,
+      "live_user_items_after": true,
+      "agent_skips": 8
+    }
+  },
+  "first_response": {
+    "off_ms": {
+      "count": 100,
+      "p50": 10.59,
+      "p95": 19.58,
+      "max": 21.35
+    },
+    "on_ms": {
+      "count": 100,
+      "p50": 12.05,
+      "p95": 20.47,
+      "max": 24.56
+    }
+  },
+  "added_first_response_p95_ms": 0.89,
+  "effective_expectations": {
+    "empty": {
+      "user": 12,
+      "agent": 8,
+      "total": 20,
+      "agent_skipped_user_items_in_scope": 0,
+      "automatic_user_mutations": 0
+    },
+    "scope_present": {
+      "user": 12,
+      "agent": 0,
+      "total": 12,
+      "agent_skipped_user_items_in_scope": 8,
+      "approved": "Codex CP2 review 4 on #490 (issuecomment-6952811578)"
+    },
+    "status": "named in the Plan 12.11 v3 draft (Codex CP2 review 9); the draft is not yet adopted"
+  },
+  "historical": {
+    "expected": {
+      "user_extraction_calls": 12,
+      "agent_extraction_calls": 8,
+      "total": 20
+    },
+    "matches_expected_empty_scope": true,
+    "matches_expected_scope_present": false
+  },
+  "disclosure": "the prefilter was developed against this sealed workload, so its agreement here is not a held-out result; agent evidence follows the workload by construction",
+  "verdicts": {
+    "empty_calls_per_100": true,
+    "empty_matches_effective_expectation": true,
+    "empty_no_automatic_user_mutation": true,
+    "empty_settlement_p95": true,
+    "scope_present_calls_per_100": true,
+    "scope_present_matches_effective_expectation": true,
+    "scope_present_no_automatic_user_mutation": true,
+    "scope_present_settlement_p95": true,
+    "added_first_response_p95": true
+  }
+}

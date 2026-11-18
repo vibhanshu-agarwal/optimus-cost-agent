@@ -1916,16 +1916,21 @@ class AgentRunner:
     def _turn_context(self, request: AgentRunRequest, selection_text: str, context_packer: ContextPacker | None) -> WorkspaceContextResult:
         """Today's selection, or with a context index its ranked pack, sized by this route's own estimator and usable input."""
         memory = getattr(context_packer, "memory", None)
+        result: WorkspaceContextResult
         if memory is None:
-            return assemble_workspace_context_for_prompt(request.workspace_root, task=selection_text)
-        result: WorkspaceContextResult = memory.assemble(
-            run_id=request.run_id,
-            task=request.task,
-            selection_text=selection_text,
-            model_id=context_packer.model_id,  # type: ignore[union-attr]
-            estimate=context_packer.estimate_request,  # type: ignore[union-attr]
-            usable_input_tokens=context_packer.usable_input_tokens,  # type: ignore[union-attr]
-        )
+            result = assemble_workspace_context_for_prompt(request.workspace_root, task=selection_text)
+        else:
+            result = memory.assemble(
+                run_id=request.run_id,
+                task=request.task,
+                selection_text=selection_text,
+                model_id=context_packer.model_id,  # type: ignore[union-attr]
+                estimate=context_packer.estimate_request,  # type: ignore[union-attr]
+                usable_input_tokens=context_packer.usable_input_tokens,  # type: ignore[union-attr]
+            )
+        report = getattr(context_packer, "record_context", None)
+        if report is not None:  # Plan 12.11: what the turn carried, for memory lineage
+            report(result)
         return result
 
     def _chat_call(

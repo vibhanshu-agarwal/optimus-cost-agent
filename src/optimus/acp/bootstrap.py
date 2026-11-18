@@ -200,6 +200,7 @@ def build_configured_server(
     auto_composition: AutoComposition | None = None,
     durable_capture: DurableCapture | None = None,
     memory_index: tuple[Path, Path] | None = None,
+    memory_store: Path | None = None,
     memory_notice: str | None = None,
 ) -> AcpStreamServer:
     """
@@ -335,6 +336,12 @@ def build_configured_server(
                 shared_secret=settings.optimus_api_key.get_secret_value(),
                 attempt_observer=harness.attempt_observer,
             )
+        # Plan 12.11: the config root of a launch whose approved memory store is ready; automatic extraction per session.
+        memory_extractor_factory = None
+        if memory_store is not None and stage_c is None:
+            from optimus.context.memory_extraction import extractor_factory
+
+            memory_extractor_factory = extractor_factory(config_root=memory_store, settings=settings)
         # Plan 12.10: (index root, config root) when this launch's approved index and its Redis are ready; otherwise today's context.
         memory_factory = None
         if memory_index is not None and stage_c is None:
@@ -362,6 +369,7 @@ def build_configured_server(
             context_attachment=context_attachment,
             session_seeder=session_seeder,
             memory_factory=None if stage_c is not None else memory_factory,
+            memory_extractor_factory=memory_extractor_factory,
             memory_notice=None if stage_c is not None else memory_notice,
             failure_telemetry=harness.telemetry_writer,
             auto_router=auto,

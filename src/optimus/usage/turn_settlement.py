@@ -29,6 +29,7 @@ extension of this one settlement, never a second debit, and it never blocks mode
 from __future__ import annotations
 
 import contextlib
+import re
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, fields
@@ -43,6 +44,7 @@ if TYPE_CHECKING:
     from optimus.usage.accounting import UsageAccountingService
     from optimus.usage.durable_capture import DurableCapture
 
+_MEMORY_PURPOSE = re.compile(r"memory\.[a-z0-9_]+")
 STAGES = frozenset({"planning", "answer", "summarization", "classification", "operation"})
 # `classification`: Auto's per-turn classifier call, settled as its own stage (Plan 12.4 v7; ADR-007).
 # `operation`: a model call outside any turn (the strict preflight probe, the JSON-RPC pass-through), settled in its own
@@ -96,10 +98,13 @@ class StageReceipt:
     http_status: int | None = None
     gateway_usage: GatewayUsage | None = None
     post_teardown: bool = False
+    purpose: str | None = None  # a memory call's own `memory.*` purpose (summarization only); None: the stage's ordinary one
 
     def __post_init__(self) -> None:
         if not self.turn_id or not self.attempt_id:
             raise ValueError("a receipt needs its turn and attempt identity")
+        if self.purpose is not None and (self.stage != "summarization" or not _MEMORY_PURPOSE.fullmatch(self.purpose)):
+            raise ValueError("only a summarization receipt names a purpose, and it is a memory one")
         if self.stage not in STAGES or self.outcome not in OUTCOMES:
             raise ValueError(f"unknown stage {self.stage!r} or outcome {self.outcome!r}")
         cost = self.reported_cost_usd
@@ -263,7 +268,7 @@ class TurnSettlement:
             if gateway_id is not None:
                 self._attempt_for_gateway[gateway_id] = receipt.attempt_id
             if self._capture is not None:
-                self._capture.receipt(receipt)
+                self._capture.receipt(receipt, purpose=receipt.purpose)
             self._publish(receipt.turn_id)
 
     def record_integrity_failure(self, turn_id: str) -> None:
@@ -336,6 +341,7 @@ def receipt_from_maintenance(receipt: MaintenanceReceipt) -> StageReceipt:
         session_id=identity.session_id,
         turn_id=f"{identity.session_id}:{identity.turn_seq}",
         stage="summarization",
+        purpose=receipt.purpose,
         attempt_id=receipt.attempt_id,
         gateway_request_id=receipt.gateway_request_id,
         outcome=receipt.outcome,

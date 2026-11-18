@@ -20,14 +20,17 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Final
 
 import redis
 from redis.backoff import NoBackoff
 from redis.exceptions import ConnectionError as RedisConnectionError
-from redis.exceptions import RedisError, ResponseError, TimeoutError, WatchError
+from redis.exceptions import OutOfMemoryError, RedisError, ResponseError, TimeoutError, WatchError
 from redis.retry import Retry
 
+from optimus_gateway.memory_files import Inventory, InventoryUnavailable, Residue, docker_inventory, residue
+from optimus_gateway.memory_journal import JournalError, PurgeJournal, journal_key
 from optimus_security import memory_store_contract as msc
 from optimus_security.memory_store_config import KEYRING_SERVICE, MemoryStoreConfig
 
@@ -44,7 +47,28 @@ _CONNECT_SECONDS: Final = 2.0
 _FENCE_KEY: Final = f"{_PREFIX}:fence"
 _PROBE_KEY: Final = f"{_PREFIX}:fsync-probe"
 _MIB: Final = 1024 * 1024
+_PAYLOAD_FIELDS: Final = ("title", "statement", "anchors", "lineage")
+_PURGED_PAYLOAD: Final = {"title": "", "statement": "", "anchors": [], "lineage": []}
+_TOMBSTONE_KEEPS: Final = ("item", "trust", "kind", "scope", "valid_from_ms", "valid_until_ms")
+PURGE_COMPLETED: Final = "completed-within-declared-boundary"
+# (kind, completion counter, flags that mean one is running or queued, last status, the command that starts one)
+_PERSISTENCE: Final = (
+    ("aof", "aof_rewrites", ("aof_rewrite_in_progress", "aof_rewrite_scheduled"), "aof_last_bgrewrite_status", ("BGREWRITEAOF",)),
+    ("rdb", "rdb_saves", ("rdb_bgsave_in_progress",), "rdb_last_bgsave_status", ("BGSAVE", "SCHEDULE")),
+)
 
+
+
+_RUNBOOK = "docs/runbooks/memory-purge-pending-files.md"
+
+
+def _held(why: Residue | None) -> dict[str, Any]:
+    """What a purge held pending by the data directory tells the operator (Codex CP2 review 4): the reason, the entries that
+    hold it (at most 16, non-printable characters shown as "?") and the runbook that says how to check and retire them."""
+    if why is None:
+        return {}
+    shown = ["".join(c if c.isprintable() else "?" for c in entry)[:200] for entry in why.entries[:16]]
+    return {"files": why.reason, "blocking": shown, "next": "inspect_data_files", "runbook": _RUNBOOK}
 
 class MemoryStoreStartupError(RuntimeError):
     """The configured Redis is not the approved durable resource. `code` is stable and carries no secret."""
@@ -274,34 +298,65 @@ def fsync_probe(client: redis.Redis, *, timeout_ms: int) -> int:
     return _local_count(replies[1])
 
 
+def _split(event: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """An event's stream entry and its payload. The stream keeps only ids, state and validity: Redis XDEL leaves a stream entry's
+    bytes in the snapshot, so anything a purge must destroy lives in the project's payload hash, where HDEL really removes it."""
+    return ({name: value for name, value in event.items() if name not in _PAYLOAD_FIELDS},
+            {name: event[name] for name in _PAYLOAD_FIELDS})
+
+
 class _Fold:
     """What one project's stream says up to `head`: each item's latest event, the idempotency keys and event ids already used,
-    and the checkpoints in stream order. Rebuilt from the stream alone, so it is a cache, never a source of truth."""
+    every event id of each item (a purge removes all their payloads) and the checkpoints in stream order. Rebuilt from the
+    stream and the payload hash, so it is a cache, never a source of truth. A purged item keeps only its tombstone."""
 
     def __init__(self) -> None:
         self.head = "0-0"
         self.items: dict[str, dict[str, Any]] = {}
-        self.keys: dict[str, tuple[str, dict[str, Any]]] = {}
+        self.keys: dict[str, tuple[str | None, dict[str, Any]]] = {}
         self.event_ids: set[str] = set()
+        self.history: dict[str, list[str]] = {}
         self.checkpoints: list[dict[str, Any]] = []
+        self.off: dict[str, int] = {}  # live off records and the bytes each holds: the cap counts these
 
-    def apply(self, stream_id: str, record: dict[str, Any]) -> None:
+    def apply(self, stream_id: str, record: dict[str, Any], payload: dict[str, Any] | None = None) -> None:
+        digest = record.get("digest")
         if record["type"] == "event":
-            self.items[record["event"]["item"]] = {**record["event"], "stream_id": stream_id}
-            self.event_ids.add(record["event"]["event_id"])
+            event = record["event"]
+            item = event["item"]
+            if event["action"] == "tombstone":
+                self.items[item] = {**event, **_PURGED_PAYLOAD, "stream_id": stream_id}
+                for key, (_digest_value, result) in list(self.keys.items()):
+                    if result.get("item") == item:
+                        self.keys[key] = (None, result)  # nothing derived from the purged text stays, not even its digest
+            else:
+                digest = payload.pop("digest", None) if payload is not None else None
+                self.items[item] = {**event, **(payload or {}), "stream_id": stream_id}  # no payload: refused when served
+                self.history.setdefault(item, []).append(event["event_id"])
+            self.event_ids.add(event["event_id"])
+            if event["trust"] == "off" and event["status"] == "active":
+                self.off[item] = len(_json(self.items[item]))
+            else:
+                self.off.pop(item, None)
         else:
             self.checkpoints.append({**record["checkpoint"], "stream_id": stream_id})
-        self.keys[record["key"]] = (record["digest"], _result(stream_id, record))
+        self.keys[record["key"]] = (digest, _result(stream_id, record))
         self.head = stream_id
 
-    def advance(self, reader: Any, stream: str, target: str, on_time: Callable[[], None] = lambda: None) -> None:
+    def advance(self, reader: Any, stream: str, payloads: str, target: str, on_time: Callable[[], None] = lambda: None) -> None:
         while _order(self.head) < _order(target):
             on_time()
             entries = reader.xrange(stream, min=f"({self.head}", max=target, count=_FOLD_PAGE)
             if not entries:
                 raise RedisError("stream shorter than its head")  # never serve a fold that skipped events
-            for raw_id, fields in entries:
-                self.apply(_text(raw_id), json.loads(fields[b"e"]))
+            records = [(_text(raw_id), json.loads(fields[b"e"])) for raw_id, fields in entries]
+            wanted = [record["event"]["event_id"] for _, record in records
+                      if record["type"] == "event" and record["event"]["action"] != "tombstone"]
+            on_time()
+            found = dict(zip(wanted, reader.hmget(payloads, wanted), strict=True)) if wanted else {}
+            for stream_id, record in records:
+                raw = found.get(record["event"]["event_id"]) if record["type"] == "event" else None
+                self.apply(stream_id, record, json.loads(raw) if raw is not None else None)
 
 
 def _order(stream_id: str) -> tuple[int, int]:
@@ -316,8 +371,12 @@ def _result(stream_id: str, record: dict[str, Any]) -> dict[str, Any]:
     return {"session": record["checkpoint"]["session"], "sequence": record["checkpoint"]["sequence"], "stream_id": stream_id}
 
 
+def _json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
 def _digest(value: Any) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
+    return hashlib.sha256(_json(value).encode()).hexdigest()
 
 
 class MemoryStore:
@@ -328,7 +387,10 @@ class MemoryStore:
     and see only the confirmed watermark. A lost or replaced connection makes the store suspect: every operation is refused until
     `verify` shows the resource is still the provisioned one."""
 
-    def __init__(self, client: redis.Redis, writer: redis.Redis, *, admission_ceiling_mb: int, cursor_key: bytes) -> None:
+    def __init__(self, client: redis.Redis, writer: redis.Redis, *, admission_ceiling_mb: int, cursor_key: bytes,
+                 journal: PurgeJournal | None = None, inventory: Callable[[float], Inventory] | None = None) -> None:
+        self._purge_journal = journal
+        self._inventory = inventory  # lists the data directory; without one no purge's disk step is ever shown complete
         self._redis = client
         self._writer = writer
         self._write_lock = threading.Lock()
@@ -479,8 +541,12 @@ class MemoryStore:
             raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)
 
     @staticmethod
-    def _key(project: str, name: str) -> str:
-        return f"{_PREFIX}:p:{hashlib.sha256(project.encode()).hexdigest()[:32]}:{name}"
+    def _project_hash(project: str) -> str:
+        return hashlib.sha256(project.encode()).hexdigest()[:32]
+
+    @classmethod
+    def _key(cls, project: str, name: str) -> str:
+        return f"{_PREFIX}:p:{cls._project_hash(project)}:{name}"
 
     def _used(self) -> int:
         with self._reading():
@@ -543,11 +609,11 @@ class MemoryStore:
             raise msc.MemoryRequestError("LEASE_CONTENDED", 409)
 
     @contextlib.contextmanager
-    def _writing(self, *, verifying: bool = False) -> Iterator[None]:
-        """The writer, for the rest of the request's budget. A store under suspicion refuses, so a request queued behind the
-        one that lost the connection cannot write to an unverified replacement."""
+    def _writing(self, *, verifying: bool = False, share: float = 1.0) -> Iterator[None]:
+        """The writer, for the rest of the request's budget (`share` of it for the wait). A store under suspicion refuses, so a
+        request queued behind the one that lost the connection cannot write to an unverified replacement."""
         self._on_time()
-        if not self._write_lock.acquire(timeout=max(0.0, self._remaining())):
+        if not self._write_lock.acquire(timeout=max(0.0, self._remaining() * share)):
             raise msc.MemoryRequestError("MEMORY_BUSY", 503)
         try:
             self._on_time()  # the wait for the lock may have used up the budget
@@ -586,38 +652,58 @@ class MemoryStore:
         gated = event["action"] in ("admit", "update")  # withdrawals and off records still go through when saves are refused
         if gated and self._fsync_failed:
             self._recheck_fsync()
-        record = {"type": "event", "key": body["idempotency_key"], "digest": _digest([body["expected_version"], event]),
-                  "event": event}
-        return self._append(body["project"], body["token"], record, expected=body["expected_version"], gated=gated)
+        entry, payload = _split(event)
+        record = {"type": "event", "key": body["idempotency_key"], "event": entry}
+        payload["digest"] = _digest([body["expected_version"], event])  # the retry check, purged with the payload
+        return self._append(body["project"], body["token"], record, payload, expected=body["expected_version"], gated=gated)
 
     def _op_checkpoint(self, body: dict[str, Any]) -> dict[str, Any]:
-        point = body["checkpoint"]
+        point = body["checkpoint"]  # host references only, never source text: it stays in the stream
         record = {"type": "checkpoint", "key": f"checkpoint:{point['session']}:{point['sequence']}", "digest": _digest(point),
                   "checkpoint": point}
-        return self._append(body["project"], body["token"], record, expected=None)
+        return self._append(body["project"], body["token"], record, None, expected=None)
 
-    def _append(self, project: str, token: int, record: dict[str, Any], *, expected: int | None, gated: bool = False) -> dict[str, Any]:
+    def _writer_fold(self, pipe: Any, project: str, token: int) -> tuple[_Fold, str]:
+        """Inside a watching pipeline: the lease still names this holder, and the writer's fold is advanced to the stream's head."""
         stream, lease = self._key(project, "events"), self._key(project, "lease")
+        pipe.watch(lease, stream)
+        if _text(pipe.get(lease) or b"").split(":", 1)[0] != str(token):
+            pipe.unwatch()
+            raise msc.MemoryRequestError("LEASE_LOST", 409)
+        newest = pipe.xrevrange(stream, count=1)
+        head = _text(newest[0][0]) if newest else "0-0"
+        fold = self._writer_folds.setdefault(project, _Fold())
+        if _order(head) < _order(fold.head):
+            fold = self._writer_folds[project] = _Fold()  # the stream went back: rebuild, never trust the cache
+        fold.advance(pipe, stream, self._key(project, "payloads"), head, self._on_time)
+        return fold, head
+
+    @staticmethod
+    def _execute(pipe: Any) -> list[Any]:
+        """EXEC, with a store at its memory limit reported as such rather than as a storage fault."""
+        try:
+            return list(pipe.execute())
+        except OutOfMemoryError:  # noeviction at maxmemory refused the queued XADD; its message quotes the command, never logged
+            raise msc.MemoryRequestError("MEMORY_FULL", 507) from None
+
+    def _append(self, project: str, token: int, record: dict[str, Any], payload: dict[str, Any] | None, *, expected: int | None,
+                gated: bool = False) -> dict[str, Any]:
+        stream, payloads = self._key(project, "events"), self._key(project, "payloads")
         with self._writing():
-            fold = self._writer_folds.setdefault(project, _Fold())
             connection = int(self._writer.client_id())
             self._check_links()  # the baseline connection is the verified one, not one the pool re-established just now
             for _ in range(_WATCH_ATTEMPTS):
                 replay_at = None
                 with _pipeline(self._writer) as pipe:  # a watching pipeline holds the writer's only connection until it closes
                     try:
-                        pipe.watch(lease, stream)
-                        if _text(pipe.get(lease) or b"").split(":", 1)[0] != str(token):
-                            pipe.unwatch()
-                            raise msc.MemoryRequestError("LEASE_LOST", 409)
-                        newest = pipe.xrevrange(stream, count=1)
-                        head = _text(newest[0][0]) if newest else "0-0"
-                        if _order(head) < _order(fold.head):
-                            fold = self._writer_folds[project] = _Fold()  # the stream went back: rebuild, never trust the cache
-                        fold.advance(pipe, stream, head, self._on_time)
+                        fold, head = self._writer_fold(pipe, project, token)
                         if record["key"] in fold.keys:
                             pipe.unwatch()
                             replay_at = head
+                        elif record.get("event", {}).get("trust") == "off" and (
+                                len(fold.off) >= msc.MAX_OFF_RECORDS or sum(fold.off.values()) >= msc.MAX_OFF_BYTES):
+                            pipe.unwatch()  # off records carry no payload, so refusing one loses no knowledge; a growth alert
+                            raise msc.MemoryRequestError("OFF_RECORDS_FULL", 507)
                         elif gated and (self._fsync_failed or self._used() >= self._ceiling_bytes):
                             pipe.unwatch()
                             raise msc.MemoryRequestError("MEMORY_NOT_ADMITTING", 503)
@@ -625,14 +711,16 @@ class MemoryStore:
                             self._check(fold, record, expected)
                             self._on_time()  # past the deadline nothing is appended; once EXEC is sent the outcome may be uncertain
                             pipe.multi()
-                            pipe.xadd(stream, {"e": json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=True)})
-                            stream_id = _text(pipe.execute()[0])
+                            pipe.xadd(stream, {"e": _json(record)})
+                            if payload is not None:
+                                pipe.hset(payloads, record["event"]["event_id"], _json(payload))
+                            stream_id = _text(self._execute(pipe)[0])
                     except WatchError:
                         self._after_watch_error(connection)
                         continue
                 if replay_at is not None:
-                    return self._replay(project, fold, record, replay_at, connection)
-                fold.apply(stream_id, record)
+                    return self._replay(project, fold, record, payload, replay_at, connection)
+                fold.apply(stream_id, record, None if payload is None else dict(payload))
                 return {"status": "ok", **_result(stream_id, record), **self._confirm(project, stream_id, connection)}
             raise msc.MemoryRequestError("MEMORY_CONTENDED", 409)
 
@@ -649,11 +737,14 @@ class MemoryStore:
         if event["event_id"] in fold.event_ids:
             raise msc.MemoryRequestError("EVENT_ID_REUSED", 409)
 
-    def _replay(self, project: str, fold: _Fold, record: dict[str, Any], head: str, connection: int) -> dict[str, Any]:
+    def _replay(self, project: str, fold: _Fold, record: dict[str, Any], payload: dict[str, Any] | None, head: str,
+                connection: int) -> dict[str, Any]:
         """A retry of the same change returns the first one's result once it is on disk; a different change under that key is a
-        conflict. Nothing is appended twice."""
+        conflict, and a change whose item has since been purged is refused. Nothing is appended twice."""
         digest, result = fold.keys[record["key"]]
-        if digest != record["digest"]:
+        if digest is None:
+            raise msc.MemoryRequestError("ITEM_PURGED", 409)
+        if digest != (payload["digest"] if payload is not None else record["digest"]):
             raise msc.MemoryRequestError("IDEMPOTENCY_CONFLICT", 409)
         self._writer.incr(self._key(project, "sync"))  # puts this connection's offset past the earlier append, wherever it came from
         return {"status": "ok", **result, "replayed": True, **self._confirm(project, head, connection)}
@@ -738,18 +829,47 @@ class MemoryStore:
     # --- serving -------------------------------------------------------------------------------------------------------
 
     def _served(self, project: str, answer: Callable[[_Fold], dict[str, Any]]) -> dict[str, Any]:
-        """Answer from the confirmed fold while holding the read lock: another request may advance the same fold."""
-        with self._reading():
-            fold = self._serving_folds.setdefault(project, _Fold())
-            watermark = _text(self._redis.get(self._key(project, "durable")) or b"0-0")
-            if _order(watermark) < _order(fold.head):
-                fold = self._serving_folds[project] = _Fold()
-            fold.advance(self._redis, self._key(project, "events"), watermark, self._on_time)
-            self._check_links()  # nothing read from a connection re-established since verification is served
-            return answer(fold)
+        """Answer from the confirmed fold while holding the read lock: another request may advance the same fold. A watermark
+        behind the stream's head (a save confirmed just before a crash, or one whose proof was cut) is reconciled once first."""
+        for reconciled in (False, True):
+            with self._reading():
+                watermark = _text(self._redis.get(self._key(project, "durable")) or b"0-0")
+                newest = self._redis.xrevrange(self._key(project, "events"), count=1)
+                head = _text(newest[0][0]) if newest else "0-0"
+                if reconciled or _order(watermark) >= _order(head):
+                    fold = self._serving_folds.setdefault(project, _Fold())
+                    if _order(watermark) < _order(fold.head):
+                        fold = self._serving_folds[project] = _Fold()
+                    fold.advance(self._redis, self._key(project, "events"), self._key(project, "payloads"), watermark, self._on_time)
+                    self._check_links()  # nothing read from a connection re-established since verification is served
+                    return answer(fold)
+            try:
+                self._reconcile(project, head)  # outside the read lock: writers take it while they hold the write lock
+            except msc.MemoryRequestError:
+                pass  # the writer is busy or out of time: serve what the watermark already proves
+        raise AssertionError("unreachable")
+
+    def _reconcile(self, project: str, head: str) -> None:
+        """Prove the stream's tail is on disk and move the watermark over it: one write on the writer's own connection after the
+        tail, then WAITAOF there. The AOF is ordered, so that fsync covers every entry before it. If it cannot be proven, reads
+        stay at the watermark and the tail's projection stays pending. It waits for the writer at most half the budget, so the
+        read can still be served."""
+        with self._writing(share=0.5):
+            connection = int(self._writer.client_id())
+            self._check_links()
+            self._writer.incr(self._key(project, "sync"))
+            if self._durable(connection):
+                self._advance_watermark(project, head, connection)
+
+    @staticmethod
+    def _whole(record: Any) -> Any:
+        """A live item whose payload is missing is damage, never an empty memory."""
+        if record is not None and "statement" not in record:
+            raise RedisError("an event's payload is missing")
+        return record
 
     def _op_read(self, body: dict[str, Any]) -> dict[str, Any]:
-        return self._served(body["project"], lambda fold: {"status": "ok", "item": fold.items.get(body["item"])})
+        return self._served(body["project"], lambda fold: {"status": "ok", "item": self._whole(fold.items.get(body["item"]))})
 
     def _op_list(self, body: dict[str, Any]) -> dict[str, Any]:
         """Confirmed items in one scope, in item-id order, as many as fit the reply bound. A cursor is sealed to its project and scope."""
@@ -760,10 +880,11 @@ class MemoryStore:
             items: list[dict[str, Any]] = []
             size = _LIST_ENVELOPE_BYTES
             for item in ids[: body["limit"]]:
-                size += len(json.dumps(fold.items[item], ensure_ascii=True)) + 1
+                record = self._whole(fold.items[item])
+                size += len(json.dumps(record, ensure_ascii=True)) + 1
                 if items and size > msc.MAX_RESPONSE_BYTES:
                     break
-                items.append(fold.items[item])
+                items.append(record)
             cursor = self._seal(body["project"], body["scope"], items[-1]["item"]) if len(ids) > len(items) else None
             return {"status": "ok", "items": items, "cursor": cursor}
 
@@ -771,6 +892,180 @@ class MemoryStore:
 
     def _op_checkpoints(self, body: dict[str, Any]) -> dict[str, Any]:
         return self._served(body["project"], lambda fold: {"status": "ok", "checkpoints": fold.checkpoints[-body["limit"]:][::-1]})
+
+    # --- purge ---------------------------------------------------------------------------------------------------------
+
+    def _op_purge(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Destroy one item's text. The intent is journalled (fsynced, payload-free) before anything is sent; the tombstone and
+        the HDEL of every payload the item ever had go in one transaction, so the text is never gone without its tombstone and
+        never outlives it; once WAITAOF confirms that, the AOF rewrite and the snapshot that drop the text from disk are started.
+        A retry under the same key finishes whatever an interruption left."""
+        journal = self._need_journal()
+        project, item, key = body["project"], body["item"], body["idempotency_key"]
+        name, digest = self._project_hash(project), _digest(["purge", item])
+        stream, payloads = self._key(project, "events"), self._key(project, "payloads")
+        outcome: dict[str, Any]
+        with self._writing():
+            connection = int(self._writer.client_id())
+            self._check_links()
+            for _ in range(_WATCH_ATTEMPTS):
+                replay_at = already = None
+                with _pipeline(self._writer) as pipe:
+                    try:
+                        fold, head = self._writer_fold(pipe, project, body["token"])
+                        current = fold.items.get(item)
+                        if key in fold.keys:
+                            pipe.unwatch()
+                            replay_at = head
+                        elif current is None:
+                            pipe.unwatch()
+                            raise msc.MemoryRequestError("ITEM_UNKNOWN", 404)
+                        elif current["status"] == "purged":
+                            pipe.unwatch()
+                            already = current  # purged under another key: finish what it left, never refuse it
+                        else:
+                            tombstone = {**{field: current[field] for field in _TOMBSTONE_KEEPS}, "event_id": f"purge-{key}",
+                                         "version": current["version"] + 1, "action": "tombstone", "status": "purged"}
+                            record = {"type": "event", "key": key, "digest": digest, "event": tombstone}
+                            self._journal(journal, name, item, "intent", version=tombstone["version"], key=key)
+                            self._on_time()
+                            pipe.multi()
+                            pipe.xadd(stream, {"e": _json(record)})
+                            if fold.history.get(item):
+                                pipe.hdel(payloads, *fold.history[item])
+                            stream_id = _text(self._execute(pipe)[0])
+                    except WatchError:
+                        self._after_watch_error(connection)
+                        continue
+                if already is not None:
+                    self._writer.incr(self._key(project, "sync"))
+                    result = {"item": item, "version": already["version"], "event_id": already["event_id"], "stream_id": already["stream_id"]}
+                    outcome = {"already_purged": True, **self._confirm(project, head, connection)}
+                elif replay_at is not None:
+                    seen, result = fold.keys[key]
+                    if seen != digest:
+                        raise msc.MemoryRequestError("IDEMPOTENCY_CONFLICT", 409)
+                    self._writer.incr(self._key(project, "sync"))  # this connection's offset past the tombstone, wherever it came from
+                    outcome = {"replayed": True, **self._confirm(project, replay_at, connection)}
+                else:
+                    fold.apply(stream_id, record)
+                    result = _result(stream_id, record)
+                    outcome = self._confirm(project, stream_id, connection)
+                state, why = "pending", None
+                if outcome["durable_state"] == "confirmed":
+                    state, why = self._settle(journal, name, item, result["stream_id"])
+                return {"status": "ok", **result, **outcome, "purge_state": state, **_held(why)}
+            raise msc.MemoryRequestError("MEMORY_CONTENDED", 409)
+
+    def _op_purge_status(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Where a purge stands, moving it on when it can. Redis is the record of whether the tombstone landed, so a journal
+        missing a step never makes a purge read "none": a tombstone in the stream is proven on disk (a write and WAITAOF on
+        the writer's connection) and its disk step driven. "none": no tombstone and nothing journalled. "pending": a journalled
+        intent whose tombstone never landed (the host retries the purge), a tombstone not yet proven, or a rewrite and
+        snapshot not both completed after the deletion. The declared boundary is this store's live data and its AOF and RDB
+        files."""
+        journal = self._need_journal()
+        project, item = body["project"], body["item"]
+        name = self._project_hash(project)
+        with self._writing():
+            connection = int(self._writer.client_id())
+            self._check_links()
+            current = self._fold_at_head(project).items.get(item)
+            if current is None or current["status"] != "purged":
+                if self._entries(journal, name, item):
+                    return {"status": "ok", "item": item, "purge_state": "pending", "next": "retry_purge"}
+                return {"status": "ok", "item": item, "purge_state": "none"}
+            self._writer.incr(self._key(project, "sync"))
+            if not self._durable(connection):
+                return {"status": "ok", "item": item, "purge_state": "pending"}
+            self._advance_watermark(project, current["stream_id"], connection)
+            state, why = self._settle(journal, name, item, current["stream_id"])
+            return {"status": "ok", "item": item, "purge_state": state, **_held(why)}
+
+    def _fold_at_head(self, project: str) -> _Fold:
+        """The writer's fold advanced to the stream's head, read only (no lease, no WATCH), while the write lock is held."""
+        stream = self._key(project, "events")
+        newest = self._writer.xrevrange(stream, count=1)
+        head = _text(newest[0][0]) if newest else "0-0"
+        fold = self._writer_folds.setdefault(project, _Fold())
+        if _order(head) < _order(fold.head):
+            fold = self._writer_folds[project] = _Fold()
+        fold.advance(self._writer, stream, self._key(project, "payloads"), head, self._on_time)
+        return fold
+
+    def _settle(self, journal: PurgeJournal, name: str, item: str, tombstone: str) -> tuple[str, Residue | None]:
+        """Drive the disk step of a confirmed purge. Each of the AOF rewrite and the RDB snapshot is complete only when one that
+        started after the deletion has finished well: so nothing is counted while one is already running (it may predate the
+        deletion); an idle store gets a fresh one, whose target is the counter read while idle plus one. A restarted Redis
+        (another run id) starts over, since it may have loaded files that still hold the text. Then the data directory must
+        hold nothing but the current files. Returns the state and, while pending after both ran, why."""
+        entries = self._entries(journal, name, item)
+        if any(entry["phase"] == "completed" for entry in entries):
+            return PURGE_COMPLETED, None
+        if not any(entry["phase"] == "tombstoned" for entry in entries):
+            self._journal(journal, name, item, "tombstoned", stream_id=tombstone)
+        self._on_time()
+        run_id = _text(self._writer.info("server")["run_id"])
+        last = next((entry for entry in reversed(entries) if entry["phase"] == "physical" and entry["run_id"] == run_id), {})
+        targets: dict[str, int | None] = {kind: last.get(f"{kind}_target") for kind, *_ in _PERSISTENCE}
+        before, done = dict(targets), []
+        for kind, counter, busy, status, command in _PERSISTENCE:
+            self._on_time()
+            info = self._writer.info("persistence")
+            target = targets[kind]
+            if any(info.get(flag) for flag in busy):
+                done.append(False)
+                continue
+            if target is not None and int(info[counter]) >= target and info.get(status) == "ok":
+                done.append(True)
+                continue
+            targets[kind] = int(info[counter]) + 1
+            self._on_time()
+            try:
+                self._writer.execute_command(*command)
+            except ResponseError as exc:
+                if "in progress" not in str(exc):  # another Gateway started one just now, after this deletion: it counts
+                    raise
+            done.append(False)
+        if targets != before:
+            self._journal(journal, name, item, "physical", run_id=run_id, **{f"{kind}_target": value for kind, value in targets.items()})
+        if not all(done):
+            return "pending", None
+        why = self._residue()
+        if why is not None:
+            return "pending", why  # both ran, but a file outside the current set may still hold the text
+        self._journal(journal, name, item, "completed", run_id=run_id)
+        return PURGE_COMPLETED, None
+
+    def _residue(self) -> Residue | None:
+        """Why the data directory may still hold deleted text, read after the rewrite and the snapshot have both finished;
+        None only when it holds the current snapshot and AOF set alone (Codex CP2 review 1, finding 2)."""
+        if self._inventory is None:
+            return Residue("file_inventory_unavailable", ())
+        self._on_time()
+        try:
+            return residue(self._inventory(max(1.0, min(10.0, self._remaining()))))
+        except InventoryUnavailable:
+            return Residue("file_inventory_unavailable", ())
+
+    def _need_journal(self) -> PurgeJournal:
+        if self._purge_journal is None:
+            raise msc.MemoryRequestError("MEMORY_JOURNAL_UNAVAILABLE", 503)
+        return self._purge_journal
+
+    @staticmethod
+    def _journal(journal: PurgeJournal, name: str, item: str, phase: str, **facts: Any) -> None:
+        try:
+            journal.record(name, item, phase, **facts)
+        except JournalError as refusal:
+            raise msc.MemoryRequestError(refusal.code, 503) from None
+
+    @staticmethod
+    def _entries(journal: PurgeJournal, name: str, item: str) -> list[dict[str, Any]]:
+        try:
+            return journal.entries(name, item)
+        except JournalError as refusal:
+            raise msc.MemoryRequestError(refusal.code, 503) from None
 
     def _seal(self, project: str, scope: str, after: str) -> str:
         data = base64.urlsafe_b64encode(after.encode()).decode()
@@ -843,16 +1138,22 @@ class MemoryStoreService:
             self._workers.release()
 
 
-def build_memory_store_service(config: MemoryStoreConfig, *, keyring_backend: Any, hmac_key: bytes) -> MemoryStoreService:
+def build_memory_store_service(config: MemoryStoreConfig, *, keyring_backend: Any, hmac_key: bytes,
+                               journal_root: Path | None = None,
+                               inventory: Callable[[float], Inventory] | None = None) -> MemoryStoreService:
     """The service for the approved configuration. Nothing connects until the first request. A missing password serves a
-    stable refusal, so the Agent Panel can say setup is incomplete while models keep working."""
+    stable refusal, so the Agent Panel can say setup is incomplete while models keep working. The purge journal lives under
+    `journal_root`, outside the Redis volume; without one (or without a password) purge is refused. A purge's disk step ends
+    only once `inventory` (by default, the provisioned container's data directory read through Docker) shows no old file."""
     try:
         password = keyring_backend.get_password(KEYRING_SERVICE, config.credential_name)
     except Exception:  # noqa: BLE001 - any backend failure means the same thing here: no usable credential
         password = None
     endpoint = MemoryStoreEndpoint(config.host, config.port, config.user, password or "", config.resource)
     cursor_key = hashlib.sha256(b"optimus-memory-store-cursor-v1\0" + hmac_key).digest()
-    store = MemoryStore(connect(endpoint), connect(endpoint), admission_ceiling_mb=config.admission_ceiling_mb, cursor_key=cursor_key)
+    journal = PurgeJournal(journal_root, journal_key(password)) if journal_root is not None and password else None
+    store = MemoryStore(connect(endpoint), connect(endpoint), admission_ceiling_mb=config.admission_ceiling_mb, cursor_key=cursor_key,
+                        journal=journal, inventory=inventory or docker_inventory(config))
 
     def verify(deadline: float) -> None:
         if not password:

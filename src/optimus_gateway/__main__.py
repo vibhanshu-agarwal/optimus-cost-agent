@@ -316,10 +316,11 @@ def main(argv: list[str] | None = None) -> int:
 
         config = replace(config, memory_index=build_index_service(memory_config, keyring_backend=_keyring_module, hmac_key=hmac_key))
 
-    if store_config is not None:
+    if store_config is not None and store_dir is not None:
         from optimus_gateway.memory_store import build_memory_store_service
 
-        config = replace(config, memory_store=build_memory_store_service(store_config, keyring_backend=_keyring_module, hmac_key=hmac_key))
+        config = replace(config, memory_store=build_memory_store_service(
+            store_config, keyring_backend=_keyring_module, hmac_key=hmac_key, journal_root=store_dir / "journal"))
 
     try:
         server = serve_gateway(config=config)

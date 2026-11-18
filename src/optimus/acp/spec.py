@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import concurrent.futures
 import contextlib
 import inspect
@@ -119,6 +120,7 @@ from optimus.agent.planning_loop import (
 )
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
+from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
 from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_disposition import (
@@ -451,6 +453,9 @@ class AcpSpecSession:
     cost_settlement: TurnSettlement = field(default_factory=TurnSettlement, repr=False, compare=False)
     # Plan 12.10: this session's context index, when the launch has one, and the last state a person was told.
     memory: Any = field(default=None, repr=False, compare=False)
+    # Plan 12.11 Task 3: the session's automatic memory extraction, after each answer, and its recent outcomes for notices.
+    memory_extractor: Any = field(default=None, repr=False, compare=False)
+    memory_outcomes: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
     memory_state_shown: str | None = None
     memory_probe: asyncio.Future[Any] | None = field(default=None, repr=False, compare=False)
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
@@ -539,6 +544,9 @@ class InMemoryAcpSpecSessionStore:
         self._closed_state_ids.discard(session.session_id)
         if session.memory is not None:
             session.memory.stop()  # closing the session pauses its indexing
+        if session.memory_extractor is not None:
+            # Off the event loop: queued jobs release their turns at once; a running one finishes on its own.
+            threading.Thread(target=session.memory_extractor.close, kwargs={"timeout": 5.0}, name="memory-extract-close", daemon=True).start()
         return True
 
     def get(self, session_id: str) -> AcpSpecSession | None:
@@ -842,6 +850,7 @@ class AcpDuplexAdapter:
         route_policy: RoutePolicy | None = None,
         session_seeder: Callable[[Any], str | None] | None = None,
         memory_factory: Callable[[Path], Any] | None = None,
+        memory_extractor_factory: Callable[..., Any] | None = None,
         memory_notice: str | None = None,
         failure_telemetry: JsonlTelemetryWriter | None = None,
         interactive_recovery: bool = True,
@@ -915,6 +924,8 @@ class AcpDuplexAdapter:
         self._session_seeder = session_seeder if context_attachment is not None else None
         # Plan 12.10: only an attached launch can use it, because the pack is sized by the attachment's route.
         self._memory_factory = memory_factory if context_attachment is not None else None
+        # Plan 12.11: extraction uses the attachment's summarizer route, so it too needs an attached launch.
+        self._memory_extractor_factory = memory_extractor_factory if context_attachment is not None else None
         self._memory_notice = memory_notice
         self._client_reads_files = False
         self._closed = False
@@ -1716,6 +1727,12 @@ class AcpDuplexAdapter:
                 session.memory = await asyncio.to_thread(self._memory_factory, Path(cwd))
                 if session.memory is not None:
                     session.memory.start()
+            if self._memory_extractor_factory is not None:
+                # Without a registered, trusted workspace there is none: memory stays read-only and the session is unchanged.
+                session.memory_extractor = await asyncio.to_thread(
+                    self._memory_extractor_factory, Path(cwd), settlement=session.cost_settlement,
+                    sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize, session_id=session.session_id,
+                    report=session.memory_outcomes.append)
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
             completed = True
@@ -2795,6 +2812,24 @@ class AcpDuplexAdapter:
         turn.turn_control.declare_terminal_messages(("final_text",))
         await self._send_terminal(turn, "final_text", build_agent_message_chunk_notification(session_id=session_id, text=text))
 
+    def _submit_memory(self, turn: AcpPromptTurn, sanitized_user_prompt: str, result: AgentRunResult, completion: str) -> None:
+        """Plan 12.11 Task 3: hand a delivered, committed turn to the session's extractor. Deterministic prefilters only run
+        here; any call runs on the extractor's own threads, under an invocation opened now, before the turn's settlement is
+        finalized, so the turn's accounting closes once those jobs settle. Nothing here can fail the turn."""
+        session = self._sessions.get(turn.session_id)
+        extractor = None if session is None else session.memory_extractor
+        hooks = None if extractor is None or turn.attached is None else turn.attached.memory_hooks()
+        if extractor is None or hooks is None or turn.attached is None:
+            return
+        call, record = hooks
+        evidence = evidence_from(turn.run_id, result.tool_calls) if turn.execution_mode is ExecutionMode.AGENT else ()
+        if evidence:  # earlier turns, attached documents and unreported context taint what the work learned
+            evidence = (*evidence, *turn.attached.memory_lineage(turn.run_id))
+        work = CompletedWork(completion, evidence) if evidence else None
+        with contextlib.suppress(Exception):
+            extractor.submit(TurnInput(turn.run_id, "project", (UserBlock(f"{turn.run_id}:user", sanitized_user_prompt),), work,
+                                       turn.attached.memory_sources(), True, call, record))
+
     async def _commit_turn(
         self,
         *,
@@ -2828,6 +2863,8 @@ class AcpDuplexAdapter:
         if not committed:
             await self._emit_exit_cost_alerts(turn)
             return
+        if outcome is ConversationOutcome.COMPLETED:
+            self._submit_memory(turn, sanitized_user_prompt, result, completion)
         if turn.auto_decision is not None and outcome in (ConversationOutcome.COMPLETED, ConversationOutcome.REJECTED):
             # Plan 12.4 Task 4: only a committed, uncancelled, unfailed turn sets the next turn's previous tier.
             session = self._sessions.get(turn.session_id)

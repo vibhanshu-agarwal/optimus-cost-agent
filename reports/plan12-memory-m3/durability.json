@@ -1,0 +1,181 @@
+{
+  "schema": "plan12-memory-m3.durability.v1",
+  "source": {
+    "head": "git:9b3530f9aa6995ea52b329a621cf857d55c75fc4",
+    "run_id": "20261117T211451-42468-0a6cca",
+    "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_store.py tests/integration/memory/test_lifecycle.py",
+    "exit_status": 0,
+    "completeness": "COMPLETE"
+  },
+  "release": "operator 2026-11-17 'Release both' on #490 (released test store p1211-memory-test-redis only)",
+  "claims": [
+    "competing Gateways lose nothing and never write one version twice",
+    "an expired lease is fenced out",
+    "a kill between append and fsync proof is reconciled by its retry",
+    "a stalled server is a timeout, never durable",
+    "a store without AOF admits nothing",
+    "the admission ceiling stops saves while the reserve takes withdrawals and purges",
+    "noeviction at maxmemory answers MEMORY_FULL with nothing partial",
+    "a kill under load keeps every confirmed save",
+    "a read proves a tail left behind the watermark"
+  ],
+  "cases": [
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_kill_under_load_keeps_every_confirmed_save_and_retries_settle_the_rest",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_save_whose_fsync_proof_was_cut_by_a_kill_is_reconciled_by_its_retry",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_stalled_server_leaves_a_save_unconfirmed_never_reported_durable",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_store_at_its_memory_limit_reports_full_and_writes_nothing_partial",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_a_store_without_aof_admits_nothing",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_an_expired_lease_is_fenced_out_by_the_next_holder",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_lifecycle.py::test_competing_gateways_lose_nothing_and_never_write_one_version_twice",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_a_confirmed_save_is_served_and_versions_move_one_at_a_time",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_a_connection_keeps_the_request_budget_through_a_real_command",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_a_container_with_other_settings_is_never_adopted",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_a_fresh_gateway_rebuilds_the_same_view_from_the_stream",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_a_reconnect_to_another_resource_is_refused",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_a_restart_keeps_what_was_confirmed",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_a_retry_returns_the_first_result_and_appends_nothing",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_a_silent_reconnect_is_never_used_before_the_resource_is_verified_again",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_an_event_appended_without_its_proof_is_served_only_once_a_read_proves_it_on_disk",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_another_resource_on_the_port_is_refused",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_capabilities_never_reports_a_silently_reconnected_store",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_checkpoints_are_kept_once_and_served_newest_first",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_data_without_the_resource_marker_is_never_claimed",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_fifty_saves_in_a_row_are_each_confirmed_within_the_commit_timeout",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_lists_page_by_item_and_a_cursor_works_only_where_it_was_issued",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_no_file_and_no_container_argument_holds_the_password",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_only_the_lease_holder_appends_and_a_new_holder_fences_the_old_one",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_projects_are_separate_but_any_holder_of_the_key_can_name_any_project",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_gateway_verifies_and_serves_capabilities_on_the_real_store",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command0]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command1]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command2]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command3]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command4]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command5]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command6]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command7]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_run_administrative_commands[command8]",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_memory_user_cannot_touch_keys_outside_the_store",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_store_persists_and_never_evicts",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_the_writer_is_one_connection_without_retries",
+      "outcome": "passed"
+    },
+    {
+      "node": "tests/integration/memory/test_store.py::test_without_the_password_nothing_can_be_read",
+      "outcome": "passed"
+    }
+  ],
+  "passed": true
+}

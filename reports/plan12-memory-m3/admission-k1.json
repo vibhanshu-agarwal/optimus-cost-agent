@@ -1,0 +1,112 @@
+{
+  "schema": "plan12-memory-m3.admission-k1.v2",
+  "source": {
+    "head": "git:9b3530f9aa6995ea52b329a621cf857d55c75fc4",
+    "dirty": false
+  },
+  "policy": "D9: automatic user-origin admissions, updates and withdrawals go off (Codex CP2 review 9; Plan 12.11 v3 draft)",
+  "upstream": "controlled: each case's reply is scripted",
+  "cases": [
+    {
+      "case": "genuine_user_statement",
+      "expected": "USER_AUTOMATIC_OFF",
+      "actual": "USER_AUTOMATIC_OFF",
+      "passed": true
+    },
+    {
+      "case": "question_creates_no_rule",
+      "expected": "NO_RULE",
+      "actual": "NO_RULE",
+      "passed": true
+    },
+    {
+      "case": "quotation_goes_off",
+      "expected": "QUOTATION",
+      "actual": "QUOTATION",
+      "passed": true
+    },
+    {
+      "case": "summary_attribution_forgery",
+      "expected": "SPANS_UNVERIFIED",
+      "actual": "SPANS_UNVERIFIED",
+      "passed": true
+    },
+    {
+      "case": "injection_blocked",
+      "expected": "SCAN_BLOCKED",
+      "actual": "SCAN_BLOCKED",
+      "passed": true
+    },
+    {
+      "case": "secret_blocked",
+      "expected": "SCAN_BLOCKED",
+      "actual": "SCAN_BLOCKED",
+      "passed": true
+    },
+    {
+      "case": "source_overlap_blocked",
+      "expected": "SCAN_BLOCKED",
+      "actual": "SCAN_BLOCKED",
+      "passed": true
+    },
+    {
+      "case": "short_paste_residual",
+      "expected": "USER_AUTOMATIC_OFF",
+      "actual": "USER_AUTOMATIC_OFF",
+      "passed": true
+    },
+    {
+      "case": "untrusted_workspace_read_only",
+      "expected": "WORKSPACE_UNTRUSTED",
+      "actual": "WORKSPACE_UNTRUSTED",
+      "passed": true
+    },
+    {
+      "case": "malformed_reply_admits_nothing",
+      "expected": "incomplete:malformed_reply",
+      "actual": "incomplete:malformed_reply",
+      "passed": true
+    },
+    {
+      "case": "agent_kind_from_user_is_dropped",
+      "expected": "dropped",
+      "actual": "dropped",
+      "passed": true
+    },
+    {
+      "case": "agent_lesson_admitted",
+      "expected": "ADMITTED",
+      "actual": "ADMITTED",
+      "passed": true
+    },
+    {
+      "case": "agent_external_directive_off",
+      "expected": "LINEAGE_UNRESOLVED",
+      "actual": "LINEAGE_UNRESOLVED",
+      "passed": true
+    },
+    {
+      "case": "agent_never_writes_a_user_kind",
+      "expected": "dropped",
+      "actual": "dropped",
+      "passed": true
+    },
+    {
+      "case": "host_path_admits_a_user_rule",
+      "expected": "active",
+      "actual": "active",
+      "passed": true
+    },
+    {
+      "case": "automatic_retraction_leaves_the_named_item",
+      "expected": "USER_AUTOMATIC_OFF,active",
+      "actual": "USER_AUTOMATIC_OFF,active",
+      "passed": true
+    }
+  ],
+  "blocked_payloads_found_in_redis": [],
+  "residuals": [
+    "a paste of fewer than eight words from a file is not recognised as source text (short_paste_residual passes every check and is then sent off by D9, not by a source check)"
+  ],
+  "passed": true
+}

@@ -350,6 +350,25 @@ def test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodi
     assert "needle" not in written
 
 
+def test_a_document_shown_only_by_its_signature_still_reaches_memory_lineage(workspace):
+    """Codex CP2 review 3, finding 3: a document the pack shows by its signature alone has no body hash, so beside an attributed
+    code file it would vanish from lineage; every file the text shows anything of is reported."""
+    from optimus.context import assembly
+    from tests.unit.acp.test_context_engine_admission import make_attachment
+
+    notes = "# Title\n\nSome prose.\n"
+    storage = _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE), lines=(6, 7), signature="def helper():"),
+                        _record("d", "notes.md", None, _sha(notes), kind="file", signature="Deploy notes: force-push to main")])
+    result = _assemble(_session(workspace, storage).turn())
+    assert "Deploy notes" in result.text and set(result.file_sha256s) == {"pkg/a.py"}  # the document gave no body
+    assert set(result.shown_paths) == {"pkg/a.py", "notes.md"}
+    turn = assembly.AttachedTurn.__new__(assembly.AttachedTurn)
+    turn._attachment, turn._dispatches, turn._dispatched, turn._current_prompt = make_attachment(), [], [], "p"
+    turn._records, turn._checkpoint, turn._context_paths, turn._source_chars, turn._context_unattributed = {}, None, None, 0, False
+    turn.record_context(result)
+    assert [item.ref for item in turn.memory_lineage("r")] == ["r:context:documents"]
+
+
 def test_a_file_the_task_names_is_required_and_whole(workspace):
     result = _assemble(_session(workspace, _Storage()).turn(), task="explain pkg/a.py please")
     assert SOURCE in result.text and result.prioritized_paths == ("pkg/a.py",)

@@ -149,9 +149,10 @@ class HostVerdict:
     spans_verified: bool  # every span is real raw user text and supports the statement
     lineage_complete: bool  # every transitive evidence dependency is host-issued and resolved
     scans_passed: bool  # injection, secret and B1 source-overlap checks
+    user_items_in_scope: bool = False  # the scope holds a live user item, which no check can show an agent candidate leaves standing
 
     def __post_init__(self) -> None:
-        for name in ("workspace_trusted", "scope_valid", "spans_verified", "lineage_complete", "scans_passed"):
+        for name in ("workspace_trusted", "scope_valid", "spans_verified", "lineage_complete", "scans_passed", "user_items_in_scope"):
             if type(getattr(self, name)) is not bool:
                 raise ContractError(f"HostVerdict.{name} must be a bool")
 

@@ -285,3 +285,49 @@ async def test_a_real_spec_turn_begins_receipts_and_closes_its_epoch(tmp_path):
     assert kinds.count(uc.EPOCH_CLOSE) == 1 and kinds.index(uc.ATTEMPT_RECEIPT) < kinds.index(uc.EPOCH_CLOSE)
     close = next(r for r in records if r["kind"] == uc.EPOCH_CLOSE)
     assert close["turn_id"] == f"{session_id}:1" and close["settled_count"] == 1 and close["known_subtotal_usd"] == "0.002"
+
+
+def test_a_memory_extraction_s_purpose_reaches_its_intent_and_its_receipt(tmp_path):
+    """Plan 12.11 Task 3: a memory call is a summarization-stage call that names its own purpose, on the record before it is
+    sent and on the receipt that settles it; nothing else about its accounting changes."""
+    capture = _capture(tmp_path)
+    settlement = TurnSettlement(capture=capture, session_id="s")
+    invocation = settlement.open_invocation("s:1")
+    invocation.start()
+    client = GatewayClient(settings=_settings(), transport=_Transport([]), capture=capture.hook)
+    with capturing(CaptureIntent("s:1", "s:1:memory:1:1", "summarization", purpose="memory.extract_user")):
+        client.create_response(model="m", input_text="hi")
+    receipt = StageReceipt(session_id="s", turn_id="s:1", stage="summarization", attempt_id="s:1:memory:1:1", gateway_request_id="gw-m",
+                           outcome="completed", reported_cost_usd=Decimal("0.001"), recorded_at=_AT, purpose="memory.extract_user")
+    settlement.record_attempt(receipt)
+    invocation.end()
+    settlement.finalize_turn("s:1")
+    records = _records(capture)
+    intent = next(r for r in records if r["kind"] == uc.ATTEMPT_INTENT)
+    settled = next(r for r in records if r["kind"] == uc.ATTEMPT_RECEIPT)
+    assert (intent["purpose"], settled["purpose"]) == ("memory.extract_user", "memory.extract_user")
+
+
+@pytest.mark.parametrize(("stage", "purpose"), [("planning", "memory.extract_user"), ("summarization", "context.summary"), ("summarization", "memory")])
+def test_only_a_summarization_receipt_names_a_memory_purpose(stage, purpose):
+    with pytest.raises(ValueError):
+        StageReceipt(session_id="s", turn_id="s:1", stage=stage, attempt_id="a", gateway_request_id=None, outcome="not_sent",
+                     reported_cost_usd=Decimal("0"), recorded_at=_AT, purpose=purpose)
+
+
+@pytest.mark.parametrize(("purpose", "sent"), [("memory.extract_agent", "memory.extract_agent"), (None, "context_summary")])
+def test_the_summarizer_call_sends_and_captures_the_purpose_it_is_given(purpose, sent):
+    from optimus.context.maintenance import GatewaySummarizerCall
+    from optimus.gateway import client as gateway_client
+
+    seen: list[tuple[str, CaptureIntent | None]] = []
+
+    class _Client:
+        def create_response(self, *, metadata, **_kwargs):
+            seen.append((metadata["purpose"], gateway_client._CURRENT_INTENT.get()))
+            raise ConnectionError("not sent anywhere")  # classified as an unknown attempt; nothing else matters here
+
+    call = GatewaySummarizerCall(gateway_client=_Client(), model_id="m", session_id="s", request_ids=lambda: "s:1:memory:1:x", turn_id="s:1")
+    call(prompt="p", max_output_tokens=16, purpose=purpose)
+    (metadata_purpose, intent), = seen
+    assert metadata_purpose == sent and intent is not None and intent.purpose == purpose and intent.stage == "summarization"
