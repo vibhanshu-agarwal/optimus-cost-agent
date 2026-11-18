@@ -467,6 +467,116 @@ def make_zed_database(path, rows, *, journal="delete"):
     return path
 
 
+def test_native_locator_selects_the_binding_database_in_a_two_file_zed_profile(tmp_path, monkeypatch):
+    import sqlite3
+
+    global_db = tmp_path / "db" / "0-global" / "db.sqlite"
+    global_db.parent.mkdir(parents=True)
+    connection = sqlite3.connect(global_db)
+    try:
+        connection.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value BLOB)")
+    finally:
+        connection.close()
+    stable_db = make_zed_database(tmp_path / "db" / "0-stable" / "db.sqlite", [(b"\x01" * 16, None)])
+    before = {path: path.read_bytes() for path in (global_db, stable_db)}
+    actions, _, _ = _real_actions_with_recorded_git(monkeypatch, {})
+
+    location = actions.locate_database(tmp_path)
+
+    assert location == col.DatabaseLocation(
+        stable_db, stable_db.with_name("db.sqlite-wal"), stable_db.with_name("db.sqlite-shm")
+    )
+    assert col.read_database_binding(location.main) == col.DatabaseBinding(True, "01" * 16, None)
+    assert {path: path.read_bytes() for path in before} == before
+    assert sorted(path.name for path in stable_db.parent.iterdir()) == ["db.sqlite"]
+    assert sorted(path.name for path in global_db.parent.iterdir()) == ["db.sqlite"]
+
+
+@pytest.mark.parametrize(
+    ("case", "code"),
+    [
+        ("no_database", "binding_database_missing"),
+        ("wrong_columns", "binding_database_schema_invalid"),
+        ("view", "binding_database_schema_invalid"),
+        ("corrupt", "binding_database_unreadable"),
+        ("two_binding_databases", "ambiguous_database_location"),
+        ("mixed_case_binding_database", "ambiguous_database_location"),
+        ("directory_sidecar", "binding_database_unreadable"),
+    ],
+)
+def test_native_locator_rejects_profiles_without_an_unambiguous_binding_database(tmp_path, monkeypatch, case, code):
+    import sqlite3
+
+    db = tmp_path / "db.sqlite"
+    if case == "corrupt":
+        db.write_bytes(b"not SQLite")
+    elif case == "two_binding_databases":
+        make_zed_database(db, [])
+        make_zed_database(tmp_path / "other.sqlite", [])
+    elif case == "directory_sidecar":
+        make_zed_database(db, [])
+        db.with_name("db.sqlite-wal").mkdir()
+    elif case == "mixed_case_binding_database":
+        make_zed_database(db, [])
+        connection = sqlite3.connect(tmp_path / "other.sqlite")
+        try:
+            connection.execute("CREATE TABLE SIDEBAR_THREADS (THREAD_ID BLOB PRIMARY KEY, SESSION_ID TEXT)")
+        finally:
+            connection.close()
+    elif case in {"wrong_columns", "view"}:
+        connection = sqlite3.connect(db)
+        try:
+            if case == "wrong_columns":
+                connection.execute("CREATE TABLE sidebar_threads (thread_id BLOB PRIMARY KEY)")
+            else:
+                connection.execute("CREATE VIEW sidebar_threads AS SELECT NULL AS thread_id, NULL AS session_id")
+        finally:
+            connection.close()
+    actions, _, _ = _real_actions_with_recorded_git(monkeypatch, {})
+
+    with pytest.raises(HostError) as excinfo:
+        actions.locate_database(tmp_path)
+    assert excinfo.value.code == code
+
+
+def test_native_locator_finds_a_binding_table_written_only_to_the_wal(tmp_path, monkeypatch):
+    import shutil
+    import sqlite3
+
+    source = tmp_path / "source" / "db.sqlite"
+    source.parent.mkdir()
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    main = profile / "db.sqlite"
+    wal = profile / "db.sqlite-wal"
+    shm = profile / "db.sqlite-shm"
+    connection = sqlite3.connect(source)
+    try:
+        connection.execute("CREATE TABLE baseline (label TEXT)")
+        connection.commit()
+        connection.execute("PRAGMA journal_mode=wal")
+        connection.execute("PRAGMA wal_autocheckpoint=0")
+        connection.execute("CREATE TABLE SIDEBAR_THREADS (THREAD_ID BLOB PRIMARY KEY, SESSION_ID TEXT)")
+        connection.execute("INSERT INTO SIDEBAR_THREADS VALUES (?, ?)", (b"\xa1" * 16, None))
+        connection.commit()
+        for path in (main, wal, shm):
+            shutil.copyfile(source.with_name(path.name), path)
+    finally:
+        connection.close()
+
+    lone_main = tmp_path / "main-without-sidecars.sqlite"
+    shutil.copyfile(main, lone_main)
+    assert not col.read_database_binding(lone_main).readable
+    before = {path: path.read_bytes() for path in (main, wal, shm)}
+    actions, _, _ = _real_actions_with_recorded_git(monkeypatch, {})
+
+    location = actions.locate_database(profile)
+
+    assert location == col.DatabaseLocation(main, wal, shm)
+    assert col.read_database_binding(location.main, location.wal, location.shm) == col.DatabaseBinding(True, "A1" * 16, None)
+    assert {path: path.read_bytes() for path in before} == before
+
+
 def test_binding_is_read_from_a_closed_copy_without_touching_it(tmp_path):
     path = make_zed_database(tmp_path / "copy" / "db.sqlite", [(b"\xab" * 16, "session-" + "c" * 32)])
     before = path.read_bytes()

@@ -16,7 +16,8 @@ import shutil
 import sqlite3
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -542,22 +543,27 @@ class DatabaseBinding:
     session_binding: str | None
 
 
-def read_database_binding(main_copy: Path, wal_copy: Path | None = None, shm_copy: Path | None = None) -> DatabaseBinding:
-    """Thread identity and binding of the single sidebar_threads row in a closed database copy."""
+@contextmanager
+def _open_closed_database_copy(
+    main: Path, wal: Path | None, shm: Path | None,
+) -> Iterator[sqlite3.Connection]:
     with tempfile.TemporaryDirectory(prefix="p117v5-db-") as scratch:
         target = Path(scratch) / "db.sqlite"
-        shutil.copyfile(main_copy, target)
-        for source, suffix in ((wal_copy, "-wal"), (shm_copy, "-shm")):
+        shutil.copyfile(main, target)
+        for source, suffix in ((wal, "-wal"), (shm, "-shm")):
             if source is not None:
-                shutil.copyfile(source, Path(scratch) / f"db.sqlite{suffix}")
-        try:
-            connection = sqlite3.connect(f"file:{target.as_posix()}?mode=ro", uri=True)
-            try:
-                rows = connection.execute("SELECT thread_id, session_id FROM sidebar_threads").fetchall()
-            finally:
-                connection.close()
-        except sqlite3.Error:
-            return DatabaseBinding(False, None, None)
+                shutil.copyfile(source, target.with_name(target.name + suffix))
+        with closing(sqlite3.connect(target.as_uri() + "?mode=ro", uri=True)) as connection:
+            yield connection
+
+
+def read_database_binding(main_copy: Path, wal_copy: Path | None = None, shm_copy: Path | None = None) -> DatabaseBinding:
+    """Thread identity and binding of the single sidebar_threads row in a closed database copy."""
+    try:
+        with _open_closed_database_copy(main_copy, wal_copy, shm_copy) as connection:
+            rows = connection.execute("SELECT thread_id, session_id FROM sidebar_threads").fetchall()
+    except sqlite3.Error:
+        return DatabaseBinding(False, None, None)
     bound = {binding for _thread, binding in rows if binding is not None}
     binding = None
     if bound:
@@ -722,6 +728,47 @@ class DatabaseLocation:
     main: Path
     wal: Path | None
     shm: Path | None
+
+
+def _locate_zed_binding_database(profile_root: Path) -> DatabaseLocation:
+    """Select the only closed Zed database with the thread-binding table."""
+    root = profile_root.resolve(strict=True)
+    matches: list[DatabaseLocation] = []
+    for main in sorted(root.rglob("*.sqlite")):
+        if not (main.is_file() or main.is_symlink()):
+            continue
+        wal = main.with_name(main.name + "-wal")
+        shm = main.with_name(main.name + "-shm")
+        sidecars = tuple(path if path.exists() or path.is_symlink() else None for path in (wal, shm))
+        try:
+            for path in (main, *sidecars):
+                if path is None:
+                    continue
+                resolved = path.resolve(strict=True)
+                if not resolved.is_relative_to(root):
+                    raise HostError("database_outside_profile")
+                if not resolved.is_file():
+                    raise HostError("binding_database_unreadable")
+            with _open_closed_database_copy(main, *sidecars) as connection:
+                table = connection.execute(
+                    "SELECT type FROM sqlite_schema WHERE name = 'sidebar_threads' COLLATE NOCASE"
+                ).fetchone()
+                if table is None:
+                    continue
+                if table != ("table",):
+                    raise HostError("binding_database_schema_invalid")
+                columns = {row[1].lower() for row in connection.execute("PRAGMA table_info(sidebar_threads)")}
+                if not {"thread_id", "session_id"} <= columns:
+                    raise HostError("binding_database_schema_invalid")
+        except (OSError, sqlite3.Error) as exc:
+            raise HostError("binding_database_unreadable") from exc
+        matches.append(DatabaseLocation(main, wal, shm))
+
+    if not matches:
+        raise HostError("binding_database_missing")
+    if len(matches) != 1:
+        raise HostError("ambiguous_database_location")
+    return matches[0]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1561,16 +1608,9 @@ def real_host_actions(repo_root: Path) -> HostActions:
                                       log_path=request.relay_dir.parent / f"{request.relay_dir.name}-zed.log", timeout_s=ZED_LAUNCH_TIMEOUT_SECONDS)
         return LaunchResult(started, time.monotonic_ns(), meta.get("returncode"), meta.get("timed_out") is True)
 
-    def locate_database(profile_root: Path) -> DatabaseLocation:
-        candidates = sorted(path for path in profile_root.rglob("*.sqlite") if path.is_file())
-        if len(candidates) != 1:
-            raise HostError("ambiguous_database_location")
-        main = candidates[0]
-        return DatabaseLocation(main, main.with_name(main.name + "-wal"), main.with_name(main.name + "-shm"))
-
     return HostActions(
         source_facts=source_facts, normal_source_digest=probe.normal_workspace_source_digest,
         base_spec_bytes=lambda root, commit: probe.git_cat_file_blob(root, commit, "src/optimus/acp/spec.py"),
-        zed_identity=zed_identity, prepare_source=prepare_source, launch=launch, locate_database=locate_database,
+        zed_identity=zed_identity, prepare_source=prepare_source, launch=launch, locate_database=_locate_zed_binding_database,
         remove_tree=shutil.rmtree, monotonic_ns=time.monotonic_ns, wall_now=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     )
