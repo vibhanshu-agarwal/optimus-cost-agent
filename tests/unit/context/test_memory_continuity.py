@@ -133,6 +133,19 @@ def test_the_gap_is_measured_before_this_session_writes_its_own_checkpoint(repo:
     assert later.due() and "10 days ago" in later.brief()
 
 
+def test_a_session_s_own_checkpoints_are_never_its_predecessor(repo: Path) -> None:
+    """A host object opened again for a session that already wrote checkpoints (a reconnecting client) still continues from
+    the last other session, and measures the gap from it."""
+    adapter = _adapter(store()[0])
+    clock = _Clock()
+    _session(adapter, repo, "s-1", clock).record(_turn(1, "Port the cache layer to the new client."))
+    clock.now += 10 * DAY
+    _session(adapter, repo, "s-2", clock).record(_turn(1, "Continue the cache port where it stopped."))
+    again = _session(adapter, repo, "s-2", clock)
+    _stored, found = again.previous()
+    assert found is not None and found.checkpoint.session == "s-1" and again.due()
+
+
 def test_the_brief_lists_commits_since_the_baseline_n_of_m(repo: Path) -> None:
     adapter = _adapter(store()[0])
     clock = _Clock()

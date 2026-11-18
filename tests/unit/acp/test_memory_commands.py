@@ -176,6 +176,14 @@ def test_switch_on_cannot_execute_inferred_update_or_withdrawal() -> None:
     again = _run(_for(extractor), f"/memory switch-on {off}@1")
     assert again.notices == () and "is at version 2 now" in again.text
 
+    # the model's own words never become the user's: its title and statement differ from the block, the block's are saved
+    extractor, _outcomes, off = _off_from_extraction(json.dumps({"candidates": [
+        {"speech_act": "preference", "kind": "preference", "title": "deploy cadence", "statement": "Deploy only on Fridays.",
+         "spans": [{"block": "b-1", "start": 0, "end": 54}]}]}))
+    assert extractor.store.read(off).event.title == "deploy cadence"
+    saved = _run(_for(extractor), f"/memory switch-on {off}@1").notices[0][0]
+    assert extractor.store.read(saved.item).event.statement == RULE
+
     two = "Use uv. Never push to main."
     extractor, _outcomes, off = _off_from_extraction(json.dumps({"candidates": [
         {"speech_act": "decision", "kind": "decision", "title": "push", "statement": "Never push to main.",
