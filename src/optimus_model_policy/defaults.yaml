@@ -143,8 +143,9 @@ models:
     route:
       estimator: unmeasured
       endpoints:
-        - {provider: google, quantization: null, context_window_tokens: 1048576, max_output_tokens: 943718, verified: false, observed_on: "2026-11-18"}
+        - {provider: google-vertex/global, quantization: unknown, context_window_tokens: 1048576, max_output_tokens: 943718, verified: false, observed_on: "2026-11-18"}
     evidence:
+      - "2026-11-18 drift check: the catalogue lists no 'google' endpoint for this model; google-vertex/global is the standard tier (the slug also matches google-vertex/global/priority)"
       - "Operator, 2026-11-18: replaces Gemini 3.8 Flash, whose introductory $0.75 / $3.75 price ends 2026-12-31 ($1.50 / $7.50 from 2027-01-01, Google's launch post)"
       - "2026-11-18 free OpenRouter catalogue read: standard tier $1.50 / $7.50; text_planning_grammar carried over from 3.8 Flash, not re-checked"
 

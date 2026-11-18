@@ -62,7 +62,7 @@ def test_the_shipped_haiku_route_caches_the_prefix_the_paid_pair_ran_on() -> Non
     snapshot = trusted_snapshot()
     assert snapshot is not None
     assert snapshot.policy.models["anthropic/claude-haiku-5.5"].route.prompt_cache == "prefix"
-    assert snapshot.effective_hash == "3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"  # pragma: allowlist secret - registry identity
+    assert snapshot.effective_hash == "6dfa80cc25c34d53cdaeb7d1d46f3c82a106699ac7fc7d84c2de156f844a0875"  # pragma: allowlist secret - registry identity
 
 
 def test_activation_composes_the_packaged_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
