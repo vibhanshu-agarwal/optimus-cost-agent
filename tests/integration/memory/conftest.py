@@ -27,8 +27,8 @@ from optimus_security.memory_store_config import KEYRING_SERVICE, MemoryStoreCon
 from tests.unit.acp.conftest import FakeKeyring
 
 RELEASE_FLAG = "P1211_MEMORY_DOCKER_RELEASED"
-CONTAINER = "p1211-memory-test-redis"
-VOLUME = "p1211-memory-test-data"
+CONTAINER = "p1211-cp3-test-redis"  # the CP3 release (2026-11-18); CP1/CP2 used p1211-memory-test-redis, removed at CP2 close
+VOLUME = "p1211-cp3-test-data"
 PORT = 6396
 IMAGE = "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5"
 
