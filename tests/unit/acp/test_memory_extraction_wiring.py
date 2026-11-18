@@ -25,6 +25,7 @@ class RecordingExtractor:
         self.fail = fail
         self.store = SimpleNamespace(project="p-1")  # the memory commands share it; these tests send none
         self.keyed = str
+        self.worktree = "worktree:test"
 
     def source(self, block: str) -> str | None:
         return None

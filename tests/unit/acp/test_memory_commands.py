@@ -333,7 +333,7 @@ class _PurgeSource:
     """A session's extractor stand-in on a store with a purge journal: the commands share its store."""
 
     def __init__(self, store: GatewayMemoryStore) -> None:
-        self.store, self.keyed = store, mx.digest
+        self.store, self.keyed, self.worktree = store, mx.digest, "worktree:test"
 
     def source(self, _block: str) -> None:
         return None
@@ -535,3 +535,32 @@ def test_extraction_changes_get_their_cards_at_the_next_turn_and_off_records_get
         await rpc(adapter, prompt_request(session_id, "Another?", "p-2"))
         assert [u["toolCallId"] for u in _updates(outbound) if u["sessionUpdate"] == "tool_call"] == ["memory/e-lesson"]
     asyncio.run(scenario())
+
+
+def test_the_brief_comes_at_the_first_response_after_a_week_and_every_turn_is_checkpointed(tmp_path: Path) -> None:
+    import time
+
+    from optimus.context.memory_continuity import Continuity, Settled
+
+    async def run() -> None:
+        service = purge_store(tmp_path)[0]
+        old = _adapter(service, owner="host-old")
+        week_ago = int(time.time() * 1000) - 8 * 24 * 3600 * 1000
+        assert Continuity(old, workspace=tmp_path, worktree="worktree:test", session="old", clock=lambda: week_ago).record(
+            Settled(1, "run-old", "completed", "Port the cache layer to the new client."))
+        store = _adapter(service)
+        adapter, outbound, runner = _acp(tmp_path, _PurgeSource(store))
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        await rpc(adapter, prompt_request(session_id, "Where were we?", "p-1"))
+        welcomes = [text for text in _texts(outbound) if text.startswith("**Welcome back.**")]
+        assert len(welcomes) == 1 and "8 days ago" in welcomes[0]
+        await rpc(adapter, prompt_request(session_id, "And then?", "p-2"))
+        assert len([text for text in _texts(outbound) if text.startswith("**Welcome back.**")]) == 1  # first response only
+        await rpc(adapter, prompt_request(session_id, "/welcome", "p-3"))
+        assert len([text for text in _texts(outbound) if text.startswith("**Welcome back.**")]) == 2  # /welcome any time
+        deadline = time.monotonic() + 5
+        while len(store.checkpoints(limit=20)) < 3 and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        assert sorted(s.checkpoint.session for s in store.checkpoints(limit=20)) == ["old", session_id, session_id]
+        assert len(runner.requests) == 2  # /welcome called no model
+    asyncio.run(run())

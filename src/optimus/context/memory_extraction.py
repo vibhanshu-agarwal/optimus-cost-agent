@@ -602,8 +602,10 @@ class MemoryExtractor:
 
     def __init__(self, *, store: Any, settlement: Any, bind: Callable[[str], Callable[..., Any]] | None = None,
                  record: Callable[[str, str, Any, str | None], None] | None = None, sanitize: Callable[[str], str],
-                 report: Callable[[Outcome], None], workers: int = 2, depth: int = 4, keyed: Callable[[str], str] = digest) -> None:
+                 report: Callable[[Outcome], None], workers: int = 2, depth: int = 4, keyed: Callable[[str], str] = digest,
+                 worktree: str = "worktree:unknown") -> None:
         self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
+        self.worktree = worktree  # the registry's opaque worktree identity, for continuity checkpoints
         self._sanitize, self._report, self._keyed = sanitize, report, keyed
         self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
         self._extracted: set[str] = set()  # evidence refs whose work was extracted
@@ -897,6 +899,11 @@ def evidence_from(run_id: str, tool_calls: Sequence[Any]) -> tuple[Evidence, ...
     return tuple(found)
 
 
+def worktree_id(canonical_path: str) -> str:
+    """The opaque worktree identity a checkpoint carries: a digest of the registry's canonical path, never the path itself."""
+    return "worktree:" + hashlib.sha256(f"optimus-memory-worktree-v1\0{canonical_path}".encode()).hexdigest()[:32]
+
+
 def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., MemoryExtractor | None]:
     """How a launch with an approved, ready memory store opens one extractor per session. A workspace that cannot be
     registered (an untrusted or unresolvable path) gets none: memory stays read-only there."""
@@ -919,6 +926,7 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
         except (ProjectRegistryError, TrustedPathError, OSError, ValueError):
             return None
         store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
-        return MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed)
+        return MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed,
+                               worktree=worktree_id(registration.worktree))
 
     return open_extractor

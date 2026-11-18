@@ -126,6 +126,7 @@ from optimus.agent.planning_loop import (
 from optimus.context import memory_serving
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
+from optimus.context.memory_continuity import Continuity, Settled
 from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
 from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
@@ -471,6 +472,7 @@ class AcpSpecSession:
     memory_extractor: Any = field(default=None, repr=False, compare=False)
     memory_outcomes: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
     memory_commands: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: None leaves memory read-only
+    continuity: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: checkpoints, predecessor and brief
     # Plan 12.11 Task 4: extraction's changes not yet shown, as host cards at the next turn (never an off record's)
     memory_pending: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
     memory_state_shown: str | None = None
@@ -1848,9 +1850,12 @@ class AcpDuplexAdapter:
                     report=_memory_report(session))
                 if session.memory_extractor is not None:
                     extractor = session.memory_extractor
+                    session.continuity = Continuity(extractor.store, workspace=Path(cwd), worktree=extractor.worktree,
+                                                    session=session.session_id)
                     session.memory_commands = MemoryCommands(
                         extractor.store, trusted=True, keyed=extractor.keyed, source=extractor.source,
-                        source_digest=extractor.source_digest, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize)
+                        source_digest=extractor.source_digest, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize,
+                        brief=session.continuity.welcome)
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
             completed = True
@@ -2077,6 +2082,8 @@ class AcpDuplexAdapter:
                 await self._emit_index_line(session, turn, self._memory_notice or INDEX_NOT_REGISTERED_NOTICE)
             if session.memory_pending:
                 await self._emit_memory_notices(session, turn)
+            if session.continuity is not None:
+                await self._emit_brief(session, turn)
             if self._auto_router is not None:
                 try:
                     routed = await self._route_auto_turn(
@@ -2710,6 +2717,34 @@ class AcpDuplexAdapter:
                 session_id=turn.session_id, tool_call_id=f"{memory_notices.CARD_PREFIX}citations-{turn.run_id}",
                 title="Unsupported memory citations", summary=note, kind="other", status="failed"))
 
+    async def _emit_brief(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
+        """Plan 12.11 Task 4 (P5-b): the welcome-back brief at this session's first response, when the project was left at least
+        seven days ago. Informational, once per session; an unreadable store shows none (`/welcome` asks again)."""
+        try:
+            text = await asyncio.wait_for(asyncio.to_thread(session.continuity.first_response_brief), timeout=MEMORY_SERVE_SECONDS)
+        except Exception:  # noqa: BLE001 - informational
+            return
+        if text is None or turn.turn_control.transport_abandoned():
+            return
+        with contextlib.suppress(Exception):
+            await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=text),
+                                        require_flushed=True)
+
+    def _checkpoint_turn(self, turn: AcpPromptTurn, sanitized_user_prompt: str, result: AgentRunResult, outcome: ConversationOutcome) -> None:
+        """Plan 12.11 Task 4: the settled turn's continuation checkpoint, written on a thread of its own so the turn never
+        waits on the store. References only; the prompt only decides whether the turn sets the objective."""
+        session = self._sessions.get(turn.session_id)
+        continuity = None if session is None else session.continuity
+        if continuity is None:
+            return
+        plan_hash = result.plan_hash or ""
+        settled = Settled(
+            sequence=max(1, int(turn.turn_seq)), run_id=turn.run_id, outcome=str(outcome.value).lower(), prompt=sanitized_user_prompt,
+            plan_hash=plan_hash if re.fullmatch(r"[0-9a-f]{64}", plan_hash) else "",
+            verification=tuple(item.ref for item in evidence_from(turn.run_id, result.tool_calls) if item.kind == "verification"),
+            pending=result.status is AgentRunStatus.AWAITING_APPROVAL)
+        threading.Thread(target=continuity.record, args=(settled,), name="memory-checkpoint", daemon=True).start()
+
     async def _emit_memory_notices(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
         """Plan 12.11 Task 4: a host card for each change extraction confirmed or left uncertain since the last turn, with the
         store's own words (an agent lesson's title). D9 keeps every automatic user change off, and an off record never gets
@@ -3035,6 +3070,8 @@ class AcpDuplexAdapter:
         if not committed:
             await self._emit_exit_cost_alerts(turn)
             return
+        with contextlib.suppress(Exception):  # a checkpoint never fails the turn
+            self._checkpoint_turn(turn, sanitized_user_prompt, result, outcome)
         if outcome is ConversationOutcome.COMPLETED:
             self._submit_memory(turn, sanitized_user_prompt, result, completion)
         if turn.auto_decision is not None and outcome in (ConversationOutcome.COMPLETED, ConversationOutcome.REJECTED):

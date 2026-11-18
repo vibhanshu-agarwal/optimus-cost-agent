@@ -12,7 +12,14 @@ import json
 from collections.abc import Callable, Iterator, Mapping
 from typing import Any
 
-from context_engine.memory_contracts import MemoryCandidate, MemoryCommitResult, StoredEvent
+from context_engine.memory_contracts import (
+    CheckpointResult,
+    ContinuationCheckpoint,
+    MemoryCandidate,
+    MemoryCommitResult,
+    StoredCheckpoint,
+    StoredEvent,
+)
 from context_engine.memory_gate import EventDraft
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context.memory_extraction import ExistingItem, digest
@@ -87,6 +94,17 @@ class GatewayMemoryStore:
         """One page of an item's versions, newest first, and whether older ones remain (Q4)."""
         reply = self.call("history", project=self.project, item=item, limit=limit, **({"before": before} if before else {}))
         return list(reply["versions"]), bool(reply["more"])
+
+    def checkpoint(self, token: int, point: ContinuationCheckpoint) -> CheckpointResult:
+        """One settled turn's continuation checkpoint, under the project's lease; a retry of the same one replays it."""
+        reply = self.call("checkpoint", project=self.project, token=token, checkpoint=point.to_record())
+        return CheckpointResult(reply["session"], reply["sequence"], reply["stream_id"], reply["durable_state"], reply["projection_state"],
+                                bool(reply.get("replayed", False)))
+
+    def checkpoints(self, *, limit: int) -> list[StoredCheckpoint]:
+        """The project's newest confirmed checkpoints, newest first."""
+        reply = self.call("checkpoints", project=self.project, limit=limit)
+        return [StoredCheckpoint.from_record(self.project, record) for record in reply["checkpoints"]]
 
     def purge(self, token: int, item: str, key: str) -> dict[str, Any]:
         return self.call("purge", project=self.project, token=token, item=item, idempotency_key=key)
