@@ -399,6 +399,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus_security/launch_manifest.py",
     "src/optimus_security/outbox_drain.py",
     "src/optimus_security/sanitization.py",
+    "src/optimus_security/url_schemes.py",
     "src/optimus_security/usage_capture_contract.py",
     "src/optimus_security/usage_report_contract.py",
     "tools/plan117_custody_contract.py",

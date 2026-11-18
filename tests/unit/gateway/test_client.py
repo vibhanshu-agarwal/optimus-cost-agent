@@ -10,6 +10,7 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient, GatewayRequest, UrllibGatewayTransport, _decode_gateway_json
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus_model_policy.binding import GATEWAY_REQUEST_BUDGET_SECONDS, HOST_GATEWAY_TIMEOUT_SECONDS
+from optimus_security.url_schemes import URLPolicyError
 
 
 # Test double for GatewayTransport: records requests and returns canned JSON without I/O.
@@ -456,3 +457,21 @@ def test_urllib_url_error_has_unknown_cost(monkeypatch):
     assert exc_info.value.status_code == 0
     assert exc_info.value.gateway_usage is None
     assert "opt_live_secret" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize("url", ["policy-test://fixture.invalid", "https:///missing-host"])
+def test_gateway_approved_scheme_rejects_before_the_opener(monkeypatch, url):
+    def unexpected_open(*args, **kwargs):
+        pytest.fail("the Gateway opener must not receive a rejected URL")
+
+    monkeypatch.setattr("optimus.gateway.client.urlopen", unexpected_open)
+    with pytest.raises(ValueError, match="Gateway URL must use HTTP or HTTPS"):
+        UrllibGatewayTransport().post_json(GatewayRequest("POST", url, {}, {}))
+
+def test_gateway_approved_scheme_redirect_refusal_preserves_transport_error(monkeypatch):
+    def rejected_redirect(*args, **kwargs):
+        raise URLPolicyError("redirect destination rejected by scheme policy")
+
+    monkeypatch.setattr("optimus.gateway.client.urlopen", rejected_redirect)
+    with pytest.raises(GatewayHttpError, match="gateway redirect rejected by scheme policy"):
+        UrllibGatewayTransport().post_json(GatewayRequest("POST", "https://fixture.invalid", {}, {}))
