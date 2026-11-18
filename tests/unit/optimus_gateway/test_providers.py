@@ -16,11 +16,11 @@ def _openrouter_config(**overrides: object) -> GatewayServiceConfig:
     fields: dict[str, object] = {
         "bind_host": "127.0.0.1",
         "bind_port": 8765,
-        "shared_secret": "secret",
+        "shared_secret": "secret",  # pragma: allowlist secret - fixed unit fixture
         "provider": "openrouter",
-        "provider_api_key": "provider-key",
+        "provider_api_key": "provider-key",  # pragma: allowlist secret - fixed unit fixture
         "base_url": "https://openrouter.ai/api/v1",
-        "tavily_api_key": "tavily-key",
+        "tavily_api_key": "tavily-key",  # pragma: allowlist secret - fixed unit fixture
         "tool_allowed_domains": ("python.org",),
         "tool_redis_url": "redis://localhost/0",
     }
@@ -51,12 +51,13 @@ def test_build_upstream_client_constructs_only_openai_compatible_upstream_class(
 
 @pytest.mark.parametrize(
     "missing_field",
-    ("tavily_api_key", "tool_allowed_domains", "tool_redis_url"),
+    ("tool_allowed_domains", "tool_redis_url"),
 )
+@pytest.mark.parametrize("search_key", [None, "tavily-key"])  # pragma: allowlist secret - fixed unit fixture
 def test_build_tool_dependencies_fails_closed_when_required_field_missing(
-    missing_field: str,
+    missing_field: str, search_key: str | None,
 ) -> None:
-    config = _openrouter_config(**{missing_field: None if missing_field != "tool_allowed_domains" else ()})
+    config = _openrouter_config(tavily_api_key=search_key, **{missing_field: None if missing_field != "tool_allowed_domains" else ()})
 
     assert build_tool_dependencies(config) is None
 
@@ -64,17 +65,34 @@ def test_build_tool_dependencies_fails_closed_when_required_field_missing(
 @pytest.mark.parametrize(
     ("field", "value"),
     (
-        ("tavily_api_key", "   "),
         ("tool_redis_url", " \t "),
         ("tool_allowed_domains", ("  ",)),
         ("tool_allowed_domains", ("", "   ")),
     ),
 )
+@pytest.mark.parametrize("search_key", [None, "tavily-key"])  # pragma: allowlist secret - fixed unit fixture
 def test_build_tool_dependencies_fails_closed_on_whitespace_required_fields(
     field: str,
-    value: object,
+    value: object, search_key: str | None,
 ) -> None:
-    assert build_tool_dependencies(_openrouter_config(**{field: value})) is None
+    assert build_tool_dependencies(_openrouter_config(tavily_api_key=search_key, **{field: value})) is None
+
+
+@pytest.mark.parametrize("search_key", [None, "", " \t "])
+def test_metadata_dependencies_do_not_require_search_configuration(monkeypatch, search_key) -> None:
+    sentinel_store = object()
+    monkeypatch.setattr(providers.RedisGatewayToolStateStore, "from_url", lambda _url: sentinel_store)
+    monkeypatch.setattr(providers, "TavilyWebToolProvider", lambda **_kwargs: pytest.fail("must not construct Tavily"))
+
+    deps = build_tool_dependencies(_openrouter_config(tavily_api_key=search_key))
+
+    assert deps is not None
+    assert deps.web_provider is None
+    assert isinstance(deps.package_provider, providers.PackageRegistryToolProvider)
+    assert isinstance(deps.advisory_provider, providers.OsvAdvisoryToolProvider)
+    assert isinstance(deps.policy, GatewayToolPolicy)
+    assert deps.state_store is sentinel_store
+    assert deps.max_calls_per_tool == 5
 
 
 def test_build_tool_dependencies_wires_all_providers_and_gateway_controls(monkeypatch) -> None:
@@ -88,7 +106,7 @@ def test_build_tool_dependencies_wires_all_providers_and_gateway_controls(monkey
         _openrouter_config(
             tavily_base_url="https://tavily.example",
             osv_base_url="https://osv.example",
-            osv_api_key="osv-key",
+            osv_api_key="osv-key",  # pragma: allowlist secret - fixed unit fixture
             pypi_base_url="https://pypi.example",
             npm_base_url="https://npm.example",
             maven_base_url="https://maven.example",
@@ -124,14 +142,14 @@ def test_build_tool_dependencies_uses_gateway_provider_defaults(monkeypatch) -> 
 def test_from_env_loads_gateway_tool_fields() -> None:
     config = GatewayServiceConfig.from_env(
         {
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "provider-key",
-            "TAVILY_API_KEY": "tavily-key",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",  # pragma: allowlist secret - fixed unit fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "provider-key",  # pragma: allowlist secret - fixed unit fixture
+            "TAVILY_API_KEY": "tavily-key",  # pragma: allowlist secret - fixed unit fixture
             "OPTIMUS_GATEWAY_TAVILY_BASE_URL": "https://tavily.example",
             "OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS": "python.org, pypi.org ",
             "OPTIMUS_GATEWAY_TOOL_REDIS_URL": "redis://localhost/1",
             "OPTIMUS_GATEWAY_OSV_BASE_URL": "https://osv.example",
-            "OPTIMUS_GATEWAY_OSV_API_KEY": "osv-key",
+            "OPTIMUS_GATEWAY_OSV_API_KEY": "osv-key",  # pragma: allowlist secret - fixed unit fixture
             "OPTIMUS_GATEWAY_PYPI_BASE_URL": "https://pypi.example",
             "OPTIMUS_GATEWAY_NPM_BASE_URL": "https://npm.example",
             "OPTIMUS_GATEWAY_MAVEN_BASE_URL": "https://maven.example",
@@ -141,12 +159,12 @@ def test_from_env_loads_gateway_tool_fields() -> None:
         bind_port=8765,
     )
 
-    assert config.tavily_api_key == "tavily-key"
+    assert config.tavily_api_key == "tavily-key"  # pragma: allowlist secret - fixed unit fixture
     assert config.tavily_base_url == "https://tavily.example"
     assert config.tool_allowed_domains == ("python.org", "pypi.org")
     assert config.tool_redis_url == "redis://localhost/1"
     assert config.osv_base_url == "https://osv.example"
-    assert config.osv_api_key == "osv-key"
+    assert config.osv_api_key == "osv-key"  # pragma: allowlist secret - fixed unit fixture
     assert config.pypi_base_url == "https://pypi.example"
     assert config.npm_base_url == "https://npm.example"
     assert config.maven_base_url == "https://maven.example"
@@ -156,8 +174,8 @@ def test_from_env_loads_gateway_tool_fields() -> None:
 def test_from_env_uses_tool_defaults_when_optional_fields_are_omitted() -> None:
     config = GatewayServiceConfig.from_env(
         {
-            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",
-            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "provider-key",
+            "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": "secret",  # pragma: allowlist secret - fixed unit fixture
+            "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY": "provider-key",  # pragma: allowlist secret - fixed unit fixture
         },
         bind_host="127.0.0.1",
         bind_port=8765,

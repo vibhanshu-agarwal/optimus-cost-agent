@@ -127,8 +127,8 @@ def test_scan_paths_blocks_missing_explicit_path(tmp_path):
 # --- Baseline policy (Plan 11.27 v10) -------------------------------------
 #
 # The empty-results invariant is superseded by an operator-approved, exact
-# exception set: three entries covering the frozen v9 plan document's integrity
-# hashes (v10) plus thirty-one exact report identities approved 2026-09-06 (D2). Every expectation below is stated literally so it is independent of
+# exception set: 37 historical entries plus 23 public PDF-build checksum entries
+# adopted in #361 comment6956341398 on 2026-11-17. Every expectation is literal and independent of
 # the file under test; deriving it from the baseline would make the test
 # vacuous.
 
@@ -242,6 +242,39 @@ EXPECTED_DETECTORS = [
     {"name": "TwilioKeyDetector"},
 ]
 
+# Operator-adopted 2026-11-17: #361 comment6956341398, exact public checksums; no detector/filter change.
+PDF_CHECKSUM_EXCEPTION_SHA256 = {
+    'docs/sources/issue361-search-independent-metadata/build-manifest.json': '7166e0b97a1020a2fd812e60f74616d6ed4b211ff157c8cf531412d647c31867',  # pragma: allowlist secret - public artifact digest
+    'docs/sources/issue361-search-independent-metadata/document-validation.json': 'e2f57241aefd404c35cc625737c9b23b2fc0e7fa0ce65b7b69e2831ab17de471',  # pragma: allowlist secret - public artifact digest
+}
+PDF_CHECKSUM_BASELINE_ENTRIES = [
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 6, 'Hex High Entropy String', 'ec537f60e7a12d33cde369cd46f884b79477e8f1'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 7, 'Hex High Entropy String', 'df2e3cb2f79bf4cc727925d72601f52d8c91766b'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 12, 'Hex High Entropy String', 'cc666bc6446ca028b3f7d7250d727cb66d93acbc'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 14, 'Hex High Entropy String', '5b9139e33f98e38fe9f927e01f81c4a420a143af'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 16, 'Hex High Entropy String', '144eebab5def93e8c337247fa9ed1efacc84b3b2'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 215, 'Hex High Entropy String', 'c35d131f827c84fee239c1e676d3231b848d9189'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 217, 'Hex High Entropy String', 'c63b47d7f6929ee47910a8eef013bae61b69d608'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 218, 'Hex High Entropy String', 'db3ee2ca3e1d2233443638625a55dec88989e0d0'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 224, 'Hex High Entropy String', '64f4ee2bfe1ec203546e67ba076c27639c2c2b5d'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 226, 'Hex High Entropy String', '83b41db1949a11407d2bda5c693245b8058e942f'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 228, 'Hex High Entropy String', 'e5f8c6faac011c8fc5be6676d9243e58a08e1ab0'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 755, 'Hex High Entropy String', '054e4f167dbd0f6a1b6f377d3844e8918a034e27'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 757, 'Hex High Entropy String', '2669230fccbb678f615e619a306e7e427546461e'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 758, 'Hex High Entropy String', 'd2e7268e432c75afaf0ea4508452f36a9d1b4cbb'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 764, 'Hex High Entropy String', 'e126659f472b8dcc16a526a223093b952f959576'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 766, 'Hex High Entropy String', 'bd62496c51e2264504d8bf3280037946a643c0d5'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 768, 'Hex High Entropy String', 'ce3baaa1c84761dfb942887d28514f0dfec52d9f'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 967, 'Hex High Entropy String', '819c988bd574bc835e7ea15460b5ad0be4bbb1c0'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 969, 'Hex High Entropy String', 'c9bd77e26a5e786879dad380be657962d8ba1255'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/build-manifest.json', 970, 'Hex High Entropy String', 'ae585bca74aa182498c5b769b059b52f50ba97e5'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/document-validation.json', 23, 'Hex High Entropy String', 'cc666bc6446ca028b3f7d7250d727cb66d93acbc'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/document-validation.json', 44, 'Hex High Entropy String', '64f4ee2bfe1ec203546e67ba076c27639c2c2b5d'),  # pragma: allowlist secret - one-way public checksum hash
+    ('docs/sources/issue361-search-independent-metadata/document-validation.json', 65, 'Hex High Entropy String', 'e126659f472b8dcc16a526a223093b952f959576'),  # pragma: allowlist secret - one-way public checksum hash
+]
+EXPECTED_BASELINE_ENTRIES = sorted([*EXPECTED_BASELINE_ENTRIES, *PDF_CHECKSUM_BASELINE_ENTRIES])
+APPROVED_BASELINE_RELPATHS = (*APPROVED_BASELINE_RELPATHS, *PDF_CHECKSUM_EXCEPTION_SHA256)
+
 # COMPLETE filter settings, including thresholds such as min_level.
 EXPECTED_FILTERS = [
     {"path": "detect_secrets.filters.allowlist.is_line_allowlisted"},
@@ -280,7 +313,7 @@ def _assert_baseline_policy(baseline: dict) -> None:
     # Path binding first, so a relocated entry trips the assertion it targets
     # rather than the broader structural comparison.
     assert len(baseline["results"]) == len(APPROVED_BASELINE_RELPATHS), (
-        "exactly the nine approved documents may carry baseline entries"
+        "exactly the eleven approved documents may carry baseline entries"
     )
     for path, entries in baseline["results"].items():
         assert _canonical(path) in APPROVED_BASELINE_RELPATHS, (
@@ -293,7 +326,7 @@ def _assert_baseline_policy(baseline: dict) -> None:
             assert entry["is_secret"] is False, "each entry must be classified is_secret: false"
             assert entry["is_verified"] is False, "each entry must be classified is_verified: false"
     assert _baseline_entry_structure(baseline) == EXPECTED_BASELINE_ENTRIES, (
-        "baseline results must be exactly the approved 37-entry exception set"
+        "baseline results must be exactly the approved 60-entry exception set"
     )
     # Sorted by identity so serialization order is irrelevant, but each entry is
     # compared whole: a changed threshold or option must not slip through.
@@ -309,6 +342,21 @@ def test_detect_secrets_baseline_matches_the_approved_exception_set():
     baseline = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
 
     _assert_baseline_policy(baseline)
+
+
+@pytest.mark.parametrize("relpath", sorted(PDF_CHECKSUM_EXCEPTION_SHA256))
+def test_public_pdf_checksum_artifact_is_unchanged(relpath: str) -> None:
+    assert hashlib.sha256((ROOT / relpath).read_bytes()).hexdigest() == PDF_CHECKSUM_EXCEPTION_SHA256[relpath]
+
+
+@pytest.mark.parametrize("relpath", sorted(PDF_CHECKSUM_EXCEPTION_SHA256))
+@pytest.mark.parametrize("field,value", [("hashed_secret", "0" * 40), ("line_number", 999),
+                                        ("filename", "docs/elsewhere.json")])
+def test_public_pdf_checksum_exception_binding_rejects_drift(relpath: str, field: str, value: object) -> None:
+    baseline = _approved_baseline()
+    baseline["results"][relpath][0][field] = value
+    with pytest.raises(AssertionError):
+        _assert_baseline_policy(baseline)
 
 
 def test_frozen_v9_document_digest_is_unchanged():
@@ -444,22 +492,22 @@ def _mutate_swapped_line_binding(baseline: dict) -> None:
 
 
 BASELINE_POLICY_MUTANTS = {
-    "extra_entry": (_mutate_extra_entry, "exactly the approved 37-entry exception set"),
-    "missing_entry": (_mutate_missing_entry, "exactly the approved 37-entry exception set"),
-    "changed_hash": (_mutate_changed_hash, "exactly the approved 37-entry exception set"),
+    "extra_entry": (_mutate_extra_entry, "exactly the approved 60-entry exception set"),
+    "missing_entry": (_mutate_missing_entry, "exactly the approved 60-entry exception set"),
+    "changed_hash": (_mutate_changed_hash, "exactly the approved 60-entry exception set"),
     "changed_path": (_mutate_changed_path, "only the approved documents"),
-    "changed_type": (_mutate_changed_type, "exactly the approved 37-entry exception set"),
+    "changed_type": (_mutate_changed_type, "exactly the approved 60-entry exception set"),
     "changed_classification": (_mutate_changed_classification, "is_secret: false"),
     "dropped_detector": (_mutate_dropped_detector, "detector configuration must be unchanged"),
     "dropped_filter": (_mutate_dropped_filter, "filter configuration must be unchanged"),
     "entropy_threshold": (_mutate_entropy_threshold, "including every threshold and option"),
     "filter_threshold": (_mutate_filter_threshold, "including every threshold and option"),
-    "duplicate_entry": (_mutate_duplicate_entry, "exactly the approved 37-entry exception set"),
+    "duplicate_entry": (_mutate_duplicate_entry, "exactly the approved 60-entry exception set"),
     "embedded_filename": (_mutate_embedded_filename, "embedded filename must match the allowlisted path"),
-    "swapped_line_binding": (_mutate_swapped_line_binding, "exactly the approved 37-entry exception set"),
+    "swapped_line_binding": (_mutate_swapped_line_binding, "exactly the approved 60-entry exception set"),
     "unapproved_report_path": (_mutate_unapproved_report_path, "only the approved documents"),
-    "extra_report_document": (_mutate_extra_report_document, "exactly the nine approved documents"),
-    "report_changed_hash": (_mutate_report_changed_hash, "exactly the approved 37-entry exception set"),
+    "extra_report_document": (_mutate_extra_report_document, "exactly the eleven approved documents"),
+    "report_changed_hash": (_mutate_report_changed_hash, "exactly the approved 60-entry exception set"),
 }
 
 

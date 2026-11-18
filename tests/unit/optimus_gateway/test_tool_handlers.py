@@ -24,7 +24,7 @@ from optimus_gateway.tool_models import (
 from optimus_gateway.tool_policy import GatewayToolPolicy
 from optimus_gateway.tool_state import GatewayToolStateUnavailable, InMemoryGatewayToolStateStore
 
-_SHARED_SECRET = "tool-test-secret"
+_SHARED_SECRET = "tool-test-secret"  # pragma: allowlist secret - fixed unit fixture
 
 
 class _FakeWebProvider:
@@ -147,7 +147,7 @@ def _config() -> GatewayServiceConfig:
         bind_port=0,
         shared_secret=_SHARED_SECRET,
         provider="openrouter",
-        provider_api_key="or-test",
+        provider_api_key="or-test",  # pragma: allowlist secret - fixed unit fixture
         base_url="https://openrouter.ai/api/v1",
     )
 
@@ -219,6 +219,44 @@ def _call(path: str, body: dict[str, Any], deps: GatewayToolDependencies, *, bea
 
 
 # --- Success paths: exactly the four routes -------------------------------
+
+
+@pytest.mark.parametrize("path", ["/v1/tools/web/search", "/v1/tools/web/extract"])
+@pytest.mark.parametrize("bearer,expected", [(None, 401), ("wrong", 401), (_SHARED_SECRET, 404)])
+def test_unconfigured_web_routes_authenticate_then_fail_closed(path, bearer, expected):
+    deps = _dependencies(web_provider=None, state_store=object(), policy=object())
+    status, body = _call(path, {}, deps, bearer=bearer)
+    assert status == expected
+    assert body == {"error": "not found" if expected == 404 else "unauthorized"}
+
+
+@pytest.mark.parametrize("path,body", [
+    ("/v1/tools/package/lookup", _package_body()),
+    ("/v1/tools/security/advisory", _advisory_body()),
+])
+def test_metadata_state_failure_is_sanitized_without_web(path, body):
+    class UnavailableState(InMemoryGatewayToolStateStore):
+        def increment_call(self, **_kwargs):
+            raise GatewayToolStateUnavailable("private backend connection detail")
+
+    status, response = _call(path, body, _dependencies(web_provider=None, state_store=UnavailableState()))
+    assert status == 503
+    assert response["rule_id"] == "STATE_UNAVAILABLE"
+    assert response["error"] == "gateway tool state is unavailable"
+    assert "private" not in str(response)
+
+
+@pytest.mark.parametrize("path,body", [
+    ("/v1/tools/package/lookup", _package_body()),
+    ("/v1/tools/security/advisory", _advisory_body()),
+])
+def test_metadata_auth_and_domain_policy_remain_required_without_web(path, body):
+    status, response = _call(path, body, _dependencies(web_provider=None, policy=object(), state_store=object()), bearer=None)
+    assert (status, response) == (401, {"error": "unauthorized"})
+    deps = _dependencies(web_provider=None, policy=GatewayToolPolicy(allowed_domains=("unrelated.example",)))
+    status, response = _call(path, body, deps)
+    assert status == 403
+    assert "result" not in response
 
 
 def test_web_search_returns_typed_envelope_with_valid_usage():
@@ -293,8 +331,9 @@ def test_search_then_extract_provenance_sequence_end_to_end():
     assert extract_body_result["result"]["items"][0]["url"] == "https://python.org/a"
 
 
-def test_package_lookup_returns_typed_envelope():
-    deps = _dependencies()
+@pytest.mark.parametrize("web_enabled", [False, True])
+def test_package_lookup_returns_typed_envelope(web_enabled):
+    deps = _dependencies() if web_enabled else _dependencies(web_provider=None)
 
     status, body = _call("/v1/tools/package/lookup", _package_body(), deps)
 
@@ -306,8 +345,9 @@ def test_package_lookup_returns_typed_envelope():
     assert body["provenance"]["source_urls"] == ["https://pypi.org/project/pytest-asyncio/"]
 
 
-def test_security_advisory_returns_typed_envelope():
-    deps = _dependencies()
+@pytest.mark.parametrize("web_enabled", [False, True])
+def test_security_advisory_returns_typed_envelope(web_enabled):
+    deps = _dependencies() if web_enabled else _dependencies(web_provider=None)
 
     status, body = _call("/v1/tools/security/advisory", _advisory_body(), deps)
 

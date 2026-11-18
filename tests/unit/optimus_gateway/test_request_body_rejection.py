@@ -26,7 +26,7 @@ import threading
 import time
 import traceback
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -36,6 +36,7 @@ import pytest
 import optimus_gateway.server as gw_server
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import OptimusGatewayHandler, serve_gateway
+from optimus_gateway.tool_state import InMemoryGatewayToolStateStore
 from optimus_gateway.upstream_client import ProviderMessageResult
 from tests.support import child_tripwire
 from tests.support.concurrency import assert_processes_exited, assert_some_row, assert_threads_stopped
@@ -82,6 +83,28 @@ def _config() -> GatewayServiceConfig:
         provider_api_key="or-test",  # pragma: allowlist secret - fake provider key for the fixture
         base_url="https://openrouter.ai/api/v1",
     )
+
+
+@pytest.fixture
+def metadata_enabled(request, monkeypatch: pytest.MonkeyPatch) -> bool:
+    enabled = request.param
+    if enabled:
+        original_serve = serve_gateway
+        store = InMemoryGatewayToolStateStore()
+        monkeypatch.setattr("optimus_gateway.providers.RedisGatewayToolStateStore.from_url", lambda _url: store)
+
+        def serve_with_metadata(**kwargs):
+            kwargs["config"] = replace(kwargs["config"], tool_redis_url="redis://unused-unit-boundary/0",
+                                       tool_allowed_domains=("pypi.org",))
+            server = original_serve(**kwargs)
+            deps = server.RequestHandlerClass.tool_dependencies
+            if deps is None or deps.web_provider is not None:
+                server.server_close()
+                pytest.fail("metadata must be configured with web disabled")
+            return server
+
+        monkeypatch.setattr(sys.modules[__name__], "serve_gateway", serve_with_metadata)
+    return enabled
 
 
 @dataclass(frozen=True)
@@ -351,8 +374,10 @@ def _await_finished(observer: _Observer, *, deadline: float) -> None:
 # --------------------------------------------------------------------------------------- primary regression
 
 
-@pytest.mark.parametrize("path", REJECTED_PATHS)
-def test_rejected_route_consumes_declared_body_before_404(monkeypatch: pytest.MonkeyPatch, path: str) -> None:
+@pytest.mark.parametrize("path,metadata_enabled", [(path, False) for path in REJECTED_PATHS] + [
+    ("/v1/tools/web/search", True), ("/v1/tools/web/extract", True),
+], indirect=["metadata_enabled"])
+def test_rejected_route_consumes_declared_body_before_404(monkeypatch: pytest.MonkeyPatch, path: str, metadata_enabled) -> None:
     observer = _Observer()
     _install_observer(monkeypatch, observer)
     total = len(OPAQUE_BODY)
@@ -621,7 +646,8 @@ _FRAMING_CASES: dict[str, tuple[tuple[str, ...], int, str]] = {
 
 
 @pytest.mark.parametrize("case", sorted(_FRAMING_CASES))
-def test_rejected_route_framing_matrix(monkeypatch: pytest.MonkeyPatch, case: str) -> None:
+@pytest.mark.parametrize("metadata_enabled", [False, True], indirect=True)
+def test_rejected_route_framing_matrix(monkeypatch: pytest.MonkeyPatch, case: str, metadata_enabled) -> None:
     header_lines, status, error = _FRAMING_CASES[case]
     _run_header_only_rejection(
         monkeypatch, _raw_request("/v1/tools/web/search", header_lines), expected_status=status, expected_error=error
@@ -746,7 +772,8 @@ def test_incomplete_body_eof_selects_400_without_dispatch(monkeypatch: pytest.Mo
     _run_scenario(observer, scenario)
 
 
-def _run_stalled_client(monkeypatch: pytest.MonkeyPatch, *, deadline_seconds: float) -> None:
+def _run_stalled_client(monkeypatch: pytest.MonkeyPatch, *, deadline_seconds: float,
+                        path: str = "/v1/tools/security/advisory") -> None:
     observer = _Observer()
     _install_observer(monkeypatch, observer)
     total = len(OPAQUE_BODY)
@@ -754,7 +781,7 @@ def _run_stalled_client(monkeypatch: pytest.MonkeyPatch, *, deadline_seconds: fl
     def scenario(client: socket.socket | None) -> None:
         assert client is not None
         deadline = time.monotonic() + deadline_seconds
-        client.sendall(_raw_headers("/v1/tools/security/advisory", content_length=total))
+        client.sendall(_raw_headers(path, content_length=total))
         first = observer.next_event(expecting="body_read_requested", deadline=deadline)
         assert first.kind == "body_read_requested", first
         # withhold the body entirely
@@ -769,9 +796,11 @@ def _run_stalled_client(monkeypatch: pytest.MonkeyPatch, *, deadline_seconds: fl
     _run_scenario(observer, scenario)
 
 
-def test_stalled_client_hits_total_deadline_with_short_test_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("metadata_enabled", [False, True], indirect=True)
+def test_stalled_client_hits_total_deadline_with_short_test_limit(monkeypatch: pytest.MonkeyPatch, metadata_enabled) -> None:
     monkeypatch.setattr(gw_server, "_REJECTED_POST_BODY_SECONDS", 0.3)
-    _run_stalled_client(monkeypatch, deadline_seconds=CHOREOGRAPHY_DEADLINE_SECONDS)
+    _run_stalled_client(monkeypatch, deadline_seconds=CHOREOGRAPHY_DEADLINE_SECONDS,
+                        path="/v1/tools/web/search" if metadata_enabled else "/v1/tools/security/advisory")
 
 
 WATCHDOG_SECONDS = 10.0

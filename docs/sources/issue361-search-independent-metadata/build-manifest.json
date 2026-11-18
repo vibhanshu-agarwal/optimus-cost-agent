@@ -1,0 +1,974 @@
+{
+  "inspected_source": "Issue #361 implementation descended from 43e5e5b415140a17005045d3d21c6de2ed8595b3; exact production/source/test identities are recorded in the validation record and issue; carried claims retain their own pins",
+  "built": "2026-11-17",
+  "label": "ISSUE #361 SUCCESSOR",
+  "footer": "#361 metadata independence | 2026-11-17",
+  "page_updates_sha256": "a39ab79acefdc1849aec6644316ded1ed96c91ba42aff75ea18e9d114f8388ad",
+  "successor_edits_sha256": "a377d7328f54ff51612a342beade693bcff749cb86e1cee93d6047632d0fc1dc",
+  "documents": {
+    "hld": {
+      "file": "Optimus-Cost-Agent-Architecture-v2.25.pdf",
+      "pages": 29,
+      "sha256": "30f3992275ebf223de1f2c5217f8fff171795ba42765ccbdda655604d98638a6",
+      "predecessor": "Optimus-Cost-Agent-Architecture-v2.24.pdf",
+      "predecessor_sha256": "cfd627f2cc5c3c026072940590f535a8c65c282c26fd19f0ed14893e6f3852c5",
+      "baseline": "Optimus-Cost-Agent-Architecture-v2.18.pdf",
+      "baseline_sha256": "0f8725765fecc9a93045fd26630457dfe7112508df164a3ec5bcc55dbc976807",
+      "mapping": [
+        {
+          "baseline_page": 1,
+          "action": "replace-cover",
+          "successor_pages": [
+            1,
+            1
+          ]
+        },
+        {
+          "baseline_page": 2,
+          "action": "replace-body",
+          "successor_pages": [
+            2,
+            2
+          ]
+        },
+        {
+          "baseline_page": 3,
+          "action": "replace-body",
+          "successor_pages": [
+            3,
+            3
+          ]
+        },
+        {
+          "baseline_page": 4,
+          "action": "replace-body",
+          "successor_pages": [
+            4,
+            5
+          ]
+        },
+        {
+          "baseline_page": 5,
+          "action": "carry-body",
+          "successor_pages": [
+            6,
+            6
+          ]
+        },
+        {
+          "baseline_page": 6,
+          "action": "replace-body",
+          "successor_pages": [
+            7,
+            8
+          ]
+        },
+        {
+          "baseline_page": 7,
+          "action": "replace-body",
+          "successor_pages": [
+            9,
+            9
+          ]
+        },
+        {
+          "baseline_page": 8,
+          "action": "replace-body",
+          "successor_pages": [
+            10,
+            10
+          ]
+        },
+        {
+          "baseline_page": 9,
+          "action": "replace-body",
+          "successor_pages": [
+            11,
+            12
+          ]
+        },
+        {
+          "baseline_page": 10,
+          "action": "replace-body",
+          "successor_pages": [
+            13,
+            13
+          ]
+        },
+        {
+          "baseline_page": 11,
+          "action": "replace-body",
+          "successor_pages": [
+            14,
+            15
+          ]
+        },
+        {
+          "baseline_page": 12,
+          "action": "replace-body",
+          "successor_pages": [
+            16,
+            16
+          ]
+        },
+        {
+          "baseline_page": 13,
+          "action": "replace-body",
+          "successor_pages": [
+            17,
+            17
+          ]
+        },
+        {
+          "baseline_page": null,
+          "action": "new-section",
+          "source": "hld-14-context-engine.md",
+          "successor_pages": [
+            18,
+            23
+          ]
+        },
+        {
+          "baseline_page": null,
+          "action": "new-section",
+          "source": "hld-15-capability-status.md",
+          "successor_pages": [
+            24,
+            29
+          ]
+        }
+      ],
+      "predecessor_page_map": {
+        "1": [
+          1,
+          1
+        ],
+        "2": [
+          2,
+          2
+        ],
+        "3": [
+          3,
+          3
+        ],
+        "4": [
+          4,
+          5
+        ],
+        "5": [
+          4,
+          5
+        ],
+        "6": [
+          6,
+          6
+        ],
+        "7": [
+          7,
+          8
+        ],
+        "8": [
+          7,
+          8
+        ],
+        "9": [
+          9,
+          9
+        ],
+        "10": [
+          10,
+          10
+        ],
+        "11": [
+          11,
+          12
+        ],
+        "12": [
+          11,
+          12
+        ],
+        "13": [
+          13,
+          13
+        ],
+        "14": [
+          14,
+          15
+        ],
+        "15": [
+          14,
+          15
+        ],
+        "16": [
+          16,
+          16
+        ],
+        "17": [
+          17,
+          17
+        ],
+        "18-29": [
+          18,
+          29
+        ]
+      },
+      "cover_source_sha256": "c02d8a778f01c84978bd1fb55d9ed5a326e0501cb973419c81194a73faa233ae",
+      "appended_sources": {
+        "hld-14-context-engine.md": "53713fc938f2f9dae4e69e2f8eb689511dae87bb6e90cf17a23d5238fef2de01",
+        "hld-15-capability-status.md": "023aa0619d3d5e3801856a37c804aa692c05be89fe10044c68fcb1fcca1ca7f3"
+      }
+    },
+    "lld": {
+      "file": "Optimus-Cost-Agent-LLD-v2.48.pdf",
+      "pages": 64,
+      "sha256": "620ee455216572e71c28ae7923c12ccc7673659089bae01a0199e807cd44644f",
+      "predecessor": "Optimus-Cost-Agent-LLD-v2.47.pdf",
+      "predecessor_sha256": "e8e42bb59dcdcfe17f297ad968854950e8bca3babfaad440221ef1a649ba0d51",
+      "baseline": "Optimus-Cost-Agent-LLD-v2.41.pdf",
+      "baseline_sha256": "69400fd474eb30711fcc9a061243d6a4d2e35d39d7794d4aa69f5ff51b98109b",
+      "mapping": [
+        {
+          "baseline_page": 1,
+          "action": "replace-cover",
+          "successor_pages": [
+            1,
+            1
+          ]
+        },
+        {
+          "baseline_page": 2,
+          "action": "replace-body",
+          "successor_pages": [
+            2,
+            3
+          ]
+        },
+        {
+          "baseline_page": 3,
+          "action": "replace-body",
+          "successor_pages": [
+            4,
+            4
+          ]
+        },
+        {
+          "baseline_page": 4,
+          "action": "replace-body",
+          "successor_pages": [
+            5,
+            5
+          ]
+        },
+        {
+          "baseline_page": 5,
+          "action": "carry-body",
+          "successor_pages": [
+            6,
+            6
+          ]
+        },
+        {
+          "baseline_page": 6,
+          "action": "carry-body",
+          "successor_pages": [
+            7,
+            7
+          ]
+        },
+        {
+          "baseline_page": 7,
+          "action": "carry-body",
+          "successor_pages": [
+            8,
+            8
+          ]
+        },
+        {
+          "baseline_page": 8,
+          "action": "carry-body",
+          "successor_pages": [
+            9,
+            9
+          ]
+        },
+        {
+          "baseline_page": 9,
+          "action": "carry-body",
+          "successor_pages": [
+            10,
+            10
+          ]
+        },
+        {
+          "baseline_page": 10,
+          "action": "replace-body",
+          "successor_pages": [
+            11,
+            11
+          ]
+        },
+        {
+          "baseline_page": 11,
+          "action": "replace-body",
+          "successor_pages": [
+            12,
+            12
+          ]
+        },
+        {
+          "baseline_page": 12,
+          "action": "replace-body",
+          "successor_pages": [
+            13,
+            13
+          ]
+        },
+        {
+          "baseline_page": 13,
+          "action": "carry-body",
+          "successor_pages": [
+            14,
+            14
+          ]
+        },
+        {
+          "baseline_page": 14,
+          "action": "replace-body",
+          "successor_pages": [
+            15,
+            16
+          ]
+        },
+        {
+          "baseline_page": 15,
+          "action": "replace-body",
+          "successor_pages": [
+            17,
+            17
+          ]
+        },
+        {
+          "baseline_page": 16,
+          "action": "replace-body",
+          "successor_pages": [
+            18,
+            18
+          ]
+        },
+        {
+          "baseline_page": 17,
+          "action": "replace-body",
+          "successor_pages": [
+            19,
+            19
+          ]
+        },
+        {
+          "baseline_page": 18,
+          "action": "replace-body",
+          "successor_pages": [
+            20,
+            20
+          ]
+        },
+        {
+          "baseline_page": 19,
+          "action": "replace-body",
+          "successor_pages": [
+            21,
+            24
+          ]
+        },
+        {
+          "baseline_page": 20,
+          "action": "replace-body",
+          "successor_pages": [
+            25,
+            25
+          ]
+        },
+        {
+          "baseline_page": 21,
+          "action": "replace-body",
+          "successor_pages": [
+            26,
+            26
+          ]
+        },
+        {
+          "baseline_page": 22,
+          "action": "carry-body",
+          "successor_pages": [
+            27,
+            27
+          ]
+        },
+        {
+          "baseline_page": 23,
+          "action": "carry-body",
+          "successor_pages": [
+            28,
+            28
+          ]
+        },
+        {
+          "baseline_page": 24,
+          "action": "carry-body",
+          "successor_pages": [
+            29,
+            29
+          ]
+        },
+        {
+          "baseline_page": 25,
+          "action": "carry-body",
+          "successor_pages": [
+            30,
+            30
+          ]
+        },
+        {
+          "baseline_page": 26,
+          "action": "carry-body",
+          "successor_pages": [
+            31,
+            31
+          ]
+        },
+        {
+          "baseline_page": 27,
+          "action": "replace-body",
+          "successor_pages": [
+            32,
+            32
+          ]
+        },
+        {
+          "baseline_page": 28,
+          "action": "carry-body",
+          "successor_pages": [
+            33,
+            33
+          ]
+        },
+        {
+          "baseline_page": 29,
+          "action": "replace-body",
+          "successor_pages": [
+            34,
+            34
+          ]
+        },
+        {
+          "baseline_page": 30,
+          "action": "replace-body",
+          "successor_pages": [
+            35,
+            35
+          ]
+        },
+        {
+          "baseline_page": 31,
+          "action": "carry-body",
+          "successor_pages": [
+            36,
+            36
+          ]
+        },
+        {
+          "baseline_page": 32,
+          "action": "replace-body",
+          "successor_pages": [
+            37,
+            37
+          ]
+        },
+        {
+          "baseline_page": 33,
+          "action": "replace-body",
+          "successor_pages": [
+            38,
+            38
+          ]
+        },
+        {
+          "baseline_page": 34,
+          "action": "carry-body",
+          "successor_pages": [
+            39,
+            39
+          ]
+        },
+        {
+          "baseline_page": 35,
+          "action": "carry-body",
+          "successor_pages": [
+            40,
+            40
+          ]
+        },
+        {
+          "baseline_page": 36,
+          "action": "replace-body",
+          "successor_pages": [
+            41,
+            41
+          ]
+        },
+        {
+          "baseline_page": 37,
+          "action": "carry-body",
+          "successor_pages": [
+            42,
+            42
+          ]
+        },
+        {
+          "baseline_page": 38,
+          "action": "replace-body",
+          "successor_pages": [
+            43,
+            43
+          ]
+        },
+        {
+          "baseline_page": 39,
+          "action": "replace-body",
+          "successor_pages": [
+            44,
+            44
+          ]
+        },
+        {
+          "baseline_page": 40,
+          "action": "carry-body",
+          "successor_pages": [
+            45,
+            45
+          ]
+        },
+        {
+          "baseline_page": null,
+          "action": "new-section",
+          "source": "lld-13-context-integration.md",
+          "successor_pages": [
+            46,
+            57
+          ]
+        },
+        {
+          "baseline_page": null,
+          "action": "new-section",
+          "source": "lld-14-capability-status.md",
+          "successor_pages": [
+            58,
+            64
+          ]
+        }
+      ],
+      "predecessor_page_map": {
+        "1": [
+          1,
+          1
+        ],
+        "2": [
+          2,
+          3
+        ],
+        "3": [
+          2,
+          3
+        ],
+        "4": [
+          4,
+          4
+        ],
+        "5": [
+          5,
+          5
+        ],
+        "6": [
+          6,
+          6
+        ],
+        "7": [
+          7,
+          7
+        ],
+        "8": [
+          8,
+          8
+        ],
+        "9": [
+          9,
+          9
+        ],
+        "10": [
+          10,
+          10
+        ],
+        "11": [
+          11,
+          11
+        ],
+        "12": [
+          12,
+          12
+        ],
+        "13": [
+          13,
+          13
+        ],
+        "14": [
+          14,
+          14
+        ],
+        "15": [
+          15,
+          16
+        ],
+        "16": [
+          15,
+          16
+        ],
+        "17": [
+          17,
+          17
+        ],
+        "18": [
+          18,
+          18
+        ],
+        "19": [
+          19,
+          19
+        ],
+        "20": [
+          20,
+          20
+        ],
+        "21": [
+          21,
+          24
+        ],
+        "22": [
+          21,
+          24
+        ],
+        "23": [
+          21,
+          24
+        ],
+        "24": [
+          21,
+          24
+        ],
+        "25": [
+          25,
+          25
+        ],
+        "26": [
+          26,
+          26
+        ],
+        "27": [
+          27,
+          27
+        ],
+        "28": [
+          28,
+          28
+        ],
+        "29": [
+          29,
+          29
+        ],
+        "30": [
+          30,
+          30
+        ],
+        "31": [
+          31,
+          31
+        ],
+        "32": [
+          32,
+          32
+        ],
+        "33": [
+          33,
+          33
+        ],
+        "34": [
+          34,
+          34
+        ],
+        "35": [
+          35,
+          35
+        ],
+        "36": [
+          36,
+          36
+        ],
+        "37": [
+          37,
+          37
+        ],
+        "38": [
+          38,
+          38
+        ],
+        "39": [
+          39,
+          39
+        ],
+        "40": [
+          40,
+          40
+        ],
+        "41": [
+          41,
+          41
+        ],
+        "42": [
+          42,
+          42
+        ],
+        "43": [
+          43,
+          43
+        ],
+        "44": [
+          44,
+          44
+        ],
+        "45": [
+          45,
+          45
+        ],
+        "46-64": [
+          46,
+          64
+        ]
+      },
+      "cover_source_sha256": "c973d167a2e4d90ebc46d8c551c917395478b20e1d5d830f5e95742ab5b9a2a5",
+      "appended_sources": {
+        "lld-13-context-integration.md": "4150b69b8e2dc2101ffe40461dde8348de3aa567d79f21ef9b48e5f259f9848e",
+        "lld-14-capability-status.md": "352dc4374cda2bf89f2c61edce9d0ae36d934556553d5c28d8c8b834ae6e4fc1"
+      }
+    },
+    "test": {
+      "file": "Optimus-Cost-Agent-Test-Strategy-v1.11.pdf",
+      "pages": 26,
+      "sha256": "f417e97e966e41d6603e29f19b649cfd2c810ef0aed0bf6f937f85ecbe107616",
+      "predecessor": "Optimus-Cost-Agent-Test-Strategy-v1.10.pdf",
+      "predecessor_sha256": "e9346917c705099631d3b171fa70da130ad17619e496802675701ec8b0bab95a",
+      "baseline": "Optimus-Cost-Agent-Test-Strategy-v1.7.pdf",
+      "baseline_sha256": "31a60c6a198c60cc1203ff5c4a8e6e0300a820ec18cc702e25f246edc51dc0b0",
+      "mapping": [
+        {
+          "baseline_page": 1,
+          "action": "replace-cover",
+          "successor_pages": [
+            1,
+            1
+          ]
+        },
+        {
+          "baseline_page": 2,
+          "action": "replace-body",
+          "successor_pages": [
+            2,
+            2
+          ]
+        },
+        {
+          "baseline_page": 3,
+          "action": "replace-body",
+          "successor_pages": [
+            3,
+            3
+          ]
+        },
+        {
+          "baseline_page": 4,
+          "action": "replace-body",
+          "successor_pages": [
+            4,
+            4
+          ]
+        },
+        {
+          "baseline_page": 5,
+          "action": "replace-body",
+          "successor_pages": [
+            5,
+            5
+          ]
+        },
+        {
+          "baseline_page": 6,
+          "action": "replace-body",
+          "successor_pages": [
+            6,
+            6
+          ]
+        },
+        {
+          "baseline_page": 7,
+          "action": "replace-body",
+          "successor_pages": [
+            7,
+            7
+          ]
+        },
+        {
+          "baseline_page": 8,
+          "action": "replace-body",
+          "successor_pages": [
+            8,
+            8
+          ]
+        },
+        {
+          "baseline_page": 9,
+          "action": "replace-body",
+          "successor_pages": [
+            9,
+            10
+          ]
+        },
+        {
+          "baseline_page": 10,
+          "action": "carry-body",
+          "successor_pages": [
+            11,
+            11
+          ]
+        },
+        {
+          "baseline_page": 11,
+          "action": "carry-body",
+          "successor_pages": [
+            12,
+            12
+          ]
+        },
+        {
+          "baseline_page": 12,
+          "action": "carry-body",
+          "successor_pages": [
+            13,
+            13
+          ]
+        },
+        {
+          "baseline_page": 13,
+          "action": "replace-body",
+          "successor_pages": [
+            14,
+            14
+          ]
+        },
+        {
+          "baseline_page": 14,
+          "action": "replace-body",
+          "successor_pages": [
+            15,
+            15
+          ]
+        },
+        {
+          "baseline_page": null,
+          "action": "new-section",
+          "source": "test-15-context-evidence.md",
+          "successor_pages": [
+            16,
+            21
+          ]
+        },
+        {
+          "baseline_page": null,
+          "action": "new-section",
+          "source": "test-16-capability-status.md",
+          "successor_pages": [
+            22,
+            26
+          ]
+        }
+      ],
+      "predecessor_page_map": {
+        "1": [
+          1,
+          1
+        ],
+        "2": [
+          2,
+          2
+        ],
+        "3": [
+          3,
+          3
+        ],
+        "4": [
+          4,
+          4
+        ],
+        "5": [
+          5,
+          5
+        ],
+        "6": [
+          6,
+          6
+        ],
+        "7": [
+          7,
+          7
+        ],
+        "8": [
+          8,
+          8
+        ],
+        "9": [
+          9,
+          10
+        ],
+        "10": [
+          9,
+          10
+        ],
+        "11": [
+          11,
+          11
+        ],
+        "12": [
+          12,
+          12
+        ],
+        "13": [
+          13,
+          13
+        ],
+        "14": [
+          14,
+          14
+        ],
+        "15": [
+          15,
+          15
+        ],
+        "16-26": [
+          16,
+          26
+        ]
+      },
+      "cover_source_sha256": "5bcaa91b8f66aec8460ce83b42412bab2817509de069cb3f4923749f52da9c36",
+      "appended_sources": {
+        "test-15-context-evidence.md": "8614708ada46a65cc872295e04565c39dbe1c860d40d524f7e81f87d523720ae",
+        "test-16-capability-status.md": "5dbd0649504395d21006f1deeaf7a58656273997959bc1f431300e203f6dfd61"
+      }
+    }
+  }
+}
