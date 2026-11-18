@@ -23,8 +23,8 @@ from optimus_model_policy import test_profiles as profiles
 from optimus_model_policy.binding import BindingError, packaged_defaults, trusted_snapshot
 from optimus_model_policy.registry import SUMMARY_FIXTURE_DIGEST, SUMMARY_FORMAT, SUMMARY_PROMPT_DIGEST, SUMMARY_VALIDATOR, load_registry
 
-QUALIFICATION_HASH = "4dea63a87ff7fd5ddf2ef699008bc4da1925339d415c3a263a6e0222a224d53d"  # pragma: allowlist secret - registry identity, not a credential
-ATTACHED_HASH = "3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"  # pragma: allowlist secret - registry identity, not a credential
+QUALIFICATION_HASH = "85a24c27cdb44e570681606895d94d40e6370fcece872c28d444f7761846a856"  # pragma: allowlist secret - registry identity, not a credential
+ATTACHED_HASH = "6dfa80cc25c34d53cdaeb7d1d46f3c82a106699ac7fc7d84c2de156f844a0875"  # pragma: allowlist secret - registry identity, not a credential
 HAIKU = "anthropic/claude-haiku-5.5"
 # The accepted Stage 2 artifacts (Codex acceptance, 2026-10-11): the receipt candidate's exact bytes and the
 # assessment it names. The candidate is rebuilt below from the filed receipt, so the filed copy is proven equal.
@@ -176,7 +176,7 @@ def test_a_malformed_override_is_refused_by_code(monkeypatch: pytest.MonkeyPatch
     assert caught.value.code == "TEST_PROFILE_INVALID"
 
 
-EVALUATION_HASH = "e427263f3b30375f035ca1465fe4f9754eb35a3da6b610a85b1629c1d2375e2a"  # pragma: allowlist secret - registry identity, not a credential
+EVALUATION_HASH = "398c07e79b8352e7a324604e3f6d09f5a054474f706bf52fbbd5b6b66c3ee9b6"  # pragma: allowlist secret - registry identity, not a credential
 JEV = "typesafe/jev-1.14"
 
 
