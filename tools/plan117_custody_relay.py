@@ -1359,7 +1359,7 @@ def verify_relay_capture(run_dir: Path) -> None:
 
     try:
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:
         raise CustodyContractError("relay_summary_invalid", "relay-summary.json") from exc
     if not isinstance(summary, dict):
         raise CustodyContractError("relay_summary_invalid", "relay-summary.json")
@@ -1406,7 +1406,7 @@ def verify_relay_capture(run_dir: Path) -> None:
             continue
         try:
             record = json.loads(line)
-        except json.JSONDecodeError as exc:
+        except (ValueError, RecursionError) as exc:
             raise CustodyContractError("relay_index_invalid", f"relay-index.ndjson:{line_no}") from exc
         if not isinstance(record, dict):
             raise CustodyContractError("relay_index_invalid", f"relay-index.ndjson:{line_no}")

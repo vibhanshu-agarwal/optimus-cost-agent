@@ -492,11 +492,13 @@ def derive_wire(relay_dir: Path) -> DerivedWire:
         relay_valid = False
     chunk_ends: dict[str, list[tuple[int, int]]] = {"zed_to_agent": [], "agent_to_zed": []}
     try:
-        for line in (relay_dir / "relay-index.ndjson").read_text(encoding="utf-8").splitlines():
-            record = json.loads(line) if line else {}
+        for line in (relay_dir / "relay-index.ndjson").read_bytes().splitlines():
+            record = contract.strict_json_loads(line) if line else {}
+            if type(record) is not dict:
+                raise ValueError
             if record.get("direction") in chunk_ends and int(record["size"]) > 0:
                 chunk_ends[record["direction"]].append((int(record["directional_offset"]) + int(record["size"]), int(record["sequence"])))
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, contract.ContractError):
         relay_valid = False
     ordered: list[tuple[int, int, str, RelayMessage]] = []
     undecodable = False
@@ -526,7 +528,13 @@ def derive_wire(relay_dir: Path) -> DerivedWire:
             initialize = _initialize_facts(event, message.message)
     summary: dict[str, Any] = {}
     if relay_valid:
-        summary = json.loads((relay_dir / "relay-summary.json").read_text(encoding="utf-8"))
+        try:
+            decoded = contract.strict_json_loads((relay_dir / "relay-summary.json").read_bytes())
+            if type(decoded) is not dict:
+                raise ValueError
+            summary = decoded
+        except (OSError, ValueError, contract.ContractError):
+            relay_valid = False
     exit_code = summary.get("child_exit_code")
     return DerivedWire(events, undecodable, initialize, relay_valid, summary.get("zed_to_agent_eof") is True,
                        exit_code if type(exit_code) is int else None)
@@ -1272,7 +1280,7 @@ def _verify_launch_argv(art: _Artifacts, record: dict[str, Any], arm_id: str, la
         if not all(type(value) is str for value in (interpreter, launcher, workspace, identifier, digest, session)) or not _HEX64.fullmatch(digest):
             raise ValueError
         payload = art.bytes(f"plan117_v5_relay:{arm_id}:{launch_id}:relay-summary.json")
-        observed = json.loads(payload or b"{}")["child_argv"]
+        observed = contract.strict_json_loads(payload or b"{}")["child_argv"]
         expected = expected_child_argv(interpreter, launcher, workspace, identifier, digest, session)
         if len(observed) != len(expected):
             raise ValueError
