@@ -675,3 +675,123 @@ def test_a_binding_switch_keeps_the_served_memory_and_the_objective(tmp_path: Pa
         older, newer = sorted((s.checkpoint for s in store.checkpoints(limit=20)), key=lambda point: point.sequence)
         assert newer.objective == older.objective == first.run_id and newer.amendments == (second.run_id,)
     asyncio.run(scenario())
+
+
+# --- host conditions: one branch, and the files an item rests on (Plan 12.11 Task 5: M18-d, M16) ----------------------------
+
+def _repo(path: Path, branch: str) -> Path:
+    from tests.unit.context.test_memory_continuity import _commit
+    from tests.unit.context.test_memory_continuity import _run as git
+
+    path.mkdir()
+    git(path, "init", "-q")
+    _commit(path, "first")
+    git(path, "checkout", "-q", "-b", branch)
+    return path
+
+
+def _workspace_commands(store: Any, workspace: Path) -> mc.MemoryCommands:
+    return mc.MemoryCommands(store, trusted=True, sanitize=lambda value: value, scope=SCOPE, workspace=workspace)
+
+
+def test_a_branch_limited_item_is_served_only_on_its_branch(tmp_path: Path) -> None:
+    from tests.unit.context.test_memory_continuity import _run as git
+
+    store = _adapter(purge_store(tmp_path)[0])
+    repo = _repo(tmp_path / "repo", "feature-x")
+    commands = _workspace_commands(store, repo)
+    limited = _remembered(commands, "--branch release-1 The public API is frozen.")
+    everywhere = _remembered(commands, "Use uv for every command.")
+    served = commands.served()
+    assert [item.item for item in served.items] == [everywhere[0]]  # on feature-x the release-1 item is not served
+    assert served.elsewhere == ((limited[0], 1, "release-1"),)
+    assert _events(store)[0][3] == "active" and {e[3] for e in _events(store)} == {"active"}  # it stays active, unserved here
+    assert "only on branch `release-1`" in _run(commands, "/memory").text
+    assert _run(commands, f"/memory edit {limited[0]}@1 The public API is frozen until 2.0.").notices[0][0].saved
+    assert commands.served().elsewhere == ((limited[0], 2, "release-1"),)  # an edit keeps the item's branch
+    git(repo, "checkout", "-q", "-b", "release-1")
+    assert {item.item for item in commands.served().items} == {limited[0], everywhere[0]}  # the applicable branch: served
+
+
+@pytest.mark.parametrize("text", ["/remember --branch", "/remember --branch release-1", "/remember --branch bad;name The API is frozen."])
+def test_a_malformed_branch_limit_gets_the_usage(text: str) -> None:
+    assert mc.parse_command(text, attachments=False) == mc.USAGE
+
+
+def test_an_item_whose_file_changed_needs_reverification_and_is_not_served(tmp_path: Path) -> None:
+    store = _adapter(purge_store(tmp_path)[0])
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "config.py").write_text("def parse_config():\n    pass\n", encoding="utf-8")
+    commands = _workspace_commands(store, workspace)
+    pinned = _remembered(commands, "parse_config lives in config.py.")
+    unpinned = _remembered(commands, "Never push to main.")
+    assert {item.item for item in commands.served().items} == {pinned[0], unpinned[0]}  # unchanged: served
+    (workspace / "config.py").write_text("from settings import parse_config\n", encoding="utf-8")
+    served = commands.served()
+    assert [item.item for item in served.items] == [unpinned[0]]
+    assert served.reverify == ((pinned[0], 1, "config.py"),)
+    assert "need re-verification" in memory_serving_render(served)
+    assert "needs re-verification: `config.py` changed" in _run(commands, "/memory").text
+    answer = _run(commands, f"/memory edit {pinned[0]}@1 parse_config lives in settings.py, imported by config.py.")
+    assert answer.notices[0][0].saved
+    assert {item.item for item in commands.served().items} == {pinned[0], unpinned[0]}  # the edit pins the files as they are now
+    (workspace / "config.py").unlink()
+    assert commands.served().reverify == ((pinned[0], 2, "config.py"),)  # a pinned file that is gone also needs re-verification
+
+
+@pytest.mark.parametrize("named", ["../outside.py", "src/../../outside.py", ".git/config", ".GIT/config",
+                                   ".optimus/memory-recovery/x.json", "missing.py", "nofile"])
+def test_only_existing_workspace_files_are_pinned(tmp_path: Path, named: str) -> None:
+    from optimus.context import memory_serving
+
+    workspace = tmp_path / "ws"
+    (workspace / ".git").mkdir(parents=True)
+    (workspace / ".git" / "config").write_text("x", encoding="utf-8")
+    (workspace / ".optimus" / "memory-recovery").mkdir(parents=True)
+    (workspace / ".optimus" / "memory-recovery" / "x.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "outside.py").write_text("x", encoding="utf-8")
+    assert memory_serving.file_refs(f"The rule is in {named}.", workspace) == ()
+    (workspace / "app.py").write_text("x", encoding="utf-8")
+    (ref,) = memory_serving.file_refs("The rule is in app.py.", workspace)
+    assert ref.startswith("file:app.py@") and memory_serving.changed_file((ref,), workspace) is None
+    (workspace / ".editorconfig").write_text("x", encoding="utf-8")
+    (dotfile,) = memory_serving.file_refs("As .editorconfig says.", workspace)
+    assert dotfile.startswith("file:.editorconfig@")
+
+
+def memory_serving_render(served: Any) -> str:
+    from optimus.context import memory_serving
+
+    return memory_serving.render(served)
+
+
+def test_the_host_serves_a_turn_only_the_items_whose_conditions_hold(tmp_path: Path) -> None:
+    """Through the real adapter: on feature-x a release-1 item is not served, and a pinned item whose file changed is not
+    served and is named as needing re-verification."""
+    async def scenario() -> None:
+        store = _adapter(purge_store(tmp_path)[0])
+        repo = _repo(tmp_path / "repo", "feature-x")
+        (repo / "config.py").write_bytes(b"def parse_config():\n    pass\n")
+        runner = _CitingRunner()
+        adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=repo, sessions=InMemoryAcpSpecSessionStore(),
+                                   outbound=RecordingOutboundChannel(), context_attachment=make_attachment(),
+                                   memory_extractor_factory=lambda _workspace, **_kwargs: _PurgeSource(store))
+        session_id = await new_session(adapter, repo, mode="chat")
+        await rpc(adapter, prompt_request(session_id, "/remember --branch release-1 The public API is frozen.", "p-1"))
+        await rpc(adapter, prompt_request(session_id, "/remember parse_config lives in config.py.", "p-2"))
+        await rpc(adapter, prompt_request(session_id, "/remember Never push to main.", "p-3"))
+        (repo / "config.py").write_bytes(b"from settings import parse_config\n")
+        await rpc(adapter, prompt_request(session_id, "May I change the public API here?", "p-4"))
+        (request,) = runner.requests
+        assert "Never push to main." in request.memory_context
+        assert "public API is frozen" not in request.memory_context and "parse_config lives" not in request.memory_context
+        assert "1 of the user's items are not shown: a file they rest on changed" in request.memory_context
+        # the positive control: on release-1, with config.py as it was, both are served
+        from tests.unit.context.test_memory_continuity import _run as git
+
+        git(repo, "checkout", "-q", "-b", "release-1")
+        (repo / "config.py").write_bytes(b"def parse_config():\n    pass\n")
+        await rpc(adapter, prompt_request(session_id, "And on this branch?", "p-5"))
+        assert "public API is frozen" in runner.requests[-1].memory_context and "parse_config lives" in runner.requests[-1].memory_context
+    asyncio.run(scenario())

@@ -8,13 +8,20 @@ after the provider-cache prefix (ADR-039), so a change to memory never moves the
 
 Citations are checked against exactly what was served: an id the turn was not given is invented, a version that is not the one
 served is obsolete. Nothing the model writes can add to the served set.
+
+An item's lineage can also carry host conditions (Plan 12.11 Task 5). `branch:<name>` limits it to that branch.
+`file:<path>@<digest>` names a workspace file it rests on, as that file was when the item was saved. An item limited to another
+branch is not served here. An item whose file changed or is gone needs re-verification and is not served until the user edits
+it. Both are checked now, at serving, and never stored as a status.
 """
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Final
 
 from context_engine.memory_contracts import ServedMemory
@@ -29,6 +36,13 @@ _CITATION: Final = re.compile(r"\[memory:(m-[0-9a-f]{16})@([0-9]{1,10})\]")
 _USER_RANK: Final = {"constraint": 0, "decision": 1, "preference": 2, "fact": 3}
 _AGENT_RANK: Final = {"lesson": 0, "procedure": 1, "episode": 2}
 _ORIGIN: Final = {"user-authored": "the user's", "agent-derived": "agent lesson", "legacy-import": "imported"}
+BRANCH_PREFIX: Final = "branch:"
+FILE_PREFIX: Final = "file:"
+MAX_FILE_REFS: Final = 8
+MAX_HASHED_BYTES: Final = 4 * 1024 * 1024  # a larger file is not pinned: hashing it at every turn would cost too much
+_PATH_WORD: Final = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")  # a leading dot: `.editorconfig` is a file too
+_REFERENCE: Final = re.compile(r"[A-Za-z0-9._:@/-]{1,128}")  # the contracts' host-reference form
+_UNPINNED: Final = (".git", ".optimus")  # Git's own files and Optimus's runtime tree are never evidence
 
 
 @dataclass(frozen=True)
@@ -40,6 +54,8 @@ class ServedSet:
     omitted_optional: int = 0
     omitted_protected: int = 0
     complete: bool = True  # False: the store could not list every item, so the block says memory is partial
+    reverify: tuple[tuple[str, int, str], ...] = ()  # (item, version, changed path): not served until the user edits it
+    elsewhere: tuple[tuple[str, int, str], ...] = ()  # (item, version, branch): saved for another branch, not served here
 
     @property
     def items(self) -> tuple[ServedMemory, ...]:
@@ -53,20 +69,92 @@ class ServedSet:
 EMPTY: Final = ServedSet((), ())
 
 
-def select(served: Iterable[ServedMemory], *, complete: bool = True) -> ServedSet:
+def select(served: Iterable[ServedMemory], *, complete: bool = True, reverify: tuple[tuple[str, int, str], ...] = (),
+           elsewhere: tuple[tuple[str, int, str], ...] = ()) -> ServedSet:
     """Rank and bound what may be served. User items are protected and come first; agent lessons are optional."""
     items = list(served)
     protected = sorted((i for i in items if i.trust == "user-authored"), key=lambda i: (_USER_RANK.get(i.kind, 9), i.item, i.version))
     optional = sorted((i for i in items if i.trust != "user-authored"), key=lambda i: (_AGENT_RANK.get(i.kind, 9), i.item, i.version))
     return ServedSet(tuple(protected[:MAX_PROTECTED]), tuple(optional[:MAX_OPTIONAL]), max(0, len(optional) - MAX_OPTIONAL),
-                     max(0, len(protected) - MAX_PROTECTED), complete)
+                     max(0, len(protected) - MAX_PROTECTED), complete, reverify, elsewhere)
 
 
-def from_store(store: Any, scope: str) -> ServedSet:
-    """The project's servable items, read now from the store's confirmed view. A store error raises: the caller serves none."""
+def _digest(path: Path) -> str | None:
+    try:
+        if not path.is_file() or path.stat().st_size > MAX_HASHED_BYTES:
+            return None
+        return hashlib.sha256(path.read_bytes()).hexdigest()[:32]
+    except OSError:
+        return None
+
+
+def _inside(root: Path, relative: str) -> Path | None:
+    """The workspace file `relative` names. None for anything outside the workspace (`..`, an absolute path, a link out) or
+    inside Git's or Optimus's own trees."""
+    if relative.startswith("/") or ".." in relative.split("/"):
+        return None
+    try:
+        base = root.resolve()
+        path = (base / relative).resolve()
+        parts = path.relative_to(base).parts
+    except (OSError, ValueError):
+        return None
+    if not parts or parts[0].lower() in _UNPINNED:
+        return None
+    return path
+
+
+def file_refs(statement: str, root: Path | None) -> tuple[str, ...]:
+    """The workspace files a statement names (`config.py`, `src/app.py`), each pinned as `file:<path>@<digest>` of its bytes
+    now. A word that is not an existing file inside the workspace pins nothing."""
+    if root is None:
+        return ()
+    refs: list[str] = []
+    for word in _PATH_WORD.findall(statement):
+        relative = word.rstrip(".")
+        if "." not in relative and "/" not in relative:
+            continue
+        path = _inside(root, relative)
+        digest = _digest(path) if path is not None else None
+        reference = f"{FILE_PREFIX}{relative}@{digest}"
+        if digest is not None and _REFERENCE.fullmatch(reference) and reference not in refs:
+            refs.append(reference)
+        if len(refs) == MAX_FILE_REFS:
+            break
+    return tuple(refs)
+
+
+def branch_ref(branch: str) -> str | None:
+    """The condition limiting an item to `branch`, or None when it cannot be written as a host reference."""
+    reference = BRANCH_PREFIX + branch
+    return reference if _REFERENCE.fullmatch(reference) else None
+
+
+def branch_of(lineage: Iterable[str]) -> str | None:
+    return next((ref[len(BRANCH_PREFIX):] for ref in lineage if ref.startswith(BRANCH_PREFIX)), None)
+
+
+def changed_file(lineage: Iterable[str], root: Path | None) -> str | None:
+    """The first pinned file that is no longer as it was saved (changed, gone or outside the workspace), or None when all hold.
+    Without a workspace nothing can be checked, so a pinned item counts as changed."""
+    for ref in lineage:
+        if not ref.startswith(FILE_PREFIX):
+            continue
+        relative, _, digest = ref[len(FILE_PREFIX):].rpartition("@")
+        path = _inside(root, relative) if root is not None else None
+        if path is None or _digest(path) != digest:
+            return relative
+    return None
+
+
+def from_store(store: Any, scope: str, *, root: Path | None = None, branch: str | None = None) -> ServedSet:
+    """The project's servable items, read now from the store's confirmed view. A store error raises: the caller serves none.
+    `root` and `branch` are the session's workspace and current branch; each item's conditions are checked against them."""
     from context_engine.memory_projection import ItemState
 
     found: list[ServedMemory] = []
+    reverify: list[tuple[str, int, str]] = []
+    elsewhere: list[tuple[str, int, str]] = []
     cursor: str | None = None
     for _ in range(MAX_PAGES):
         rows, cursor = store.items(scope, limit=100, cursor=cursor)
@@ -74,27 +162,39 @@ def from_store(store: Any, scope: str) -> ServedSet:
             event = row.event
             state = ItemState(event.project, event.item, event.version, event.trust, event.status, event.kind, event.title,
                               event.statement, event.scope, event.anchors, event.lineage, event.valid_from_ms, event.valid_until_ms)
-            if state.servable and state.statement:
-                found.append(state.served())
+            if not (state.servable and state.statement):
+                continue
+            limited = branch_of(state.lineage)
+            if limited is not None and limited != branch:
+                elsewhere.append((state.item, state.version, limited))
+                continue
+            changed = changed_file(state.lineage, root)
+            if changed is not None:
+                reverify.append((state.item, state.version, changed))
+                continue
+            found.append(state.served())
         if cursor is None:
-            return select(found)
-    return select(found, complete=False)
+            return select(found, reverify=tuple(reverify), elsewhere=tuple(elsewhere))
+    return select(found, complete=False, reverify=tuple(reverify), elsewhere=tuple(elsewhere))
 
 
 def render(served: ServedSet, *, sanitize: Callable[[str], str] = lambda text: text) -> str:
     """The prompt block, or "" when nothing is served (then the prompt is byte-identical to one without memory)."""
-    if not served.items and served.complete:
+    if not served.items and served.complete and not served.reverify:
         return ""
     lines = [HEADER]
     for item in served.items:
         statement = " ".join(sanitize(item.statement).split())
         lines.append(f"- {item.citation} ({_ORIGIN[item.trust]} {item.kind}) {statement}")
-    if not served.items:
+    if not served.items and not served.complete:
         lines.append("(none could be read this turn)")
     if served.omitted_protected:
         lines.append(f"({served.omitted_protected} more of the user's items exist but are not shown this turn)")
     if served.omitted_optional:
         lines.append(f"({served.omitted_optional} optional agent lessons were left out)")
+    if served.reverify:
+        lines.append(f"({len(served.reverify)} of the user's items are not shown: a file they rest on changed, so they need "
+                     "re-verification; do not rely on what they said)")
     if not served.complete:
         lines.append("(the memory store could not list every item; this list may be partial)")
     lines.append(FOOTER)

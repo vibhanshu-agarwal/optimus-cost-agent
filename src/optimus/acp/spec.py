@@ -2754,7 +2754,7 @@ class AcpDuplexAdapter:
         commands = session.memory_commands
         sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
         try:
-            served = await asyncio.wait_for(asyncio.to_thread(memory_serving.from_store, commands.store, "project"),
+            served = await asyncio.wait_for(asyncio.to_thread(commands.served),
                                             timeout=MEMORY_SERVE_SECONDS)
         except Exception:  # noqa: BLE001 - no memory this turn; the turn goes on as it would without a store
             return memory_serving.EMPTY, ""
