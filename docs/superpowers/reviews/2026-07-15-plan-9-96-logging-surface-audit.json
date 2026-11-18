@@ -6633,27 +6633,27 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.context.memory_recovery:StateFile.update:file_open",
+      "key": "optimus.context.memory_recovery:_durable_json:file_open",
       "policy": "safe-by-construction",
-      "rationale": "Plan 12.11 recovery state: the host's private per-project bookkeeping (confirmed location, item ids withdrawn, counts, timestamps, a stable failure code) under the config root; no payload, prompt or diagnostic text.",
+      "rationale": "Plan 12.11: the host's private per-project recovery state and its memory-notice backlog under the config root (ids, counts, a canonical path, stable codes and event ids with their states); fsynced then atomically replaced; no payload, prompt or diagnostic text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_lost_store_is_recovery_required_refuses_writes_keeps_the_copy_and_restores",
+      "test_node": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.context.memory_recovery:StateFile.update:json_serialization",
+      "key": "optimus.context.memory_recovery:_durable_json:json_serialization",
       "policy": "safe-by-construction",
-      "rationale": "Plan 12.11 recovery state: ids, counts, a canonical path and stable codes, ASCII JSON; no payload or diagnostic text.",
+      "rationale": "Plan 12.11: the host's private per-project recovery state and its memory-notice backlog under the config root (ids, counts, a canonical path, stable codes and event ids with their states); fsynced then atomically replaced; no payload, prompt or diagnostic text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_lost_store_is_recovery_required_refuses_writes_keeps_the_copy_and_restores",
+      "test_node": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.context.memory_recovery:StateFile.update:text_write",
+      "key": "optimus.context.memory_recovery:_durable_json:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Plan 12.11 recovery state: ids, counts, a canonical path and stable codes; fsynced then atomically replaced; no payload or diagnostic text.",
+      "rationale": "Plan 12.11: the host's private per-project recovery state and its memory-notice backlog under the config root (ids, counts, a canonical path, stable codes and event ids with their states); fsynced then atomically replaced; no payload, prompt or diagnostic text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_lost_store_is_recovery_required_refuses_writes_keeps_the_copy_and_restores",
+      "test_node": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
       "evidence_tier": "unit"
     },
     {
@@ -6710,6 +6710,30 @@
       "rationale": "Plan 12.11 restore publication: writes the verified generation into the empty project's stream and payload hash in one fenced transaction (payloads only for active items); no diagnostic text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/context/test_memory_recovery.py::test_a_lost_store_is_recovery_required_refuses_writes_keeps_the_copy_and_restores",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_file_lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11: an exclusive lock file beside the recovery state or notice backlog, shared by every process.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_change_during_an_export_keeps_the_copy_dirty_and_its_cleanup_scheduled",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:_file_lock:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.11: writes the lock holder's process id; nothing else.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_change_during_an_export_keeps_the_copy_dirty_and_its_cleanup_scheduled",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_recovery:bind_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.11): serializes a generation's host metadata only to hash it for the Gateway's seal; nothing is written or exported.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_generation_is_an_agent_memory_repo_and_its_metadata_cannot_be_changed",
       "evidence_tier": "unit"
     }
   ]

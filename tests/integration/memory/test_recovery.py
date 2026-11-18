@@ -128,5 +128,6 @@ def test_an_admission_landing_during_staging_aborts_publication(provisioned: Pro
 
     with store.lease(guarded=False) as token, pytest.raises(MemoryStoreRefused) as refused:
         store.call("restore", project=project, token=token, generation=manifest["seal"], batch=1, final=True, entries=entries[10:],
-                   head=manifest["head"], frontier=manifest["frontier"], withdrawn=[])
+                   head=manifest["head"], frontier=manifest["frontier"], withdrawn=[], bind=manifest["bind"], journal=manifest["journal"],
+                   purged=[])
     assert refused.value.code == "RESTORE_TARGET_NOT_EMPTY" and len(_stream(provisioned, project)) == 1

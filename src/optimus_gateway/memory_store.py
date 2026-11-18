@@ -967,7 +967,11 @@ class MemoryStore:
         return self._served(project, page)
 
     def _op_checkpoints(self, body: dict[str, Any]) -> dict[str, Any]:
-        return self._served(body["project"], lambda fold: {"status": "ok", "checkpoints": fold.checkpoints[-body["limit"]:][::-1]})
+        def page(fold: _Fold) -> dict[str, Any]:
+            chosen = [point for point in fold.checkpoints if all(point[name] == body[name] for name in ("branch", "worktree") if name in body)]
+            return {"status": "ok", "checkpoints": chosen[-body["limit"]:][::-1]}
+
+        return self._served(body["project"], page)
 
     # --- the recovery copy (D5, D8) --------------------------------------------------------------------------------------
 
@@ -979,9 +983,26 @@ class MemoryStore:
     def _entry_mac(self, key: bytes, project: str, entry: dict[str, Any]) -> str:
         return hmac.new(key, b"omem/recovery-entry/v1\0" + project.encode() + b"\0" + _json(entry).encode(), hashlib.sha256).hexdigest()
 
-    def _generation_seal(self, key: bytes, project: str, head: str, macs: list[tuple[str, str]], frontier: dict[str, Any]) -> str:
-        body = _json({"project": project, "head": head, "entries": sorted(macs), "frontier": frontier})
-        return hmac.new(key, b"omem/recovery-generation/v1\0" + body.encode(), hashlib.sha256).hexdigest()
+    def _generation_seal(self, key: bytes, project: str, head: str, macs: list[tuple[str, str]], frontier: dict[str, Any], bind: str,
+                         journal: int) -> str:
+        """The seal over a whole generation: its head, every entry's MAC, its deletion frontier, the host's metadata digest (format,
+        registry mapping, layout files; Codex CP3 review 1) and how many deletion-journal records the project had."""
+        body = _json({"project": project, "head": head, "entries": sorted(macs), "frontier": frontier, "bind": bind, "journal": journal})
+        return hmac.new(key, b"omem/recovery-generation/v2\0" + body.encode(), hashlib.sha256).hexdigest()
+
+    def _bind_mac(self, key: bytes, project: str, bind: str) -> str:
+        return hmac.new(key, b"omem/recovery-bind/v1\0" + project.encode() + b"\0" + bind.encode(), hashlib.sha256).hexdigest()
+
+    def _journal_count(self, project: str) -> int:
+        journal = self._need_journal()
+        try:
+            return len(journal.project_entries(self._project_hash(project)))
+        except JournalError as refusal:
+            raise msc.MemoryRequestError(refusal.code, 503) from None
+
+    def _op_verify_bind(self, body: dict[str, Any]) -> dict[str, Any]:
+        key = self._need_recovery()
+        return {"status": "ok", "valid": hmac.compare_digest(body["mac"], self._bind_mac(key, body["project"], body["bind"]))}
 
     def _op_export(self, body: dict[str, Any]) -> dict[str, Any]:
         """One page of the project's recovery generation at the confirmed head, every item in id order, each with its HMAC. The
@@ -990,6 +1011,7 @@ class MemoryStore:
         key = self._need_recovery()
         project = body["project"]
         after = self._unseal(project, "recovery", body["cursor"]) if "cursor" in body else ""
+        journal = self._journal_count(project)  # how many deletion-journal records the seal binds
 
         def page(fold: _Fold) -> dict[str, Any]:
             ids = sorted(item for item in fold.items if item > after)
@@ -1009,7 +1031,8 @@ class MemoryStore:
                 every = [_exported(self._whole(record)) for record in fold.items.values()]
                 frontier = _frontier(every)
                 macs = [(entry["item"], self._entry_mac(key, project, entry)) for entry in every]
-                reply |= {"frontier": frontier, "seal": self._generation_seal(key, project, fold.head, macs, frontier)}
+                reply |= {"frontier": frontier, "journal": journal, "bind_mac": self._bind_mac(key, project, body["bind"]),
+                          "seal": self._generation_seal(key, project, fold.head, macs, frontier, body["bind"], journal)}
             return reply
 
         return self._served(project, page)
@@ -1060,10 +1083,10 @@ class MemoryStore:
         raw = self._writer.hgetall(staged)
         entries = [json.loads(value)["entry"] for value in raw.values()]
         macs = [(entry["item"], self._entry_mac(key, project, entry)) for entry in entries]
-        if not hmac.compare_digest(body["generation"], self._generation_seal(key, project, body["head"], macs, body["frontier"])) or \
-                body["frontier"] != _frontier(entries):
+        seal = self._generation_seal(key, project, body["head"], macs, body["frontier"], body["bind"], body["journal"])
+        if not hmac.compare_digest(body["generation"], seal) or body["frontier"] != _frontier(entries):
             raise msc.MemoryRequestError("RESTORE_GENERATION_INVALID", 422)  # a missing, extra or altered entry, or another head
-        purged = self._journalled_purges(project)
+        purged = self._journalled_purges(project, body["journal"], body["purged"])
         withdrawn = set(body["withdrawn"])
         records: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
         for entry in sorted(entries, key=lambda value: _order(value["stream_id"])):
@@ -1109,20 +1132,25 @@ class MemoryStore:
         return {"status": "ok", "state": "published", "restored": len(records), "purged": sorted(purged & {r[0]["event"]["item"] for r in records}),
                 **confirmed}
 
-    def _journalled_purges(self, project: str) -> set[str]:
+    def _journalled_purges(self, project: str, expected: int, known: list[str]) -> set[str]:
         """Items the deletion journal says were purged in this project. An intent with no later step is uncertain: the
         generation may hold text a purge was destroying, so nothing is published until that purge is retried."""
         journal = self._need_journal()
         try:
             records = journal.project_entries(self._project_hash(project))
         except JournalError as refusal:
-            raise msc.MemoryRequestError(refusal.code, 503) from None
+            raise msc.MemoryRequestError("RESTORE_DELETION_UNKNOWN" if refusal.code == "MEMORY_JOURNAL_DAMAGED" else refusal.code, 409) from None
+        if len(records) < expected:  # fewer records than when the generation was written: the journal was lost or cut
+            raise msc.MemoryRequestError("RESTORE_DELETION_UNKNOWN", 409)
         phases: dict[str, set[str]] = {}
         for record in records:
             phases.setdefault(record["item"], set()).add(record["phase"])
         if any(found == {"intent"} for found in phases.values()):
             raise msc.MemoryRequestError("RESTORE_DELETION_UNCERTAIN", 409)
-        return {item for item, found in phases.items() if found & {"tombstoned", "physical", "completed"}}
+        purged = {item for item, found in phases.items() if found & {"tombstoned", "physical", "completed"}}
+        if not set(known) <= purged:  # the host saw a purge the journal no longer shows: it was lost (Codex CP3 review 1, finding 1)
+            raise msc.MemoryRequestError("RESTORE_DELETION_UNKNOWN", 409)
+        return purged
 
     def _op_restore_status(self, body: dict[str, Any]) -> dict[str, Any]:
         project, generation = body["project"], body["generation"]

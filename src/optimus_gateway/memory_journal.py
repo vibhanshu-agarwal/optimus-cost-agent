@@ -88,8 +88,12 @@ class PurgeJournal:
         return sorted(found, key=lambda entry: (entry["at_ms"], PHASES.index(entry["phase"])))
 
     def project_entries(self, project: str) -> list[dict[str, Any]]:
-        """Every record for one project, from every Gateway's stream, in time order (a restore applies them all)."""
+        """Every record for one project, from every Gateway's stream, in time order, for a restore, which applies them all. It
+        fails closed (Codex CP3 review 1, finding 1): a stream whose verification stopped at damage may have lost a later
+        record, so the journal is MEMORY_JOURNAL_DAMAGED rather than a shorter list."""
         found: list[dict[str, Any]] = []
+        if not self._root.is_dir():
+            return found  # nothing was ever journalled here; the generation's journal frontier decides whether that is enough
         for directory in ob.stream_dirs(self._root):
             own = self._writer is not None and directory.name == self._writer.stream_id
             handle = None if own else ob.claim(directory)
@@ -98,6 +102,8 @@ class PurgeJournal:
             finally:
                 if handle is not None:
                     ob.release(handle)
+            if any(damage.reason != "torn" or damage is not scan.damage[-1] for damage in scan.damage):
+                raise JournalError("MEMORY_JOURNAL_DAMAGED")
             for record in (*scan.records, *((scan.unverified_tail,) if scan.unverified_tail is not None else ())):
                 payload = dict(record.payload)
                 if payload.get("kind") != KIND:

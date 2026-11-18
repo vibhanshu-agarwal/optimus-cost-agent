@@ -608,6 +608,7 @@ class MemoryExtractor:
         self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
         self.worktree = worktree  # the registry's opaque worktree identity, for continuity checkpoints
         self.recovery: Any = None  # the project's recovery copy (`memory_recovery.Recovery`), set by the launch's factory
+        self.notices: Any = None  # the project's durable notice backlog (`memory_recovery.NoticeBacklog`), set by the factory
         self._sanitize, self._report, self._keyed = sanitize, report, keyed
         self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
         self._extracted: set[str] = set()  # evidence refs whose work was extracted
@@ -936,6 +937,22 @@ def evidence_from(run_id: str, tool_calls: Sequence[Any]) -> tuple[Evidence, ...
     return tuple(found)
 
 
+class RegistryRepair:
+    """What a session gets when the project registry is lost: no extraction, only the registry's repair (`/memory restore`)."""
+
+    def __init__(self, registry_recovery: Any) -> None:
+        self.registry_recovery = registry_recovery
+
+    def submit(self, _turn: Any) -> tuple[Decision, Decision]:
+        return Decision(False, "registry_lost"), Decision(False, "registry_lost")
+
+    def covered(self, _blocks: Any, _scope: str) -> int:
+        return 0
+
+    def close(self, timeout: float = 5.0) -> None:
+        return None
+
+
 def worktree_id(canonical_path: str) -> str:
     """The opaque worktree identity a checkpoint carries: a digest of the registry's canonical path, never the path itself."""
     return "worktree:" + hashlib.sha256(f"optimus-memory-worktree-v1\0{canonical_path}".encode()).hexdigest()[:32]
@@ -948,8 +965,8 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
 
     from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
     from optimus.context.authored_memory import GatewayMemoryStore
-    from optimus.context.memory_recovery import Recovery, StateFile, registry_entry
-    from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError
+    from optimus.context.memory_recovery import NoticeBacklog, Recovery, RegistryRecovery, StateFile, registry_entry
+    from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError, project_key
 
     registry = ProjectRegistry(config_root)
     # Ids derived from what was said are keyed with the host's own secret, which the store never holds: an id kept after a
@@ -960,10 +977,19 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
         return hmac.new(secret, text.encode("utf-8"), hashlib.sha256).hexdigest()
 
     def open_extractor(workspace: Any, *, settlement: Any, sanitize: Callable[[str], str], session_id: str,
-                       report: Callable[[Outcome], None]) -> MemoryExtractor | None:
+                       report: Callable[[Outcome], None]) -> Any:
         try:
-            registration = registry.resolve(resolve_workspace_identity(workspace), create=True)
-        except (ProjectRegistryError, TrustedPathError, OSError, ValueError):
+            identity = resolve_workspace_identity(workspace)
+            registration = registry.resolve(identity, create=True)
+        except ProjectRegistryError as refusal:
+            if refusal.code != "RECOVERY_REQUIRED":
+                return None
+            # the registry is lost although projects were registered: only its authenticated repair is offered
+            return RegistryRepair(RegistryRecovery(
+                Path(workspace), key=project_key(identity), restore_registry=registry.restore,
+                open_store=lambda project: GatewayMemoryStore(settings, project=project, owner=f"session:{session_id}"),
+                state_for=lambda project: StateFile.shared(Path(config_root), project)))
+        except (TrustedPathError, OSError, ValueError):
             return None
         store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
         project = registration.project_id
@@ -973,6 +999,7 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
         extractor = MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed,
                                     worktree=worktree_id(registration.worktree))
         extractor.recovery = recovery
+        extractor.notices = NoticeBacklog.shared(Path(config_root), project)
         return extractor
 
     return open_extractor

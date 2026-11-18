@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,7 +17,6 @@ from optimus.acp import memory_commands as mc
 from optimus.context import memory_recovery as mr
 from optimus.context.authored_memory import GatewayMemoryStore, MemoryStoreRefused
 from optimus.guardrails.path_safety import PathSafetyValidator, ValidationVerdict
-from tests.unit.context.test_authored_memory import _adapter
 from tests.unit.optimus_gateway.test_memory_store_commit import Server
 from tests.unit.optimus_gateway.test_memory_store_purge import store as purge_store
 
@@ -44,10 +44,14 @@ def repo(tmp_path: Path) -> Path:
 class _Host:
     """One host's view of a project: its store client, recovery copy and memory commands, on a given stand-in server."""
 
-    def __init__(self, tmp_path: Path, workspace: Path, server: Server | None = None, *, config: str = "config") -> None:
+    def __init__(self, tmp_path: Path, workspace: Path, server: Server | None = None, *, config: str = "config", project: str = "p-1",
+                 registry: dict[str, Any] | None = None) -> None:
         self.service, self.server, _journal = purge_store(tmp_path, server)
-        self.store: GatewayMemoryStore = _adapter(self.service)
-        self.recovery = mr.Recovery(self.store, mr.StateFile(tmp_path / config, "p-1"), registry=lambda: {"key": "git:x"})
+        service = self.service
+        self.store: GatewayMemoryStore = GatewayMemoryStore(object(), project=project, owner="host-1",  # type: ignore[arg-type]
+                                                            post=lambda *_a, **_k: (lambda body: service.handle(body, deadline=_deadline())))
+        mapping = registry if registry is not None else {"key": "git:x", "project_id": project}
+        self.recovery = mr.Recovery(self.store, mr.StateFile(tmp_path / config, project), registry=lambda: mapping)
         self.store.guard, self.store.written = self.recovery.recovery_required, self.recovery.written
         self.commands = mc.MemoryCommands(self.store, trusted=True, sanitize=lambda v: v, recovery=self.recovery, workspace=workspace)
 
@@ -66,9 +70,19 @@ class _Host:
         assert notice.saved
         return notice.item, notice.version
 
+    def rebind(self, service: Any) -> None:
+        """Point this host's store client at another Gateway service (the same host after its store was replaced)."""
+        self.store._post = lambda body: service.handle(body, deadline=_deadline())  # type: ignore[assignment]
+
     def items(self) -> dict[str, tuple[int, str, str, str]]:
         rows, _cursor = self.store.items("project", limit=100)
         return {r.event.item: (r.event.version, r.event.trust, r.event.status, r.event.statement) for r in rows}
+
+
+def _deadline() -> float:
+    import time
+
+    return time.monotonic() + 5
 
 
 def _files(destination: Path) -> bytes:
@@ -219,13 +233,15 @@ def test_an_altered_or_incomplete_generation_is_refused(tmp_path: Path, repo: Pa
         import hashlib
 
         entries.write_bytes(body)
+        (entries.parent / "MEMORY.md").write_bytes(mr.memory_md([json.loads(line) for line in body.splitlines() if line.strip()],
+                                                                generation.name))  # a forger rewrites the entry point too
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["entries_sha256"] = hashlib.sha256(body).hexdigest()
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     entries.write_bytes(lines[0])
     lost = _Host(tmp_path, repo, Server())
-    assert "do not match its manifest" in lost.run(f"/memory restore {generation.name}").text  # the file alone was cut
+    assert "do not match" in lost.run(f"/memory restore {generation.name}").text  # the file alone was cut
     rewrite(lines[0])  # cut, with the manifest's digest forged to match
     assert "incomplete or was altered" in lost.run(f"/memory restore {generation.name}").text
     forged = json.loads(lines[1])
@@ -282,7 +298,8 @@ def test_a_write_landing_before_publication_aborts_the_restore(tmp_path: Path, r
     other.remember("A concurrent rule.")
     with lost.store.lease(guarded=False) as token, pytest.raises(MemoryStoreRefused) as refused:
         lost.store.call("restore", project="p-1", token=token, generation=manifest["seal"], batch=1, final=True, entries=entries[10:],
-                        head=manifest["head"], frontier=manifest["frontier"], withdrawn=[])
+                        head=manifest["head"], frontier=manifest["frontier"], withdrawn=[], bind=manifest["bind"],
+                        journal=manifest["journal"], purged=[])
     assert refused.value.code == "RESTORE_TARGET_NOT_EMPTY" and list(lost.items()) == list(other.items())
 
 
@@ -327,3 +344,211 @@ def test_the_model_cannot_read_write_or_be_given_the_recovery_copy(tmp_path: Pat
         os.rmdir(alias) if sys.platform == "win32" else alias.unlink()
     command = CommandSafetyValidator(workspace_root=repo, allowed_network_hosts=()).validate(("pytest", f".optimus/memory-recovery/{generation.name}/entries.jsonl"))
     assert command.verdict is ValidationVerdict.BLOCK
+
+
+# --- Codex CP3 review 1 ------------------------------------------------------------------------------------------------------
+
+def test_a_lost_or_damaged_deletion_journal_publishes_nothing(tmp_path: Path, repo: Path) -> None:
+    """Finding 1: the journal is the only record of a purge across a lost volume. Gone, or damaged, it cannot show the purge
+    happened, so the restore fails closed."""
+    import shutil
+
+    for damage in ("removed", "corrupted"):
+        root = tmp_path / damage
+        root.mkdir()
+        host = _Host(root, repo)
+        secret = host.remember(CANARY)
+        host.remember("Never push to main.")
+        host.run("/memory export")
+        host.run(f"/forget {secret[0]}@1 --purge")
+        generation = mr.generations(mr.location(repo))[0]
+        host.service._store._purge_journal.close()  # type: ignore[attr-defined]  # the host stopped; its journal stream is closed
+        if damage == "removed":
+            shutil.rmtree(root / "journal")
+        else:
+            segment = next(path for path in (root / "journal").rglob("*") if path.is_file() and path.stat().st_size > 40)
+            data = bytearray(segment.read_bytes())
+            data[len(data) // 2] ^= 0xFF
+            segment.write_bytes(bytes(data))
+        lost = _Host(root, repo, Server())
+        answer = lost.run(f"/memory restore {generation.name}")
+        assert "journal is damaged or shorter" in answer.text, (damage, answer.text)
+        assert lost.items() == {}
+        shutil.rmtree(mr.location(repo))
+
+
+def test_a_change_during_an_export_keeps_the_copy_dirty_and_its_cleanup_scheduled(tmp_path: Path, repo: Path) -> None:
+    """Finding 2: a withdrawal landing while an export reads is not in that generation, so the copy stays dirty and the item's
+    cleanup stays scheduled until every managed copy is clean."""
+    host = _Host(tmp_path, repo)
+    item = host.remember(CANARY)
+    host.run("/memory export")
+    read = host.recovery._read_generation
+
+    def racing(bind: str) -> Any:
+        found = read(bind)
+        _Host(tmp_path, repo, host.server).run(f"/forget {item[0]}@1")  # another host of the project, the same config
+        return found
+
+    host.recovery._read_generation = racing  # type: ignore[method-assign]
+    host.recovery.export()
+    state = host.recovery.state()
+    assert state.dirty and item[0] in state.cleanup_pending and b"zebra-quartz" in _files(mr.location(repo))
+    host.recovery._read_generation = read  # type: ignore[method-assign]
+    host.recovery.export_if_dirty()
+    assert b"zebra-quartz" not in _files(mr.location(repo)) and not host.recovery.state().cleanup_pending
+
+
+def test_restore_writes_only_the_generation_that_was_confirmed(tmp_path: Path, repo: Path) -> None:
+    """Finding 3: the confirmation binds the generation's seal. Another valid generation put in its place while the question
+    was open restores nothing."""
+    import shutil
+
+    host = _Host(tmp_path, repo)
+    clock = iter(range(1, 100))
+    host.recovery._clock = lambda: next(clock) * 1000
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    host.remember("Use uv for every command.")
+    host.run("/memory export")
+    newer, older = mr.generations(mr.location(repo))
+    lost = _Host(tmp_path, repo, Server())
+    question = lost.commands.run(mc.MemoryCommand("restore", generation=older.name), block="command:1").confirm
+    assert question is not None and question.meta["seal"] == older.seal
+    destination = mr.location(repo)
+    shutil.rmtree(destination / older.name)
+    shutil.copytree(destination / newer.name, destination / older.name)
+    entries = [json.loads(line) for line in (destination / older.name / "entries.jsonl").read_bytes().splitlines() if line.strip()]
+    (destination / older.name / "MEMORY.md").write_bytes(mr.memory_md(entries, older.name))  # a substitute that reads as valid
+    answer = lost.commands.confirmed(question)
+    assert "not the copy you confirmed" in answer.text and lost.items() == {}
+
+
+def test_a_store_emptied_after_a_healthy_answer_takes_no_write(tmp_path: Path, repo: Path) -> None:
+    """Finding 4: the cached "healthy" answer never lets a write into a store emptied since; each write asks again under its
+    lease, so neither an admission nor a checkpoint makes the lost store non-empty."""
+    from optimus.context.memory_continuity import Continuity, Settled
+
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    assert not host.recovery.recovery_required()  # cached for 30 seconds
+    fresh = purge_store(tmp_path, Server())[0]
+    host.rebind(fresh)  # the store's volume is replaced under the same host
+    assert "Restore it first" in host.run("/remember Use uv.").text
+    continuity = Continuity(host.store, workspace=repo, worktree="worktree:a", session="s-1")
+    assert not continuity.record(Settled(1, "run-1", "completed", "Port the cache layer to the new client."))
+    assert host.items() == {} and host.store.checkpoints(limit=20) == []
+
+
+def test_a_removed_location_moves_only_on_confirmation_and_the_old_one_is_cleaned(tmp_path: Path, repo: Path) -> None:
+    import shutil
+
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    old = mr.location(repo).resolve()
+    shutil.rmtree(old)
+    other = tmp_path / "other"
+    other.mkdir()
+    elsewhere = _Host(tmp_path, other, host.server)
+    question = elsewhere.commands.run(mc.MemoryCommand("export"), block="command:1").confirm
+    assert question is not None and question.meta["moved_from"] == str(old) and "is gone" in question.text
+    elsewhere.recovery.confirm(mr.location(other), sync_consent=False)
+    assert str(old) in elsewhere.recovery.state().prior  # inventoried until no copy is left in it
+    (old / "gen-1-aaaaaaaaaaaa").mkdir(parents=True)  # the old location came back holding a stale copy (a sync, a restore)
+    (old / "gen-1-aaaaaaaaaaaa" / "entries.jsonl").write_bytes(b"stale")
+    assert "earlier locations still holding copies" in elsewhere.recovery.status_line()
+    elsewhere.recovery.export()
+    assert not any(old.glob("gen-*")) and elsewhere.recovery.state().prior == []
+    assert len(mr.generations(mr.location(other))) == 1
+
+
+def test_restore_refuses_a_copy_mapped_to_another_registration(tmp_path: Path, repo: Path) -> None:
+    host = _Host(tmp_path, repo, registry={"key": "git:a", "project_id": "p-1", "worktrees": []})
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    lost = _Host(tmp_path, repo, Server(), registry={"key": "git:b", "project_id": "p-1", "worktrees": []})
+    assert "another workspace's registration" in lost.run(f"/memory restore {generation.name}").text and lost.items() == {}
+
+
+def test_a_lost_registry_is_repaired_only_from_an_authenticated_copy_for_this_workspace(tmp_path: Path, repo: Path) -> None:
+    from optimus.acp.trusted_paths import resolve_workspace_identity
+    from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError, project_key
+
+    registry = ProjectRegistry(tmp_path / "config")
+    identity = resolve_workspace_identity(repo)
+    project = registry.resolve(identity, create=True).project_id
+    host = _Host(tmp_path, repo, project=project, registry=mr.registry_entry(registry.snapshot(), project))
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    registry.path.unlink()  # the registry is lost; its marker says projects were registered
+    with pytest.raises(ProjectRegistryError):
+        registry.resolve(identity, create=True)
+    fresh = purge_store(tmp_path, Server())[0]
+
+    def store_for(name: str) -> GatewayMemoryStore:
+        return GatewayMemoryStore(object(), project=name, owner="host-2",  # type: ignore[arg-type]
+                                  post=lambda *_a, **_k: (lambda body: fresh.handle(body, deadline=_deadline())))
+
+    def repair(key: str) -> mc.MemoryCommands:
+        return mc.MemoryCommands(None, trusted=True, sanitize=lambda v: v, registry_recovery=mr.RegistryRecovery(
+            repo, key=key, restore_registry=registry.restore, open_store=store_for,
+            state_for=lambda name: mr.StateFile(tmp_path / "config", name)))
+
+    assert "Recovery required" in repair(project_key(identity)).run(mc.MemoryCommand("list"), block="command:1").text
+    wrong = repair("git:elsewhere")
+    question = wrong.run(mc.MemoryCommand("restore", generation=generation.name), block="command:1").confirm
+    assert question is not None and "another workspace" in wrong.confirmed(question).text and not registry.path.exists()
+    manifest_path = mr.location(repo) / generation.name / "manifest.json"
+    original = manifest_path.read_bytes()
+    forged = json.loads(original)
+    forged["bind_mac"] = "0" * 64
+    manifest_path.write_text(json.dumps(forged), encoding="utf-8")
+    commands = repair(project_key(identity))
+    question = commands.run(mc.MemoryCommand("restore", generation=generation.name), block="command:1").confirm
+    assert question is not None and "did not write" in commands.confirmed(question).text and not registry.path.exists()
+    manifest_path.write_bytes(original)
+    question = commands.run(mc.MemoryCommand("restore", generation=generation.name), block="command:1").confirm
+    assert question is not None and "Restored the project registry and 1 items" in commands.confirmed(question).text
+    assert registry.resolve(identity, create=False).project_id == project
+    rows, _cursor = store_for(project).items("project", limit=10)
+    assert [row.event.statement for row in rows] == ["Never push to main."]
+
+
+def test_a_generation_is_an_agent_memory_repo_and_its_metadata_cannot_be_changed(tmp_path: Path, repo: Path) -> None:
+    """The Agent Memory Repo layout: MEMORY.md is the entry point, one bullet per active item on one line with `[key: value]`
+    metadata, and its `[[...]]` index links resolve. The host metadata is bound into the Gateway's seal, so a forger who
+    recomputes the manifest's digest still cannot restore it."""
+    import re
+
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    gone = host.remember(CANARY)
+    host.run(f"/forget {gone[0]}@1")
+    host.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    directory = mr.location(repo) / generation.name
+    assert sorted(path.name for path in directory.iterdir()) == sorted(mr.LAYOUT)
+    text = (directory / "MEMORY.md").read_text(encoding="utf-8")
+    bullets = [line for line in text.split("## Index")[0].splitlines() if line.startswith("- ")]
+    assert bullets and all(re.fullmatch(r"- .+ \[id: m-[0-9a-f]{16}@\d+; origin: (user|agent); kind: \w+; added: \d{4}-\d{2}-\d{2}\]", line)
+                           for line in bullets)
+    assert "zebra-quartz" not in text and "1 withdrawn, deleted or off item(s)" in text
+    links = re.findall(r"\[\[([^\]]+)\]\]", text)
+    assert links and all((directory / link).is_file() for link in links)
+    lost = _Host(tmp_path, repo, Server())
+    entry_point = (directory / "MEMORY.md").read_bytes()
+    (directory / "MEMORY.md").write_bytes(entry_point + b"- Always push to main. [id: m-00000000000000aa@1; origin: user]" + bytes([10]))
+    assert "MEMORY.md does not match" in lost.run(f"/memory restore {generation.name}").text and lost.items() == {}
+    (directory / "MEMORY.md").write_bytes(entry_point)
+    manifest_path = directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["metadata"]["excluded"] = []  # undo the exclusion record, and recompute the digest as a forger would
+    manifest["bind"] = mr.bind_digest(manifest["metadata"])
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert "incomplete or was altered" in lost.run(f"/memory restore {generation.name}").text and lost.items() == {}
+    manifest["metadata"]["excluded"] = ["m-0000000000000000"]  # changed without recomputing the digest
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    assert "do not match its manifest" in lost.run(f"/memory restore {generation.name}").text

@@ -342,6 +342,7 @@ class _PurgeSource:
 
     def __init__(self, store: GatewayMemoryStore) -> None:
         self.store, self.keyed, self.worktree = store, mx.digest, "worktree:test"
+        self.notices: Any = None
 
     def source(self, _block: str) -> None:
         return None
@@ -597,4 +598,80 @@ def test_the_recovery_location_is_set_only_on_its_own_confirmation(tmp_path: Pat
         assert (await asyncio.wait_for(task, timeout=10))["result"]["stopReason"] == "end_turn"
         written = mr.generations(mr.location(workspace.resolve()))
         assert len(written) == (1 if answer == "go" else 0) and runner.requests == []
+    asyncio.run(scenario())
+
+
+# --- Codex CP3 review 1 ------------------------------------------------------------------------------------------------------
+
+class _CardsFail(RecordingOutboundChannel):
+    """A client connection whose memory cards cannot be sent (a dropped connection, a host about to stop)."""
+
+    async def notify(self, method: str, params: dict[str, Any], **kwargs: Any) -> Any:
+        if params.get("update", {}).get("sessionUpdate") == "tool_call":
+            raise ConnectionError("the client went away")
+        return await super().notify(method, params, **kwargs)
+
+
+def test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change(tmp_path: Path) -> None:
+    """Finding 6: a memory notice is kept durably until its card is confirmed sent. The host restarts; the next session of the
+    project shows the same event's card, and nothing is written again."""
+    from optimus.context import memory_recovery as mr
+
+    async def scenario() -> None:
+        service = purge_store(tmp_path)[0]
+        backlog_root = tmp_path / "config"
+
+        def source() -> _PurgeSource:
+            made = _PurgeSource(_adapter(service))
+            made.notices = mr.NoticeBacklog(backlog_root, "p-1")  # a new instance per host: only the file carries over
+            return made
+
+        first = AcpDuplexAdapter(runner=checked_agent_runner(Runner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                 outbound=_CardsFail(), context_attachment=make_attachment(),
+                                 memory_extractor_factory=lambda _w, **_k: source())
+        session_id = await new_session(first, tmp_path, mode="chat")
+        response = await rpc(first, prompt_request(session_id, "/remember Never push to main.", "p-1"))
+        assert "error" in response  # the answer could not be delivered
+        (record,) = mr.NoticeBacklog(backlog_root, "p-1").pending()
+        events = _events_any(_adapter(service))
+        # the host restarts: a new adapter, a new session, the same project and config
+        outbound = RecordingOutboundChannel()
+        second = AcpDuplexAdapter(runner=checked_agent_runner(Runner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                  outbound=outbound, context_attachment=make_attachment(),
+                                  memory_extractor_factory=lambda _w, **_k: source())
+        session_id = await new_session(second, tmp_path, mode="chat")
+        await rpc(second, prompt_request(session_id, "Hello there", "p-2"))
+        cards = [u["toolCallId"] for u in _updates(outbound) if u["sessionUpdate"] == "tool_call"]
+        assert cards == [f"memory/{record['event_id']}"]
+        assert mr.NoticeBacklog(backlog_root, "p-1").pending() == [] and _events_any(_adapter(service)) == events
+        await rpc(second, prompt_request(session_id, "And again", "p-3"))
+        assert [u["toolCallId"] for u in _updates(outbound) if u["sessionUpdate"] == "tool_call"] == cards  # shown once
+    asyncio.run(scenario())
+
+
+def test_a_binding_switch_keeps_the_served_memory_and_the_objective(tmp_path: Path) -> None:
+    """The plan's controlled-binding regression: Auto routes two turns of one session to two different models. Both are served
+    the same memory, cite it the same way, and continue the same objective."""
+    import time
+
+    from tests.unit.acp.test_auto_turn_routing import GEMINI, LUNA, Classifier, _router
+
+    async def scenario() -> None:
+        store = _adapter(purge_store(tmp_path)[0])
+        runner = _CitingRunner()
+        adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                   outbound=RecordingOutboundChannel(), auto_router=_router(Classifier(["easy", "complex"])),
+                                   memory_extractor_factory=lambda _w, **_k: _PurgeSource(store))
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        await rpc(adapter, prompt_request(session_id, "/remember Never push to main.", "p-1"))
+        await rpc(adapter, prompt_request(session_id, "Refactor the billing module into two separate services.", "p-2"))
+        await rpc(adapter, prompt_request(session_id, "Now split the invoice tests the same way as well.", "p-3"))
+        assert [kwargs["turn_model"] for kwargs in runner.kwargs] == [LUNA, GEMINI]  # two distinct bindings
+        first, second = runner.requests
+        assert first.memory_context and first.memory_context == second.memory_context
+        deadline = time.monotonic() + 5
+        while len(store.checkpoints(limit=20)) < 2 and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        older, newer = sorted((s.checkpoint for s in store.checkpoints(limit=20)), key=lambda point: point.sequence)
+        assert newer.objective == older.objective == first.run_id and newer.amendments == (second.run_id,)
     asyncio.run(scenario())

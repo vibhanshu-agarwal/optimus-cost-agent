@@ -478,6 +478,7 @@ class AcpSpecSession:
     recovery_scheduler: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: the recovery copy's exports
     # Plan 12.11 Task 4: extraction's changes not yet shown, as host cards at the next turn (never an off record's)
     memory_pending: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
+    memory_backlog: Any = field(default=None, repr=False, compare=False)  # the project's durable notice backlog (NoticeBacklog)
     memory_state_shown: str | None = None
     memory_probe: asyncio.Future[Any] | None = field(default=None, repr=False, compare=False)
     alert_tracker: AlertTracker = field(default_factory=AlertTracker, repr=False, compare=False)
@@ -1467,7 +1468,18 @@ class AcpDuplexAdapter:
                     answer = confirmed
             updates = [memory_notices.card(session_id, notice, label) for notice, label in answer.notices]
             updates.append(build_agent_message_chunk_notification(session_id=session_id, text=answer.text))
-            return updates, lambda: None
+            backlog = None if session is None else session.memory_backlog
+            shown = [_notice_record(notice) for notice, _label in answer.notices]
+            if backlog is not None and shown:  # kept until its card is confirmed sent; else a later turn or session shows it
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(backlog.add, shown)
+
+            def delivered() -> None:
+                if backlog is not None and shown:
+                    with contextlib.suppress(Exception):
+                        backlog.remove([record["event_id"] for record in shown])
+
+            return updates, delivered
 
         return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered")
 
@@ -1881,8 +1893,13 @@ class AcpDuplexAdapter:
                     self._memory_extractor_factory, Path(cwd), settlement=session.cost_settlement,
                     sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize, session_id=session.session_id,
                     report=_memory_report(session))
-                if session.memory_extractor is not None:
+                repair = getattr(session.memory_extractor, "registry_recovery", None)
+                if repair is not None:  # the project registry is lost: only its repair is offered
+                    session.memory_commands = MemoryCommands(None, trusted=True, registry_recovery=repair,
+                                                             sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize)
+                elif session.memory_extractor is not None:
                     extractor = session.memory_extractor
+                    session.memory_backlog = getattr(extractor, "notices", None)
                     session.continuity = Continuity(extractor.store, workspace=Path(cwd), worktree=extractor.worktree,
                                                     session=session.session_id)
                     recovery = getattr(extractor, "recovery", None)
@@ -2117,7 +2134,7 @@ class AcpDuplexAdapter:
                 await self._prepare_memory(session, turn, attached_turn)
             elif session.memory is None and (self._memory_notice is not None or self._memory_factory is not None):
                 await self._emit_index_line(session, turn, self._memory_notice or INDEX_NOT_REGISTERED_NOTICE)
-            if session.memory_pending:
+            if session.memory_pending or session.memory_backlog is not None:
                 await self._emit_memory_notices(session, turn)
             if session.continuity is not None:
                 await self._emit_brief(session, turn)
@@ -2780,22 +2797,33 @@ class AcpDuplexAdapter:
             plan_hash=plan_hash if re.fullmatch(r"[0-9a-f]{64}", plan_hash) else "",
             verification=tuple(item.ref for item in evidence_from(turn.run_id, result.tool_calls) if item.kind == "verification"),
             pending=result.status is AgentRunStatus.AWAITING_APPROVAL)
-        threading.Thread(target=continuity.record, args=(settled,), name="memory-checkpoint", daemon=True).start()
+        continuity.submit(settled)  # one ordered writer per session, off the turn's path
 
     async def _emit_memory_notices(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
         """Plan 12.11 Task 4: a host card for each change extraction confirmed or left uncertain since the last turn, with the
         store's own words (an agent lesson's title). D9 keeps every automatic user change off, and an off record never gets
         a card: nothing here asks the user to approve anything. Informational: a card that cannot be sent waits for the next
         turn; `/memory` always lists what the store holds. The card's id is the event's, so a resend replaces, never repeats."""
-        commands = session.memory_commands
-        while session.memory_pending and not turn.turn_control.transport_abandoned():
-            notice = session.memory_pending[0]
+        commands, backlog = session.memory_commands, session.memory_backlog
+        due: list[Any] = list(session.memory_pending)
+        if backlog is not None:  # what any session of the project left undelivered, durably (Codex CP3 review 1, finding 6)
+            with contextlib.suppress(Exception):
+                known = {notice.event_id for notice in due}
+                due += [notice for notice in (_notice_of(record) for record in await asyncio.to_thread(backlog.pending))
+                        if notice is not None and notice.event_id not in known]
+        for notice in due:
+            if turn.turn_control.transport_abandoned():
+                return
             label = "" if commands is None else await asyncio.to_thread(commands.label, notice.item)
             try:
                 await self._outbound.notify("session/update", memory_notices.card(turn.session_id, notice, label), require_flushed=True)
             except Exception:  # noqa: BLE001 - informational; it stays pending for the next turn
                 return
-            session.memory_pending.popleft()
+            with contextlib.suppress(ValueError):
+                session.memory_pending.remove(notice)
+            if backlog is not None:
+                with contextlib.suppress(Exception):
+                    await asyncio.to_thread(backlog.remove, [notice.event_id])
 
     async def _emit_grounding(self, turn: AcpPromptTurn, memory: Any, text: str) -> None:
         """A card naming what the reply cited that the inspected scope does not hold. It reports; it decides nothing, and it never fails a turn."""
@@ -3835,9 +3863,28 @@ def _memory_report(session: AcpSpecSession) -> Callable[[Any], None]:
     record queued for its card at the next turn."""
     def report(outcome: Any) -> None:
         session.memory_outcomes.append(outcome)
-        session.memory_pending.extend(notice for notice in outcome.notices if notice.action != "off")
+        shown = [notice for notice in outcome.notices if notice.action != "off"]
+        if session.memory_backlog is not None:  # durable first, so a restart before the next turn loses no notice
+            with contextlib.suppress(Exception):
+                session.memory_backlog.add([_notice_record(notice) for notice in shown])
+        session.memory_pending.extend(shown)
 
     return report
+
+
+def _notice_record(notice: Any) -> dict[str, Any]:
+    return {"event_id": notice.event_id, "item": notice.item, "version": notice.version, "action": notice.action,
+            "durable_state": notice.durable_state, "projection_state": notice.projection_state}
+
+
+def _notice_of(record: dict[str, Any]) -> Any:
+    from context_engine.memory_contracts import MemoryNotice
+
+    try:
+        return MemoryNotice(record["event_id"], record["item"], record["version"], record["action"], record["durable_state"],
+                            record["projection_state"])
+    except Exception:  # noqa: BLE001 - a record that no longer parses is skipped, never delivered wrongly
+        return None
 
 
 def checkin_decision(response: Any) -> CheckInDecision:

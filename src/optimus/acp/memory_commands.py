@@ -253,7 +253,7 @@ class MemoryCommands:
     def __init__(self, store: Any, *, trusted: bool, sanitize: Callable[[str], str], keyed: Callable[[str], str] = digest,
                  scope: str = "project", source: Callable[[str], str | None] = lambda _block: None,
                  source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
-                 brief: Callable[[], str] | None = None) -> None:
+                 brief: Callable[[], str] | None = None, registry_recovery: Any = None) -> None:
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
@@ -261,6 +261,7 @@ class MemoryCommands:
         self._recovery = recovery  # the project's `memory_recovery.Recovery`, or None
         self._workspace = workspace  # the session's trusted worktree, where a first recovery location goes
         self._brief = brief
+        self._registry_recovery = registry_recovery  # set when the project registry is lost: only its repair is available
 
     @property
     def project(self) -> str:
@@ -286,6 +287,8 @@ class MemoryCommands:
         """The answer to one command; never raises for a store state. `block` is the host id of the prompt's raw text."""
         from optimus.context.authored_memory import MemoryStoreRefused, MemoryStoreUnavailable
 
+        if self._registry_recovery is not None:
+            return self._registry_command(command)
         try:
             if command.verb == "list":
                 return MemoryAnswer(self._list(command.page))
@@ -587,6 +590,9 @@ class MemoryCommands:
                     if self._workspace is None:
                         return MemoryAnswer("The recovery copy is not available for this session.")
                     return MemoryAnswer("", confirm=self._location_question(mr.location(self._workspace)))
+                if not Path(state.destination).is_dir() and self._workspace is not None:
+                    # the location was removed: never silently replaced, so the user confirms a move (Codex CP3 review 1)
+                    return MemoryAnswer("", confirm=self._location_question(mr.location(self._workspace), moved_from=state.destination))
                 generation = recovery.export()
                 return MemoryAnswer(f"Saved the recovery copy `{generation.name}`: {generation.count} items, deletion frontier "
                                     f"{generation.deletions}. {recovery.status_line()}")
@@ -612,23 +618,58 @@ class MemoryCommands:
         except mr.RecoveryError as failure:
             return MemoryAnswer(failure.message)
 
-    def _location_question(self, destination: Path) -> Confirmation:
+    def _location_question(self, destination: Path, *, moved_from: str | None = None) -> Confirmation:
         from optimus.context import memory_recovery as mr
 
         synced = mr.sync_root(self._workspace) if self._workspace is not None else None  # the location lies in the worktree
         text = (f"Keep this project's plaintext recovery copy in {destination}? It is same-drive plaintext, not a backup: active items "
                 "only, kept out of Git and out of the model's reach, but readable by authorized TEST or shell commands.")
+        if moved_from is not None:
+            text = (f"The recovery location {moved_from} is gone. " + text + " The old location stays listed until no copy is "
+                    "left in it.")
         if synced:
             text += (f" This folder is synced ({synced}): the sync service may keep copies, including of later-withdrawn items, that "
                      "Optimus cannot erase. Confirming also consents to that.")
-        return Confirmation("location", "Set up the memory recovery copy?", text,
-                            {"project": self.project, "destination": str(destination), "synced": synced or ""}, secrets.token_hex(16))
+        return Confirmation("location", "Move the memory recovery copy?" if moved_from else "Set up the memory recovery copy?", text,
+                            {"project": self.project, "destination": str(destination), "synced": synced or "",
+                             "moved_from": moved_from or ""}, secrets.token_hex(16))
+
+    def _registry_command(self, command: MemoryCommand) -> MemoryAnswer:
+        """The project registry is lost: only a confirmed repair from an authenticated recovery copy is offered."""
+        from optimus.context import memory_recovery as mr
+
+        repair = self._registry_recovery
+        found = repair.generations()
+        if command.verb == "restore" and command.generation is not None:
+            chosen = next((g for g in found if g.name == command.generation), None)
+            if chosen is None:
+                return MemoryAnswer(f"There is no recovery copy `{command.generation}` in this worktree.")
+            try:
+                manifest, _entries = repair.read(chosen.name)
+            except mr.RecoveryError as failure:
+                return MemoryAnswer(failure.message)
+            text = (f"This project's registry is lost. Restore it from `{chosen.name}` (project {manifest['metadata']['project']}, "
+                    f"{chosen.count} items), and restore the memory store from it if the store is empty?")
+            return MemoryAnswer("", confirm=Confirmation("registry", "Repair the project registry?", text,
+                                                         {"generation": chosen.name, "seal": chosen.seal,
+                                                          "project": manifest["metadata"]["project"]}, secrets.token_hex(16)))
+        lines = ["**Recovery required:** this project's registry is lost, so memory is unavailable until it is repaired from a "
+                 "recovery copy. Restore one with `/memory restore <generation>`:"]
+        lines += [f"- `{g.name}`: {g.count} items, head {g.head}" for g in found[:10]] or ["- (no recovery copy in this worktree)"]
+        return MemoryAnswer("\n".join(lines))
 
     def confirmed(self, confirmation: Confirmation) -> MemoryAnswer:
         """After the user chose to go ahead with exactly `confirmation`."""
         from optimus.context import memory_recovery as mr
         from optimus.context.authored_memory import MemoryStoreRefused, MemoryStoreUnavailable
 
+        if confirmation.kind == "registry" and self._registry_recovery is not None:
+            try:
+                return MemoryAnswer(self._registry_recovery.recover(confirmation.meta["generation"], seal=confirmation.meta["seal"]))
+            except mr.RecoveryError as failure:
+                return MemoryAnswer(failure.message)
+            except (MemoryStoreUnavailable, MemoryStoreRefused):
+                return MemoryAnswer(UNAVAILABLE)
         recovery = self._recovery
         if recovery is None:
             return MemoryAnswer("The recovery copy is not available for this session.")
@@ -638,7 +679,7 @@ class MemoryCommands:
                 generation = recovery.export()
                 return MemoryAnswer(f"Recovery copies now go to {confirmation.meta['destination']}. Saved `{generation.name}`: "
                                     f"{generation.count} items.")
-            reply = recovery.restore(confirmation.meta["generation"])
+            reply = recovery.restore(confirmation.meta["generation"], seal=confirmation.meta["seal"])  # exactly what was confirmed
             return MemoryAnswer(f"Restored `{confirmation.meta['generation']}`: {reply.get('restored', 0)} items, "
                                 f"{reply.get('durable_state')} on disk." + (f" {len(reply['purged'])} were deleted since and stay "
                                                                             "deleted." if reply.get("purged") else ""))
@@ -683,6 +724,8 @@ _REFUSALS: Final = {
     "RESTORE_GENERATION_INVALID": "Not restored: that copy is incomplete or was altered. Nothing was changed.",
     "RESTORE_ENTRY_INVALID": "Not restored: that copy holds an entry the store did not write. Nothing was changed.",
     "MEMORY_RECOVERY_UNAVAILABLE": "The recovery copy is not available: the store's credential is not set up.",
+    "RESTORE_DELETION_UNKNOWN": ("Not restored: the deletion journal is damaged or shorter than when this copy was written, so a "
+                                 "deletion could be undone. Nothing was changed."),
 }
 
 

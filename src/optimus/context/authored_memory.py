@@ -49,7 +49,7 @@ class GatewayMemoryStore:
         self._post = post(settings, timeout=msc.DEADLINE_SECONDS + 2.0, path=msc.PATH)
         # Plan 12.11 recovery: `guard` says the project needs recovery (no write may land first); `written` hears of each
         # confirmed change, so the recovery copy knows it is dirty and what a withdrawal retires.
-        self.guard: Callable[[], bool] | None = None
+        self.guard: Callable[..., bool] | None = None
         self.written: Callable[[str, str], None] | None = None
 
     def call(self, op: str, **fields: Any) -> dict[str, Any]:
@@ -73,6 +73,9 @@ class GatewayMemoryStore:
             raise MemoryStoreRefused("RECOVERY_REQUIRED")
         token = int(self.call("lease", project=self.project, owner=self._owner, action="acquire", ttl_ms=LEASE_TTL_MS)["token"])
         try:
+            # asked again now, under the lease: a store emptied since the cached answer takes no write (Codex CP3 review 1, finding 4)
+            if guarded and self.guard is not None and self.guard(fresh=True):
+                raise MemoryStoreRefused("RECOVERY_REQUIRED")
             yield token
         finally:
             with contextlib.suppress(MemoryStoreUnavailable, MemoryStoreRefused):  # an expired lease ends by itself
@@ -115,9 +118,10 @@ class GatewayMemoryStore:
         return CheckpointResult(reply["session"], reply["sequence"], reply["stream_id"], reply["durable_state"], reply["projection_state"],
                                 bool(reply.get("replayed", False)))
 
-    def checkpoints(self, *, limit: int) -> list[StoredCheckpoint]:
-        """The project's newest confirmed checkpoints, newest first."""
-        reply = self.call("checkpoints", project=self.project, limit=limit)
+    def checkpoints(self, *, limit: int, branch: str | None = None, worktree: str | None = None) -> list[StoredCheckpoint]:
+        """The project's newest confirmed checkpoints, newest first: all of them, or one branch's, or one branch and worktree's."""
+        scope = {**({"branch": branch} if branch is not None else {}), **({"worktree": worktree} if worktree is not None else {})}
+        reply = self.call("checkpoints", project=self.project, limit=limit, **scope)
         return [StoredCheckpoint.from_record(self.project, record) for record in reply["checkpoints"]]
 
     def purge(self, token: int, item: str, key: str) -> dict[str, Any]:

@@ -68,6 +68,8 @@ class Continuity:
         self._amendments: collections.deque[str] = collections.deque(maxlen=MAX_AMENDMENTS)
         self._previous: tuple[list[StoredCheckpoint], StoredCheckpoint | None] | None = None  # read once, before the first write
         self._shown = False
+        self._queue: collections.deque[Settled] = collections.deque()
+        self._writer: threading.Thread | None = None
 
     # --- identity --------------------------------------------------------------------------------------------------------
 
@@ -84,8 +86,13 @@ class Continuity:
         with self._lock:
             if self._previous is not None:
                 return self._previous
-        stored = list(self._store.checkpoints(limit=MAX_CHECKPOINTS))
         branch, _head = self._place()
+        # each scope is asked for on its own, so newer checkpoints elsewhere never hide this place's (Codex CP3 review 1, finding 5)
+        seen: dict[tuple[str, int], StoredCheckpoint] = {}
+        for scope in ({"branch": branch, "worktree": self._worktree}, {"branch": branch}, {}):
+            for point in self._store.checkpoints(limit=MAX_CHECKPOINTS, **scope):
+                seen.setdefault((point.checkpoint.session, point.checkpoint.sequence), point)
+        stored = sorted(seen.values(), key=lambda s: (s.checkpoint.settled_at_ms, s.checkpoint.session, s.checkpoint.sequence), reverse=True)
         mine = [s for s in stored if s.checkpoint.session != self._session]
         chosen = find_predecessor([s.checkpoint for s in mine], project=self._store.project, branch=branch, worktree=self._worktree)
         found = next((s for s in mine if s.checkpoint is chosen), None) if chosen is not None else None
@@ -95,6 +102,24 @@ class Continuity:
             return self._previous
 
     # --- writing -----------------------------------------------------------------------------------------------------------
+
+    def submit(self, settled: Settled) -> None:
+        """Queue a settled turn's checkpoint for this session's one writer, so turns are recorded in the order they settled and
+        a later turn can never take the objective first. The turn never waits on the store."""
+        with self._lock:
+            self._queue.append(settled)
+            if self._writer is None or not self._writer.is_alive():
+                self._writer = threading.Thread(target=self._drain, name="memory-checkpoint", daemon=True)
+                self._writer.start()
+
+    def _drain(self) -> None:
+        while True:
+            with self._lock:
+                if not self._queue:
+                    self._writer = None
+                    return
+                settled = self._queue.popleft()
+            self.record(settled)
 
     def record(self, settled: Settled) -> bool:
         """Write the turn's checkpoint; True once the store confirmed it. Another session's lease is retried briefly, then the

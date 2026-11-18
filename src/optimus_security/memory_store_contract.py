@@ -249,9 +249,15 @@ def _checkpoint(body: dict[str, Any]) -> None:
 
 
 def _checkpoints(body: dict[str, Any]) -> None:
-    _fields(body, {"op", "project", "limit"})
+    """The newest checkpoints, optionally only those on one branch, or one branch and worktree (Codex CP3 review 1, finding 5)."""
+    _fields(body, {"op", "project", "limit"}, frozenset({"branch", "worktree"}))
     _opaque(body["project"])
     _integer(body["limit"], 1, MAX_CHECKPOINTS)
+    if "worktree" in body and "branch" not in body:
+        raise _refuse()
+    for name in ("branch", "worktree"):
+        if name in body:
+            _opaque(body[name])
 
 
 def _purge(body: dict[str, Any]) -> None:
@@ -269,12 +275,22 @@ def _purge_status(body: dict[str, Any]) -> None:
 
 
 def _export(body: dict[str, Any]) -> None:
-    """A page of the project's active payloads for the plaintext recovery copy (D5); the host writes the one fixed location."""
-    _fields(body, {"op", "project", "limit"}, frozenset({"cursor"}))
+    """A page of the project's recovery generation (D5); the host writes the one fixed location. `bind` is the digest of the host's
+    generation metadata, which the seal binds."""
+    _fields(body, {"op", "project", "limit", "bind"}, frozenset({"cursor"}))
     _opaque(body["project"])
     _integer(body["limit"], 1, MAX_LIST)
+    _match(body["bind"], _DIGEST)
     if "cursor" in body:
         _match(body["cursor"], _CURSOR)
+
+
+def _verify_bind(body: dict[str, Any]) -> None:
+    """Whether a generation's metadata digest carries this Gateway's MAC: authenticates a manifest without restoring it."""
+    _fields(body, {"op", "project", "bind", "mac"})
+    _opaque(body["project"])
+    _match(body["bind"], _DIGEST)
+    _match(body["mac"], _DIGEST)
 
 
 _ENTRY_FIELDS = {"event_id", "item", "version", "action", "trust", "status", "kind", "scope", "title", "statement", "anchors",
@@ -320,8 +336,11 @@ def _restore(body: dict[str, Any]) -> None:
     only remove a payload, never add one)."""
     final = body.get("final")
     if final is True:
-        _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries", "head", "frontier", "withdrawn"})
+        _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries", "head", "frontier", "withdrawn", "bind",
+                       "journal", "purged"})
         _match(body["head"], _STREAM)
+        _match(body["bind"], _DIGEST)
+        _integer(body["journal"], 0, MAX_VERSION)
         frontier = body["frontier"]
         if not isinstance(frontier, dict) or set(frontier) != {"deletions", "last"}:
             raise _refuse()
@@ -330,8 +349,11 @@ def _restore(body: dict[str, Any]) -> None:
             raise _refuse()
         if type(body["withdrawn"]) is not list or len(body["withdrawn"]) > MAX_LIST * 100:
             raise _refuse()
-        for item in body["withdrawn"]:
-            _match(item, _ITEM)
+        for name in ("withdrawn", "purged"):
+            if type(body[name]) is not list or len(body[name]) > MAX_LIST * 100:
+                raise _refuse()
+            for item in body[name]:
+                _match(item, _ITEM)
     elif final is False:
         _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries"})
     else:
@@ -354,7 +376,7 @@ _SHAPES: Final[dict[str, Callable[[dict[str, Any]], None]]] = {
     "capabilities": _capabilities, "lease": _lease, "append": _append, "read": _read, "list": _list, "history": _history,
     "checkpoint": _checkpoint,
     "checkpoints": _checkpoints, "purge": _purge, "purge_status": _purge_status, "export": _export, "restore": _restore,
-    "restore_status": _restore_status,
+    "restore_status": _restore_status, "verify_bind": _verify_bind,
 }
 OPERATIONS: Final = frozenset(_SHAPES)
 UNAVAILABLE: Final[frozenset[str]] = frozenset()  # every operation is served since Task 4
