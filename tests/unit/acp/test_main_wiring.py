@@ -940,14 +940,16 @@ def test_scoped_child_refuses_before_audit_or_startup(monkeypatch, tmp_path, cap
     from optimus.acp.trusted_paths import resolve_workspace_security_state
     from tools.evidence_gather_support.plan117_current_client_contract import sha256_hex
 
-    _authorize(monkeypatch, tmp_path, _base_env())
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _authorize(monkeypatch, workspace, _base_env())
     ring = acp_main.keyring
-    store = KeyringApprovalStore(keyring_backend=ring, runtime_root=tmp_path / ".approval-lock")
-    state = resolve_workspace_security_state(tmp_path)
+    # Creating an approval lock inside the workspace changes the ctime used by the legacy digest on Linux.
+    store = KeyringApprovalStore(keyring_backend=ring, runtime_root=tmp_path / "approval-runtime")
+    state = resolve_workspace_security_state(workspace)
     record = store.read_durable(state.identity.digest)
     approval_id = record.approval_id
     digest = sha256_hex(serialize_approval_record(record).encode())
-    workspace = tmp_path
     if case == "id":
         approval_id = "appr_" + "b" * 24
     elif case == "digest":
@@ -961,6 +963,7 @@ def test_scoped_child_refuses_before_audit_or_startup(monkeypatch, tmp_path, cap
         monkeypatch.setattr(acp_main, "keyring", FakeKeyring())
     elif case == "legacy":
         ring.set_password(store._service_name, f"durable:{state.legacy_v2_digest}", serialize_approval_record(record))
+        assert resolve_workspace_security_state(workspace).legacy_v2_digest == state.legacy_v2_digest
     sinks = _side_effect_sinks(monkeypatch)
     events = []
     monkeypatch.setattr(acp_main, "append_launch_audit_event", lambda *args, **kwargs: events.append(args))
