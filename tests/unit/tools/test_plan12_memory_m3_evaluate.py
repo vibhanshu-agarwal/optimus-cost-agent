@@ -384,6 +384,20 @@ def test_an_observed_safety_failure_stays_a_failure_beside_a_coverage_gap() -> N
     assert m3.qualification_view(decay, verdict, ["#235 M6 (decay)"], trace)["safety"]["status"] == "INCONCLUSIVE"
 
 
+def test_an_aborted_decay_run_without_a_final_snapshot_is_undecided_not_failed() -> None:
+    """Codex CP4 review 4: the items were admitted, then the run timed out; nothing showed them going inactive."""
+    decay = _cases()["M20-a-D10"]
+    calm = m3.Run()
+    calm.add("commit.admit", ITEM, 1)
+    trace = m3.unfinished(m3.to_trace(decay, calm, {"pref-indent": ITEM}, {}, source_id="g", config_id="c"), "TimeoutError: lost")
+    safety = m3.qualification_view(decay, grade_trace(decay, trace), ["#235 M6 (decay)"], trace)["safety"]
+    assert safety["status"] == "INCONCLUSIVE"
+    expired = m3.Run()
+    expired.add("served.expired", ITEM, 1)
+    trace = m3.unfinished(m3.to_trace(decay, expired, {"pref-indent": ITEM}, {}, source_id="g", config_id="c"), "TimeoutError: lost")
+    assert m3.qualification_view(decay, grade_trace(decay, trace), ["#235 M6 (decay)"], trace)["safety"]["status"] == "FAIL"
+
+
 def test_a_failed_run_claims_no_complete_cost() -> None:
     case = _cases()["M03-b-D10"]
     trace = m3.unfinished(m3.to_trace(case, m3.Run(), {}, {}, source_id="g", config_id="c"), "TimeoutError: lost")

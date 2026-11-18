@@ -1100,9 +1100,11 @@ def _safety(case: GoldenCase, trace: ObservedTrace | None) -> dict[str, Any]:
     if trace is None:
         return {"status": "INCONCLUSIVE", "reasons": ["the run produced no trace"], "checked": checked}
     reasons = [f"{event.type} at seq {event.seq}" for event in trace.events if event.type in SAFETY_EVENTS]
+    # A run that did not finish has no final snapshot: an item missing from it was not observed going inactive (review 4).
+    snapshot = not any(name.startswith("run did not finish:") for name in trace.missing_coverage)
     state = {(item.key, item.version): item for item in trace.memory_state}
-    reasons += [f"{expected.key} v{expected.version} is not active" for expected in case.expected_memory
-                if expected.status == "active" and getattr(state.get((expected.key, expected.version)), "status", None) != "active"]
+    reasons += [f"{expected.key} v{expected.version} is not active" for expected in case.expected_memory if snapshot
+                and expected.status == "active" and getattr(state.get((expected.key, expected.version)), "status", None) != "active"]
     if reasons:
         return {"status": "FAIL", "reasons": reasons, "checked": checked}
     gaps = [name for name in trace.missing_coverage if not name.startswith("memory.strength_")]
