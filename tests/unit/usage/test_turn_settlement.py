@@ -530,11 +530,19 @@ def test_every_fact_but_arrival_bookkeeping_is_authoritative():
     import dataclasses
 
     names = {field.name for field in dataclasses.fields(StageReceipt)}
-    covered = set(_divergent_values()) | {"attempt_id", "gateway_request_id", "outcome", "reported_cost_usd"}
+    covered = set(_divergent_values()) | {"attempt_id", "gateway_request_id", "outcome", "reported_cost_usd", "purpose"}  # purpose: below
     usage_carried = {"provider", "resolved_provider", "resolved_model", "input_tokens", "output_tokens", "cached_tokens", "provider_request_id"}
     # Each fact is either changed one at a time below, or repeats the usage it carries (changing it
     # alone is refused at construction), or is the receipt's own identity or arrival bookkeeping.
     assert names == covered | usage_carried | {"recorded_at", "post_teardown"}
+
+
+def test_a_duplicate_that_changes_its_memory_purpose_is_an_integrity_error():
+    """Plan 12.11: a memory call's purpose is a settled fact, so a replay naming another purpose is refused."""
+    settlement = TurnSettlement()
+    settlement.record_attempt(_full_receipt(stage="summarization", purpose="memory.extract_user"))
+    with pytest.raises(ReceiptConflictError):
+        settlement.record_attempt(_full_receipt(stage="summarization", purpose="memory.extract_agent"))
 
 
 @pytest.mark.parametrize("field", sorted(_divergent_values()))

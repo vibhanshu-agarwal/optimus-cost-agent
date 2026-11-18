@@ -66,6 +66,12 @@ def _off(candidate: MemoryCandidate, reason: str, *, scanned: bool) -> GateDecis
     return GateDecision("append", reason, draft)
 
 
+def automatic_user_off(candidate: MemoryCandidate) -> GateDecision:
+    """D9 (Plan 12.11 CP2, Codex review 9): an automatic user-origin proposal cannot admit, update or withdraw an item, so one
+    the Gate would let through becomes an off record instead, scanned title only. Explicit host actions keep `admit`."""
+    return _off(candidate, "USER_AUTOMATIC_OFF", scanned=True)
+
+
 def admit(candidate: MemoryCandidate, verdict: HostVerdict, target: ItemState | None = None) -> GateDecision:
     """Decide one candidate. `target` is the current authoritative state of `candidate.target`, or None when it names none or
     the item does not exist."""
@@ -86,6 +92,8 @@ def admit(candidate: MemoryCandidate, verdict: HostVerdict, target: ItemState | 
         return _off(candidate, "SPANS_UNVERIFIED", scanned=True)  # model assertions outside the spans gain no user provenance
     if candidate.trust == "agent-derived" and not verdict.lineage_complete:
         return _off(candidate, "LINEAGE_UNRESOLVED", scanned=True)
+    if candidate.trust == "agent-derived" and verdict.user_items_in_scope:
+        return _off(candidate, "USER_ITEMS_IN_SCOPE", scanned=True)  # nothing shows a lesson leaves the user's items standing: off
 
     if candidate.target is not None:
         if target is None or target.item != candidate.target or target.project != candidate.project or not target.live:

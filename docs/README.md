@@ -99,6 +99,7 @@ relevant records before proposing a change in their area.
 | Document | What it is |
 |---|---|
 | [Local live dependencies runbook](runbooks/local-live-dependencies.md) | Starting Redis, the Gateway and Phoenix locally |
+| [Memory purge pending files runbook](runbooks/memory-purge-pending-files.md) | Checking and retiring a file that holds a memory purge pending |
 | [Plan 12.2 Stage C live run runbook](runbooks/plan-12-2-stage-c-live-run.md) | The bounded Stage C test release (r9): its guard, launches, custody checks and stop and continuation rules |
 | [Evidence and local artifact policy](governance/evidence-and-local-artifact-policy.md) | What counts as repository evidence |
 
@@ -126,7 +127,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
-| [Plan 12.11 v2: memory and continuity (M3)](superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v2.md) | #490; automatic memory, commands, continuity and same-drive recovery |
+| [Plan 12.11 v3: memory and continuity (M3)](superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v3.md) | #490; automatic memory, commands, continuity and same-drive recovery |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v5: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v5.md) | #240; durable ACP sessions and Zed resume ([adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md)). v1 to v3 are in `archive/`; v4 is a local frozen predecessor |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |

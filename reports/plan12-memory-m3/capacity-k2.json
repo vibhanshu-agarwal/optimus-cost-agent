@@ -1,0 +1,127 @@
+{
+  "schema": "plan12-memory-m3.capacity-k2.v1",
+  "targets": {
+    "events": 100000,
+    "live_items": 10000,
+    "competing_clients": 4,
+    "ack_p95_s": 1.5,
+    "projection_after_ack_p95_ms": 250,
+    "restart_to_usable_s": 60,
+    "logical_purge_after_confirmed_tombstone_s": 1,
+    "rewrite_and_snapshot_s": 120,
+    "physical_ram_gib": 1,
+    "peak_persistence_disk_gib": 4,
+    "acknowledged_write_loss": 0,
+    "loss_scope": "tested crashes with the volume intact; not hardware, power or volume loss"
+  },
+  "clients": 4,
+  "release": "operator 2026-11-17 'Release both' on #490",
+  "loss_scope": "tested crashes with the volume intact; not hardware, power or volume loss",
+  "source": {
+    "head": "git:9b3530f9aa6995ea52b329a621cf857d55c75fc4",
+    "dirty": false
+  },
+  "main": {
+    "seconds": 628.6,
+    "ack_ms": {
+      "count": 100000,
+      "p50": 23.24,
+      "p95": 32.82,
+      "max": 2475.05
+    },
+    "projection_after_ack_ms": {
+      "count": 2000,
+      "p50": 10.2,
+      "p95": 16.14,
+      "max": 231.53
+    },
+    "refusals": {},
+    "unconfirmed_after_retries": 0,
+    "events_acknowledged": 100000,
+    "identity_after_load": {
+      "items_expected": 10000,
+      "live_items": 10000,
+      "missing": 0,
+      "wrong": 0,
+      "unexpected": 0
+    },
+    "identity_after_restart": {
+      "items_expected": 10000,
+      "live_items": 9996,
+      "missing": 0,
+      "wrong": 0,
+      "unexpected": 0
+    },
+    "purge": {
+      "logical_s": {
+        "count": 4,
+        "p50": 0.06,
+        "p95": 0.09,
+        "max": 0.09
+      },
+      "rewrite_and_snapshot_s": {
+        "count": 4,
+        "p50": 1.35,
+        "p95": 1.36,
+        "max": 1.36
+      },
+      "purges": 4,
+      "completed": 4
+    },
+    "restart_to_usable_s": 2.2,
+    "resources": {
+      "container_ram_mib": 62.3,
+      "used_memory_rss_mib": 78.4,
+      "disk_kib": 78560,
+      "aof_last_cow_mib": 1.8,
+      "rdb_last_cow_mib": 1.6,
+      "samples": 183
+    },
+    "index_load": {
+      "records": 17167360,
+      "generations": 429
+    }
+  },
+  "slow_persistence": {
+    "device_write_bps": "/dev/sdd:256kb",
+    "events": 4000,
+    "seconds": 125.5,
+    "ack_ms": {
+      "count": 4000,
+      "p50": 105.57,
+      "p95": 195.11,
+      "max": 275.56
+    },
+    "projection_after_ack_ms": {
+      "count": 160,
+      "p50": 11.02,
+      "p95": 101.21,
+      "max": 189.13
+    },
+    "refusals": {},
+    "unconfirmed_after_retries": 0,
+    "events_acknowledged": 4000,
+    "identity": {
+      "items_expected": 2000,
+      "live_items": 2000,
+      "missing": 0,
+      "wrong": 0,
+      "unexpected": 0
+    }
+  },
+  "verdicts": {
+    "events": true,
+    "live_items_before_purges": true,
+    "ack_p95": true,
+    "projection_after_ack_p95": true,
+    "restart_to_usable": true,
+    "logical_purge": true,
+    "rewrite_and_snapshot": true,
+    "physical_ram": true,
+    "peak_disk": true,
+    "acknowledged_write_loss": true,
+    "purges_exact_after_restart": true,
+    "slow_persistence_loss": true
+  },
+  "passed": true
+}

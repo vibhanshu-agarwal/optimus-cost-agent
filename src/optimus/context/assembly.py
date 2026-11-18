@@ -30,6 +30,7 @@ import re
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from context_engine import (
@@ -61,10 +62,14 @@ from optimus.context.maintenance import (
     HostMaintenance,
     MaintenanceIdentity,
     MaintenanceReceipt,
+    SummarizerAttempt,
+    SummarizerCall,
     SummarizerFactory,
+    SummarizerResponse,
     SummarizerRoute,
     first_error,
 )
+from optimus.context.memory_extraction import DOCUMENT_NAMES, Evidence
 from optimus.runtime.modes import ExecutionMode
 from optimus_security.failure_facts import exception_fact, slug
 
@@ -88,6 +93,7 @@ STATE_HEADER = (
     "an earlier approval never authorizes a new change):"
 )
 _ADMITTED_DOMAIN = b"optimus/admitted-context/v1\x00"
+_SOURCE_CHARS = 8_388_608  # all of one turn's requests the source-overlap check keeps, in RAM only; past it every scan fails
 
 
 class ViewEngine(Protocol):
@@ -443,6 +449,13 @@ class AttachedTurn:
         # A turn without a notice channel can deliver no required notice, so it sends nothing that needs one.
         self._deliver_notice = deliver_notice if deliver_notice is not None else (lambda text: False)
         self._dispatches: list[DispatchReading] = []
+        # Plan 12.11: what this turn sent, kept in RAM for the memory source-overlap check only, and its bound summarizer.
+        self._dispatched: list[str] = []
+        self._source_chars = 0  # everything the turn sent, kept or not
+        self._memory_call: SummarizerCall | None = None
+        self._memory_identity: MaintenanceIdentity | None = None
+        self._context_paths: tuple[str, ...] | None = None  # every file the automatic context delivered, once the runner reports it
+        self._context_unattributed = False  # the runner reported context text with no file behind it
         # The turn's own receipt sink (its session's settlement), alongside the attachment's.
         self._record_receipt = record_receipt
         # Told of a receipt the attachment's ledger refused, so the turn's settlement never reads complete.
@@ -596,6 +609,7 @@ class AttachedTurn:
                 # operator sees a content-free config fault (Codex CP3 ruling R5 and M2).
                 self._fault("prepare", "config_error", exception_fact(exc)["class"])
             else:
+                self._memory_call, self._memory_identity = call, identity
                 host = HostMaintenance(
                     call=call,
                     sanitizer=self._sanitizer,
@@ -774,6 +788,61 @@ class AttachedTurn:
     def record_dispatch(self, text: str) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""
         self._dispatches.append(DispatchReading(tokens=self._attachment.estimate_request(text), capacity=self._attachment.usable_input_tokens))
+        # Every request of the turn is kept, whole: a file shown only in the first planning round is still source text at the
+        # end (Codex CP2 review 2, finding 7). Past the bound none is dropped silently: the sources are marked lost.
+        self._source_chars += len(text)
+        if self._source_chars <= _SOURCE_CHARS:
+            self._dispatched.append(text)
+
+    def memory_sources(self) -> tuple[str, ...] | None:
+        """What this turn sent besides the user's own words (files, tool results, index passages, earlier answers): the text a
+        memory must never copy. RAM only, for the source-overlap check (Plan 12.11). Only the user's own slot is taken out,
+        once: a file or tool result that holds the same words keeps them (Codex CP2 review 1, finding 3). None when the turn
+        sent more than could be kept: then nothing can be shown not to copy it, and every candidate's scans fail."""
+        if self._source_chars > _SOURCE_CHARS:
+            return None
+        prompt = self._current_prompt
+        return tuple(text if not prompt else "".join(text.rpartition(prompt)[::2]) for text in self._dispatched)
+
+    def record_context(self, context: Any) -> None:
+        """The runner reports each automatic workspace or index context it attached (Plan 12.11): every file it delivered, the
+        ones the task named and the ones retrieval chose alike (Codex CP2 review 2, finding 5), a file shown only by its signature
+        or description too (review 3, finding 3). Context text with no file behind it cannot be attributed, and counts as never
+        reported."""
+        delivered = (*context.prioritized_paths, *getattr(context, "file_sha256s", {}), *getattr(context, "shown_paths", ()))
+        if context.text and not delivered:
+            self._context_unattributed = True
+        self._context_paths = (*(self._context_paths or ()), *delivered)
+
+    def memory_lineage(self, run_id: str) -> tuple[Evidence, ...]:
+        """What this turn carried that the host cannot trace to the turn's own tool calls (Codex CP2 review 1, finding 4):
+        earlier turns, which may pass on a directive; automatically attached documents; or context never reported, whose lineage
+        is unknown. Each taints an agent lesson."""
+        found = []
+        if self._context_paths is None or self._context_unattributed:
+            found.append(Evidence(f"{run_id}:context:unreported", "inherited"))
+        elif any(DOCUMENT_NAMES.search(path.replace("\\", "/")) for path in self._context_paths):
+            found.append(Evidence(f"{run_id}:context:documents", "inherited"))
+        if self._records or self._checkpoint is not None:
+            found.append(Evidence(f"{run_id}:context:history", "inherited"))
+        return tuple(found)
+
+    def memory_hooks(self) -> tuple[Callable[..., SummarizerResponse], Callable[[str, str, SummarizerAttempt, str | None], None]] | None:
+        """The turn's bound summarizer and a receipt sink for a memory call's attempts (Plan 12.11 Task 3): the same route,
+        identity and settlement as the turn's summaries, with the memory purpose on every receipt. None without a summarizer."""
+        call, identity = self._memory_call, self._memory_identity
+        if call is None or identity is None:
+            return None
+
+        def record(_turn_id: str, purpose: str, attempt: SummarizerAttempt, finish_status: str | None) -> None:
+            self._receipt_sink(MaintenanceReceipt(
+                identity=identity, stage="summarization", attempt_id=attempt.attempt_id, gateway_request_id=attempt.gateway_request_id,
+                outcome=attempt.outcome, cost_usd=attempt.cost_usd, finish_status=finish_status, covered_turn_ids=(),
+                recorded_at=datetime.now(UTC), provider_request_id=attempt.provider_request_id, http_status=attempt.http_status,
+                provider=attempt.provider, resolved_provider=attempt.resolved_provider, resolved_model=attempt.resolved_model,
+                gateway_usage=attempt.gateway_usage, purpose=purpose))
+
+        return call, record
 
     def largest_dispatch(self) -> DispatchReading | None:
         return DispatchReading.largest(self._dispatches)
