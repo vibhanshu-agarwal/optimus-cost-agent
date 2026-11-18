@@ -3943,16 +3943,16 @@ def test_establishing_applicability_rejects_dirty_execution_surface(tmp_path: Pa
     assert probe.execution_surface_clean(repo, ("tracked.txt",)) is False
 
 
-_CANDIDATE_IMPORT_PATHS = ("src/optimus/acp/session_retention.py", "src/optimus_security/url_schemes.py")
+_RETENTION_IMPORT_PATH = "src/optimus/acp/session_retention.py"
+_URL_POLICY_IMPORT_PATH = "src/optimus_security/url_schemes.py"
 
 
-@pytest.mark.parametrize("omitted", _CANDIDATE_IMPORT_PATHS)
-def test_current_candidate_import_closure_and_unlisted_refusal(monkeypatch, omitted: str) -> None:
+def _assert_current_import_closure_and_unlisted_refusal(monkeypatch: pytest.MonkeyPatch, omitted: str) -> None:
     import tools.probe_p11_zed_session_load as probe
 
     # Use checked-out candidate bytes through the same source-provider seam,
     # including new paths that the committed HEAD does not have yet.
-    tracked = probe._tracked_py_paths(REPO_ROOT, "HEAD") | frozenset(_CANDIDATE_IMPORT_PATHS)
+    tracked = probe._tracked_py_paths(REPO_ROOT, "HEAD") | {_RETENTION_IMPORT_PATH, _URL_POLICY_IMPORT_PATH}
     monkeypatch.setattr(probe, "_tracked_py_paths", lambda *_args: tracked)
     monkeypatch.setattr(probe, "git_cat_file_blob", lambda _root, _commit, path: (REPO_ROOT / path).read_bytes())
     closure = probe.compute_establishing_import_closure(REPO_ROOT)
@@ -3960,6 +3960,14 @@ def test_current_candidate_import_closure_and_unlisted_refusal(monkeypatch, omit
     assert closure == allowed
     with pytest.raises(probe.ProbeError, match="unlisted module path: " + re.escape(omitted.removesuffix(".py"))):
         probe.compute_establishing_import_closure(REPO_ROOT, allowed_py_paths=allowed - {omitted})
+
+
+def test_current_retention_import_closure_and_unlisted_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    _assert_current_import_closure_and_unlisted_refusal(monkeypatch, _RETENTION_IMPORT_PATH)
+
+
+def test_current_url_policy_import_closure_and_unlisted_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    _assert_current_import_closure_and_unlisted_refusal(monkeypatch, _URL_POLICY_IMPORT_PATH)
 
 
 def test_establishing_import_closure_equals_explicit_module_path_subset() -> None:
