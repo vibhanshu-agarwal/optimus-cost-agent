@@ -290,9 +290,9 @@ out of planning steps ([ADR-024](docs/decisions/ADR-024-accepts-adr-009-loop-con
     its own approval.
   - **Stop** ends the turn with the actual cause.
 - **Escalation (Auto mode only, #397).** Before that check-in, an Auto turn whose note did not help is moved once to
-  the registry's escalation model, which is Gemini 3.8 Flash today, so only easy-tier turns have a step. The move
+  the registry's escalation model, which is Gemini 4 Hydrogen today, so only easy-tier turns have a step. The move
   comes with a live line that gives the price change, for example
-  `Auto: escalating to google/gemini-3.8-flash: ... Price per million tokens: $0.75 in / $3.75 out (was $0.20 in / $1.00 out).`
+  `Auto: escalating to google/gemini-4-hydrogen: ... Price per million tokens: $1.50 in / $7.50 out (was $0.20 in / $1.00 out).`
   The stronger model gets 3 steps, and then the check-in follows as usual. A turn already on the escalation model,
   or a fixed-model launch, goes straight to the check-in.
 
@@ -736,7 +736,7 @@ The turn then uses the cheapest model of that tier that has not stopped in this 
   shipped defaults, plus the Auto overlay, plus any registry override. An ordinary approval never authorizes Auto,
   and the reverse also holds. For a manually managed Gateway, run
   `optimus-trust --workspace-root <workspace> run-gateway --auto`.
-- **Each turn shows** one line, for example `Auto: medium → google/gemini-3.8-flash`, with the reason when the turn
+- **Each turn shows** one line, for example `Auto: medium → google/gemini-4-hydrogen`, with the reason when the turn
   routed up or fell back. The judge's own cost appears as the `classification` stage of the turn's cost.
 - **A struggling turn** can be moved once to the escalation model before its loop check-in (see "Planning loop
   recovery" above).

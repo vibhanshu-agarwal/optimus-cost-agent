@@ -113,7 +113,7 @@ def test_active_gateway_refuses_a_manifest_for_no_or_another_registry(started: l
 
 def test_the_shipped_gateway_enforces_the_shipped_registry(started: list) -> None:
     literal = trusted_approval_literal()
-    assert literal == "optimus-model-registry-v1:2e9a5181f23a59bb65e1a4d338822b2a2dbfd88be61a5ff4280697af9a60b663"  # pragma: allowlist secret - registry identity
+    assert literal == "optimus-model-registry-v1:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"  # pragma: allowlist secret - registry identity
     assert _run(_manifest(literal)) == 0
     policy = started[0].model_policy
     assert policy is not None and policy.approved_hash == policy.snapshot.effective_hash == literal.rsplit(":", 1)[1]

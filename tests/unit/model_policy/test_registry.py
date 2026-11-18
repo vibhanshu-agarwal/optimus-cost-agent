@@ -491,15 +491,17 @@ def test_the_shipped_defaults_keep_the_frozen_role_order() -> None:
     assert ordered_assignments(snapshot, Role.MEDIUM) == (
         "meta/muse-spark-1.3-contributor",
         "deepseek/deepseek-v4.1-flash",
-        "google/gemini-3.8-flash",
         "meta/muse-spark-1.3",
+        "google/gemini-4-hydrogen",  # $1.50 / $7.50: now the dearest medium model
     )
-    assert ordered_assignments(snapshot, Role.COMPLEX) == ("google/gemini-3.8-flash", "z-ai/glm-5.3")
-    assert ordered_assignments(snapshot, Role.ESCALATION) == ("google/gemini-3.8-flash", "z-ai/glm-5.3")
+    # GLM 5.3 ($1.40 / $4.40) is cheaper per token than Gemini 4 Hydrogen ($1.50 / $7.50), so it orders first.
+    assert ordered_assignments(snapshot, Role.COMPLEX) == ("z-ai/glm-5.3", "google/gemini-4-hydrogen")
+    assert ordered_assignments(snapshot, Role.ESCALATION) == ("z-ai/glm-5.3", "google/gemini-4-hydrogen")
     # Closure plan v3: Haiku 5.5 is the shipped easy and summarizer model (the attached profile's roles).
     assert ordered_assignments(snapshot, Role.EASY) == ("anthropic/claude-haiku-5.5",)
     assert ordered_assignments(snapshot, Role.SUMMARIZER) == ("anthropic/claude-haiku-5.5",)
-    assert ordered_assignments(snapshot, Role.REVIEWER) == ("anthropic/claude-sonnet-5.5", "moonshotai/kimi-k3")
+    # Terra is cheapest; Kimi K3.1 Pro and Sonnet 5.5 tie at $2 / $10, and a tie prefers the China origin.
+    assert ordered_assignments(snapshot, Role.REVIEWER) == ("openai/gpt-6.1-terra", "moonshotai/kimi-k3.1-pro", "anthropic/claude-sonnet-5.5")
 
 
 def test_the_shipped_defaults_list_without_granting_roles() -> None:

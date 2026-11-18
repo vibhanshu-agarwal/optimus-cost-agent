@@ -43,7 +43,7 @@ from tests.unit.acp.test_local_infra_model_registry import _spawned_args
 from tests.unit.acp.test_operator_registry_override import LUNA_OVERRIDE, _run_gateway, _write_override
 from tests.unit.optimus_gateway.test_main_model_registry import _manifest, started  # noqa: F401 - fixture
 
-AUTO_HASH = "7992f727c4d1ab8b9a8cf39dcae578b4af8f598aa66d68a14fecbc00c4c23487"  # pragma: allowlist secret - registry identity (CA2), not a credential
+AUTO_HASH = "6b9cc2fe93beca58fc94329dffb0e3139201af8606fc558701af31fde0a10e04"  # pragma: allowlist secret - registry identity (CA2), not a credential
 _BASE = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
     "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
@@ -109,7 +109,7 @@ def test_the_host_recomposes_only_the_approved_auto_composition() -> None:
     literal = approval_literal(auto_snapshot())
     composition = compose_auto_composition(approved_literal=literal, composition=AUTO_COMPOSITION)
     assert composition.snapshot.effective_hash == AUTO_HASH
-    assert composition.default_model() == "google/gemini-3.8-flash"  # ADR-023's default planner, computed here
+    assert composition.default_model() == "google/gemini-4-hydrogen"  # ADR-023's default planner, computed here
     for approved, name in ((literal, None), (trusted_approval_literal(), AUTO_COMPOSITION), (None, AUTO_COMPOSITION)):
         with pytest.raises(BindingError) as caught:
             compose_auto_composition(approved_literal=approved, composition=name)
@@ -214,7 +214,7 @@ def test_the_auto_probe_uses_the_default_planner_bound_against_the_auto_registry
     monkeypatch.setattr("optimus.gateway.client.GatewayClient", _Client)
     preflight._require_gateway_auth(_AUTO_ENV)
     [(model, binding)] = sent
-    assert model == "google/gemini-3.8-flash" != "auto"
+    assert model == "google/gemini-4-hydrogen" != "auto"
     assert binding is not None and binding.registry_hash == AUTO_HASH
 
 

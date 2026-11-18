@@ -159,7 +159,7 @@ _ESCALATION_WORDS: dict[str, str] = {"stopped": "stopped", "empty": "none config
 
 
 def notice_text(decision: AutoDecision) -> str:
-    """The turn's one Auto line (Plan 12.4 Task 5), for example ``Auto: medium → google/gemini-3.8-flash``, with why it
+    """The turn's one Auto line (Plan 12.4 Task 5), for example ``Auto: medium → google/gemini-4-hydrogen``, with why it
     is not simply the classifier's tier when it is not."""
     reasons: list[str] = []
     if decision.failure_kind is not None:
