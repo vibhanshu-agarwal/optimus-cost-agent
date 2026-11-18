@@ -235,6 +235,16 @@
   "M10-a": {
    "keys": {
     "0": "secret-deploy-token"
+   },
+   "control": {
+    "steps": {
+     "1": [
+      "say",
+      {
+       "text": "/memory switch-on {secret-deploy-token@v}"
+      }
+     ]
+    }
    }
   },
   "M10-b": {

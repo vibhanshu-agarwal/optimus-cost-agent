@@ -89,6 +89,7 @@ EVENT_OF: Mapping[str, str] = {
     "card.Updated": "memory.notice.remembered",
     "card.unconfirmed": "memory.notice.unconfirmed",
     "card.backlogged": "memory.notice.backlogged",  # a card that could not be sent, which the project's durable backlog kept
+    "answer.unconfirmed": "memory.notice.unconfirmed",  # a user command's own unconfirmed reply, with no model call (review 5)
     "answer.refused_secret": "memory.secret_refused",  # pragma: allowlist secret
     "answer.read_only": "memory.blocked_untrusted_workspace",
     "answer.switched_on": "memory.switched_on",
@@ -144,6 +145,8 @@ class Run:
     answers: list[str] = field(default_factory=list)
     steps: list[str] = field(default_factory=list)  # what each input did, for the report
     seq: int = -1  # the case input being carried out
+    command: bool = False  # that input is a user command (`/...`)
+    requests_at_input: int = 0  # model requests made before that input began
     lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def add(self, kind: str, item: str | None = None, version: int | None = None, project: str | None = None) -> None:
@@ -549,6 +552,10 @@ class Rig:
         self.run.answers.append(text)
         if text.startswith("Not saved: the statement looks like it holds a secret"):
             self.run.add("answer.refused_secret", project=project)
+        from optimus.acp import memory_commands as mc
+
+        if text.startswith(mc.UNAVAILABLE[:40]) and self.run.command and len(self.model.requests) == self.run.requests_at_input:
+            self.run.add("answer.unconfirmed", project=project)  # the host's reply to the command itself; no model wrote it
         if " cannot be switched on:" in text:
             self.run.add("answer.switch_on_unavailable", project=project)
         if "is retired." in text and text.startswith("Remembered"):
@@ -591,14 +598,19 @@ class Rig:
         from optimus_security.memory_store_contract import MAX_LIST
 
         accounted = {item.item for item in served.items} | {r[0] for r in served.reverify} | {e[0] for e in served.elsewhere}
+        listed: set[str] = set()
         cursor = None
         while True:  # every page: a live item after a page of off records is still checked
             rows, cursor = commands.store.items("project", limit=MAX_LIST, cursor=cursor)
             for row in rows:
+                listed.add(row.event.item)
                 if row.event.status == "active" and row.event.trust != "off" and row.event.statement and row.event.item not in accounted:
                     self.run.add("served.expired", row.event.item, row.event.version, project)
             if not cursor:
                 break
+        for key in sorted(self.committed):  # an item whose commit was observed and that the listing no longer holds at all
+            if key[0] == project and self.appended[key][0] not in listed:
+                self.run.add("served.expired", self.appended[key][0], self.appended[key][1], project)
 
     def finish_input(self, host: Host | None = None) -> None:
         """What a case input left: its extraction and checkpoint jobs settled, the session's continuity, whether the host gave
@@ -829,6 +841,7 @@ async def _op_delete_then_lose(rig: Rig, run: Run, seq: int, text: str, key: str
         await rig.host.say(command, f"p-{seq}-delete")
     rig.finish_input()
     rig.store.lose_volume()
+    rig.appended.clear(), rig.committed.clear()  # the volume is really gone: what it held is not expected any more
     await _op_new_session(rig, run, seq, text)
     await rig.host.say_confirming(_resolve("/memory restore {gen} --map", rig), f"p-{seq}-again", "allow")
     rig.finish_input()
@@ -961,6 +974,7 @@ async def drive(rig: Rig, case: GoldenCase, steps: Mapping[int, Sequence[Any]], 
         if name in ("say", "confirm"):
             text = _resolve(options.get("text", item.text or ""), rig)
             rig.pending["said"] = True
+            run.command, run.requests_at_input = text.lstrip().startswith("/"), len(rig.model.requests)
             rig.host.outbound.fail_cards = bool(options.get("cards_fail"))  # the client goes away after the commit
             try:
                 if options.get("pause"):  # the store stalls (a paused container) while this input is saved
@@ -1010,6 +1024,7 @@ def _played(store: Store, base: Path, case: GoldenCase, entry: Mapping[str, Any]
     from optimus.acp import memory_commands as mc
 
     rig = Rig(store, base, name)
+    rig.case = case  # type: ignore[attr-defined]
     keys = {int(seq): [key] if isinstance(key, str) else list(key) for seq, key in entry.get("keys", {}).items()}
     steps = {int(seq): step for seq, step in entry.get("steps", {}).items()}
     original = mc.MemoryCommands.served
@@ -1103,16 +1118,25 @@ def _safety(case: GoldenCase, trace: ObservedTrace | None) -> dict[str, Any]:
     if trace is None:
         return {"status": "INCONCLUSIVE", "reasons": ["the run produced no trace"], "checked": checked}
     reasons = [f"{event.type} at seq {event.seq}" for event in trace.events if event.type in SAFETY_EVENTS]
-    # Only an item the final snapshot shows was admitted can have expired: one never admitted (captured off) did not, and a run
-    # that did not finish has no snapshot, so nothing in it was observed going inactive (review 4).
+    # Only an item the run saw admitted (a confirmed commit, or a non-off version in the snapshot) can have expired: one never
+    # admitted (captured off) did not. A finished run's snapshot is complete, so an admitted item missing from it is gone; a run
+    # that did not finish has no snapshot, so that check is undecided (reviews 4 and 5).
+    finished = not any(name.startswith("run did not finish:") for name in trace.missing_coverage)
     state = {(item.key, item.version): item for item in trace.memory_state}
-    admitted = {item.key for item in trace.memory_state if not item.off}
-    reasons += [f"{expected.key} v{expected.version} is not active" for expected in case.expected_memory
-                if expected.status == "active" and expected.key in admitted
-                and getattr(state.get((expected.key, expected.version)), "status", None) != "active"]
+    admitted = {event.memory_key for event in trace.events if event.type == "memory.committed" and event.memory_key}
+    admitted |= {item.key for item in trace.memory_state if not item.off}
+    undecided = []
+    for expected in case.expected_memory:
+        if expected.status != "active" or expected.key not in admitted:
+            continue
+        observed = state.get((expected.key, expected.version))
+        if observed is None and not finished:
+            undecided.append(f"{expected.key} v{expected.version}: no final snapshot")
+        elif observed is None or observed.status != "active":
+            reasons.append(f"{expected.key} v{expected.version} was admitted and is not active")
     if reasons:
         return {"status": "FAIL", "reasons": reasons, "checked": checked}
-    gaps = [name for name in trace.missing_coverage if not name.startswith("memory.strength_")]
+    gaps = [name for name in trace.missing_coverage if not name.startswith("memory.strength_")] + undecided
     if gaps:
         return {"status": "INCONCLUSIVE", "reasons": [f"undecided: {gap}" for gap in gaps], "checked": checked}
     return {"status": "PASS", "reasons": [], "checked": checked}
@@ -1147,7 +1171,31 @@ def _m15_overflow(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
             "policy": "oldest live off record archived at the cap (memory_store._archived)"}
 
 
-EFFECTIVE: Mapping[str, Callable[[Rig, Mapping[str, Any]], dict[str, Any]]] = {"M09-a-D10": _m09_skip, "M15-a-D10": _m15_overflow}
+def _m10_sanitized(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
+    """M10-a effective sanitation comparison (Codex CP4 review 2 ruling, review 5 ruling 2), on a control play whose second
+    input tries to switch the off record on. The secret was redacted before extraction, so the outcome is an off record of the
+    redacted words: shown here is that only permitted off metadata exists (no statement), that the secret is in nothing the
+    store holds (its stream, every payload and checkpoint, decoded), that nothing was admitted, and that switch-on refused."""
+    run = rig.run
+    token = re.search(r"FAKE-TOKEN[A-Za-z0-9-]*", rig.case.inputs[0].text or "")  # type: ignore[attr-defined]
+    project = rig.host.project or ""
+    redis = rig.store.observer
+    held = [value for value in redis.hgetall(memory_store.MemoryStore._key(project, "payloads")).values()]
+    held += [fields[b"e"] for _id, fields in redis.xrange(memory_store.MemoryStore._key(project, "events"))]
+    text = b"\n".join(held).decode("utf-8", "replace")
+    offs = [row for row in items.values() if row.trust == "off"]
+    reasons = ([] if token else ["the case input names no token"]) + \
+              ([f"{token.group(0)} is in what the store holds"] if token and token.group(0) in text else []) + \
+              (["an item was admitted"] if any(o.kind.startswith("commit.") for o in run.observations) else []) + \
+              ([] if offs and all(not row.statement for row in offs) else ["no off record, or one that keeps a statement"]) + \
+              ([] if any(" cannot be switched on:" in answer or answer.startswith("Not saved") for answer in run.answers)
+               else ["switch-on was not refused"])
+    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "searched_bytes": len(text),
+            "policy": "redaction before extraction, then automatic off capture with metadata only"}
+
+
+EFFECTIVE: Mapping[str, Callable[[Rig, Mapping[str, Any]], dict[str, Any]]] = {
+    "M09-a-D10": _m09_skip, "M15-a-D10": _m15_overflow, "M10-a": _m10_sanitized}
 
 
 # --- inputs ----------------------------------------------------------------------------------------------------------------

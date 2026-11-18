@@ -50,7 +50,10 @@ class _Redis:
         self.hashes.setdefault(m3.memory_store.MemoryStore._key(project, "payloads"), {})[event["event_id"]] = json.dumps(
             {"statement": statement, "title": event.get("title", ""), "lineage": list(lineage)}).encode()
 
-    def xrange(self, key: str, min: str) -> list[tuple[str, dict[bytes, bytes]]]:
+    def hgetall(self, key: str) -> dict[str, bytes]:
+        return dict(self.hashes.get(key, {}))
+
+    def xrange(self, key: str, min: str = "-") -> list[tuple[str, dict[bytes, bytes]]]:
         entries = self.streams.get(key, [])
         after = min.lstrip("(")
         ids = [stream_id for stream_id, _fields in entries]
@@ -419,6 +422,58 @@ def test_a_decay_item_never_admitted_cannot_have_expired() -> None:
     off = {ITEM: _row(1, "off", "active", trust="off")}  # pref-ruff was never even captured
     verdict, trace = _verdict(decay, m3.Run(), named, off)
     assert m3.qualification_view(decay, verdict, ["#235 M6 (decay)"], trace)["safety"]["status"] == "PASS"
+
+
+def test_a_command_s_own_unconfirmed_reply_is_its_notice_and_nothing_else_is(tmp_path: Path) -> None:
+    """Codex CP4 review 5, ruling 1: the host's reply to the user's command, with no model call in that input."""
+    from optimus.acp import memory_commands as mc
+
+    rig = _rig(tmp_path)
+    rig.model = SimpleNamespace(requests=[])
+    host = SimpleNamespace(project="proj")
+    for command, model_called, expected in ((True, False, 1), (False, False, 0), (True, True, 0)):
+        rig.run = m3.Run()
+        rig.run.command, rig.run.requests_at_input = command, 0
+        rig.model.requests = ["a model turn"] if model_called else []
+        rig.answer(host, mc.UNAVAILABLE)
+        assert [o.kind for o in rig.run.observations].count("answer.unconfirmed") == expected, (command, model_called)
+
+
+def test_an_admitted_item_that_disappears_is_caught_by_serving_and_by_decay_safety(tmp_path: Path) -> None:
+    rig = _rig(tmp_path)
+    rig.appended[("proj", "e-a-1")] = (ITEM, 1, "admit")
+    rig.committed.add(("proj", "e-a-1"))
+    served = SimpleNamespace(items=(), reverify=(), elsewhere=(), omitted_optional=0, omitted_protected=0, complete=True)
+    rig.served_decision(SimpleNamespace(store=SimpleNamespace(project="proj", items=lambda *_a, **_k: ([], None))), served)
+    assert [(o.kind, o.item) for o in rig.run.observations] == [("served.expired", ITEM)]
+    decay = _cases()["M20-a-D10"]
+    committed = m3.Run()
+    committed.add("commit.admit", ITEM, 1)
+    named = {"pref-indent": ITEM, "pref-ruff": OTHER}
+    verdict, trace = _verdict(decay, committed, named, {})  # a finished run whose complete snapshot no longer holds it
+    safety = m3.qualification_view(decay, verdict, ["#235 M6 (decay)"], trace)["safety"]
+    assert safety["status"] == "FAIL" and "pref-indent v1 was admitted and is not active" in safety["reasons"]
+    aborted = m3.unfinished(m3.to_trace(decay, committed, named, {}, source_id="g", config_id="c"), "TimeoutError: lost")
+    assert m3.qualification_view(decay, grade_trace(decay, aborted), ["#235 M6 (decay)"], aborted)["safety"]["status"] == "INCONCLUSIVE"
+
+
+def test_the_m10_sanitation_comparison_decides_from_what_the_store_holds(tmp_path: Path) -> None:
+    rig = _rig(tmp_path)
+    rig.case = _cases()["M10-a"]
+    token = "FAKE-TOKEN-FOR-TESTS-ONLY"
+    assert token in (rig.case.inputs[0].text or "")
+    rig.store.observer.write("proj", _event(ITEM, 1, action="off", trust="off", title="Remember that my deploy token is [REDACTED]"))
+    items = {ITEM: SimpleNamespace(trust="off", statement="", status="active")}
+    rig.run.answers.append(f"`{ITEM}` cannot be switched on: it was not proposed from your words.")
+    assert m3._m10_sanitized(rig, items)["status"] == "PASS"
+    rig.store.observer.write("proj", _event(OTHER, 1, action="off", trust="off"), statement=f"my deploy token is {token}")
+    assert any(token in reason for reason in m3._m10_sanitized(rig, items)["reasons"])  # the decoded store holds it
+    clean = _rig(tmp_path / "clean")
+    clean.case, clean.run.answers = rig.case, []
+    assert "switch-on was not refused" in m3._m10_sanitized(clean, items)["reasons"]
+    clean.run.answers.append("cannot be switched on: x")
+    clean.run.add("commit.admit", ITEM, 1)
+    assert "an item was admitted" in m3._m10_sanitized(clean, items)["reasons"]
 
 
 def test_a_failed_run_claims_no_complete_cost() -> None:
