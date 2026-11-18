@@ -87,6 +87,28 @@ class PurgeJournal:
                     found.append(payload)
         return sorted(found, key=lambda entry: (entry["at_ms"], PHASES.index(entry["phase"])))
 
+    def project_entries(self, project: str) -> list[dict[str, Any]]:
+        """Every record for one project, from every Gateway's stream, in time order (a restore applies them all)."""
+        found: list[dict[str, Any]] = []
+        for directory in ob.stream_dirs(self._root):
+            own = self._writer is not None and directory.name == self._writer.stream_id
+            handle = None if own else ob.claim(directory)
+            try:
+                scan = ob.scan_stream(directory, orphan=handle is not None)
+            finally:
+                if handle is not None:
+                    ob.release(handle)
+            for record in (*scan.records, *((scan.unverified_tail,) if scan.unverified_tail is not None else ())):
+                payload = dict(record.payload)
+                if payload.get("kind") != KIND:
+                    continue
+                mac = payload.pop("mac", "")
+                if not hmac.compare_digest(str(mac), _mac(self._key, payload)):
+                    raise JournalError("MEMORY_JOURNAL_INVALID")
+                if payload["project"] == project:
+                    found.append(payload)
+        return sorted(found, key=lambda entry: (entry["at_ms"], PHASES.index(entry["phase"])))
+
     def close(self) -> None:
         with self._lock:
             if self._writer is not None:

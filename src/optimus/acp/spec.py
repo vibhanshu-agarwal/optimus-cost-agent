@@ -64,7 +64,7 @@ from optimus.acp.lifecycle import (
     TurnSendKey,
 )
 from optimus.acp.memory_commands import DESCRIPTIONS as MEMORY_COMMAND_DESCRIPTIONS
-from optimus.acp.memory_commands import PURGE_CANCEL, MemoryAnswer, MemoryCommand, MemoryCommands, PurgeRequest
+from optimus.acp.memory_commands import PURGE_CANCEL, Confirmation, MemoryAnswer, MemoryCommand, MemoryCommands, PurgeRequest
 from optimus.acp.memory_commands import READ_ONLY as MEMORY_READ_ONLY
 from optimus.acp.memory_commands import parse_command as parse_memory_command
 from optimus.acp.session_config import (
@@ -128,6 +128,7 @@ from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.context.memory_continuity import Continuity, Settled
 from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
+from optimus.context.memory_recovery import Scheduler as RecoveryScheduler
 from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_disposition import (
@@ -284,6 +285,7 @@ MEMORY_COMMAND_TIMEOUT_TEXT = ("The memory store took too long, so the wait was 
                                "`/memory` shows what is stored. Running the same command again never makes a second change.")
 PURGE_CONFIRM_SECONDS = 120.0  # a purge question expires; a later answer deletes nothing
 MEMORY_SERVE_SECONDS = 4.0  # a turn waits at most this long for its memory; then it is served none
+MEMORY_RECOVERY_WAIT_SECONDS = 120.0  # an export or restore of a large project pages through the store
 _LocalWait = Callable[[asyncio.Task[Any], float | None], Awaitable[bool]]
 _LocalAnswer = tuple[list[dict[str, Any]], Callable[[], None]]
 
@@ -473,6 +475,7 @@ class AcpSpecSession:
     memory_outcomes: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
     memory_commands: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: None leaves memory read-only
     continuity: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: checkpoints, predecessor and brief
+    recovery_scheduler: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: the recovery copy's exports
     # Plan 12.11 Task 4: extraction's changes not yet shown, as host cards at the next turn (never an off record's)
     memory_pending: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
     memory_state_shown: str | None = None
@@ -567,6 +570,8 @@ class InMemoryAcpSpecSessionStore:
         if session.memory_extractor is not None:
             # Off the event loop: queued jobs release their turns at once; a running one finishes on its own.
             threading.Thread(target=session.memory_extractor.close, kwargs={"timeout": 5.0}, name="memory-extract-close", daemon=True).start()
+        if session.recovery_scheduler is not None:  # a last export at clean shutdown, best effort, off the loop
+            threading.Thread(target=session.recovery_scheduler.close, name="memory-recovery-close", daemon=True).start()
         return True
 
     def get(self, session_id: str) -> AcpSpecSession | None:
@@ -1455,21 +1460,20 @@ class AcpDuplexAdapter:
                     if confirmed is None:
                         return None
                     answer = confirmed
+                elif answer.confirm is not None:
+                    confirmed = await self._confirm_recovery(session_id, commands, answer.confirm, wait)
+                    if confirmed is None:
+                        return None
+                    answer = confirmed
             updates = [memory_notices.card(session_id, notice, label) for notice, label in answer.notices]
             updates.append(build_agent_message_chunk_notification(session_id=session_id, text=answer.text))
             return updates, lambda: None
 
         return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered")
 
-    async def _confirm_purge(self, session_id: str, commands: MemoryCommands, purge: PurgeRequest,
-                             wait: _LocalWait) -> MemoryAnswer | None:
-        """The purge's one-shot confirmation (plan v4, Commands): a host-generated request and tool-call id bound to the
-        project, item, version and deletion boundary. Only this request's own response can answer it, and only its Purge
-        option with this nonce counts; cancel, expiry, an error or anything else deletes nothing. None: the command was
-        cancelled."""
-        params = memory_notices.purge_permission_params(session_id, project=commands.project, item=purge.item,
-                                                        version=purge.version, title=purge.title, nonce=purge.nonce,
-                                                        option=purge.option, cancel_option=PURGE_CANCEL)
+    async def _ask_once(self, params: dict[str, Any], option: str, wait: _LocalWait) -> bool | None:
+        """One host-generated `session/request_permission`: True only for its own response choosing `option`; False for cancel,
+        another option, an error or expiry; None when the command itself was cancelled."""
         ask = asyncio.create_task(self._outbound.request("session/request_permission", params))
         await asyncio.sleep(0)
         pending = None
@@ -1482,15 +1486,44 @@ class AcpDuplexAdapter:
             if pending is not None:
                 self._outbound.cancel_request(pending, {"outcome": {"outcome": "cancelled"}})
             ask.cancel()
-            if not answered:
-                return None
-            return MemoryAnswer(f"The deletion of `{purge.item}` was not confirmed in time, so nothing was deleted.")
+            return None if not answered else False
         try:
             response = ask.result()
-        except Exception:  # noqa: BLE001 - a client that cannot answer deletes nothing
-            return MemoryAnswer(f"The deletion of `{purge.item}` could not be confirmed, so nothing was deleted.")
+        except Exception:  # noqa: BLE001 - a client that cannot answer agrees to nothing
+            return False
         outcome = response.get("outcome") if isinstance(response, dict) else None
-        if not (isinstance(outcome, dict) and outcome.get("outcome") == "selected" and outcome.get("optionId") == purge.option):
+        return isinstance(outcome, dict) and outcome.get("outcome") == "selected" and outcome.get("optionId") == option
+
+    async def _confirm_recovery(self, session_id: str, commands: MemoryCommands, confirmation: Confirmation,
+                                wait: _LocalWait) -> MemoryAnswer | None:
+        """Plan 12.11 recovery: setting the copy's location (with sync consent when it is synced) or restoring one generation
+        needs the user's fresh one-shot confirmation, bound to exactly what they were shown."""
+        params = memory_notices.confirm_permission_params(session_id, kind=confirmation.kind, title=confirmation.title,
+                                                          text=confirmation.text, meta=confirmation.meta, nonce=confirmation.nonce,
+                                                          option=confirmation.option, cancel_option=f"memory-{confirmation.kind}-cancel")
+        agreed = await self._ask_once(params, confirmation.option, wait)
+        if agreed is None:
+            return None
+        if not agreed:
+            return MemoryAnswer("Not confirmed, so nothing was changed.")
+        work = asyncio.create_task(asyncio.to_thread(commands.confirmed, confirmation))
+        if not await wait(work, MEMORY_RECOVERY_WAIT_SECONDS):
+            return None
+        return work.result() if work.done() else MemoryAnswer(MEMORY_COMMAND_TIMEOUT_TEXT)
+
+    async def _confirm_purge(self, session_id: str, commands: MemoryCommands, purge: PurgeRequest,
+                             wait: _LocalWait) -> MemoryAnswer | None:
+        """The purge's one-shot confirmation (plan v4, Commands): a host-generated request and tool-call id bound to the
+        project, item, version and deletion boundary. Only this request's own response can answer it, and only its Purge
+        option with this nonce counts; cancel, expiry, an error or anything else deletes nothing. None: the command was
+        cancelled."""
+        params = memory_notices.purge_permission_params(session_id, project=commands.project, item=purge.item,
+                                                        version=purge.version, title=purge.title, nonce=purge.nonce,
+                                                        option=purge.option, cancel_option=PURGE_CANCEL)
+        agreed = await self._ask_once(params, purge.option, wait)
+        if agreed is None:
+            return None
+        if not agreed:
             return MemoryAnswer(f"Not deleted: `{purge.item}` stays as it was.")
         work = asyncio.create_task(asyncio.to_thread(commands.purge, purge))
         if not await wait(work, MEMORY_COMMAND_WAIT_SECONDS):
@@ -1852,10 +1885,14 @@ class AcpDuplexAdapter:
                     extractor = session.memory_extractor
                     session.continuity = Continuity(extractor.store, workspace=Path(cwd), worktree=extractor.worktree,
                                                     session=session.session_id)
+                    recovery = getattr(extractor, "recovery", None)
                     session.memory_commands = MemoryCommands(
                         extractor.store, trusted=True, keyed=extractor.keyed, source=extractor.source,
                         source_digest=extractor.source_digest, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize,
-                        brief=session.continuity.welcome)
+                        brief=session.continuity.welcome, recovery=recovery, workspace=Path(cwd))
+                    if recovery is not None:
+                        session.recovery_scheduler = RecoveryScheduler(recovery)
+                        session.recovery_scheduler.start()
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
             completed = True

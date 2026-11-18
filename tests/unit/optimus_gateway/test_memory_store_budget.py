@@ -483,14 +483,9 @@ def test_a_fsync_recheck_that_stalls_is_a_timeout(fake: Callable[[str], FakeRedi
     assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 0.4) == (503, msc.error_body("MEMORY_TIMEOUT"))
 
 
-def test_an_unavailable_operation_never_reaches_verification(fake: Callable[[str], FakeRedis]) -> None:
-    server = fake("fast")
-    store, _endpoint_ = _store(server)
-    checks: list[float] = []
-    service = memory_store.MemoryStoreService(store, verify=checks.append)
-    body = {"op": "export", "project": "p-1", "limit": 10}
-    assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 5) == (501, msc.error_body("MEMORY_OPERATION_UNAVAILABLE"))
-    assert checks == [] and server.connections == 0
+def test_every_operation_is_served_since_task_4() -> None:
+    """Plan 12.11 Task 4 built the recovery copy: no operation is left answering MEMORY_OPERATION_UNAVAILABLE."""
+    assert msc.UNAVAILABLE == frozenset()
 
 
 def test_verification_writes_nothing_to_a_replacement_it_reconnected_to(fake: Callable[[str], FakeRedis]) -> None:

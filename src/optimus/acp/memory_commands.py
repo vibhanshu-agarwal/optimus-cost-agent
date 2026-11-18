@@ -20,8 +20,10 @@ from __future__ import annotations
 import dataclasses
 import re
 import secrets
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Final
 
 from context_engine import memory_gate
@@ -43,8 +45,9 @@ COMMANDS: Final = ("remember", "forget", "memory", "welcome")
 DESCRIPTIONS: Final = {
     "remember": ("Save a rule or fact to this project's memory", "<statement>"),
     "forget": ("Withdraw a memory item (history is kept); --purge deletes its text", "<id>@<version> [--purge]"),
-    "memory": ("List memory, or view, edit, switch on or forget one item",
-               "[view <id> | edit <id>@<version> <statement> | switch-on <id>@<version> | forget <id>@<version> | page <n>]"),
+    "memory": ("List memory, or view, edit, switch on or forget one item; export or restore the recovery copy",
+               "[view <id> | edit <id>@<version> <statement> | switch-on <id>@<version> | forget <id>@<version> | page <n> | "
+               "export | restore [<generation>]]"),
     "welcome": ("Show the welcome-back brief for this project", ""),
 }
 PAGE_ITEMS: Final = 20
@@ -59,6 +62,8 @@ USAGE: Final = (
     "- `/memory edit <id>@<version> <statement>` replaces one of your items.\n"
     "- `/memory switch-on <id>@<version>` saves an off item from your exact words, while this session still holds them.\n"
     "- `/welcome` shows the welcome-back brief.\n"
+    "- `/memory export` saves the recovery copy now (the first time, you confirm where); `/memory restore` lists the copies and "
+    "`/memory restore <generation>` restores one into an empty store.\n"
     "A change names the version you saw in `/memory`, for example `m-0123456789abcdef@2`."
 )
 NEEDS_VERSION: Final = "Name the version you mean, as `/memory` shows it: for example `{verb} {item}@2`. Nothing was changed."
@@ -67,6 +72,7 @@ UNAVAILABLE: Final = ("The memory store did not answer, so this is not confirmed
                       "shows what is stored, and running the same command again never makes a second change.")
 _ITEM: Final = re.compile(r"m-[0-9a-f]{16}")  # the route's item id
 _REF: Final = re.compile(r"(m-[0-9a-f]{16})@([1-9][0-9]{0,9})")
+_GENERATION: Final = re.compile(r"gen-[0-9]{1,16}-[0-9a-f]{12}")
 _COMMAND_KEY: Final = "command"  # command keys are their own family: never an automatic candidate's item
 
 
@@ -79,6 +85,22 @@ class MemoryCommand:
     start: int = 0  # where the statement starts in the prompt text, for its span
     page: int = 1
     before: int | None = None
+    generation: str | None = None
+
+
+@dataclass(frozen=True)
+class Confirmation:
+    """A recovery action waiting for the user's one-shot confirmation, bound to what it was shown and a host nonce."""
+
+    kind: str  # "location" (where copies go, and sync consent when it is synced) or "restore" (one generation)
+    title: str
+    text: str
+    meta: dict[str, Any]
+    nonce: str
+
+    @property
+    def option(self) -> str:
+        return f"memory-{self.kind}:{self.nonce}"
 
 
 @dataclass(frozen=True)
@@ -100,6 +122,7 @@ class MemoryAnswer:
     text: str
     notices: tuple[tuple[MemoryNotice, str], ...] = ()  # each confirmed or uncertain change and its label
     purge: PurgeRequest | None = None  # ask the user before anything is destroyed
+    confirm: Confirmation | None = None  # ask the user before a recovery location is set or a generation restored
 
 
 def _one_line(statement: str) -> bool:
@@ -153,6 +176,12 @@ def parse_command(text: str, *, attachments: bool) -> MemoryCommand | str | None
         return USAGE
     if not rest:
         return MemoryCommand("list")
+    if rest == ["export"]:
+        return MemoryCommand("export")
+    if rest[0] == "restore" and len(rest) <= 2:
+        if len(rest) == 1:
+            return MemoryCommand("restore")
+        return MemoryCommand("restore", generation=rest[1]) if _GENERATION.fullmatch(rest[1]) else USAGE
     if rest[0] == "page" and len(rest) == 2 and rest[1].isdigit() and 1 <= int(rest[1]) <= 1000:
         return MemoryCommand("list", page=int(rest[1]))
     if rest[0] == "view" and len(rest) in (2, 4):
@@ -223,13 +252,14 @@ class MemoryCommands:
 
     def __init__(self, store: Any, *, trusted: bool, sanitize: Callable[[str], str], keyed: Callable[[str], str] = digest,
                  scope: str = "project", source: Callable[[str], str | None] = lambda _block: None,
-                 source_digest: Callable[[str], str] | None = None, recovery: Callable[[], str] | None = None,
+                 source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
                  brief: Callable[[], str] | None = None) -> None:
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
         self._source_digest = source_digest
-        self._recovery = recovery
+        self._recovery = recovery  # the project's `memory_recovery.Recovery`, or None
+        self._workspace = workspace  # the session's trusted worktree, where a first recovery location goes
         self._brief = brief
 
     @property
@@ -264,6 +294,8 @@ class MemoryCommands:
                 return MemoryAnswer(self._view(command.item, command.before))
             if command.verb == "welcome":
                 return MemoryAnswer(self._brief() if self._brief is not None else "No welcome-back brief is available for this project yet.")
+            if command.verb in ("export", "restore"):
+                return self._recovery_command(command)
             if not self._trusted:
                 return MemoryAnswer(READ_ONLY)
             if command.verb == "remember":
@@ -516,7 +548,10 @@ class MemoryCommands:
         return "source held: `/memory switch-on` can save it" if said is not None else f"cannot be switched on: {why}"
 
     def _footer(self) -> str:
-        recovery = self._recovery() if self._recovery is not None else "Recovery copy: not available in this version."
+        recovery = self._recovery.status_line() if self._recovery is not None else "Recovery copy: not available for this session."
+        if self._recovery is not None and self._recovery.recovery_required():
+            recovery = ("**Recovery required:** the memory store holds nothing for this project although it held memory before. "
+                        "Nothing is served or saved until you restore it: `/memory restore` lists the copies.\n" + recovery)
         return f"\n\n{recovery}\nItems never expire through inactivity. `/memory view <id>` shows one item's history."
 
     def _view(self, item: str, before: int | None) -> str:
@@ -535,6 +570,84 @@ class MemoryCommands:
         if more and versions:
             lines.append(f"Older: `/memory view {item} older {versions[-1]['version']}`.")
         return "\n".join(lines)
+
+
+    # --- the recovery copy -----------------------------------------------------------------------------------------------
+
+    def _recovery_command(self, command: MemoryCommand) -> MemoryAnswer:
+        from optimus.context import memory_recovery as mr
+
+        recovery = self._recovery
+        if recovery is None or not self._trusted:
+            return MemoryAnswer("The recovery copy is not available here: this workspace is not registered and trusted.")
+        try:
+            state = recovery.state()
+            if command.verb == "export":
+                if state.destination is None:
+                    if self._workspace is None:
+                        return MemoryAnswer("The recovery copy is not available for this session.")
+                    return MemoryAnswer("", confirm=self._location_question(mr.location(self._workspace)))
+                generation = recovery.export()
+                return MemoryAnswer(f"Saved the recovery copy `{generation.name}`: {generation.count} items, deletion frontier "
+                                    f"{generation.deletions}. {recovery.status_line()}")
+            if state.destination is None:
+                return MemoryAnswer("No recovery location is set up for this project, so there is nothing to restore.")
+            found = mr.generations(Path(state.destination))
+            if command.generation is None:
+                if not found:
+                    return MemoryAnswer(f"No recovery copies are in {state.destination}.")
+                lines = [f"Recovery copies in {state.destination} (newest first). Restore one with `/memory restore <generation>`; "
+                         "nothing chooses for you when they differ:"]
+                lines += [f"- `{g.name}`: {g.count} items, head {g.head}, {g.deletions} withdrawn or deleted, saved "
+                          f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(g.created_ms / 1000))}" for g in found[:10]]
+                return MemoryAnswer("\n".join(lines))
+            chosen = next((g for g in found if g.name == command.generation), None)
+            if chosen is None:
+                return MemoryAnswer(f"There is no recovery copy `{command.generation}` in {state.destination}.")
+            text = (f"Restore `{chosen.name}` ({chosen.count} items, head {chosen.head}, {chosen.deletions} withdrawn or deleted) into "
+                    "this project's memory store? Only an empty store is restored into; deletions recorded since still apply.")
+            return MemoryAnswer("", confirm=Confirmation("restore", f"Restore memory from {chosen.name}?", text,
+                                                         {"project": self.project, "generation": chosen.name, "seal": chosen.seal},
+                                                         secrets.token_hex(16)))
+        except mr.RecoveryError as failure:
+            return MemoryAnswer(failure.message)
+
+    def _location_question(self, destination: Path) -> Confirmation:
+        from optimus.context import memory_recovery as mr
+
+        synced = mr.sync_root(self._workspace) if self._workspace is not None else None  # the location lies in the worktree
+        text = (f"Keep this project's plaintext recovery copy in {destination}? It is same-drive plaintext, not a backup: active items "
+                "only, kept out of Git and out of the model's reach, but readable by authorized TEST or shell commands.")
+        if synced:
+            text += (f" This folder is synced ({synced}): the sync service may keep copies, including of later-withdrawn items, that "
+                     "Optimus cannot erase. Confirming also consents to that.")
+        return Confirmation("location", "Set up the memory recovery copy?", text,
+                            {"project": self.project, "destination": str(destination), "synced": synced or ""}, secrets.token_hex(16))
+
+    def confirmed(self, confirmation: Confirmation) -> MemoryAnswer:
+        """After the user chose to go ahead with exactly `confirmation`."""
+        from optimus.context import memory_recovery as mr
+        from optimus.context.authored_memory import MemoryStoreRefused, MemoryStoreUnavailable
+
+        recovery = self._recovery
+        if recovery is None:
+            return MemoryAnswer("The recovery copy is not available for this session.")
+        try:
+            if confirmation.kind == "location":
+                recovery.confirm(Path(confirmation.meta["destination"]), sync_consent=bool(confirmation.meta["synced"]))
+                generation = recovery.export()
+                return MemoryAnswer(f"Recovery copies now go to {confirmation.meta['destination']}. Saved `{generation.name}`: "
+                                    f"{generation.count} items.")
+            reply = recovery.restore(confirmation.meta["generation"])
+            return MemoryAnswer(f"Restored `{confirmation.meta['generation']}`: {reply.get('restored', 0)} items, "
+                                f"{reply.get('durable_state')} on disk." + (f" {len(reply['purged'])} were deleted since and stay "
+                                                                            "deleted." if reply.get("purged") else ""))
+        except mr.RecoveryError as failure:
+            return MemoryAnswer(failure.message)
+        except MemoryStoreUnavailable:
+            return MemoryAnswer(UNAVAILABLE)
+        except MemoryStoreRefused as refused:
+            return MemoryAnswer(_refused(refused.code))
 
 
 _SCAN_REFUSED: Final = ("Not saved: the statement looks like it holds a secret or an instruction to the model, so it was refused. "
@@ -562,6 +675,14 @@ _REFUSALS: Final = {
     "ITEM_UNKNOWN": "No such memory item in this project.",
     "MEMORY_CONTENDED": "Nothing was changed: the store was busy. Try again.",
     "IDEMPOTENCY_CONFLICT": "Nothing was changed: this change conflicts with an earlier one under the same command.",
+    "RECOVERY_REQUIRED": ("Nothing was saved: this project's memory store is empty although it held memory before. Restore it "
+                          "first: `/memory restore` lists the recovery copies."),
+    "RESTORE_TARGET_NOT_EMPTY": "Not restored: the memory store already holds this project's memory. Nothing was changed.",
+    "RESTORE_DELETION_UNCERTAIN": ("Not restored: a deletion is unfinished. Run the same purge again to finish it, then restore. "
+                                   "Nothing was changed."),
+    "RESTORE_GENERATION_INVALID": "Not restored: that copy is incomplete or was altered. Nothing was changed.",
+    "RESTORE_ENTRY_INVALID": "Not restored: that copy holds an entry the store did not write. Nothing was changed.",
+    "MEMORY_RECOVERY_UNAVAILABLE": "The recovery copy is not available: the store's credential is not set up.",
 }
 
 

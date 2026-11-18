@@ -52,7 +52,8 @@ def store(root: Path, server: Server | None = None, *, journal: bool = True) -> 
         return files
 
     inner = memory_store.MemoryStore(Client(server, 9), Client(server), admission_ceiling_mb=384, cursor_key=b"k",  # type: ignore[arg-type]
-                                     journal=purge_journal if journal else None, inventory=inventory)
+                                     journal=purge_journal if journal else None, inventory=inventory,
+                                     recovery_key=memory_store.recovery_key("pw"))
 
     def verify(deadline: float) -> None:
         inner.verify(RESOURCE, deadline=deadline)

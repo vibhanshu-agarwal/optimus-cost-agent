@@ -82,6 +82,20 @@ def appended_text(notice: MemoryNotice, label: str) -> str:
     return f"\n\n> **Memory:** {headline(notice)}{named} {citation(notice)}"
 
 
+def confirm_permission_params(session_id: str, *, kind: str, title: str, text: str, meta: dict[str, Any], nonce: str, option: str,
+                              cancel_option: str) -> dict[str, Any]:
+    """A recovery action's one-shot `session/request_permission` (setting the copy's location with any sync consent, or
+    restoring one generation): a host-only tool-call id, what it is bound to, and exactly two options, never an "always" one."""
+    return {
+        "sessionId": session_id,
+        "toolCall": {"toolCallId": f"{CARD_PREFIX}{kind}-{nonce}", "title": escape_label(title), "kind": "edit", "status": "pending",
+                     "content": [tool_call_text_content(text)]},
+        "options": [{"optionId": option, "name": "Go ahead", "kind": "allow_once"},
+                    {"optionId": cancel_option, "name": "Cancel", "kind": "reject_once"}],
+        "_meta": {f"memory{kind.capitalize()}": meta},
+    }
+
+
 def purge_permission_params(session_id: str, *, project: str, item: str, version: int, title: str, nonce: str, option: str,
                             cancel_option: str) -> dict[str, Any]:
     """The purge's one-shot `session/request_permission` (plan v4, Commands): a host-only tool-call id, the project, item,

@@ -564,3 +564,29 @@ def test_the_brief_comes_at_the_first_response_after_a_week_and_every_turn_is_ch
         assert sorted(s.checkpoint.session for s in store.checkpoints(limit=20)) == ["old", session_id, session_id]
         assert len(runner.requests) == 2  # /welcome called no model
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("answer", ["go", "cancel"])
+def test_the_recovery_location_is_set_only_on_its_own_confirmation(tmp_path: Path, answer: str) -> None:
+    from optimus.context import memory_recovery as mr
+
+    async def scenario() -> None:
+        store = _adapter(purge_store(tmp_path)[0])
+        source = _PurgeSource(store)
+        source.recovery = mr.Recovery(store, mr.StateFile(tmp_path / "config", "p-1"))
+        workspace = tmp_path / "ws"
+        workspace.mkdir()
+        adapter, outbound, runner = _acp(workspace, source)
+        session_id = await new_session(adapter, workspace, mode="chat")
+        await rpc(adapter, prompt_request(session_id, "/remember Never push to main.", "p-1"))
+        task = asyncio.create_task(rpc(adapter, prompt_request(session_id, "/memory export", "p-2")))
+        asked = await asyncio.wait_for(outbound.wait_for_request("session/request_permission"), timeout=5)
+        params = asked["params"]
+        assert params["toolCall"]["toolCallId"].startswith("memory/location-")
+        assert params["_meta"]["memoryLocation"]["destination"] == str(mr.location(workspace.resolve()))
+        chosen = params["options"][0 if answer == "go" else 1]["optionId"]
+        outbound.respond(asked["id"], {"outcome": {"outcome": "selected", "optionId": chosen}})
+        assert (await asyncio.wait_for(task, timeout=10))["result"]["stopReason"] == "end_turn"
+        written = mr.generations(mr.location(workspace.resolve()))
+        assert len(written) == (1 if answer == "go" else 0) and runner.requests == []
+    asyncio.run(scenario())

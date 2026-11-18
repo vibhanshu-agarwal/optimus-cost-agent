@@ -4,7 +4,6 @@ in tests/integration/memory/test_store.py."""
 from __future__ import annotations
 
 import json
-import time
 from typing import Any
 
 import pytest
@@ -33,6 +32,10 @@ _POINT = {"session": "sess-1", "sequence": 1, "branch": "main", "worktree": "wt-
           "outcome": "settled", "objective": "obj-1", "provenance": "turn-1", "plan_hash": "", "pending": [], "amendments": [],
           "completion": [], "verification": [], "remaining": []}
 
+_ENTRY = {"entry": {"event_id": "e-1", "item": "m-0123456789abcdef", "version": 1, "action": "admit", "trust": "user-authored",
+                    "status": "active", "kind": "fact", "scope": "s-1", "title": "t", "statement": "s", "anchors": [], "lineage": [],
+                    "valid_from_ms": 0, "valid_until_ms": 0, "stream_id": "1-1"}, "mac": "c" * 64}
+
 VALID = [
     {"op": "capabilities"},
     {"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 30_000},
@@ -56,7 +59,9 @@ VALID = [
     {"op": "purge_status", "project": "p-1", "item": "m-0123456789abcdef"},
     {"op": "export", "project": "p-1", "limit": 100},
     {"op": "export", "project": "p-1", "limit": 1, "cursor": "bS0x." + "0" * 64},
-    {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": True, "events": [event()]},
+    {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": False, "entries": [_ENTRY]},
+    {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 1, "final": True, "entries": [],
+     "head": "1-9", "frontier": {"deletions": 0, "last": ""}, "withdrawn": ["m-0123456789abcdef"]},
     {"op": "restore_status", "project": "p-1", "generation": _KEY},
 ]
 
@@ -104,7 +109,18 @@ INVALID = {
     "idempotency-not-digest": append(idempotency_key="retry-1"),
     "checkpoint-with-text": {"op": "checkpoint", "project": "p-1", "token": 1, "checkpoint": {**_POINT, "objective": "fix the bug"}},
     "checkpoint-bad-baseline": {"op": "checkpoint", "project": "p-1", "token": 1, "checkpoint": {**_POINT, "baseline": "main"}},
-    "restore-empty-batch": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": True, "events": []},
+    "restore-empty-batch": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": False, "entries": []},
+    "restore-final-without-head": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": True,
+                                   "entries": []},
+    "restore-entry-with-off-title": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": False,
+                                     "entries": [{"entry": {**event(action="off", trust="off", statement="", title="t"), "stream_id": "1-1"},
+                                                  "mac": _KEY}]},
+    "restore-withdrawn-entry-with-text": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0,
+                                          "final": False, "entries": [{"entry": {**event(version=2, action="withdraw",
+                                                                                          status="withdrawn", title="", statement="kept"),
+                                                                                  "stream_id": "1-1"}, "mac": _KEY}]},
+    "restore-entries-not-a-list": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": True,
+                                   "entries": {}, "head": "1-9", "frontier": {"deletions": 0, "last": ""}, "withdrawn": []},
     "restore-too-many": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": False,
                          "events": [event()] * (msc.MAX_RESTORE_BATCH + 1)},
     "restore-bad-event": {"op": "restore", "project": "p-1", "token": 1, "generation": _KEY, "batch": 0, "final": True,
@@ -171,9 +187,11 @@ class _Untouchable:
         raise AssertionError(f"the store must not be reached: {name}")
 
 
-@pytest.mark.parametrize("op", sorted(msc.UNAVAILABLE))
-def test_operations_their_task_has_not_built_answer_unavailable_without_touching_redis(op: str) -> None:
+@pytest.mark.parametrize("op", ["export", "restore"])
+def test_a_store_without_its_recovery_key_refuses_recovery_without_touching_redis(op: str) -> None:
+    """The recovery key comes from the store's credential: without it nothing can be signed or verified, so nothing is read."""
     body = next(body for body in VALID if body["op"] == op)
     store = memory_store.MemoryStore(_Untouchable(), _Untouchable(), admission_ceiling_mb=384, cursor_key=b"k")  # type: ignore[arg-type]
-    service = memory_store.MemoryStoreService(store)
-    assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 1) == (501, msc.error_body("MEMORY_OPERATION_UNAVAILABLE"))
+    with pytest.raises(msc.MemoryRequestError) as refused:
+        store.dispatch(body)
+    assert refused.value.code == "MEMORY_RECOVERY_UNAVAILABLE"

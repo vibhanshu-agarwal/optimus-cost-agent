@@ -7,8 +7,8 @@ can name another project. The trusted host binds them and the model never select
 
 One stream per project is authoritative: `append` (admit, update, withdraw, off) and `checkpoint` add one event under the
 project's fenced lease; `read`, `list`, `history` and `checkpoints` serve only what `WAITAOF` confirmed. `purge` destroys one item's text
-behind a journalled tombstone and `purge_status` reports and drives its disk step (Task 2). `export`, `restore` and
-`restore_status` have their shapes here and answer `MEMORY_OPERATION_UNAVAILABLE` until Task 4's recovery copy backs them.
+behind a journalled tombstone and `purge_status` reports and drives its disk step (Task 2). `export` pages a signed recovery
+generation, `restore` stages one into an empty project and publishes it, and `restore_status` reports where that stands (Task 4).
 Limits are agent-selected, frozen in `reports/plan12-memory-m3/targets.json`.
 """
 
@@ -277,18 +277,71 @@ def _export(body: dict[str, Any]) -> None:
         _match(body["cursor"], _CURSOR)
 
 
+_ENTRY_FIELDS = {"event_id", "item", "version", "action", "trust", "status", "kind", "scope", "title", "statement", "anchors",
+                 "lineage", "valid_from_ms", "valid_until_ms", "stream_id"}
+_STREAM = re.compile(r"[0-9]{1,20}-[0-9]{1,20}")
+
+
+def recovery_entry(value: Any) -> dict[str, Any]:
+    """One item of a recovery generation: its latest event and the store's entry id. Only an active item keeps a payload; every
+    other carries none (D8: active payloads only). Its HMAC is checked by the Gateway, not here."""
+    if not isinstance(value, dict) or set(value) != _ENTRY_FIELDS:
+        raise _refuse()
+    _match(value["stream_id"], _STREAM)
+    action = _choice(value["action"], (*APPEND_ACTIONS, "tombstone"))
+    status = _choice(value["status"], STATUS)
+    if (action == "tombstone") != (status == "purged"):
+        raise _refuse()
+    payload_free = status != "active" or value["trust"] == "off"
+    if payload_free and (value["statement"] or (value["title"] and value["trust"] != "off") or value["anchors"]):
+        raise _refuse()
+    if value["trust"] == "off" and value["title"]:
+        raise _refuse()  # an off record's scanned title is not exported either
+    shaped = {name: value[name] for name in _ENTRY_FIELDS - {"stream_id"}}
+    if action == "tombstone":
+        shaped = {**shaped, "action": "withdraw", "status": "withdrawn"}  # the shape check below knows no tombstone
+    event(shaped)
+    return value
+
+
+def _entries(value: Any) -> None:
+    if type(value) is not list or not 1 <= len(value) <= MAX_RESTORE_BATCH:
+        raise _refuse()
+    for entry in value:
+        if not isinstance(entry, dict) or set(entry) != {"entry", "mac"}:
+            raise _refuse()
+        recovery_entry(entry["entry"])
+        _match(entry["mac"], _DIGEST)
+
+
 def _restore(body: dict[str, Any]) -> None:
-    """One batch of a recovery generation into an empty store (D8): batches are numbered, the last says so, and every event has
-    the append contract's shape."""
-    _fields(body, {"op", "project", "token", "generation", "batch", "final", "events"})
+    """One batch of a recovery generation into an empty project (D8): batches are numbered from 0 and the last says so. The last
+    names the generation's head and deletion frontier, which its seal binds, and the items the host withdrew since (each can
+    only remove a payload, never add one)."""
+    final = body.get("final")
+    if final is True:
+        _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries", "head", "frontier", "withdrawn"})
+        _match(body["head"], _STREAM)
+        frontier = body["frontier"]
+        if not isinstance(frontier, dict) or set(frontier) != {"deletions", "last"}:
+            raise _refuse()
+        _integer(frontier["deletions"], 0, MAX_VERSION)
+        if frontier["last"] != "" and not _STREAM.fullmatch(str(frontier["last"])):
+            raise _refuse()
+        if type(body["withdrawn"]) is not list or len(body["withdrawn"]) > MAX_LIST * 100:
+            raise _refuse()
+        for item in body["withdrawn"]:
+            _match(item, _ITEM)
+    elif final is False:
+        _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries"})
+    else:
+        raise _refuse()
     _opaque(body["project"])
     _integer(body["token"], 1, 2**63 - 1)
     _match(body["generation"], _DIGEST)
     _integer(body["batch"], 0, MAX_VERSION)
-    if type(body["final"]) is not bool or type(body["events"]) is not list or not 1 <= len(body["events"]) <= MAX_RESTORE_BATCH:
-        raise _refuse()
-    for value in body["events"]:
-        event(value)
+    if not (final and body["entries"] == []):  # only the last batch may be empty (a generation of one full batch)
+        _entries(body["entries"])
 
 
 def _restore_status(body: dict[str, Any]) -> None:
@@ -304,5 +357,4 @@ _SHAPES: Final[dict[str, Callable[[dict[str, Any]], None]]] = {
     "restore_status": _restore_status,
 }
 OPERATIONS: Final = frozenset(_SHAPES)
-# Shapes fixed now; Task 4 serves the recovery copy and restore.
-UNAVAILABLE: Final = frozenset({"export", "restore", "restore_status"})
+UNAVAILABLE: Final[frozenset[str]] = frozenset()  # every operation is served since Task 4

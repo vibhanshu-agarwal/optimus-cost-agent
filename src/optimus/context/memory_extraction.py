@@ -607,6 +607,7 @@ class MemoryExtractor:
                  worktree: str = "worktree:unknown") -> None:
         self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
         self.worktree = worktree  # the registry's opaque worktree identity, for continuity checkpoints
+        self.recovery: Any = None  # the project's recovery copy (`memory_recovery.Recovery`), set by the launch's factory
         self._sanitize, self._report, self._keyed = sanitize, report, keyed
         self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
         self._extracted: set[str] = set()  # evidence refs whose work was extracted
@@ -943,8 +944,11 @@ def worktree_id(canonical_path: str) -> str:
 def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., MemoryExtractor | None]:
     """How a launch with an approved, ready memory store opens one extractor per session. A workspace that cannot be
     registered (an untrusted or unresolvable path) gets none: memory stays read-only there."""
+    from pathlib import Path
+
     from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
     from optimus.context.authored_memory import GatewayMemoryStore
+    from optimus.context.memory_recovery import Recovery, StateFile, registry_entry
     from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError
 
     registry = ProjectRegistry(config_root)
@@ -962,7 +966,13 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
         except (ProjectRegistryError, TrustedPathError, OSError, ValueError):
             return None
         store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
-        return MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed,
-                               worktree=worktree_id(registration.worktree))
+        project = registration.project_id
+        recovery = Recovery(store, StateFile.shared(Path(config_root), project),
+                            registry=lambda: registry_entry(registry.snapshot(), project) or {})
+        store.guard, store.written = recovery.recovery_required, recovery.written  # Q3: nothing is written before a restore
+        extractor = MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed,
+                                    worktree=worktree_id(registration.worktree))
+        extractor.recovery = recovery
+        return extractor
 
     return open_extractor

@@ -47,6 +47,10 @@ class GatewayMemoryStore:
         self.project = project
         self._owner = owner
         self._post = post(settings, timeout=msc.DEADLINE_SECONDS + 2.0, path=msc.PATH)
+        # Plan 12.11 recovery: `guard` says the project needs recovery (no write may land first); `written` hears of each
+        # confirmed change, so the recovery copy knows it is dirty and what a withdrawal retires.
+        self.guard: Callable[[], bool] | None = None
+        self.written: Callable[[str, str], None] | None = None
 
     def call(self, op: str, **fields: Any) -> dict[str, Any]:
         body = json.dumps({"op": op, **fields}, ensure_ascii=True, separators=(",", ":")).encode("ascii")
@@ -62,8 +66,11 @@ class GatewayMemoryStore:
         raise MemoryStoreRefused(str(code))
 
     @contextlib.contextmanager
-    def lease(self) -> Iterator[int]:
-        """The project's write lease for one job, released afterwards. Another session's lease is a refusal, not a wait."""
+    def lease(self, *, guarded: bool = True) -> Iterator[int]:
+        """The project's write lease for one job, released afterwards. Another session's lease is a refusal, not a wait. A
+        project that needs recovery takes no write but the restore (`guarded=False`)."""
+        if guarded and self.guard is not None and self.guard():
+            raise MemoryStoreRefused("RECOVERY_REQUIRED")
         token = int(self.call("lease", project=self.project, owner=self._owner, action="acquire", ttl_ms=LEASE_TTL_MS)["token"])
         try:
             yield token
@@ -79,7 +86,14 @@ class GatewayMemoryStore:
                  "valid_until_ms": 0}
         reply = self.call("append", project=self.project, token=token, expected_version=draft.expected_version, idempotency_key=key,
                           event=event)
-        return MemoryCommitResult(reply["event_id"], reply["item"], reply["version"], reply["durable_state"], reply["projection_state"])
+        result = MemoryCommitResult(reply["event_id"], reply["item"], reply["version"], reply["durable_state"], reply["projection_state"])
+        self._heard(draft.action, result.item, result.durable_state)
+        return result
+
+    def _heard(self, action: str, item: str, durable_state: str) -> None:
+        if durable_state == "confirmed" and self.written is not None:
+            with contextlib.suppress(Exception):  # the copy's bookkeeping never fails a confirmed change
+                self.written(action, item)
 
     def read(self, item: str) -> StoredEvent | None:
         record = self.call("read", project=self.project, item=item)["item"]
@@ -107,7 +121,9 @@ class GatewayMemoryStore:
         return [StoredCheckpoint.from_record(self.project, record) for record in reply["checkpoints"]]
 
     def purge(self, token: int, item: str, key: str) -> dict[str, Any]:
-        return self.call("purge", project=self.project, token=token, item=item, idempotency_key=key)
+        reply = self.call("purge", project=self.project, token=token, item=item, idempotency_key=key)
+        self._heard("tombstone", item, str(reply.get("durable_state")))
+        return reply
 
     def purge_status(self, item: str) -> dict[str, Any]:
         return self.call("purge_status", project=self.project, item=item)
