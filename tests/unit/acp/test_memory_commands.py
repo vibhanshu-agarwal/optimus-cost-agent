@@ -216,6 +216,26 @@ def test_switch_on_cannot_execute_inferred_update_or_withdrawal() -> None:
     assert extractor.store.read(off).event.status == "active"  # neither refusal touched the off record
 
 
+def test_words_a_redaction_changed_are_never_saved_by_switch_on_or_remember() -> None:
+    """Plan 12.11 CP4 (M10-a): the session keeps only redacted words, and a redaction can miss part of a secret beside its mask
+    ("token ********** FAKE-TOKEN-..."). Text holding the mask is scan-blocked: its off record keeps no source to switch on,
+    and `/remember` of it refuses, so nothing of it is stored."""
+    from optimus_security.sanitization import REDACTION_MASK
+
+    said = f"Remember that my deploy token {REDACTION_MASK} FAKE-TOKEN-FOR-TESTS-ONLY."
+    blocked = json.dumps({"candidates": [{"speech_act": "preference", "kind": "preference", "title": said[:60], "statement": said,
+                                          "spans": [{"block": "b-1", "start": 0, "end": len(said)}]}]})
+    extractor, _outcomes, off = _off_from_extraction(blocked, said)
+    record = extractor.store.read(off).event
+    assert record.title == memory_gate.BLOCKED_TITLE and record.statement == "" and "FAKE-TOKEN" not in record.title
+    answer = _run(_for(extractor), f"/memory switch-on {off}@1")
+    assert answer.notices == () and "FAKE-TOKEN" not in answer.text
+    remembered = _run(_for(extractor), f"/remember {said}")
+    assert remembered.notices == () and remembered.text.startswith("Not saved")
+    assert not mx.scans_pass("t", f"x {REDACTION_MASK} y", sanitize=lambda value: value, sources=())
+    assert mx.scans_pass("t", "Use tabs for indentation.", sanitize=lambda value: value, sources=())
+
+
 def test_switch_on_and_edit_preserve_origin_ceiling() -> None:
     """An agent lesson that went off stays off, and an agent lesson is never edited into the user's own item."""
     lesson = json.dumps({"candidates": [{"speech_act": "assertion", "kind": "lesson", "title": "fake clock",

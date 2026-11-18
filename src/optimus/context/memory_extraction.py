@@ -448,8 +448,15 @@ def overlaps_source(text: str, sources: Iterable[str]) -> bool:
 
 
 def scans_pass(title: str, statement: str, *, sanitize: Callable[[str], str], sources: Iterable[str] | None) -> bool:
-    """Injection, secret and source-overlap checks on what would be persisted. A scanner ALLOW is not proof; it is the floor."""
+    """Injection, secret and source-overlap checks on what would be persisted. A scanner ALLOW is not proof; it is the floor.
+    Text a redaction already changed (it holds the redaction mask) never passes: the user's words held something secret-shaped,
+    and what is left may still hold part of it. The session keeps only redacted words, so sanitizing them again shows nothing
+    (Plan 12.11 CP4: M10-a's switch-on saved a token the redaction had missed beside its mask)."""
+    from optimus_security.sanitization import REDACTION_MASK
+
     text = f"{title}\n{statement}"
+    if REDACTION_MASK in text:
+        return False
     if not ConfigTrustScanner().scan_text(text, subject=TrustScanSubject.TOOL_OUTPUT, source_path="memory-candidate").allowed:
         return False
     if sanitize(title) != title or sanitize(statement) != statement:
