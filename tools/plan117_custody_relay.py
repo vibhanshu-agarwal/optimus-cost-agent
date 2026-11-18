@@ -1335,6 +1335,13 @@ def run_relay(
     return int(return_code)
 
 
+def _relay_counter(value: Any, field: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise CustodyContractError("relay_counter_invalid", field) from exc
+
+
 def verify_relay_capture(run_dir: Path) -> None:
     """Offline verification of a relay capture directory.
 
@@ -1390,9 +1397,9 @@ def verify_relay_capture(run_dir: Path) -> None:
 
     zed_raw = zed_path.read_bytes()
     agent_raw = agent_path.read_bytes()
-    if int(summary.get("zed_to_agent_bytes", -1)) != len(zed_raw):
+    if _relay_counter(summary.get("zed_to_agent_bytes", -1), "zed_to_agent_bytes") != len(zed_raw):
         raise CustodyContractError("relay_directional_length_mismatch", "zed_to_agent_bytes")
-    if int(summary.get("agent_to_zed_bytes", -1)) != len(agent_raw):
+    if _relay_counter(summary.get("agent_to_zed_bytes", -1), "agent_to_zed_bytes") != len(agent_raw):
         raise CustodyContractError("relay_directional_length_mismatch", "agent_to_zed_bytes")
 
     try:
@@ -1427,28 +1434,28 @@ def verify_relay_capture(run_dir: Path) -> None:
             raise CustodyContractError("relay_index_schema_mismatch", f"{field}.schema")
         if record.get("run_id") != run_id:
             raise CustodyContractError("relay_run_id_mismatch", f"{field}.run_id")
-        if int(record.get("sequence", -1)) != expected_seq:
+        if _relay_counter(record.get("sequence", -1), f"{field}.sequence") != expected_seq:
             raise CustodyContractError("relay_sequence_gap", f"{field}.sequence")
         expected_seq += 1
-        mono = int(record.get("monotonic_offset_ns", -1))
+        mono = _relay_counter(record.get("monotonic_offset_ns", -1), f"{field}.monotonic_offset_ns")
         if mono < prev_mono:
             raise CustodyContractError("relay_monotonic_regression", f"{field}.monotonic_offset_ns")
         prev_mono = mono
         direction = record.get("direction")
         if direction in (EOF_ZED_TO_AGENT, EOF_AGENT_TO_ZED):
-            if int(record.get("size", -1)) != 0:
+            if _relay_counter(record.get("size", -1), f"{field}.size") != 0:
                 raise CustodyContractError("relay_eof_size_nonzero", f"{field}.size")
             if record.get("sha256") != EMPTY_SHA256:
                 raise CustodyContractError("relay_eof_digest_mismatch", f"{field}.sha256")
             base = DIR_ZED_TO_AGENT if direction == EOF_ZED_TO_AGENT else DIR_AGENT_TO_ZED
-            if int(record.get("directional_offset", -1)) != cursors[base]:
+            if _relay_counter(record.get("directional_offset", -1), f"{field}.directional_offset") != cursors[base]:
                 raise CustodyContractError("relay_offset_mismatch", f"{field}.directional_offset")
             seen_eof[direction] = True
             continue
         if direction not in blobs:
             raise CustodyContractError("relay_direction_invalid", f"{field}.direction")
-        size = int(record.get("size", -1))
-        offset = int(record.get("directional_offset", -1))
+        size = _relay_counter(record.get("size", -1), f"{field}.size")
+        offset = _relay_counter(record.get("directional_offset", -1), f"{field}.directional_offset")
         if size < 0:
             raise CustodyContractError("relay_chunk_size_invalid", f"{field}.size")
         if offset != cursors[direction]:

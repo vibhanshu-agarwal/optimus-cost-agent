@@ -1765,6 +1765,41 @@ def test_relay_metadata_decode_failure_preserves_reopen_evidence(
         assert result.disposition is D.INVALID_CURRENT_CLIENT_GATE
 
 
+@pytest.mark.parametrize("filename", ["relay-summary.json", "relay-index.ndjson"])
+@pytest.mark.parametrize("captured_reopen", [False, True])
+def test_relay_numeric_conversion_failure_preserves_reopen_evidence(
+    tmp_path, windows_shaped_paths, monkeypatch, filename, captured_reopen,
+):
+    from tools import plan117_custody_relay as relay
+
+    arm = "r_cancelled"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_reopen else None))
+    run.collect()
+    marker = "simulated conversion failure"
+    path = run.run_dir / "artifacts" / "plan117" / "arms" / arm / "reopen" / "relay" / filename
+    lines = path.read_text(encoding="utf-8").splitlines()
+    metadata = json.loads(lines[0])
+    field = "zed_to_agent_bytes" if filename == "relay-summary.json" else "sequence"
+    metadata[field] = marker
+    lines[0] = json.dumps(metadata)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def convert(value):
+        if value == marker:
+            raise OverflowError("simulated relay counter conversion failure")
+        return int(value)
+
+    monkeypatch.setattr(relay, "int", convert, raising=False)
+    raw = run.raw()
+    result = c.reduce_document(raw, layer="raw")
+    assert "relay_capture_invalid" in raw["custody_failures"]
+    if captured_reopen:
+        assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert result.primary.reason is R.REOPEN_LOAD_OBSERVED
+    else:
+        assert result.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
 def test_a_broken_artifact_cannot_mask_a_captured_pre_reopen_binding(tmp_path, windows_shaped_paths):
     run = Run(tmp_path, run_options(pre_reopen_binding_arm="r_cancelled"))
     run.collect()
