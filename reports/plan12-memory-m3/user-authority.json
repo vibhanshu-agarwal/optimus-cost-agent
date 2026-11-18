@@ -2,15 +2,15 @@
  "schema": "plan12-memory-m3.user-authority.v1",
  "sources": [
   {
-   "head": "git:be83ecf0b57e68f1fc88474738c6085ce7b0660e",
-   "run_id": "20261118T055850-21228-89ef88",
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100122-43296-5dacf1",
    "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
    "exit_status": 0,
    "completeness": "COMPLETE"
   },
   {
-   "head": "git:be83ecf0b57e68f1fc88474738c6085ce7b0660e",
-   "run_id": "20261118T060013-25296-950547",
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100234-46596-8541ca",
    "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
    "exit_status": 0,
    "completeness": "COMPLETE"
@@ -87,6 +87,10 @@
    "outcome": "passed"
   },
   {
+   "node": "tests/unit/acp/test_memory_commands.py::test_a_binding_switch_keeps_the_served_memory_and_the_objective",
+   "outcome": "passed"
+  },
+  {
    "node": "tests/unit/acp/test_memory_commands.py::test_a_cancelled_purge_question_deletes_nothing",
    "outcome": "passed"
   },
@@ -120,6 +124,10 @@
   },
   {
    "node": "tests/unit/acp/test_memory_commands.py::test_a_turn_is_served_its_project_memory_bound_into_its_digest_and_its_citations_are_checked",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
    "outcome": "passed"
   },
   {

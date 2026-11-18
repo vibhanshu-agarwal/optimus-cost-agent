@@ -2,15 +2,15 @@
  "schema": "plan12-memory-m3.continuity.v1",
  "sources": [
   {
-   "head": "git:be83ecf0b57e68f1fc88474738c6085ce7b0660e",
-   "run_id": "20261118T055850-21228-89ef88",
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100122-43296-5dacf1",
    "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
    "exit_status": 0,
    "completeness": "COMPLETE"
   },
   {
-   "head": "git:be83ecf0b57e68f1fc88474738c6085ce7b0660e",
-   "run_id": "20261118T060013-25296-950547",
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100234-46596-8541ca",
    "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
    "exit_status": 0,
    "completeness": "COMPLETE"
@@ -33,6 +33,10 @@
  "cases": [
   {
    "node": "tests/integration/memory/test_continuity.py::test_a_fresh_host_continues_from_the_last_settled_checkpoint_after_the_store_process_is_killed",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/integration/memory/test_continuity.py::test_a_killed_host_process_leaves_its_last_settled_checkpoint_for_a_fresh_host_process",
    "outcome": "passed"
   },
   {
@@ -76,6 +80,10 @@
    "outcome": "passed"
   },
   {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_lists_memory_changes_but_never_an_off_record",
+   "outcome": "passed"
+  },
+  {
    "node": "tests/unit/context/test_memory_continuity.py::test_the_brief_shows_after_seven_days_and_nothing_expires[0-False]",
    "outcome": "passed"
   },
@@ -101,6 +109,10 @@
   },
   {
    "node": "tests/unit/context/test_memory_continuity.py::test_the_predecessor_is_the_same_branch_and_worktree_first_then_the_branch_then_any",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_continuity.py::test_the_preferred_predecessor_is_found_beneath_newer_checkpoints_elsewhere",
    "outcome": "passed"
   }
  ],

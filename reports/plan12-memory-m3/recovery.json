@@ -2,15 +2,15 @@
  "schema": "plan12-memory-m3.recovery.v1",
  "sources": [
   {
-   "head": "git:be83ecf0b57e68f1fc88474738c6085ce7b0660e",
-   "run_id": "20261118T055850-21228-89ef88",
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100122-43296-5dacf1",
    "selection": "CP3 unit selection (run_evidence_cp3.ps1)",
    "exit_status": 0,
    "completeness": "COMPLETE"
   },
   {
-   "head": "git:be83ecf0b57e68f1fc88474738c6085ce7b0660e",
-   "run_id": "20261118T060013-25296-950547",
+   "head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
+   "run_id": "20261118T100234-46596-8541ca",
    "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_user_authority.py test_continuity.py test_recovery.py",
    "exit_status": 0,
    "completeness": "COMPLETE"
@@ -54,11 +54,47 @@
    "outcome": "passed"
   },
   {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_change_during_an_export_keeps_the_copy_dirty_and_its_cleanup_scheduled",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_generation_is_an_agent_memory_repo_and_its_metadata_cannot_be_changed",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_held_lock_is_never_taken_over_by_its_age",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_lost_or_damaged_deletion_journal_publishes_nothing",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_lost_registry_is_repaired_only_from_an_authenticated_copy_for_this_workspace",
+   "outcome": "passed"
+  },
+  {
    "node": "tests/unit/context/test_memory_recovery.py::test_a_lost_store_is_recovery_required_refuses_writes_keeps_the_copy_and_restores",
    "outcome": "passed"
   },
   {
    "node": "tests/unit/context/test_memory_recovery.py::test_a_purge_after_the_copy_stays_purged_and_an_unfinished_one_blocks_restore",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_purge_whose_outcome_was_lost_still_blocks_restore_after_the_journal_and_store_are_lost",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_removed_location_moves_only_on_confirmation_and_the_old_one_is_cleaned",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_repaired_registry_keeps_every_other_project_s_identity",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_a_store_emptied_after_a_healthy_answer_takes_no_write",
    "outcome": "passed"
   },
   {
@@ -86,6 +122,10 @@
    "outcome": "passed"
   },
   {
+   "node": "tests/unit/context/test_memory_recovery.py::test_concurrent_exports_never_leave_withdrawn_text_behind",
+   "outcome": "passed"
+  },
+  {
    "node": "tests/unit/context/test_memory_recovery.py::test_divergent_generations_are_listed_and_none_is_chosen_for_the_user",
    "outcome": "passed"
   },
@@ -102,11 +142,23 @@
    "outcome": "passed"
   },
   {
+   "node": "tests/unit/context/test_memory_recovery.py::test_restore_refuses_a_copy_mapped_to_another_registration",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_restore_writes_only_the_generation_that_was_confirmed",
+   "outcome": "passed"
+  },
+  {
    "node": "tests/unit/context/test_memory_recovery.py::test_the_first_export_asks_where_and_writes_one_ignored_generation_of_active_payloads_only",
    "outcome": "passed"
   },
   {
    "node": "tests/unit/context/test_memory_recovery.py::test_the_model_cannot_read_write_or_be_given_the_recovery_copy",
+   "outcome": "passed"
+  },
+  {
+   "node": "tests/unit/context/test_memory_recovery.py::test_the_notice_backlog_keeps_every_undelivered_notice",
    "outcome": "passed"
   },
   {
