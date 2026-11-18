@@ -361,6 +361,23 @@ class _Fold:
                 self.apply(stream_id, record, json.loads(raw) if raw is not None else None)
 
 
+def _archived(fold: _Fold) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The oldest live off record's next version, archived: still off, now `superseded`, so it is unserved and no longer counts
+    against the cap, with its scanned title and source locator kept and marked `archived:overflow`. Nothing is deleted; the user
+    can still list, forget or re-remember it. Returned as (stream record, payload)."""
+    oldest = next(iter(fold.off))
+    current = fold.items[oldest]
+    lineage = [*current["lineage"], "archived:overflow"][-msc.MAX_REFERENCES:]
+    event = {"event_id": f"archive-{oldest}-{current['version'] + 1}", "item": oldest, "version": current["version"] + 1,
+             "action": "off", "trust": "off", "status": "superseded", "kind": current["kind"], "scope": current["scope"],
+             "title": current["title"], "statement": "", "anchors": list(current["anchors"]), "lineage": lineage,
+             "valid_from_ms": current["valid_from_ms"], "valid_until_ms": current["valid_until_ms"]}
+    entry, payload = _split(event)
+    payload["digest"] = _digest([current["version"], event])
+    key = hashlib.sha256(f"omem/archive/v1\0{oldest}\0{current['version']}".encode()).hexdigest()
+    return {"type": "event", "key": key, "event": entry}, payload
+
+
 def _order(stream_id: str) -> tuple[int, int]:
     ms, _, seq = stream_id.partition("-")
     return int(ms), int(seq)
@@ -695,35 +712,44 @@ class MemoryStore:
             connection = int(self._writer.client_id())
             self._check_links()  # the baseline connection is the verified one, not one the pool re-established just now
             for _ in range(_WATCH_ATTEMPTS):
-                replay_at = None
+                replay_at = archive = None
                 with _pipeline(self._writer) as pipe:  # a watching pipeline holds the writer's only connection until it closes
                     try:
                         fold, head = self._writer_fold(pipe, project, token)
                         if record["key"] in fold.keys:
                             pipe.unwatch()
                             replay_at = head
-                        elif record.get("event", {}).get("trust") == "off" and (
-                                len(fold.off) >= msc.MAX_OFF_RECORDS or sum(fold.off.values()) >= msc.MAX_OFF_BYTES):
-                            pipe.unwatch()  # off records carry no payload, so refusing one loses no knowledge; a growth alert
-                            raise msc.MemoryRequestError("OFF_RECORDS_FULL", 507)
                         elif gated and (self._fsync_failed or self._used() >= self._ceiling_bytes):
                             pipe.unwatch()
                             raise msc.MemoryRequestError("MEMORY_NOT_ADMITTING", 503)
                         else:
                             self._check(fold, record, expected)
+                            if record.get("event", {}).get("trust") == "off" and record["event"]["action"] == "off" and (
+                                    len(fold.off) >= msc.MAX_OFF_RECORDS or sum(fold.off.values()) >= msc.MAX_OFF_BYTES):
+                                if self._used() >= self._ceiling_bytes:  # the archive grows only below the ceiling (Fable CP2 M5)
+                                    pipe.unwatch()
+                                    raise msc.MemoryRequestError("OFF_RECORDS_FULL", 507)
+                                archive = _archived(fold)  # the oldest live off record moves to the unserved archive first
                             self._on_time()  # past the deadline nothing is appended; once EXEC is sent the outcome may be uncertain
                             pipe.multi()
+                            if archive is not None:
+                                pipe.xadd(stream, {"e": _json(archive[0])})
+                                pipe.hset(payloads, archive[0]["event"]["event_id"], _json(archive[1]))
                             pipe.xadd(stream, {"e": _json(record)})
                             if payload is not None:
                                 pipe.hset(payloads, record["event"]["event_id"], _json(payload))
-                            stream_id = _text(self._execute(pipe)[0])
+                            replies = self._execute(pipe)
+                            stream_id = _text(replies[2 if archive is not None else 0])
+                            if archive is not None:
+                                fold.apply(_text(replies[0]), archive[0], dict(archive[1]))
                     except WatchError:
                         self._after_watch_error(connection)
                         continue
                 if replay_at is not None:
                     return self._replay(project, fold, record, payload, replay_at, connection)
                 fold.apply(stream_id, record, None if payload is None else dict(payload))
-                return {"status": "ok", **_result(stream_id, record), **self._confirm(project, stream_id, connection)}
+                archived = {"archived": archive[0]["event"]["item"]} if archive is not None else {}  # growth stays visible
+                return {"status": "ok", **_result(stream_id, record), **archived, **self._confirm(project, stream_id, connection)}
             raise msc.MemoryRequestError("MEMORY_CONTENDED", 409)
 
     @staticmethod

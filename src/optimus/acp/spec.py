@@ -2876,6 +2876,10 @@ class AcpDuplexAdapter:
         checkpoint = attached_turn.checkpoint_to_publish(current_generation=conversation.generation, cancelled=halted)
         if checkpoint is not None:
             session.context_checkpoint = checkpoint
+            if session.memory_extractor is not None:
+                # Plan 12.11 compaction: the covered turns' raw user text is extracted at this turn's user slot, never the summary.
+                with contextlib.suppress(Exception):
+                    session.memory_extractor.covered(attached_turn.covered_user_blocks(checkpoint), "project")
         if outcome.kind == "fallback":
             # Live-only and best-effort, before any dispatch; never stored in the canonical history.
             with contextlib.suppress(Exception):

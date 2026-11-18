@@ -592,6 +592,7 @@ class Outcome:
     incomplete: str | None = None
     skipped: str | None = None  # no call made: the queue was full, the extractor closed, the text's changes all still stand, or
     # (agent) the scope holds a user item
+    gaps: tuple[str, ...] = ()  # compaction: "<block>:<reason>" for covered text that could not be extracted (over the input cap)
 
 
 class MemoryExtractor:
@@ -611,6 +612,8 @@ class MemoryExtractor:
         self._extracted: set[str] = set()  # evidence refs whose work was extracted
         self._said: dict[str, tuple[tuple[str, int], ...]] = {}  # user text digest -> each (item, version) it confirmed
         self._sources: collections.OrderedDict[str, str] = collections.OrderedDict()  # this session's raw user blocks, in RAM only
+        self._attempted: set[str] = set()  # per-scope digests of user text a completed job decided (whatever it decided)
+        self._covered: list[UserBlock] = []  # covered by a summary since the last turn and not yet decided (compaction)
         self._closed = False
         self._lock = threading.Lock()
         self._commit_lock = threading.Lock()  # one session writes under one lease at a time: its jobs never fence each other out
@@ -649,10 +652,37 @@ class MemoryExtractor:
                 self._sources.popitem(last=False)
         user = prefilter_user(text)  # text said before is checked in the job, against what its changes became since
         agent =prefilter_agent(turn.work, extracted=extracted)
-        for purpose, decision in ((USER_PURPOSE, user), (AGENT_PURPOSE, agent)):
-            if decision.call:
-                self._enqueue(purpose, turn)
+        with self._lock:
+            covered, self._covered = tuple(self._covered), []
+        if covered:
+            # Compaction shares the user slot (plan v5): covered raw text and this turn's own go in one call, never a third.
+            self._enqueue(COMPACTION_PURPOSE, dataclasses.replace(turn, blocks=covered + (turn.blocks if user.call else ())))
+        elif user.call:
+            self._enqueue(USER_PURPOSE, turn)
+        if agent.call:
+            self._enqueue(AGENT_PURPOSE, turn)
         return user, agent
+
+    def covered(self, blocks: Sequence[UserBlock], scope: str) -> int:
+        """A summary is about to stand in for these turns in the model's view: their raw user text, never the summary, is
+        extracted at the next turn, in the user slot. Text a completed job already decided, or that the prefilter skips, is not
+        extracted again; nor is text already queued. Returns how many blocks were queued."""
+        queued = 0
+        with self._lock:
+            known = {block.block for block in self._covered}
+            for block in blocks:
+                if block.block in known or digest(scope + "\0" + block.text.strip()) in self._attempted:
+                    continue
+                if not prefilter_user(block.text).call:
+                    continue
+                self._covered.append(block)
+                known.add(block.block)
+                self._sources[block.block] = block.text
+                self._sources.move_to_end(block.block)
+                queued += 1
+            while len(self._sources) > MAX_SOURCES:
+                self._sources.popitem(last=False)
+        return queued
 
     def _enqueue(self, purpose: str, turn: TurnInput) -> None:
         invocation = self._settlement.open_invocation(turn.turn_id)
@@ -688,14 +718,16 @@ class MemoryExtractor:
 
         said = digest(turn.scope + "\0" + "\n".join(block.text for block in turn.blocks).strip())  # per scope: another is another item
         try:
+            user_slot = purpose in (USER_PURPOSE, COMPACTION_PURPOSE)
             if purpose == USER_PURPOSE and self._still_stands(said):
                 return Outcome(turn.turn_id, purpose, skipped="already_extracted")
             if purpose == AGENT_PURPOSE and self._store.user_items(turn.scope, limit=1):
                 # Its lessons could only go off (`_commit`), so no call is paid for (Codex CP2 review 3, on finding 6).
                 return Outcome(turn.turn_id, purpose, skipped="user_items_in_scope")
-            existing = self._store.user_items(turn.scope, limit=MAX_EXISTING_ITEMS) if purpose == USER_PURPOSE else []
-            if purpose == USER_PURPOSE:
-                prompt, _kept = user_prompt(turn.blocks, existing)
+            existing = self._store.user_items(turn.scope, limit=MAX_EXISTING_ITEMS) if user_slot else []
+            kept: tuple[str, ...] = ()
+            if user_slot:
+                prompt, kept = user_prompt(turn.blocks, existing)
             else:
                 assert turn.work is not None
                 prompt = agent_prompt(turn.work)
@@ -718,7 +750,7 @@ class MemoryExtractor:
             if response.integrity_error is not None:
                 return Outcome(turn.turn_id, purpose, incomplete="unattributable_report")
             proposals = parse_reply(response.text)
-            if purpose == USER_PURPOSE:
+            if user_slot:
                 candidates = user_candidates(proposals, project=self._store.project, scope=turn.scope, blocks=turn.blocks,
                                              trusted=turn.trusted, sanitize=self._sanitize, sources=turn.sources, existing=existing,
                                              keyed=self._keyed)
@@ -734,14 +766,18 @@ class MemoryExtractor:
             return Outcome(turn.turn_id, purpose, incomplete="store_unavailable")
         except MemoryStoreRefused as refused:
             return Outcome(turn.turn_id, purpose, incomplete=f"store_refused:{refused.code}")
+        gaps = tuple(f"{block.block}:over_input_cap" for block in turn.blocks if user_slot and block.block not in kept)
         with self._lock:
             if written is None:
                 pass  # a write was refused or not proven on disk: this text stays worth trying again
-            elif purpose == USER_PURPOSE:
-                self._said[said] = tuple(written)
+            elif user_slot:
+                if purpose == USER_PURPOSE:
+                    self._said[said] = tuple(written)
+                self._attempted.update(digest(turn.scope + "\0" + block.text.strip()) for block in turn.blocks if block.block in kept)
             elif turn.work is not None:
                 self._extracted.update(item.ref for item in turn.work.evidence)
-        return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals), tuple(reasons))
+        return Outcome(turn.turn_id, purpose, len(proposals), len(proposals) - len(candidates), tuple(notices), tuple(refusals), tuple(reasons),
+                       gaps=gaps)
 
     def _still_stands(self, said: str) -> bool:
         """Whether this text was extracted before and every change it made is still the item's current version: then a call

@@ -499,8 +499,9 @@ class MemoryCommands:
         for stored in rows:
             event = stored.event
             title = escape_text(event.title or "(no text kept)", 80)
-            line = (f"- `{event.item}@{event.version}` · {_ORIGIN_WORDS[event.trust]} · {_STATUS_WORDS[event.status]}"
-                    f" · {title}")
+            archived = event.trust == "off" and event.status == "superseded"  # the overflow archive: kept, never used
+            status = "archived: too many off items, kept but never used" if archived else _STATUS_WORDS[event.status]
+            line = f"- `{event.item}@{event.version}` · {_ORIGIN_WORDS[event.trust]} · {status} · {title}"
             state = _state(stored)
             if event.trust == "off" and state is not None and state.live:
                 line += f" · {self._availability(Locator.of(state))}"
