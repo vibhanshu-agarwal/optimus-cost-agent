@@ -86,8 +86,8 @@ def _digest(policy: FilePolicy, relative: str) -> str | None:
     """The digest of a workspace file an anchor may read, through the validated handle the policy opens. None for anything
     the policy refuses (outside the workspace, a secret, a skipped or runtime tree, ignored, empty, binary or gone) and for a
     file larger than MAX_HASHED_BYTES."""
-    decision, content = policy.read(relative, purpose=FilePurpose.ANCHOR)
-    if not decision.allowed or content is None or len(content) > MAX_HASHED_BYTES:
+    decision, content = policy.read(relative, purpose=FilePurpose.ANCHOR, max_bytes=MAX_HASHED_BYTES)  # bounded inside the read
+    if not decision.allowed or content is None:
         return None
     return hashlib.sha256(content).hexdigest()[:32]
 

@@ -127,9 +127,11 @@ class FilePolicy:
     def decide(self, relative_path: str, *, purpose: FilePurpose) -> FileDecision:
         return self._evaluate(relative_path, purpose)[0]
 
-    def read(self, relative_path: str, *, purpose: FilePurpose) -> tuple[FileDecision, bytes | None]:
-        """Decide and read in one validated step; content comes back only for an allowed, unchanged file."""
-        return self._evaluate(relative_path, purpose)
+    def read(self, relative_path: str, *, purpose: FilePurpose, max_bytes: int | None = None) -> tuple[FileDecision, bytes | None]:
+        """Decide and read in one validated step; content comes back only for an allowed, unchanged file. `max_bytes` bounds the
+        read for any purpose (indexing has its own limit): a larger file is `excluded.too_large`, and no more than one byte
+        past the bound is read."""
+        return self._evaluate(relative_path, purpose, max_bytes)
 
     def forget_ignore_files(self) -> None:
         """They are read once and then kept, so anything that lives longer than one operation says when to look at them again."""
@@ -224,12 +226,12 @@ class FilePolicy:
                 return self._decision(relative_path, ignored, chains)
         return path, target, identity, chains
 
-    def _evaluate(self, relative_path: str, purpose: FilePurpose) -> tuple[FileDecision, bytes | None]:
+    def _evaluate(self, relative_path: str, purpose: FilePurpose, max_bytes: int | None = None) -> tuple[FileDecision, bytes | None]:
         gate = self._gate(relative_path)
         if isinstance(gate, FileDecision):
             return gate, None
         path, target, identity, chains = gate
-        limit = self._max_index_file_bytes if purpose is FilePurpose.INDEX else None
+        limit = max_bytes if max_bytes is not None else self._max_index_file_bytes if purpose is FilePurpose.INDEX else None
         outcome, data = _read_validated(path, target, limit)
         if outcome != ALLOWED:
             return self._decision(relative_path, outcome, chains), None

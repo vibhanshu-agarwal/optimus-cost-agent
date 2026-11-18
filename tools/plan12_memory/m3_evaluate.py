@@ -430,6 +430,8 @@ class Rig:
         self.exporter: dict[str, str] = {}  # recovery generation seal -> the project whose export wrote it
         self.asking = False  # the user's own command is asking for a confirmation now
         self.clock_seconds = 0.0  # how far the clock was moved on (`_op_clock`)
+        self.appended: dict[tuple[str, str], tuple[str, int, str]] = {}  # (project, event id) -> (item, version, action) read
+        self.committed: set[tuple[str, str]] = set()  # (project, event id) whose commit was observed
 
     # --- the host's store client: each request and its reply, then what it wrote ----------------------------------------
 
@@ -445,13 +447,18 @@ class Rig:
     def exchanged(self, request: Mapping[str, Any], status: int, reply: Any) -> None:
         """One request the host sent its store and the reply it got. Whatever the request wrote is read from the store's stream
         now, so it is placed right after the request; an append's commit counts only when this reply confirmed it durable, for
-        this project's own event (F2)."""
+        this project's own event (F2), including a retry that confirms an event an earlier unconfirmed reply already wrote (the
+        Gateway replays the same event: Codex CP4 review 3, finding 3)."""
         op, project = request.get("op"), request.get("project")
         if status != 200 or not isinstance(reply, dict) or not isinstance(project, str):
             return
         if op in _WRITES:
-            confirmed = reply.get("event_id") if op == "append" and reply.get("durable_state") == "confirmed" else None
-            self._stream(project, confirmed)
+            self._stream(project)
+        confirmed = (project, str(reply.get("event_id"))) if op == "append" and reply.get("durable_state") == "confirmed" else None
+        if confirmed is not None and confirmed in self.appended and confirmed not in self.committed:
+            self.committed.add(confirmed)
+            item, version, action = self.appended[confirmed]
+            self.run.add(f"commit.{action}", item, version, project)
         if op == "checkpoint" and reply.get("durable_state") == "confirmed":
             self.run.add("checkpoint", project=project)
         if op == "export" and reply.get("cursor") is None and reply.get("seal"):
@@ -464,7 +471,7 @@ class Rig:
             if wrote is not None and wrote != project and source != wrote:
                 self.run.add("restore.unmapped", project=project)
 
-    def _stream(self, project: str, confirmed: str | None = None) -> None:
+    def _stream(self, project: str) -> None:
         key = memory_store.MemoryStore._key(project, "events")
         for stream_id, fields in self.store.observer.xrange(key, min=f"({self.seen_stream.get(project, '0-0')}"):
             self.seen_stream[project] = stream_id.decode() if isinstance(stream_id, bytes) else stream_id
@@ -494,8 +501,7 @@ class Rig:
                 self.run.add("store.pointer", item, version, project)
             if self._holds_a_file(statement):
                 self.run.add("store.body", item, version, project)
-            if confirmed is not None and event.get("event_id") == confirmed:
-                self.run.add(f"commit.{action}", item, version, project)
+            self.appended[(project, str(event.get("event_id")))] = (item, version, action)
 
     def _payload(self, project: str, event: Mapping[str, Any]) -> dict[str, Any]:
         """What the store holds for an event in its payload hash: title, statement, anchors and lineage ({} once purged)."""
@@ -577,13 +583,22 @@ class Rig:
         project = getattr(commands.store, "project", None)
         for item, version, _path in served.reverify:
             self.run.add("served.reverify", item, version, project)
-        if served.omitted_optional or served.omitted_protected or not served.complete:
+        if served.omitted_optional or served.omitted_protected or not served.complete:  # who was left out cannot be told
+            gap = "expiry: a serving decision left items out or was partial, so whether any live item expired is undecided"
+            if gap not in self.run.uncovered:
+                self.run.uncovered.append(gap)
             return
+        from optimus_security.memory_store_contract import MAX_LIST
+
         accounted = {item.item for item in served.items} | {r[0] for r in served.reverify} | {e[0] for e in served.elsewhere}
-        rows, _cursor = commands.store.items("project", limit=100)
-        for row in rows:
-            if row.event.status == "active" and row.event.trust != "off" and row.event.statement and row.event.item not in accounted:
-                self.run.add("served.expired", row.event.item, row.event.version, project)
+        cursor = None
+        while True:  # every page: a live item after a page of off records is still checked
+            rows, cursor = commands.store.items("project", limit=MAX_LIST, cursor=cursor)
+            for row in rows:
+                if row.event.status == "active" and row.event.trust != "off" and row.event.statement and row.event.item not in accounted:
+                    self.run.add("served.expired", row.event.item, row.event.version, project)
+            if not cursor:
+                break
 
     def finish_input(self, host: Host | None = None) -> None:
         """What a case input left: its extraction and checkpoint jobs settled, the session's continuity, whether the host gave
@@ -1026,7 +1041,7 @@ def run_case(store: Store, base: Path, case: GoldenCase, entry: Mapping[str, Any
     trace = to_trace(case, run, rig.items, items, source_id=source_id, config_id=config_id, reverify=reverify, history=history,
                      project=project)
     if error is not None:
-        trace = trace.model_copy(update={"missing_coverage": (*trace.missing_coverage, f"run did not finish: {error}"), "coverage_complete": False})
+        trace = unfinished(trace, error)
     verdict = grade_trace(case, trace)
     unrun = sorted({UNRUN_EVENTS[n.split(":")[0]] for n in case.required_events if n.split(":")[0] in UNRUN_EVENTS})
     result = {"case_id": case.case_id, "steps": run.steps, "error": error, "cause": cause, "seconds": round(time.monotonic() - started, 1),
@@ -1046,6 +1061,12 @@ def run_case(store: Store, base: Path, case: GoldenCase, entry: Mapping[str, Any
 
 
 # --- what a zero-paid run decides ------------------------------------------------------------------------------------------
+
+def unfinished(trace: ObservedTrace, error: str) -> ObservedTrace:
+    """A run that could not finish: its cause is missing coverage, and it claims no complete cost (Codex CP4 review 3, finding 5)."""
+    return trace.model_copy(update={"missing_coverage": (*trace.missing_coverage, f"run did not finish: {error}"), "coverage_complete": False,
+                                    "reported_cost": trace.reported_cost.model_copy(update={"complete": False})})
+
 
 PAID = "paid Zed sessions M3-ZED-OFF/ON/RETURN"
 _EVIDENCE_REASON = re.compile(r"^requirement \S+ has no supporting evidence")
@@ -1073,13 +1094,21 @@ def qualification_view(case: GoldenCase, verdict: Any, unrun: Sequence[str], tra
 
 
 def _safety(case: GoldenCase, trace: ObservedTrace | None) -> dict[str, Any]:
-    if trace is None or not trace.coverage_complete and any(not name.startswith("memory.strength_") for name in trace.missing_coverage):
-        return {"status": "INCONCLUSIVE", "reasons": ["the run did not observe everything the safety checks need"]}
+    """The decay case's own safety checks. A failure the run observed is a FAIL whatever else is missing; only checks the run
+    could not decide become INCONCLUSIVE (Codex CP4 review 3, finding 1)."""
+    checked = [*SAFETY_EVENTS, "expected active items stay active"]
+    if trace is None:
+        return {"status": "INCONCLUSIVE", "reasons": ["the run produced no trace"], "checked": checked}
     reasons = [f"{event.type} at seq {event.seq}" for event in trace.events if event.type in SAFETY_EVENTS]
     state = {(item.key, item.version): item for item in trace.memory_state}
     reasons += [f"{expected.key} v{expected.version} is not active" for expected in case.expected_memory
                 if expected.status == "active" and getattr(state.get((expected.key, expected.version)), "status", None) != "active"]
-    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "checked": [*SAFETY_EVENTS, "expected active items stay active"]}
+    if reasons:
+        return {"status": "FAIL", "reasons": reasons, "checked": checked}
+    gaps = [name for name in trace.missing_coverage if not name.startswith("memory.strength_")]
+    if gaps:
+        return {"status": "INCONCLUSIVE", "reasons": [f"undecided: {gap}" for gap in gaps], "checked": checked}
+    return {"status": "PASS", "reasons": [], "checked": checked}
 
 
 def _m09_skip(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:

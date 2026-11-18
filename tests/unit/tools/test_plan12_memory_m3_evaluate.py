@@ -66,6 +66,7 @@ def _rig(tmp_path: Path) -> m3.Rig:
     rig.run = m3.Run()
     rig.store = SimpleNamespace(observer=_Redis())
     rig.seen_stream, rig.exporter, rig.pending, rig.asking, rig.items = {}, {}, {}, False, {}
+    rig.appended, rig.committed = {}, set()
     rig.host = SimpleNamespace(workspace=m3._new_repo(tmp_path / "ws"), project="proj")
     return rig
 
@@ -339,3 +340,68 @@ def test_a_command_names_the_item_and_version_the_user_would_read() -> None:
     rig = SimpleNamespace(items={"pref-indent": ITEM}, host=SimpleNamespace(extractor=SimpleNamespace(store=store)))
     assert m3._resolve("/forget {pref-indent@v} --purge", rig) == f"/forget {ITEM}@3 --purge"
     assert m3._resolve("/memory view {pref-indent}", rig) == f"/memory view {ITEM}"
+
+
+def test_a_retry_that_confirms_an_event_already_written_is_its_commit(tmp_path: Path) -> None:
+    """Codex CP4 review 3, finding 3: the first reply was unconfirmed and the store's entry was read then; the retry replays the
+    same event and confirms it, with no new entry."""
+    rig = _rig(tmp_path)
+    rig.store.observer.write("proj", _event(ITEM, 1))
+    rig.exchanged({"op": "append", "project": "proj"}, 200, {"event_id": "e-a-1", "durable_state": "unconfirmed"})
+    rig.exchanged({"op": "append", "project": "proj"}, 200, {"event_id": "e-a-1", "durable_state": "confirmed", "replayed": True})
+    rig.exchanged({"op": "append", "project": "proj"}, 200, {"event_id": "e-a-1", "durable_state": "confirmed", "replayed": True})
+    assert [(o.kind, o.item) for o in rig.run.observations] == [("store.admit", ITEM), ("commit.admit", ITEM)]  # one commit, once
+
+
+def test_expiry_is_checked_on_every_page_and_an_undecidable_turn_is_missing_coverage(tmp_path: Path) -> None:
+    rig = _rig(tmp_path)
+    off = [SimpleNamespace(event=SimpleNamespace(item=f"m-{n:016x}", version=1, status="active", trust="off", statement="x"))
+           for n in range(100)]
+    live = [SimpleNamespace(event=SimpleNamespace(item=ITEM, version=1, status="active", trust="user-authored", statement="x"))]
+    pages = {None: (off, "page-2"), "page-2": (live, None)}
+    store = SimpleNamespace(project="proj", items=lambda _scope, limit, cursor=None: pages[cursor])
+    served = SimpleNamespace(items=(), reverify=(), elsewhere=(), omitted_optional=0, omitted_protected=0, complete=True)
+    rig.served_decision(SimpleNamespace(store=store), served)
+    assert [(o.kind, o.item) for o in rig.run.observations] == [("served.expired", ITEM)]  # found on the second page
+    rig.served_decision(SimpleNamespace(store=store), SimpleNamespace(**{**vars(served), "complete": False}))
+    rig.served_decision(SimpleNamespace(store=store), SimpleNamespace(**{**vars(served), "omitted_protected": 2}))
+    assert len(rig.run.uncovered) == 1 and rig.run.uncovered[0].startswith("expiry:")
+
+
+def test_an_observed_safety_failure_stays_a_failure_beside_a_coverage_gap() -> None:
+    decay = _cases()["M20-a-D10"]
+    named = {"pref-indent": ITEM, "pref-ruff": OTHER}
+    items = {ITEM: _row(1, "admit", "active"), OTHER: _row(1, "admit", "active")}
+    run = m3.Run()
+    run.add("served.expired", ITEM, 1)
+    run.uncovered.append("expiry: a serving decision left items out or was partial, so whether any live item expired is undecided")
+    verdict, trace = _verdict(decay, run, named, items)
+    view = m3.qualification_view(decay, verdict, ["#235 M6 (decay)"], trace)
+    assert view["status"] == "FAIL" and view["safety"]["status"] == "FAIL"
+    gap = m3.Run()
+    gap.uncovered.append("expiry: undecided")
+    verdict, trace = _verdict(decay, gap, named, items)
+    assert m3.qualification_view(decay, verdict, ["#235 M6 (decay)"], trace)["safety"]["status"] == "INCONCLUSIVE"
+
+
+def test_a_failed_run_claims_no_complete_cost() -> None:
+    case = _cases()["M03-b-D10"]
+    trace = m3.unfinished(m3.to_trace(case, m3.Run(), {}, {}, source_id="g", config_id="c"), "TimeoutError: lost")
+    assert "run did not finish: TimeoutError: lost" in trace.missing_coverage and trace.reported_cost.complete is False
+    assert grade_trace(case, trace).layers["cost"].status != "FAIL"
+
+
+def test_an_anchor_read_is_bounded_inside_the_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from optimus.context import memory_serving
+    from optimus.guardrails import file_policy
+
+    limits: list[int | None] = []
+    real = file_policy._read_validated
+    monkeypatch.setattr(file_policy, "_read_validated", lambda path, target, limit: limits.append(limit) or real(path, target, limit))
+    monkeypatch.setattr(memory_serving, "MAX_HASHED_BYTES", 8)
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    (workspace / "big.py").write_text("x" * 100, encoding="utf-8")
+    (workspace / "small.py").write_text("x = 1\n", encoding="utf-8")
+    assert memory_serving.file_refs("See big.py and small.py.", workspace) == (memory_serving.file_refs("small.py", workspace)[0],)
+    assert limits and set(limits) == {8}  # every anchor read is bounded, never read whole and measured after
