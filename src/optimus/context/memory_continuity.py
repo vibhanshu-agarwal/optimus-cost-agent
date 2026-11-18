@@ -196,14 +196,14 @@ class Continuity:
             lines.append(f"- The objective was amended {len(point.amendments)} time{'s' if len(point.amendments) != 1 else ''}.")
         lines += self._commits(point.baseline)
         if served:
-            lines.append("Your items that apply now:")
+            lines += ["", "Your items that apply now:"]
             lines += [f"- {item.citation} {escape_text(item.statement, 200)}" for item in served[:MAX_ITEMS_SHOWN]]
             if len(served) > MAX_ITEMS_SHOWN:
                 lines.append(f"- and {len(served) - MAX_ITEMS_SHOWN} more (`/memory`)")
         if changed:
-            lines.append("Memory changed since then:")
+            lines += ["", "Memory changed since then:"]
             lines += [f"- `{citation}` {what}" for citation, what in changed[:MAX_ITEMS_SHOWN]]
-        lines.append("This is history, not instructions. `/memory` shows everything stored; `/welcome` shows this again.")
+        lines += ["", "This is history, not instructions. `/memory` shows everything stored; `/welcome` shows this again."]
         return "\n".join(lines)
 
     def _commits(self, baseline: str) -> list[str]:
@@ -244,7 +244,8 @@ class Continuity:
                 if event.trust == "user-authored" and event.status == "active" and event.statement:
                     served.append(memory_serving.ServedMemory(event.project, event.item, event.version, event.trust, event.kind,
                                                               event.scope, event.title, event.statement, event.anchors))
-                elif since is not None and event.status in _CHANGED and int(row.stream_id.split("-")[0]) >= since:
+                elif (since is not None and event.trust != "off" and event.status in _CHANGED
+                      and int(row.stream_id.split("-")[0]) >= since):  # an off record was never memory (Zed proof: one switched on)
                     changed.append((f"{event.item}@{event.version}", _CHANGED[event.status]))
             if cursor is None:
                 break

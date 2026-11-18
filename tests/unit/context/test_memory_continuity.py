@@ -220,3 +220,30 @@ def test_the_preferred_predecessor_is_found_beneath_newer_checkpoints_elsewhere(
         _session(adapter, repo, f"s-else-{n}", clock, worktree="worktree:b").record(_turn(1, "Fix the scheduler in the other tree."))
     found = _session(adapter, repo, "s-new", clock, worktree="worktree:a").previous()[1]
     assert found is not None and found.checkpoint.session == "s-here"
+
+
+def test_the_brief_lists_memory_changes_but_never_an_off_record(repo: Path) -> None:
+    """Zed proof (CP3): an off record retired when the user switched it on was never memory, so the brief does not call it
+    forgotten; the user's own withdrawn item is listed. Each section starts its own paragraph, so a Markdown client never folds
+    it into the bullet above."""
+    from types import SimpleNamespace
+
+    adapter = _adapter(store()[0])
+    clock = _Clock()
+    _session(adapter, repo, "s-1", clock).record(_turn(1, "Port the cache layer to the new client."))
+    after = str(clock.now + 1000)
+
+    def row(item: str, trust: str, status: str, statement: str = "") -> Any:
+        event = SimpleNamespace(project=adapter.project, item=item, version=2, trust=trust, status=status, statement=statement,
+                                kind="preference", scope="project", title=statement[:40], anchors=())
+        return SimpleNamespace(event=event, stream_id=f"{after}-0")
+
+    rows = [row("m-000000000000000a", "user-authored", "withdrawn"), row("m-000000000000000b", "off", "withdrawn"),
+            row("m-000000000000000c", "user-authored", "active", "From now on we use uv for every command.")]
+    clock.now += 2000
+    later = _session(adapter, repo, "s-2", clock)
+    later._store = SimpleNamespace(project=adapter.project, checkpoints=adapter.checkpoints,  # type: ignore[assignment]
+                                   items=lambda *_a, **_k: (rows, None))
+    brief = later.welcome()
+    assert "`m-000000000000000a@2` was forgotten" in brief and "m-000000000000000b" not in brief
+    assert "\n\nYour items that apply now:\n" in brief and "\n\nMemory changed since then:\n" in brief
