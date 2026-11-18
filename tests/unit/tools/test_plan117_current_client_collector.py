@@ -35,6 +35,10 @@ def test_census_is_traced_from_source_not_copied_from_the_fixture():
     assert ("_handle_session_prompt", "error:INVALID_REQUEST:empty prompt", False, 1) in traced
     assert ("_refuse_prompt", "stop_reason:refusal", False, 1) in traced
     assert ("_handle_savings", "stop_reason:cancelled", False, 3) in traced
+    # the host's shared local answer is counted at each caller with that caller's own message (Plan 12.11 CP3)
+    assert ("_handle_savings", "error:INTERNAL_ERROR:the usage report could not be delivered", False, 1) in traced
+    assert ("_handle_memory_command", "error:INTERNAL_ERROR:the memory answer could not be delivered", False, 1) in traced
+    assert ("_handle_session_prompt", "memory_command", False, 1) in traced
     # post-admission branches (after allocate_turn_seq) are not part of the first-refusal census
     assert not any(site == "stop_reason:*" for _, site, _, _ in traced)
 
