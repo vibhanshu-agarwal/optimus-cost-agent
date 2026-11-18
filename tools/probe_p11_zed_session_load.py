@@ -31,7 +31,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -3140,6 +3140,8 @@ def _launch_zed_once(
     cwd: Path,
     log_path: Path | None = None,
     timeout_s: float = 180.0,
+    ready: Callable[[bool], bool] | None = None,
+    drain_timeout_s: float = 10.0,
 ) -> dict[str, Any]:
     if os.environ.get("PYTEST_CURRENT_TEST"):
         raise ProbeError("real_zed", "Zed GUI launch is forbidden inside pytest")
@@ -3163,7 +3165,16 @@ def _launch_zed_once(
     except OSError as exc:
         if log_handle is not None:
             log_handle.close()
+        if ready is not None:
+            stopped = not isinstance(exc, process_tree.ContainmentError) or exc.stopped
+            return {"tree_stopped": stopped, "readiness_verified": False}
         raise ProbeError("real_zed", f"{type(exc).__name__}: {exc}") from exc
+    if ready is not None:
+        try:
+            return _wait_scoped_zed(proc, ready, timeout_s=timeout_s, drain_timeout_s=drain_timeout_s)
+        finally:
+            if log_handle is not None:
+                log_handle.close()
     timed_out = False
     try:
         returncode = proc.wait(timeout=timeout_s)
@@ -3180,6 +3191,51 @@ def _launch_zed_once(
         if log_handle is not None:
             log_handle.close()
     return {"pid": proc.pid, "returncode": returncode, "log_path": str(log_path) if log_path else None, "timed_out": timed_out}
+
+
+def _wait_scoped_zed(
+    proc: subprocess.Popen[Any], ready: Callable[[bool], bool], *, timeout_s: float, drain_timeout_s: float,
+) -> dict[str, Any]:
+    """Keep the Job reachable through normal exit, drain, and bounded forced shutdown."""
+    deadline = time.monotonic() + timeout_s
+    verified = False
+    interrupted = False
+    forced = False
+    stopped = False
+    try:
+        while proc.poll() is None and time.monotonic() < deadline:
+            if not verified:
+                verified = ready(True)
+            try:
+                proc.wait(timeout=min(0.25, max(0.0, deadline - time.monotonic())))
+            except subprocess.TimeoutExpired:
+                continue
+        if proc.poll() is not None:
+            stopped = process_tree.wait_for_empty(proc, deadline=time.monotonic() + drain_timeout_s)
+    except KeyboardInterrupt:
+        interrupted = True
+    except (OSError, ValueError):
+        pass
+    finally:
+        if not stopped:
+            forced = True
+            try:
+                process_tree.kill_tree(proc)
+                stopped = process_tree.wait_for_empty(proc, deadline=time.monotonic() + drain_timeout_s)
+            except KeyboardInterrupt:
+                interrupted = True
+                stopped = False
+            except (OSError, ValueError):
+                stopped = False
+    if stopped and not verified and not interrupted:
+        try:
+            verified = ready(False)
+        except KeyboardInterrupt:
+            interrupted = True
+    return {
+        "pid": proc.pid, "returncode": proc.poll(), "timed_out": forced, "tree_stopped": stopped,
+        "readiness_verified": verified and not interrupted, "interrupted": interrupted,
+    }
 
 
 def _launch_log_excerpt(log_path: Path, *, limit: int = 4000) -> str:

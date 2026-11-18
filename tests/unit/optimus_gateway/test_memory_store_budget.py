@@ -9,9 +9,12 @@ import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
+from contextlib import nullcontext
+from types import SimpleNamespace
 
 import pytest
 from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.exceptions import WatchError
 
 from optimus_gateway import memory_store
 from optimus_security import memory_store_contract as msc
@@ -70,6 +73,7 @@ class FakeRedis:
         self.connections = 0
         self.logs: dict[int, list[bytes]] = {}
         self.dropped = False
+        self.on_stalled_get: Callable[[], None] | None = None
         self.server = socket.create_server(("127.0.0.1", 0))
         self.port = self.server.getsockname()[1]
         self.stop = threading.Event()
@@ -86,7 +90,7 @@ class FakeRedis:
 
     def _serve(self, conn: socket.socket) -> None:
         self.connections += 1
-        first, infos, queued = self.connections == 1, 0, None
+        queued = None
         log = self.logs.setdefault(self.connections, [])
         with conn:
             for command in _commands(conn):
@@ -141,11 +145,6 @@ class FakeRedis:
                         if self.stop.wait(0.02):
                             return
                         conn.sendall(bytes([byte]))
-                elif mode == "drop-after-info":  # the first connection dies after its second INFO, as a restart would
-                    conn.sendall(reply)
-                    infos += name == b"INFO"
-                    if first and infos == 2:
-                        return
                 elif mode == "fast":
                     conn.sendall(reply)
                 elif mode == "stall-info":  # verification connects and pings, then INFO never answers
@@ -155,6 +154,8 @@ class FakeRedis:
                     conn.sendall(reply)
                 elif mode == "stall-get-slow-auth":  # a GET never answers, and every handshake reply takes 300 ms
                     if name == b"GET":
+                        if self.on_stalled_get is not None:
+                            self.on_stalled_get()
                         self.stop.wait(10)
                         return
                     if name in (b"AUTH", b"CLIENT", b"HELLO"):
@@ -251,9 +252,22 @@ def _store(server: FakeRedis) -> tuple[memory_store.MemoryStore, memory_store.Me
     return store, endpoint
 
 
-def test_verification_refuses_a_proof_gathered_across_a_reconnect(fake: Callable[[str], FakeRedis]) -> None:
-    server = fake("drop-after-info")
-    store, endpoint = _store(server)
+def test_verification_refuses_a_proof_gathered_across_a_reconnect(
+    fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, endpoint = _store(fake("fast"))
+    writer = store._writer
+    info = writer.info
+
+    def disconnect_after_info(section: str) -> dict[str, object]:
+        response: dict[str, object] = info(section)
+        link = writer.optimus_link
+        if section == "memory" and link.connects == 1:
+            # Close locally between commands so the next checkout must reconnect on every OS.
+            link.connection.disconnect()
+        return response
+
+    monkeypatch.setattr(writer, "info", disconnect_after_info)
     with pytest.raises(memory_store.MemoryStoreStartupError) as refused:
         store.verify(endpoint.resource, deadline=time.monotonic() + 5)
     assert refused.value.code == "MEMORY_STORE_RECONNECTED" and store.suspect is False and store._verified_connects == (0, 0)
@@ -316,6 +330,85 @@ def test_nothing_reconnects_after_the_deadline_not_even_redis_py_cleanup(fake: C
     assert stopped.value.code == "MEMORY_TIMEOUT" and time.monotonic() - started < 0.7
     assert store._writer.optimus_link.connects == connects  # no reconnect was attempted after the cut
     assert store.suspect is True
+
+
+def test_cut_during_watched_get_refuses_reconnect_while_request_clock_has_time(fake: Callable[[str], FakeRedis]) -> None:
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    link = store._writer.optimus_link
+    connects = link.connects
+    server.mode = "stall-get-slow-auth"
+    server.on_stalled_get = link.cut
+    deadline = time.monotonic() + 5
+
+    with pytest.raises(msc.MemoryRequestError) as stopped:
+        store.dispatch({"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000},
+                       deadline=deadline)
+    assert stopped.value.code == "MEMORY_TIMEOUT" and time.monotonic() < deadline
+    assert store.suspect is True
+    assert link.connects == connects
+
+
+@pytest.mark.parametrize(("fault", "code"), [
+    (memory_store.DeadlinePassed, "MEMORY_TIMEOUT"),
+    (memory_store.Reconnected, "MEMORY_UNAVAILABLE"),
+])
+def test_watch_recovery_returns_a_typed_refusal(
+        fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch, fault: type[Exception], code: str) -> None:
+    store, endpoint = _store(fake("fast"))
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    real_client_id = store._writer.client_id
+    calls = 0
+
+    def client_id() -> int:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return int(real_client_id())
+        raise fault("writer recovery checkout was refused")
+
+    def watch(_key: str) -> None:
+        raise WatchError("the pipeline lost its watch")
+
+    monkeypatch.setattr(store._writer, "client_id", client_id)
+    monkeypatch.setattr(memory_store, "_pipeline", lambda _client: nullcontext(SimpleNamespace(watch=watch)))
+    with pytest.raises(msc.MemoryRequestError) as stopped:
+        store.dispatch({"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000},
+                       deadline=time.monotonic() + 5)
+    assert stopped.value.code == code
+    assert store.suspect is True
+    assert calls == 2
+
+
+def test_a_watchdog_cut_closes_the_budget_before_disconnect(fake: Callable[[str], FakeRedis]) -> None:
+    client = memory_store.connect(_endpoint(fake("fast").port))
+    client.ping()
+    link = client.optimus_link
+    link.deadline = time.monotonic() + 5
+    connects = link.connects
+    link.cut()
+    link.connection.disconnect()
+
+    with pytest.raises(memory_store.DeadlinePassed):
+        client.ping()
+    assert link.connects == connects
+
+
+def test_socket_connect_rechecks_the_deadline_at_the_transport_boundary(
+        fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch) -> None:
+    client = memory_store.connect(_endpoint(fake("fast").port))
+    client.ping()
+    link = client.optimus_link
+    link.connection.disconnect()
+    link.deadline = time.monotonic() - 1
+
+    def connect(_connection: memory_store.redis.Connection) -> None:
+        pytest.fail("attempted TCP connection after the deadline")
+
+    monkeypatch.setattr(memory_store.redis.Connection, "_connect", connect)
+    with pytest.raises(memory_store.DeadlinePassed):
+        link.connection._connect()
 
 
 def test_a_watchdog_already_cutting_finishes_before_the_next_request_takes_the_connection(

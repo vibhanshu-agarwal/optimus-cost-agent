@@ -955,6 +955,25 @@ def authorize_launch(
     )
 
 
+def verify_exact_durable(
+    candidate: LaunchCandidate, store: KeyringApprovalStore, *, approval_id: str,
+    record_digest: str, launch_session_id: str,
+) -> AuthorizedLaunch:
+    """Authorize only the scoped current record without allowing legacy promotion."""
+    try:
+        record = store.read_exact_durable(
+            candidate.workspace_identity.digest, candidate.workspace_state.legacy_v2_digest, approval_id, record_digest
+        )
+    except ApprovalError as exc:
+        raise LaunchGateError(code=exc.code, detail=exc.detail) from exc
+    if record.security_snapshot_digest != candidate.security_snapshot_digest:
+        raise LaunchGateError(code="SNAPSHOT_MISMATCH")
+    _authorize_monotonic_grants(candidate=candidate, record_monotonic_grants=record.monotonic_grants)
+    return AuthorizedLaunch(
+        candidate=candidate, approval_id=record.approval_id, approval_mode="durable", launch_session_id=launch_session_id
+    )
+
+
 def _authorize_monotonic_grants(
     *,
     candidate: LaunchCandidate,

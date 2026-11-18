@@ -108,6 +108,7 @@ class Link:
     def cut(self) -> None:
         """The deadline's hard stop: shut the live socket, so whatever read is blocked (a handshake, a reply arriving in
         fragments, an ordinary command) returns at once. The next use reconnects, which is a new generation."""
+        self.deadline = time.monotonic()  # revoke the budget before releasing the blocked caller
         sock = getattr(self.connection, "_sock", None)  # shortcut: redis-py 8 keeps the live socket here; re-check on upgrade
         if sock is not None:
             try:
@@ -151,6 +152,10 @@ class _TrackedConnection(redis.Connection):
             self.socket_connect_timeout = min(_CONNECT_SECONDS, remaining)
             self.socket_timeout = remaining
         super().connect_check_health(*args, **kwargs)
+
+    def _connect(self) -> socket.socket:
+        self._within_deadline()
+        return super()._connect()
 
     def send_packed_command(self, *args: Any, **kwargs: Any) -> None:
         self._within_deadline()
@@ -581,7 +586,13 @@ class MemoryStore:
         if self._remaining() <= 0:  # past the deadline nothing reconnects, not even to ask which connection this is
             self._connection_lost()
             raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503)
-        if int(self._writer.client_id()) != connection:
+        try:
+            same_connection = int(self._writer.client_id()) == connection
+        except (RedisConnectionError, TimeoutError, OSError) as exc:
+            self._connection_lost()
+            expired = isinstance(exc, DeadlinePassed) or self._remaining() <= 0
+            raise msc.MemoryRequestError("MEMORY_TIMEOUT" if expired else "MEMORY_UNAVAILABLE", 503) from None
+        if not same_connection:
             self._connection_lost()
             raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503)
 

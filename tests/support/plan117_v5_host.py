@@ -12,6 +12,7 @@ import hashlib
 import json
 import shutil
 import sqlite3
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,8 @@ class FakeHostOptions:
     second_thread_bound_arm: str | None = None
     empty_prompt_arm: str | None = None
     empty_prompt_shape: object = ()
+    approval_failure: str | None = None
+    unconfirmed_drain: bool = False
 
 
 @dataclass
@@ -60,6 +63,9 @@ class FakeHost:
     clock: int = 1_000_000_000_000
     wall_tick: int = 0
     launches: list[tuple[str, str]] = field(default_factory=list)
+
+    approval_events: list[tuple[str, str]] = field(default_factory=list)
+    approval_arms: tuple[str, ...] = ()
 
     # ------------------------------------------------------------------ HostActions surface
 
@@ -71,11 +77,32 @@ class FakeHost:
             zed_identity=self.zed_identity,
             prepare_source=self.prepare_source,
             launch=self.launch,
+            approvals=self.approvals,
+            interpreter=Path(sys.executable),
             locate_database=self.locate_database,
             remove_tree=self.remove_tree,
             monotonic_ns=self.monotonic_ns,
             wall_now=self.wall_now,
         )
+
+    def approvals(self, control_dir: Path | None, workspaces: Any) -> FakeHost:
+        self.approval_arms = tuple(workspace.arm for workspace in workspaces)
+        return self
+
+    def approve_all(self) -> None:
+        for arm in self.approval_arms:
+            self.approval_events.append(("approve", arm))
+            if arm == self.options.approval_failure:
+                raise collector.HostError("scoped_approval_declined_or_failed")
+
+    def verify(self, arm: str) -> collector.LaunchApproval:
+        self.approval_events.append(("verify", arm))
+        digest = hashlib.sha256(arm.encode()).hexdigest()
+        return collector.LaunchApproval(digest, f"appr_{digest[:24]}", digest)
+
+    def recover(self, *, processes_stopped: bool) -> bool:
+        self.approval_events.append(("recover" if processes_stopped else "hold", ""))
+        return processes_stopped
 
     def monotonic_ns(self) -> int:
         self.clock += 1_000_000
@@ -144,12 +171,17 @@ class FakeHost:
             raise collector.HostError("simulated_launch_failure")
         started = self.monotonic_ns()
         messages = self._script(request)
-        self._write_relay(request.relay_dir, messages)
+        self._write_relay(request.relay_dir, messages, request.child_argv)
         self._write_closure(request, started)
         self._update_database(request)
         ended = self.monotonic_ns()
         forced = self.options.forced_kill == key
-        return collector.LaunchResult(started_ns=started, ended_ns=ended, zed_exit_code=1 if forced else 0, timed_out=forced)
+        audit = {
+            "event_type": "authorization", "final_reason_code": "AUTHORIZED", "approval_mode": "durable",
+            "approval_migration_disposition": "none", "approval_id": request.approval.approval_id,
+            "workspace_digest": request.approval.workspace_digest, "launch_session_id": request.launch_session_id,
+        }
+        return collector.LaunchResult(started, ended, 1 if forced else 0, forced, not self.options.unconfirmed_drain, audit)
 
     def _initialize_result(self, key: tuple[str, str]) -> dict[str, Any]:
         capabilities: dict[str, Any] = {"loadSession": True, "sessionCapabilities": {}}
@@ -210,7 +242,7 @@ class FakeHost:
             out.append(("agent_to_zed", {"jsonrpc": "2.0", "id": 9, "result": {}}))
         return out
 
-    def _write_relay(self, relay_dir: Path, messages: list[tuple[str, dict[str, Any]]]) -> None:
+    def _write_relay(self, relay_dir: Path, messages: list[tuple[str, dict[str, Any]]], child_argv: list[str]) -> None:
         recorder = relay._LockedRecorder(relay_dir, "relay", 0.0)
         try:
             for direction, message in messages:
@@ -223,7 +255,7 @@ class FakeHost:
         relay._write_summary(
             relay_dir,
             run_id="relay",
-            child_argv=["python", "launcher.py"],
+            child_argv=child_argv,
             child_exit_code=0,
             totals=totals,
             zed_eof=True,

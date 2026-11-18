@@ -16,16 +16,23 @@ import shutil
 import sqlite3
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from evidence_handoff.collector.bundles import RAW_BUNDLE_SCHEMA, _payload_sha256, load_verified_raw_bundle
 from evidence_handoff.collector.models import CapturedArtifact, CollectionBatch, Observation, RunContext
 from evidence_handoff.collector.pipeline import _OBSERVATION_SCHEMA as OBSERVATION_SCHEMA
 from tools.evidence_gather_support import plan117_current_client_contract as contract
 from tools.evidence_gather_support.common import HostError
+from tools.evidence_gather_support.plan117_workspace_approval import (
+    ApprovalWorkspace,
+    LaunchApproval,
+    NativeWorkspaceApprovals,
+    scoped_process_environment,
+)
 
 COLLECTOR_ID = "plan117_v5_current_client_collector"
 CONTRACT_VERSION = "v1"
@@ -485,11 +492,13 @@ def derive_wire(relay_dir: Path) -> DerivedWire:
         relay_valid = False
     chunk_ends: dict[str, list[tuple[int, int]]] = {"zed_to_agent": [], "agent_to_zed": []}
     try:
-        for line in (relay_dir / "relay-index.ndjson").read_text(encoding="utf-8").splitlines():
-            record = json.loads(line) if line else {}
+        for line in (relay_dir / "relay-index.ndjson").read_bytes().splitlines():
+            record = contract.strict_json_loads(line) if line else {}
+            if type(record) is not dict:
+                raise ValueError
             if record.get("direction") in chunk_ends and int(record["size"]) > 0:
                 chunk_ends[record["direction"]].append((int(record["directional_offset"]) + int(record["size"]), int(record["sequence"])))
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, contract.ContractError):
         relay_valid = False
     ordered: list[tuple[int, int, str, RelayMessage]] = []
     undecodable = False
@@ -519,7 +528,13 @@ def derive_wire(relay_dir: Path) -> DerivedWire:
             initialize = _initialize_facts(event, message.message)
     summary: dict[str, Any] = {}
     if relay_valid:
-        summary = json.loads((relay_dir / "relay-summary.json").read_text(encoding="utf-8"))
+        try:
+            decoded = contract.strict_json_loads((relay_dir / "relay-summary.json").read_bytes())
+            if type(decoded) is not dict:
+                raise ValueError
+            summary = decoded
+        except (OSError, ValueError, contract.ContractError):
+            relay_valid = False
     exit_code = summary.get("child_exit_code")
     return DerivedWire(events, undecodable, initialize, relay_valid, summary.get("zed_to_agent_eof") is True,
                        exit_code if type(exit_code) is int else None)
@@ -542,22 +557,27 @@ class DatabaseBinding:
     session_binding: str | None
 
 
-def read_database_binding(main_copy: Path, wal_copy: Path | None = None, shm_copy: Path | None = None) -> DatabaseBinding:
-    """Thread identity and binding of the single sidebar_threads row in a closed database copy."""
+@contextmanager
+def _open_closed_database_copy(
+    main: Path, wal: Path | None, shm: Path | None,
+) -> Iterator[sqlite3.Connection]:
     with tempfile.TemporaryDirectory(prefix="p117v5-db-") as scratch:
         target = Path(scratch) / "db.sqlite"
-        shutil.copyfile(main_copy, target)
-        for source, suffix in ((wal_copy, "-wal"), (shm_copy, "-shm")):
+        shutil.copyfile(main, target)
+        for source, suffix in ((wal, "-wal"), (shm, "-shm")):
             if source is not None:
-                shutil.copyfile(source, Path(scratch) / f"db.sqlite{suffix}")
-        try:
-            connection = sqlite3.connect(f"file:{target.as_posix()}?mode=ro", uri=True)
-            try:
-                rows = connection.execute("SELECT thread_id, session_id FROM sidebar_threads").fetchall()
-            finally:
-                connection.close()
-        except sqlite3.Error:
-            return DatabaseBinding(False, None, None)
+                shutil.copyfile(source, target.with_name(target.name + suffix))
+        with closing(sqlite3.connect(target.as_uri() + "?mode=ro", uri=True)) as connection:
+            yield connection
+
+
+def read_database_binding(main_copy: Path, wal_copy: Path | None = None, shm_copy: Path | None = None) -> DatabaseBinding:
+    """Thread identity and binding of the single sidebar_threads row in a closed database copy."""
+    try:
+        with _open_closed_database_copy(main_copy, wal_copy, shm_copy) as connection:
+            rows = connection.execute("SELECT thread_id, session_id FROM sidebar_threads").fetchall()
+    except sqlite3.Error:
+        return DatabaseBinding(False, None, None)
     bound = {binding for _thread, binding in rows if binding is not None}
     binding = None
     if bound:
@@ -655,13 +675,18 @@ def private_root_commitments(capture_root: Path, run_key: bytes) -> dict[str, st
 SCENARIO_RELATIVE = "tests/fixtures/evidence/scenarios/plan117-current-client-gate-v5.toml"
 ARTIFACT_SCHEMA = "plan-11-7-v5-collector-artifact-v1"
 ZED_LAUNCH_TIMEOUT_SECONDS = 900.0
+ZED_DRAIN_TIMEOUT_SECONDS = 10.0
 LAUNCH_CONFIG: dict[str, Any] = {
     "agent_server_name": "optimus",
     "relay": "tools/plan117_custody_relay.py",
     "module_closure_schema": MODULE_CLOSURE_SCHEMA,
     "zed_launch_timeout_seconds": ZED_LAUNCH_TIMEOUT_SECONDS,
+    "zed_drain_timeout_seconds": ZED_DRAIN_TIMEOUT_SECONDS,
     "hermetic_user_data_dir": True,
     "arm_ids": list(contract.ARM_IDS),
+    "child_argv": ["<interpreter>", "-I", "<launcher>", "--workspace-root", "<workspace>", "--expected-durable-approval",
+                   "<approval-id>:<record-digest>", "--launch-session-id", "<launch-session-id>", "--no-auto-start"],
+    "scope_approval": "exact-durable-with-intent-v1",
 }
 LAUNCH_CONFIG_SHA256 = contract.sha256_hex(contract.canonical_json_bytes(LAUNCH_CONFIG))
 _EMPTY = contract.EMPTY_BYTES_SHA256
@@ -707,6 +732,22 @@ class LaunchRequest:
     workspace_root: Path
     relay_dir: Path
     fixture: contract.DescriptorFixture
+    approval: LaunchApproval
+    launch_session_id: str
+    interpreter: Path
+
+    @property
+    def child_argv(self) -> list[str]:
+        return expected_child_argv(str(self.interpreter), str(self.launcher_path), str(self.workspace_root),
+                                   self.approval.approval_id, self.approval.record_digest, self.launch_session_id)
+
+
+def expected_child_argv(
+    interpreter: str, launcher: str, workspace: str, approval_id: str, record_digest: str, launch_session_id: str,
+) -> list[str]:
+    return [interpreter, "-I", launcher, "--workspace-root", workspace,
+            "--expected-durable-approval", f"{approval_id}:{record_digest}",
+            "--launch-session-id", launch_session_id, "--no-auto-start"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -715,6 +756,9 @@ class LaunchResult:
     ended_ns: int
     zed_exit_code: int | None
     timed_out: bool
+    tree_stopped: bool
+    audit_event: dict[str, Any] | None
+    interrupted: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -722,6 +766,53 @@ class DatabaseLocation:
     main: Path
     wal: Path | None
     shm: Path | None
+
+
+def _locate_zed_binding_database(profile_root: Path) -> DatabaseLocation:
+    """Select the only closed Zed database with the thread-binding table."""
+    root = profile_root.resolve(strict=True)
+    matches: list[DatabaseLocation] = []
+    for main in sorted(root.rglob("*.sqlite")):
+        if not (main.is_file() or main.is_symlink()):
+            continue
+        wal = main.with_name(main.name + "-wal")
+        shm = main.with_name(main.name + "-shm")
+        sidecars = tuple(path if path.exists() or path.is_symlink() else None for path in (wal, shm))
+        try:
+            for path in (main, *sidecars):
+                if path is None:
+                    continue
+                resolved = path.resolve(strict=True)
+                if not resolved.is_relative_to(root):
+                    raise HostError("database_outside_profile")
+                if not resolved.is_file():
+                    raise HostError("binding_database_unreadable")
+            with _open_closed_database_copy(main, *sidecars) as connection:
+                table = connection.execute(
+                    "SELECT type FROM sqlite_schema WHERE name = 'sidebar_threads' COLLATE NOCASE"
+                ).fetchone()
+                if table is None:
+                    continue
+                if table != ("table",):
+                    raise HostError("binding_database_schema_invalid")
+                columns = {row[1].lower() for row in connection.execute("PRAGMA table_info(sidebar_threads)")}
+                if not {"thread_id", "session_id"} <= columns:
+                    raise HostError("binding_database_schema_invalid")
+        except (OSError, sqlite3.Error) as exc:
+            raise HostError("binding_database_unreadable") from exc
+        matches.append(DatabaseLocation(main, wal, shm))
+
+    if not matches:
+        raise HostError("binding_database_missing")
+    if len(matches) != 1:
+        raise HostError("ambiguous_database_location")
+    return matches[0]
+
+
+class WorkspaceApprovalSession(Protocol):
+    def approve_all(self) -> None: ...
+    def verify(self, arm: str) -> LaunchApproval: ...
+    def recover(self, *, processes_stopped: bool) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -732,6 +823,8 @@ class HostActions:
     zed_identity: Callable[[], ZedIdentity]
     prepare_source: Callable[[SourcePreparation], None]
     launch: Callable[[LaunchRequest], LaunchResult]
+    approvals: Callable[[Path | None, Sequence[ApprovalWorkspace]], WorkspaceApprovalSession]
+    interpreter: Path
     locate_database: Callable[[Path], DatabaseLocation]
     remove_tree: Callable[[Path], None]
     monotonic_ns: Callable[[], int]
@@ -746,6 +839,7 @@ class CollectInputs:
     descriptor_fixture_sha256: str
     normal_source_root: Path
     scratch_parent: Path
+    approval_control_dir: Path | None = None
 
 
 def launch_ids_for(arm_id: str) -> tuple[str, str]:
@@ -848,6 +942,7 @@ def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> 
             "budget_policy_sha256": spec.budget_policy_sha256})
         zed = actions.zed_identity()
         identities = [capture_path_identity("zed_executable", zed.executable, "file")]
+        interpreter = actions.interpreter.resolve(strict=True)
         if identities[0]["sha256"] != zed.executable_sha256:
             raise HostError("zed_identity_mismatch")
         emit.document("client", "plan117_v5_client", "artifacts/plan117/client.json", {
@@ -857,6 +952,7 @@ def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> 
                        capture_path_identity("normal_source_root", normal_root, "directory"),
                        capture_path_identity("run_root", run_root, "directory")]
         run_root_text = identities[-1]["canonical_path"]
+        identities.append(capture_path_identity("interpreter", interpreter, "file"))
         if not all(are_disjoint(item["canonical_path"], run_root_text) for item in identities[1:3]):
             raise HostError("run_root_overlap")
 
@@ -899,12 +995,28 @@ def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> 
         raise HostError("host_action_failed") from exc
 
     aborted = None
+    workspace_approvals = None
+    processes_stopped = True
     try:
+        workspaces = [
+            ApprovalWorkspace(arm, run_root / "arms" / arm / "workspace", sources[contract.source_kind_for_arm(arm)][0])
+            for arm in contract.ARM_IDS
+        ]
+        workspace_approvals = actions.approvals(inputs.approval_control_dir, workspaces)
+        workspace_approvals.approve_all()
         for arm_id in contract.ARM_IDS:
             for launch_id in launch_ids_for(arm_id):
-                _collect_launch(emit, actions, inputs.fixture, run_root, sources, arm_id, launch_id, identities)
-    except Exception as exc:  # any host-action failure after the first launch is an aborted run; BaseException propagates
-        aborted = {"reason_code": _failure_code(exc), "stage": "launch"}
+                approval = workspace_approvals.verify(arm_id)
+                _collect_launch(emit, actions, inputs.fixture, run_root, sources, arm_id, launch_id, identities, approval, interpreter)
+    except (Exception, KeyboardInterrupt) as exc:
+        code = "run_interrupted" if isinstance(exc, KeyboardInterrupt) else _failure_code(exc)
+        processes_stopped = code != "zed_tree_unconfirmed"
+        aborted = {"reason_code": code, "stage": "launch"}
+    finally:
+        try:
+            recovered = workspace_approvals is None or workspace_approvals.recover(processes_stopped=processes_stopped)
+        except (Exception, KeyboardInterrupt):
+            recovered = False
 
     def tail_record(kind: str, body: dict[str, Any]) -> None:
         try:
@@ -927,8 +1039,9 @@ def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> 
     finally:
         started = actions.monotonic_ns()
         try:
-            actions.remove_tree(run_root)
-            removed = True
+            if recovered:
+                actions.remove_tree(run_root)
+            removed = recovered
         except OSError:
             removed = False
     tail_record("cleanup", {
@@ -939,14 +1052,25 @@ def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> 
 
 
 def _collect_launch(emit: _Emitter, actions: HostActions, fixture: contract.DescriptorFixture, run_root: Path,
-                    sources: dict[str, tuple[Path, Path, Path]], arm_id: str, launch_id: str, identities: list[dict[str, Any]]) -> None:
+                    sources: dict[str, tuple[Path, Path, Path]], arm_id: str, launch_id: str, identities: list[dict[str, Any]],
+                    approval: LaunchApproval, interpreter: Path) -> None:
     kind = contract.source_kind_for_arm(arm_id)
     source_root, launcher, report = sources[kind]
     report.unlink(missing_ok=True)
     profile = run_root / "arms" / arm_id / "profile"
     relay_dir = run_root / "relay" / arm_id / launch_id
-    result = actions.launch(LaunchRequest(arm_id, launch_id, kind, source_root, launcher, report, profile,
-                                          run_root / "arms" / arm_id / "workspace", relay_dir, fixture))
+    request = LaunchRequest(
+        arm_id, launch_id, kind, source_root, launcher, report, profile, run_root / "arms" / arm_id / "workspace",
+        relay_dir, fixture, approval, f"sess_{secrets.token_hex(12)}", interpreter,
+    )
+    try:
+        result = actions.launch(request)
+    except HostError:
+        raise
+    except (Exception, KeyboardInterrupt) as exc:
+        raise HostError("zed_tree_unconfirmed") from exc
+    if not result.tree_stopped:
+        raise HostError("zed_tree_unconfirmed")
     base = f"artifacts/plan117/arms/{arm_id}/{launch_id}"
     for name in _RELAY_FILES:
         path = relay_dir / name
@@ -954,7 +1078,9 @@ def _collect_launch(emit: _Emitter, actions: HostActions, fixture: contract.Desc
     emit.artifact(f"plan117_v5_closure:{arm_id}:{launch_id}", f"{base}/module-closure.json", report.read_bytes() if report.is_file() else b"", "application/json")
     emit.document("launch", f"plan117_v5_launch:{arm_id}:{launch_id}", f"{base}/launch.json", {
         "arm_id": arm_id, "launch_id": launch_id, "source_kind": kind, "started_ns": result.started_ns,
-        "ended_ns": result.ended_ns, "zed_exit_code": result.zed_exit_code, "timed_out": result.timed_out}, arm_id, launch_id)
+        "ended_ns": result.ended_ns, "zed_exit_code": result.zed_exit_code, "timed_out": result.timed_out,
+        "approval_id": approval.approval_id, "record_digest": approval.record_digest, "workspace_digest": approval.workspace_digest,
+        "launch_session_id": request.launch_session_id, "audit_event": result.audit_event}, arm_id, launch_id)
     label = f"after_{launch_id}"
     location = actions.locate_database(profile)
     role = f"database:{arm_id}:{label}"
@@ -966,13 +1092,19 @@ def _collect_launch(emit: _Emitter, actions: HostActions, fixture: contract.Desc
     db_base = f"artifacts/plan117/arms/{arm_id}/{label}/db"
     emit.artifact(f"plan117_v5_db:{arm_id}:{label}:main", f"{db_base}/db.sqlite", location.main.read_bytes(), "application/vnd.sqlite3")
     presence = {"main": True}
-    for file_role, path in (("wal", location.wal), ("shm", location.shm)):
-        presence[file_role] = path is not None and path.is_file()
-        if path is not None and presence[file_role]:
-            identities.append(capture_path_identity(f"{role}:{file_role}", path, "file"))
-            emit.artifact(f"plan117_v5_db:{arm_id}:{label}:{file_role}", f"{db_base}/db.sqlite-{file_role}", path.read_bytes(), "application/octet-stream")
+    for file_role, sidecar in (("wal", location.wal), ("shm", location.shm)):
+        presence[file_role] = sidecar is not None and sidecar.is_file()
+        if sidecar is not None and presence[file_role]:
+            identities.append(capture_path_identity(f"{role}:{file_role}", sidecar, "file"))
+            emit.artifact(f"plan117_v5_db:{arm_id}:{label}:{file_role}", f"{db_base}/db.sqlite-{file_role}", sidecar.read_bytes(), "application/octet-stream")
     emit.document("checkpoint", f"plan117_v5_checkpoint:{arm_id}:{label}", f"artifacts/plan117/arms/{arm_id}/{label}/checkpoint.json", {
         "arm_id": arm_id, "label": label, "copied_monotonic_ns": actions.monotonic_ns(), "presence": presence}, arm_id, launch_id)
+    if result.interrupted:
+        raise HostError("run_interrupted")
+    if not _matches_audit_event(result.audit_event, approval.approval_id, approval.workspace_digest, request.launch_session_id):
+        raise HostError("launch_authorization_unverified")
+    if result.timed_out:
+        raise HostError("zed_shutdown_forced")
 
 
 # --------------------------------------------------------------------------- raw manifest derivation
@@ -1121,8 +1253,51 @@ def derive_raw_document(context: RunContext, batches: Sequence[CollectionBatch],
     }
 
 
+def _matches_audit_event(event: Any, approval_id: Any, workspace_digest: Any, session: Any) -> bool:
+    return (
+        type(event) is dict
+        and type(approval_id) is str and re.fullmatch(r"appr_[0-9a-f]{24}", approval_id) is not None
+        and type(workspace_digest) is str and _HEX64.fullmatch(workspace_digest) is not None
+        and type(session) is str and re.fullmatch(r"sess_[0-9a-f]{24}", session) is not None
+        and event.get("event_type") == "authorization" and event.get("final_reason_code") == "AUTHORIZED"
+        and event.get("approval_mode") == "durable" and event.get("approval_migration_disposition") == "none"
+        and (event.get("approval_id"), event.get("workspace_digest"), event.get("launch_session_id")) ==
+            (approval_id, workspace_digest, session)
+    )
+
+
+def _verify_launch_argv(art: _Artifacts, record: dict[str, Any], arm_id: str, launch_id: str, roots: dict[Any, Any]) -> None:
+    identifier = record["approval_id"]
+    digest = record["record_digest"]
+    workspace_digest = record["workspace_digest"]
+    session = record["launch_session_id"]
+    if not _matches_audit_event(record["audit_event"], identifier, workspace_digest, session):
+        art.failures.append("launch_authorization_unverified")
+    try:
+        interpreter = roots["interpreter"]
+        launcher = roots[f"launcher:{record['source_kind']}"]
+        workspace = roots[f"workspace:{arm_id}"]
+        if not all(type(value) is str for value in (interpreter, launcher, workspace, identifier, digest, session)) or not _HEX64.fullmatch(digest):
+            raise ValueError
+        payload = art.bytes(f"plan117_v5_relay:{arm_id}:{launch_id}:relay-summary.json")
+        observed = contract.strict_json_loads(payload or b"{}")["child_argv"]
+        expected = expected_child_argv(interpreter, launcher, workspace, identifier, digest, session)
+        if len(observed) != len(expected):
+            raise ValueError
+        for index in (0, 2, 4):
+            observed[index] = _canonical_text(observed[index])
+        if observed != expected:
+            raise ValueError
+    except (ValueError, TypeError, KeyError, contract.ContractError):
+        art.failures.append("launch_argv_mismatch")
+
+
 def _derive_launch(art: _Artifacts, arm_id: str, launch_id: str, roots: dict[Any, Any]) -> dict[str, Any]:
-    record = art.document(f"plan117_v5_launch:{arm_id}:{launch_id}", "launch", ("arm_id", "launch_id", "source_kind", "started_ns", "ended_ns", "zed_exit_code", "timed_out"))
+    record = art.document(f"plan117_v5_launch:{arm_id}:{launch_id}", "launch", (
+        "arm_id", "launch_id", "source_kind", "started_ns", "ended_ns", "zed_exit_code", "timed_out",
+        "approval_id", "record_digest", "workspace_digest", "launch_session_id", "audit_event",
+    ))
+    _verify_launch_argv(art, record, arm_id, launch_id, roots)
     if (record["arm_id"], record["launch_id"]) != (arm_id, launch_id):
         art.failures.append("launch_record_mismatch")
     with tempfile.TemporaryDirectory(prefix="p117v5-relay-") as scratch:
@@ -1506,6 +1681,32 @@ _VERSION = re.compile(r"(\d+\.\d+\.\d+)")
 _REVISION = re.compile(r"\b([0-9a-f]{40})\b")
 
 
+def _read_scoped_launch_audit(path: Path, offset: int, request: LaunchRequest) -> dict[str, Any] | None:
+    try:
+        with path.open("rb") as stream:
+            stream.seek(offset)
+            payload = stream.read(1024 * 1024 + 1)
+    except OSError:
+        return None
+    if len(payload) > 1024 * 1024:
+        return None
+    matches = []
+    complete = payload[:payload.rfind(b"\n") + 1]
+    for row in complete.splitlines():
+        try:
+            event = json.loads(row)
+        except ValueError:
+            return None
+        if (
+            type(event) is dict and event.get("event_type") == "approval_migration"
+            and event.get("launch_session_id") == request.launch_session_id
+        ):
+            return None
+        if _matches_audit_event(event, request.approval.approval_id, request.approval.workspace_digest, request.launch_session_id):
+            matches.append(event)
+    return matches[0] if len(matches) == 1 else None
+
+
 def real_host_actions(repo_root: Path) -> HostActions:
     """Live HostActions over the existing probe and custody-relay primitives. UNRUN until a released E3."""
     if os.environ.get("PYTEST_CURRENT_TEST"):
@@ -1514,6 +1715,8 @@ def real_host_actions(repo_root: Path) -> HostActions:
     import time
 
     import tools.probe_p11_zed_session_load as probe
+
+    environment = scoped_process_environment(os.environ)
 
     def git(root: Path, *args: str) -> bytes:
         completed = subprocess.run(["git", *args], cwd=root, capture_output=True, check=False, timeout=60)  # noqa: S603, S607
@@ -1545,32 +1748,70 @@ def real_host_actions(repo_root: Path) -> HostActions:
         request.launcher_path.parent.mkdir(parents=True, exist_ok=True)
         request.launcher_path.write_bytes(render_launcher_bytes(request.source_root, request.closure_report_path))
 
-    def launch(request: LaunchRequest) -> LaunchResult:
-        executable = probe._resolve_zed_executable()
+    def prepare_zed(request: LaunchRequest, executable: Path, version: str, help_text: str) -> tuple[list[str], Path, int]:
         request.profile_root.mkdir(parents=True, exist_ok=True)
         invocation = probe.discover_hermetic_zed_invocation(
-            executable=executable, version_output=probe._observe_zed_version(), help_output=probe._observe_zed_help(executable),
+            executable=executable, version_output=version, help_output=help_text,
             executable_sha256=probe._file_sha256(executable), hermetic_root=request.profile_root)
         probe.validate_zed_invocation(invocation, hermetic_root=request.profile_root)
-        argv = probe.build_real_zed_launch_argv(invocation, workspace=request.workspace_root, launch_help=probe._observe_zed_help(Path(invocation.argv[0])))
-        relay_args = [str(repo_root / "tools" / "plan117_custody_relay.py"), "--capture-root", str(request.relay_dir.parent),
-                      "--run-id", request.relay_dir.name, "--child-executable", sys.executable, "--", str(request.launcher_path)]
-        probe.seed_hermetic_zed_settings(request.profile_root, relay_command=sys.executable, relay_args=relay_args)
-        started = time.monotonic_ns()
-        meta = probe._launch_zed_once(argv, env=probe._zed_env_for_invocation(invocation), cwd=request.workspace_root,
-                                      log_path=request.relay_dir.parent / f"{request.relay_dir.name}-zed.log", timeout_s=ZED_LAUNCH_TIMEOUT_SECONDS)
-        return LaunchResult(started, time.monotonic_ns(), meta.get("returncode"), meta.get("timed_out") is True)
+        argv = probe.build_real_zed_launch_argv(invocation, workspace=request.workspace_root, launch_help=help_text)
+        if invocation.environment_bind:
+            raise HostError("unreviewed_zed_environment")
+        relay_args = [
+            "-I", str(repo_root / "tools" / "plan117_custody_relay.py"), "--capture-root", str(request.relay_dir.parent),
+            "--run-id", request.relay_dir.name, "--child-executable", str(request.interpreter), "--", *request.child_argv[1:],
+        ]
+        probe.seed_hermetic_zed_settings(request.profile_root, relay_command=str(request.interpreter), relay_args=relay_args)
+        audit_path = request.workspace_root / ".optimus" / "launch-audit.ndjson"
+        offset = audit_path.stat().st_size if audit_path.exists() else 0
+        return list(argv), audit_path, offset
 
-    def locate_database(profile_root: Path) -> DatabaseLocation:
-        candidates = sorted(path for path in profile_root.rglob("*.sqlite") if path.is_file())
-        if len(candidates) != 1:
-            raise HostError("ambiguous_database_location")
-        main = candidates[0]
-        return DatabaseLocation(main, main.with_name(main.name + "-wal"), main.with_name(main.name + "-shm"))
+    def launch(request: LaunchRequest) -> LaunchResult:
+        try:
+            executable = probe._resolve_zed_executable()
+        except (OSError, probe.ProbeError) as exc:
+            raise HostError("launch_prepare_failed") from exc
+        version, help_text = probe._observe_zed_version(), probe._observe_zed_help(executable)
+        try:
+            argv, audit_path, offset = prepare_zed(request, executable, version, help_text)
+        except (OSError, ValueError, probe.ProbeError) as exc:
+            raise HostError("launch_prepare_failed") from exc
+        observed: dict[str, Any] | None = None
+
+        def readiness(notify: bool) -> bool:
+            nonlocal observed
+            observed = _read_scoped_launch_audit(audit_path, offset, request)
+            if observed is None:
+                return False
+            try:
+                closure = parse_closure_report(request.closure_report_path.read_bytes(),
+                                               source_root_canonical=_canonical_text(str(request.source_root)))
+                if (
+                    closure["report_monotonic_ns"] < started
+                    or not contract.REQUIRED_MODULE_PATHS.keys() <= {entry["module_name"] for entry in closure["entries"]}
+                ):
+                    return False
+            except (OSError, contract.ContractError):
+                return False
+            if notify:
+                print(f"Zed {request.arm_id}/{request.launch_id}: verified ACP launch; follow this arm's prompt schedule.", flush=True)
+            return True
+
+        started = time.monotonic_ns()
+        meta = probe._launch_zed_once(
+            argv, env=environment, cwd=request.workspace_root, ready=readiness,
+            log_path=request.relay_dir.parent / f"{request.relay_dir.name}-zed.log", timeout_s=ZED_LAUNCH_TIMEOUT_SECONDS,
+            drain_timeout_s=ZED_DRAIN_TIMEOUT_SECONDS,
+        )
+        audit = _read_scoped_launch_audit(audit_path, offset, request) if meta.get("readiness_verified") is True else None
+        return LaunchResult(started, time.monotonic_ns(), meta.get("returncode"), meta.get("timed_out") is True,
+                            meta.get("tree_stopped") is True, audit, meta.get("interrupted") is True)
 
     return HostActions(
         source_facts=source_facts, normal_source_digest=probe.normal_workspace_source_digest,
         base_spec_bytes=lambda root, commit: probe.git_cat_file_blob(root, commit, "src/optimus/acp/spec.py"),
-        zed_identity=zed_identity, prepare_source=prepare_source, launch=launch, locate_database=locate_database,
-        remove_tree=shutil.rmtree, monotonic_ns=time.monotonic_ns, wall_now=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        zed_identity=zed_identity, prepare_source=prepare_source, launch=launch, locate_database=_locate_zed_binding_database,
+        approvals=lambda control, workspaces: NativeWorkspaceApprovals(control, workspaces, environment),
+        interpreter=Path(sys.executable), remove_tree=shutil.rmtree, monotonic_ns=time.monotonic_ns,
+        wall_now=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     )

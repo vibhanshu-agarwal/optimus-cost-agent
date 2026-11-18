@@ -283,7 +283,7 @@ unexplained watchdog-assertion disposition and shared-cache repair. `P11-FEAT-ZE
 continues to own WP-27 runtime/live evidence. Publication, main CI activation, merge and
 installation remain separate operator gates; local delivery alone will not close them.
 
-**Current Zed Resume position (accepted runtime lane, 2026-08-28):** runtime commit
+**Historical Zed Resume demonstration (2026-08-28):** on the accepted runtime lane, runtime commit
 `fac32284888850bacde93815265cbabe3afd4663` and its independent R9/V2 reviews are accepted. Real
 Zed 1.16.3 resumed a non-empty session with ordered replay before success, no replacement
 `session/new`, and continuation on the same durable ledger. Raw Optimus stdio emitted every replay
@@ -294,10 +294,10 @@ return `SESSION_BUSY` until the exact 300-second lease expires, after which reco
 The ruling is **`DEMO_READY_UNSEALED — CURRENT ZED CLOSE RECOVERS AFTER BOUNDED LEASE EXPIRY`**.
 It always carries these limitations: acpx replay visibility is not demonstrated; current Zed does
 not provide graceful agent shutdown; immediate reopen can remain busy for up to 300 seconds; and
-Task 0, formal evidence, release, push, merge, backlog closure, and Plan 11.7 closure remain open.
-The docs-only runtime-branch record at `d18fd93` is not imported by this directory-cleanup change.
-Any publication of those facts as the Plan 11.7 execution contract must be one complete reviewed
-`_v4` successor, never another separately named amendment plan.
+Task 0, formal evidence, release and closure were still open at that demonstration. The docs-only runtime-branch
+record at `d18fd93` was outside the later directory-cleanup change. The active successor is [Plan 11.7 v5](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v5.md).
+[Issue #240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240) owns the plan's current status and next gate.
+[Issue #230](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/230) owns feature custody.
 
 ## Archived moved plans
 
