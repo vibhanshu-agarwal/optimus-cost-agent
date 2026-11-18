@@ -62,8 +62,8 @@ PAGE: Final = 100
 BATCH: Final = 10
 LOCK_STALE_SECONDS: Final = 600
 STATE_LOCK_SECONDS: Final = 10.0
+EXPORT_LOCK_SECONDS: Final = 120.0  # another host's export of the same project finishes first
 EXPORT_TRIES: Final = 3
-MAX_BACKLOG: Final = 256
 _SYNC_MARKERS: Final = ("onedrive", "dropbox", "google drive", "googledrive", "my drive", "icloud drive", "iclouddrive", "box sync",
                         "pcloud", "nextcloud", "owncloud", "sync.com", "mega")
 
@@ -212,7 +212,7 @@ class NoticeBacklog:
             current = self._load()
             known = {record["event_id"] for record in current}
             current += [record for record in records if record["event_id"] not in known]
-            _durable_json(self.path, current[-MAX_BACKLOG:])
+            _durable_json(self.path, current)  # kept until acknowledged, however many (Codex CP3 review 2, finding 4)
 
     def remove(self, event_ids: list[str]) -> None:
         if not event_ids:
@@ -398,6 +398,21 @@ class Recovery:
                 del state.purged[:-10_000]
         self._state.update(change)
 
+    def purging(self, item: str) -> None:
+        """Before a purge is dispatched (Codex CP3 review 2, finding 1): the host durably records that it may happen, so a journal
+        lost after the Gateway's intent record still cannot let a restore bring the item's text back."""
+        def change(state: RecoveryState) -> None:
+            if item not in state.purged:
+                state.purged.append(item)
+            state.dirty = True
+            state.revision += 1
+        self._state.update(change)
+
+    def purge_refused(self, item: str) -> None:
+        """The store answered that this purge was not done (no such item, or it refused); its intent no longer stands. A purge
+        whose outcome is unknown keeps it, so the restore waits for the purge to be finished."""
+        self._state.update(lambda state: setattr(state, "purged", [entry for entry in state.purged if entry != item]))
+
     def recovery_required(self, *, fresh: bool = False) -> bool:
         """Q3: the project held memory and its store is now empty (lost volume or a fresh store). Cached for 30 seconds for
         reads; `fresh` asks the store now, as every write does under its lease (Codex CP3 review 1, finding 4)."""
@@ -430,7 +445,8 @@ class Recovery:
 
     def export(self) -> Generation:
         """Write one generation now, or raise why not; nothing is published when anything fails."""
-        with self._lock:
+        export_lock = self._state.path.with_name(self._state.path.name + ".export.lock")
+        with self._lock, _file_lock(export_lock, wait=EXPORT_LOCK_SECONDS):  # Codex CP3 review 2, finding 2
             state = self._state.load()
             if state.destination is None:
                 raise RecoveryError("RECOVERY_NOT_SET_UP", "No recovery location is set up for this project: `/memory export` sets one up.")
@@ -456,6 +472,7 @@ class Recovery:
         created = self._clock()
         metadata = {"format": FORMAT, "project": self._store.project, "created_ms": created, "layout": list(LAYOUT),
                     "excluded": sorted(set(state.withdrawn)), "registry": self._registry() if self._registry is not None else None}
+        # `registry` is the whole registry snapshot: a lost registry is repaired from it, every project's mapping intact
         bind = bind_digest(metadata)
         entries, final = self._read_generation(bind)
         if not entries and state.held_memory:
@@ -573,9 +590,11 @@ class Recovery:
         if manifest["seal"] != seal:
             raise RecoveryError("RECOVERY_GENERATION_CHANGED", f"`{name}` is not the copy you confirmed (it changed meanwhile). "
                                 "Nothing was restored.")
-        mapped = manifest["metadata"].get("registry")
-        current = self._registry() if self._registry is not None else None
-        if current and mapped and (mapped.get("key"), mapped.get("project_id")) != (current.get("key"), current.get("project_id")):
+        project = self._store.project
+        snapshot = manifest["metadata"].get("registry")
+        mapped = registry_entry(snapshot, project) if isinstance(snapshot, dict) else None
+        current = registry_entry(self._registry(), project) if self._registry is not None else None
+        if current and mapped and mapped.get("key") != current.get("key"):
             raise RecoveryError("RECOVERY_MAPPING_MISMATCH", "That copy was written for another workspace's registration; nothing was restored.")
         known = self._state.load()
         withdrawn, purged = sorted(set(known.withdrawn)), sorted(set(known.purged))
@@ -650,7 +669,8 @@ class RegistryRecovery:
     def recover(self, name: str, *, seal: str) -> str:
         manifest, _entries = self.read(name)
         metadata = manifest["metadata"]
-        mapped, project = metadata.get("registry") or {}, metadata["project"]
+        snapshot, project = metadata.get("registry") or {}, metadata["project"]
+        mapped = registry_entry(snapshot, project) or {}
         if manifest["seal"] != seal:
             raise RecoveryError("RECOVERY_GENERATION_CHANGED", f"`{name}` is not the copy you confirmed; nothing was restored.")
         if mapped.get("key") != self._key or mapped.get("project_id") != project:
@@ -658,14 +678,14 @@ class RegistryRecovery:
         store = self._open_store(project)
         if not store.call("verify_bind", project=project, bind=manifest["bind"], mac=manifest["bind_mac"])["valid"]:
             raise RecoveryError("RECOVERY_GENERATION_UNAUTHENTIC", "The memory store did not write that copy's manifest; nothing was restored.")
-        self._restore_registry({"registry_version": 1, "projects": {self._key: {"project_id": project,
-                                                                                 "worktrees": list(mapped.get("worktrees", []))}}})
+        # the whole authenticated snapshot, so every other project keeps its identity too (Codex CP3 review 2, finding 3)
+        self._restore_registry(snapshot)
         rows, _cursor = store.items("project", limit=1)
         if rows:
             return f"Restored the project registry from `{name}`; the memory store already holds this project's memory."
         state = self._state_for(project)
         state.update(lambda s: setattr(s, "held_memory", True))
-        recovery = Recovery(store, state, registry=lambda: {"key": self._key, "project_id": project, **{"worktrees": mapped.get("worktrees", [])}})
+        recovery = Recovery(store, state, registry=lambda: snapshot)
         reply = recovery.restore(name, seal=seal, directory=location(self.workspace) / name)
         return f"Restored the project registry and {reply.get('restored', 0)} items from `{name}`."
 
@@ -695,8 +715,10 @@ class Scheduler:
             self._recovery.export_if_dirty()
 
 
-def registry_entry(snapshot: dict[str, Any], project: str) -> dict[str, Any] | None:
-    """This project's registry mapping, for a generation's manifest."""
+def registry_entry(snapshot: Any, project: str) -> dict[str, Any] | None:
+    """One project's mapping in a registry snapshot."""
+    if not isinstance(snapshot, dict):
+        return None
     for key, entry in snapshot.get("projects", {}).items():
         if entry.get("project_id") == project:
             return {"key": key, **entry}

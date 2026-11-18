@@ -493,7 +493,14 @@ class MemoryCommands:
                     if not withdrawn.notices or not withdrawn.notices[0][0].saved:
                         return MemoryAnswer(withdrawn.text + " Nothing was deleted.", withdrawn.notices)
                     notices += withdrawn.notices
-                reply = self._store.purge(token, request.item, self._keyed(f"{_COMMAND_KEY}\0purge\0{self.project}\0{request.item}"))
+                if self._recovery is not None:
+                    self._recovery.purging(request.item)  # durable before dispatch: a lost journal then still blocks a restore
+                try:
+                    reply = self._store.purge(token, request.item, self._keyed(f"{_COMMAND_KEY}\0purge\0{self.project}\0{request.item}"))
+                except MemoryStoreRefused:
+                    if self._recovery is not None:
+                        self._recovery.purge_refused(request.item)  # answered no: nothing was purged
+                    raise
         except MemoryStoreUnavailable:
             return MemoryAnswer(UNAVAILABLE, tuple(notices))
         except MemoryStoreRefused as refused:

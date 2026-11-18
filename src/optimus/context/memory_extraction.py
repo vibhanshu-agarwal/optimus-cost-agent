@@ -965,7 +965,7 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
 
     from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
     from optimus.context.authored_memory import GatewayMemoryStore
-    from optimus.context.memory_recovery import NoticeBacklog, Recovery, RegistryRecovery, StateFile, registry_entry
+    from optimus.context.memory_recovery import NoticeBacklog, Recovery, RegistryRecovery, StateFile
     from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError, project_key
 
     registry = ProjectRegistry(config_root)
@@ -994,7 +994,7 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
         store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
         project = registration.project_id
         recovery = Recovery(store, StateFile.shared(Path(config_root), project),
-                            registry=lambda: registry_entry(registry.snapshot(), project) or {})
+                            registry=registry.snapshot)
         store.guard, store.written = recovery.recovery_required, recovery.written  # Q3: nothing is written before a restore
         extractor = MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed,
                                     worktree=worktree_id(registration.worktree))

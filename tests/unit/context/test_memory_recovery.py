@@ -50,8 +50,9 @@ class _Host:
         service = self.service
         self.store: GatewayMemoryStore = GatewayMemoryStore(object(), project=project, owner="host-1",  # type: ignore[arg-type]
                                                             post=lambda *_a, **_k: (lambda body: service.handle(body, deadline=_deadline())))
-        mapping = registry if registry is not None else {"key": "git:x", "project_id": project}
-        self.recovery = mr.Recovery(self.store, mr.StateFile(tmp_path / config, project), registry=lambda: mapping)
+        snapshot = registry if registry is not None else _snapshot({"git:x": project})
+        self.recovery = mr.Recovery(self.store, mr.StateFile(tmp_path / config, project),
+                                    registry=snapshot if callable(snapshot) else (lambda: snapshot))
         self.store.guard, self.store.written = self.recovery.recovery_required, self.recovery.written
         self.commands = mc.MemoryCommands(self.store, trusted=True, sanitize=lambda v: v, recovery=self.recovery, workspace=workspace)
 
@@ -77,6 +78,11 @@ class _Host:
     def items(self) -> dict[str, tuple[int, str, str, str]]:
         rows, _cursor = self.store.items("project", limit=100)
         return {r.event.item: (r.event.version, r.event.trust, r.event.status, r.event.statement) for r in rows}
+
+
+def _snapshot(keys: dict[str, str]) -> dict[str, Any]:
+    """A registry snapshot mapping each key to its project id."""
+    return {"registry_version": 1, "projects": {key: {"project_id": project, "worktrees": []} for key, project in keys.items()}}
 
 
 def _deadline() -> float:
@@ -464,11 +470,11 @@ def test_a_removed_location_moves_only_on_confirmation_and_the_old_one_is_cleane
 
 
 def test_restore_refuses_a_copy_mapped_to_another_registration(tmp_path: Path, repo: Path) -> None:
-    host = _Host(tmp_path, repo, registry={"key": "git:a", "project_id": "p-1", "worktrees": []})
+    host = _Host(tmp_path, repo, registry=_snapshot({"git:a": "p-1"}))
     host.remember("Never push to main.")
     host.run("/memory export")
     (generation,) = mr.generations(mr.location(repo))
-    lost = _Host(tmp_path, repo, Server(), registry={"key": "git:b", "project_id": "p-1", "worktrees": []})
+    lost = _Host(tmp_path, repo, Server(), registry=_snapshot({"git:b": "p-1"}))
     assert "another workspace's registration" in lost.run(f"/memory restore {generation.name}").text and lost.items() == {}
 
 
@@ -479,7 +485,7 @@ def test_a_lost_registry_is_repaired_only_from_an_authenticated_copy_for_this_wo
     registry = ProjectRegistry(tmp_path / "config")
     identity = resolve_workspace_identity(repo)
     project = registry.resolve(identity, create=True).project_id
-    host = _Host(tmp_path, repo, project=project, registry=mr.registry_entry(registry.snapshot(), project))
+    host = _Host(tmp_path, repo, project=project, registry=registry.snapshot)
     host.remember("Never push to main.")
     host.run("/memory export")
     (generation,) = mr.generations(mr.location(repo))
@@ -552,3 +558,97 @@ def test_a_generation_is_an_agent_memory_repo_and_its_metadata_cannot_be_changed
     manifest["metadata"]["excluded"] = ["m-0000000000000000"]  # changed without recomputing the digest
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     assert "do not match its manifest" in lost.run(f"/memory restore {generation.name}").text
+
+
+# --- Codex CP3 review 2 ------------------------------------------------------------------------------------------------------
+
+def test_a_purge_whose_outcome_was_lost_still_blocks_restore_after_the_journal_and_store_are_lost(tmp_path: Path, repo: Path) -> None:
+    """Finding 1: the host records the purge's intent before dispatching it. The answer is lost, then the journal and the store
+    are lost: nothing shows the purge did not happen, so nothing is published."""
+    import shutil
+
+    from optimus.context.authored_memory import MemoryStoreUnavailable
+
+    host = _Host(tmp_path, repo)
+    secret = host.remember(CANARY)
+    host.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    def lost_answer(token: int, item: str, key: str) -> Any:
+        # the Gateway journals and tombstones it, but its reply never reaches the host
+        host.store.call("purge", project=host.store.project, token=token, item=item, idempotency_key=key)
+        raise MemoryStoreUnavailable("reply lost")
+
+    host.store.purge = lost_answer  # type: ignore[method-assign]
+    assert "did not answer" in host.run(f"/forget {secret[0]}@1 --purge").text
+    host.service._store._purge_journal.close()  # type: ignore[attr-defined]
+    shutil.rmtree(tmp_path / "journal")
+    lost = _Host(tmp_path, repo, Server())
+    assert "journal is damaged or shorter" in lost.run(f"/memory restore {generation.name}").text and lost.items() == {}
+
+
+def test_concurrent_exports_never_leave_withdrawn_text_behind(tmp_path: Path, repo: Path) -> None:
+    """Finding 2: one export holds the project's export lock from its snapshot to its state update. Another host's withdrawal
+    and export meanwhile wait, then retire the stale generation; no managed copy keeps the text."""
+    import threading
+    import time
+
+    host = _Host(tmp_path, repo)
+    item = host.remember(CANARY)
+    host.run("/memory export")
+    other = _Host(tmp_path, repo, host.server)
+    read = host.recovery._read_generation
+    workers: list[threading.Thread] = []
+
+    def racing(bind: str) -> Any:
+        found = read(bind)
+        other.run(f"/forget {item[0]}@1")
+        worker = threading.Thread(target=other.recovery.export_if_dirty)
+        worker.start()
+        time.sleep(0.5)  # without the lock the other export would finish now, before this one publishes its stale read
+        workers.append(worker)
+        return found
+
+    host.recovery._read_generation = racing  # type: ignore[method-assign]
+    host.recovery.export()
+    host.recovery._read_generation = read  # type: ignore[method-assign]
+    workers[0].join(30)
+    host.recovery.export_if_dirty()
+    assert b"zebra-quartz" not in _files(mr.location(repo)) and not host.recovery.state().cleanup_pending
+
+
+def test_a_repaired_registry_keeps_every_other_project_s_identity(tmp_path: Path, repo: Path) -> None:
+    """Finding 3: a generation carries the whole registry snapshot, and the repair restores all of it."""
+    import subprocess as sp
+
+    from optimus.acp.trusted_paths import resolve_workspace_identity
+    from optimus.context.project_registry import ProjectRegistry, project_key
+
+    second = tmp_path / "second"
+    second.mkdir()
+    sp.run(["git", "init", "-q"], cwd=second, check=True, stdin=sp.DEVNULL, capture_output=True)
+    registry = ProjectRegistry(tmp_path / "config")
+    identity = resolve_workspace_identity(repo)
+    project = registry.resolve(identity, create=True).project_id
+    other_project = registry.resolve(resolve_workspace_identity(second), create=True).project_id
+    host = _Host(tmp_path, repo, project=project, registry=registry.snapshot)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    registry.path.unlink()
+    fresh = purge_store(tmp_path, Server())[0]
+    repair = mc.MemoryCommands(None, trusted=True, sanitize=lambda v: v, registry_recovery=mr.RegistryRecovery(
+        repo, key=project_key(identity), restore_registry=registry.restore,
+        open_store=lambda name: GatewayMemoryStore(object(), project=name, owner="host-2",  # type: ignore[arg-type]
+                                                   post=lambda *_a, **_k: (lambda body: fresh.handle(body, deadline=_deadline()))),
+        state_for=lambda name: mr.StateFile(tmp_path / "config", name)))
+    question = repair.run(mc.MemoryCommand("restore", generation=generation.name), block="command:1").confirm
+    assert question is not None and "Restored the project registry" in repair.confirmed(question).text
+    assert registry.resolve(resolve_workspace_identity(second), create=True).project_id == other_project
+
+
+def test_the_notice_backlog_keeps_every_undelivered_notice(tmp_path: Path) -> None:
+    """Finding 4: nothing is dropped for room; every undelivered notice survives a restart until it is acknowledged."""
+    records = [{"event_id": f"e-{n}", "item": f"m-{n:016x}", "version": 1, "action": "admit", "durable_state": "confirmed",
+                "projection_state": "current"} for n in range(257)]
+    mr.NoticeBacklog(tmp_path, "p-1").add(records)
+    assert mr.NoticeBacklog(tmp_path, "p-1").pending() == records  # a new instance: only the file carries over
