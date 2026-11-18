@@ -1,0 +1,1010 @@
+schema: optimus-issue332-pyscn-evaluation-v1
+issue: 332
+adopted_plan_sha256: 1ff9bcc4980f9bfe5c43fa12e05296ed0e6964c8a42f734a09f98c82d122217f  # pragma: allowlist secret - reviewed reproducibility checksum
+adoption_review_session: 51cef918-1efe-47b8-ae9e-cacb38808b91
+adoption_issue_comment: 6972142184
+base_commit: da5a0e36234ada7779959ab805e23ada86222f02  # pragma: allowlist secret - reviewed reproducibility checksum
+base_tree: 16859dd6f204abd2e871db6460344b8b6bf71d76  # pragma: allowlist secret - reviewed reproducibility checksum
+historical:
+  commit: b62462f11abe858f58af12fa2d2f159eae09d832  # pragma: allowlist secret - reviewed reproducibility checksum
+  audit_path: reports/plan-11-26-duplication-audit.json
+  audit_blob: e35b13dcab72bdb56725fd65b83aced0c8c0ab9f  # pragma: allowlist secret - reviewed reproducibility checksum
+  candidates_path: reports/plan-11-26-duplication-candidates.json
+  candidates_blob: c80eb38de3edb71de1e1cd1900c4768c113fc503  # pragma: allowlist secret - reviewed reproducibility checksum
+  audit_partition_count: 178
+  audit_finding_count: 64
+  audit_candidate_count: 12
+  candidate_group_count: 176
+corpus:
+- path: src/optimus/agent/state_store.py
+  blob: db8a7ac537d72af1fb7ed67cf3d54ec500e44c2d  # pragma: allowlist secret - reviewed reproducibility checksum
+  sha256: 95983ba49fc94fd86a3c391705317a211f0d3bd80f51304b99380f248a03b325  # pragma: allowlist secret - reviewed reproducibility checksum
+  lines: 556
+  historical_blob: 8a05c2361bb0b5e874834cec69069e7fae797bdc  # pragma: allowlist secret - reviewed reproducibility checksum
+  historical_groups: 2
+- path: src/optimus/evidence/ledger.py
+  blob: ee4a401863be3017b4c132bfc015a922ca670451  # pragma: allowlist secret - reviewed reproducibility checksum
+  sha256: 6f877a6f5d24cef60d4a96a84f790b37246e148904c708387a0c1ac236621117  # pragma: allowlist secret - reviewed reproducibility checksum
+  lines: 147
+  historical_blob: ee4a401863be3017b4c132bfc015a922ca670451  # pragma: allowlist secret - reviewed reproducibility checksum
+  historical_groups: 5
+- path: src/optimus/redis/runtime.py
+  blob: cd2f5256d98141f0c8ec8552ee7e6d2ba5f4fc37  # pragma: allowlist secret - reviewed reproducibility checksum
+  sha256: d97705364ee9bfcaa4d1a52e5e3ed4264b91a06934fc97e840543a3519924d58  # pragma: allowlist secret - reviewed reproducibility checksum
+  lines: 513
+  historical_blob: f42192a4bf5e9318e1888248eece10d40180e9df  # pragma: allowlist secret - reviewed reproducibility checksum
+  historical_groups: 1
+- path: src/optimus/retry/gated_run.py
+  blob: aff9266bbb9f5cf59547fe6fb074480b348913ec  # pragma: allowlist secret - reviewed reproducibility checksum
+  sha256: 945c7df86975bc85823f649a81ad6141f006ffd565016789900e6a5e8c2ac69f  # pragma: allowlist secret - reviewed reproducibility checksum
+  lines: 200
+  historical_blob: 1e8a1dee8d953e84172808a7694a65d722141a11  # pragma: allowlist secret - reviewed reproducibility checksum
+  historical_groups: 1
+- path: src/optimus/retry/policy.py
+  blob: 2331a6901211234c2b6aece46a23fa18eef6bf68  # pragma: allowlist secret - reviewed reproducibility checksum
+  sha256: 19afa3c7c5d6c19d06806e851006b4eb7dbe00fd2b9b8993d327f2c6fa24dea2  # pragma: allowlist secret - reviewed reproducibility checksum
+  lines: 242
+  historical_blob: 0704cb1a34df3023936e76010263e49f8b2178c8  # pragma: allowlist secret - reviewed reproducibility checksum
+  historical_groups: 2
+- path: src/optimus/usage/ledger.py
+  blob: c2d69738b216b207c4a5e43fdea98daa2f7558b7  # pragma: allowlist secret - reviewed reproducibility checksum
+  sha256: bca5d8b12b914cb710243e5b19e54e55540ab4aef2454dbe35c70afaf3c0fdd3  # pragma: allowlist secret - reviewed reproducibility checksum
+  lines: 63
+  historical_blob: c2d69738b216b207c4a5e43fdea98daa2f7558b7  # pragma: allowlist secret - reviewed reproducibility checksum
+  historical_groups: 5
+- path: src/optimus/usage/turn_settlement.py
+  blob: f6bf124d938489284087fbc56fd180fd69d2717b  # pragma: allowlist secret - reviewed reproducibility checksum
+  sha256: c5f8b31071f8dd2f8f3f218e36a7a68cfb9c781892f746316710c7d0915084e1  # pragma: allowlist secret - reviewed reproducibility checksum
+  lines: 412
+  historical_blob: null
+  historical_groups: 0
+- path: src/optimus_gateway/usage_store.py
+  blob: 1d8023186a7503f1c2356de9855b6560f22a58df  # pragma: allowlist secret - reviewed reproducibility checksum
+  sha256: 699cee0a20d0674eeabfba33e85b8275becf303e574a9374fd5bd6151b82341d  # pragma: allowlist secret - reviewed reproducibility checksum
+  lines: 683
+  historical_blob: null
+  historical_groups: 0
+scanner:
+  wheel_filename: pyscn-1.33.2-py3-none-manylinux_2_34_x86_64.whl
+  wheel_size_bytes: 11528882
+  requires_python: '>=3.8'
+  runtime_dependencies: []
+  wheel_min_glibc: '2.34'
+  local_image_id: sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f  # pragma: allowlist secret - reviewed reproducibility checksum
+  platform: linux/amd64
+  wheel_sha256: 69ad1603d50d6ebbe931bfa0ddf558cb131028f3b6421e32fc0c72c987bfc6b5  # pragma: allowlist secret - reviewed reproducibility checksum
+  native_binary_sha256: 3a5093596a7baf86925e0b0d10c1b548e78af0a962bcb9713a846f9b0db76b96  # pragma: allowlist secret - reviewed reproducibility checksum
+  python: 3.12.14
+  glibc: glibc 2.41
+  version: 'pyscn 1.33.2
+
+    Commit: 0ee1073
+
+    Built: 2026-11-08
+
+    Go: go1.26.0
+
+    OS/Arch: linux/amd64'
+  install:
+  - /tmp/issue332-wheel/bin/python
+  - -m
+  - pip
+  - --isolated
+  - install
+  - --no-index
+  - --no-deps
+  - --no-cache-dir
+  - --disable-pip-version-check
+  - /wheel/pyscn-1.33.2-py3-none-manylinux_2_34_x86_64.whl
+  scan:
+  - /tmp/issue332-wheel/bin/pyscn
+  - analyze
+  - --select
+  - complexity,deadcode,clones
+  - --min-complexity
+  - '1'
+  - --json
+  - --no-open
+  - --config
+  - /inputs/scanner.toml
+  - --output
+  - /results/report.json
+  - src
+  cwd: /inputs
+  config_sha256: b08abc52fa565cec6eaa64c2de804da6358e5cb0c6784ba2b9d617dede5d5b9f  # pragma: allowlist secret - reviewed reproducibility checksum
+  config_text: '# Explicit config, all analyzer thresholds remain pinned-tool defaults.
+
+    '
+  clone_request:
+    recursive: true
+    include_patterns:
+    - '**/*.py'
+    exclude_patterns:
+    - test_*.py
+    - '*_test.py'
+    - '**/tests/**'
+    - '**/test/**'
+    - '**/testing/**'
+    - '**/migrations/**'
+    - '**/examples/**'
+    - '**/docs/**'
+    - '**/docs_src/**'
+    - '**/demo/**'
+    - '**/samples/**'
+    min_lines: 8
+    min_nodes: 20
+    similarity_threshold: 0.65
+    max_edit_distance: 50
+    ignore_literals: false
+    ignore_identifiers: false
+    skip_docstrings: true
+    type1_threshold: 0.85
+    type2_threshold: 0.75
+    type3_threshold: 0.7
+    type4_threshold: 0.65
+    enable_dfa: true
+    output_format: json
+    output_path: ''
+    no_open: false
+    show_details: false
+    show_content: false
+    sort_by: similarity
+    group_clones: true
+    group_mode: complete_linkage
+    group_threshold: 0.65
+    k_core_k: 2
+    min_similarity: 0
+    max_similarity: 1
+    clone_types:
+    - 1
+    - 2
+    - 4
+    config_path: /inputs/scanner.toml
+    timeout: 0
+    lsh_enabled: auto
+    lsh_auto_threshold: 500
+    lsh_similarity_threshold: 0.5
+    lsh_bands: 42
+    lsh_rows: 3
+    lsh_hashes: 128
+  dead_code_min_severity: warning
+  complexity_minimum: 1
+  complexity_cyclomatic_medium_max: 19
+  complexity_cognitive_warning: 25
+  extra_offline_install_flag: --disable-pip-version-check
+  wheel_file_created_utc: '2026-11-18T07:33:43.0993826Z'
+  wheel_file_write_completed_utc: '2026-11-18T07:33:43.8833912Z'
+  wheel_acquisition_clock: Host UTC file metadata
+isolation:
+  limits:
+  - --pull never
+  - --platform linux/amd64
+  - --network none
+  - --read-only
+  - --cap-drop ALL
+  - --security-opt no-new-privileges
+  - --user 65534:65534
+  - --pids-limit 128
+  - --memory 512m
+  - --cpus 2
+  - --tmpfs /tmp:rw,exec,nosuid,nodev,size=128m,mode=1777
+  mounts:
+    /inputs: ro
+    /wheel: ro
+    /results: rw
+  preflight_limit_seconds: 120
+  per_scan_limit_seconds: 600
+  preflight_observation:
+    python: 3.12.14
+    glibc: glibc 2.41
+    uid: 65534
+    gid: 65534
+    interfaces:
+    - lo
+    ipv4_default: false
+    ipv6_default: false
+    network_errno: 101
+    write_denials:
+      /inputs/write-control: 30
+      /wheel/write-control: 30
+      /issue332-root-write-control: 30
+    tmpfs_opts:
+    - nodev
+    - nosuid
+    - relatime
+    - rw
+    exe_path: /tmp/issue332-exec-control
+    exe_sha256: b381cc8c55ec524b9fa92897f0882e855357468b4a763519cec47e05994d61ff  # pragma: allowlist secret - reviewed reproducibility checksum
+    exe_exit: 0
+    wheel_empty: true
+    input_control_bytes_matched: true
+    tmpfs_type: tmpfs
+    result_write_succeeded: true
+  preflight_control_script_sha256: d02d701c14889bd20b70e6a62029ef803b3498dbeb73a5634bf97138d97d5620  # pragma: allowlist secret - reviewed reproducibility checksum
+receipts:
+  preflight:
+    container_name: issue332-pyscn-preflight
+    started_utc: '2026-11-18T07:32:49.360881501Z'
+    finished_utc: '2026-11-18T07:32:49.688367373Z'
+    exit_code: 0
+    watchdog: false
+    oom_killed: false
+    raw_files:
+      create-command.json:
+        bytes: 993
+        sha256: 4bb21058081cddc7c262500ca6c07e703847ff17bb07fa987bf2dfa446b3da1d  # pragma: allowlist secret - reviewed reproducibility checksum
+      isolation-control.json:
+        bytes: 538
+        sha256: 2dcba75cbb57bff18a56aa2a246dd338aa1ca88726cbc8d2ce27cb44993c2fc6  # pragma: allowlist secret - reviewed reproducibility checksum
+      prestart-inspection.json:
+        bytes: 1073
+        sha256: 4aadf139aab04e8828776fb5a5de706faa0cc864fd521c2973aeae98448de70d  # pragma: allowlist secret - reviewed reproducibility checksum
+      stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      stdout.txt:
+        bytes: 467
+        sha256: 16879ae459541ff1fccb6c685017de5896d35084224ea28d1c8b4aef578707e1  # pragma: allowlist secret - reviewed reproducibility checksum
+      terminal.json:
+        bytes: 458
+        sha256: f14044767c935aaa22b75a4ff46744a454adf45ecec5466cd66cfd190d1e40cc  # pragma: allowlist secret - reviewed reproducibility checksum
+  control:
+    container_name: issue332-pyscn-control
+    started_utc: '2026-11-18T07:34:21.046737391Z'
+    finished_utc: '2026-11-18T07:34:26.821999247Z'
+    exit_code: 0
+    watchdog: false
+    oom_killed: false
+    raw_files:
+      analyze-help.stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      analyze-help.stdout.txt:
+        bytes: 3902
+        sha256: db60edc05efef81a30b9bc7b9c7c81e2955f42444f022c1329c8a99cea076403  # pragma: allowlist secret - reviewed reproducibility checksum
+      control-qualification.json:
+        bytes: 513
+        sha256: 145ec3a3d9290f41be18ca3fe04bd9e2d5f4fe8afa80490c5b5f3052d01ea03f  # pragma: allowlist secret - reviewed reproducibility checksum
+      create-command.json:
+        bytes: 1140
+        sha256: 94ef3cb9cb0bab3610e625a99b0480280973712e2bac8cbdcafa9078de0498b4  # pragma: allowlist secret - reviewed reproducibility checksum
+      offline-install.stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      offline-install.stdout.txt:
+        bytes: 139
+        sha256: 9a32be76987228b0be0f8cf585c13e3933dd1b2a0ae92609f7084e5eeae5701b  # pragma: allowlist secret - reviewed reproducibility checksum
+      prestart-inspection.json:
+        bytes: 1067
+        sha256: 9aa399949bb44498d2218ddb6b019dbbb3e3792f0b7458ff94c2db101e708746  # pragma: allowlist secret - reviewed reproducibility checksum
+      report.json:
+        bytes: 24445
+        sha256: c24921b0e1e51bf8c9b08ec7c108b29668df5cabb10bf3cdbdf6491553b322b8  # pragma: allowlist secret - reviewed reproducibility checksum
+      scan.stderr.txt:
+        bytes: 685
+        sha256: 83f2234c80875f2b424c0f70f513e1a9310dc64a635158b532404758cc24cbfe  # pragma: allowlist secret - reviewed reproducibility checksum
+      scan.stdout.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      stdout.txt:
+        bytes: 233
+        sha256: ba50b4c2bb6e218a52da5cbf62554de1d4f1efa02c76053bb87151fd34385db1  # pragma: allowlist secret - reviewed reproducibility checksum
+      terminal.json:
+        bytes: 458
+        sha256: af4e37e36417eedb6cd1559d5c5fa2f05f801fd0668c75b0d7d568b4d541bb00  # pragma: allowlist secret - reviewed reproducibility checksum
+      tool-receipt.json:
+        bytes: 984
+        sha256: c74f93996bce3c2570df2b774819fa7bb924880a08fac3544d218bf50d74e04f  # pragma: allowlist secret - reviewed reproducibility checksum
+      validation.json:
+        bytes: 473
+        sha256: e3856a167c91f70fd3eee430b2d6eff0d997d640279e712fd47e8ec9f2489445  # pragma: allowlist secret - reviewed reproducibility checksum
+      venv.stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      venv.stdout.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      version.stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      version.stdout.txt:
+        bytes: 81
+        sha256: 5c12888095bf8b1015055a17f02d9bd79509ecf522fa6d3cda892f66a1742542  # pragma: allowlist secret - reviewed reproducibility checksum
+    scanner_stderr_disposition: Normal progress, output path, analyzer scores and project footer. No parse or analyzer error
+      diagnostics.
+  sample:
+    container_name: issue332-pyscn-sample
+    started_utc: '2026-11-18T07:35:23.261966444Z'
+    finished_utc: '2026-11-18T07:35:31.087413302Z'
+    exit_code: 0
+    watchdog: false
+    oom_killed: false
+    raw_files:
+      analyze-help.stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      analyze-help.stdout.txt:
+        bytes: 3902
+        sha256: db60edc05efef81a30b9bc7b9c7c81e2955f42444f022c1329c8a99cea076403  # pragma: allowlist secret - reviewed reproducibility checksum
+      create-command.json:
+        bytes: 1136
+        sha256: ae692de31fca08d25c64f36c33f978bb37ea72f31655a6e1390583abd1e87f05  # pragma: allowlist secret - reviewed reproducibility checksum
+      offline-install.stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      offline-install.stdout.txt:
+        bytes: 139
+        sha256: 9a32be76987228b0be0f8cf585c13e3933dd1b2a0ae92609f7084e5eeae5701b  # pragma: allowlist secret - reviewed reproducibility checksum
+      prestart-inspection.json:
+        bytes: 1064
+        sha256: 91affebbab377b78b6570561c2f19645ffccd484b0cd1ba5f2ea69462767bec1  # pragma: allowlist secret - reviewed reproducibility checksum
+      report.json:
+        bytes: 198854
+        sha256: 86afdac4cc484119d28bf64c8d09568d4d318929de69eaf50f6cb7d679ae45be  # pragma: allowlist secret - reviewed reproducibility checksum
+      scan.stderr.txt:
+        bytes: 692
+        sha256: a9bb94ba47a9ebe6c2242bed8b1106591dff525560705482c154aaae7711f9e3  # pragma: allowlist secret - reviewed reproducibility checksum
+      scan.stdout.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      stdout.txt:
+        bytes: 233
+        sha256: 2216d5deac71f6a41cd9ee07333767a9b36b34f8d4dbab97446a5cffa9be5598  # pragma: allowlist secret - reviewed reproducibility checksum
+      terminal.json:
+        bytes: 458
+        sha256: 5205aaf70d2830e61cda0dabbe938e94cf55af3c193e04a3bebb4cfce1bb7b27  # pragma: allowlist secret - reviewed reproducibility checksum
+      tool-receipt.json:
+        bytes: 984
+        sha256: c74f93996bce3c2570df2b774819fa7bb924880a08fac3544d218bf50d74e04f  # pragma: allowlist secret - reviewed reproducibility checksum
+      validation.json:
+        bytes: 733
+        sha256: 2285ee9934b6bba71108e9b935b655764ce15180b7e79de3f59fb65f72a70992  # pragma: allowlist secret - reviewed reproducibility checksum
+      venv.stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      venv.stdout.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      version.stderr.txt:
+        bytes: 0
+        sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  # pragma: allowlist secret - reviewed reproducibility checksum
+      version.stdout.txt:
+        bytes: 81
+        sha256: 5c12888095bf8b1015055a17f02d9bd79509ecf522fa6d3cda892f66a1742542  # pragma: allowlist secret - reviewed reproducibility checksum
+    scanner_stderr_disposition: Normal progress, output path, analyzer scores and project footer. No parse or analyzer error
+      diagnostics.
+control:
+  paths:
+  - src/control_alpha.py
+  - src/control_beta.py
+  unreachable:
+  - src/control_alpha.py
+  - 103
+  positive_complexity: 49
+  negative_complexity: 1
+  negative_clone_and_dead_clear: true
+  source_sha256:
+    src/control_beta.py: 490228a0aaf9395fe00006b0f8aa173319c556ecbb608d0766ba731c13b6b4db  # pragma: allowlist secret - reviewed reproducibility checksum
+    src/control_alpha.py: fe26c8447aaaea75b1be6b64f5e3d58840dde1de05f4246fe3b71586d4e3cabe  # pragma: allowlist secret - reviewed reproducibility checksum
+  summary:
+    total_functions: 6
+    high_complexity_count: 2
+    dead_code_count: 1
+    clone_pairs: 1
+    clone_groups: 1
+  recipe: UTF-8/LF. Both files define repeated_shape(key), initialize total to 0, append 48 independent if key == i blocks
+    (i=0..47) adding i+2, and return total. At line 101 alpha adds dead_sentinel(value) returning value before one assignment.
+    At line 101 beta adds distinct_reachable() returning a constant tuple. Alpha's assignment is sentinel_unreachable = 8291
+    and beta returns ('safe',).
+  clone_span:
+  - 1
+  - 99
+  clone_similarity: 1
+  defined_functions: 4
+  synthetic_module_rows: 2
+sample:
+  scans_attempted: 1
+  parser_diagnostics: []
+  analyzers_failed: []
+  all_three_analyzers_enabled: true
+  expected_files: 8
+  analyzed_files: 8
+  skipped_files: 0
+  complexity_function_definitions: 177
+  complexity_synthetic_module_rows: 8
+  complexity_scope_rows: 185
+  complexity_class_scopes: 51
+  complexity_warnings:
+  - '[src/optimus_gateway/usage_store.py:280:5] UsageStore._ingest cognitive complexity too high (35 > 25)'
+  - '[src/optimus_gateway/usage_store.py:534:5] UsageStore._physical cognitive complexity too high (53 > 25)'
+  complexity_high_risk_rows: 4
+  dead_code_reported_functions: 177
+  dead_code_total_blocks: 1593
+  dead_code_count: 0
+  clone_groups: 7
+  clone_raw_pairs: 7
+  clone_fragments: 12
+  clone_statistics:
+    total_fragments: 127
+    duplicated_fragments: 12
+    duplicated_lines: 177
+    total_clones: 12
+    total_clone_pairs: 7
+    total_clone_groups: 7
+    clones_by_type:
+      Type-1: 1
+      Type-2: 3
+      Type-4: 3
+    average_similarity: 0.7948444264399115
+    lines_analyzed: 2816
+    nodes_analyzed: 11401
+    files_analyzed: 8
+  clone_unique_location_pairs: 7
+  report_nested_no_open_fields: false
+  outer_cli_no_open_flag: true
+  raw_pair_ids:
+  - 1
+  - 2
+  - 3
+  - 6
+  - 11
+  - 12
+  - 14
+  complexity_cutoff_score_ties:
+  - - src/optimus/redis/runtime.py
+    - 365
+    - 407
+    - RedisRuntime._drive_teardown
+    - true
+  - - src/optimus/usage/turn_settlement.py
+    - 249
+    - 272
+    - TurnSettlement.record_attempt
+    - true
+  - - src/optimus/usage/turn_settlement.py
+    - 324
+    - 333
+    - TurnSettlement._summary
+    - false
+  host_validation_correction: Initial host-side check required no analyzer warnings. It rejected two legitimate cognitive-complexity
+    advisories before writing validation output. The corrected validator distinguished them from parse diagnostics and used
+    the same immutable raw sample output. The scanner ran once.
+historical_comparison:
+- id: T13-FIND-011
+  partition: partition-036
+  group: group-46e6266a4abdcc36bcf2
+  accepted_disposition: CONFIRMED_DUPLICATION
+  owner_issue: 346
+  result: hit with source drift
+  scanner_pair_ids:
+  - 6
+  reason: ASYNC store method is AST-identical after relocation. Runtime method added the absent-client guard. Pair 6 contains
+    the exact two current methods and the shared normalization.
+  members:
+  - member: member-5baa86ed645408315439
+    path: src/optimus/redis/runtime.py
+    symbol: RedisRuntime._ping_async
+    historical_span:
+    - 42
+    - 55
+    current_span:
+    - 312
+    - 327
+    same_ast: false
+  - member: member-b27925933e6131b7d110
+    path: src/optimus/agent/state_store.py
+    symbol: AsyncRedisAgentStateStore.ping
+    historical_span:
+    - 322
+    - 335
+    current_span:
+    - 468
+    - 481
+    same_ast: true
+- id: T13-FIND-012
+  partition: partition-038
+  group: group-48a5a106a9e55b2e763a
+  accepted_disposition: CONFIRMED_DUPLICATION
+  owner_issue: 341
+  result: partial
+  scanner_pair_ids:
+  - 14
+  reason: Source inspection confirms the accepted total_cost_usd members within both class spans. No separate method-level
+    clone was emitted. Tool output localizes the enclosing classes only.
+  members:
+  - member: member-37d6cb4c73c987cda534
+    path: src/optimus/evidence/ledger.py
+    symbol: EvidenceLedger.total_cost_usd
+    historical_span:
+    - 142
+    - 143
+    current_span:
+    - 142
+    - 143
+    same_ast: true
+  - member: member-9338243fe6a4f0e01dae
+    path: src/optimus/usage/ledger.py
+    symbol: ProviderUsageLedger.total_cost_usd
+    historical_span:
+    - 59
+    - 60
+    current_span:
+    - 59
+    - 60
+    same_ast: true
+- id: T13-FIND-013
+  partition: partition-040
+  group: group-494ce4a96eed340f105d
+  accepted_disposition: CONFIRMED_DUPLICATION
+  owner_issue: 341
+  result: partial
+  scanner_pair_ids:
+  - 14
+  reason: Both idempotent record members are contained and confirmed against the source. No separate method-level clone was
+    emitted. Tool output localizes the enclosing classes only.
+  members:
+  - member: member-65b2883de2d5fbfc2c5a
+    path: src/optimus/usage/ledger.py
+    symbol: ProviderUsageLedger.record
+    historical_span:
+    - 27
+    - 43
+    current_span:
+    - 27
+    - 43
+    same_ast: true
+  - member: member-79920bb5523cef02b0bb
+    path: src/optimus/evidence/ledger.py
+    symbol: EvidenceLedger.record
+    historical_span:
+    - 107
+    - 123
+    current_span:
+    - 107
+    - 123
+    same_ast: true
+- id: T13-FIND-018
+  partition: partition-049
+  group: group-5691d4e7cb53c25a1b69
+  accepted_disposition: CONFIRMED_DUPLICATION
+  owner_issue: 341
+  result: miss
+  scanner_pair_ids: []
+  reason: Both AST-identical-to-history fingerprint functions lie outside every emitted pair. This result does not establish
+    the reason.
+  members:
+  - member: member-0ef3adbd560979b510f0
+    path: src/optimus/usage/ledger.py
+    symbol: _settled_fingerprint
+    historical_span:
+    - 11
+    - 19
+    current_span:
+    - 11
+    - 19
+    same_ast: true
+  - member: member-1371d7b4a4d721fd3a8c
+    path: src/optimus/evidence/ledger.py
+    symbol: _settled_fingerprint
+    historical_span:
+    - 14
+    - 24
+    current_span:
+    - 14
+    - 24
+    same_ast: true
+- id: T13-FIND-019
+  partition: partition-052
+  group: group-5a4d6b1482ec0e35c7f7
+  accepted_disposition: CONFIRMED_DUPLICATION
+  owner_issue: 341
+  result: partial
+  scanner_pair_ids:
+  - 14
+  reason: Both total_billing_units members are present and share settlement-aggregation responsibility. No separate method-level
+    clone was emitted. Tool output localizes the enclosing classes only.
+  members:
+  - member: member-80bf512bd61300d8b960
+    path: src/optimus/usage/ledger.py
+    symbol: ProviderUsageLedger.total_billing_units
+    historical_span:
+    - 62
+    - 63
+    current_span:
+    - 62
+    - 63
+    same_ast: true
+  - member: member-ad370c02c50250098c59
+    path: src/optimus/evidence/ledger.py
+    symbol: EvidenceLedger.total_billing_units
+    historical_span:
+    - 139
+    - 140
+    current_span:
+    - 139
+    - 140
+    same_ast: true
+- id: T13-FIND-037
+  partition: partition-117
+  group: group-ddbd4e20e7f7cc557bd2
+  accepted_disposition: CONFIRMED_DUPLICATION
+  owner_issue: 341
+  result: partial
+  scanner_pair_ids:
+  - 14
+  reason: Both gateway-request lookup methods occur within the class spans and implement the same lookup shape. No separate
+    method-level clone was emitted. Tool output localizes the enclosing classes only.
+  members:
+  - member: member-82bd077905344753e7fa
+    path: src/optimus/evidence/ledger.py
+    symbol: EvidenceLedger._entry_for_gateway_request
+    historical_span:
+    - 125
+    - 129
+    current_span:
+    - 125
+    - 129
+    same_ast: true
+  - member: member-bc1e256d309a58f89baf
+    path: src/optimus/usage/ledger.py
+    symbol: ProviderUsageLedger._entry_for_gateway_request
+    historical_span:
+    - 45
+    - 49
+    current_span:
+    - 45
+    - 49
+    same_ast: true
+- id: T13-FIND-038
+  partition: partition-119
+  group: group-e360fde503120101366d
+  accepted_disposition: CONFIRMED_DUPLICATION
+  owner_issue: 347
+  result: hit
+  scanner_pair_ids:
+  - 1
+  reason: Both relocated _sleep_ms definitions remain AST-identical. The exact short pair was emitted despite the generic
+    minimums recorded in the request.
+  members:
+  - member: member-26d63e73c1d609447b6c
+    path: src/optimus/retry/gated_run.py
+    symbol: _sleep_ms
+    historical_span:
+    - 193
+    - 196
+    current_span:
+    - 197
+    - 200
+    same_ast: true
+  - member: member-33250d55804703f8ff97
+    path: src/optimus/retry/policy.py
+    symbol: _sleep_ms
+    historical_span:
+    - 245
+    - 248
+    current_span:
+    - 239
+    - 242
+    same_ast: true
+triage:
+  ranking:
+    clone: similarity descending, normalized unordered endpoints, numeric raw pair ID
+    dead_code: severity descending, normalized path, span and raw ID
+    complexity: cyclomatic score descending, normalized path, span and qualified tool name
+  clone_rows:
+  - id: 1
+    algorithm_type: 1
+    similarity: 1
+    endpoints:
+    - path: src/optimus/retry/gated_run.py
+      start: 197
+      end: 200
+      symbols:
+      - _sleep_ms
+      scanner_lines: 3
+      scanner_size: 13
+    - path: src/optimus/retry/policy.py
+      start: 239
+      end: 242
+      symbols:
+      - _sleep_ms
+      scanner_lines: 3
+      scanner_size: 13
+    disposition: corroboration
+    owner_issue: 347
+    reason: Exact pair of retry delay-conversion functions; two-sided T13-FIND-038.
+  - id: 2
+    algorithm_type: 2
+    similarity: 0.8499999999999999
+    endpoints:
+    - path: src/optimus/agent/state_store.py
+      start: 405
+      end: 417
+      symbols:
+      - RedisAgentStateStore.ping
+      scanner_lines: 13
+      scanner_size: 44
+    - path: src/optimus/agent/state_store.py
+      start: 469
+      end: 481
+      symbols:
+      - AsyncRedisAgentStateStore.ping
+      scanner_lines: 13
+      scanner_size: 45
+    disposition: indeterminate
+    owner_issue: 346
+    reason: 'One endpoint is a T13-FIND-011 member. The sync RedisAgentStateStore.ping fallback at state_store.py:400–417
+      has no Task 13 group member. The shared normalization belongs to #346''s remediation family. This one-sided match does
+      not establish a distinct actionable class.'
+  - id: 3
+    algorithm_type: 2
+    similarity: 0.821917808219178
+    endpoints:
+    - path: src/optimus/agent/state_store.py
+      start: 405
+      end: 417
+      symbols:
+      - RedisAgentStateStore.ping
+      scanner_lines: 13
+      scanner_size: 44
+    - path: src/optimus/agent/state_store.py
+      start: 468
+      end: 481
+      symbols:
+      - AsyncRedisAgentStateStore.ping
+      scanner_lines: 14
+      scanner_size: 49
+    disposition: indeterminate
+    owner_issue: 346
+    reason: 'One endpoint is a T13-FIND-011 member. The sync RedisAgentStateStore.ping fallback at state_store.py:400–417
+      has no Task 13 group member. The shared normalization belongs to #346''s remediation family. This one-sided match does
+      not establish a distinct actionable class.'
+  - id: 6
+    algorithm_type: 2
+    similarity: 0.7790697674418605
+    endpoints:
+    - path: src/optimus/agent/state_store.py
+      start: 468
+      end: 481
+      symbols:
+      - AsyncRedisAgentStateStore.ping
+      scanner_lines: 14
+      scanner_size: 49
+    - path: src/optimus/redis/runtime.py
+      start: 312
+      end: 327
+      symbols:
+      - RedisRuntime._ping_async
+      scanner_lines: 16
+      scanner_size: 58
+    disposition: corroboration
+    owner_issue: 346
+    reason: Exact accepted async state store and runtime health-check members, allowing the current runtime's absent-client
+      guard. Two-sided T13-FIND-011.
+  - id: 11
+    algorithm_type: 4
+    similarity: 0.7241047756159675
+    endpoints:
+    - path: src/optimus/agent/state_store.py
+      start: 400
+      end: 417
+      symbols:
+      - RedisAgentStateStore.ping
+      scanner_lines: 18
+      scanner_size: 64
+    - path: src/optimus/redis/runtime.py
+      start: 313
+      end: 327
+      symbols:
+      - RedisRuntime._ping_async
+      scanner_lines: 15
+      scanner_size: 54
+    disposition: indeterminate
+    owner_issue: 346
+    reason: 'One endpoint is a T13-FIND-011 member. The sync RedisAgentStateStore.ping fallback at state_store.py:400–417
+      has no Task 13 group member. The shared normalization belongs to #346''s remediation family. This one-sided match does
+      not establish a distinct actionable class.'
+  - id: 12
+    algorithm_type: 4
+    similarity: 0.7237324269058225
+    endpoints:
+    - path: src/optimus/retry/gated_run.py
+      start: 161
+      end: 177
+      symbols:
+      - GatedRetryRunner._emit_retry_decision
+      scanner_lines: 17
+      scanner_size: 60
+    - path: src/optimus/retry/gated_run.py
+      start: 179
+      end: 194
+      symbols:
+      - GatedRetryRunner._emit_fitness_gate
+      scanner_lines: 16
+      scanner_size: 56
+    disposition: noise/intentional repetition
+    owner_issue: null
+    reason: Separate retry-decision and fitness-gate event contracts intentionally use the same sink envelope and different
+      payloads. The shared wrapper shape establishes no remediation.
+  - id: 14
+    algorithm_type: 4
+    similarity: 0.6650862068965517
+    endpoints:
+    - path: src/optimus/evidence/ledger.py
+      start: 102
+      end: 147
+      symbols:
+      - EvidenceLedger.record
+      - EvidenceLedger._entry_for_gateway_request
+      - EvidenceLedger.entries_for_run
+      - EvidenceLedger._matching_entries
+      - EvidenceLedger.total_billing_units
+      - EvidenceLedger.total_cost_usd
+      - EvidenceLedger.gateway_request_ids
+      scanner_lines: 28
+      scanner_size: 232
+    - path: src/optimus/usage/ledger.py
+      start: 22
+      end: 63
+      symbols:
+      - ProviderUsageLedger.record
+      - ProviderUsageLedger._entry_for_gateway_request
+      - ProviderUsageLedger.entries_for_run
+      - ProviderUsageLedger.gateway_request_ids
+      - ProviderUsageLedger.total_cost_usd
+      - ProviderUsageLedger.total_billing_units
+      scanner_lines: 25
+      scanner_size: 201
+    disposition: corroboration
+    owner_issue: 341
+    reason: Enclosing classes differ in optional-run handling and record shapes. Direct source confirms matched record, lookup
+      and two total methods at both ends (T13-FIND-012/013/019/037). Counts as one scanner row. The separate fingerprints
+      are outside both spans.
+  dead_code_rows: []
+  complexity_rows:
+  - path: src/optimus_gateway/usage_store.py
+    symbol: UsageStore._report_facts
+    span:
+    - 201
+    - 273
+    cyclomatic: 25
+    cognitive: 16
+    tool_risk: high
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Build report facts from bounded queries, request selections and per-stream completeness checks.
+  - path: src/optimus_gateway/usage_store.py
+    symbol: UsageStore._certify
+    span:
+    - 455
+    - 532
+    cyclomatic: 23
+    cognitive: 21
+    tool_risk: high
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Certify an epoch across begin/close, integrity, receipts and physical-attempt invariants.
+  - path: src/optimus_gateway/usage_store.py
+    symbol: UsageStore._physical
+    span:
+    - 534
+    - 597
+    cyclomatic: 23
+    cognitive: 53
+    tool_risk: high
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Join host intents, physical attempts, receipts and cost completeness. Nested evidence checks explain the cognitive
+      advisory.
+  - path: src/optimus_gateway/usage_store.py
+    symbol: UsageStore._ingest
+    span:
+    - 280
+    - 332
+    cyclomatic: 16
+    cognitive: 35
+    tool_risk: high
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Validate ownership, order and cursor continuity; handle replay and commit new records. This row has the second
+      cognitive advisory.
+  - path: src/optimus/usage/turn_settlement.py
+    symbol: StageReceipt.__post_init__
+    span:
+    - 103
+    - 130
+    cyclomatic: 13
+    cognitive: 23
+    tool_risk: medium
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Enforce stage/outcome identities and receipt-to-usage cost and settlement invariants.
+  - path: src/optimus_gateway/usage_store.py
+    symbol: UsageStore._project
+    span:
+    - 341
+    - 379
+    cyclomatic: 13
+    cognitive: 13
+    tool_risk: medium
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Dispatch independently typed event kinds to their projections and recertification.
+  - path: src/optimus/retry/policy.py
+    symbol: classify_failure
+    span:
+    - 104
+    - 125
+    cyclomatic: 11
+    cognitive: 15
+    tool_risk: medium
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Map exception families and HTTP statuses to retry, terminal or escalation classes.
+  - path: src/optimus_gateway/usage_store.py
+    symbol: UsageStore._project_receipt
+    span:
+    - 389
+    - 434
+    cyclomatic: 10
+    cognitive: 11
+    tool_risk: medium
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Resolve replay and competing receipt/alias claims under locks, with explicit conflict paths.
+  - path: src/optimus/redis/runtime.py
+    symbol: RedisRuntime._drive_teardown
+    span:
+    - 365
+    - 407
+    cyclomatic: 8
+    cognitive: 11
+    tool_risk: low
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Maintain teardown error/result publication for both daemon and caller while tracking owner termination.
+  - path: src/optimus/usage/turn_settlement.py
+    symbol: TurnSettlement.record_attempt
+    span:
+    - 249
+    - 272
+    cyclomatic: 8
+    cognitive: 16
+    tool_risk: low
+    disposition: descriptive hotspot; no independently verified additional remediation
+    ownership: No new work item established
+    reason: Protect idempotent repeats and one charge per Gateway request before recording or capture.
+  reviewed:
+    clone: 7
+    dead_code: 0
+    complexity: 10
+  unreviewed:
+    clone: 0
+    dead_code: 0
+    complexity_scope_rows: 175
+  clone_and_dead_code_denominator: 7
+  verified_signal_rows: 3
+  verified_additional_actionable_classes: 0
+  new_issues: 0
+  recommendation: decline
+  noise_or_intentional_rows: 1
+  indeterminate_rows: 3
+  historical_outcomes:
+    exact_hit: 1
+    hit_with_source_drift: 1
+    partial: 4
+    miss: 1
+evidence_status:
+  qualification: Complete eight-file sample after successful separate positive and negative controls
+  private_raw_bytes: Retained by the original operator-authorized task custody; not a repository dependency
+  non_claims:
+  - No scan beyond eight files
+  - No project-wide dead-code inference
+  - No proof of scanner sensitivity or remediation from hotspot scores
+  - No dependency or quality-gate adoption
