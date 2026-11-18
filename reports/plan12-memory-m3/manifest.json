@@ -45,11 +45,21 @@
     "authority": "Codex CP1 review 1 recommendation, carrying the operator's approval under the standing rule of 2026-10-03 (reaffirmed 2026-10-28); authoritative from its commit, with the original archived byte for byte"
   },
   "successor_v3": {
-    "plan_file": "docs/superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v3.md",
+    "plan_file": "docs/superpowers/plans/archive/2026-11-16-plan-12-11-memory-and-continuity-implementation_v3.md",
     "plan_sha256": "hex:f8071e83e5bad3236881aca7f5f3dd29adcabe9ba4e2af4da7f5598464a9c643",
     "authored_by": "Codex, CP2 review 9 (round-106 kit, plan-12-11-v3-draft.md, byte for byte)",
     "changes": "D9: automatic user-origin admissions, updates and natural-language withdrawals go off in CP2; Task 3 expectations for an empty and a scope-present initial state; the CP2 broad selection",
     "approval": "Operator, Claude chat 2026-11-18: \"Approve hash\", for v3 at the hash above. Recorded on #490. It released no live operation.",
-    "authority": "authoritative from its commit, with v2 archived byte for byte"
+    "authority": "authoritative from its commit until v4's adoption; archived byte for byte"
+  },
+  "successor_v4": {
+    "plan_file": "docs/superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v4.md",
+    "plan_sha256": "hex:643ab91a97603cf4f4a1ba1825b4e79fe5aa21d11f1022a32fb1155a9c86e125",
+    "decision_record": "docs/decisions/ADR-044-explicit-user-actions-for-user-memory.md",
+    "decision_record_sha256": "hex:ebd86a920ec74e7a25ab395a7bf7cf9f9fcb1e383fba6d61ad345cef00f0b1fe",
+    "authored_by": "Codex, CP3 gate review 1 (round-107 kit, plan-12-11-v4-draft.md and ADR-044-draft.md, byte for byte)",
+    "changes": "D10: fresh version-bound host commands are the only authority for user memory; automatic user extraction stays off (D9); exact-source switch-on; Task 4 adds user-authority.json and the named D10 regressions",
+    "approval": "Operator, Claude chat 2026-11-18: chose option A, which accepts ADR-044 and approves v4 at the hash above. Recorded on #490. It released no live operation.",
+    "authority": "authoritative from its commit, with v3 archived byte for byte"
   }
 }
