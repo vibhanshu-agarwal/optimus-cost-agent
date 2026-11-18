@@ -1,0 +1,963 @@
+{
+ "schema": "plan12-memory-m3.run-config.v1",
+ "config_id": "m3-cp4-v1",
+ "fixtures": [
+  "tests/fixtures/plan12_memory/lifecycle.json",
+  "tests/fixtures/plan12_memory/lifecycle-d10.json"
+ ],
+ "models": "zero-paid local stand-ins (tools/plan12_memory/m3_evaluate.py _Model, _Extraction)",
+ "store": "released test store p1211-cp4-test-redis (operator Docker release 2026-11-18, #490)",
+ "cases": {
+  "M01-a": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M01-b": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "say",
+     {
+      "pause": true
+     }
+    ],
+    "1": [
+     "none"
+    ]
+   }
+  },
+  "M12-a": {
+   "steps": {
+    "0": [
+     "model_says"
+    ]
+   }
+  },
+  "M12-b": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "say",
+     {
+      "cards_fail": true
+     }
+    ],
+    "1": [
+     "none"
+    ],
+    "2": [
+     "reconnect"
+    ]
+   }
+  },
+  "M02-a": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M02-b": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M02-c": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M02-d": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M03-a": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M03-b": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M07-a": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M07-b": {
+   "keys": {
+    "1": "pref-indent"
+   }
+  },
+  "M04-a": {
+   "steps": {
+    "0": [
+     "tool_output",
+     {
+      "kind": "document"
+     }
+    ],
+    "1": [
+     "compact"
+    ]
+   }
+  },
+  "M04-b": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "1": [
+     "compact"
+    ]
+   }
+  },
+  "M05-a": {
+   "steps": {
+    "0": [
+     "tool_output",
+     {
+      "kind": "read"
+     }
+    ],
+    "1": [
+     "tool_output",
+     {
+      "kind": "read"
+     }
+    ],
+    "2": [
+     "tool_output",
+     {
+      "kind": "read"
+     }
+    ]
+   }
+  },
+  "M05-b": {
+   "keys": {
+    "0": "lesson-failing-test"
+   },
+   "steps": {
+    "0": [
+     "agent_work",
+     {
+      "evidence": "ev-test-pass",
+      "lesson": "After fixing a failing test, rerun that test first."
+     }
+    ]
+   }
+  },
+  "M06-a": {
+   "keys": {
+    "0": "rule-tests-before-push"
+   },
+   "steps": {
+    "1": [
+     "tool_output",
+     {
+      "kind": "document"
+     }
+    ]
+   }
+  },
+  "M06-b": {
+   "steps": {
+    "0": [
+     "tool_output",
+     {
+      "kind": "document"
+     }
+    ]
+   }
+  },
+  "M08-a": {
+   "keys": {
+    "0": "lesson-indent"
+   },
+   "steps": {
+    "0": [
+     "agent_work",
+     {
+      "lesson": "Use tabs for indentation."
+     }
+    ]
+   }
+  },
+  "M08-b": {
+   "keys": {
+    "0": "lesson-indent",
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "agent_work",
+     {
+      "lesson": "Use tabs for indentation."
+     }
+    ]
+   }
+  },
+  "M09-a": {
+   "keys": {
+    "0": "pref-indent",
+    "1": "lesson-indent-spaces"
+   },
+   "steps": {
+    "1": [
+     "agent_work",
+     {
+      "lesson": "Use spaces for indentation."
+     }
+    ]
+   }
+  },
+  "M09-b": {
+   "keys": {
+    "0": "pref-indent",
+    "1": "lesson-ruff-first"
+   },
+   "steps": {
+    "1": [
+     "agent_work",
+     {
+      "lesson": "Run ruff before committing."
+     }
+    ]
+   }
+  },
+  "M10-a": {
+   "keys": {
+    "0": "secret-deploy-token"
+   }
+  },
+  "M10-b": {
+   "keys": {
+    "0": "pin-app"
+   }
+  },
+  "M10-c": {
+   "keys": {
+    "0": "fact-deploy-target"
+   }
+  },
+  "M11-a": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "untrusted"
+    ],
+    "2": [
+     "new_session"
+    ]
+   }
+  },
+  "M11-b": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "none"
+    ]
+   }
+  },
+  "M18-a": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "linked_worktree"
+    ],
+    "2": [
+     "move_to"
+    ]
+   }
+  },
+  "M18-b": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "1": [
+     "clone"
+    ]
+   }
+  },
+  "M18-d": {
+   "keys": {
+    "0": "api-freeze"
+   },
+   "steps": {
+    "1": [
+     "branch",
+     {
+      "branch": "feature-x"
+     }
+    ]
+   }
+  },
+  "M14-a": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M14-b": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "prior_off",
+     {
+      "said": "I would probably go with tabs."
+     }
+    ],
+    "1": [
+     "none"
+    ]
+   }
+  },
+  "M15-a": {
+   "keys": {
+    "0": "pref-indent",
+    "2": "cand-201"
+   },
+   "steps": {
+    "1": [
+     "overflow",
+     {
+      "count": 200
+     }
+    ],
+    "2": [
+     "agent_work",
+     {
+      "lesson": "Squash commits before merging."
+     }
+    ]
+   }
+  },
+  "M15-b": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "1": [
+     "overflow",
+     {
+      "count": 10
+     }
+    ],
+    "2": [
+     "agent_work",
+     {
+      "lesson": "Squash commits before merging."
+     }
+    ]
+   }
+  },
+  "M16-a": {
+   "keys": {
+    "0": "pin-parse-config"
+   },
+   "steps": {
+    "1": [
+     "change_file",
+     {
+      "path": "config.py",
+      "content": "from settings import parse_config\n"
+     }
+    ]
+   }
+  },
+  "M16-b": {
+   "keys": {
+    "0": "pin-parse-config"
+   },
+   "steps": {
+    "1": [
+     "none"
+    ]
+   }
+  },
+  "M20-a": {
+   "keys": {
+    "0": "pref-indent",
+    "1": "pref-ruff"
+   },
+   "steps": {
+    "2": [
+     "clock",
+     {
+      "days": 120
+     }
+    ]
+   }
+  },
+  "M20-b": {
+   "keys": {
+    "0": "pref-indent",
+    "1": "pref-ruff"
+   },
+   "steps": {
+    "2": [
+     "clock",
+     {
+      "days": 1
+     }
+    ]
+   }
+  },
+  "M17-a": {
+   "steps": {
+    "0": [
+     "none"
+    ],
+    "2": [
+     "none"
+    ],
+    "3": [
+     "clock",
+     {
+      "days": 8
+     }
+    ]
+   }
+  },
+  "M17-b": {
+   "steps": {
+    "0": [
+     "none"
+    ],
+    "2": [
+     "clock",
+     {
+      "days": 3
+     }
+    ]
+   }
+  },
+  "M19-a": {
+   "steps": {
+    "1": [
+     "crash"
+    ],
+    "2": [
+     "restart"
+    ]
+   }
+  },
+  "M19-b": {
+   "steps": {
+    "1": [
+     "rebase"
+    ]
+   }
+  },
+  "M21-a": {
+   "keys": {
+    "1": [
+     "pref-indent",
+     "pref-old"
+    ]
+   },
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation, as .editorconfig says.",
+       "Use the old release script for releases."
+      ],
+      "purge": [
+       1
+      ]
+     }
+    ],
+    "2": [
+     "none"
+    ]
+   }
+  },
+  "M21-b": {
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation in this project."
+      ],
+      "registrations": 2
+     }
+    ]
+   }
+  },
+  "M21-c": {
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation in this project.",
+       "Use the old release script for releases."
+      ],
+      "purge": [
+       1
+      ],
+      "lose_journal": true,
+      "restore": true
+     }
+    ]
+   }
+  },
+  "M21-d": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation in this project."
+      ]
+     }
+    ],
+    "2": [
+     "delete_then_lose"
+    ]
+   }
+  },
+  "M21-e": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation in this project."
+      ]
+     }
+    ],
+    "2": [
+     "delete_then_lose",
+     {
+      "purge": true
+     }
+    ]
+   }
+  },
+  "M01-a-D10": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M01-b-D10": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "say",
+     {
+      "pause": true
+     }
+    ],
+    "1": [
+     "none"
+    ]
+   }
+  },
+  "M12-b-D10": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "say",
+     {
+      "cards_fail": true
+     }
+    ],
+    "1": [
+     "none"
+    ],
+    "2": [
+     "reconnect"
+    ]
+   }
+  },
+  "M02-d-D10": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M03-a-D10": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M03-b-D10": {
+   "keys": {
+    "0": "pref-indent"
+   }
+  },
+  "M07-b-D10": {
+   "keys": {
+    "1": "pref-indent"
+   }
+  },
+  "M04-b-D10": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "1": [
+     "compact"
+    ]
+   }
+  },
+  "M06-a-D10": {
+   "keys": {
+    "0": "rule-tests-before-push"
+   },
+   "steps": {
+    "1": [
+     "tool_output",
+     {
+      "kind": "document"
+     }
+    ]
+   }
+  },
+  "M08-b-D10": {
+   "keys": {
+    "0": "lesson-indent",
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "agent_work",
+     {
+      "lesson": "Use tabs for indentation."
+     }
+    ]
+   }
+  },
+  "M09-a-D10": {
+   "keys": {
+    "0": "pref-indent",
+    "1": "lesson-indent-spaces"
+   },
+   "steps": {
+    "1": [
+     "agent_work",
+     {
+      "lesson": "Use spaces for indentation."
+     }
+    ]
+   }
+  },
+  "M10-a-D10": {
+   "keys": {
+    "0": "secret-deploy-token"
+   }
+  },
+  "M10-b-D10": {
+   "keys": {
+    "0": "pin-app"
+   }
+  },
+  "M10-c-D10": {
+   "keys": {
+    "0": "fact-deploy-target"
+   }
+  },
+  "M11-a-D10": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "untrusted"
+    ],
+    "2": [
+     "new_session"
+    ]
+   }
+  },
+  "M11-b-D10": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "none"
+    ]
+   }
+  },
+  "M18-a-D10": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "linked_worktree"
+    ],
+    "2": [
+     "move_to"
+    ]
+   }
+  },
+  "M18-b-D10": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "1": [
+     "clone"
+    ]
+   }
+  },
+  "M18-d-D10": {
+   "keys": {
+    "0": "api-freeze"
+   },
+   "steps": {
+    "1": [
+     "branch",
+     {
+      "branch": "feature-x"
+     }
+    ]
+   }
+  },
+  "M14-a-D10": {
+   "keys": {
+    "0": "pref-indent-off",
+    "1": "pref-indent"
+   }
+  },
+  "M14-b-D10": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "prior_off",
+     {
+      "said": "I would probably go with tabs."
+     }
+    ],
+    "1": [
+     "none"
+    ]
+   }
+  },
+  "M15-a-D10": {
+   "keys": {
+    "0": "pref-indent",
+    "2": "cand-201"
+   },
+   "steps": {
+    "1": [
+     "overflow",
+     {
+      "count": 200
+     }
+    ],
+    "2": [
+     "agent_work",
+     {
+      "lesson": "Squash commits before merging."
+     }
+    ]
+   }
+  },
+  "M15-b-D10": {
+   "keys": {
+    "0": "pref-indent"
+   },
+   "steps": {
+    "1": [
+     "overflow",
+     {
+      "count": 10
+     }
+    ],
+    "2": [
+     "agent_work",
+     {
+      "lesson": "Squash commits before merging."
+     }
+    ]
+   }
+  },
+  "M16-a-D10": {
+   "keys": {
+    "0": "pin-parse-config"
+   },
+   "steps": {
+    "1": [
+     "change_file",
+     {
+      "path": "config.py",
+      "content": "from settings import parse_config\n"
+     }
+    ]
+   }
+  },
+  "M16-b-D10": {
+   "keys": {
+    "0": "pin-parse-config"
+   },
+   "steps": {
+    "1": [
+     "none"
+    ]
+   }
+  },
+  "M20-a-D10": {
+   "keys": {
+    "0": "pref-indent",
+    "1": "pref-ruff"
+   },
+   "steps": {
+    "2": [
+     "clock",
+     {
+      "days": 120
+     }
+    ]
+   }
+  },
+  "M20-b-D10": {
+   "keys": {
+    "0": "pref-indent",
+    "1": "pref-ruff"
+   },
+   "steps": {
+    "2": [
+     "clock",
+     {
+      "days": 1
+     }
+    ]
+   }
+  },
+  "M21-a-D10": {
+   "keys": {
+    "1": [
+     "pref-indent",
+     "pref-old"
+    ]
+   },
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation, as .editorconfig says.",
+       "Use the old release script for releases."
+      ],
+      "purge": [
+       1
+      ]
+     }
+    ],
+    "2": [
+     "none"
+    ],
+    "1": [
+     "confirm",
+     {
+      "choice": "allow"
+     }
+    ]
+   }
+  },
+  "M21-b-D10": {
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation in this project."
+      ],
+      "registrations": 2
+     }
+    ],
+    "1": [
+     "confirm",
+     {
+      "choice": "allow"
+     }
+    ]
+   },
+   "keys": {}
+  },
+  "M21-d-D10": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation in this project."
+      ]
+     }
+    ],
+    "2": [
+     "delete_then_lose"
+    ],
+    "1": [
+     "confirm",
+     {
+      "choice": "allow"
+     }
+    ]
+   }
+  },
+  "M21-e-D10": {
+   "keys": {
+    "1": "pref-indent"
+   },
+   "steps": {
+    "0": [
+     "earlier_registration",
+     {
+      "remember": [
+       "Use tabs for indentation in this project."
+      ]
+     }
+    ],
+    "2": [
+     "delete_then_lose",
+     {
+      "purge": true
+     }
+    ],
+    "1": [
+     "confirm",
+     {
+      "choice": "allow"
+     }
+    ]
+   }
+  }
+ }
+}

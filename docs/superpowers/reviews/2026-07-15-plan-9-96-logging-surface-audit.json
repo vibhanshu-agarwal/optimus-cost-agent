@@ -6593,6 +6593,94 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m3_evaluate:_Extraction.__call__:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the zero-paid extraction stand-in's scripted candidates, built from the synthetic prompt it was given; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:_op_clone:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:_op_earlier_registration:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:_op_move_to:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:_op_new_machine:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:_op_new_session:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:_op_reconnect:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:_op_untrusted:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:drive:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_the_trace_names_only_what_the_run_observed_under_the_declared_keys",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: a qualification run on the released test store with stand-in models and synthetic case inputs; results hold event names, item ids, statuses and verdicts of synthetic cases, never a real statement or secret.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_without_the_release_nothing_runs",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3_evaluate:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints each case id with its qualification status, layer statuses and run error, or the UNRUN line; no statement or secret.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_without_the_release_nothing_runs",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_recovery:Recovery._export:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Plan 12.11 recovery copy (D5, D8): writes one generation of the Gateway-signed export (active items that passed the Gate's scans and the persistence sanitizer; every other item payload-free) into the one user-confirmed, Git-ignored location; no diagnostic, prompt or model text.",

@@ -958,15 +958,18 @@ def worktree_id(canonical_path: str) -> str:
     return "worktree:" + hashlib.sha256(f"optimus-memory-worktree-v1\0{canonical_path}".encode()).hexdigest()[:32]
 
 
-def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., MemoryExtractor | None]:
+def extractor_factory(*, config_root: Any, settings: Any, post: Callable[..., Any] | None = None) -> Callable[..., MemoryExtractor | None]:
     """How a launch with an approved, ready memory store opens one extractor per session. A workspace that cannot be
-    registered (an untrusted or unresolvable path) gets none: memory stays read-only there."""
+    registered (an untrusted or unresolvable path) gets none: memory stays read-only there. `post` defaults to the launch's
+    Gateway client; the Plan 12.11 qualification passes the Gateway's handler in process, so it runs this same factory."""
     from pathlib import Path
 
     from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
-    from optimus.context.authored_memory import GatewayMemoryStore
+    from optimus.context.authored_memory import GatewayMemoryStore, gateway_post
     from optimus.context.memory_recovery import NoticeBacklog, Recovery, RegistryRecovery, StateFile
     from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError, project_key
+
+    post = post or gateway_post
 
     registry = ProjectRegistry(config_root)
     # Ids derived from what was said are keyed with the host's own secret, which the store never holds: an id kept after a
@@ -987,11 +990,11 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
             # the registry is lost although projects were registered: only its authenticated repair is offered
             return RegistryRepair(RegistryRecovery(
                 Path(workspace), key=project_key(identity), restore_registry=registry.restore,
-                open_store=lambda project: GatewayMemoryStore(settings, project=project, owner=f"session:{session_id}"),
+                open_store=lambda project: GatewayMemoryStore(settings, project=project, owner=f"session:{session_id}", post=post),
                 state_for=lambda project: StateFile.shared(Path(config_root), project)))
         except (TrustedPathError, OSError, ValueError):
             return None
-        store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
+        store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}", post=post)
         project = registration.project_id
         recovery = Recovery(store, StateFile.shared(Path(config_root), project),
                             registry=registry.snapshot)
