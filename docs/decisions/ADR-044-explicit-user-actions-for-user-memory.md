@@ -18,7 +18,7 @@ CP2 reviews 6-9 demonstrated that lexical forms, source spans and current target
 
 Operator-approved Plan 12.11 v3, SHA-256 `f8071e83e5bad3236881aca7f5f3dd29adcabe9ba4e2af4da7f5598464a9c643`, establishes D9: automatic user-origin admissions, updates and natural-language withdrawals remain off. Task 4 requires an authority mechanism and explicit disposition of any conflict before dependent implementation.
 
-The operator's round-107 gate-1 brief, 2026-11-18, says verbatim: “No queue, no silent authority change.” It also assigns: “Claude implements and never writes the plan.” The brief requests a recommendation and proposed records; it does not accept this product change.
+Claude authored the round-107 gate-1 brief, 2026-11-18, quoting the CP3 task's operator process rules: “No queue, no silent authority change.” and “Claude implements and never writes the plan.” The brief requests a recommendation and proposed records; it is not itself operator acceptance of this product change.
 
 The quoted brief and resulting review must be retained on #490 by the owner under the applicable write authority. Private review-kit paths are archival provenance, never operating or test dependencies.
 
