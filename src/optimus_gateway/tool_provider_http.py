@@ -14,9 +14,10 @@ from optimus_gateway.upstream_client import (
     RetryableUpstreamError,
     call_with_upstream_retry,
     is_retryable_upstream_fault,
-    watched_urlopen,
+    watched_https_urlopen,
 )
 from optimus_model_policy.binding import UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
+from optimus_security.url_schemes import https_url_allowed
 
 T = TypeVar("T")
 
@@ -37,12 +38,15 @@ def request_json(
     request: Request,
     *,
     label: str,
-    urlopen_fn: ToolUrlOpen = watched_urlopen,
+    urlopen_fn: ToolUrlOpen = watched_https_urlopen,
     timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
     sleep: Callable[[float], None] | None = None,
     on_retry: Callable[[int], None] | None = None,
 ) -> dict[str, Any]:
     """Execute one JSON request with the Gateway's shared bounded retry seam."""
+
+    if not https_url_allowed(request.full_url):
+        raise ToolProviderError(f"{label} failed")
 
     def call() -> dict[str, Any]:
         try:
@@ -77,12 +81,15 @@ def request_bytes(
     request: Request,
     *,
     label: str,
-    urlopen_fn: ToolUrlOpen = watched_urlopen,
+    urlopen_fn: ToolUrlOpen = watched_https_urlopen,
     timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
     sleep: Callable[[float], None] | None = None,
     on_retry: Callable[[int], None] | None = None,
 ) -> bytes:
     """Execute a non-JSON request with the same retry and sanitization policy."""
+
+    if not https_url_allowed(request.full_url):
+        raise ToolProviderError(f"{label} failed")
 
     def call() -> bytes:
         try:

@@ -11,7 +11,6 @@ import sys
 import threading
 import time
 import urllib.error
-import urllib.request
 from collections.abc import Callable, Mapping
 from contextvars import copy_context
 from dataclasses import dataclass, field
@@ -45,6 +44,7 @@ from optimus_security.memory_store_config import ACL_NAME as MEMORY_STORE_ACL_NA
 from optimus_security.memory_store_config import MemoryStoreConfig, MemoryStoreConfigError, memory_store_literal, memory_store_root
 from optimus_security.memory_store_config import config_literal as memory_store_config_literal
 from optimus_security.memory_store_config import read as read_memory_store_config
+from optimus_security.url_schemes import open_http_url
 
 # _LOOPBACK_HOSTS reused from optimus.config.gateway (agent-side package, already imported
 # elsewhere in bootstrap.py) rather than src/optimus_gateway/models.py's own separate copy of the
@@ -354,7 +354,7 @@ def ensure_local_redis(redis_url: str, *, log: Callable[[str], None] = _noop_log
 
 def _phoenix_health_ready(url: str) -> bool:
     try:
-        with urllib.request.urlopen(url, timeout=1.0) as response:
+        with open_http_url(url, timeout=1.0) as response:
             return 200 <= int(getattr(response, "status", 200)) < 300
     except (urllib.error.URLError, TimeoutError, OSError, ValueError):
         return False

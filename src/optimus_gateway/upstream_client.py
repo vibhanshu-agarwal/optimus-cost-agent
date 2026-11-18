@@ -3,27 +3,20 @@ from __future__ import annotations
 import contextlib
 import functools
 import http.client
+import ipaddress
 import json
 import socket
 import threading
 import time
+import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from http.client import HTTPException
 from typing import Any, Final, Literal, NamedTuple, Protocol, TypeVar
 from urllib.error import HTTPError, URLError
-from urllib.request import (
-    HTTPDefaultErrorHandler,
-    HTTPErrorProcessor,
-    HTTPHandler,
-    HTTPSHandler,
-    OpenerDirector,
-    ProxyHandler,
-    Request,
-    UnknownHandler,
-    build_opener,
-)
+from urllib.parse import urlsplit
+from urllib.request import HTTPHandler, HTTPSHandler, OpenerDirector, ProxyHandler, Request
 
 from optimus_gateway import usage_capture
 from optimus_model_policy.binding import (
@@ -34,6 +27,7 @@ from optimus_model_policy.binding import (
     UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
 )
 from optimus_security.failure_facts import bounded, exception_fact, guardrail_stage_facts, slug
+from optimus_security.url_schemes import URLPolicyError, build_http_opener, http_url_allowed, https_url_allowed
 
 # OpenRouter's documented router pipeline stage types (router-metadata guide, 2026-10-20). Any other type is
 # recorded as ``unrecognized``: it still counts as a stage, but its text is never persisted.
@@ -362,6 +356,8 @@ class UrllibOpenAICompatibleClient:
     ) -> None:
         if max_attempts < 1:
             raise ValueError("max_attempts must be at least one")
+        if not _model_url_allowed(base_url):
+            raise URLPolicyError("model upstream URL rejected by scheme policy")
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
@@ -485,7 +481,7 @@ class UrllibOpenAICompatibleClient:
             raise UpstreamAttemptFailure(
                 ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code, failure={"kind": "http"}
             ) from exc
-        except (OSError, HTTPException) as exc:
+        except (OSError, HTTPException, URLPolicyError) as exc:
             # urllib wraps an OSError raised while connecting *or* while sending in the same URLError,
             # so the exception's type cannot say whether the request left (an SSLError, a refusal or an
             # unreachable host can each arise in either phase; Codex CP1 corrections review). The phase
@@ -536,7 +532,7 @@ class UrllibOpenAICompatibleClient:
             raise UpstreamAttemptFailure(
                 ATTEMPT_REJECTED if refused else ATTEMPT_UNCERTAIN, http_status=exc.code, failure={"kind": "http"}
             ) from exc
-        except (OSError, HTTPException) as exc:
+        except (OSError, HTTPException, URLPolicyError) as exc:
             raise UpstreamAttemptFailure(
                 ATTEMPT_UNCERTAIN if request.connected else ATTEMPT_NOT_SENT, failure={"kind": "transport", **exception_fact(exc)}
             ) from exc
@@ -682,24 +678,42 @@ class _AttemptHTTPSHandler(HTTPSHandler):
         return self.do_open(functools.partial(_AttemptHTTPSConnection, attempt=_attempt_of(req)), req, context=self._context)  # type: ignore[attr-defined]
 
 
+def _model_url_allowed(url: str) -> bool:
+    if https_url_allowed(url):
+        return True
+    if not http_url_allowed(url):
+        return False
+    host = urlsplit(url).hostname
+    if host == "localhost":
+        return True
+    if host is None or "%" in host:
+        return False
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def _require_model_url(url: str) -> None:
+    if not _model_url_allowed(url):
+        raise URLPolicyError("model upstream URL rejected by scheme policy")
+
+
+def _upstream_proxy_handler() -> ProxyHandler:
+    # Plain HTTP model traffic is allowed only for an explicit local endpoint.
+    # A configured HTTP proxy must not carry that local traffic off-host.
+    proxies = urllib.request.getproxies()
+    return ProxyHandler({"https": proxies["https"]} if "https" in proxies else {})
+
+
 def _build_attempt_opener() -> OpenerDirector:
-    """``urlopen``'s default handlers (proxies, HTTP error handling) with three differences:
-    - HTTP and HTTPS connections record their attempt's phase;
-    - there is no redirect handler, because an attempt is one exchange; following a redirect would send
-      again, to another URL, so a 3xx surfaces as an HTTP error and is classified by its status;
-    - there are no FTP, file or data handlers, so no other scheme can open an untracked connection; it
-      fails as an unknown URL type before anything is sent."""
-    opener = OpenerDirector()
-    for handler in (
-        ProxyHandler(),
-        UnknownHandler(),
-        _AttemptHTTPHandler(),
-        _AttemptHTTPSHandler(),
-        HTTPDefaultErrorHandler(),
-        HTTPErrorProcessor(),
-    ):
-        opener.add_handler(handler)
-    return opener
+    # A 3xx ends the one physical exchange. A new request would be another attempt.
+    return build_http_opener(
+        redirects=None,
+        http_handler=_AttemptHTTPHandler(),
+        https_handler=_AttemptHTTPSHandler(),
+        proxy_handler=_upstream_proxy_handler(),
+    )
 
 
 class _WatchedHTTPConnection(_WatchesConnect, http.client.HTTPConnection):
@@ -721,18 +735,34 @@ class _WatchedHTTPSHandler(HTTPSHandler):
 
 
 @functools.cache
-def _watched_opener() -> OpenerDirector:
-    """``urlopen``'s default handlers, redirects included, with connections an :class:`AttemptDeadline` can end."""
-    return build_opener(_WatchedHTTPHandler(), _WatchedHTTPSHandler())
+def _watched_opener(allows: Callable[[str], bool]) -> OpenerDirector:
+    return build_http_opener(
+        redirects=allows,
+        http_handler=_WatchedHTTPHandler(),
+        https_handler=_WatchedHTTPSHandler(),
+        proxy_handler=_upstream_proxy_handler(),
+    )
+
+
+def _open_watched(request: Request, *, timeout: float, allows: Callable[[str], bool]) -> Any:
+    if not allows(request.full_url):
+        raise URLPolicyError("upstream URL rejected by scheme policy")
+    return _watched_opener(allows).open(request, timeout=timeout)
 
 
 def watched_urlopen(request: Request, *, timeout: float) -> Any:
-    """``urlopen`` for one upstream attempt of today's routing or a tool provider, run under an :class:`AttemptDeadline`."""
-    return _watched_opener().open(request, timeout=timeout)
+    """Open a legacy model request with the active attempt deadline."""
+    return _open_watched(request, timeout=timeout, allows=_model_url_allowed)
+
+
+def watched_https_urlopen(request: Request, *, timeout: float) -> Any:
+    """Open a tool-provider request with HTTPS admission and the active deadline."""
+    return _open_watched(request, timeout=timeout, allows=https_url_allowed)
 
 
 def _read_reply(opener: OpenerDirector, request: Request, timeout_seconds: float) -> tuple[bytes, dict[str, str]]:
     """One enforced attempt's I/O, run on its :class:`AttemptDeadline`'s thread: the reply's bytes and its headers."""
+    _require_model_url(request.full_url)
     with opener.open(request, timeout=timeout_seconds) as response:
         raw = response.read()
         headers = {str(name).casefold(): str(value) for name, value in getattr(response, "headers", {}).items()}
@@ -770,6 +800,7 @@ def _urlopen_json(
     request: Request, *, timeout_seconds: float, label: str
 ) -> tuple[dict[str, Any], dict[str, str]]:
     try:
+        _require_model_url(request.full_url)
         with watched_urlopen(request, timeout=timeout_seconds) as response:
             decoded = json.loads(response.read().decode("utf-8"))
             if not isinstance(decoded, dict):
@@ -793,6 +824,8 @@ def _urlopen_json(
     except (UnicodeError, json.JSONDecodeError) as exc:
         kind = "invalid_utf8" if isinstance(exc, UnicodeError) else "invalid_json"
         raise _with_failure(RuntimeError(f"{label} response was invalid JSON"), {"kind": kind}) from exc
+    except URLPolicyError as exc:
+        raise _with_failure(RuntimeError("upstream URL rejected by scheme policy"), {"kind": "transport", **exception_fact(exc)}) from None
 
 
 def _with_failure(error: Exception, failure: dict[str, Any]) -> Exception:

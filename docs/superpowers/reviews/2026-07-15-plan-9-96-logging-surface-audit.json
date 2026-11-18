@@ -5313,11 +5313,19 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_gateway.upstream_client:watched_urlopen:file_open",
+      "key": "optimus_gateway.upstream_client:_open_watched:file_open",
       "policy": "safe-by-construction",
-      "rationale": "AST overmatch: watched_urlopen calls urllib's OpenerDirector.open, the provider HTTP request of one legacy or tool-provider attempt, through the watched opener under an AttemptDeadline; it opens no file, and it returns the response to its caller, which parses the reply in memory; nothing is persisted or logged here.",
+      "rationale": "AST overmatch: _open_watched calls urllib's guarded HTTP(S) OpenerDirector.open for one legacy model or tool-provider attempt under an AttemptDeadline. It returns the response for in-memory parsing and opens no file or diagnostic sink.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_upstream_retry.py::test_a_legacy_attempt_ends_at_its_deadline_while_bytes_keep_arriving",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_security.url_schemes:open_http_url:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: open_http_url calls urllib's guarded HTTP(S) OpenerDirector.open for the Gateway transport or Phoenix health check. It returns the response for in-memory parsing or status inspection and opens no file or diagnostic sink.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_local_infra.py::test_a_foreign_endpoint_that_takes_the_port_while_the_container_starts_is_refused",
       "evidence_tier": "unit"
     },
     {
