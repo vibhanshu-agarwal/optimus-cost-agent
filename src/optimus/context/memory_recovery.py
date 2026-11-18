@@ -60,7 +60,6 @@ CATCH_UP_SECONDS: Final = 60  # the first scheduled export after launch
 KEEP_GENERATIONS: Final = 3
 PAGE: Final = 100
 BATCH: Final = 10
-LOCK_STALE_SECONDS: Final = 600
 STATE_LOCK_SECONDS: Final = 10.0
 EXPORT_LOCK_SECONDS: Final = 120.0  # another host's export of the same project finishes first
 EXPORT_TRIES: Final = 3
@@ -77,31 +76,52 @@ class RecoveryError(Exception):
         self.message = message
 
 
-@contextlib.contextmanager
-def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS) -> Iterator[None]:
-    """A lock file shared by every process on this machine (Codex CP3 review 1, finding 2). One older than a minute was left by a
-    dead process."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + wait
-    while True:
-        try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            break
-        except FileExistsError:
-            with contextlib.suppress(OSError):
-                if time.time() - path.stat().st_mtime > 60:
-                    path.unlink()
-                    continue
-            if time.monotonic() > deadline:
-                raise RecoveryError("RECOVERY_STATE_BUSY", "The recovery state is held by another process; try again shortly.") from None
-            time.sleep(0.02)
+def _try_lock(handle: Any) -> bool:
+    """Take the OS lock on the file's first byte without waiting. The OS releases it when its owner's handle closes or the
+    owner dies, so a live owner is never taken over, however long it holds it (Codex CP3 review 3)."""
     try:
-        os.write(fd, str(os.getpid()).encode())
-        yield
-    finally:
-        os.close(fd)
-        with contextlib.suppress(OSError):
-            path.unlink()
+        if sys.platform == "win32":
+            import msvcrt
+
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return False
+    return True
+
+
+def _unlock(handle: Any) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS, code: str = "RECOVERY_STATE_BUSY",
+               message: str = "The recovery state is held by another process; try again shortly.") -> Iterator[None]:
+    """An OS-held lock on a file shared by every process on this machine (Codex CP3 review 1, finding 2): it ends only when its
+    owner releases it, closes the file or dies, never by age. The file itself is left in place."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a+b") as handle:
+        deadline = time.monotonic() + wait
+        while not _try_lock(handle):
+            if time.monotonic() > deadline:
+                raise RecoveryError(code, message)
+            time.sleep(0.02)
+        try:
+            yield
+        finally:
+            _unlock(handle)
 
 
 def _durable_json(path: Path, value: Any) -> None:
@@ -260,24 +280,10 @@ def check_git_exclusion(destination: Path, git: Callable[..., str | None] = _git
                             "the index (`git rm --cached`) before recovery copies are written there. Nothing was written.")
 
 
-@contextlib.contextmanager
-def writer_lock(destination: Path) -> Iterator[None]:
-    """One writer per location, across every host sharing it. A lock older than `LOCK_STALE_SECONDS` was left by a dead host."""
-    lock = destination / ".lock"
-    with contextlib.suppress(OSError):
-        if time.time() - lock.stat().st_mtime > LOCK_STALE_SECONDS:
-            lock.unlink()
-    try:
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        raise RecoveryError("RECOVERY_BUSY", "Another session is writing the recovery copy; try again shortly.") from None
-    try:
-        os.write(fd, str(os.getpid()).encode())
-        yield
-    finally:
-        os.close(fd)
-        with contextlib.suppress(OSError):
-            lock.unlink()
+def writer_lock(destination: Path) -> Any:
+    """One writer per location, across every host sharing it: the same OS-held lock, never taken over by age."""
+    return _file_lock(destination / ".lock", wait=2.0, code="RECOVERY_BUSY",
+                      message="Another session is writing the recovery copy; try again shortly.")
 
 
 def _fsync_dir(directory: Path) -> None:

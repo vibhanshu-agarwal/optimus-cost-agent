@@ -602,6 +602,8 @@ def test_concurrent_exports_never_leave_withdrawn_text_behind(tmp_path: Path, re
     def racing(bind: str) -> Any:
         found = read(bind)
         other.run(f"/forget {item[0]}@1")
+        lock = host.recovery._state.path.with_name(host.recovery._state.path.name + ".export.lock")
+        os.utime(lock, (0, 0))  # Codex CP3 review 3: an old lock whose owner is alive is still held, whatever its age
         worker = threading.Thread(target=other.recovery.export_if_dirty)
         worker.start()
         time.sleep(0.5)  # without the lock the other export would finish now, before this one publishes its stale read
@@ -652,3 +654,38 @@ def test_the_notice_backlog_keeps_every_undelivered_notice(tmp_path: Path) -> No
                 "projection_state": "current"} for n in range(257)]
     mr.NoticeBacklog(tmp_path, "p-1").add(records)
     assert mr.NoticeBacklog(tmp_path, "p-1").pending() == records  # a new instance: only the file carries over
+
+
+def test_a_held_lock_is_never_taken_over_by_its_age(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 3: the lock is the OS's, held until its owner releases it or dies. An old lock whose owner is alive is
+    neither deleted nor entered, on any OS (Windows would refuse the deletion; POSIX would allow it, letting a second export
+    publish stale plaintext)."""
+    lock = tmp_path / "state.json.export.lock"
+    attempts: list[Any] = []
+    real_unlink = Path.unlink
+
+    def watched(self: Path, *args: Any, **kwargs: Any) -> None:
+        attempts.append(self)
+        real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", watched)
+    monkeypatch.setattr(os, "unlink", lambda path, *a, **k: attempts.append(path))
+    import threading
+
+    outcome: list[str] = []
+
+    def contender() -> None:
+        try:
+            with mr._file_lock(lock, wait=0.3):
+                outcome.append("entered")
+        except mr.RecoveryError:
+            outcome.append("busy")
+
+    with mr._file_lock(lock):
+        os.utime(lock, (0, 0))  # as old as can be; its owner is this live block
+        thread = threading.Thread(target=contender, daemon=True)  # bounded: a lock that spins never hangs the test
+        thread.start()
+        thread.join(5)
+    assert outcome == ["busy"] and attempts == []
+    with mr._file_lock(lock, wait=0.3):  # released by its owner: free again at once
+        pass
