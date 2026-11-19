@@ -6888,11 +6888,11 @@
  "paid": {
   "report": {
    "path": "reports/plan12-memory-m3/paid-attempts.json",
-   "sha256": "hex:276dd45c99c5c8d067c1a175adb3d76cefa120b7a007edcb9593cda8885fb7ff",
+   "sha256": "hex:f88d659052d5096b01702cbd3eac99f1edb87915694217e862627b889678c416",
    "schema": "plan12-memory-m3.paid-attempts.v3"
   },
   "correctness_rule": "POST-HOC whole-reply lexical scoring (Codex CP4 review 19, ruling 4): case-insensitive substring over the model's reply (host text such as the brief excluded); PASS when an accepted phrase is present and no rejected phrase is. The frozen rubric R1 names 'the reply's claim'; no claim selector was frozen, so this is not a pre-registered interpretation. Lists are alternatives. No superiority claim is made.",
-  "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the eligible set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6; review 22, rulings 2-3), UNKNOWN where it cannot be derived; R2 also needs proof the turn's read succeeded. R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not served.",
+  "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the eligible set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6; review 22, rulings 2-3; review 23, rulings 2 and 4), UNKNOWN where it cannot be derived; R2 also needs positive proof the turn's read succeeded (only a brief that lists the item gives one). R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not its item's newest servable version, which holds whether or not the eligible set is known.",
   "totals": {
    "physical_attempts": 27,
    "settled_usd": "0.0071920"
@@ -7054,7 +7054,7 @@
     "checks": {
      "correctness": "FAIL",
      "R5": "PASS",
-     "R2": "PASS",
+     "R2": "UNKNOWN",
      "R4": "PASS",
      "served_set": "N/A",
      "R3": "PASS"
@@ -7067,11 +7067,11 @@
     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
     "thread": "C' (fresh, for P4b)",
     "mode": "chat (answer stage)",
-    "task_verdict": "PASS",
+    "task_verdict": "INCOMPLETE",
     "checks": {
      "correctness": "PASS",
      "R5": "PASS",
-     "R2": "PASS",
+     "R2": "UNKNOWN",
      "R4": "PASS",
      "served_set": "N/A",
      "R3": "PASS"
@@ -7089,7 +7089,7 @@
      "correctness": "FAIL",
      "R5": "PASS",
      "R2": "PASS",
-     "R4": "PASS",
+     "R4": "UNKNOWN",
      "served_set": "N/A"
     },
     "over_allowance": false
@@ -7100,11 +7100,11 @@
     "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
     "thread": "D (fresh)",
     "mode": "chat (answer stage)",
-    "task_verdict": "PASS",
+    "task_verdict": "INCOMPLETE",
     "checks": {
      "correctness": "PASS",
      "R5": "PASS",
-     "R2": "PASS",
+     "R2": "UNKNOWN",
      "R4": "PASS",
      "served_set": "N/A",
      "R3": "PASS"
@@ -7134,11 +7134,11 @@
     "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
     "thread": "E",
     "mode": "agent (planning stage)",
-    "task_verdict": "PASS",
+    "task_verdict": "INCOMPLETE",
     "checks": {
      "correctness": "PASS",
      "R5": "PASS",
-     "R2": "PASS",
+     "R2": "UNKNOWN",
      "R4": "PASS",
      "served_set": "N/A",
      "R3": "PASS"
@@ -7216,11 +7216,11 @@
     "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
     "thread": "G",
     "mode": "chat (answer stage)",
-    "task_verdict": "PASS",
+    "task_verdict": "INCOMPLETE",
     "checks": {
      "correctness": "PASS",
      "R5": "PASS",
-     "R2": "PASS",
+     "R2": "UNKNOWN",
      "R4": "PASS",
      "served_set": "N/A",
      "R3": "PASS"
@@ -7239,8 +7239,8 @@
     "checks": {
      "correctness": "UNSCORED",
      "R5": "PASS",
-     "R2": "PASS",
-     "R4": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "UNKNOWN",
      "served_set": "N/A"
     },
     "over_allowance": false
@@ -7248,7 +7248,8 @@
   ],
   "by_verdict": {
    "FAIL": 5,
-   "PASS": 10
+   "PASS": 6,
+   "INCOMPLETE": 4
   },
   "lifecycle": [
    {

@@ -3,7 +3,7 @@
  "plan": "12.11",
  "issue": 490,
  "correctness_rule": "POST-HOC whole-reply lexical scoring (Codex CP4 review 19, ruling 4): case-insensitive substring over the model's reply (host text such as the brief excluded); PASS when an accepted phrase is present and no rejected phrase is. The frozen rubric R1 names 'the reply's claim'; no claim selector was frozen, so this is not a pre-registered interpretation. Lists are alternatives. No superiority claim is made.",
- "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the eligible set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6; review 22, rulings 2-3), UNKNOWN where it cannot be derived; R2 also needs proof the turn's read succeeded. R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not served.",
+ "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the eligible set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6; review 22, rulings 2-3; review 23, rulings 2 and 4), UNKNOWN where it cannot be derived; R2 also needs positive proof the turn's read succeeded (only a brief that lists the item gives one). R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not its item's newest servable version, which holds whether or not the eligible set is known.",
  "attribution": {
   "rule": "a prompt's attempts and ACP turns are those inside its frozen window",
   "windows": "p1211-cp4-zed/evidence/attribution-windows.json",
@@ -96,9 +96,9 @@
   "store_archive_sha256sums": "hex:861b0f08d86d5a5c2887c0b5022e38299b2d83a59061506b405b3f62a34a9169",
   "served_reconstruction": {
    "path": "p1211-cp4-zed/evidence/served-reconstruction.json",
-   "sha256": "hex:4bf211bca32e74c476eb9d6b619c000119db6008aae046b62b0f1a40ffc1c16f",
+   "sha256": "hex:8db76c83cea16f5e2ad30dffcbff126c869a60c4b10242d6fa5db48a365926c6",
    "script": "p1211-cp4-zed/reconstruct_served.py",
-   "script_sha256": "hex:f612321fd35eb9d8143e0200fa68e188f9fae8330b207b312576595ff26e5b2d"
+   "script_sha256": "hex:d69655f34113b573f055839398265a0bc06fd2f136ee7ea6d1e5b010c259b9b2"
   },
   "traces": {
    "ws-off": "hex:1dcbed7d4b96f08ff0802a6111acd3efb10ed54fdaf995b02321235604a465e5",
@@ -1146,8 +1146,8 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "PASS",
-       "evidence": "cites ['m-ead69057e3a39423@1'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: no 'Unsupported memory citations' card in the turn (screenshot evidence/on/P2-reply.jpg); a failed read would have produced one"
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-ead69057e3a39423@1']; the eligible set could not be reconstructed: ['m-ead69057e3a39423@1 is not proven confirmed before the window']"
       },
       "R4": {
        "result": "PASS",
@@ -1159,11 +1159,9 @@
       },
       "served_set": {
        "result": "N/A",
-       "status": "DERIVED",
-       "eligible": [
-        "m-ead69057e3a39423@1"
-       ],
-       "read_proof": "no 'Unsupported memory citations' card in the turn (screenshot evidence/on/P2-reply.jpg); a failed read would have produced one"
+       "status": "UNKNOWN",
+       "eligible": null,
+       "read_proof": null
       },
       "R3": {
        "result": "PASS",
@@ -1331,24 +1329,22 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "PASS",
-       "evidence": "cites ['m-ead69057e3a39423@2'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: no 'Unsupported memory citations' card in the turn (screenshot evidence/on/P4-reply-thread-with-extra-P3.jpg); a failed read would have produced one"
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-ead69057e3a39423@2']; the eligible set could not be reconstructed: ['m-ead69057e3a39423@2 is not proven confirmed before the window']"
       },
       "R4": {
-       "result": "PASS",
+       "result": "UNKNOWN",
        "components": {
         "cited": "PASS",
-        "served": "PASS"
+        "served": "UNKNOWN"
        },
-       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-ead69057e3a39423@1']; cited of them: []; eligible of them: [], and a turn is served the eligible set or none; eligible set reconstructed from the archived store (evidence/served-reconstruction.json)"
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-ead69057e3a39423@1']; cited of them: []; serving not observed: the eligible set could not be reconstructed"
       },
       "served_set": {
        "result": "N/A",
-       "status": "DERIVED",
-       "eligible": [
-        "m-ead69057e3a39423@2"
-       ],
-       "read_proof": "no 'Unsupported memory citations' card in the turn (screenshot evidence/on/P4-reply-thread-with-extra-P3.jpg); a failed read would have produced one"
+       "status": "UNKNOWN",
+       "eligible": null,
+       "read_proof": null
       }
      },
      "task_verdict": "INCOMPLETE",
@@ -1455,8 +1451,8 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "PASS",
-       "evidence": "cites ['m-ead69057e3a39423@2'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: no 'Unsupported memory citations' card in the turn (screenshot evidence/on/P4b-reply.jpg); a failed read would have produced one"
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-ead69057e3a39423@2'], all eligible; no evidence the turn's read succeeded"
       },
       "R4": {
        "result": "PASS",
@@ -1472,14 +1468,14 @@
        "eligible": [
         "m-ead69057e3a39423@2"
        ],
-       "read_proof": "no 'Unsupported memory citations' card in the turn (screenshot evidence/on/P4b-reply.jpg); a failed read would have produced one"
+       "read_proof": null
       },
       "R3": {
        "result": "PASS",
        "evidence": "required exact citations ['m-ead69057e3a39423@2']"
       }
      },
-     "task_verdict": "PASS",
+     "task_verdict": "INCOMPLETE",
      "over_allowance": false
     },
     {
@@ -1653,17 +1649,17 @@
        "evidence": "the reply cites nothing"
       },
       "R4": {
-       "result": "PASS",
+       "result": "UNKNOWN",
        "components": {
         "cited": "PASS",
-        "served": "PASS"
+        "served": "UNKNOWN"
        },
-       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; eligible of them: [], and a turn is served the eligible set or none; eligible set reconstructed from the archived store (evidence/served-reconstruction.json)"
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; serving not observed: the eligible set could not be reconstructed"
       },
       "served_set": {
        "result": "N/A",
-       "status": "DERIVED",
-       "eligible": [],
+       "status": "UNKNOWN",
+       "eligible": null,
        "read_proof": null
       }
      },
@@ -2196,8 +2192,8 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "PASS",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: no 'Unsupported memory citations' card in the turn (screenshot evidence/on/P9-reply.jpg); a failed read would have produced one"
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible; no evidence the turn's read succeeded"
       },
       "R4": {
        "result": "PASS",
@@ -2213,14 +2209,14 @@
        "eligible": [
         "m-4554b0b60f99b2ca@1"
        ],
-       "read_proof": "no 'Unsupported memory citations' card in the turn (screenshot evidence/on/P9-reply.jpg); a failed read would have produced one"
+       "read_proof": null
       },
       "R3": {
        "result": "PASS",
        "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
       }
      },
-     "task_verdict": "PASS",
+     "task_verdict": "INCOMPLETE",
      "over_allowance": false
     }
    ]
@@ -2545,8 +2541,8 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "PASS",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: no 'Unsupported memory citations' card in the turn (screenshot evidence/return/R2-reply.jpg); a failed read would have produced one"
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible; no evidence the turn's read succeeded"
       },
       "R4": {
        "result": "PASS",
@@ -2562,14 +2558,14 @@
        "eligible": [
         "m-4554b0b60f99b2ca@1"
        ],
-       "read_proof": "no 'Unsupported memory citations' card in the turn (screenshot evidence/return/R2-reply.jpg); a failed read would have produced one"
+       "read_proof": null
       },
       "R3": {
        "result": "PASS",
        "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
       }
      },
-     "task_verdict": "PASS",
+     "task_verdict": "INCOMPLETE",
      "over_allowance": true
     }
    ]
@@ -2731,7 +2727,7 @@
       },
       "R2": {
        "result": "PASS",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: the turn's brief lists the item (evidence/return-b/R1b-reply.jpg), and the turn reuses the brief's read; no 'Unsupported memory citations' card in the turn (screenshot same); a failed read would have produced one"
+       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: the turn's brief lists the item (evidence/return-b/R1b-reply.jpg), and the turn reuses the brief's read; no 'Unsupported memory citations' card in the turn (screenshot same), supporting only: the card's notify is suppressed on error"
       },
       "R4": {
        "result": "PASS",
@@ -2747,7 +2743,7 @@
        "eligible": [
         "m-4554b0b60f99b2ca@1"
        ],
-       "read_proof": "the turn's brief lists the item (evidence/return-b/R1b-reply.jpg), and the turn reuses the brief's read; no 'Unsupported memory citations' card in the turn (screenshot same); a failed read would have produced one"
+       "read_proof": "the turn's brief lists the item (evidence/return-b/R1b-reply.jpg), and the turn reuses the brief's read; no 'Unsupported memory citations' card in the turn (screenshot same), supporting only: the card's notify is suppressed on error"
       },
       "brief": {
        "result": "PASS",
@@ -3157,7 +3153,7 @@
       },
       "R2": {
        "result": "PASS",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: the turn's brief lists the item (evidence/return-c/R1c-reply.jpg), and the turn reuses the brief's read; no 'Unsupported memory citations' card in the turn (screenshot same); a failed read would have produced one"
+       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: the turn's brief lists the item (evidence/return-c/R1c-reply.jpg), and the turn reuses the brief's read; no 'Unsupported memory citations' card in the turn (screenshot same), supporting only: the card's notify is suppressed on error"
       },
       "R4": {
        "result": "PASS",
@@ -3173,7 +3169,7 @@
        "eligible": [
         "m-4554b0b60f99b2ca@1"
        ],
-       "read_proof": "the turn's brief lists the item (evidence/return-c/R1c-reply.jpg), and the turn reuses the brief's read; no 'Unsupported memory citations' card in the turn (screenshot same); a failed read would have produced one"
+       "read_proof": "the turn's brief lists the item (evidence/return-c/R1c-reply.jpg), and the turn reuses the brief's read; no 'Unsupported memory citations' card in the turn (screenshot same), supporting only: the card's notify is suppressed on error"
       },
       "brief": {
        "result": "PASS",
@@ -3286,8 +3282,8 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "PASS",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible (eligible set reconstructed from the archived store (evidence/served-reconstruction.json)); the read succeeded: no 'Unsupported memory citations' card in the turn (screenshot evidence/return-c/R2c-reply.jpg); a failed read would have produced one"
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1'], all eligible; no evidence the turn's read succeeded"
       },
       "R4": {
        "result": "PASS",
@@ -3303,14 +3299,14 @@
        "eligible": [
         "m-4554b0b60f99b2ca@1"
        ],
-       "read_proof": "no 'Unsupported memory citations' card in the turn (screenshot evidence/return-c/R2c-reply.jpg); a failed read would have produced one"
+       "read_proof": null
       },
       "R3": {
        "result": "PASS",
        "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
       }
      },
-     "task_verdict": "PASS",
+     "task_verdict": "INCOMPLETE",
      "over_allowance": false
     }
    ]

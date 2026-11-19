@@ -132,6 +132,7 @@ _INDEX_LISTINGS = {
     "tools/probe_p11_zed_session_load.py": "a manually run probe digests its own checkout; no test run executes that listing",
     "tools/measure_context_engine_limits.py": "a manually run Plan 12 measurement tool; its in-suite uses list tracked file names to sample sizes and to build its measurement report, so the index it lists changes the sample or report, never a verdict about the commit",
     "tools/plan12_memory/m1_scale.py": "a manually run Plan 12.10 measurement tool; it lists the tracked files it copies into its own corpus, so the index it reads changes the sample, never a verdict about the commit",
+    "tools/plan12_memory/m3_evaluate.py": "the Plan 12.11 qualification driver lists each case's own fresh workspace repository (_new_repo) to find saved file text, never the repository being committed",
     "tests/unit/guardrails/test_ci_parity.py": "its listing programs run in per-test fixture repositories, never the repository being committed",
     "src/optimus/context/memory_recovery.py": "product code (Plan 12.11 recovery copy): it lists the user's own workspace index to refuse writing plaintext into a location Git tracks; it never judges this repository's commit",
     "tests/unit/guardrails/test_file_policy.py": "lists a per-test temporary repository's ignored files to compare with the policy, never the repository being committed",
