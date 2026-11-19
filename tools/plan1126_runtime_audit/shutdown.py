@@ -20,7 +20,7 @@ import weakref
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping, cast
 
 from tools.concurrency_capture import (
     FrameLocation,
@@ -40,7 +40,19 @@ from .source import (
 )
 
 if TYPE_CHECKING:
-    from .model import AuditArtifact
+    from optimus.redis.runtime import RuntimeClient
+
+    from .model import (
+        AuditArtifact,
+        BaselineScope,
+        ContradictionSearchRecord,
+        EvidenceRecord,
+        EvidenceReference,
+        ObservationClosureStatus,
+        ReviewerStatus,
+        VocabularyCoverageAssessment,
+        VocabularyCoverageStatus,
+    )
     from .replay import SealedObservations
 
 #: The allowlisted measurement entry whose context authorizes this hypothesis's probes.
@@ -286,7 +298,14 @@ class _ShutdownVisitor(ast.NodeVisitor):
     def _owner(self) -> str:
         return self.class_scope[-1] if self.class_scope else "<module>"
 
-    def _add(self, node: ast.AST, *, reference: str, site_kind: str, owner: str | None = None) -> None:
+    def _add(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Call,
+        *,
+        reference: str,
+        site_kind: str,
+        owner: str | None = None,
+    ) -> None:
         owner_name = owner or self._owner()
         source = ast.get_source_segment(self.text, node) or reference
         self.sites.append(
@@ -609,7 +628,7 @@ class _ProbeProcess:
         self.stopped = True
 
 
-def _repeat_actual_close(close: Callable[[], None], count: Callable[[], int]) -> int:
+def _repeat_actual_close(close: Callable[[], object], count: Callable[[], int]) -> int:
     for _ in range(3):
         close()
     return count()
@@ -700,7 +719,8 @@ def _probe_resource(
         # tears down that owner -- never the process-wide shared tool owner, which is
         # a different lifetime and whose teardown would prove nothing about this one.
         owner = RedisLoopOwner(name="plan1126-shutdown-probe")
-        runtime = RedisRuntime(pool=pool, client=client, owner=owner)
+        # This teardown-only fixture never uses the broader protocol's data methods.
+        runtime = RedisRuntime(pool=pool, client=cast("RuntimeClient", client), owner=owner)
         try:
             # Two public close paths share ONE teardown (Seam 2, checkpoint B): the
             # blocking `close` and the awaited `close_async`. The discovered method is
@@ -735,7 +755,7 @@ def _probe_resource(
         owner = RedisLoopOwner(name="plan1126-harness-probe")
         bundle = AgentHarnessRuntime(
             agent_runner=object(),  # type: ignore[arg-type]
-            redis_runtime=RedisRuntime(pool=pool, client=client, owner=owner),
+            redis_runtime=RedisRuntime(pool=pool, client=cast("RuntimeClient", client), owner=owner),
         )
         try:
             _repeat_actual_close(bundle.close, lambda: max(client.count, pool.count))
@@ -755,9 +775,10 @@ def _probe_resource(
         client = _CountedAsyncClose()
         pool = _CountedAsyncClose()
         owner = RedisLoopOwner(name="plan1126-store-probe")
-        owned = RedisRuntime(pool=pool, client=client, owner=owner)
+        close_client = cast("RuntimeClient", client)
+        owned = RedisRuntime(pool=pool, client=close_client, owner=owner)
         store = RedisAgentStateStore(
-            async_store=AsyncRedisAgentStateStore(client=client),
+            async_store=AsyncRedisAgentStateStore(client=close_client),
             submit=owned.run_sync,
             owned_runtime=owned,
         )
@@ -804,11 +825,11 @@ def _probe_resource(
     if resource == "InMemoryAcpSpecSessionStore":
         from optimus.acp.spec import InMemoryAcpSpecSessionStore
 
-        store = InMemoryAcpSpecSessionStore()
-        session = store.create(cwd=Path.cwd())
-        state = _CountedClose()
-        session.client_mcp_state = state  # type: ignore[assignment]
-        return _repeat_actual_close(store.close_all, lambda: state.count), cause_effect
+        session_store = InMemoryAcpSpecSessionStore()
+        session = session_store.create(cwd=Path.cwd())
+        counted_state = _CountedClose()
+        session.client_mcp_state = counted_state  # type: ignore[assignment]
+        return _repeat_actual_close(session_store.close_all, lambda: counted_state.count), cause_effect
 
     if resource == "AcpDuplexAdapter":
         from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
@@ -841,18 +862,18 @@ def _probe_resource(
     if resource == "ClientMcpRuntime":
         from optimus.mcp.client_disposition import ClientMcpRuntime
 
-        sdk = _CountingComponent()
+        counted_sdk = _CountingComponent()
         candidate = _CountingComponent()
-        supervisor = _CountingComponent()
-        runtime = ClientMcpRuntime(
+        counted_supervisor = _CountingComponent()
+        mcp_runtime = ClientMcpRuntime(
             disposition=object(),  # type: ignore[arg-type]
-            supervisor=supervisor,  # type: ignore[arg-type]
-            sdk_adapter=sdk,  # type: ignore[arg-type]
+            supervisor=counted_supervisor,  # type: ignore[arg-type]
+            sdk_adapter=counted_sdk,  # type: ignore[arg-type]
             candidate_endpoint=candidate,  # type: ignore[arg-type]
         )
         return _repeat_actual_close(
-            runtime.close,
-            lambda: max(sdk.count, candidate.count, supervisor.count),
+            mcp_runtime.close,
+            lambda: max(counted_sdk.count, candidate.count, counted_supervisor.count),
         ), cause_effect
 
     if resource == "MCPAsyncSupervisor":
@@ -918,9 +939,9 @@ def _probe_resource(
 
         already_stopped = terminal_cause == "partial_startup_failure"
         process = _ProbeProcess(already_stopped=already_stopped)
-        owner = LocalGatewayProcess(process=process, log_path=None)  # type: ignore[arg-type]
+        gateway = LocalGatewayProcess(process=process, log_path=None)  # type: ignore[arg-type]
         return _repeat_actual_close(
-            owner.stop,
+            gateway.stop,
             lambda: process.terminate_count + process.kill_count,
         ), f"{terminal_cause}:{'no_child_started' if already_stopped else 'child_terminated'}"
 
@@ -1360,7 +1381,7 @@ def _h5_scope_reason(field_name: str) -> tuple[str, str]:
 
 def _h5_coverage_assessments(
     observations: tuple[ShutdownScheduleObservation, ...],
-) -> tuple[object, ...]:
+) -> tuple[VocabularyCoverageAssessment, ...]:
     from .model import CoverageAssessmentStatus, VocabularyCoverageAssessment
 
     vocabulary = _h5_vocabulary()
@@ -1401,11 +1422,11 @@ class ShutdownObservationSummary:
     close_path_count: int
     total_observation_count: int
     complete_observation_count: int
-    observation_closure_status: object
-    vocabulary_coverage_status: object
+    observation_closure_status: ObservationClosureStatus
+    vocabulary_coverage_status: VocabularyCoverageStatus
     digest: str
     vocabulary: Mapping[str, Mapping[str, str]]
-    coverage_assessments: tuple[object, ...]
+    coverage_assessments: tuple[VocabularyCoverageAssessment, ...]
     observations: tuple[ShutdownScheduleObservation, ...]
 
     def __post_init__(self) -> None:
@@ -1523,7 +1544,7 @@ class ShutdownEvidenceRecord:
     record_id: str
     hypothesis_id: str
     subject: str
-    baseline_scope: object
+    baseline_scope: BaselineScope
     baseline_anchor_commit: str
     overlay_commit: str
     binding_commit: str | None
@@ -1533,14 +1554,14 @@ class ShutdownEvidenceRecord:
     resource_ownership: tuple[ResourceOwnershipRecord, ...]
     close_path_scope_outs: tuple[ClosePathScopeOut, ...]
     close_path_count: int
-    contradiction_search: object
+    contradiction_search: ContradictionSearchRecord
     schedule_observations: ShutdownObservationSummary
     s1_redis_runtime_ruling: Mapping[str, str]
     shutdown_order: Mapping[str, tuple[str, ...]]
     commands: tuple[str, ...]
     ruling: str
-    reviewer_status: object
-    content_free_evidence: tuple[object, ...]
+    reviewer_status: ReviewerStatus
+    content_free_evidence: tuple[EvidenceReference, ...]
 
     def __post_init__(self) -> None:
         from .model import BaselineScope, ReviewerStatus
@@ -1832,6 +1853,7 @@ def build_h5_audit_artifact(
         Finding,
         GateStatus,
         LiveStatus,
+        ScopeOutReachability,
         ScopeOutRegisterEntry,
     )
 
@@ -1963,7 +1985,8 @@ def build_h5_audit_artifact(
         sink_failure_count=0,
         scenario_durations_ms={},
     )
-    records = tuple(base.evidence_records) + (record,)
+    # The artifact's shared annotation is narrower than its supported H5 variant.
+    records = tuple(base.evidence_records) + (cast("EvidenceRecord", record),)
     provisional = AuditArtifact(
         schema_version=base.schema_version,
         merged_commit=base.merged_commit,
@@ -1991,7 +2014,7 @@ def build_h5_audit_artifact(
             owning_gate=entry.owning_gate,
             missing_values=entry.missing_values,
             owner=entry.owner,
-            reachable_in_gate="NOT_YET_ASSESSED",
+            reachable_in_gate=ScopeOutReachability.NOT_YET_ASSESSED,
             reachability_reason=(
                 f"{entry.owning_gate} names a candidate scenario, but its reachability has not yet been "
                 "demonstrated from that gate's raw observations."

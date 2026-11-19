@@ -113,7 +113,7 @@ class _Visitor(ast.NodeVisitor):
                 return " ".join(self.comments[candidate].split())
         return None if self.invariant is None else " ".join(self.invariant.split())
 
-    def _add(self, node: ast.AST, kind: InventoryKind) -> None:
+    def _add(self, node: ast.Call | ast.Assign | ast.ExceptHandler, kind: InventoryKind) -> None:
         invariant = self._invariant_for(node.lineno)
         material = f"{self.path}\0{self.symbol}\0{kind.value}\0{ast.dump(node, include_attributes=False)}\0{invariant or ''}"
         self.sites.append(DiscoveredSite(
@@ -595,7 +595,7 @@ class _DeliveryVisitor(ast.NodeVisitor):
 
     def _record(
         self,
-        node: ast.AST,
+        node: ast.Call | ast.Attribute,
         reference: str,
         phase: DeliveryPhase,
         *,
@@ -688,7 +688,7 @@ class _DeliveryVisitor(ast.NodeVisitor):
                     return roles[receiver.id]
         if isinstance(receiver, ast.Attribute):
             if isinstance(receiver.value, ast.Name) and receiver.value.id == "self" and self.class_stack:
-                owner_type = self.class_stack[-1]
+                owner_type: str | None = self.class_stack[-1]
             else:
                 owner_type = self._receiver_role(receiver.value)
             if owner_type:

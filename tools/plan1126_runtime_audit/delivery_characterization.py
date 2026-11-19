@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .replay import SealedObservations
-
 import ast
 import concurrent.futures
 import hashlib
@@ -16,7 +11,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping, Protocol, cast
 
 from .corpus import derived_seed, literal_seeds
 from .inventory import discover_delivery_sites
@@ -44,6 +39,24 @@ from .model import (
     VocabularyCoverageStatus,
 )
 from .source import SourceTree
+
+if TYPE_CHECKING:
+    from optimus.acp.conversation import (
+        ConversationOutcome,
+        ConversationSanitizer,
+        ConversationSanitizerInputs,
+        ConversationState,
+    )
+    from optimus.acp.lifecycle import DirectiveKind, SendCompletion, TurnControl
+    from optimus.acp.outbound_writer import DedicatedOutboundWriter, OutboundQueueItem
+    from optimus.acp.settlement import ConversationCommit, EffectState, SendOutcome, TurnSettlementSnapshot
+
+    from .replay import SealedObservations
+
+    class _SealedSettlementAdapter(Protocol):
+        @staticmethod
+        def _placeholder_settlement(adapter: None, session: SimpleNamespace, /) -> TurnSettlementSnapshot: ...
+
 
 _SETTLEMENT_PATH = "src/optimus/acp/settlement.py"
 _TRANSITION_PATHS = (
@@ -172,18 +185,18 @@ class _TransitionExecution:
 
 @dataclass(frozen=True, slots=True)
 class _TransitionAuthority:
-    send_outcome: object
-    turn_control: object
-    directive_kind: object
-    acp_duplex_adapter: object
-    dedicated_outbound_writer: object
-    outbound_queue_item: object
-    conversation_state: object
-    conversation_sanitizer: object
-    conversation_sanitizer_inputs: object
-    conversation_outcome: object
-    effect_state_type: object
-    conversation_commit_type: object
+    send_outcome: type[SendOutcome]
+    turn_control: type[TurnControl]
+    directive_kind: type[DirectiveKind]
+    acp_duplex_adapter: _SealedSettlementAdapter
+    dedicated_outbound_writer: type[DedicatedOutboundWriter]
+    outbound_queue_item: type[OutboundQueueItem]
+    conversation_state: type[ConversationState]
+    conversation_sanitizer: type[ConversationSanitizer]
+    conversation_sanitizer_inputs: type[ConversationSanitizerInputs]
+    conversation_outcome: type[ConversationOutcome]
+    effect_state_type: type[EffectState]
+    conversation_commit_type: type[ConversationCommit]
     definition_citations: Mapping[str, str]
 
     @property
@@ -197,7 +210,7 @@ class _TransitionAuthority:
         DirectiveKind = self.directive_kind
         adapter = self.acp_duplex_adapter
         DedicatedOutboundWriter = self.dedicated_outbound_writer
-        OutboundQueueItem = self.outbound_queue_item
+        outbound_item_type = self.outbound_queue_item
         ConversationState = self.conversation_state
         ConversationSanitizer = self.conversation_sanitizer
         ConversationSanitizerInputs = self.conversation_sanitizer_inputs
@@ -343,8 +356,8 @@ class _TransitionAuthority:
         )
         writer = DedicatedOutboundWriter(sink)
         writer._started = True  # noqa: SLF001 - execute production admission without a live thread
-        future: concurrent.futures.Future[object] = concurrent.futures.Future()
-        item = OutboundQueueItem(
+        future: concurrent.futures.Future[SendCompletion] = concurrent.futures.Future()
+        item = outbound_item_type(
             payload={"audit_event": "h4-content-free"},
             send_key=lease.send_key,
             owner=turn,
@@ -369,7 +382,8 @@ class _TransitionAuthority:
         elif scenario == "transport-teardown":
             request_transport_teardown("before-write")
 
-        queued = writer._queue.get_nowait()  # noqa: SLF001 - item admitted by production submit
+        # The only queued value is the item just submitted to this unstarted writer.
+        queued = cast("OutboundQueueItem", writer._queue.get_nowait())  # noqa: SLF001
         writer._process_item(queued)  # noqa: SLF001 - deterministic local physical boundary
         write_attempted = sink.write_count > 0
         flush_attempted = sink.flush_count > 0
@@ -487,15 +501,17 @@ def _pinned_settlement_annotation_variant(path: str, symbol: str, before: bytes,
     # get_source_segment starts at def, leaving subsequent lines class-indented.
     historical_ast = ast.parse("class Authority:\n    " + before.decode("utf-8"))
     candidate_ast = ast.parse("class Authority:\n    " + local.decode("utf-8"))
-    historical_ast.body[0].body[0].returns = None
-    candidate_ast.body[0].body[0].returns = None
+    historical_class = cast("ast.ClassDef", historical_ast.body[0])
+    candidate_class = cast("ast.ClassDef", candidate_ast.body[0])
+    cast("ast.FunctionDef", historical_class.body[0]).returns = None
+    cast("ast.FunctionDef", candidate_class.body[0]).returns = None
     return ast.dump(historical_ast, include_attributes=False) == ast.dump(candidate_ast, include_attributes=False)
 
 
 _H4_WRITER_DIGEST = "e7091b21c5f30a121b1235eba2015db8560e77fb4a2833af21f7e066e0f90a64"  # pragma: allowlist secret - nonsecret complete immutable H4 writer source digest
 
 
-def _sealed_writer_types(text: str) -> tuple[object, object]:
+def _sealed_writer_types(text: str) -> tuple[type[DedicatedOutboundWriter], type[OutboundQueueItem]]:
     identity = hashlib.sha256(text.encode("utf-8")).hexdigest()
     if identity != _H4_WRITER_DIGEST:
         raise ValueError("untrusted historical H4 writer source")
@@ -534,7 +550,7 @@ def derive_transition_authority(
         raise ValueError(f"production transition authority bytes drifted for {writer_path}: untrusted historical H4 writer source")
 
     root = repository or Path(__file__).resolve().parents[2]
-    selected_methods = {
+    selected_methods: dict[str, dict[str, set[str] | None]] = {
         "src/optimus/acp/lifecycle.py": {
             "DirectiveKind": None,
             "TurnControl": {
@@ -559,27 +575,30 @@ def derive_transition_authority(
     def authority_segments(path: str, text: str) -> dict[str, tuple[bytes, int]]:
         tree = ast.parse(text, filename=path)
         segments: dict[str, tuple[bytes, int]] = {}
+
+        def segment(node: ast.stmt) -> bytes:
+            # Each node carries source locations from this exact parse.
+            return cast("str", ast.get_source_segment(text, node)).encode("utf-8")
+
         for node in tree.body:
             if path == _SETTLEMENT_PATH and isinstance(node, ast.ClassDef) and node.name in _VOCABULARY_NAMES:
-                segments[node.name] = (ast.get_source_segment(text, node).encode("utf-8"), node.lineno)
+                segments[node.name] = (segment(node), node.lineno)
             if path == _SETTLEMENT_PATH and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {
                 "_send_outcome_to_delivery_value", "final_delivery_for_outcome",
                 "rpc_response_delivery_for_outcome", "compute_effect_state",
             }:
-                segments[node.name] = (ast.get_source_segment(text, node).encode("utf-8"), node.lineno)
+                segments[node.name] = (segment(node), node.lineno)
             if path == "src/optimus/acp/outbound_writer.py" and isinstance(node, ast.FunctionDef) and node.name == "classify_physical_outcome":
-                segments[node.name] = (ast.get_source_segment(text, node).encode("utf-8"), node.lineno)
+                segments[node.name] = (segment(node), node.lineno)
             class_requests = selected_methods.get(path, {})
-            requested = class_requests.get(node.name) if isinstance(node, ast.ClassDef) and node.name in class_requests else set()
-            if requested is None:
-                segments[node.name] = (ast.get_source_segment(text, node).encode("utf-8"), node.lineno)
-            elif requested and isinstance(node, ast.ClassDef):
-                for statement in node.body:
-                    if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name in requested:
-                        segments[f"{node.name}.{statement.name}"] = (
-                            ast.get_source_segment(text, statement).encode("utf-8"),
-                            statement.lineno,
-                        )
+            if isinstance(node, ast.ClassDef) and node.name in class_requests:
+                requested = class_requests[node.name]
+                if requested is None:
+                    segments[node.name] = (segment(node), node.lineno)
+                elif requested:
+                    for statement in node.body:
+                        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name in requested:
+                            segments[f"{node.name}.{statement.name}"] = (segment(statement), statement.lineno)
         return segments
 
     definition_citations: dict[str, str] = {}
@@ -632,15 +651,16 @@ def derive_transition_authority(
     ):
         if {member.name: member.value for member in enum_type} != vocabulary[enum_type.__name__]:
             raise ValueError(f"loaded production {enum_type.__name__} does not match immutable source")
-    writer_type: object = DedicatedOutboundWriter
-    item_type: object = OutboundQueueItem
+    writer_type = DedicatedOutboundWriter
+    item_type = OutboundQueueItem
     if historical_writer:
         writer_type, item_type = _sealed_writer_types(writer_text)
     return _TransitionAuthority(
         send_outcome=SendOutcome,
         turn_control=TurnControl,
         directive_kind=DirectiveKind,
-        acp_duplex_adapter=AcpDuplexAdapter,
+        # Authority matching above requires the historical method in the source.
+        acp_duplex_adapter=cast("_SealedSettlementAdapter", AcpDuplexAdapter),
         dedicated_outbound_writer=writer_type,
         outbound_queue_item=item_type,
         conversation_state=ConversationState,

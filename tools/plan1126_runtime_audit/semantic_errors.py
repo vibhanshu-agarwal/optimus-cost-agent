@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .model import EvidenceRecord
     from .replay import SealedObservations
 
 import ast
@@ -12,7 +13,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from optimus.acp.errors import (
     AUTHENTICATION_REQUIRED,
@@ -429,7 +430,7 @@ class _SemanticVisitor(ast.NodeVisitor):
         self.functions: list[str] = []
         self.sites: list[SemanticSelectionSite] = []
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+    def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.functions.append(node.name)
         if self.path.endswith("errors.py") and node.name == "error_response":
             self.sites.append(_site(
@@ -872,5 +873,5 @@ def build_h7_audit_artifact(
         live_interoperability_status=base.live_interoperability_status,
         findings=tuple(base.findings) + _h7_findings(h7),
         discovered_multipliers=base.discovered_multipliers, computed_run_cost=base.computed_run_cost,
-        gate_status=GateStatus.INCOMPLETE, evidence_records=tuple(base.evidence_records) + (h6, h7),
+        gate_status=GateStatus.INCOMPLETE, evidence_records=tuple(base.evidence_records) + (cast("EvidenceRecord", h6), cast("EvidenceRecord", h7)),
     )

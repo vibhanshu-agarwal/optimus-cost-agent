@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Literal, Mapping, NotRequired, Protocol, Sequence, TypedDict, cast
 
 from jsonschema import Draft202012Validator
 
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools import process_tree  # noqa: E402
+from tools import process_tree as _process_tree  # noqa: E402
 from tools.plan1126_runtime_audit.checkpoints import CheckpointStore  # noqa: E402
 from tools.plan1126_runtime_audit.corpus import literal_seeds  # noqa: E402
 from tools.plan1126_runtime_audit.cost import compute_cost  # noqa: E402
@@ -41,12 +41,40 @@ from tools.plan1126_runtime_audit.repeatability import RepeatabilityStatus, clas
 from tools.plan1126_runtime_audit.source import GitCommitSource, SourceTree  # noqa: E402
 from tools.tracked_repository_files import tracked_repository_files  # noqa: E402
 
+if TYPE_CHECKING:
+    from tools.plan1126_runtime_audit.shutdown import ShutdownEvidenceRecord
+
+    class _CapturedProcessTree(Protocol):
+        def popen(
+            self, args: Sequence[str], *, cwd: Path, stdout: int, stderr: int,
+            text: Literal[True], encoding: str, creationflags: int = ...,
+        ) -> subprocess.Popen[str]: ...
+
+        def kill_tree(self, process: subprocess.Popen[str]) -> None: ...
+
+    class _CaptureGroup(TypedDict, total=False):
+        creationflags: int
+
+    class _WindowsSubprocess(Protocol):
+        CREATE_NEW_PROCESS_GROUP: int
+
+    class _OfflineScenario(TypedDict):
+        scenario_id: str
+        command: Sequence[str]
+        harness_paths: NotRequired[Sequence[str]]
+        harness_nodeids: NotRequired[Sequence[str]]
+        timeout_seconds: NotRequired[float]
+
+
+# The tools module aliases the runtime module, so both names share the job registry.
+process_tree = cast("_CapturedProcessTree", _process_tree)
+
 _SCHEMA_PATH = ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "audit-artifact.schema.json"
 _SCHEMA_V2_PATH = ROOT / "tests" / "fixtures" / "plan1126_runtime_audit" / "audit-artifact-v2.schema.json"
 #: Explicit, closed dispatch. The v1 envelope is frozen and knows nothing about fresh
 #: measurements; validating a successor against it reported the successor as malformed
 #: rather than as a newer envelope, which is exactly backwards.
-_SCHEMA_PATHS_BY_ENVELOPE = {
+_SCHEMA_PATHS_BY_ENVELOPE: Mapping[object, Path] = {
     "plan-11-26-runtime-audit-v1": _SCHEMA_PATH,
     "plan-11-26-runtime-audit-v2": _SCHEMA_V2_PATH,
 }
@@ -452,7 +480,7 @@ def _verify_artifact(path: str, evidence_directory: str | Path | None = None) ->
         inventory = discover_shutdown_inventory(shutdown_merged, overlay=shutdown_overlay)
         inventory = characterize_shutdown_inventory(
             inventory,
-            h5_records[0].schedule_observations.observations,
+            cast("ShutdownEvidenceRecord", h5_records[0]).schedule_observations.observations,
         )
         expected_inventory = [item.to_dict() for item in inventory.close_sites]
         expected_resources = [item.to_dict() for item in inventory.resources]
@@ -653,9 +681,9 @@ def _validate_json_schema(payload: Mapping[str, Any], schema_path: Path) -> None
 def _run_duplication(args: argparse.Namespace) -> int:
     try:
         if args.duplication_command == "discover":
-            inventory = discover_duplication_candidates(GitCommitSource(args.source_commit, ROOT))
-            _validate_json_schema(inventory, _DUPLICATION_CANDIDATES_SCHEMA_PATH)
-            _atomic_json(Path(args.inventory), inventory)
+            discovered_inventory = discover_duplication_candidates(GitCommitSource(args.source_commit, ROOT))
+            _validate_json_schema(discovered_inventory, _DUPLICATION_CANDIDATES_SCHEMA_PATH)
+            _atomic_json(Path(args.inventory), discovered_inventory)
             _emit("PASS")
             return 0
 
@@ -1016,7 +1044,7 @@ def _pytest_verbose_command(*paths: str) -> tuple[str, ...]:
     return (sys.executable, "-m", "pytest", *paths, "-vv")
 
 
-_OFFLINE_TIER_COMMANDS: Mapping[str, tuple[Mapping[str, object], ...]] = {
+_OFFLINE_TIER_COMMANDS: Mapping[str, tuple[_OfflineScenario, ...]] = {
     "narrow": (
         {"scenario_id": "task2_audit_tooling", "command": _pytest_command(
             "tests/unit/tools/plan1126_runtime_audit",
@@ -1145,7 +1173,7 @@ def _path_fingerprint(paths: Sequence[str]) -> str:
     return digest.hexdigest()
 
 
-def _offline_harness_paths(spec: Mapping[str, object]) -> tuple[str, ...]:
+def _offline_harness_paths(spec: _OfflineScenario) -> tuple[str, ...]:
     explicit = tuple(str(item) for item in spec.get("harness_paths", ()))
     if explicit:
         return explicit
@@ -1210,7 +1238,10 @@ def _normalized_timeout_outcome(
 def _run_captured_command(
     command: Sequence[str], *, timeout_seconds: float,
 ) -> subprocess.CompletedProcess[str]:
-    group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {}
+    group: _CaptureGroup = (
+        {"creationflags": cast("_WindowsSubprocess", subprocess).CREATE_NEW_PROCESS_GROUP}
+        if os.name == "nt" else {}
+    )
     process = process_tree.popen(
         list(command),
         cwd=ROOT,

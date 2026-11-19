@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from optimus.redis.runtime import RuntimeClient
+
+    from .model import EvidenceRecord
     from .replay import SealedObservations
 
 import ast
@@ -15,7 +18,7 @@ import queue as sync_queue
 import time
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from optimus.redis.async_bridge import RedisLoopOwner
 from optimus.redis.runtime import RedisRuntime
@@ -267,7 +270,7 @@ class _QueueVisitor(ast.NodeVisitor):
         self.queue_operations: list[QueueSite] = []
         self.constructors: list[tuple[str, int, str, str, int | None, ConstructorPolicy]] = []
 
-    def _site(self, node: ast.AST, kind: QueueSiteKind, queue_ref: str | None) -> QueueSite:
+    def _site(self, node: ast.Call, kind: QueueSiteKind, queue_ref: str | None) -> QueueSite:
         missing = kind in {
             QueueSiteKind.QUEUE_CONSTRUCTOR, QueueSiteKind.QUEUE_ADMISSION,
             QueueSiteKind.QUEUE_CONSUMER, QueueSiteKind.HEALTH_PROBE, QueueSiteKind.BRIDGE_WAIT,
@@ -284,10 +287,10 @@ class _QueueVisitor(ast.NodeVisitor):
             evidence_digest=_digest(payload), ruling=ruling,
         )
 
-    def _add(self, node: ast.AST, kind: QueueSiteKind, queue_ref: str | None) -> None:
+    def _add(self, node: ast.Call, kind: QueueSiteKind, queue_ref: str | None) -> None:
         self.sites.append(self._site(node, kind, queue_ref))
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+    def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.functions.append(node.name)
         self.generic_visit(node)
         self.functions.pop()
@@ -649,7 +652,7 @@ def connection_health_observations(
         # propagates) is unchanged; only where it executes has changed.
         runtime = RedisRuntime(
             pool=_HealthPool(),
-            client=_HealthClient(error),
+            client=cast("RuntimeClient", _HealthClient(error)),
             owner=RedisLoopOwner(name="plan1126-health-probe"),
         )
         try:
@@ -988,5 +991,5 @@ def build_h9_audit_artifact(
             record, source=SourceTree({path: merged.read_text(path) for path in H9_SOURCE_PATHS})
         ), discovered_multipliers=multipliers,
         computed_run_cost=cost, gate_status=GateStatus.INCOMPLETE,
-        evidence_records=tuple(base.evidence_records) + (record,),
+        evidence_records=tuple(base.evidence_records) + (cast("EvidenceRecord", record),),
     )
