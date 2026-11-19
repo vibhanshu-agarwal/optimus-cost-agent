@@ -16,6 +16,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import time
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
@@ -1562,6 +1563,25 @@ def stage_redaction(context: RunContext, *, staging_root: Path, quarantine_root:
     return staged
 
 
+def _publish_promotion(partial: Path, final: Path) -> None:
+    if os.name != "nt":
+        os.replace(partial, final)
+        return
+
+    # A held child can make the Windows directory rename report access denied or a sharing violation.
+    for delay in (0.05, 0.2, None):
+        try:
+            os.rename(partial, final)
+        except FileExistsError:
+            raise HostError("promoted_run_exists") from None
+        except OSError as exc:
+            if delay is None or getattr(exc, "winerror", None) not in (5, 32):
+                raise
+            time.sleep(delay)
+        else:
+            return
+
+
 def promote_with_receipt(context: RunContext, *, staging_root: Path, sanitized_root: Path, receipt_path: Path,
                          identity_tokens: Sequence[str]) -> Path:
     """Phase 2: recompute, require the staged bytes and an accepting bound receipt, then promote atomically."""
@@ -1600,9 +1620,11 @@ def promote_with_receipt(context: RunContext, *, staging_root: Path, sanitized_r
         (partial / SANITIZED_NAME).write_bytes(staged.sanitized_bytes)
         (partial / REPORT_NAME).write_bytes(staged.report_bytes)
         (partial / ATTESTATION_NAME).write_bytes(contract.canonical_json_bytes(attestation))
-        os.replace(partial, final)
-    except OSError:
+        _publish_promotion(partial, final)
+    except (OSError, HostError) as exc:
         shutil.rmtree(partial, ignore_errors=True)
+        if isinstance(exc, HostError):
+            raise
         raise HostError("promotion_failed") from None
     return final
 
