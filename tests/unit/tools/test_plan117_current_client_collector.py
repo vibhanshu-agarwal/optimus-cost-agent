@@ -2031,6 +2031,35 @@ def test_wire_decoder_failure_preserves_independent_reopen_evidence(
         assert gate.disposition is D.INVALID_CURRENT_CLIENT_GATE
 
 
+@pytest.mark.parametrize("captured_reopen", [False, True], ids=["invalid", "stop"])
+def test_relay_text_encoding_failure_preserves_independent_reopen_evidence(tmp_path, windows_shaped_paths, monkeypatch, captured_reopen):
+    arm = "r_refusal"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_reopen else None))
+    run.collect()
+    first_session = run.host_mod.session_for(arm, "first")
+    wire_event = col.wire_event
+
+    def normalize(index, direction, message):
+        params = message.message.get("params", {})
+        update = params.get("update", {})
+        if params.get("sessionId") == first_session and "content" in update:
+            raise UnicodeEncodeError("utf-8", "synthetic text", 0, 1, "simulated relay text encoding failure")
+        return wire_event(index, direction, message)
+
+    monkeypatch.setattr(col, "wire_event", normalize)
+    raw = run.raw()
+    first = next(arm_record for arm_record in raw["arms"] if arm_record["arm_id"] == arm)["launches"][0]
+    assert first["undecodable_bytes"] is True
+
+    gate = c.reduce_document(raw, layer="raw")
+    assert R.WIRE_INCONSISTENT in _codes(gate)
+    if captured_reopen:
+        assert gate.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert gate.primary.reason is R.REOPEN_LOAD_OBSERVED
+    else:
+        assert gate.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
 def test_parse_ndjson_recovers_strictly_invalid_objects_but_flags_them():
     messages, undecodable = col.parse_ndjson_messages(b'{"a":1e400}\n{"a":1,"a":2}\n')
     assert undecodable is True and [m.message for m in messages] == [{"a": float("inf")}, {"a": 2}]

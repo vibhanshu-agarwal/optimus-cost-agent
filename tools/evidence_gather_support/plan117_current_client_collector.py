@@ -517,7 +517,10 @@ def derive_wire(relay_dir: Path) -> DerivedWire:
     initialize = None
     initialize_ids: set[Any] = set()
     for _sequence, _start, direction, message in ordered:
-        event = wire_event(len(events), direction, message)
+        try:
+            event = wire_event(len(events), direction, message)
+        except UnicodeEncodeError:
+            event = None
         if event is None:
             undecodable = True
             continue
