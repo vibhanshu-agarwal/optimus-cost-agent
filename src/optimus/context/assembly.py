@@ -850,7 +850,7 @@ class AttachedTurn:
                 outcome=attempt.outcome, cost_usd=attempt.cost_usd, finish_status=finish_status, covered_turn_ids=(),
                 recorded_at=datetime.now(UTC), provider_request_id=attempt.provider_request_id, http_status=attempt.http_status,
                 provider=attempt.provider, resolved_provider=attempt.resolved_provider, resolved_model=attempt.resolved_model,
-                gateway_usage=attempt.gateway_usage, purpose=purpose))
+                gateway_usage=attempt.gateway_usage, purpose=purpose, reasoning=attempt.reasoning))
 
         return call, record
 

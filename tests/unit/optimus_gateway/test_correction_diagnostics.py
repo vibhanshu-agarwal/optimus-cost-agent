@@ -229,6 +229,7 @@ _REVIEWED_INTERPOLATIONS = {
     ("src/optimus_model_policy/binding.py", "_exact_keys", 1, "sorted(missing)"),
     ("src/optimus_model_policy/binding.py", "_exact_keys", 2, "len(unknown)"),
     ("src/optimus_model_policy/binding.py", "_hex_digest", 1, "field"),
+    ("src/optimus_model_policy/registry.py", "ModelEntry.memory_purposes_only", 1, "len(unknown)"),
     ("src/optimus_model_policy/registry.py", "Policy.unambiguous_and_frozen", 1, "model_id"),
     ("src/optimus_model_policy/registry.py", "Policy.unambiguous_and_frozen", 2, "model_id"),
     ("src/optimus_model_policy/registry.py", "Policy.unambiguous_and_frozen", 2, "seen[folded]"),

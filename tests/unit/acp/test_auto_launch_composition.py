@@ -43,7 +43,7 @@ from tests.unit.acp.test_local_infra_model_registry import _spawned_args
 from tests.unit.acp.test_operator_registry_override import LUNA_OVERRIDE, _run_gateway, _write_override
 from tests.unit.optimus_gateway.test_main_model_registry import _manifest, started  # noqa: F401 - fixture
 
-AUTO_HASH = "6b9cc2fe93beca58fc94329dffb0e3139201af8606fc558701af31fde0a10e04"  # pragma: allowlist secret - registry identity (CA2), not a credential
+AUTO_HASH = "526153c5c682d8ffbde091869ec83e72a4b1545c555356a77c8e84b1fc85b3d2"  # pragma: allowlist secret - registry identity (CA2), not a credential
 _BASE = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
     "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture

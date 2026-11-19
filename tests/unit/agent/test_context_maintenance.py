@@ -260,7 +260,7 @@ def _gateway_call(client: _Client, *, registry_hash: str | None = "f" * 64):
     from optimus.context.maintenance import GatewaySummarizerCall
     from optimus_model_policy.binding import RouteBinding
 
-    def bind(request_id: str, input_text: str, output_cap: int) -> RouteBinding:
+    def bind(request_id: str, input_text: str, output_cap: int, purpose: str | None = None) -> RouteBinding:
         return RouteBinding(registry_hash=registry_hash, request_id=request_id, output_cap=output_cap)
 
     return GatewaySummarizerCall(

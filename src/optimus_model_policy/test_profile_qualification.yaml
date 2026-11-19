@@ -33,8 +33,10 @@ models:
     tier: ultra-cheap
     prices: {input_usd_per_million: "0.50", output_usd_per_million: "2.50"}
     data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
-    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [low, medium, high, xhigh, max]}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [none, low, medium, high, xhigh, max]}
     default_reasoning: low
+    # CP4 review 10, design R (operator-accepted 2026-11-19): memory calls send no reasoning, as in defaults.yaml.
+    purpose_reasoning: {memory.extract_user: none, memory.extract_agent: none, memory.compaction: none}
     route:
       estimator: haiku-5-5-empirical
       endpoints:
@@ -64,6 +66,7 @@ models:
     evidence:
       - "2026-10-09 free inspection: OpenRouter endpoints/models listing, Anthropic model page; provider-family route"
       - "text_planning_grammar is a test assumption checked by Task 13's Agent cases, not a publisher fact"
+      - "2026-11-19 free read, OpenRouter Claude 5.5 migration guide: reasoning effort none sends thinking disabled upstream (valid at effort high or lower); budgets are not forwarded"
 
 roles:
   easy: [anthropic/claude-haiku-5.5]

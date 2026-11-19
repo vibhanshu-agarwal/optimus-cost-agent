@@ -39,8 +39,12 @@ models:
     tier: ultra-cheap
     prices: {input_usd_per_million: "0.50", output_usd_per_million: "2.50"}
     data_use: {provider_may_train_on_inputs: unverified, disclosure: none}
-    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [low, medium, high, xhigh, max]}
+    capabilities: {native_tools: true, text_planning_grammar: true, structured_output: true, reasoning_levels: [none, low, medium, high, xhigh, max]}
     default_reasoning: low
+    # CP4 review 10, design R (operator-accepted 2026-11-19): memory calls send no reasoning. Haiku 5.5's adaptive thinking
+    # shares the 512-token memory cap, so it can end at the cap before any text (CP4 ON P7). The `low` summary receipt
+    # below covers context summaries only, never these calls.
+    purpose_reasoning: {memory.extract_user: none, memory.extract_agent: none, memory.compaction: none}
     route:
       estimator: haiku-5-5-empirical
       prompt_cache: prefix  # ADR-041 (#485): the stable start through the map is cached; only indexed turns name it
@@ -80,6 +84,7 @@ models:
     evidence:
       - "2026-10-09 free inspection: OpenRouter endpoints/models listing, Anthropic model page; provider-family route"
       - "text_planning_grammar is a test assumption checked by Task 13's Agent cases, not a publisher fact"
+      - "2026-11-19 free read, OpenRouter Claude 5.5 migration guide: reasoning effort none sends thinking disabled upstream (valid at effort high or lower); budgets are not forwarded"
 
   qwen/qwen3.7-flash:
     origin: china
