@@ -22,7 +22,16 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import FrameType
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol, cast
+
+if TYPE_CHECKING:
+    import ctypes
+
+    class _WindowsCtypes(Protocol):
+        def WinDLL(self, name: str, *, use_last_error: bool) -> ctypes.CDLL: ...
+        def WinError(self, code: int) -> OSError: ...
+        def get_last_error(self) -> int: ...
+
 
 DEFAULT_FRAME_LIMIT = 15
 
@@ -117,11 +126,11 @@ def alive_after_bounded_join(thread: threading.Thread, seconds: float) -> bool:
 
 
 def snapshot_task(task: asyncio.Future[Any], *, limit: int = DEFAULT_FRAME_LIMIT) -> TaskSnapshot:
-    is_task = isinstance(task, asyncio.Task)
-    stack = task.get_stack(limit=limit) if is_task else []
+    named_task = task if isinstance(task, asyncio.Task) else None
+    stack = named_task.get_stack(limit=limit) if named_task is not None else []
     return TaskSnapshot(
-        name=task.get_name() if is_task else "-",
-        coroutine=coroutine_name(task.get_coro()) if is_task else "-",
+        name=named_task.get_name() if named_task is not None else "-",
+        coroutine=coroutine_name(named_task.get_coro()) if named_task is not None else "-",
         state="cancelled" if task.cancelled() else "done" if task.done() else "pending",
         frames=tuple(
             FrameLocation(frame.f_code.co_filename, frame.f_lineno, frame.f_code.co_name)
@@ -202,7 +211,8 @@ class ProcessWatch:
             if waited == _WAIT_TIMEOUT:
                 return ProcessSnapshot(pid=self.pid, running=True, returncode=None)
             if waited != _WAIT_OBJECT_0:
-                raise ctypes.WinError(ctypes.get_last_error())
+                windows_ctypes = cast("_WindowsCtypes", ctypes)
+                raise windows_ctypes.WinError(windows_ctypes.get_last_error())
             code = ctypes.c_ulong()
             known = bool(api.GetExitCodeProcess(self._handle, ctypes.byref(code)))
             return ProcessSnapshot(pid=self.pid, running=False, returncode=code.value if known else None)
@@ -247,7 +257,7 @@ def _kernel32() -> Any:
         import ctypes
         from ctypes import wintypes
 
-        api = ctypes.WinDLL("kernel32", use_last_error=True)
+        api = cast("_WindowsCtypes", ctypes).WinDLL("kernel32", use_last_error=True)
         api.OpenProcess.restype = ctypes.c_void_p
         api.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
         api.WaitForSingleObject.restype = wintypes.DWORD

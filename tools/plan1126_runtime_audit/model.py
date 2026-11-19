@@ -7,11 +7,19 @@ import json
 import math
 import re
 from collections import Counter
+from collections.abc import Collection
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping, cast
 
 from .corpus import derived_seed, literal_seeds
+
+if TYPE_CHECKING:
+    from .cancellation import CancellationEvidenceRecord
+    from .queue_policy import QueueEvidenceRecord
+    from .session_lease import SessionLeaseEvidenceRecord
+    from .shutdown import ShutdownEvidenceRecord
+    from .telemetry import TelemetryEvidenceRecord
 
 
 class BaselineScope(StrEnum):
@@ -126,7 +134,7 @@ class ScopeOutReachability(StrEnum):
 
 def _closed_enum(enum_type: type[StrEnum], value: object, field: str) -> StrEnum:
     try:
-        return enum_type(value)
+        return enum_type(cast("str", value))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field} must use the closed {enum_type.__name__} vocabulary") from exc
 
@@ -994,13 +1002,13 @@ class ScheduleObservationSummary:
         notes = {note.field_name: note for note in self.constant_metadata_notes}
         if len(notes) != len(self.constant_metadata_notes) or set(notes) != _H4_CONSTANT_METADATA_FIELDS:
             raise ValueError("constant metadata notes must contain exactly the closed dimensions")
-        metadata_values = {
+        metadata_values: dict[str, Collection[str | bool | None]] = {
             "classification": {item.classification.value for item in self.observations},
             "complete": {item.complete for item in self.observations},
             "contradiction": {item.contradiction for item in self.observations},
         }
-        for field_name, values in metadata_values.items():
-            if len(values) != 1 or notes[field_name].constant_value != next(iter(values)):
+        for field_name, field_values in metadata_values.items():
+            if len(field_values) != 1 or notes[field_name].constant_value != next(iter(field_values)):
                 raise ValueError("constant metadata note disagrees with stored observations")
 
     def to_dict(self) -> dict[str, Any]:
@@ -1232,7 +1240,7 @@ _COST_FIELDS = {
 }
 
 
-def _default_scope_out_register(records: tuple[object, ...]) -> tuple[ScopeOutRegisterEntry, ...]:
+def _default_scope_out_register(records: tuple[EvidenceRecord, ...]) -> tuple[ScopeOutRegisterEntry, ...]:
     entries: list[ScopeOutRegisterEntry] = []
     for record in records:
         hypothesis_id = record.hypothesis_id
@@ -1422,55 +1430,61 @@ class AuditArtifact:
                 raise ValueError("H4 is both-aligned with no binding commit")
             if record.hypothesis_id == "H4" and record.schedule_observations.derived_seed_anchor_commit != self.merged_commit:
                 raise ValueError("H4 derived seed anchor must match artifact merged_commit")
+            # The parser and builders choose the evidence type by hypothesis.
             if record.hypothesis_id == "H3":
+                h3 = cast("CancellationEvidenceRecord", record)
                 if (
                     record.baseline_scope is not BaselineScope.BOTH_ALIGNED
                     or record.binding_commit is not None
-                    or record.schedule_observations.derived_seed_anchor_commit != self.merged_commit
+                    or h3.schedule_observations.derived_seed_anchor_commit != self.merged_commit
                 ):
                     raise ValueError("H3 is both-aligned, unbound, and anchored to merged_commit")
-                if self.discovered_multipliers["cancellation_points"] != record.cancellation_point_count:
+                if self.discovered_multipliers["cancellation_points"] != h3.cancellation_point_count:
                     raise ValueError("global N_cancellation_points disagrees with H3 inventory")
                 if (
                     self.computed_run_cost["cancellation_schedules"]
-                    != record.schedule_observations.derived_race_schedule_count
+                    != h3.schedule_observations.derived_race_schedule_count
                     or self.computed_run_cost["cancellation_control_schedules"]
-                    != record.schedule_observations.derived_control_schedule_count
+                    != h3.schedule_observations.derived_control_schedule_count
                 ):
                     raise ValueError("global cancellation cost disagrees with H3 derived schedules")
             if record.hypothesis_id == "H5":
+                h5 = cast("ShutdownEvidenceRecord", record)
                 if record.baseline_scope is not BaselineScope.BOTH_DIVERGENT or record.binding_commit is not None:
                     raise ValueError("H5 is both-divergent and unbound")
-                if self.discovered_multipliers["close_paths"] != record.close_path_count:
+                if self.discovered_multipliers["close_paths"] != h5.close_path_count:
                     raise ValueError("global N_close_paths disagrees with H5 inventory")
-                if self.computed_run_cost["idempotent_close_invocations"] != record.close_path_count * 3 * 5:
+                if self.computed_run_cost["idempotent_close_invocations"] != h5.close_path_count * 3 * 5:
                     raise ValueError("global close cost disagrees with H5 derived schedules")
             if record.hypothesis_id == "H8":
+                h8 = cast("TelemetryEvidenceRecord", record)
                 if record.baseline_scope is not BaselineScope.MERGED or record.binding_commit is not None:
                     raise ValueError("H8 is merged and unbound")
-                if self.discovered_multipliers["sinks"] != record.inventory.sink_count:
+                if self.discovered_multipliers["sinks"] != h8.inventory.sink_count:
                     raise ValueError("global N_sinks disagrees with H8 inventory")
-                if self.computed_run_cost["sink_failure_runs"] != record.inventory.sink_count * 100:
+                if self.computed_run_cost["sink_failure_runs"] != h8.inventory.sink_count * 100:
                     raise ValueError("global sink cost disagrees with H8 derived schedules")
             if record.hypothesis_id == "H9":
+                h9 = cast("QueueEvidenceRecord", record)
                 if record.baseline_scope is not BaselineScope.MERGED or record.binding_commit is not None:
                     raise ValueError("H9 is merged and unbound")
-                if self.discovered_multipliers["queues"] != record.inventory.queue_count:
+                if self.discovered_multipliers["queues"] != h9.inventory.queue_count:
                     raise ValueError("global N_queues disagrees with H9 inventory")
-                if self.computed_run_cost["queue_admissions"] != record.inventory.queue_count * 10_000:
+                if self.computed_run_cost["queue_admissions"] != h9.inventory.queue_count * 10_000:
                     raise ValueError("global queue cost disagrees with H9 derived admissions")
             if record.hypothesis_id == "H10":
+                h10 = cast("SessionLeaseEvidenceRecord", record)
                 expected_scope = (
                     BaselineScope.OVERLAY
-                    if record.classification is Classification.PROVISIONAL_OVERLAY
+                    if h10.classification is Classification.PROVISIONAL_OVERLAY
                     else BaselineScope.MERGED
                 )
                 if record.baseline_scope is not expected_scope or record.binding_commit is not None:
                     raise ValueError("H10 scoped-out gate has invalid baseline lineage")
                 if (
-                    record.executed_predicate_count != 0
-                    or record.runtime_predicates_executed
-                    or record.live_redis_predicates_executed
+                    h10.executed_predicate_count != 0
+                    or h10.runtime_predicates_executed
+                    or h10.live_redis_predicates_executed
                     or self.live_redis_status is not LiveStatus.UNRUN
                 ):
                     raise ValueError("H10 absent-binding gate cannot claim runtime or live evidence")

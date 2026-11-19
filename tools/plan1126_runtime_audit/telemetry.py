@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from optimus.gateway.client import GatewayClient
+
+    from .model import EvidenceRecord
     from .replay import SealedObservations
 
 import ast
@@ -18,7 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from pydantic import ValidationError
 
@@ -356,7 +359,7 @@ class TelemetryInventory:
         return inventory
 
 
-def _payload_schema(function: ast.FunctionDef) -> tuple[str, tuple[str, ...], tuple[str, ...]] | None:
+def _payload_schema(function: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str, tuple[str, ...], tuple[str, ...]] | None:
     event_kind: str | None = None
     required: set[str] = set()
     optional: set[str] = set()
@@ -454,7 +457,7 @@ class _TelemetryVisitor(ast.NodeVisitor):
                     self.functions.pop()
         self.generic_visit(node)
 
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+    def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.functions.append(node.name)
         if self.path.endswith("telemetry/events.py"):
             schema = _payload_schema(node)
@@ -769,7 +772,8 @@ def runtime_redaction_observations(
     redis_sink = RedisTelemetryEventSink(_UnusedRedisAdapter(), submit=_unused_submit)  # type: ignore[arg-type]
     capture_client = _CaptureGatewayClient()
     exporter = object.__new__(GatewayObservabilityExporter)
-    exporter._client = capture_client  # type: ignore[attr-defined]
+    # This probe exercises only the exporter's post_observability_json call.
+    exporter._client = cast("GatewayClient", capture_client)
     debug_trace.configure_debug_trace(enabled=True, log_path=debug_path, provenance_root=root)
     jsonl_offset = 0
     debug_offset = 0
@@ -1599,5 +1603,5 @@ def build_h8_audit_artifact(
         live_interoperability_status=base.live_interoperability_status,
         findings=tuple(base.findings) + _h8_findings(h8),
         discovered_multipliers=multipliers, computed_run_cost=cost,
-        gate_status=GateStatus.INCOMPLETE, evidence_records=tuple(base.evidence_records) + (h8,),
+        gate_status=GateStatus.INCOMPLETE, evidence_records=tuple(base.evidence_records) + (cast("EvidenceRecord", h8),),
     )

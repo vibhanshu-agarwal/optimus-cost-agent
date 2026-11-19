@@ -7,7 +7,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 _SDK = "@agentclientprotocol/sdk"
 _VERSION = "1.4.0"
@@ -104,7 +104,7 @@ def _observed_prefix(value: object) -> tuple[str, ...]:
 
 
 def _blocked(candidate: Mapping[str, object], reason: str) -> ClientQualification:
-    package = candidate.get("package") if isinstance(candidate.get("package"), Mapping) else {}
+    package = cast("Mapping[str, object]", candidate.get("package")) if isinstance(candidate.get("package"), Mapping) else {}
     return ClientQualification(_identity(candidate.get("harness_name")), _identity(package.get("name")), _identity(package.get("version")), _identity(candidate.get("registry")), _identity(package.get("repository")), None, None, _command(candidate.get("build_command")) or ("not-observed",), _command(candidate.get("fixture_command")) or ("not-observed",), _observed_prefix(candidate.get("observed_method_results")), "BLOCKED", "candidate rejected", (reason,), True)
 
 
@@ -137,7 +137,7 @@ def _source_reason(sources: Mapping[str, object]) -> str | None:
         not isinstance(sources[path], str) or not sources[path] for path in _SOURCES
     ):
         return "harness_source_files_incomplete"
-    client = sources["src/client.ts"]
+    client = cast("str", sources["src/client.ts"])
     if re.search(r"\b(?:require|import)\s*\(", client):
         return "typescript_dynamic_or_require_import_forbidden"
     specs = _IMPORT.findall(client)
@@ -171,7 +171,7 @@ def qualify_client(candidate: Mapping[str, object]) -> ClientQualification:
         return _blocked(candidate, "package_repository_identity_required")
     if candidate.get("registry") != _TARBALL:
         return _blocked(candidate, "package_registry_identity_required")
-    path = Path(candidate["lockfile"]) if isinstance(candidate.get("lockfile"), str) else None
+    path = Path(cast("str", candidate["lockfile"])) if isinstance(candidate.get("lockfile"), str) else None
     if path is None or not path.is_file():
         return _blocked(candidate, "lockfile_missing")
     if reason := _lock_reason(path):
@@ -188,4 +188,4 @@ def qualify_client(candidate: Mapping[str, object]) -> ClientQualification:
         return _blocked(candidate, "required_method_results_not_observed")
     if candidate.get("acpx_remains_mandatory") is not True:
         return _blocked(candidate, "acpx_mandatory_driver_replacement_claim")
-    return ClientQualification(candidate["harness_name"], _SDK, _VERSION, _TARBALL, _REPOSITORY, hashlib.sha256(path.read_bytes()).hexdigest(), _source_digest(sources), build, fixture, _METHODS, "TYPESCRIPT_QUALIFIED", None, (), True)
+    return ClientQualification(cast("str", candidate["harness_name"]), _SDK, _VERSION, _TARBALL, _REPOSITORY, hashlib.sha256(path.read_bytes()).hexdigest(), _source_digest(sources), build, fixture, _METHODS, "TYPESCRIPT_QUALIFIED", None, (), True)

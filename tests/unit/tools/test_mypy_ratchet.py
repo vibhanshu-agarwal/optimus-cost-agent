@@ -1,4 +1,4 @@
-"""The source-typing exception budget follows accepted Git history, not a resettable list."""
+"""Mypy gates keep the source exception history and the zero-exception audit scope."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ import subprocess
 import sys
 import tomllib
 from collections.abc import Mapping
+from configparser import Error as ConfigParserError
+from configparser import RawConfigParser
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -28,6 +30,19 @@ from tools.tracked_repository_files import (
 
 ROOT = Path(__file__).resolve().parents[3]
 BOOTSTRAP_DIGEST = "b6a756129365762efe42c77593313507fd1be1a039a85ef4ebc22490194c5bab"  # pragma: allowlist secret - approved immutable bootstrap SHA-256
+
+AUDIT_CONFIG = "tools/mypy_audit.ini"
+AUDIT_OPTIONS = {
+    "python_version": "3.14",
+    "show_error_codes": "True",
+    "namespace_packages": "True",
+    "explicit_package_bases": "True",
+    "mypy_path": "src",
+}
+AUDIT_COMMAND = [
+    "python", "-m", "mypy", "--config-file", AUDIT_CONFIG,
+    "tools/plan1126_runtime_audit/", "tools/run_plan1126_runtime_audit.py",
+]
 
 
 def _git(repo: Path, *args: str, index: str | None = None) -> bytes:
@@ -77,6 +92,26 @@ def _source_exceptions(config_bytes: bytes) -> frozenset[str]:
         source_groups += 1
     assert import_groups == 1 and source_groups <= 1, "Duplicate or missing approved override group"
     return modules
+
+
+def _assert_audit_config(config: bytes) -> None:
+    parser = RawConfigParser()
+    try:
+        parser.read_string(config.decode("utf-8"))
+    except (UnicodeError, ConfigParserError) as exc:
+        raise AssertionError(f"Invalid audit Mypy configuration: {exc}") from exc
+    assert not parser.defaults() and parser.sections() == ["mypy"], (
+        "Audit Mypy must have only the mypy section and zero exceptions"
+    )
+    assert dict(parser["mypy"]) == AUDIT_OPTIONS, "Audit Mypy scope or checking policy changed"
+
+
+def _assert_audit_candidates(repo: Path, index: str | None) -> None:
+    # The audit budget starts at zero, including when the baseline predates the INI.
+    config = repo / AUDIT_CONFIG
+    assert config.is_file(), "Missing working audit Mypy configuration"
+    _assert_audit_config(config.read_bytes())
+    _assert_audit_config(_git(repo, "show", f":{AUDIT_CONFIG}", index=index))
 
 
 def _assert_ratchet(candidate: bytes, baseline: bytes, *, bootstrap_modules: frozenset[str] | None = None) -> None:
@@ -386,6 +421,7 @@ def test_repository_mypy_exception_ratchet():
     staged_data = _git(ROOT, 'show', ':tests/fixtures/typing/mypy-bootstrap.json', index=index)
     assert hashlib.sha256(staged_data).hexdigest() == BOOTSTRAP_DIGEST, 'Staged bootstrap fixture digest changed'
     _validate_repository(ROOT, os.environ, data, BOOTSTRAP_DIGEST)
+    _assert_audit_candidates(ROOT, index)
 
 
 def test_candidate_source_must_exist_in_each_tree(history):
@@ -401,6 +437,50 @@ def test_candidate_source_must_exist_in_each_tree(history):
     (repo / "src/optimus/b.py").unlink()
     with pytest.raises(AssertionError, match="source"):
         _validate_repository(repo, {}, data, digest)
+
+
+def _assert_audit_gate_wiring(hooks_config: dict, workflow: dict) -> None:
+    matching = [
+        (repository["repo"], hook)
+        for repository in hooks_config["repos"]
+        for hook in repository["hooks"]
+        if hook["id"] == "optimus-mypy-audit"
+    ]
+    assert len(matching) == 1, "Expected one audit Mypy hook"
+    repository, hook = matching[0]
+    assert repository == "local" and {**hook, "entry": shlex.split(hook["entry"])} == {
+        "id": "optimus-mypy-audit",
+        "name": "optimus-check: mypy-audit",
+        "entry": AUDIT_COMMAND,
+        "language": "system",
+        "pass_filenames": False,
+        "always_run": True,
+    }, "Audit Mypy hook scope or settings changed"
+
+    triggers = workflow.get("on", workflow.get(True))  # PyYAML interprets the unquoted on key as True.
+    for event in ("pull_request", "push"):
+        assert not {"paths", "paths-ignore"} & (triggers[event] or {}).keys(), "Audit Mypy must run for all paths"
+    job = workflow["jobs"]["clean-environment-recheck"]
+    assert not {"if", "continue-on-error"} & job.keys(), "Audit Mypy job must run and fail normally"
+    for scope in (workflow, job):
+        assert scope.get("defaults", {}).get("run", {}).get("working-directory", ".") == ".", (
+            "Audit Mypy must run from the repository root"
+        )
+    steps = job["steps"]
+    sync = [i for i, step in enumerate(steps) if step.get("run") == "uv sync --locked --all-extras"]
+    assert len(sync) == 1, "Expected one locked audit dependency sync"
+    assert not {"if", "continue-on-error", "working-directory"} & steps[sync[0]].keys(), "Audit sync must run and fail normally"
+    command = ["uv", "run", "--no-sync", *AUDIT_COMMAND]
+    for name, expected in (
+        ("optimus-check: mypy-audit", command),
+        ("optimus-check: mypy-audit-win32", [*command, "--platform", "win32"]),
+    ):
+        matches = [i for i, step in enumerate(steps) if step.get("name") == name]
+        assert len(matches) == 1 and matches[0] > sync[0], f"Expected {name} after locked sync"
+        step = steps[matches[0]]
+        assert {**step, "run": shlex.split(step["run"])} == {
+            "name": name, "run": expected, "env": {"MYPYPATH": ""},
+        }, f"Audit Mypy CI scope or settings changed for {name}"
 
 
 def test_mypy_gate_wiring():
@@ -425,6 +505,7 @@ def test_mypy_gate_wiring():
         matched = [rule for rule in rules if node in rule.get("nodes", [])]
         assert len(matched) == 1 and matched[0]["tier"] == "gates"
     workflow = yaml.safe_load((ROOT / ".github/workflows/guardrails.yml").read_text(encoding="utf-8"))
+    _assert_audit_gate_wiring(hooks_config, workflow)
     steps = workflow["jobs"]["clean-environment-recheck"]["steps"]
     checkouts = [step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")]
     assert len(checkouts) == 1 and checkouts[0]["with"]["fetch-depth"] == 0
@@ -432,6 +513,86 @@ def test_mypy_gate_wiring():
     for name, expected in (("optimus-check: mypy", command), ("optimus-check: mypy-win32", [*command, "--platform", "win32"])):
         matched = [step for step in steps if step.get("name") == name]
         assert len(matched) == 1 and shlex.split(matched[0]["run"]) == expected
+
+
+@pytest.mark.parametrize("mutation", ["missing_target", "missing_win32", "tolerant_win32", "bad_hook", "ambient_path", "path_filter"])
+def test_audit_gate_rejects_miswiring(mutation):
+    hooks_config = yaml.safe_load((ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    workflow = yaml.safe_load((ROOT / ".github/workflows/guardrails.yml").read_text(encoding="utf-8"))
+    _assert_audit_gate_wiring(hooks_config, workflow)
+    steps = workflow["jobs"]["clean-environment-recheck"]["steps"]
+    native = next(step for step in steps if step["name"] == "optimus-check: mypy-audit")
+    win32 = next(step for step in steps if step["name"] == "optimus-check: mypy-audit-win32")
+    if mutation == "missing_target":
+        native["run"] = native["run"].replace(" tools/run_plan1126_runtime_audit.py", "")
+    elif mutation == "missing_win32":
+        steps.remove(win32)
+    elif mutation == "tolerant_win32":
+        win32["continue-on-error"] = True
+    elif mutation == "ambient_path":
+        native.pop("env")
+    elif mutation == "path_filter":
+        workflow.get("on", workflow.get(True))["pull_request"] = {"paths": ["src/**"]}
+    else:
+        audit_hook = next(
+            hook for repository in hooks_config["repos"] for hook in repository["hooks"]
+            if hook["id"] == "optimus-mypy-audit"
+        )
+        audit_hook["always_run"] = False
+    with pytest.raises(AssertionError, match="audit|Audit"):
+        _assert_audit_gate_wiring(hooks_config, workflow)
+
+
+@pytest.mark.parametrize("mutation", [
+    "ignore_errors = True\n",
+    "follow_imports = skip\n",
+    "disable_error_code = arg-type\n",
+    "exclude = tools/plan1126_runtime_audit/\n",
+    "[mypy-optimus.*]\nignore_errors = True\n",
+    "[DEFAULT]\nignore_missing_imports = True\n",
+    "mypy_path = tools\n",
+])
+def test_audit_mypy_rejects_scope_or_exception_growth(mutation):
+    clean = "[mypy]\n" + "".join(f"{key} = {value}\n" for key, value in AUDIT_OPTIONS.items())
+    _assert_audit_config(clean.encode())
+    with pytest.raises(AssertionError, match="audit|Audit"):
+        _assert_audit_config((clean + mutation).encode())
+
+
+def test_audit_ratchet_requires_clean_working_and_selected_index(history, monkeypatch):
+    repo, _, _, _ = history
+    path = repo / AUDIT_CONFIG
+    path.parent.mkdir()
+    clean = ("[mypy]\n" + "".join(f"{key} = {value}\n" for key, value in AUDIT_OPTIONS.items())).encode()
+    assert not _git(repo, "ls-tree", "HEAD", "--", AUDIT_CONFIG)
+    path.write_bytes(clean)
+    _git(repo, "add", AUDIT_CONFIG)
+    _assert_audit_candidates(repo, None)
+
+    path.write_bytes(clean + b"ignore_errors = True\n")
+    with pytest.raises(AssertionError, match="scope"):
+        _assert_audit_candidates(repo, None)
+    _git(repo, "add", AUDIT_CONFIG)
+    alternate = repo / "audit-alternate-index"
+    alternate.write_bytes((repo / ".git" / "index").read_bytes())
+    path.write_bytes(clean)
+    _git(repo, "add", AUDIT_CONFIG)
+    _assert_audit_candidates(repo, None)
+
+    monkeypatch.setenv(COMMIT_INDEX_FILE, str(alternate))
+    monkeypatch.setenv(COMMIT_INDEX_ROOT, str(repo))
+    index = index_environment(repo)
+    assert index is not None
+    with pytest.raises(AssertionError, match="scope"):
+        _assert_audit_candidates(repo, index["GIT_INDEX_FILE"])
+
+    _git(repo, "rm", "--cached", AUDIT_CONFIG)
+    with pytest.raises(AssertionError, match="Git show"):
+        _assert_audit_candidates(repo, None)
+    _git(repo, "add", AUDIT_CONFIG)
+    path.unlink()
+    with pytest.raises(AssertionError, match="Missing working audit"):
+        _assert_audit_candidates(repo, None)
 
 
 def test_zero_exception_history_refuses_first_reintroduction(history):
