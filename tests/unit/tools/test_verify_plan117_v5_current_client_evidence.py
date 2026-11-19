@@ -7,7 +7,10 @@ all private roots are deleted before verification. Nothing here is live or accep
 from __future__ import annotations
 
 import json
+import os
 import shutil
+from contextlib import ExitStack
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -15,6 +18,7 @@ import pytest
 from tests.support import plan117_v5_host as host_mod
 from tests.unit.tools.test_evidence_gather_plan117_v5 import RUN_ID, Pipeline
 from tools import verify_plan117_v5_current_client_evidence as verifier
+from tools.evidence_gather_support import plan117_current_client_collector as col
 from tools.evidence_gather_support import plan117_current_client_contract as c
 
 D = c.GateDisposition
@@ -89,6 +93,121 @@ def test_promoted_accepted_bundle_verifies_with_private_roots_absent(tmp_path, m
     assert out == {"integrity": "verified", "failures": [], "disposition": D.ACCEPTED_CURRENT_CLIENT_GATE.value, "reasons": [], "derived_reachability": "ZERO_ENTRY_UNREACHABLE"}
 
 
+@pytest.mark.skipif(os.name != "nt", reason="requires native Windows sharing semantics")
+@pytest.mark.parametrize("release", [True, False], ids=["released", "persistent"])
+def test_windows_promotion_with_a_held_attestation(tmp_path, monkeypatch, capsys, windows_shaped_paths, release):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    pipeline.through_classify()
+    assert pipeline.redact() == 0
+    receipt = pipeline.receipt()
+    final = pipeline.sanitized / RUN_ID
+    names = (col.SANITIZED_NAME, col.REPORT_NAME, col.ATTESTATION_NAME)
+    sources = []
+    waits = []
+    files = {}
+
+    with ExitStack() as handle:
+        def observe(operation):
+            def move(source, destination):
+                source = Path(source)
+                assert Path(destination) == final
+                assert not final.exists()
+                contents = {name: (source / name).read_bytes() for name in names}
+                if not sources:
+                    files.update(contents)
+                    handle.enter_context((source / col.ATTESTATION_NAME).open("rb"))
+                assert contents == files
+                sources.append(source)
+                operation(source, destination)
+            return move
+
+        def wait(seconds):
+            waits.append(seconds)
+            if release:
+                handle.close()
+
+        monkeypatch.setattr(col, "os", SimpleNamespace(**(vars(os) | {"rename": observe(os.rename), "replace": observe(os.replace)})))
+        monkeypatch.setattr(col, "time", SimpleNamespace(sleep=wait))
+        capsys.readouterr()
+        exit_code = pipeline.redact(receipt)
+        err = capsys.readouterr().err
+        assert len(set(sources)) == 1
+        if release:
+            assert exit_code == 0
+            assert waits == [0.05] and len(sources) == 2
+            assert not sources[0].exists()
+            assert {name: (final / name).read_bytes() for name in names} == files
+        else:
+            assert exit_code == 2 and err == "promotion_failed\n"
+            assert waits == [0.05, 0.2] and len(sources) == 3
+            assert not final.exists()
+            assert (sources[0] / col.ATTESTATION_NAME).read_bytes() == files[col.ATTESTATION_NAME]
+
+    if release:
+        assert verifier.main(["--manifest", str(final / col.SANITIZED_NAME),
+                              "--attestation", str(final / col.ATTESTATION_NAME),
+                              "--bundle-root", str(final)], checkout_root=pipeline.checkout) == 0
+
+
+@pytest.mark.parametrize(
+    "platform, winerror, collision, expected_waits, expected_code",
+    [
+        ("nt", 32, False, [0.05, 0.2], "promotion_failed"),
+        ("nt", 3, False, [], "promotion_failed"),
+        ("nt", 32, True, [0.05], "promoted_run_exists"),
+        ("posix", 5, False, [], "promotion_failed"),
+    ],
+    ids=["sharing-violation", "unrelated-denial", "destination-appears", "posix-single-attempt"],
+)
+def test_promotion_rename_refusal(tmp_path, monkeypatch, capsys, windows_shaped_paths,
+                                  platform, winerror, collision, expected_waits, expected_code):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    pipeline.through_classify()
+    assert pipeline.redact() == 0
+    receipt = pipeline.receipt()
+    final = pipeline.sanitized / RUN_ID
+    attempts = []
+    waits = []
+    destination_id = None
+
+    def observe(operation, source, destination):
+        assert Path(destination) == final
+        attempts.append((operation, Path(source)))
+        if collision and final.exists():
+            if os.name == "nt":
+                return getattr(os, operation)(source, destination)
+            if operation == "rename":
+                raise FileExistsError("synthetic no-clobber refusal")
+        error = OSError("synthetic private path")
+        error.winerror = winerror
+        raise error
+
+    def wait(seconds):
+        nonlocal destination_id
+        waits.append(seconds)
+        if collision:
+            final.mkdir()
+            destination_id = final.stat().st_ino
+
+    monkeypatch.setattr(col, "os", SimpleNamespace(**(vars(os) | {
+        "name": platform,
+        "rename": lambda source, destination: observe("rename", source, destination),
+        "replace": lambda source, destination: observe("replace", source, destination),
+    })))
+    monkeypatch.setattr(col, "time", SimpleNamespace(sleep=wait))
+    capsys.readouterr()
+    assert pipeline.redact(receipt) == 2
+    expected_operation = "rename" if platform == "nt" else "replace"
+    assert capsys.readouterr().err == expected_code + "\n"
+    assert waits == expected_waits
+    assert len(attempts) == len(waits) + 1 and len(set(attempts)) == 1
+    assert attempts[0][0] == expected_operation and not attempts[0][1].exists()
+    if collision:
+        assert destination_id == final.stat().st_ino and not list(final.iterdir())
+    else:
+        assert not final.exists()
+
+
 def test_stop_bundle_verifies_integrity_and_reports_stop_without_acceptance(tmp_path, monkeypatch, capsys, windows_shaped_paths):
     bundle = Bundle(tmp_path, monkeypatch, host_mod.FakeHostOptions(reopen_load_arm="r_refusal"))
     code, out, _ = bundle.run(capsys)
@@ -104,6 +223,25 @@ def test_integrity_failure_never_masks_a_stop_signal(tmp_path, monkeypatch, caps
     assert code == 2
     assert out["integrity"] == "failed" and "derivative_digest_mismatch" in out["failures"]
     assert out["disposition"] == D.ZERO_ENTRY_REACHABLE_STOP.value
+
+
+@pytest.mark.parametrize("captured_reopen", [False, True])
+def test_attestation_decoder_refusal_preserves_manifest_disposition(
+    tmp_path, monkeypatch, capsys, windows_shaped_paths, captured_reopen,
+):
+    bundle = Bundle(tmp_path, monkeypatch, host_mod.FakeHostOptions(reopen_load_arm="a_prime" if captured_reopen else None))
+    attestation = bundle.attestation.read_text(encoding="utf-8")
+
+    def reject_attestation(payload, *args, **kwargs):
+        if payload == attestation:
+            raise ValueError("simulated attestation decoder refusal")
+        return json.loads(payload, *args, **kwargs)
+
+    monkeypatch.setattr(c, "json", SimpleNamespace(**{**vars(json), "loads": reject_attestation}))
+    code, out, _ = bundle.run(capsys)
+    assert code == 2 and out["integrity"] == "failed" and "attestation_invalid" in out["failures"]
+    expected = D.ZERO_ENTRY_REACHABLE_STOP if captured_reopen else D.INVALID_CURRENT_CLIENT_GATE
+    assert out["disposition"] == expected.value
 
 
 @pytest.mark.parametrize("target", ["manifest", "report"])

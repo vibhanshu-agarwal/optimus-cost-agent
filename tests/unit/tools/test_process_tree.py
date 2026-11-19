@@ -33,6 +33,7 @@ def test_kill_tree_kills_every_descendant_including_ones_no_parent_walk_reaches(
             assert_descendants_killed(recorder, roles, deadline=killed_at + 5.0, what=f"kill_tree ({shape})")
             # Every holder of the pipes is gone, so collection ends without waiting out the sleeps.
             process.communicate(timeout=10)
+            assert process_tree.wait_for_empty(process, deadline=time.monotonic() + 5)
         finally:
             if process.poll() is None:
                 process.kill()
@@ -52,7 +53,7 @@ def test_a_tree_child_runs_normally_and_keeps_the_callers_arguments(tmp_path):
 
 def test_kill_tree_after_the_whole_tree_exited_is_harmless():
     process = process_tree.popen([sys.executable, "-c", "pass"])
-    process.wait(30)
+    assert process_tree.wait_for_empty(process, deadline=time.monotonic() + 30)
     process_tree.kill_tree(process)
     assert process.returncode == 0
 
@@ -62,6 +63,8 @@ def test_kill_tree_refuses_a_process_it_did_not_start():
     try:
         with pytest.raises(ValueError, match="started by tools.process_tree.popen"):
             process_tree.kill_tree(process)
+        with pytest.raises(ValueError, match="tracked"):
+            process_tree.wait_for_empty(process, deadline=time.monotonic())
     finally:
         process.kill()
         process.wait(10)

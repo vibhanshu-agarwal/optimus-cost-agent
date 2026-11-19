@@ -43,8 +43,8 @@ __all__ = [
 
 EMPIRICAL_ESTIMATOR_METHOD: Final = "utf8-bytes-ratio-empirical"
 
-HAIKU_QUALIFICATION_HASH: Final = "7def2af430da2e86c27cd2f87f8a02ab4138f3b19fe1f8334c13cb6750d001b5"  # pragma: allowlist secret - registry identity, not a credential
-HAIKU_ATTACHED_HASH: Final = "689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"  # pragma: allowlist secret - registry identity, not a credential
+HAIKU_QUALIFICATION_HASH: Final = "a015e40e341f304170048f5967146ebdbc0dafeeed5cbf2d20416fcf21fa3c73"  # pragma: allowlist secret - registry identity, not a credential
+HAIKU_ATTACHED_HASH: Final = "4d2f637e822841c23ae617d352c81a6472d11771fd7cd7011b3052c12b506338"  # pragma: allowlist secret - registry identity, not a credential
 SHIPPED_DEFAULTS_HASH: Final = HAIKU_ATTACHED_HASH
 """The packaged defaults' reviewed effective hash: the attached profile's (closure plan v3)."""
 

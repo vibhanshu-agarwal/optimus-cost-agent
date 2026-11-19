@@ -26,7 +26,7 @@ from optimus_gateway.tool_models import (
     WebSearchResult,
 )
 from optimus_gateway.tool_provider_http import ToolProviderError, ToolUrlOpen, request_bytes, request_json
-from optimus_gateway.upstream_client import watched_urlopen
+from optimus_gateway.upstream_client import watched_https_urlopen
 from optimus_model_policy.binding import UPSTREAM_ATTEMPT_TIMEOUT_SECONDS
 
 
@@ -52,7 +52,7 @@ class TavilyWebToolProvider:
         *,
         api_key: str,
         base_url: str,
-        urlopen: ToolUrlOpen = watched_urlopen,
+        urlopen: ToolUrlOpen = watched_https_urlopen,
         timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,
@@ -159,7 +159,7 @@ class PackageRegistryToolProvider:
         pypi_base_url: str,
         npm_base_url: str,
         maven_base_url: str,
-        urlopen: ToolUrlOpen = watched_urlopen,
+        urlopen: ToolUrlOpen = watched_https_urlopen,
         timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,
@@ -305,7 +305,7 @@ class OsvAdvisoryToolProvider:
         *,
         base_url: str,
         api_key: str | None = None,
-        urlopen: ToolUrlOpen = watched_urlopen,
+        urlopen: ToolUrlOpen = watched_https_urlopen,
         timeout_seconds: float = UPSTREAM_ATTEMPT_TIMEOUT_SECONDS,
         sleep: Callable[[float], None] | None = None,
         on_retry: Callable[[int], None] | None = None,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .model import EvidenceRecord
     from .replay import SealedObservations
 
 import ast
@@ -12,7 +13,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from .model import (
     AuditArtifact,
@@ -100,7 +101,7 @@ class _DurableSymbolVisitor(ast.NodeVisitor):
         self.path = path
         self.symbols: list[DurableSymbol] = []
 
-    def _record(self, target: ast.expr, node: ast.AST) -> None:
+    def _record(self, target: ast.expr, node: ast.Assign | ast.AnnAssign) -> None:
         if not isinstance(target, ast.Name) or target.id not in _REQUIRED_SYMBOLS:
             return
         self.symbols.append(DurableSymbol(
@@ -575,5 +576,5 @@ def build_h10_audit_artifact(
         discovered_multipliers=dict(base.discovered_multipliers),
         computed_run_cost=dict(base.computed_run_cost),
         gate_status=GateStatus.INCOMPLETE,
-        evidence_records=tuple(base.evidence_records) + (record,),
+        evidence_records=tuple(base.evidence_records) + (cast("EvidenceRecord", record),),
     )

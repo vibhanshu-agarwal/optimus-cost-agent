@@ -64,7 +64,7 @@ import threading
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping, cast
 
 from .source import (
     ExecutingSourceMismatch,
@@ -74,6 +74,9 @@ from .source import (
     source_fingerprint,
     verify_executing_module,
 )
+
+if TYPE_CHECKING:
+    from _typeshed import ProfileFunction
 
 #: Bounded so a wedged child cannot hang an audit run.
 FRESH_MEASUREMENT_TIMEOUT_SECONDS = 1800.0
@@ -206,8 +209,8 @@ class EnvironmentBinding:
                 raise ValueError(f"module origin for {path!r} must be an absolute resolved path")
             if not _is_hex64(digest):
                 raise ValueError(f"module digest for {path!r} is invalid")
-        for row in self.dependency_files:
-            if len(row) != 2 or not isinstance(row[0], str) or not row[0] or not _is_hex64(row[1]):
+        for dependency in self.dependency_files:
+            if len(dependency) != 2 or not isinstance(dependency[0], str) or not dependency[0] or not _is_hex64(dependency[1]):
                 raise ValueError("dependency rows must be (name, 64-hex content digest)")
 
     def to_dict(self) -> dict[str, Any]:
@@ -325,7 +328,8 @@ def verify_dependency_integrity(name: str) -> str:
         recorded = _recorded_sha256(row[1] if len(row) > 1 else "")
         if recorded is None:
             continue
-        located = Path(dist.locate_file(relative))
+        # This check reads files from an installed filesystem distribution.
+        located = Path(cast("str | os.PathLike[str]", dist.locate_file(relative)))
         if not located.is_file():
             raise ExecutingSourceMismatch(
                 f"dependency {name!r} is missing the installed file {relative!r} that its RECORD "
@@ -658,7 +662,7 @@ class ExecutionClosureRecorder:
         self._threading = threading
         self.product_files: set[str] = set()
         self.site_top_levels: set[str] = set()
-        self._previous = None
+        self._previous: ProfileFunction | None = None
 
     def _profile(self, frame, event, arg):
         if event != "call":
@@ -974,8 +978,8 @@ class MeasurementReuse:
         )
         earlier = self._taken.get(key)
         if earlier is not None:
-            binding, result, measured_by = earlier
-            reused = EnvironmentBinding.from_dict(binding)
+            stored_binding, result, measured_by = earlier
+            reused = EnvironmentBinding.from_dict(stored_binding)
             # The earlier binding must describe the dependency files installed NOW, not only the same names.
             if dict(reused.dependency_files) != {name: installed[name] for name in spec.dependencies}:
                 raise ExecutingSourceMismatch(

@@ -17,6 +17,7 @@ import pytest
 
 from tests.support import plan117_v5_host as host_mod
 from tools import evidence_gather as gather
+from tools.evidence_gather_support import fixtures
 from tools.evidence_gather_support import plan117_current_client_collector as col
 from tools.evidence_gather_support import plan117_current_client_contract as c
 
@@ -303,6 +304,143 @@ def test_full_pipeline_collects_once_and_never_appends(tmp_path, monkeypatch, ca
     assert pipeline.collect() == 2
     assert _out(capsys)[1].strip() == "run_already_collected"
     assert (run_dir / "raw-bundle.json").read_bytes() == before and pipeline.host.launches == launches
+
+
+def test_collect_reuses_an_identical_precondition_record(tmp_path, monkeypatch, windows_shaped_paths):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    pipeline.register_run()
+    assert pipeline.main("check", "--scenario", pipeline.scenario, "--capture-root", pipeline.capture, *pipeline.bind()) == 0
+    result = pipeline.capture / RUN_ID / "precondition-result.json"
+    before = result.read_bytes()
+    writes = []
+    atomic_write = fixtures._atomic_write_json
+
+    def track(path, payload):
+        writes.append(path)
+        return atomic_write(path, payload)
+
+    monkeypatch.setattr(fixtures, "_atomic_write_json", track)
+    with result.open("rb"):
+        assert pipeline.collect() == 0
+    assert result.read_bytes() == before
+    assert result not in writes
+
+
+def test_collect_rechecks_readiness_after_a_successful_check(tmp_path, monkeypatch, capsys, windows_shaped_paths):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    pipeline.register_run()
+    assert pipeline.main("check", "--scenario", pipeline.scenario, "--capture-root", pipeline.capture, *pipeline.bind()) == 0
+    run_dir = pipeline.capture / RUN_ID
+    (run_dir / "fixture-marker.json").write_bytes(b"{}")
+
+    assert pipeline.collect() == 2
+    assert _out(capsys)[1] == "fixture_incomplete\n"
+    assert json.loads((run_dir / "precondition-result.json").read_bytes())["codes"] == ["fixture_incomplete"]
+    assert pipeline.collect() == 2
+    assert _out(capsys)[1] == "fixture_incomplete\n"
+    assert pipeline.host.launches == []
+    assert not (run_dir / "raw-bundle.json").exists()
+
+
+@pytest.mark.parametrize(
+    "previous",
+    [
+        None,
+        b"{",
+        b'{"codes":["capture_root_ready"],"complete":true,"run_id":"other","schema":"evidence-precondition-result-v1"}',
+        b'{"codes":["capture_root_ready"],"complete":true,"run_id":"p117v5-run-0002","schema":"evidence-precondition-result-v1"}',
+    ],
+    ids=["missing", "malformed", "wrong-run", "same-length-wrong-run"],
+)
+def test_collect_writes_a_missing_or_mismatched_precondition_record(tmp_path, monkeypatch, windows_shaped_paths, previous):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    pipeline.register_run()
+    result = pipeline.capture / RUN_ID / "precondition-result.json"
+    if previous is not None:
+        result.write_bytes(previous)
+
+    assert pipeline.collect() == 0
+    assert json.loads(result.read_bytes()) == {
+        "schema": "evidence-precondition-result-v1",
+        "complete": True,
+        "run_id": RUN_ID,
+        "codes": ["capture_root_ready"],
+    }
+
+
+@pytest.mark.parametrize("changed", [False, True], ids=["first-write", "changed-result"])
+def test_collect_refuses_to_proceed_after_precondition_write_failure(tmp_path, monkeypatch, capsys, changed, windows_shaped_paths):
+    from evidence_handoff.collector import bundles
+
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    pipeline.register_run()
+    run_dir = pipeline.capture / RUN_ID
+    result = run_dir / "precondition-result.json"
+    before = None
+    if changed:
+        assert pipeline.main("check", "--scenario", pipeline.scenario, "--capture-root", pipeline.capture, *pipeline.bind()) == 0
+        before = result.read_bytes()
+        (run_dir / "fixture-marker.json").write_bytes(b"{}")
+
+    replace = bundles.os.replace
+    refused = []
+
+    def refuse(source, destination):
+        if destination == result:
+            assert source.is_file()
+            refused.append(source)
+            raise PermissionError(str(result))
+        return replace(source, destination)
+
+    def unexpected_host(_checkout):
+        pytest.fail("collection reached the host after a failed precondition write")
+
+    monkeypatch.setattr(bundles.os, "replace", refuse)
+    monkeypatch.setattr(gather, "PLAN117_V5_HOST_ACTIONS_FACTORY", unexpected_host)
+    assert pipeline.collect() == 2
+    assert _out(capsys)[1] == "atomic_write_failed\n"
+    if before is None:
+        assert not result.exists()
+    else:
+        assert result.read_bytes() == before
+    partial, = refused
+    assert not partial.exists()
+    assert pipeline.host.launches == []
+    assert not (run_dir / "raw-bundle.json").exists()
+
+
+def test_collect_does_not_reuse_a_linked_precondition_record(tmp_path, monkeypatch, windows_shaped_paths):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    assert pipeline.prepare() == 0
+    pipeline.register_run()
+    assert pipeline.main("check", "--scenario", pipeline.scenario, "--capture-root", pipeline.capture, *pipeline.bind()) == 0
+    result = pipeline.capture / RUN_ID / "precondition-result.json"
+    outside = tmp_path / "outside.json"
+    canonical = result.read_bytes()
+    outside.write_bytes(canonical)
+    result.unlink()
+    try:
+        result.symlink_to(outside)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) != 1314:
+            raise
+        pytest.skip("Windows host lacks file symlink privilege")
+    read = Path.open
+
+    def contained(path, *args, **kwargs):
+        assert path != result, "precondition comparison followed the result link"
+        return read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", contained)
+    assert pipeline.collect() == 0
+    assert not result.is_symlink()
+    with read(result, "rb") as handle:
+        assert handle.read() == canonical
+    assert outside.read_bytes() == canonical
 
 
 def test_collect_requires_a_registered_run(tmp_path, monkeypatch, capsys, windows_shaped_paths):

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .model import EvidenceRecord
     from .replay import SealedObservations
 
 import ast
@@ -18,7 +19,7 @@ import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from optimus.acp.lifecycle import (
     DirectiveKind,
@@ -468,7 +469,7 @@ class _OwnershipVisitor(ast.NodeVisitor):
                     if callback_receiver:
                         self.task_set_receivers.add(callback_receiver)
 
-    def _add(self, node: ast.AST, role: str, reference: str) -> None:
+    def _add(self, node: ast.Call | ast.Await | ast.ExceptHandler, role: str, reference: str) -> None:
         symbol = _symbol(self.path, self.stack)
         key = (symbol, role, reference)
         occurrence = self._occurrences.get(key, 0)
@@ -1560,5 +1561,5 @@ def build_h3_audit_artifact(
         },
         computed_run_cost=cost.to_dict(),
         gate_status=GateStatus.INCOMPLETE,
-        evidence_records=tuple(base.evidence_records) + (record,),
+        evidence_records=tuple(base.evidence_records) + (cast("EvidenceRecord", record),),
     )

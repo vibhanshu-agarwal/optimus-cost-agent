@@ -80,6 +80,21 @@ class ContextEngine:
         maintenance: MaintenanceCallback,
         cancelled: Callable[[], bool],
     ) -> PreparedView:
+        """Prepare a bounded candidate view of committed history.
+
+        Keep exact protected state and respect the host's supplied limits. The
+        host owns sanitization, maintenance accounting and any later publication.
+
+        :param snapshot: Immutable, sanitized ordinary and protected records.
+        :param strategy: The requested view strategy.
+        :param parameters: Strategy allocations and maintenance settings from the host.
+        :param limits: Token and byte bounds with the host's history estimator.
+        :param checkpoint: A previous summary candidate to check for reuse, if available.
+        :param maintenance: The synchronous callback for permitted summarization.
+        :param cancelled: A predicate consulted during maintenance.
+        :returns: A candidate view, with a reason if the view is unavailable.
+        :raises ContractError: If required arguments, strategy or summary format are invalid.
+        """
         if not isinstance(snapshot, HistorySnapshot):
             raise ContractError("prepare_view needs a HistorySnapshot")
         if type(strategy) is not str or strategy not in STRATEGIES:

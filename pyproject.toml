@@ -45,6 +45,7 @@ dev = [
   "mypy>=2.3,<3",
   "types-pyyaml==6.0.12.20260906",
   "types-defusedxml==0.7.0.20260504",
+  "types-jsonschema==4.26.0.20261006",
 ]
 memory = [
   "fastembed==0.9.1",
@@ -118,7 +119,7 @@ ignore = ["E501"]
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
-skips = ["B101", "B105", "B310", "B404", "B603"]
+skips = ["B101", "B105", "B404", "B603"]
 
 [tool.mypy]
 files = ["src"]

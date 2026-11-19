@@ -3,9 +3,12 @@ from __future__ import annotations
 import inspect
 import io
 import socket
+import ssl
 import threading
 import time
 import types
+import urllib.request
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
@@ -32,7 +35,7 @@ from optimus_gateway.upstream_client import (
     call_with_upstream_retry,
     end_request_budget,
     is_retryable_upstream_fault,
-    watched_urlopen,
+    watched_https_urlopen,
 )
 from optimus_model_policy import stage_c
 from optimus_model_policy.binding import (
@@ -528,6 +531,7 @@ class _DripHandler(BaseHTTPRequestHandler):
             for byte in _DRIP_BODY:
                 self.wfile.write(bytes([byte]))
                 self.wfile.flush()
+                self.server.reply_started.set()
                 time.sleep(0.02)
         except OSError:
             _DRIP_ENDINGS.append(("dropped", time.monotonic()))
@@ -538,16 +542,37 @@ class _DripHandler(BaseHTTPRequestHandler):
         return
 
 
-@pytest.fixture
-def drip_url():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _DripHandler)
+class _DripServer(ThreadingHTTPServer):
+    def __init__(self) -> None:
+        super().__init__(("127.0.0.1", 0), _DripHandler)
+        self.reply_started = threading.Event()
+
+
+@contextmanager
+def _drip_server(tls_context: ssl.SSLContext | None = None):
+    server = _DripServer()
+    if tls_context is not None:
+        server.socket = tls_context.wrap_socket(server.socket, server_side=True)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield f"http://127.0.0.1:{server.server_address[1]}"
+        yield server
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.fixture
+def drip_url():
+    with _drip_server() as server:
+        yield f"http://127.0.0.1:{server.server_port}"
+
+
+@pytest.fixture
+def drip_tls_url(provider_server_tls):
+    with _drip_server(provider_server_tls) as server:
+        yield f"https://127.0.0.1:{server.server_port}", server.reply_started
+
 
 
 def _client(base_url: str, **kwargs) -> UrllibOpenAICompatibleClient:
@@ -583,15 +608,17 @@ def test_a_legacy_attempt_ends_at_its_deadline_while_bytes_keep_arriving(drip_ur
     assert [event.failure for event in events] == [{"kind": "attempt_deadline"}]
 
 
-def test_a_tool_attempt_ends_at_its_deadline_while_bytes_keep_arriving(drip_url):
+def test_a_tool_attempt_ends_at_its_deadline_while_bytes_keep_arriving(drip_tls_url):
+    url, reply_started = drip_tls_url
     started = time.monotonic()
     with pytest.raises(ToolProviderError):
         request_json(
-            Request(drip_url + "/search", data=b"{}", method="POST"),
+            Request(url + "/search", data=b"{}", method="POST"),
             label="probe",
             timeout_seconds=_DRIP_ATTEMPT_SECONDS,
             sleep=lambda _delay: None,
         )
+    assert reply_started.is_set(), "the test must exercise a live TLS response"
     # Each of the bounded retries ends at its own deadline.
     assert time.monotonic() - started < 4 * _DRIP_ATTEMPT_SECONDS + 1.5
 
@@ -660,7 +687,7 @@ def test_a_slow_name_lookup_cannot_outlast_the_deadline(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", slow_getaddrinfo)
     started = time.monotonic()
     with pytest.raises(UpstreamAttemptFailure) as raised:
-        _client("http://upstream.test").create_message_once(model="m", input_text="x", max_tokens=1, provider_controls={}, reasoning=None)
+        _client("https://upstream.test").create_message_once(model="m", input_text="x", max_tokens=1, provider_controls={}, reasoning=None)
     _ends_in_time(started)
     assert (raised.value.outcome, raised.value.failure) == ("not_sent", {"kind": "attempt_deadline"})
 
@@ -727,7 +754,7 @@ def test_stalled_attempts_hold_at_most_their_slots_and_later_ones_fail_at_once(m
 
     def attempt() -> UpstreamAttemptFailure:
         with pytest.raises(UpstreamAttemptFailure) as raised:
-            _client("http://upstream.test").create_message_once(model="m", input_text="x", max_tokens=1, provider_controls={}, reasoning=None)
+            _client("https://upstream.test").create_message_once(model="m", input_text="x", max_tokens=1, provider_controls={}, reasoning=None)
         return raised.value
 
     stalled = [attempt(), attempt()]
@@ -746,11 +773,12 @@ def test_stalled_attempts_hold_at_most_their_slots_and_later_ones_fail_at_once(m
 def test_the_production_tool_adapters_use_the_watched_opener():
     """Codex round 2: the adapters passed the standard ``urlopen`` explicitly, so the deadline never saw their sockets."""
     defaults = [inspect.signature(adapter).parameters["urlopen"].default for adapter in (TavilyWebToolProvider, PackageRegistryToolProvider, OsvAdvisoryToolProvider)]
-    assert defaults == [watched_urlopen] * 3
+    assert defaults == [watched_https_urlopen] * 3
 
 
-def test_a_tool_adapter_ends_its_attempts_at_their_deadline_while_bytes_keep_arriving(drip_url):
-    adapter = TavilyWebToolProvider(api_key="drip-test", base_url=drip_url, timeout_seconds=_DRIP_ATTEMPT_SECONDS, sleep=lambda _delay: None)  # pragma: allowlist secret
+def test_a_tool_adapter_ends_its_attempts_at_their_deadline_while_bytes_keep_arriving(drip_tls_url):
+    url, reply_started = drip_tls_url
+    adapter = TavilyWebToolProvider(api_key="drip-test", base_url=url, timeout_seconds=_DRIP_ATTEMPT_SECONDS, sleep=lambda _delay: None)  # pragma: allowlist secret
     request = WebSearchGatewayRequest(
         context=GatewayToolContext(run_id="run-drip", authenticated_subject="test"),
         query="q",
@@ -761,6 +789,7 @@ def test_a_tool_adapter_ends_its_attempts_at_their_deadline_while_bytes_keep_arr
     started = time.monotonic()
     with pytest.raises(ToolProviderError):
         adapter.search(request)
+    assert reply_started.is_set(), "the test must exercise a live TLS response"
     assert time.monotonic() - started < 4 * _DRIP_ATTEMPT_SECONDS + 1.5
 
 
@@ -776,3 +805,57 @@ def test_an_abandoned_attempt_releases_its_connection_at_once(drip_url):
         time.sleep(0.05)
     [(ending, at)] = _DRIP_ENDINGS
     assert ending == "dropped" and at - started < _DRIP_ATTEMPT_SECONDS + 1.0
+
+
+@pytest.mark.parametrize("url", ["http://fixture.invalid", "policy-test://fixture.invalid", "https:///missing-host"])
+def test_model_approved_scheme_rejects_the_configured_base(url):
+    with pytest.raises(ValueError, match="model upstream URL rejected by scheme policy"):
+        _client(url)
+
+
+@pytest.mark.parametrize("url", ["HTTPS://fixture.invalid", "http://127.0.0.1", "http://localhost", "http://[::1]"])
+def test_model_approved_scheme_accepts_https_or_explicit_loopback(url):
+    assert _client(url) is not None
+
+
+def test_legacy_approved_scheme_checks_the_actual_request_before_the_opener(monkeypatch):
+    def unexpected_open(*args, **kwargs):
+        pytest.fail("the compatibility opener must not receive a rejected URL")
+
+    monkeypatch.setattr(upstream_module, "watched_urlopen", unexpected_open)
+    with pytest.raises(RuntimeError, match="upstream URL rejected by scheme policy"):
+        upstream_module._urlopen_json(Request("http://fixture.invalid"), timeout_seconds=1, label="upstream")  # noqa: SLF001
+
+
+@pytest.mark.parametrize("entry", ["create_message_once", "create_decision_once"])
+def test_enforced_approved_scheme_rejects_before_open_and_reports_not_sent(monkeypatch, entry):
+    def unexpected_open(*args, **kwargs):
+        pytest.fail("the enforced opener must not receive a rejected URL")
+
+    client = _client("https://fixture.invalid")
+    monkeypatch.setattr(client, "_attempt_opener", types.SimpleNamespace(open=unexpected_open))
+    monkeypatch.setattr(client, "_request", lambda *args, **kwargs: _AttemptRequest("policy-test://fixture.invalid"))
+    payload = {"input_text": "test", "max_tokens": 1, "reasoning": None} if entry == "create_message_once" else {"state": {}, "questions": {}}
+    with pytest.raises(UpstreamAttemptFailure) as raised:
+        getattr(client, entry)(model="test", provider_controls={}, **payload)
+    assert raised.value.outcome == "not_sent"
+    assert raised.value.failure is not None
+    assert raised.value.failure["kind"] == "transport"
+
+
+@pytest.mark.parametrize("request_fn", [request_json, request_bytes])
+@pytest.mark.parametrize("url", ["http://127.0.0.1:9", "policy-test://fixture.invalid"])
+def test_provider_approved_scheme_checks_before_injected_open_and_retry(request_fn, url):
+    def unexpected_open(*args, **kwargs):
+        pytest.fail("a provider opener must not receive a rejected URL")
+
+    with pytest.raises(ToolProviderError, match=r"^test provider failed$"):
+        request_fn(Request(url), label="test provider", urlopen_fn=unexpected_open, sleep=unexpected_open)
+
+def test_loopback_model_approved_scheme_stays_off_configured_http_proxy(monkeypatch):
+    monkeypatch.setattr(urllib.request, "getproxies", lambda: {
+        "http": "http://proxy.fixture.invalid",
+        "https": "http://proxy.fixture.invalid",
+    })
+    proxy_handler = upstream_module._upstream_proxy_handler()  # noqa: SLF001
+    assert proxy_handler.proxies == {"https": "http://proxy.fixture.invalid"}

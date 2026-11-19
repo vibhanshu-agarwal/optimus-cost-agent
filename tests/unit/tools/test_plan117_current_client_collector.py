@@ -467,6 +467,116 @@ def make_zed_database(path, rows, *, journal="delete"):
     return path
 
 
+def test_native_locator_selects_the_binding_database_in_a_two_file_zed_profile(tmp_path, monkeypatch):
+    import sqlite3
+
+    global_db = tmp_path / "db" / "0-global" / "db.sqlite"
+    global_db.parent.mkdir(parents=True)
+    connection = sqlite3.connect(global_db)
+    try:
+        connection.execute("CREATE TABLE kv (key TEXT PRIMARY KEY, value BLOB)")
+    finally:
+        connection.close()
+    stable_db = make_zed_database(tmp_path / "db" / "0-stable" / "db.sqlite", [(b"\x01" * 16, None)])
+    before = {path: path.read_bytes() for path in (global_db, stable_db)}
+    actions, _, _ = _real_actions_with_recorded_git(monkeypatch, {})
+
+    location = actions.locate_database(tmp_path)
+
+    assert location == col.DatabaseLocation(
+        stable_db, stable_db.with_name("db.sqlite-wal"), stable_db.with_name("db.sqlite-shm")
+    )
+    assert col.read_database_binding(location.main) == col.DatabaseBinding(True, "01" * 16, None)
+    assert {path: path.read_bytes() for path in before} == before
+    assert sorted(path.name for path in stable_db.parent.iterdir()) == ["db.sqlite"]
+    assert sorted(path.name for path in global_db.parent.iterdir()) == ["db.sqlite"]
+
+
+@pytest.mark.parametrize(
+    ("case", "code"),
+    [
+        ("no_database", "binding_database_missing"),
+        ("wrong_columns", "binding_database_schema_invalid"),
+        ("view", "binding_database_schema_invalid"),
+        ("corrupt", "binding_database_unreadable"),
+        ("two_binding_databases", "ambiguous_database_location"),
+        ("mixed_case_binding_database", "ambiguous_database_location"),
+        ("directory_sidecar", "binding_database_unreadable"),
+    ],
+)
+def test_native_locator_rejects_profiles_without_an_unambiguous_binding_database(tmp_path, monkeypatch, case, code):
+    import sqlite3
+
+    db = tmp_path / "db.sqlite"
+    if case == "corrupt":
+        db.write_bytes(b"not SQLite")
+    elif case == "two_binding_databases":
+        make_zed_database(db, [])
+        make_zed_database(tmp_path / "other.sqlite", [])
+    elif case == "directory_sidecar":
+        make_zed_database(db, [])
+        db.with_name("db.sqlite-wal").mkdir()
+    elif case == "mixed_case_binding_database":
+        make_zed_database(db, [])
+        connection = sqlite3.connect(tmp_path / "other.sqlite")
+        try:
+            connection.execute("CREATE TABLE SIDEBAR_THREADS (THREAD_ID BLOB PRIMARY KEY, SESSION_ID TEXT)")
+        finally:
+            connection.close()
+    elif case in {"wrong_columns", "view"}:
+        connection = sqlite3.connect(db)
+        try:
+            if case == "wrong_columns":
+                connection.execute("CREATE TABLE sidebar_threads (thread_id BLOB PRIMARY KEY)")
+            else:
+                connection.execute("CREATE VIEW sidebar_threads AS SELECT NULL AS thread_id, NULL AS session_id")
+        finally:
+            connection.close()
+    actions, _, _ = _real_actions_with_recorded_git(monkeypatch, {})
+
+    with pytest.raises(HostError) as excinfo:
+        actions.locate_database(tmp_path)
+    assert excinfo.value.code == code
+
+
+def test_native_locator_finds_a_binding_table_written_only_to_the_wal(tmp_path, monkeypatch):
+    import shutil
+    import sqlite3
+
+    source = tmp_path / "source" / "db.sqlite"
+    source.parent.mkdir()
+    profile = tmp_path / "profile"
+    profile.mkdir()
+    main = profile / "db.sqlite"
+    wal = profile / "db.sqlite-wal"
+    shm = profile / "db.sqlite-shm"
+    connection = sqlite3.connect(source)
+    try:
+        connection.execute("CREATE TABLE baseline (label TEXT)")
+        connection.commit()
+        connection.execute("PRAGMA journal_mode=wal")
+        connection.execute("PRAGMA wal_autocheckpoint=0")
+        connection.execute("CREATE TABLE SIDEBAR_THREADS (THREAD_ID BLOB PRIMARY KEY, SESSION_ID TEXT)")
+        connection.execute("INSERT INTO SIDEBAR_THREADS VALUES (?, ?)", (b"\xa1" * 16, None))
+        connection.commit()
+        for path in (main, wal, shm):
+            shutil.copyfile(source.with_name(path.name), path)
+    finally:
+        connection.close()
+
+    lone_main = tmp_path / "main-without-sidecars.sqlite"
+    shutil.copyfile(main, lone_main)
+    assert not col.read_database_binding(lone_main).readable
+    before = {path: path.read_bytes() for path in (main, wal, shm)}
+    actions, _, _ = _real_actions_with_recorded_git(monkeypatch, {})
+
+    location = actions.locate_database(profile)
+
+    assert location == col.DatabaseLocation(main, wal, shm)
+    assert col.read_database_binding(location.main, location.wal, location.shm) == col.DatabaseBinding(True, "A1" * 16, None)
+    assert {path: path.read_bytes() for path in before} == before
+
+
 def test_binding_is_read_from_a_closed_copy_without_touching_it(tmp_path):
     path = make_zed_database(tmp_path / "copy" / "db.sqlite", [(b"\xab" * 16, "session-" + "c" * 32)])
     before = path.read_bytes()
@@ -766,7 +876,6 @@ def test_pre_reopen_database_binding_latches_stop(tmp_path, windows_shaped_paths
     "options,reason",
     [
         ({"first_launch_load_arm": "a_prime"}, R.FIRST_LAUNCH_LOAD_OBSERVED),
-        ({"forced_kill": ("r_cancelled", "reopen")}, R.SHUTDOWN_FORCED_KILL),
         ({"omit_module": "optimus.acp.errors"}, R.MODULE_CLOSURE_INCOMPLETE),
         ({"extra_notice_arm": "r_end_turn"}, R.R_NOTICE_MISMATCH),
         ({"advertise_resume": ("prompted", "lifecycle_b")}, R.CAPABILITY_RESUME_ADVERTISED),
@@ -784,6 +893,16 @@ def test_each_injected_failure_is_classified_invalid_through_the_pipeline(tmp_pa
     result = run.gate()
     assert result.disposition is D.INVALID_CURRENT_CLIENT_GATE, result.reason_codes()
     assert reason in _codes(result)
+
+
+def test_confirmed_forced_stop_ends_the_schedule_and_preserves_the_shutdown_reason(tmp_path, windows_shaped_paths):
+    run = Run(tmp_path, run_options(forced_kill=("r_cancelled", "reopen")))
+    run.collect()
+    raw = run.raw()
+    assert raw["aborted"] == {"reason_code": "zed_shutdown_forced", "stage": "launch"}
+    assert raw["arms"][-1]["launches"][-1]["shutdown"]["mechanism"] == "forced_kill"
+    assert run.host.launches[-1] == ("r_cancelled", "reopen")
+    assert c.reduce_document(raw, layer="raw").disposition is D.INDETERMINATE_CURRENT_CLIENT_GATE
 
 
 def test_failure_mid_run_preserves_an_aborted_bundle_and_still_cleans_up(tmp_path, windows_shaped_paths):
@@ -837,15 +956,15 @@ def _record_bytes(run, batch):
     return b"".join(path.read_bytes() for path in (*records, run.run_dir / "raw-bundle.json", run.run_dir / "provisional-result.json"))
 
 
-def test_a_runtime_error_mid_run_is_preserved_as_an_aborted_bundle_and_still_cleans_up(tmp_path, windows_shaped_paths, monkeypatch):
+def test_an_unknown_launch_error_preserves_scratch_and_emits_a_fixed_code(tmp_path, windows_shaped_paths, monkeypatch):
     run = Run(tmp_path)
     _fail_launch_at(run, monkeypatch, ("r_cancelled", "reopen"), _probe_error())
     batch = run.collect()
-    assert list(run.scratch.iterdir()) == []
+    assert list(run.scratch.iterdir())
     raw = run.raw()
-    assert raw["aborted"] == {"reason_code": "host_action_failed", "stage": "launch"}
+    assert raw["aborted"] == {"reason_code": "zed_tree_unconfirmed", "stage": "launch"}
     assert [arm["arm_id"] for arm in raw["arms"]] == ["a_prime", "r_end_turn", "r_refusal", "r_cancelled"]
-    assert raw["custody"]["cleanup"]["targets"] == [{"role": "run_root", "removed": True, "absent_after": True}]
+    assert raw["custody"]["cleanup"]["targets"] == [{"role": "run_root", "removed": False, "absent_after": False}]
     assert c.reduce_document(raw, layer="raw").disposition is D.INDETERMINATE_CURRENT_CLIENT_GATE
     assert _PRIVATE_TEXT.encode() not in _record_bytes(run, batch)
 
@@ -854,7 +973,7 @@ def test_a_runtime_error_abort_after_a_positive_signal_is_still_stop(tmp_path, w
     run = Run(tmp_path, run_options(reopen_load_arm="a_prime"))
     _fail_launch_at(run, monkeypatch, ("r_end_turn", "first"), _probe_error())
     run.collect()
-    assert list(run.scratch.iterdir()) == []
+    assert list(run.scratch.iterdir())
     result = run.gate()
     assert (result.disposition, result.primary.subject) == (D.ZERO_ENTRY_REACHABLE_STOP, "a_prime")
 
@@ -947,9 +1066,14 @@ def test_an_interrupt_is_never_swallowed_as_a_host_failure(tmp_path, windows_sha
         monkeypatch.setattr(run.host, hook, digest)
     else:
         monkeypatch.setattr(run.host, hook, _raise(KeyboardInterrupt()))
-    with pytest.raises(KeyboardInterrupt):
+    if hook == "launch":
         run.collect()
-    assert not (run.run_dir / "artifacts" / "plan117" / "run-end.json").exists()
+        assert run.raw()["aborted"] == {"stage": "launch", "reason_code": "zed_tree_unconfirmed"}
+        assert list(run.scratch.iterdir())
+    else:
+        with pytest.raises(KeyboardInterrupt):
+            run.collect()
+        assert not (run.run_dir / "artifacts" / "plan117" / "run-end.json").exists()
 
 
 def test_patched_source_substitution_is_refused_before_any_launch(tmp_path, windows_shaped_paths):
@@ -1199,6 +1323,11 @@ def test_stage_writes_only_private_records_and_staged_derivatives(tmp_path, wind
     for identity in raw["path_identities"]:
         assert identity["canonical_path"] not in staged_text
     assert raw["path_commitment_key_hex"] not in staged_text
+    arms_root = run.run_dir / "artifacts" / "plan117" / "arms"
+    for arm_id, launch_id in _launch_order():
+        authorization = json.loads((arms_root / arm_id / launch_id / "launch.json").read_bytes())
+        for field in ("approval_id", "record_digest", "workspace_digest", "launch_session_id"):
+            assert authorization[field] not in staged_text
     assert {entry["canonical_path"] for entry in mapping["entries"]} == {i["canonical_path"] for i in raw["path_identities"]}
     report = json.loads((roots["staging"] / RUN_ID / "redaction-report.json").read_text(encoding="utf-8"))
     assert report["privacy"] == {"status": "passed", "violations": []}
@@ -1598,6 +1727,79 @@ def test_an_unrelated_broken_artifact_cannot_mask_a_captured_reopen_load(tmp_pat
     assert raw["custody_failures"]
 
 
+@pytest.mark.parametrize("filename", ["relay-summary.json", "relay-index.ndjson"])
+@pytest.mark.parametrize("captured_reopen", [False, True])
+def test_relay_metadata_decode_failure_preserves_reopen_evidence(
+    tmp_path, windows_shaped_paths, monkeypatch, filename, captured_reopen,
+):
+    from types import SimpleNamespace
+
+    from tools import plan117_custody_relay as relay
+
+    arm = "r_cancelled"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_reopen else None))
+    run.collect()
+    marker = '{"fixture":"decoder depth failure"}'
+    path = run.run_dir / "artifacts" / "plan117" / "arms" / arm / "reopen" / "relay" / filename
+    path.write_text(marker + "\n", encoding="utf-8")
+
+    def decode(payload, *args, **kwargs):
+        if payload in (marker, marker + "\n", marker.encode(), (marker + "\n").encode()):
+            raise RecursionError("simulated decoder depth limit")
+        return json.loads(payload, *args, **kwargs)
+
+    # Simulate the decoder limit only in the three readers and only for the fixture marker.
+    decoder = SimpleNamespace(**{**vars(json), "loads": decode})
+    for module in (c, col, relay):
+        monkeypatch.setattr(module, "json", decoder)
+
+    raw = run.raw()
+    result = c.reduce_document(raw, layer="raw")
+    assert "relay_capture_invalid" in raw["custody_failures"]
+    if filename == "relay-summary.json":
+        assert "launch_argv_mismatch" in raw["custody_failures"]
+    if captured_reopen:
+        assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert result.primary.reason is R.REOPEN_LOAD_OBSERVED
+    else:
+        assert result.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
+@pytest.mark.parametrize("filename", ["relay-summary.json", "relay-index.ndjson"])
+@pytest.mark.parametrize("captured_reopen", [False, True])
+def test_relay_numeric_conversion_failure_preserves_reopen_evidence(
+    tmp_path, windows_shaped_paths, monkeypatch, filename, captured_reopen,
+):
+    from tools import plan117_custody_relay as relay
+
+    arm = "r_cancelled"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_reopen else None))
+    run.collect()
+    marker = "simulated conversion failure"
+    path = run.run_dir / "artifacts" / "plan117" / "arms" / arm / "reopen" / "relay" / filename
+    lines = path.read_text(encoding="utf-8").splitlines()
+    metadata = json.loads(lines[0])
+    field = "zed_to_agent_bytes" if filename == "relay-summary.json" else "sequence"
+    metadata[field] = marker
+    lines[0] = json.dumps(metadata)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def convert(value):
+        if value == marker:
+            raise OverflowError("simulated relay counter conversion failure")
+        return int(value)
+
+    monkeypatch.setattr(relay, "int", convert, raising=False)
+    raw = run.raw()
+    result = c.reduce_document(raw, layer="raw")
+    assert "relay_capture_invalid" in raw["custody_failures"]
+    if captured_reopen:
+        assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert result.primary.reason is R.REOPEN_LOAD_OBSERVED
+    else:
+        assert result.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
 def test_a_broken_artifact_cannot_mask_a_captured_pre_reopen_binding(tmp_path, windows_shaped_paths):
     run = Run(tmp_path, run_options(pre_reopen_binding_arm="r_cancelled"))
     run.collect()
@@ -1787,6 +1989,75 @@ def test_a_strictly_invalid_reopen_load_line_is_still_a_positive_signal(tmp_path
     relay.write_bytes(relay.read_bytes() + line)
     result = c.reduce_document(run.raw(), layer="raw")
     assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+
+
+@pytest.mark.parametrize("fallback_failure", [False, True], ids=["strict-refusal", "fallback-refusal"])
+@pytest.mark.parametrize("captured_reopen", [False, True])
+def test_wire_decoder_failure_preserves_independent_reopen_evidence(
+    tmp_path, windows_shaped_paths, monkeypatch, fallback_failure, captured_reopen,
+):
+    from types import SimpleNamespace
+
+    arm = "r_cancelled"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_reopen else None))
+    run.collect()
+    marker = '{"fixture":"wire decoder failure"}'
+    wire = run.run_dir / "artifacts" / "plan117" / "arms" / arm / "reopen" / "relay" / "zed-to-agent.bin"
+    wire.write_bytes(marker.encode("utf-8") + b"\n" + wire.read_bytes())
+
+    def strict_decode(payload, *args, **kwargs):
+        if payload == marker:
+            if fallback_failure:
+                raise json.JSONDecodeError("simulated strict refusal", payload, 0)
+            raise ValueError("simulated numeric decoder refusal")
+        return json.loads(payload, *args, **kwargs)
+
+    monkeypatch.setattr(c, "json", SimpleNamespace(**{**vars(json), "loads": strict_decode}))
+    if fallback_failure:
+        def fallback_decode(payload, *args, **kwargs):
+            if payload == marker:
+                raise RecursionError("simulated fallback decoder limit")
+            return json.loads(payload, *args, **kwargs)
+
+        monkeypatch.setattr(col, "json", SimpleNamespace(**{**vars(json), "loads": fallback_decode}))
+
+    raw = run.raw()
+    gate = c.reduce_document(raw, layer="raw")
+    assert "relay_capture_invalid" in raw["custody_failures"]
+    if captured_reopen:
+        assert gate.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert gate.primary.reason is R.REOPEN_LOAD_OBSERVED
+    else:
+        assert gate.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
+@pytest.mark.parametrize("captured_reopen", [False, True], ids=["invalid", "stop"])
+def test_relay_text_encoding_failure_preserves_independent_reopen_evidence(tmp_path, windows_shaped_paths, monkeypatch, captured_reopen):
+    arm = "r_refusal"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_reopen else None))
+    run.collect()
+    first_session = run.host_mod.session_for(arm, "first")
+    wire_event = col.wire_event
+
+    def normalize(index, direction, message):
+        params = message.message.get("params", {})
+        update = params.get("update", {})
+        if params.get("sessionId") == first_session and "content" in update:
+            raise UnicodeEncodeError("utf-8", "synthetic text", 0, 1, "simulated relay text encoding failure")
+        return wire_event(index, direction, message)
+
+    monkeypatch.setattr(col, "wire_event", normalize)
+    raw = run.raw()
+    first = next(arm_record for arm_record in raw["arms"] if arm_record["arm_id"] == arm)["launches"][0]
+    assert first["undecodable_bytes"] is True
+
+    gate = c.reduce_document(raw, layer="raw")
+    assert R.WIRE_INCONSISTENT in _codes(gate)
+    if captured_reopen:
+        assert gate.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert gate.primary.reason is R.REOPEN_LOAD_OBSERVED
+    else:
+        assert gate.disposition is D.INVALID_CURRENT_CLIENT_GATE
 
 
 def test_parse_ndjson_recovers_strictly_invalid_objects_but_flags_them():
@@ -2039,3 +2310,56 @@ def test_an_unknown_key_never_rescues_an_invalid_known_field_on_the_positive_art
     _rebind_bundle(run, lambda d: _artifact(d, _RELAY_POSITIVE).update(extra=1, **change))
     staged = col.compute_redaction(run.context, identity_tokens=())
     assert staged.gate.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
+
+def test_collector_approves_all_arms_and_rechecks_before_every_spawn(tmp_path, windows_shaped_paths):
+    run = Run(tmp_path)
+    batch = run.collect()
+    assert run.host.approval_events[:8] == [("approve", arm) for arm in c.ARM_IDS]
+    assert run.host.approval_events[8:24] == [("verify", arm) for arm in c.ARM_IDS for _ in range(2)]
+    assert run.host.approval_events[-1] == ("recover", "")
+    assert len(run.host.launches) == 16
+    assert batch.observations
+
+
+def test_partial_approval_refusal_launches_nothing_and_recovers(tmp_path, windows_shaped_paths):
+    run = Run(tmp_path, run_options(approval_failure="r_refusal"))
+    run.collect()
+    assert not run.host.launches
+    assert run.host.approval_events[-1] == ("recover", "")
+    assert not list(run.scratch.iterdir())
+
+
+def test_unconfirmed_drain_retains_scratch_and_never_copies_database(tmp_path, windows_shaped_paths):
+    run = Run(tmp_path, run_options(unconfirmed_drain=True))
+    batch = run.collect()
+    assert not any(item.role.startswith("plan117_v5_db:") for item in batch.artifacts)
+    assert run.host.launches == [("a_prime", "first")]
+    assert run.host.approval_events[-1] == ("hold", "")
+    assert list(run.scratch.iterdir())
+    assert run.gate().disposition is not D.ACCEPTED_CURRENT_CLIENT_GATE
+
+
+def test_audit_observer_excludes_stale_and_ambiguous_authorizations(tmp_path):
+    from types import SimpleNamespace
+
+    approval = col.LaunchApproval("a" * 64, "appr_" + "b" * 24, "c" * 64)
+    session_id = "sess_" + "d" * 24
+    request = SimpleNamespace(approval=approval, launch_session_id=session_id)
+    event = {
+        "event_type": "authorization", "final_reason_code": "AUTHORIZED", "approval_mode": "durable",
+        "approval_migration_disposition": "none", "approval_id": approval.approval_id,
+        "workspace_digest": approval.workspace_digest, "launch_session_id": session_id,
+    }
+    row = json.dumps(event).encode() + b"\n"
+    audit = tmp_path / "launch-audit.ndjson"
+    audit.write_bytes(row)
+    assert col._read_scoped_launch_audit(audit, len(row), request) is None
+    audit.write_bytes(row * 2)
+    assert col._read_scoped_launch_audit(audit, len(row), request) == event
+    migration = {**event, "event_type": "approval_migration"}
+    audit.write_bytes(row * 2 + json.dumps(migration).encode() + b"\n")
+    assert col._read_scoped_launch_audit(audit, len(row), request) is None
+    audit.write_bytes(row * 3)
+    assert col._read_scoped_launch_audit(audit, len(row), request) is None

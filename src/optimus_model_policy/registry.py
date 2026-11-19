@@ -513,7 +513,17 @@ def _canonical_hash(policy: Policy) -> str:
 
 
 def load_registry(defaults: Path, *overrides: Path | None) -> RegistrySnapshot:
-    """Load the defaults, combine each given override over them in order, validate and hash the result."""
+    """Read and validate a local policy registry.
+
+    Apply each supplied override in order. Structural findings are reported
+    separately by ``validate_registry``.
+
+    :param defaults: The caller's defaults file.
+    :param overrides: Optional override paths. Skip None entries.
+    :returns: The validated snapshot, effective policy identity and input provenance.
+    :raises OSError: If an input file cannot be read.
+    :raises RegistryError: If an input is invalid YAML or the combined policy fails schema validation.
+    """
     base, base_raw = _load_yaml(defaults)
     combined = base
     input_hashes = [(defaults.name, hashlib.sha256(base_raw).hexdigest())]

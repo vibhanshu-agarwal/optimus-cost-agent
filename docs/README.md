@@ -121,9 +121,8 @@ Status, priority and ownership live in the record's GitHub issue; the transition
 | [Work status table][work-status-hosted] | Live table of the repository's GitHub issues, the work register, hosted on GitHub Pages (no checkout needed); the issues are authoritative. Source: [`work-status.html`](work-status.html). Fallback: the repository's open issues on GitHub, linked from the page and from the backlog |
 | [Phase 1 roadmap](superpowers/plans/2026-07-01-phase-1-roadmap.md) | Historical sequencing of Phase 1 |
 | [Plan 11 v1.0 milestone charter](superpowers/plans/2026-07-25-plan-11-v1-milestone-charter.md) | What v1.0 must contain |
-| [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | The 15 hardening tracks and their status |
+| [Hardening masterplan](superpowers/plans/hardening-runtime-quality-masterplan.md) | Status and plan links for the 15 hardening tracks, including the completed audit-tool integrity and typing plan |
 | [Hardening: CI guardrail truthfulness](superpowers/plans/hardening-ci-guardrail-truthfulness-implementation.md) | CI guardrail enforcement contract |
-| [Hardening: audit-tool integrity and typing](superpowers/plans/hardening-audit-tool-integrity-and-typing-implementation.md) | Inventory re-derivation guard and audit-tool typing contract |
 
 Live plans (each listed in the backlog's live plan registry):
 
@@ -162,11 +161,12 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Public Python API reference](public-python-api.md) | Supported Python import paths, contracts and offline examples |
 | [Ruff first-tranche disposition and verification](superpowers/reports/2026-10-30-ruff-first-tranche.md) | All 27 original C4/PERF/RET/ASYNC findings, src-only gate, exact-line contracts and provisional Windows evidence under issue #324 |
 | [Ruff first-tranche source and evidence manifest](superpowers/reports/2026-10-30-ruff-first-tranche-manifest.yaml) | Original tested hashes, review-fix delta and retained evidence hashes for the bounded Ruff tranche |
 | [Pyscn evaluation](superpowers/reports/2026-11-18-issue332-pyscn-evaluation.md) and [evidence manifest](superpowers/reports/2026-11-18-issue332-pyscn-evaluation-evidence.yaml) | Qualified eight-file clone, dead-code and complexity evaluation under issue #332 |
 | [H4 historical replay test-contract repair](superpowers/reports/2026-10-30-h4-historical-replay-test-contract-repair.md) | #447: test-only migration to sealed replay, exact node mappings, retained drift guards and source-bound focused evidence |
-| [Plan 11.7 v5 adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md) | #240: the operator's adoption of v5 at its exact hash, the predecessor disposition, the released E1–E2 scope and what the E1–E2 delivery does not establish |
+| [Plan 11.7 v5 adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md) | Historical provenance for the v5 adoption, v3 supersession and bounded E1–E2 delivery published through PR #476. Issue #240 owns current status and the next gate. |
 | [Plan 12.2 offline delivery merge record](superpowers/reviews/2026-10-08-plan-12-2-offline-merge-record.md) | PR #276 merged as c509fc8 on 2026-10-08, with Package A (#216 marked merged); offline merge gate complete, not a full CP4 pass; three live obligations remain deferred |
 | [Plan 12.2 CP4 offline delivery disposition](superpowers/reviews/2026-10-08-plan-12-2-cp4-offline-delivery-disposition.md) | Operator decision, 2026-10-08: offline delivery through 2068366 is complete; Luna qualification, the summary-quality receipt and real-editor Task 13 are deferred as UNRUN obligations; not a full CP4 pass |
 | [Plan 12.2 CP4 offline review disposition](superpowers/reviews/2026-10-04-plan-12-2-cp4-offline-review-disposition.md) | Codex accepts the offline batch at cf9bb9d with declared scope; five rulings; full CP4 remains open |

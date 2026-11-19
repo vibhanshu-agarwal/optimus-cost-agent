@@ -39,7 +39,17 @@ def reuse_checkpoint(
     strategy: str,
     parameters: StrategyParameters,
 ) -> ReuseResult:
-    """Validate `checkpoint` against `snapshot` and re-key it to the snapshot's revision."""
+    """Check whether a summary checkpoint can be reused for a snapshot.
+
+    Check session and revision bounds, strategy, parameters, format and coverage
+    against the current source. Return refusal as a result.
+
+    :param checkpoint: The derived summary candidate to check.
+    :param snapshot: The current committed history.
+    :param strategy: The strategy requested for the current view.
+    :param parameters: The current strategy parameters and format.
+    :returns: The accepted checkpoint bound to the current revision or a refusal reason.
+    """
     earlier, current = checkpoint.revision, snapshot.revision
     if earlier.session_key != current.session_key:
         return _rejected("other session")
@@ -72,8 +82,16 @@ def publish_checkpoint(
     current_parameters_digest: str,
     cancelled: bool,
 ) -> bool:
-    """Whether `candidate` may be published now. A cancelled or stale candidate is discarded by the
-    caller; any calls it cost are still settled by the host."""
+    """Decide whether the host may publish a candidate checkpoint.
+
+    The host owns storage and accounting for any maintenance work.
+
+    :param candidate: The checkpoint the host would publish.
+    :param current_revision: The committed revision at publication time.
+    :param current_parameters_digest: The current strategy parameter digest.
+    :param cancelled: Whether the attempt was cancelled.
+    :returns: True when the candidate still matches and the attempt was not cancelled.
+    """
     if cancelled:
         return False
     return candidate.revision == current_revision and candidate.parameters_digest == current_parameters_digest

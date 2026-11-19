@@ -39,10 +39,13 @@ import threading
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping, cast
 
 from .measurement import ExecutionClosureRecorder, VerifiedExecution, verify_execution_closure
 from .source import ExecutingSourceMismatch, SourceTree, source_fingerprint, verify_executing_module
+
+if TYPE_CHECKING:
+    from optimus.gateway.client import GatewayClient
 
 #: The allowlisted measurement entry whose context authorizes this module's execution.
 S1_MEASUREMENT_ENTRY = "s1.serving_custody"
@@ -165,7 +168,7 @@ class _CustodyVisitor(ast.NodeVisitor):
         module = self.path.removesuffix(".py").replace("/", ".")
         return ".".join((module, *self.scope))
 
-    def _add(self, node: ast.AST, kind: CustodySiteKind, reference: str) -> None:
+    def _add(self, node: ast.Assign | ast.AnnAssign | ast.Call, kind: CustodySiteKind, reference: str) -> None:
         self.sites.append(CustodySite(self.path, node.lineno, self._symbol(), kind, reference))
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
@@ -483,7 +486,7 @@ def _server_for(runtime: Any, workspace: Path) -> Any:
     from optimus.agent.state_store import InMemoryAgentStateStore
     from optimus.guardrails.pre_tool import PreToolGuard
 
-    gateway = _StubGateway()
+    gateway = cast("GatewayClient", _StubGateway())
     guard = PreToolGuard.for_workspace(workspace_root=workspace, allowed_network_hosts=())
     runner = AgentRunner(gateway_client=gateway, model="glm-5.2", guard=guard, state_store=InMemoryAgentStateStore())
     dispatcher = JsonRpcDispatcher(
@@ -526,16 +529,17 @@ def _composition_patches(runtime: Any, mcp: _OfflineMcpRuntime):
     from optimus.redis.runtime import RedisRuntime
 
     real_preflight = preflight.run_preflight
-    real_from_url = vars(RedisRuntime)["from_url"]
+    from_url_name = "from_url"
+    real_from_url = vars(RedisRuntime)[from_url_name]
     real_mcp = bootstrap.build_client_mcp_runtime
     preflight.run_preflight = lambda environ, **kwargs: _PROBE_ENVIRON["OPTIMUS_REDIS_URL"]  # type: ignore[assignment]
-    RedisRuntime.from_url = classmethod(lambda cls, url, **kwargs: runtime)  # type: ignore[method-assign]
+    setattr(RedisRuntime, from_url_name, classmethod(lambda cls, url, **kwargs: runtime))
     bootstrap.build_client_mcp_runtime = lambda **kwargs: mcp  # type: ignore[assignment]
     try:
         yield
     finally:
         preflight.run_preflight = real_preflight  # type: ignore[assignment]
-        RedisRuntime.from_url = real_from_url  # type: ignore[method-assign]
+        setattr(RedisRuntime, from_url_name, real_from_url)
         bootstrap.build_client_mcp_runtime = real_mcp  # type: ignore[assignment]
 
 
@@ -733,12 +737,13 @@ def _probe_startup_rollback(workspace: Path) -> CustodyObservation:
     runtime, client, pool = _fresh_runtime()
     mcp = _OfflineMcpRuntime()
     facts: dict[str, Any] = {}
-    real_for_workspace = vars(PreToolGuard)["for_workspace"]
+    for_workspace_name = "for_workspace"
+    real_for_workspace = vars(PreToolGuard)[for_workspace_name]
 
     def _boom(**kwargs: Any) -> Any:
         raise RuntimeError("plan1126-s1-rollback-probe")
 
-    PreToolGuard.for_workspace = classmethod(lambda cls, **kwargs: _boom(**kwargs))  # type: ignore[method-assign]
+    setattr(PreToolGuard, for_workspace_name, classmethod(lambda cls, **kwargs: _boom(**kwargs)))
     try:
         with _composition_patches(runtime, mcp):
             try:
@@ -753,7 +758,7 @@ def _probe_startup_rollback(workspace: Path) -> CustodyObservation:
         facts.update(_disposition(runtime, client, pool))
         facts["fallback_cleanup_needed"] = runtime.state.value != "CLOSED"
     finally:
-        PreToolGuard.for_workspace = real_for_workspace  # type: ignore[method-assign]
+        setattr(PreToolGuard, for_workspace_name, real_for_workspace)
         with contextlib.suppress(Exception):
             runtime.close(timeout=10.0)
     demonstrated = (

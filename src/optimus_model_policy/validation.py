@@ -233,7 +233,13 @@ def ordered_assignments(snapshot: RegistrySnapshot, role: Role) -> tuple[str, ..
 
 
 def validate_registry(snapshot: RegistrySnapshot) -> tuple[ValidationIssue, ...]:
-    """Every structural problem in the snapshot, sorted deterministically."""
+    """Report structural findings for an already-loaded registry.
+
+    The findings describe the snapshot without authorizing live routes.
+
+    :param snapshot: The validated policy snapshot to inspect.
+    :returns: Findings in deterministic order, or an empty tuple.
+    """
     policy = snapshot.policy
     issues: list[ValidationIssue] = []
 

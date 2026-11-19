@@ -43,7 +43,7 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 CURRENT_EVIDENCE_SCHEMA_VERSION = "plan-11-26-current-evidence-v1"
 
@@ -142,7 +142,7 @@ def _rows(inventory: Mapping[str, Any], field: str) -> list[Mapping[str, Any]]:
 
 
 def derive_inventory_identifiers(
-    inventory: Mapping[str, Any], binding: Mapping[str, Any] | None = None
+    inventory: object, binding: Mapping[str, Any] | None = None
 ) -> tuple[str, ...]:
     """Derive the admissible observation identifiers from the retained inventory itself.
 
@@ -190,7 +190,7 @@ def derive_inventory_identifiers(
             raise RetainedEvidenceError(
                 "retained shutdown inventory declares no applicable close path to measure"
             )
-        return tuple(sorted(identifiers))
+        return tuple(sorted(cast("set[str]", identifiers)))
 
     if kind == "queue-and-health-sites":
         from .queue_policy import HealthScenario

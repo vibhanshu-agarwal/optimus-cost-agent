@@ -1829,7 +1829,7 @@ class TestEffectiveCredentialDisplayRows:
 
 
 _GOLDEN_DISPLAY_DIGEST = "f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248"  # pragma: allowlist secret - synthetic test fixture
-_GOLDEN_SHIPPED_DISPLAY_DIGEST = "3deda6db227aab367419a0145979e7d77de46d565487d7c1127b77a39f81ba82"  # 2026-11-19 CP4 design R: new registry hash  # pragma: allowlist secret - synthetic test fixture
+_GOLDEN_SHIPPED_DISPLAY_DIGEST = "2b0cb8bc3042d2fe4d4750897690eb74d4674d3eb71a67721c3cacbb362d47a5"  # 2026-11-20 merge of main (cdbed07) into CP4 design R: new registry hash  # pragma: allowlist secret - synthetic test fixture
 _GOLDEN_ENV = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
     "OPTIMUS_API_KEY": "agent-key",  # pragma: allowlist secret - synthetic test fixture
