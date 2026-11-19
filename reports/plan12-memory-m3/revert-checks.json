@@ -1,0 +1,41 @@
+{
+ "schema": "plan12-memory-m3.revert-checks.v1",
+ "sources": [
+  {
+   "head": "git:1b476551713f80b2ddad74382b79355adcaf6f0d",
+   "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_gaps.py"
+  },
+  {
+   "head": "git:1b476551713f80b2ddad74382b79355adcaf6f0d",
+   "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_cp4r2.py"
+  }
+ ],
+ "release": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+ "checks": [
+  {
+   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-gaps-1b47655.log",
+   "sha256": "hex:33f9d306a06ddc5fec5bffb1722ae711cb5a3b4b0a6f26c32cdd0391269b574a",
+   "head": "git:1b476551713f80b2ddad74382b79355adcaf6f0d",
+   "dirty": false,
+   "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_gaps.py",
+   "caught": 11,
+   "mutants": 11,
+   "missed": [],
+   "invalid": [],
+   "baseline": "PASS"
+  },
+  {
+   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-cp4r2-1b47655.log",
+   "sha256": "hex:4847f227b99316d727d587ebfb645237c92d4d7dea44209ff5b20bab2f5e7495",
+   "head": "git:1b476551713f80b2ddad74382b79355adcaf6f0d",
+   "dirty": false,
+   "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_cp4r2.py",
+   "caught": 49,
+   "mutants": 49,
+   "missed": [],
+   "invalid": [],
+   "baseline": "PASS"
+  }
+ ],
+ "passed": true
+}
