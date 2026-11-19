@@ -509,6 +509,7 @@ class AcpPromptTurn:
     # Plan 12.2: an attached turn's captured context, its packer and its dispatch readings.
     attached: AttachedTurn | None = None
     served_memory: Any = None  # Plan 12.11 Task 4: the memory this turn was served (`memory_serving.ServedSet`)
+    brief: str | None = None  # the welcome-back brief this turn showed; its every planning and answer request carries it
     # Codex CP3 ruling R4: the turn's request binder for the trusted planning/answer route, captured
     # before any await. None while no route policy is configured (registry enforcement inactive).
     route_binder: TurnRouteBinder | None = None
@@ -2207,8 +2208,14 @@ class AcpDuplexAdapter:
                     "context_digest": admitted.digest,
                 }
                 if session.memory_commands is not None:
-                    # Plan 12.11 Task 4: served memory goes after the cache prefix and binds the plan's context digest.
-                    turn.served_memory, block = await self._serve_memory(session)
+                    # Plan 12.11 Task 4: served memory, then the brief this turn showed, go after the cache prefix and bind the
+                    # plan's context digest. The brief's turn reuses the served set the brief listed, read once.
+                    sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
+                    if turn.served_memory is None:
+                        turn.served_memory, block = await self._serve_memory(session)
+                    else:
+                        block = memory_serving.render(turn.served_memory, sanitize=sanitize)
+                    block = memory_serving.with_brief(block, turn.brief, sanitize=sanitize)
                     if block:
                         planning_fields["memory_context"] = block
                         planning_fields["context_digest"] = memory_serving.bind_digest(admitted.digest, block)
@@ -2773,13 +2780,22 @@ class AcpDuplexAdapter:
 
     async def _emit_brief(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
         """Plan 12.11 Task 4 (P5-b): the welcome-back brief at this session's first response, when the project was left at least
-        seven days ago. Informational, once per session; an unreadable store shows none (`/welcome` asks again)."""
+        seven days ago. Once per session; an unreadable store shows none (`/welcome` asks again). The brief lists the turn's
+        checked served set, and the turn's planning and answer requests carry both (plan v5: the brief is assembled after the
+        cache prefix)."""
+        served: list[Any] = []
+
+        def serve() -> Any:
+            served.append(session.memory_commands.served())
+            return served[0]
+
         try:
-            text = await asyncio.wait_for(asyncio.to_thread(session.continuity.first_response_brief), timeout=MEMORY_SERVE_SECONDS)
+            text = await asyncio.wait_for(asyncio.to_thread(session.continuity.first_response_brief, serve), timeout=MEMORY_SERVE_SECONDS)
         except Exception:  # noqa: BLE001 - informational
             return
         if text is None or turn.turn_control.transport_abandoned():
             return
+        turn.served_memory, turn.brief = served[0], text
         with contextlib.suppress(Exception):
             await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=text),
                                         require_flushed=True)

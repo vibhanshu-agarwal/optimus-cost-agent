@@ -227,37 +227,35 @@ class Continuity:
         lines += [f"  - {escape_text(line, 120)}" for line in shown]
         return lines
 
-    def welcome(self) -> str:
-        """The brief with what memory holds now: the user's served items, and every item withdrawn, purged or needing
-        re-verification since the predecessor settled (from the store's own transaction times)."""
+    def welcome(self, served: Any) -> str:
+        """The brief with what memory holds now: the user's items in `served` (a `memory_serving.ServedSet` from checked
+        serving, so the brief never lists an item a turn would not be served: another branch's, or one whose file changed), and
+        every item withdrawn, purged or needing re-verification since the predecessor settled (the store's transaction times)."""
         from optimus.context import memory_serving
 
         _stored, found = self.previous()
         since = found.checkpoint.settled_at_ms if found is not None else None
-        served: list[Any] = []
         changed: list[tuple[str, str]] = []
         cursor: str | None = None
         for _ in range(memory_serving.MAX_PAGES):
             rows, cursor = self._store.items("project", limit=100, cursor=cursor)
             for row in rows:
                 event = row.event
-                if event.trust == "user-authored" and event.status == "active" and event.statement:
-                    served.append(memory_serving.ServedMemory(event.project, event.item, event.version, event.trust, event.kind,
-                                                              event.scope, event.title, event.statement, event.anchors))
-                elif (since is not None and event.trust != "off" and event.status in _CHANGED
-                      and int(row.stream_id.split("-")[0]) >= since):  # an off record was never memory (Zed proof: one switched on)
+                if (since is not None and event.trust != "off" and event.status in _CHANGED
+                        and int(row.stream_id.split("-")[0]) >= since):  # an off record was never memory (Zed proof: one switched on)
                     changed.append((f"{event.item}@{event.version}", _CHANGED[event.status]))
             if cursor is None:
                 break
-        return self.brief(served=memory_serving.select(served).protected, changed=changed)
+        return self.brief(served=served.protected, changed=changed)
 
-    def first_response_brief(self) -> str | None:
-        """The brief for this session's first response when it is due, once; None otherwise."""
+    def first_response_brief(self, served: Callable[[], Any]) -> str | None:
+        """The brief for this session's first response when it is due, once; None otherwise. `served` reads the turn's checked
+        served set, only when the brief is due."""
         with self._lock:
             if self._shown:
                 return None
             self._shown = True
-        return self.welcome() if self.due() else None
+        return self.welcome(served()) if self.due() else None
 
 
 def _opaque(value: str) -> str:

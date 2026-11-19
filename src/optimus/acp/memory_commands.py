@@ -271,7 +271,7 @@ class MemoryCommands:
     def __init__(self, store: Any, *, trusted: bool, sanitize: Callable[[str], str], keyed: Callable[[str], str] = digest,
                  scope: str = "project", source: Callable[[str], str | None] = lambda _block: None,
                  source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
-                 brief: Callable[[], str] | None = None, registry_recovery: Any = None) -> None:
+                 brief: Callable[[memory_serving.ServedSet], str] | None = None, registry_recovery: Any = None) -> None:
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
@@ -332,7 +332,8 @@ class MemoryCommands:
                 assert command.item is not None
                 return MemoryAnswer(self._view(command.item, command.before))
             if command.verb == "welcome":
-                return MemoryAnswer(self._brief() if self._brief is not None else "No welcome-back brief is available for this project yet.")
+                return MemoryAnswer(self._brief(self.served()) if self._brief is not None
+                                    else "No welcome-back brief is available for this project yet.")
             if command.verb in ("export", "restore"):
                 return self._recovery_command(command)
             if not self._trusted:

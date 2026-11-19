@@ -16,6 +16,7 @@ from context_engine.memory_contracts import HostVerdict, MemoryCandidate
 from optimus.acp import memory_commands as mc
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.context import memory_extraction as mx
+from optimus.context import memory_serving
 from optimus.context.authored_memory import GatewayMemoryStore
 from tests.support.contract_doubles import checked_agent_runner
 from tests.unit.acp.test_context_engine_admission import Runner, make_attachment, new_session, prompt_request, rpc
@@ -592,6 +593,15 @@ def test_the_brief_comes_at_the_first_response_after_a_week_and_every_turn_is_ch
             await asyncio.sleep(0.05)
         assert sorted(s.checkpoint.session for s in store.checkpoints(limit=20)) == ["old", session_id, session_id]
         assert len(runner.requests) == 2  # /welcome called no model
+        # Codex CP4 review 16 (Zed RETURN R1): the model is given the brief the user was shown, at that turn only, bound into
+        # the plan's context digest with the rest of the memory block
+        first, later = runner.requests
+        assert memory_serving.BRIEF_HEADER in first.memory_context and welcomes[0].strip() in first.memory_context
+        assert memory_serving.BRIEF_HEADER not in later.memory_context
+        await rpc(adapter, prompt_request(session_id, "/remember Use uv for every command.", "p-4"))
+        await rpc(adapter, prompt_request(session_id, "/welcome", "p-5"))
+        latest = [text for text in _texts(outbound) if text.startswith("**Welcome back.**")][-1]
+        assert "Use uv for every command" in latest  # /welcome lists what checked serving serves now (Markdown-escaped)
     asyncio.run(run())
 
 

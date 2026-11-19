@@ -82,9 +82,46 @@ def test_both_prefix_builders_keep_their_cache_prefix_whatever_the_memory_holds(
     for build in (_chat, _plan):  # without the index, memory still works and still precedes history
         text = build(changed, indexed=False)
         assert ms.HEADER in text and text.index(ms.HEADER) < text.index("history")
+    # Codex CP4 review 16: the brief (non-ASCII too) sits in the same place, after memory, and never moves a prefix byte
+    briefed = ms.with_brief(first, BRIEF + " — não, 永")
+    for build, prefix in ((_chat, chat_prefix), (_plan, plan_prefix)):
+        text = build(briefed, indexed=True)
+        assert text.encode()[: len(prefix.encode())] == prefix.encode()
+        assert text.index(ms.HEADER) < text.index(ms.BRIEF_HEADER) < text.index("history")
+        assert build(ms.with_brief("", BRIEF), indexed=True).encode()[: len(prefix.encode())] == prefix.encode()  # brief alone
 
 
-def test_no_memory_leaves_every_builder_byte_identical_to_before() -> None:
+BRIEF = "**Welcome back.** Last work here: 2026-11-19 12:18 UTC (8 days ago), branch `main`, turn 1, outcome completed."
+
+
+def test_the_brief_follows_memory_and_alone_still_forms_a_block() -> None:
+    """Codex CP4 review 16: the brief the user was shown reaches the model after served memory; with nothing served it is the
+    block by itself; no brief leaves the block byte-identical."""
+    block = ms.render(ms.select([_item(1, statement="Never push to main.")]))
+    assert ms.with_brief(block, None) == block and ms.with_brief("", None) == ""
+    joined = ms.with_brief(block, BRIEF)
+    assert joined.startswith(block) and joined.endswith(f"{ms.BRIEF_HEADER}\n{BRIEF}\n{ms.BRIEF_FOOTER}\n")
+    assert ms.with_brief("", BRIEF) == f"{ms.BRIEF_HEADER}\n{BRIEF}\n{ms.BRIEF_FOOTER}\n"
+    assert ms.with_brief("", "a", sanitize=lambda text: text.upper()) == f"{ms.BRIEF_HEADER}\nA\n{ms.BRIEF_FOOTER}\n"  # sanitized
+
+
+def test_the_brief_yields_first_cut_on_a_character_boundary_and_memory_is_never_cut() -> None:
+    """Plan v5: truncate the brief first. Protected memory keeps every byte; the brief gets what is left of the shared budget,
+    cut inside a multi-byte character safely with its delimiters intact, and is replaced by a note when nothing is left."""
+    brief = "Último trabalho: " + "永" * 6000  # 3 bytes a character: any cut can fall inside one
+    for statements in (1, 40, 120):
+        block = ms.render(ms.select([_item(n, statement=f"Rule {n}: " + "x" * 100) for n in range(statements)]))
+        joined = ms.with_brief(block, brief)
+        assert joined.startswith(block)  # memory first and whole
+        assert len(joined.encode("utf-8")) <= max(ms.MEMORY_AND_BRIEF_MAX_BYTES, len(block.encode()) + len(ms.BRIEF_LEFT_OUT) + 1)
+        tail = joined[len(block):]
+        if len(block.encode()) < ms.MEMORY_AND_BRIEF_MAX_BYTES - 1024:
+            assert tail.startswith(ms.BRIEF_HEADER) and tail.endswith(f"\n{ms.BRIEF_CUT}\n{ms.BRIEF_FOOTER}\n")
+            assert "Último" in tail
+        else:
+            assert tail == f"{ms.BRIEF_LEFT_OUT}\n"
+    roomy = ms.with_brief("", BRIEF)
+    assert ms.BRIEF_CUT not in roomy  # a brief that fits is never marked
     assert prompts.build_agent_planner_input("Q?", conversation_envelope="history", advisory=True) == _chat("", indexed=False)
     assert prompts.build_multi_turn_planner_input("Fix it", planning_turn=1, max_planning_turns=3, remaining_wall_clock_minutes=30,
                                                   conversation_envelope="history", repo_map="map") == _plan("", indexed=True)
