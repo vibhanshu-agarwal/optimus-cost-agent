@@ -146,7 +146,9 @@ def strict_json_loads(payload: bytes) -> Any:
         raise ContractError("invalid_utf8") from None
     try:
         return json.loads(text, object_pairs_hook=_no_duplicate_pairs, parse_constant=_reject_constant, parse_float=_finite_float)
-    except (json.JSONDecodeError, RecursionError):  # nesting past the parser's depth is invalid input, not a crash
+    except ContractError:
+        raise
+    except (ValueError, RecursionError):
         raise ContractError("invalid_json") from None
 
 

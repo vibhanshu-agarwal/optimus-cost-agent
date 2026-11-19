@@ -380,7 +380,7 @@ def _lenient_object(payload: bytes) -> dict[str, Any] | None:
     """Permissive decode used only so a strictly invalid line cannot hide a positive signal; never for acceptance."""
     try:
         decoded = json.loads(payload.decode("utf-8", "replace"))
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
     return decoded if type(decoded) is dict else None
 
