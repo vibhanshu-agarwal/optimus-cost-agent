@@ -2265,6 +2265,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.evidence_gather_support.fixtures:_matches_precondition_record:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: _matches_precondition_record opens the run-scoped precondition result for an expected-size byte comparison. It reads at most the canonical payload length plus one byte and does not log, copy, or export the record contents.",
+      "sanitizer": "bounded byte comparison against the recomputed canonical precondition payload",
+      "test_node": "tests/unit/tools/test_evidence_gather_plan117_v5.py::test_collect_writes_a_missing_or_mismatched_precondition_record",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: tools.evidence_gather_support.fixtures:prepare_fixtures:exception_export wraps ValueError from _read_complete_json via HostError(str(exc)) where exc is already a fixed reason code (invalid_json/partial_stage); it does not export raw JSON diagnostics.",
