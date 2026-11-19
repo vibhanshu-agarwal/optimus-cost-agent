@@ -6888,11 +6888,11 @@
  "paid": {
   "report": {
    "path": "reports/plan12-memory-m3/paid-attempts.json",
-   "sha256": "hex:4524aa2eba162242d2294416ec9a9eeb9b31778086666053508c0c30b5453cc6",
+   "sha256": "hex:276dd45c99c5c8d067c1a175adb3d76cefa120b7a007edcb9593cda8885fb7ff",
    "schema": "plan12-memory-m3.paid-attempts.v3"
   },
   "correctness_rule": "POST-HOC whole-reply lexical scoring (Codex CP4 review 19, ruling 4): case-insensitive substring over the model's reply (host text such as the brief excluded); PASS when an accepted phrase is present and no rejected phrase is. The frozen rubric R1 names 'the reply's claim'; no claim selector was frozen, so this is not a pre-registered interpretation. Lists are alternatives. No superiority claim is made.",
-  "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6) and stay UNKNOWN where it cannot be derived. R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not served.",
+  "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the eligible set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6; review 22, rulings 2-3), UNKNOWN where it cannot be derived; R2 also needs proof the turn's read succeeded. R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not served.",
   "totals": {
    "physical_attempts": 27,
    "settled_usd": "0.0071920"

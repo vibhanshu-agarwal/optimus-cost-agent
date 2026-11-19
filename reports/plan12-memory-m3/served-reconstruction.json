@@ -1,6 +1,6 @@
 {
  "schema": "plan12-memory-m3.served-reconstruction.v1",
- "method": "Zero-paid reconstruction of each memory-on paid prompt's served set (Codex CP4 review 21, ruling 6), from the archived store\n(evidence/store-archive, read-only; no Redis, no Docker): the AOF's commands in order, each stream entry's id being its\ntransaction time. Writes evidence/served-reconstruction.json; make_paid_attempts.py reads it for R2 and R4's serving half.\n\nWhat a turn is served (src/optimus/context/memory_serving.py `from_store` at every paid head, checked below): the project's\nitems whose latest confirmed version is servable (trust not off, status active, `context_engine.memory_projection`) and has a\nstatement, minus branch-limited items on another branch and items whose pinned file changed (both come from the item's\nlineage), then at most 50 user items and 3 agent lessons. For a prompt, the served set is derived only when the inputs fix it:\n- the confirmed view is known: every event at or before the window's start is confirmed there (a `durable` watermark at or\n  past it);\n- no item event falls inside the window, so the read time within it cannot matter;\n- every servable item's lineage has no branch limit and no file pin, so no workspace or branch state is needed;\n- no agent lesson exists and at most 50 user items do, so no ranking or limit applies.\nOtherwise the prompt is UNKNOWN, with the input that is missing.",
+ "method": "Zero-paid reconstruction of each memory-on paid prompt's ELIGIBLE set (Codex CP4 review 21, ruling 6; review 22, rulings 2-3), from the archived store\n(evidence/store-archive, read-only; no Redis, no Docker): the AOF's commands in order, each stream entry's id being its\ntransaction time. Writes evidence/served-reconstruction.json; make_paid_attempts.py reads it for R2, R4's serving half and R6.\n\nEligible is what a successful read serves. The host serves none when the read fails or times out (spec.py `_serve_memory`), so\nwhat was actually served is either the eligible set or empty: a subset of it. That settles a prohibited version's absence\n(R4); a citation's presence (R2) also needs proof that the read succeeded, which this file does not give.\n\nWhat a turn is served (src/optimus/context/memory_serving.py `from_store` at every paid head, checked below): the project's\nitems whose latest confirmed version is servable (trust not off, status active, `context_engine.memory_projection`) and has a\nstatement, minus branch-limited items on another branch and items whose pinned file changed (both come from the item's\nlineage), then at most 50 user items and 3 agent lessons. For a prompt, the served set is derived only when the inputs fix it:\n- the confirmed view is known: every event at or before the window's start was confirmed before it. A `durable` watermark's\n  value is an event id, not the time it was set, so the SET must be followed in the AOF by a stream entry whose id is at or\n  before the window's start. Redis gives an entry an id no earlier than its execution time, so that entry, and the SET before\n  it, ran by then. Or the event was written by a host command whose recorded result is a success (replies.json \"host command\n  ...\"), in a window that closed by then: the store answers confirmed only after the watermark moves, and the host reports\n  success only for a confirmed reply (ADR-042). Only events that decide eligibility need this: an item whose newest version is\n  servable, or whose newest version ends an earlier servable one;\n- no item event falls inside the window, so the read time within it cannot matter;\n- every servable item's lineage has no branch limit and no file pin, so no workspace or branch state is needed;\n- no agent lesson exists and at most 50 user items do, so no ranking or limit applies.\nOtherwise the prompt is UNKNOWN, with the input that is missing.",
  "source": {
   "aof": "p1211-cp4-zed/evidence/store-archive/appendonly.aof.1.incr.aof",
   "aof_sha256": "hex:bcf176be2038f6813c155b4040b8ecb64c39a4f84a8b9e4884cc94ed0dda5f09",
@@ -25,12 +25,13 @@
     1795070411991.813,
     1795070502439.2114
    ],
-   "served": null,
+   "eligible": null,
    "status": "UNKNOWN",
    "why_unknown": [
     "item events inside the window: ['m-ead69057e3a39423@1 at 1795070491653-0']"
    ],
    "latest_events_at_start": [],
+   "confirmation": {},
    "events_in_window": [
     {
      "item": "m-ead69057e3a39423",
@@ -42,14 +43,15 @@
      "stream_id": "1795070491653-0"
     }
    ],
-   "prohibited_at_start": []
+   "prohibited_at_start": [],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P2": {
    "window_ms": [
     1795070530469.0195,
     1795072318749.4814
    ],
-   "served": [
+   "eligible": [
     "m-ead69057e3a39423@1"
    ],
    "status": "DERIVED",
@@ -57,15 +59,19 @@
    "latest_events_at_start": [
     "m-ead69057e3a39423@1 active trust=user-authored at 1795070491653-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@1": "written by a host command recorded as a success, in a window that closed before this one"
+   },
    "events_in_window": [],
-   "prohibited_at_start": []
+   "prohibited_at_start": [],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P3": {
    "window_ms": [
     1795072332996.0962,
     1795072720611.7705
    ],
-   "served": null,
+   "eligible": null,
    "status": "UNKNOWN",
    "why_unknown": [
     "item events inside the window: ['m-ead69057e3a39423@2 at 1795072709679-0']"
@@ -73,6 +79,9 @@
    "latest_events_at_start": [
     "m-ead69057e3a39423@1 active trust=user-authored at 1795070491653-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@1": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [
     {
      "item": "m-ead69057e3a39423",
@@ -86,14 +95,15 @@
    ],
    "prohibited_at_start": [
     "m-ead69057e3a39423@1"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P4": {
    "window_ms": [
     1795072735467.234,
     1795072849059.266
    ],
-   "served": [
+   "eligible": [
     "m-ead69057e3a39423@2"
    ],
    "status": "DERIVED",
@@ -101,17 +111,21 @@
    "latest_events_at_start": [
     "m-ead69057e3a39423@2 active trust=user-authored at 1795072709679-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@2": "written by a host command recorded as a success, in a window that closed before this one"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-ead69057e3a39423@1"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P4b": {
    "window_ms": [
     1795072880018.6401,
     1795073497303.4253
    ],
-   "served": [
+   "eligible": [
     "m-ead69057e3a39423@2"
    ],
    "status": "DERIVED",
@@ -119,17 +133,21 @@
    "latest_events_at_start": [
     "m-ead69057e3a39423@2 active trust=user-authored at 1795072709679-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@2": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-ead69057e3a39423@1"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P5": {
    "window_ms": [
     1795073512004.035,
     1795073553002.94
    ],
-   "served": null,
+   "eligible": null,
    "status": "UNKNOWN",
    "why_unknown": [
     "item events inside the window: ['m-ead69057e3a39423@3 at 1795073539519-0']"
@@ -137,6 +155,9 @@
    "latest_events_at_start": [
     "m-ead69057e3a39423@2 active trust=user-authored at 1795072709679-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@2": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [
     {
      "item": "m-ead69057e3a39423",
@@ -151,50 +172,59 @@
    "prohibited_at_start": [
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P6": {
    "window_ms": [
     1795073570666.8804,
     1795073621434.6943
    ],
-   "served": [],
+   "eligible": [],
    "status": "DERIVED",
    "why_unknown": [],
    "latest_events_at_start": [
     "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "written by a host command recorded as a success, in a window that closed before this one"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P7": {
    "window_ms": [
     1795073636116.171,
     1795073688456.81
    ],
-   "served": [],
+   "eligible": [],
    "status": "DERIVED",
    "why_unknown": [],
    "latest_events_at_start": [
     "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P7b": {
    "window_ms": [
     1795088126402.464,
     1795088632196.3596
    ],
-   "served": null,
+   "eligible": null,
    "status": "UNKNOWN",
    "why_unknown": [
     "item events inside the window: ['m-a8cf300a095f306b@1 at 1795088626479-0']"
@@ -202,6 +232,9 @@
    "latest_events_at_start": [
     "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [
     {
      "item": "m-a8cf300a095f306b",
@@ -217,14 +250,15 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P7c": {
    "window_ms": [
     1795089668107.6238,
     1795089737173.625
    ],
-   "served": null,
+   "eligible": null,
    "status": "UNKNOWN",
    "why_unknown": [
     "item events inside the window: ['m-4520707e08b9d143@1 at 1795089701775-0']"
@@ -233,6 +267,9 @@
     "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
     "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [
     {
      "item": "m-4520707e08b9d143",
@@ -249,14 +286,15 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P8": {
    "window_ms": [
     1795089853204.801,
     1795089993159.1978
    ],
-   "served": null,
+   "eligible": null,
    "status": "UNKNOWN",
    "why_unknown": [
     "item events inside the window: ['m-4554b0b60f99b2ca@1 at 1795089971984-0', 'm-4520707e08b9d143@2 at 1795089972008-0']"
@@ -266,6 +304,9 @@
     "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0",
     "m-4520707e08b9d143@1 active trust=off at 1795089701775-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [
     {
      "item": "m-4554b0b60f99b2ca",
@@ -292,14 +333,15 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-ON/P9": {
    "window_ms": [
     1795090013183.1428,
     1795090748542.016
    ],
-   "served": [
+   "eligible": [
     "m-4554b0b60f99b2ca@1"
    ],
    "status": "DERIVED",
@@ -310,6 +352,10 @@
     "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
     "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window",
+    "m-4554b0b60f99b2ca@1": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-4520707e08b9d143@1",
@@ -318,14 +364,15 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-RETURN/R1": {
    "window_ms": [
     1795095474073.277,
     1795099926142.5852
    ],
-   "served": [
+   "eligible": [
     "m-4554b0b60f99b2ca@1"
    ],
    "status": "DERIVED",
@@ -336,6 +383,10 @@
     "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
     "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window",
+    "m-4554b0b60f99b2ca@1": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-4520707e08b9d143@1",
@@ -344,14 +395,15 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-RETURN/R2": {
    "window_ms": [
     1795100073916.641,
     1795100467741.324
    ],
-   "served": [
+   "eligible": [
     "m-4554b0b60f99b2ca@1"
    ],
    "status": "DERIVED",
@@ -362,6 +414,10 @@
     "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
     "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window",
+    "m-4554b0b60f99b2ca@1": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-4520707e08b9d143@1",
@@ -370,14 +426,15 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-RETURN-B/R1b": {
    "window_ms": [
     1795105843376.6995,
     1795105983744.014
    ],
-   "served": [
+   "eligible": [
     "m-4554b0b60f99b2ca@1"
    ],
    "status": "DERIVED",
@@ -388,6 +445,10 @@
     "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
     "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window",
+    "m-4554b0b60f99b2ca@1": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-4520707e08b9d143@1",
@@ -396,14 +457,15 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-RETURN-C/R1c": {
    "window_ms": [
     1795111343321.11,
     1795112845657.8933
    ],
-   "served": [
+   "eligible": [
     "m-4554b0b60f99b2ca@1"
    ],
    "status": "DERIVED",
@@ -414,6 +476,10 @@
     "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
     "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window",
+    "m-4554b0b60f99b2ca@1": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-4520707e08b9d143@1",
@@ -422,14 +488,15 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   },
   "M3-ZED-RETURN-C/R2c": {
    "window_ms": [
     1795112866232.7441,
     1795112990432.3245
    ],
-   "served": [
+   "eligible": [
     "m-4554b0b60f99b2ca@1"
    ],
    "status": "DERIVED",
@@ -440,6 +507,10 @@
     "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
     "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
    ],
+   "confirmation": {
+    "m-ead69057e3a39423@3": "AOF order: its durable SET precedes a stream entry stamped at or before the window",
+    "m-4554b0b60f99b2ca@1": "AOF order: its durable SET precedes a stream entry stamped at or before the window"
+   },
    "events_in_window": [],
    "prohibited_at_start": [
     "m-4520707e08b9d143@1",
@@ -448,7 +519,8 @@
     "m-ead69057e3a39423@1",
     "m-ead69057e3a39423@2",
     "m-ead69057e3a39423@3"
-   ]
+   ],
+   "meaning": "eligible: what a successful read serves; a failed read serves none"
   }
  }
 }
