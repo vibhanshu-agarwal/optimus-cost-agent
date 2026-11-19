@@ -404,6 +404,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         "EMPIRICAL_ROUTER_METADATA_MALFORMED",
         "EMPIRICAL_ROUTER_METADATA_MISSING",
         "EMPIRICAL_ROUTER_PIPELINE",
+        "REPLY_CONTENT_MALFORMED",
         "FIXTURE_POLICY",
         "STAGE_C_LEDGER_NOT_ABSOLUTE",
         "STAGE_C_PROFILE_MIGRATED",

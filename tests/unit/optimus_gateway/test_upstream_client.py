@@ -138,9 +138,6 @@ def test_parse_openai_chat_completion_rejects_absent_provider_cost() -> None:
         (("usage", "prompt_tokens"), True, "token"),
         (("usage", "completion_tokens"), "18", "token"),
         (("id",), "", "id"),
-        (("choices",), [], "choices"),
-        (("choices", 0, "message"), None, "message"),
-        (("choices", 0, "message", "content"), None, "content"),
     ],
 )
 def test_parse_openai_chat_completion_rejects_malformed_required_fields(
@@ -154,6 +151,29 @@ def test_parse_openai_chat_completion_rejects_malformed_required_fields(
 
     with pytest.raises(RuntimeError, match=error):
         parse_openai_chat_completion(body, _openrouter_headers(), requested_model="claude-haiku")
+
+
+@pytest.mark.parametrize(
+    ("path", "value", "error"),
+    [
+        (("choices",), [], "upstream response missing choices"),
+        (("choices", 0, "message"), None, "upstream response missing message"),
+        (("choices", 0, "message", "content"), 7, "upstream response message content is not text"),
+        (("choices", 0, "message", "content"), None, None),
+    ],
+)
+def test_a_reply_shape_problem_keeps_the_usage_beside_its_reason(path: tuple[str | int, ...], value: object, error: str | None) -> None:
+    """CP4 review 9 (A1): the shape is reported as ``content_error`` (null content is valid empty text), never by
+    discarding the billed reply's usage."""
+    body = _openrouter_body()
+    target: object = body
+    for segment in path[:-1]:
+        target = target[segment]  # type: ignore[index]
+    target[path[-1]] = value  # type: ignore[index]
+
+    result = parse_openai_chat_completion(body, _openrouter_headers(), requested_model="claude-haiku")
+    assert (result.content_error, result.output_text) == (error, "")
+    assert result.cost_usd == parse_openai_chat_completion(_openrouter_body(), _openrouter_headers(), requested_model="claude-haiku").cost_usd
 
 
 _SECOND_SELECTED = {"provider": "Google", "model": "anthropic/claude-haiku-4.5", "selected": True}

@@ -13,7 +13,7 @@ import uuid
 from typing import Any, Final
 
 from optimus_gateway import request_diagnostics, usage_capture, usage_price_snapshots
-from optimus_gateway.model_policy import ModelPolicyRefusal, admit_decision, check_decision_reply, parse_route_binding
+from optimus_gateway.model_policy import ModelPolicyRefusal, admit_decision, check_decision_reply, check_reply_content, parse_route_binding
 from optimus_gateway.models import GatewayServiceConfig, authorize_bearer
 from optimus_gateway.responses import (
     _REQUEST_BUDGET_FAILURE,
@@ -116,6 +116,7 @@ def handle_decision_request(
     gateway_usage["cost_usd"] = format_cost_usd(result.cost_usd)
     attempts.append(_attempt_record(1, attempt_id, ATTEMPT_COMPLETED, provider_request_id=result.decision_id))
     try:
+        check_reply_content(getattr(result, "answers_error", None))
         check_decision_reply(admitted, result, policy)
     except ModelPolicyRefusal as exc:
         # The call happened and was billed: the error keeps its usage so the caller records it.

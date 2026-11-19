@@ -115,6 +115,7 @@ REPLY_REFUSAL_CODES = frozenset(
         "EMPIRICAL_ROUTER_METADATA_MISSING",
         "EMPIRICAL_ROUTER_PIPELINE",
         "FINISH_STATUS_UNVERIFIED",
+        "REPLY_CONTENT_MALFORMED",
     }
 )
 # The enforced attempt contract's failures (optimus_gateway.responses: `UPSTREAM_ATTEMPT_<outcome>`).

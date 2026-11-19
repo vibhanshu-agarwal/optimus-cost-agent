@@ -231,6 +231,9 @@ class ProviderMessageResult:
     router_metadata_error: str | None = None
     """Why the router metadata could not be read (malformed, or more than one selected endpoint). Its
     routing fields are then all ``None``; the reply's usage and cost do not depend on it."""
+    content_error: str | None = None
+    """Why the reply's choice, message or content could not be read (``output_text`` is then empty). The usage was
+    still read: the enforced route refuses the billed reply with REPLY_CONTENT_MALFORMED and keeps its cost."""
 
 
 class UpstreamClient(Protocol):
@@ -398,7 +401,10 @@ class UrllibOpenAICompatibleClient:
                     )
             except AttemptDeadlineExpired as exc:
                 raise _with_failure(RetryableUpstreamError("upstream attempt abandoned"), {"kind": exc.failure_kind}) from exc
-            return parse_openai_chat_completion(body, headers, requested_model=model)
+            result = parse_openai_chat_completion(body, headers, requested_model=model)
+            if result.content_error is not None:
+                raise RuntimeError(result.content_error)  # today's routing keeps its 502 for a malformed reply
+            return result
 
         def report_failure(
             attempt: int,
@@ -561,33 +567,42 @@ class DecisionResult:
     input_tokens: int
     output_tokens: int
     cost_usd: Decimal
+    answers_error: str | None = None
+    """Why the answers could not be verified (``answers`` is then empty). The usage was still read: the route refuses
+    the billed reply with REPLY_CONTENT_MALFORMED and keeps its cost (CP4 review 9)."""
 
 
 _DECISION_TYPES: Final = frozenset({"choice", "noul", "score"})
 
 
+def _decision_answers_error(answers: Any, questions: Mapping[str, Any]) -> str | None:
+    """Every asked question has exactly one answer of its own type with a value in range, else why not."""
+    if not isinstance(answers, dict) or set(answers) != set(questions):
+        return "decision answers do not match the questions"
+    for name, answer in answers.items():
+        asked = questions[name]
+        kind = asked.get("type") if isinstance(asked, dict) else None
+        if not isinstance(answer, dict) or answer.get("type") != kind or kind not in _DECISION_TYPES:
+            return "a decision answer has the wrong type"
+        value = answer.get(kind)
+        if kind == "choice" and not (isinstance(value, str) and value in asked.get("criteria", {})):
+            return "a choice answer is not one of the options"
+        if kind == "noul" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1):
+            return "a noul answer is not a probability"
+        if kind == "score" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= max(len(asked.get("criteria", [])) - 1, 0)):
+            return "a score answer is outside its scale"
+    return None
+
+
 def parse_decision_response(body: Mapping[str, Any], *, questions: Mapping[str, Any]) -> DecisionResult:
-    """Parse a System One reply, failing closed: every asked question has exactly one answer of its own type with a
-    value in range, and the usage is complete. A reply that cannot be verified raises ``RuntimeError``."""
+    """Parse a System One reply, failing closed: a reply whose id, model or usage cannot be verified raises
+    ``RuntimeError``; answers that do not fit the questions are kept as ``answers_error`` beside the verified usage."""
     decision_id, resolved_model = body.get("id"), body.get("model")
     if not isinstance(decision_id, str) or not decision_id or not isinstance(resolved_model, str) or not resolved_model:
         raise RuntimeError("decision response has no id or model")
     provider = body.get("provider")
     answers = body.get("answers")
-    if not isinstance(answers, dict) or set(answers) != set(questions):
-        raise RuntimeError("decision answers do not match the questions")
-    for name, answer in answers.items():
-        asked = questions[name]
-        kind = asked.get("type") if isinstance(asked, dict) else None
-        if not isinstance(answer, dict) or answer.get("type") != kind or kind not in _DECISION_TYPES:
-            raise RuntimeError("a decision answer has the wrong type")
-        value = answer.get(kind)
-        if kind == "choice" and not (isinstance(value, str) and value in asked.get("criteria", {})):
-            raise RuntimeError("a choice answer is not one of the options")
-        if kind == "noul" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 1):
-            raise RuntimeError("a noul answer is not a probability")
-        if kind == "score" and not (isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= max(len(asked.get("criteria", [])) - 1, 0)):
-            raise RuntimeError("a score answer is outside its scale")
+    answers_error = _decision_answers_error(answers, questions)
     usage = body.get("usage")
     if not isinstance(usage, dict):
         raise RuntimeError("decision response has no usage")
@@ -604,10 +619,11 @@ def parse_decision_response(body: Mapping[str, Any], *, questions: Mapping[str, 
         decision_id=decision_id,
         resolved_model=resolved_model,
         resolved_provider=provider if isinstance(provider, str) and provider else None,
-        answers=answers,
+        answers=answers if answers_error is None and isinstance(answers, dict) else {},
         input_tokens=_required_nonnegative_int(usage.get("input_tokens"), "input_tokens"),
         output_tokens=_required_nonnegative_int(usage.get("output_tokens"), "output_tokens"),
         cost_usd=cost_usd,
+        answers_error=answers_error,
     )
 
 
@@ -822,21 +838,28 @@ def parse_openai_chat_completion(
     if not isinstance(message_id, str) or not message_id:
         raise RuntimeError("upstream response missing id")
 
+    # The reply's shape never discards its usage (CP4 review 9): a malformed choice, message or content is reported as
+    # ``content_error`` for the caller to refuse, after the billed attempt's usage is read below. A null or absent
+    # content is valid empty text (a length stop that spent every output token on reasoning).
+    output_text, content_error, raw_finish = "", None, None
     choices = body.get("choices")
+    first = choices[0] if isinstance(choices, list) and choices else None
+    message = first.get("message") if isinstance(first, dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(choices, list) or not choices:
-        raise RuntimeError("upstream response missing choices")
-    first = choices[0]
-    if not isinstance(first, dict):
-        raise RuntimeError("upstream response missing choices[0]")
-    message = first.get("message")
-    if not isinstance(message, dict):
-        raise RuntimeError("upstream response missing message")
-    output_text = message.get("content")
-    if not isinstance(output_text, str):
-        raise RuntimeError("upstream response missing message content")
+        content_error = "upstream response missing choices"
+    elif not isinstance(first, dict):
+        content_error = "upstream response missing choices[0]"
+    elif not isinstance(message, dict):
+        content_error = "upstream response missing message"
+    elif content is not None and not isinstance(content, str):
+        content_error = "upstream response message content is not text"
+    elif content is not None:
+        output_text = content
+    if isinstance(first, dict):
+        raw_finish = first.get("finish_reason")
     # A missing or malformed finish status reads as None ("not reported"): it is never trusted as
     # complete, and the billed call keeps its usage either way (Plan 12.2 Task 5).
-    raw_finish = first.get("finish_reason")
     finish_reason = raw_finish.strip().casefold() if isinstance(raw_finish, str) and raw_finish.strip() else None
 
     usage = body.get("usage")
@@ -895,6 +918,7 @@ def parse_openai_chat_completion(
         router_pipeline=router.pipeline,
         router_guardrails=router.guardrails,
         router_metadata_error=router.error,
+        content_error=content_error,
     )
 
 

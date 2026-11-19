@@ -60,6 +60,7 @@ __all__ = [
     "check_decision_reply",
     "check_experimental_reply",
     "check_finish_status",
+    "check_reply_content",
     "parse_route_binding",
     "unflagged_guardrail_only",
 ]
@@ -389,6 +390,13 @@ def check_decision_reply(admitted: AdmittedRequest, result: Any, policy: Gateway
             f"reported {result.input_tokens} input tokens, estimated at most {admitted.decision.input_tokens}",
             status=422,
         )
+
+
+def check_reply_content(error: str | None) -> None:
+    """A completed reply whose choice, message, content or answers could not be read is refused as a permanent (422)
+    billed result, its usage kept (CP4 review 9). ``error`` is the parser's own reason, never the reply's text."""
+    if error is not None:
+        raise ModelPolicyRefusal("REPLY_CONTENT_MALFORMED", error, status=422)
 
 
 def check_finish_status(finish_reason: str | None) -> None:

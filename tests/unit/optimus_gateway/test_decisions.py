@@ -170,6 +170,7 @@ def test_a_typed_request_over_the_classifier_bound_is_refused_before_any_call(tm
         (_result(resolved_provider=None), "EMPIRICAL_PROVIDER_MISSING"),
         (_result(resolved_model="other/model"), "DECISION_MODEL_MISMATCH"),
         (_result(input_tokens=10**6), "EMPIRICAL_ESTIMATE_EXCEEDED"),
+        (_result(answers={}, answers_error="decision answers do not match the questions"), "REPLY_CONTENT_MALFORMED"),
     ],
 )
 def test_a_failed_reply_check_keeps_its_usage_and_stops_the_route(tmp_path: Path, result: DecisionResult, code: str) -> None:
@@ -234,13 +235,11 @@ def _reply(**changes: Any) -> dict[str, Any]:
 @pytest.mark.parametrize(
     "reply",
     [
-        _reply(answers={}),
-        _reply(answers={"tier": {"type": "noul", "noul": 0.5}}),
-        _reply(answers={"tier": {"type": "choice", "choice": "huge"}}),
         _reply(usage={"input_tokens": 100, "output_tokens": 10}),
         _reply(usage={"input_tokens": 100, "output_tokens": 10, "cost": -1}),
         _reply(usage={"input_tokens": -1, "output_tokens": 10, "cost": 0}),
         _reply(id=""),
+        _reply(answers={}, usage=None),
     ],
 )
 def test_an_unverifiable_decision_reply_is_refused(reply: dict[str, Any]) -> None:
@@ -248,9 +247,24 @@ def test_an_unverifiable_decision_reply_is_refused(reply: dict[str, Any]) -> Non
         parse_decision_response(reply, questions=QUESTIONS)
 
 
+@pytest.mark.parametrize(
+    ("answers", "reason"),
+    [
+        ({}, "decision answers do not match the questions"),
+        ({"tier": {"type": "noul", "noul": 0.5}}, "a decision answer has the wrong type"),
+        ({"tier": {"type": "choice", "choice": "huge"}}, "a choice answer is not one of the options"),
+    ],
+)
+def test_answers_that_do_not_fit_keep_the_verified_usage(answers: Any, reason: str) -> None:
+    """CP4 review 9 (A1): an answers problem never discards the billed reply's id and usage."""
+    result = parse_decision_response(_reply(answers=answers), questions=QUESTIONS)
+    assert (result.answers_error, dict(result.answers), result.decision_id, result.cost_usd) == (reason, {}, "gen-dec-1", Decimal("0.0000042"))
+
+
 @pytest.mark.parametrize("choice", [[], {}, ["easy"], None, 1])
-def test_a_choice_of_the_wrong_type_is_uncertain_and_stops_the_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, choice: Any) -> None:
+def test_a_choice_of_the_wrong_type_is_refused_billed_and_stops_the_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, choice: Any) -> None:
     # Codex round 68: an unhashable choice once raised TypeError past the attempt contract, leaving Jev routable.
+    # CP4 review 9: the billed reply keeps its usage; it is refused as malformed, not as an attempt of unknown cost.
     snapshot = _snapshot(tmp_path)
     policy = model_policy(snapshot)
     reply = _reply(answers={"tier": {"type": "choice", "choice": choice, "confidence": 0.9}})
@@ -258,8 +272,8 @@ def test_a_choice_of_the_wrong_type_is_uncertain_and_stops_the_route(tmp_path: P
     client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="https://openrouter.ai/api/v1", sleep=lambda _s: None)
 
     status, body = _post(policy, client, snapshot)
-    assert (status, body["code"]) == (502, "UPSTREAM_ATTEMPT_UNCERTAIN")
-    assert [attempt["outcome"] for attempt in body["route_attempts"]] == ["uncertain"]
+    assert (status, body["code"], body["gateway_usage"]["cost_usd"]) == (422, "REPLY_CONTENT_MALFORMED", "0.0000042")
+    assert [(attempt["outcome"], attempt["provider_request_id"]) for attempt in body["route_attempts"]] == [("completed", "gen-dec-1")]
     assert len(wire.sent) == 1
 
     status, body = _post(policy, client, snapshot)
@@ -272,8 +286,7 @@ def test_noul_and_score_answers_are_range_checked() -> None:
     ok = _reply(answers={"bug": {"type": "noul", "noul": 0.2}, "size": {"type": "score", "score": 1.5}})
     assert parse_decision_response(ok, questions=questions).answers["size"]["score"] == 1.5
     for bad in ({"bug": {"type": "noul", "noul": 1.5}, "size": {"type": "score", "score": 1}}, {"bug": {"type": "noul", "noul": 0}, "size": {"type": "score", "score": 3}}):
-        with pytest.raises(RuntimeError):
-            parse_decision_response(_reply(answers=bad), questions=questions)
+        assert parse_decision_response(_reply(answers=bad), questions=questions).answers_error is not None
 
 
 def test_the_real_client_posts_to_system_one_with_the_route_controls(monkeypatch: pytest.MonkeyPatch) -> None:

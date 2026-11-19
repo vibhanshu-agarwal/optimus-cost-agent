@@ -267,6 +267,10 @@ _UNRESOLVED_ARGUMENTS = {
     # A StageCRefusal from `StageCGuard.admit`, made in `stage_c.py`, checked here (Stage C test profiles only).
     ("src/optimus_gateway/responses.py", "_run_enforced_completion", 2, "exc.code"),
     ("src/optimus_gateway/responses.py", "_run_enforced_completion", 2, "exc.detail"),
+    # A reply-shape reason (`content_error`, `_decision_answers_error`): literals in `upstream_client.py`, checked in
+    # test_every_upstream_and_usage_contract_reason_slugs_to_a_reason (CP4 review 9).
+    ("src/optimus_gateway/model_policy.py", "check_reply_content", 1, "error"),
+    ("src/optimus_gateway/upstream_client.py", "UrllibOpenAICompatibleClient.create_message.call", 2, "result.content_error"),
     # The final transient failure's text: the operation's own refusals (`_urlopen_json`, `tool_provider_http.py`).
     ("src/optimus_gateway/upstream_client.py", "call_with_upstream_retry", 1, "str(exc)"),
     # The guard's halt reason: its own `_halt` texts (attempt numbers, charges) or its ledger's (Stage C test only).
@@ -627,7 +631,18 @@ def _module_reasons(relative: str, names: set[str]) -> list[str]:
 def test_every_upstream_and_usage_contract_reason_slugs_to_a_reason() -> None:
     reasons = _module_reasons("src/optimus_gateway/upstream_client.py", {"RuntimeError"})
     reasons += _module_reasons("src/optimus_gateway/responses.py", {"ValueError"})
-    assert "upstream response missing choices[0]" in reasons
+    # CP4 review 9: a reply-shape reason is kept beside the usage rather than raised; it is a refusal's detail.
+    tree = ast.parse((REPO / "src/optimus_gateway/upstream_client.py").read_text(encoding="utf-8"))
+    kept = [
+        node.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Assign, ast.Return)) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+        and (isinstance(node, ast.Return) or any(getattr(target, "id", None) == "content_error" for target in node.targets))
+        and node.value.value.startswith(("upstream response", "decision", "a "))
+    ]  # fmt: skip
+    assert {"upstream response missing choices[0]", "upstream response message content is not text", "a score answer is outside its scale"} <= set(kept)
+    reasons += kept
+    assert "upstream response missing id" in reasons
     assert [reason for reason in reasons if slug(reason) == UNRECOGNIZED] == []
     with pytest.raises(ValueError) as caught:
         assert_gateway_usage_contract({})
