@@ -477,9 +477,12 @@ def _snapped(proposal: Proposal, blocks: dict[str, str]) -> Proposal:
     spans = []
     for span in proposal.spans:
         text = blocks.get(span.block)
-        if text is None or span.end > len(text):
+        if text is None:
             spans.append(span)  # refused by the support check
             continue
+        # A span that runs past its block's end is widened like any other, so it ends at a sentence end inside the block; one that
+        # starts at or past the end touches no sentence and stays as given, refused (CP4 ON P7b: Haiku gave 0-52 for a
+        # 45-character message; left raw, the record kept the model's paraphrase and could not be switched on).
         touched = [(start, end) for start, end in sentence_bounds(text) if start < max(span.end, span.start + 1) and span.start < end]
         spans.append(Span(span.block, min(start for start, _ in touched), max(end for _, end in touched)) if touched else span)
     return dataclasses.replace(proposal, spans=tuple(spans))
