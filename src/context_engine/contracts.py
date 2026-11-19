@@ -119,14 +119,27 @@ class ProtectedTurnState:
 
 
 def turn_source_digest(turn: OrdinaryTurn) -> str:
-    """The identity of one turn's ordinary source, which a checkpoint's coverage is bound to."""
+    """Identify the ordinary source of one committed turn.
+
+    The same input yields the same identity within one version.
+
+    :param turn: The sanitized turn, including its sequence and ordinary text.
+    :returns: An opaque digest for checkpoint source comparison.
+    """
     parts = (str(turn.seq), turn.user_prompt, turn.plan_text, turn.completion_text)
     return hashlib.sha256(_TURN_DOMAIN + _frame(*(part.encode("utf-8") for part in parts))).hexdigest()
 
 
 def history_digest(turns: tuple[OrdinaryTurn, ...], protected: tuple[ProtectedTurnState, ...]) -> str:
-    """The digest of a sanitized snapshot's ordinary and protected content. A separate domain from
-    the host's storage serializer and from any plan approval hash."""
+    """Identify a sanitized history from its ordinary and protected records.
+
+    The same ordered inputs yield the same identity within one version.
+
+    :param turns: Committed ordinary records in snapshot order.
+    :param protected: The matching protected records in the same order.
+    :returns: An opaque digest for the snapshot revision.
+    :raises ValueError: If the two sequences differ in length.
+    """
     digest = hashlib.sha256(_HISTORY_DOMAIN)
     digest.update(len(turns).to_bytes(8, "big"))
     for turn, state in zip(turns, protected, strict=True):

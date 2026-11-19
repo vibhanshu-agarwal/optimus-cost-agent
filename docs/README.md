@@ -160,6 +160,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Document | What it is |
 |---|---|
+| [Public Python API reference](public-python-api.md) | Supported Python import paths, contracts and offline examples |
 | [Ruff first-tranche disposition and verification](superpowers/reports/2026-10-30-ruff-first-tranche.md) | All 27 original C4/PERF/RET/ASYNC findings, src-only gate, exact-line contracts and provisional Windows evidence under issue #324 |
 | [Ruff first-tranche source and evidence manifest](superpowers/reports/2026-10-30-ruff-first-tranche-manifest.yaml) | Original tested hashes, review-fix delta and retained evidence hashes for the bounded Ruff tranche |
 | [Pyscn evaluation](superpowers/reports/2026-11-18-issue332-pyscn-evaluation.md) and [evidence manifest](superpowers/reports/2026-11-18-issue332-pyscn-evaluation-evidence.yaml) | Qualified eight-file clone, dead-code and complexity evaluation under issue #332 |
