@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import stat
 from pathlib import Path
 
-from evidence_handoff.collector.bundles import _atomic_write_json, _read_complete_json
+from evidence_handoff.collector.bundles import _atomic_write_json, _is_under, _read_complete_json
 from evidence_handoff.collector.models import AdapterParameter, Scenario
 from evidence_handoff.collector.scenarios import scenario_sha256
+from evidence_handoff.ledger.canonical import canonical_json
 
 from .common import HostError
 
@@ -47,6 +49,21 @@ def prepare_fixtures(
     return marker
 
 
+def _matches_precondition_record(path: Path, expected: bytes) -> bool:
+    try:
+        metadata = path.lstat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or getattr(metadata, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT
+            or metadata.st_size != len(expected)
+        ):
+            return False
+        with path.open("rb") as existing:
+            return existing.read(len(expected) + 1) == expected
+    except OSError:
+        return False
+
+
 def run_preconditions(
     *,
     capture_root: Path,
@@ -73,7 +90,6 @@ def run_preconditions(
                         codes.append("capture_root_ready")
                 else:
                     codes.append("unknown_precondition")
-    run_dir.mkdir(parents=True, exist_ok=True)
     result_path = run_dir / "precondition-result.json"
     payload = {
         "schema": "evidence-precondition-result-v1",
@@ -81,7 +97,13 @@ def run_preconditions(
         "run_id": run_id,
         "codes": codes,
     }
-    _atomic_write_json(result_path, payload)
+    try:
+        if not _is_under(run_dir, capture_root):
+            raise HostError("atomic_write_failed")
+        if not _matches_precondition_record(result_path, canonical_json(payload)):
+            _atomic_write_json(result_path, payload)
+    except (OSError, ValueError):
+        raise HostError("atomic_write_failed") from None
     if any(
         code.endswith("_missing")
         or code.endswith("_incomplete")
