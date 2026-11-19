@@ -125,7 +125,19 @@ def test_any_other_pair_is_refused_before_dispatch(purpose: str, reasoning: str)
     assert (status, body["code"]) == (400, "REASONING_NOT_APPROVED") and upstream.calls == []
 
 
-@pytest.mark.parametrize("scoped", [{"purpose": "memory.extract_user"}, {"reasoning": "none"}, {"purpose": "Memory", "reasoning": "none"}, {"purpose": "memory.extract_user", "reasoning": "off"}])
+@pytest.mark.parametrize(
+    "scoped",
+    [
+        {"purpose": "memory.extract_user"},
+        {"reasoning": "none"},
+        {"purpose": "Memory", "reasoning": "none"},
+        {"purpose": "memory.extract_user", "reasoning": "off"},
+        {"purpose": "memory.extract_user", "reasoning": []},  # Codex review 11: never a TypeError past the structured refusal
+        {"purpose": "memory.extract_user", "reasoning": {}},
+        {"purpose": ["memory.extract_user"], "reasoning": "none"},
+        {"purpose": {}, "reasoning": "none"},
+    ],
+)
 def test_a_malformed_scoped_binding_is_refused(scoped: dict[str, str]) -> None:
     upstream = Replying()
     status, body = _post(_attached(), upstream, **scoped)

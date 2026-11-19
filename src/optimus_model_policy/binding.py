@@ -376,7 +376,7 @@ class RouteBinding:
             raise BindingError("BINDING_MALFORMED", "purpose and reasoning are bound together or not at all")
         if purpose is not None and not (isinstance(purpose, str) and _PURPOSE.fullmatch(purpose)):
             raise BindingError("BINDING_MALFORMED", "purpose must be a dotted lowercase name")
-        if reasoning is not None and reasoning not in WIRE_REASONING_EFFORTS:
+        if reasoning is not None and not (isinstance(reasoning, str) and reasoning in WIRE_REASONING_EFFORTS):
             raise BindingError("BINDING_MALFORMED", "reasoning must be an upstream reasoning level")
         return cls(
             registry_hash=_hex_digest(raw["registry_hash"], "registry_hash"),
