@@ -1262,12 +1262,12 @@ def test_strict_json_rejects_numeric_overflow_to_infinity(payload):
     assert excinfo.value.code == "non_finite_number"
 
 
-def test_strict_json_maps_parser_recursion_to_invalid_json(monkeypatch):
-    # F1: exercise parser failure without assuming a runtime-specific nesting limit.
-    def too_deep(*_args, **_kwargs):
-        raise RecursionError
+@pytest.mark.parametrize("error", [RecursionError, ValueError])
+def test_strict_json_maps_decoder_failure_to_invalid_json(monkeypatch, error):
+    def reject(*_args, **_kwargs):
+        raise error("simulated JSON decoder refusal")
 
-    monkeypatch.setattr(c, "json", SimpleNamespace(JSONDecodeError=json.JSONDecodeError, loads=too_deep))
+    monkeypatch.setattr(c, "json", SimpleNamespace(JSONDecodeError=json.JSONDecodeError, loads=reject))
     with pytest.raises(c.ContractError) as excinfo:
         c.strict_json_loads(b"[]")
     assert excinfo.value.code == "invalid_json"

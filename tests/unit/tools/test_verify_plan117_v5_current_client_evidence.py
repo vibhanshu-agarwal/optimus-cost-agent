@@ -106,6 +106,25 @@ def test_integrity_failure_never_masks_a_stop_signal(tmp_path, monkeypatch, caps
     assert out["disposition"] == D.ZERO_ENTRY_REACHABLE_STOP.value
 
 
+@pytest.mark.parametrize("captured_reopen", [False, True])
+def test_attestation_decoder_refusal_preserves_manifest_disposition(
+    tmp_path, monkeypatch, capsys, windows_shaped_paths, captured_reopen,
+):
+    bundle = Bundle(tmp_path, monkeypatch, host_mod.FakeHostOptions(reopen_load_arm="a_prime" if captured_reopen else None))
+    attestation = bundle.attestation.read_text(encoding="utf-8")
+
+    def reject_attestation(payload, *args, **kwargs):
+        if payload == attestation:
+            raise ValueError("simulated attestation decoder refusal")
+        return json.loads(payload, *args, **kwargs)
+
+    monkeypatch.setattr(c, "json", SimpleNamespace(**{**vars(json), "loads": reject_attestation}))
+    code, out, _ = bundle.run(capsys)
+    assert code == 2 and out["integrity"] == "failed" and "attestation_invalid" in out["failures"]
+    expected = D.ZERO_ENTRY_REACHABLE_STOP if captured_reopen else D.INVALID_CURRENT_CLIENT_GATE
+    assert out["disposition"] == expected.value
+
+
 @pytest.mark.parametrize("target", ["manifest", "report"])
 def test_altered_promoted_bytes_fail(tmp_path, monkeypatch, capsys, windows_shaped_paths, target):
     bundle = Bundle(tmp_path, monkeypatch)

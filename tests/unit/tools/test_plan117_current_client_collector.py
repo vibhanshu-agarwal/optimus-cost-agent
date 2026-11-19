@@ -1991,6 +1991,75 @@ def test_a_strictly_invalid_reopen_load_line_is_still_a_positive_signal(tmp_path
     assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP
 
 
+@pytest.mark.parametrize("fallback_failure", [False, True], ids=["strict-refusal", "fallback-refusal"])
+@pytest.mark.parametrize("captured_reopen", [False, True])
+def test_wire_decoder_failure_preserves_independent_reopen_evidence(
+    tmp_path, windows_shaped_paths, monkeypatch, fallback_failure, captured_reopen,
+):
+    from types import SimpleNamespace
+
+    arm = "r_cancelled"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_reopen else None))
+    run.collect()
+    marker = '{"fixture":"wire decoder failure"}'
+    wire = run.run_dir / "artifacts" / "plan117" / "arms" / arm / "reopen" / "relay" / "zed-to-agent.bin"
+    wire.write_bytes(marker.encode("utf-8") + b"\n" + wire.read_bytes())
+
+    def strict_decode(payload, *args, **kwargs):
+        if payload == marker:
+            if fallback_failure:
+                raise json.JSONDecodeError("simulated strict refusal", payload, 0)
+            raise ValueError("simulated numeric decoder refusal")
+        return json.loads(payload, *args, **kwargs)
+
+    monkeypatch.setattr(c, "json", SimpleNamespace(**{**vars(json), "loads": strict_decode}))
+    if fallback_failure:
+        def fallback_decode(payload, *args, **kwargs):
+            if payload == marker:
+                raise RecursionError("simulated fallback decoder limit")
+            return json.loads(payload, *args, **kwargs)
+
+        monkeypatch.setattr(col, "json", SimpleNamespace(**{**vars(json), "loads": fallback_decode}))
+
+    raw = run.raw()
+    gate = c.reduce_document(raw, layer="raw")
+    assert "relay_capture_invalid" in raw["custody_failures"]
+    if captured_reopen:
+        assert gate.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert gate.primary.reason is R.REOPEN_LOAD_OBSERVED
+    else:
+        assert gate.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
+@pytest.mark.parametrize("captured_reopen", [False, True], ids=["invalid", "stop"])
+def test_relay_text_encoding_failure_preserves_independent_reopen_evidence(tmp_path, windows_shaped_paths, monkeypatch, captured_reopen):
+    arm = "r_refusal"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_reopen else None))
+    run.collect()
+    first_session = run.host_mod.session_for(arm, "first")
+    wire_event = col.wire_event
+
+    def normalize(index, direction, message):
+        params = message.message.get("params", {})
+        update = params.get("update", {})
+        if params.get("sessionId") == first_session and "content" in update:
+            raise UnicodeEncodeError("utf-8", "synthetic text", 0, 1, "simulated relay text encoding failure")
+        return wire_event(index, direction, message)
+
+    monkeypatch.setattr(col, "wire_event", normalize)
+    raw = run.raw()
+    first = next(arm_record for arm_record in raw["arms"] if arm_record["arm_id"] == arm)["launches"][0]
+    assert first["undecodable_bytes"] is True
+
+    gate = c.reduce_document(raw, layer="raw")
+    assert R.WIRE_INCONSISTENT in _codes(gate)
+    if captured_reopen:
+        assert gate.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert gate.primary.reason is R.REOPEN_LOAD_OBSERVED
+    else:
+        assert gate.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
 def test_parse_ndjson_recovers_strictly_invalid_objects_but_flags_them():
     messages, undecodable = col.parse_ndjson_messages(b'{"a":1e400}\n{"a":1,"a":2}\n')
     assert undecodable is True and [m.message for m in messages] == [{"a": float("inf")}, {"a": 2}]
