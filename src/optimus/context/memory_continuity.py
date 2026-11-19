@@ -36,6 +36,7 @@ BRIEF_AFTER_MS: Final = 7 * 24 * 3600 * 1000  # plan v5: after >= 7 days, at the
 MAX_AMENDMENTS: Final = 8
 MAX_COMMITS_SHOWN: Final = 10
 MAX_ITEMS_SHOWN: Final = 10
+RESPONDED: Final = "responded"  # a remaining-work reference's suffix: the model's own reply was delivered (`Settled.responded`)
 MAX_CHECKPOINTS: Final = 20  # what the store keeps per project (memory_store_contract.MAX_CHECKPOINTS)
 CHECKPOINT_TRIES: Final = 3
 _OBJECTIVE_REASONS: Final = frozenset({"task_request", "ambiguous_assertion", "durable_marker"})
@@ -54,6 +55,9 @@ class Settled:
     plan_hash: str = ""
     verification: tuple[str, ...] = ()  # host evidence references of checks that ran
     pending: bool = False  # the turn ended awaiting the user's approval
+    # Planning stopped on the model's own reply (PLANNING_MODEL_REFUSED), which was delivered: an answer to a question or a
+    # genuine refusal alike, never a completed task. The outcome stays as settled (Codex CP4 review 18, ruling 2).
+    responded: bool = False
 
 
 class Continuity:
@@ -149,7 +153,8 @@ class Continuity:
             provenance=settled.run_id, plan_hash=settled.plan_hash, pending=(f"{settled.run_id}:approval",) if settled.pending else (),
             amendments=amendments, completion=(f"{settled.run_id}:completed",) if settled.outcome == "completed" else (),
             verification=tuple(settled.verification[:32]),
-            remaining=() if settled.outcome == "completed" or settled.pending else (f"{settled.run_id}:{_opaque(settled.outcome)}",))
+            remaining=() if settled.outcome == "completed" or settled.pending
+            else (f"{settled.run_id}:{RESPONDED if settled.responded else _opaque(settled.outcome)}",))
         for attempt in range(CHECKPOINT_TRIES):
             try:
                 with self._store.lease() as token:
@@ -190,7 +195,9 @@ class Continuity:
             lines.append(f"- Its plan: `{point.plan_hash[:12]}` (history: an earlier approval is never a current one).")
         if point.pending:
             lines.append("- It ended waiting for an approval; that approval is not carried over.")
-        if point.remaining:
+        if point.remaining and all(ref.endswith(f":{RESPONDED}") for ref in point.remaining):
+            lines.append("- A reply was delivered, but planning did not complete a task (the reply may have been an answer or a refusal).")
+        elif point.remaining:
             lines.append("- It ended unfinished.")
         if point.amendments:
             lines.append(f"- The objective was amended {len(point.amendments)} time{'s' if len(point.amendments) != 1 else ''}.")

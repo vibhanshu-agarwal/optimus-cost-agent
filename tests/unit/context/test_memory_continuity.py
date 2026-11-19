@@ -63,6 +63,25 @@ def _turn(n: int, prompt: str, outcome: str = "completed", **kwargs: Any) -> Set
     return Settled(sequence=n, run_id=f"run-{n}", outcome=outcome, prompt=prompt, **kwargs)
 
 
+@pytest.mark.parametrize(("responded", "line"), [
+    (True, "- A reply was delivered, but planning did not complete a task (the reply may have been an answer or a refusal)."),
+    (False, "- It ended unfinished."),
+])
+def test_a_delivered_reply_is_never_called_unfinished_or_completed_and_the_outcome_stays(repo: Path, responded: bool, line: str) -> None:
+    """Codex CP4 review 18, ruling 2 (Zed RETURN R2): an Agent-mode question answered on the planner's refusal stop settled as
+    failed; the brief then said it ended unfinished. The raw outcome stays; a delivered reply is said to be one, not completion."""
+    adapter = _adapter(store()[0])
+    clock = _Clock()
+    assert _session(adapter, repo, "s-1", clock).record(_turn(1, "Should I run the tests before pushing?", "failed", responded=responded))
+    point = _session(adapter, repo, "s-1b", clock).previous()[1].checkpoint
+    assert point.outcome == "failed" and point.completion == ()
+    assert point.remaining == ("run-1:responded",) if responded else point.remaining == ("run-1:failed",)
+    clock.now += BRIEF_AFTER_MS
+    brief = _session(adapter, repo, "s-2", clock).brief()
+    assert "outcome failed." in brief and line in brief.splitlines()
+    assert ("It ended unfinished." in brief) is not responded
+
+
 def test_each_settled_turn_is_checkpointed_from_host_state_and_a_status_question_never_replaces_the_objective(repo: Path) -> None:
     adapter = _adapter(store()[0])
     clock = _Clock()

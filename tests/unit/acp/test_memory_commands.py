@@ -605,6 +605,40 @@ def test_the_brief_comes_at_the_first_response_after_a_week_and_every_turn_is_ch
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("reply", ["Yes, run the tests before every push.", "I can't help with that request."])
+def test_a_reply_on_the_planners_refusal_stop_is_checkpointed_as_delivered_and_failed(tmp_path: Path, reply: str) -> None:
+    """Codex CP4 review 18, ruling 2: an answered question and a genuine refusal both end planning on PLANNING_MODEL_REFUSED
+    with the model's own text delivered. Both are checkpointed as failed (the runner's status is kept) with the reply recorded as
+    delivered, never as completion; another failure stays unfinished."""
+    import time
+    from decimal import Decimal
+
+    from optimus.agent.models import AgentRunResult, AgentRunStatus, ExecutionMode
+
+    class Refusing(Runner):
+        def run(self, request: Any, **kwargs: Any) -> Any:
+            self.requests.append(request)
+            return AgentRunResult(
+                run_id=request.run_id, session_id=request.session_id, execution_mode=ExecutionMode.AGENT, status=AgentRunStatus.FAILED,
+                final_state="FAILED", output_text=reply, total_cost_usd=Decimal("0.001"), stop_reason="PLANNING_MODEL_REFUSED")
+
+    async def run() -> None:
+        store = _adapter(purge_store(tmp_path)[0])
+        runner = Refusing()
+        adapter = AcpDuplexAdapter(runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                   outbound=RecordingOutboundChannel(), context_attachment=make_attachment(),
+                                   memory_extractor_factory=lambda _workspace, **_kwargs: _PurgeSource(store))
+        session_id = await new_session(adapter, tmp_path, mode="agent")
+        await rpc(adapter, prompt_request(session_id, "Should I run the tests before pushing?", "p-1"))
+        deadline = time.monotonic() + 5
+        while not store.checkpoints(limit=5) and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        (stored,) = store.checkpoints(limit=5)
+        point = stored.checkpoint
+        assert point.outcome == "failed" and point.completion == () and point.remaining == (f"{point.provenance}:responded",)
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("answer", ["go", "cancel"])
 def test_the_recovery_location_is_set_only_on_its_own_confirmation(tmp_path: Path, answer: str) -> None:
     from optimus.context import memory_recovery as mr
