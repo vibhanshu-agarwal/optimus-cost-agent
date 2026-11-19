@@ -116,5 +116,53 @@
    "outcome": "passed"
   }
  ],
- "passed": true
+ "passed": true,
+ "cp4_amendment": {
+  "commits": [
+   "git:2a483ddd0ee3cc864f4103a7b5b7915e9239efd6",
+   "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97"
+  ],
+  "why": "paid M3-ZED-RETURN: the brief came from items checked serving had not passed (2a483dd), and an Agent-mode answer delivered on the planner's refusal stop was recorded as unfinished work (aa51a7f; Codex CP4 review 18, ruling 2; #512)",
+  "claims": [
+   "the brief's items are the ones checked serving protects for this turn; /welcome reads the same served set",
+   "the served set is read only when the brief is due",
+   "a reply delivered on the planner's refusal stop is checkpointed as delivered: the outcome stays failed, its remaining work is <run>:responded, and the brief says a reply was delivered, never that the work is unfinished or complete"
+  ],
+  "tests": [
+   "tests/unit/context/test_memory_continuity.py::test_the_brief_shows_after_seven_days_and_nothing_expires",
+   "tests/unit/context/test_memory_continuity.py::test_the_brief_lists_memory_changes_but_never_an_off_record",
+   "tests/unit/context/test_memory_continuity.py::test_a_delivered_reply_is_never_called_unfinished_or_completed_and_the_outcome_stays",
+   "tests/unit/acp/test_memory_commands.py::test_a_reply_on_the_planners_refusal_stop_is_checkpointed_as_delivered_and_failed"
+  ],
+  "tests_from": "the final-head full suite (reports/plan12-memory-m3/verification.json); src and tests there equal git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+  "revert": [
+   {
+    "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-brief-cb4a29c.log",
+    "sha256": "hex:745ef84e4561292a7319339c18c835e12a6291ffe7230d61378133c8b9463090",
+    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_brief.py",
+    "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/run-fix-reverts.ps1",
+    "head": "git:cb4a29c78d6dd3d4016a3c29b1020c2810487e36",
+    "dirty": false,
+    "head_source": "the runner's `git rev-parse` at launch (in the log's file name); the log itself prints no head",
+    "baseline": "PASS",
+    "caught": 6,
+    "mutants": 6,
+    "missed": []
+   },
+   {
+    "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-outcome-cb4a29c.log",
+    "sha256": "hex:1d30c070fd0437f6358fbb46f547aff7948a2dde9eb2551e3b4f1147ccf90868",
+    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_outcome.py",
+    "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/run-fix-reverts.ps1",
+    "head": "git:cb4a29c78d6dd3d4016a3c29b1020c2810487e36",
+    "dirty": false,
+    "head_source": "the runner's `git rev-parse` at launch (in the log's file name); the log itself prints no head",
+    "baseline": "PASS",
+    "caught": 4,
+    "mutants": 4,
+    "missed": []
+   }
+  ],
+  "not_changed": "Agent mode still classifies an answered question as a failed run; that is Plan 12.3's, filed as #512"
+ }
 }

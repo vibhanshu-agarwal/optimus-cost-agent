@@ -59,5 +59,35 @@
    "outcome": "passed"
   }
  ],
- "passed": true
+ "passed": true,
+ "cp4_amendment": {
+  "commit": "git:2a483ddd0ee3cc864f4103a7b5b7915e9239efd6",
+  "why": "paid M3-ZED-RETURN R1 (Codex CP4 review 16): the welcome-back brief was shown to the user but never reached the model, so the model answered without it",
+  "claims": [
+   "when the brief is due, it is appended after the memory block, framed, inside one 16 KiB budget shared with memory",
+   "memory is never cut for the brief: the brief yields first, cut on a UTF-8 character boundary and marked, or left out with a marker",
+   "the brief alone, with no memory served, still forms a block",
+   "the stored plan's context digest binds the whole block, brief included"
+  ],
+  "tests": [
+   "tests/unit/context/test_memory_serving.py::test_the_brief_follows_memory_and_alone_still_forms_a_block",
+   "tests/unit/context/test_memory_serving.py::test_the_brief_yields_first_cut_on_a_character_boundary_and_memory_is_never_cut",
+   "tests/unit/acp/test_memory_commands.py::test_the_brief_comes_at_the_first_response_after_a_week_and_every_turn_is_checkpointed"
+  ],
+  "tests_from": "the final-head full suite (reports/plan12-memory-m3/verification.json); src and tests there equal git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+  "revert": {
+   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-brief-cb4a29c.log",
+   "sha256": "hex:745ef84e4561292a7319339c18c835e12a6291ffe7230d61378133c8b9463090",
+   "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_brief.py",
+   "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/run-fix-reverts.ps1",
+   "head": "git:cb4a29c78d6dd3d4016a3c29b1020c2810487e36",
+   "dirty": false,
+   "head_source": "the runner's `git rev-parse` at launch (in the log's file name); the log itself prints no head",
+   "baseline": "PASS",
+   "caught": 6,
+   "mutants": 6,
+   "missed": []
+  },
+  "paid_observation": "M3-ZED-RETURN-C R1c (Chat mode, 9.06 days): the reply answered from the brief and cited m-4554b0b60f99b2ca@1 (reports/plan12-memory-m3/paid-attempts.json)"
+ }
 }
