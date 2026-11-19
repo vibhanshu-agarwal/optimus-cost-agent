@@ -1,6 +1,6 @@
 # ADR-044: User memory requires an explicit user action; automatic extraction captures off metadata
 
-**Status:** Proposed; operator acceptance pending.
+**Status:** Accepted on 2026-11-18: the operator chose option A and approved Plan 12.11 v4's exact hash ([#490](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/490)); v5 is its conformance-only successor. As authored, this line read "Proposed; operator acceptance pending". Claude updated it at CP4 to record the acceptance; the rest of the text is as authored.
 
 **Date:** 2026-11-18.
 

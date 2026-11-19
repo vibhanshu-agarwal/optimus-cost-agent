@@ -219,6 +219,23 @@ is not a realized saving or the result of turning Auto off. The report makes no 
 context. References come from the packaged `optimus_model_policy/savings_references.yaml`, or from a launch-approved
 `accounting/savings-references.yaml` that replaces it whole.
 
+Project memory (Plan 12.11, M3; [ADR-042](docs/decisions/ADR-042-memory-store-topology-commit-and-recovery.md),
+[ADR-044](docs/decisions/ADR-044-explicit-user-actions-for-user-memory.md)) keeps what the user asks it to remember
+across sessions, on a dedicated Redis behind the Gateway that `optimus-trust memory-setup --store` sets up once in a
+terminal. Only the user's explicit commands change user memory: `/remember [--branch <ref>] <statement>`, and, by
+exact `<item>@<version>`, `/memory edit`, `/memory forget` (or `/forget`) and `/forget ... --purge`, which destroys
+the text. Automatic extraction never admits the user's words: it records an off entry, without the words, that
+`/memory switch-on <item>@<version>` can turn into an item, admitting only the exact whole statement. Agent lessons
+are admitted automatically, and only when they cite new host evidence. `/memory` lists items, with `page <n>` and
+`view <item>` for detail. A save is served only after the store confirms it reached disk. Served items enter the
+prompt as a bounded memory block, which the model cites as `[memory:<item>@<version>]`. After at least seven days away,
+the first response opens with a welcome-back brief from the previous session's checkpoint: dated work, the items that
+apply now, memory changed since, and the commits since. `/welcome` shows the brief at any time. While a session is
+open, a changed project's memory is copied periodically, in plaintext, under `.optimus/memory-recovery/` (`/memory
+export` copies it at once), and `/memory restore` brings that copy back into an empty store, applying every purge
+since. That copy is on the same drive, so it is not a backup. With memory off, none
+of these commands are offered.
+
 ### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
 
 Plan 8 adds the Sprint 1 validation and release skeleton. `RetryController`
@@ -885,9 +902,11 @@ and the IDE must ask the user to re-run planning and approve the new plan.
 WRITE bodies. This is a deliberate, bounded exception to the project rule against persisting
 unparsed source code: the plan store is short-TTL operational approval state (the 3600-second
 expiry is the control), keyed by run and plan hash, never indexed or searched by content, and
-exact text is required for replay correctness. The exception does not extend to long-lived or
-indexed Redis structures (vector/structural memory stores), which hold only signatures,
-summaries, and relative paths — never raw source code.
+exact text is required for replay correctness. The exception does not extend to the context
+index's Redis (vector/structural index structures), which holds only signatures, summaries
+and relative paths, never raw source code. The M3 memory store (ADR-042) is different: it holds
+the statements users asked it to remember and agent lessons, in plaintext, and so does its
+recovery copy under `.optimus/memory-recovery/` (same-drive, ignored by Git).
 
 ### Operator runbook (live verification)
 
@@ -1074,8 +1093,8 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained |
-| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8` |
+| [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained; Plans 12.10 and 12.11's memory (M1, M3) not yet covered: see ADR-037 to ADR-044 |
+| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 and 12.11's memory (M1, M3) not yet covered: see ADR-037 to ADR-044 |
 | [docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf) | Testing approach; real Postgres report tier and Plan 12.9's qualified evidence, preserving failed Windows and separately successful Linux PR/main gates |
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |

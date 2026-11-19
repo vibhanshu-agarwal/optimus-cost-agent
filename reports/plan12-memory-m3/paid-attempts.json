@@ -1,0 +1,3179 @@
+{
+ "schema": "plan12-memory-m3.paid-attempts.v3",
+ "plan": "12.11",
+ "issue": 490,
+ "correctness_rule": "POST-HOC whole-reply lexical scoring (Codex CP4 review 19, ruling 4): case-insensitive substring over the model's reply (host text such as the brief excluded); PASS when an accepted phrase is present and no rejected phrase is. The frozen rubric R1 names 'the reply's claim'; no claim selector was frozen, so this is not a pre-registered interpretation. Lists are alternatives. No superiority claim is made.",
+ "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn, so memory-on citations leave R2 UNKNOWN.",
+ "attribution": {
+  "rule": "a prompt's attempts and ACP turns are those inside its frozen window",
+  "windows": "p1211-cp4-zed/evidence/attribution-windows.json",
+  "windows_sha256": "hex:ac22afe708d4c2861435e6648986c4814a5a0df37479029dd709b0b164c871c9"
+ },
+ "workload_initial_state": {
+  "workspaces": {
+   "ws-off": {
+    ".editorconfig": "hex:4aec6b68091e7d07697010c8156e8d113a9c0c82d0d631eed2af8abb7bf9c26b",
+    "app.py": "hex:94ce8110447accb8f7ae0ed1199cfe60927dc02787ecc7834934b183b94d48c2",
+    "README.md": "hex:305f034ba1c7467f6074d39184e0fcf040832165c739e561625c18de21d8a3d3"
+   },
+   "ws-on": {
+    ".editorconfig": "hex:5a1a948fb3fd8d68bee00abb4d6d05b6437033cf330d0b1b90f62c79622b41e6",
+    "app.py": "hex:14424e0862a9e3cf953cc6f846de5c2de48024290f8e0868427f880fb31c3d47",
+    "README.md": "hex:a35cfb5661218605ec0d6305c65103441b5bc16458d832d7db9328f11250bbe7"
+   }
+  },
+  "store": "ON's project memory began empty in a store created for these sessions (evidence/store-record.json); OFF has no store",
+  "store_record_sha256": "hex:9a53eeb7090b7125d09ec6d32554782315ec1da56495c9a71c1f9216ccf1bb8a"
+ },
+ "forecast": {
+  "rule": "per prompt, before it is sent: physical attempts and USD it may at most use, from the product's reservation formula (optimus_model_policy.stage_c.reservation_usd) at the registry's prices read at prepare time",
+  "inputs": {
+   "model_request": {
+    "input_tokens": 262144,
+    "output_tokens": 32768,
+    "attempts": 2,
+    "why": "the chat request's input budget and the implementer output reserve (defaults.yaml); one retry or fallback"
+   },
+   "user_extraction": {
+    "input_tokens": 8192,
+    "output_tokens": 512,
+    "attempts": 1,
+    "why": "targets.json extraction caps; a reply is used once, never retried"
+   },
+   "command": {
+    "attempts": 0,
+    "why": "host-answered, zero inference (rubric R5)"
+   }
+  },
+  "model": "anthropic/claude-haiku-5.5",
+  "prices_usd_per_million": {
+   "input_usd_per_million": "0.50",
+   "output_usd_per_million": "2.50"
+  },
+  "prices_from": "src/optimus_model_policy/defaults.yaml at the head"
+ },
+ "tasks_json": {
+  "sha256": "hex:44808d3c762bcfaffd3b299a0053741c588ea8b007464a0db3b33146184b14ff",
+  "dispositions": [
+   {
+    "id": 1,
+    "recorded": "2026-11-19, after M3-ZED-RETURN (Codex CP4 review 16, rulings 4-5)",
+    "changes": "allowance.model_request is per planning turn: gate.py multiplies its attempts and USD by the entry's planning-turn limit (OPTIMUS_MAX_PLANNING_TURNS, else the product default 3), so a question reserves 6 attempts and $1.277952",
+    "why": "every prompt runs the planning loop, one provider request per planning turn; RETURN R2 ran three turns (3 attempts) against an allowance of 2, so RETURN used 5 attempts against its release of 4 (recorded as a breach, not cured)",
+    "other_calls": "no context index rounds (cfg-on shows 'Context index: setup required' every turn); memory.extract_agent is skipped while the scope holds user items (memory_extraction, 'user_items_in_scope'); compaction needs earlier covered text, which a fresh thread's first turn has none of; memory.extract_user stays added by the product's prefilter",
+    "results_before": "every allowance and admission recorded before this disposition stands as recorded"
+   },
+   {
+    "id": 2,
+    "recorded": "2026-11-19, after R1b (Codex CP4 review 18, ruling 1)",
+    "changes": "two sessions in Zed's Chat mode, the mode OFF and ON ran in: M3-ZED-RETURN-C (R1c, R2c in a fresh thread G of the RETURN entry, simulated gap 25 days) and M3-ZED-RETURN-OFF (R1o, R2o in a fresh thread H of the OFF entry: memory off, no store, no brief). Same texts, accepted lists and checks as R1 and R2. The mode is recorded before each prompt (session/set_config_option in the ACP trace) and the gap is rechecked against the newest project checkpoint",
+    "why": "RETURN, R1b and R2 ran in Agent mode (deviation 7), unlike OFF and ON; the plan pairs return on and off with fixed tasks, route and rubric. R2 and R1b stay recorded as Agent-mode functional passes, R1 as failed, RETURN's 5/4 as a breach",
+    "allowance": "unchanged rule (disposition 1): 6 attempts and $1.277952 per question, so each session reserves 12 and $2.555904",
+    "corrections": [
+     "Codex CP4 review 19 ruling 2: R1o expects no brief and R2o no memory citation (memory off); the accepted phrases are unchanged",
+     "Codex CP4 review 19 ruling 3: disposition 1's 'every prompt runs the planning loop' holds for Agent mode only; Chat mode answers on one request plus its retry. Six attempts per question stays as a conservative reservation, valid while no context index and no maintenance call is in play"
+    ]
+   }
+  ]
+ },
+ "reconciled": {
+  "entries": [
+   {
+    "session": "M3-ZED-ON",
+    "attempt_id": "session-bbb720e379ad423398c7e07bd321b261:2:summary:1:3b08c0160c3a483983e2c8adb397f19d:1",
+    "gateway_request_id": "gw-22def7fee82d486c874e259f933460cd",
+    "provider_generation_id": "gen-1795073682-cBe5W5BlhmoZelle37Dc",
+    "cost_usd": "0.0002877",
+    "evidence": "evidence/on/P7-openrouter-activity.json"
+   }
+  ],
+  "sha256": "hex:4d30afc83d8576cf3bb93d3e6d7bd6fbbcd2ecacded00ced9edc3d795ff096e9",
+  "provider_record_sha256": "hex:4c20a08f5d8fae2e5282ddde03ee2db4e3ea81bc8d6932a3c766114dce9c29d3"
+ },
+ "source_records": {
+  "replies_json": "hex:dedb201704b88d76f6f0a1d362388b9db328699491d46557729f543b08b76ace",
+  "marks_json": "hex:b9d9ccfc77fa7dae49d666452f643c0a8f2147b7329d5aa8aad50e41f27eb0ec",
+  "store_archive_sha256sums": "hex:861b0f08d86d5a5c2887c0b5022e38299b2d83a59061506b405b3f62a34a9169",
+  "traces": {
+   "ws-off": "hex:1dcbed7d4b96f08ff0802a6111acd3efb10ed54fdaf995b02321235604a465e5",
+   "ws-on": "hex:3a2295fee9ce5d539fa77fb11097fef0ce8db913767d43ab9f21eae3620923f1"
+  },
+  "raw_records": "archival only, in the operator's handoff folder; not tracked"
+ },
+ "sessions": [
+  {
+   "session": "M3-ZED-OFF",
+   "workspace": "ws-off",
+   "entry": "optimus-p1211-off",
+   "cfg": "cfg-off",
+   "release": "operator release on #490 (paid-sessions plan v3): 8 attempts / $0.50",
+   "approval": "see prepare-record.json",
+   "cap": {
+    "attempts": 8,
+    "usd": "0.50"
+   },
+   "used": {
+    "physical_attempts": 5,
+    "settled_usd": "0.0009815",
+    "reported_usd": null,
+    "reconciled_usd": null
+   },
+   "authorization_breach": false,
+   "accounting": {
+    "ledger_problems": [],
+    "end_sha256": "hex:d5601409af83746069c2cff413c944119c9c1fe571135c87d15e15d9407ddf13",
+    "streams": {
+     "stream:1c167a114cf54c71a51ac7b0fb32e59c": {
+      "seg-000001.log": "hex:5e122b0547532e5a460c060828f249bfc6c2b14102861c28d1e7aeae81067755"
+     }
+    },
+    "excluded": {
+     "before_begin": {
+      "count": 0,
+      "reason": "streams that existed at this session's `begin`: earlier sessions' and earlier runs' (gate.py begin)"
+     },
+     "excluded": null
+    }
+   },
+   "prompts": [
+    {
+     "run": "P1",
+     "task": "P1",
+     "kind": "command",
+     "prompt": "/remember We use tabs for indentation in this project.",
+     "thread": "A",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": null,
+     "window": {
+      "from": null,
+      "to": "2026-11-19T05:06:06.666+00:00"
+     },
+     "status": "refused by Zed (unadvertised command, OFF has no store)",
+     "note": "off-deviations.md 1-2: re-sent after the reboot",
+     "evidence": "evidence/off/P1-zed-refusal.png",
+     "reply": null,
+     "gate": {
+      "allowance": null,
+      "admitted": null,
+      "settled_after": true,
+      "next_sha256": null,
+      "after_sha256": "hex:8ee6ea91eaffd3ffbb06614a61b43c76c9daa9ff00a3f32585129a98f1396889"
+     },
+     "acp_turns": [],
+     "attempts": [],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "refused by Zed (unadvertised command, OFF has no store)",
+      "latency_ms": [],
+      "cost": {
+       "attempts_used": null,
+       "settled_usd": null
+      }
+     },
+     "runner_outcome": [],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "UNKNOWN",
+       "evidence": "no ACP prompt turn found in the window"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: refused by Zed (unadvertised command, OFF has no store); the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P2",
+     "task": "P2",
+     "kind": "question",
+     "prompt": "What indentation should a new file in this project use? [p1211:S]",
+     "thread": "A",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T05:06:07.867+00:00",
+      "to": "2026-11-19T05:09:40.679+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/off/P2-reply.jpg",
+     "reply": "Based on the files shown, the project doesn't specify an indentation style explicitly. The .editorconfig contains only root = true, with no indent_style, indent_size, or tab_width settings, so there's no editor-enforced rule to follow. The one visible example is app.py, which uses 4-space indentation inside the function body. That's the strongest signal in the project, and the conventional choice for Python (per PEP 8) is also 4 spaces, so a new Python file should match it. If you want the rule to be explicit for every file, you could add sections to .editorconfig such as: [*] indent_style = space indent_size = 4 I can only see these three files, so if other parts of the project use a different convention, I wouldn't be able to tell from here.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:4301c956a13129f1b6934b3483990a64895b4e7ca46412a69e6d443dc0848f87",
+      "after_sha256": "hex:754fd843ce6e1ead1a08d73f9be29cba801e77f3529324d987dd1c260e1810a4"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-0000cefdc6074503b245dc9fc6f5901e:1",
+       "acp_request_id": "12633e09-942c-4f76-8e73-39fce1dbffd9",
+       "started": "2026-11-19T05:09:22.985+00:00",
+       "latency_ms": 4002,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-0000cefdc6074503b245dc9fc6f5901e:1:answer:1:1:1",
+       "gateway_request_id": "gw-fc859babc1a047b3b3bd973c4f361134",
+       "provider_request_id": "gen-1795064966-Bn7rS58KB1JAIoLRmDbF",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 485,
+       "output_tokens": 259,
+       "reported_cost_usd": "0.000178",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "tab"
+       ],
+       "accepted_context": {
+        "tab": "The .editorconfig contains only root = true, with no indent_style, indent_size, or tab_width settings, so there's no editor-enforced rule to follow."
+       },
+       "rejected_found": [
+        "4 spaces"
+       ],
+       "rejected_context": {
+        "4 spaces": "That's the strongest signal in the project, and the conventional choice for Python (per PEP 8) is also 4 spaces, so a new Python file should match it."
+       },
+       "verdict": "FAIL"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       4002
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.000178"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "FAIL",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      }
+     },
+     "task_verdict": "FAIL",
+     "over_allowance": false
+    },
+    {
+     "run": "P3",
+     "task": "P3",
+     "kind": "command",
+     "prompt": "/memory edit m-0000000000000000@1 We use four spaces for indentation in this project.",
+     "thread": "A",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": null,
+     "window": {
+      "from": "2026-11-19T05:09:59.133+00:00",
+      "to": "2026-11-19T05:11:03.896+00:00"
+     },
+     "status": "refused by Zed (unadvertised command)",
+     "note": null,
+     "evidence": "evidence/off/P3-zed-refusal.png",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 0,
+       "usd": "0"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:ad05629e0d94b874ae269dcd7d66cda65c61ee72c6722ccf79612440e8991f67",
+      "after_sha256": "hex:754fd843ce6e1ead1a08d73f9be29cba801e77f3529324d987dd1c260e1810a4"
+     },
+     "acp_turns": [],
+     "attempts": [],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "refused by Zed (unadvertised command)",
+      "latency_ms": [],
+      "cost": {
+       "attempts_used": 0,
+       "settled_usd": "0.000000"
+      }
+     },
+     "runner_outcome": [],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "UNKNOWN",
+       "evidence": "no ACP prompt turn found in the window"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: refused by Zed (unadvertised command); the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P4",
+     "task": "P4",
+     "kind": "question",
+     "prompt": "What indentation should a new file use? [p1211:C]",
+     "thread": "B",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T05:11:04.955+00:00",
+      "to": "2026-11-19T06:30:50.083+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/off/P4-reply.jpg",
+     "reply": "Based on the files shown, there is no explicit indentation rule. The .editorconfig contains only root = true, so it sets no indent_style or indent_size for any file type. The existing app.py uses 4 spaces per indent level (the return line is indented under the def), and that is the only code sample I can see, so it is the closest local convention. For a new Python file in this workspace, I'd suggest 4 spaces, matching app.py and the standard Python style (PEP 8). If you want the convention to be enforced rather than inferred, you could add a section such as: [*] indent_style = space indent_size = 4 Note that I can only see these three files. If other files or a project style guide exist elsewhere, they could specify something different.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:39fdb631aa05cb48592e75c93173cd89a50b0a70af20958d27e10cd80878bac1",
+      "after_sha256": "hex:d160af8f883f7b2f0209a792f39c5177332ff404188eb7ebad8e6548b95efd4e"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-80f900ee016a4049ab093ced76efa6e9:1",
+       "acp_request_id": "545cb10d-a8f0-4ddb-8902-e7b6d1f1f019",
+       "started": "2026-11-19T06:30:29.922+00:00",
+       "latency_ms": 3408,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 5
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-80f900ee016a4049ab093ced76efa6e9:1:answer:1:1:1",
+       "gateway_request_id": "gw-89e93130033c49d483f202b9658b280c",
+       "provider_request_id": "gen-1795069833-oAO8HaHeDTArdZTAhVao",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 482,
+       "output_tokens": 252,
+       "reported_cost_usd": "0.0001742",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "4 spaces"
+       ],
+       "accepted_context": {
+        "4 spaces": "The existing app.py uses 4 spaces per indent level (the return line is indented under the def), and that is the only code sample I can see, so it is the closest local convention."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3408
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0001742"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      }
+     },
+     "task_verdict": "PASS",
+     "over_allowance": false
+    },
+    {
+     "run": "P5",
+     "task": "P5",
+     "kind": "command",
+     "prompt": "/forget m-0000000000000000@1",
+     "thread": "B",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": null,
+     "window": {
+      "from": "2026-11-19T06:31:13.523+00:00",
+      "to": "2026-11-19T06:31:59.601+00:00"
+     },
+     "status": "refused by Zed (unadvertised command)",
+     "note": null,
+     "evidence": "evidence/off/P5-zed-refusal.png",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 0,
+       "usd": "0"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:7dd04857de0ae814482efc78b2e42025e5be640b1db2ff5e5a9be5ff261150f1",
+      "after_sha256": "hex:d160af8f883f7b2f0209a792f39c5177332ff404188eb7ebad8e6548b95efd4e"
+     },
+     "acp_turns": [],
+     "attempts": [],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "refused by Zed (unadvertised command)",
+      "latency_ms": [],
+      "cost": {
+       "attempts_used": 0,
+       "settled_usd": "0E-7"
+      }
+     },
+     "runner_outcome": [],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "UNKNOWN",
+       "evidence": "no ACP prompt turn found in the window"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: refused by Zed (unadvertised command); the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P6",
+     "task": "P6",
+     "kind": "question",
+     "prompt": "What indentation rule have I set? [p1211:F]",
+     "thread": "C",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T06:32:00.282+00:00",
+      "to": "2026-11-19T06:32:58.778+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/off/P6-reply.jpg",
+     "reply": "The only indentation rule I can see is none. The .editorconfig file shown in the workspace contains just root = true, which marks the file as the top-level EditorConfig but does not set any indentation style, indent size, or tab width. The app.py and README.md files don't set indentation rules either. If you expected an indentation rule, it may be in a different .editorconfig file in a subdirectory, in your editor's user settings, or in a file I can't see here. If you tell me which one you want, or paste its contents, I can tell you what it sets. If you'd like to add a rule, for example indent_style = space and indent_size = 4 under a [*.py] section, I can explain how to write that, though I won't make the change in this chat mode.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:9cc8f4321b609e376b83c4187ea822518b903540a8289e0b7cd203eff6be6b08",
+      "after_sha256": "hex:8c76f6a33cc169475f786ce080cd0dfa51a5e8a2541bd4f132e8c3c408aa0ae9"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-b2332c35217342a6a7acf128fa83e50e:1",
+       "acp_request_id": "69ced95c-e25f-4fd9-a69f-1e17f742717a",
+       "started": "2026-11-19T06:32:45.833+00:00",
+       "latency_ms": 3647,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 5
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-b2332c35217342a6a7acf128fa83e50e:1:answer:1:1:1",
+       "gateway_request_id": "gw-f82a81651dfe40d9b1e671f44bf1e416",
+       "provider_request_id": "gen-1795069969-n5UsSvXYKLtkCifn85WJ",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 482,
+       "output_tokens": 245,
+       "reported_cost_usd": "0.0001707",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "not set"
+       ],
+       "accepted_context": {
+        "not set": "The .editorconfig file shown in the workspace contains just root = true, which marks the file as the top-level EditorConfig but does not set any indentation style, indent size, or tab width."
+       },
+       "rejected_found": [
+        "tab"
+       ],
+       "rejected_context": {
+        "tab": "The .editorconfig file shown in the workspace contains just root = true, which marks the file as the top-level EditorConfig but does not set any indentation style, indent size, or tab width."
+       },
+       "verdict": "FAIL"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3647
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0001707"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "FAIL",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      }
+     },
+     "task_verdict": "FAIL",
+     "over_allowance": false
+    },
+    {
+     "run": "P7",
+     "task": "P7",
+     "kind": "statement",
+     "prompt": "From now on, run the tests before every push.",
+     "thread": "C",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T06:33:13.079+00:00",
+      "to": "2026-11-19T06:35:20.066+00:00"
+     },
+     "status": "answered",
+     "note": "statement, unscored: memory off saves nothing; the reply explains Chat mode is read-only and suggests a pre-push hook, CI gate or shared hook tooling",
+     "evidence": "evidence/off/P7-reply.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:6ed8a6725b7aa030b3d932fcddf28f1c2096e857dec5e25927bf4b8892abea7c",
+      "after_sha256": "hex:6d7340943cbe27127863c93d01dfbe531e47b25917b72aee4440804e3a2591a4"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-b2332c35217342a6a7acf128fa83e50e:2",
+       "acp_request_id": "6a8def01-fb33-4b15-aef1-d7efd1c88161",
+       "started": "2026-11-19T06:35:06.888+00:00",
+       "latency_ms": 4090,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-b2332c35217342a6a7acf128fa83e50e:2:answer:1:1:1",
+       "gateway_request_id": "gw-7970c6a78e6b46da9c1b2ad3f1d18429",
+       "provider_request_id": "gen-1795070110-Zc1G67CxQkzcYZLk335N",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 807,
+       "output_tokens": 423,
+       "reported_cost_usd": "0.0002922",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       4090
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0002922"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: statement, unscored: memory off saves nothing; the reply explains Chat mode is read-only and suggests a pre-push hook, CI gate or shared hook tooling; the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P8",
+     "task": "P8",
+     "kind": "command",
+     "prompt": "/memory switch-on m-0000000000000000@1",
+     "thread": "C",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": null,
+     "window": {
+      "from": "2026-11-19T06:35:33.147+00:00",
+      "to": "2026-11-19T06:36:19.781+00:00"
+     },
+     "status": "refused by Zed (unadvertised command)",
+     "note": null,
+     "evidence": "evidence/off/P8-zed-refusal.png",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 0,
+       "usd": "0"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:58d12276c28ae20df6c3825d1707dc5535195451560d2fad44915c352fcd474f",
+      "after_sha256": "hex:6d7340943cbe27127863c93d01dfbe531e47b25917b72aee4440804e3a2591a4"
+     },
+     "acp_turns": [],
+     "attempts": [],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "refused by Zed (unadvertised command)",
+      "latency_ms": [],
+      "cost": {
+       "attempts_used": 0,
+       "settled_usd": "0E-7"
+      }
+     },
+     "runner_outcome": [],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "UNKNOWN",
+       "evidence": "no ACP prompt turn found in the window"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: refused by Zed (unadvertised command); the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P9",
+     "task": "P9",
+     "kind": "question",
+     "prompt": "Should I run the tests before pushing? [p1211:W]",
+     "thread": "D",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T06:36:20.440+00:00",
+      "to": "2026-11-19T06:37:07.644+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/off/P9-reply.jpg",
+     "reply": "Yes, running the tests before pushing is a sound habit, and the workspace suggests it is the intended flow. app.py defines push(branch) as a function that \"pushes a branch after its checks,\" so the checks are meant to run first. In the code shown, though, push just returns the branch name and performs no checks or actual push, so I can't tell from these files what the checks are or whether they run automatically. What I can see is limited: .editorconfig, app.py, and README.md. I don't see a test directory, a test runner configuration, or a CI setup, so I can't confirm which test command exists or whether it passes. If you tell me the test command or share the test files, I can help you judge whether they cover what you're about to push.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:77e76709f27836678c51a95c8f47ee34f2a68804ad5a7b842d6410090efec15d",
+      "after_sha256": "hex:f782abbfd256cece67bec93438e29ba84f811b989b1ac9109eabe45078c88c94"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-123188338a084a06bfc85d6eec705d72:1",
+       "acp_request_id": "a00b79bf-6770-45de-9b07-f2929fe74e25",
+       "started": "2026-11-19T06:36:53.306+00:00",
+       "latency_ms": 2923,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 5
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-123188338a084a06bfc85d6eec705d72:1:answer:1:1:1",
+       "gateway_request_id": "gw-dfa80323e9ca449bbbd794104c1eb4fc",
+       "provider_request_id": "gen-1795070217-n6U5UiYwvk85y2yZkYvm",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 484,
+       "output_tokens": 236,
+       "reported_cost_usd": "0.0001664",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "yes"
+       ],
+       "accepted_context": {
+        "yes": "Yes, running the tests before pushing is a sound habit, and the workspace suggests it is the intended flow."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       2923
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0001664"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      }
+     },
+     "task_verdict": "PASS",
+     "over_allowance": false
+    }
+   ]
+  },
+  {
+   "session": "M3-ZED-ON",
+   "workspace": "ws-on",
+   "entry": "optimus-p1211-on",
+   "cfg": "cfg-on",
+   "release": "operator release on #490: 20 attempts / $1.50; renewed for the remainder after design R (\"Approvals run, released\", #490 comment 7007871000)",
+   "approval": "appr_ff6d3da3b6ad9217fd542208 (after design R)",
+   "cap": {
+    "attempts": 20,
+    "usd": "1.50"
+   },
+   "used": {
+    "physical_attempts": 11,
+    "settled_usd": "0.0018855",
+    "reported_usd": "0.0015978",
+    "reconciled_usd": "0.0002877"
+   },
+   "authorization_breach": false,
+   "accounting": {
+    "ledger_problems": [],
+    "end_sha256": "hex:35669442048c74f2cdc105d31ec3676b5d194976fa8298f93ee1cdf4475c40da",
+    "streams": {
+     "stream:0203b26b09dc453eb563e0ae749e1ba1": {
+      "seg-000001.log": "hex:086629655260b7165605fb253a3a8a1c7ab138edd29b1ddde14d83ce68a6e226"
+     },
+     "stream:39ece9f7fe19499186b20b26b95ab03d": {
+      "seg-000001.log": "hex:9667f194eabef74a70aab74063e9c19de9f318566ab9413497086112e3aeaef4"
+     },
+     "stream:f084eff28fca4747a97b7291631ebb9d": {
+      "seg-000001.log": "hex:7032bf5c4b262f1b71d305a469caacb2e5009afe8056bf6b267331ca817eae0b"
+     }
+    },
+    "excluded": {
+     "before_begin": {
+      "count": 6,
+      "reason": "streams that existed at this session's `begin`: earlier sessions' and earlier runs' (gate.py begin)"
+     },
+     "excluded": {
+      "streams": [
+       "stream:9a5e3dd17c4143dcb42e972468773387",
+       "stream:b1c55b9e88d944b28adb300a0e3cbc2b"
+      ],
+      "reason": "the zero-paid C3 redo's streams, created in cfg-on during ON (Codex CP4 reviews 13-14; gate.py exclude)"
+     }
+    }
+   },
+   "prompts": [
+    {
+     "run": "P1",
+     "task": "P1",
+     "kind": "command",
+     "prompt": "/remember We use tabs for indentation in this project.",
+     "thread": "A",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": null,
+     "window": {
+      "from": "2026-11-19T06:40:11.991+00:00",
+      "to": "2026-11-19T06:41:42.439+00:00"
+     },
+     "status": "host command, remembered",
+     "note": null,
+     "evidence": "evidence/on/P1-card.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 0,
+       "usd": "0"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:bfdb339b28a6379430a268cd3666f744aa8ac45394cad5512401ad77217afccd",
+      "after_sha256": "hex:f2cbbdba3f96d7e68631c21fd2eb1dd9a85de3bbb47f04e96f973e97974a089d"
+     },
+     "acp_turns": [],
+     "attempts": [],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "host command, remembered",
+      "latency_ms": [],
+      "cost": {
+       "attempts_used": 0,
+       "settled_usd": "0"
+      }
+     },
+     "runner_outcome": [],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "UNKNOWN",
+       "evidence": "no ACP prompt turn found in the window"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: host command, remembered; the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P2",
+     "task": "P2",
+     "kind": "question",
+     "prompt": "What indentation should a new file in this project use? [p1211:S]",
+     "thread": "A",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T06:42:10.469+00:00",
+      "to": "2026-11-19T07:11:58.749+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/on/P2-reply.jpg",
+     "reply": "A new file in this project should use tabs for indentation. The saved project memory says so directly: \"We use tabs for indentation in this project.\" [memory:m-ead69057e3a39423@1] The workspace files don't contradict this. The .editorconfig only sets root = true and doesn't specify an indent style, and app.py uses four spaces in its push function. That existing file looks like it predates the convention, or it's an exception, so I wouldn't copy its indentation into new files. I can only see these three files, so I can't confirm how the rest of the project is formatted.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:10a84b6e1b94693597dabde8c650b4a196ec46cdd019cd5978d1b68e14deb6fc",
+      "after_sha256": "hex:dd73caf7516a83de68c95bdc9788b6cd647e6c9badc3831ad0ed2006b0756140"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-32b0de82e89847a0be89d5dd4cf61424:1",
+       "acp_request_id": "5b5f6e85-497e-47ee-9538-73972cc75bac",
+       "started": "2026-11-19T07:11:40.765+00:00",
+       "latency_ms": 3129,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-32b0de82e89847a0be89d5dd4cf61424:1:answer:1:1:1",
+       "gateway_request_id": "gw-912bb235dbb043f6b243c85e1077feed",
+       "provider_request_id": "gen-1795072304-vYB22OQX5wDcfoYmH5bN",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 605,
+       "output_tokens": 187,
+       "reported_cost_usd": "0.000154",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [
+        "m-ead69057e3a39423@1"
+       ],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "tab"
+       ],
+       "accepted_context": {
+        "tab": "A new file in this project should use tabs for indentation."
+       },
+       "rejected_found": [
+        "four spaces"
+       ],
+       "rejected_context": {
+        "four spaces": "The .editorconfig only sets root = true and doesn't specify an indent style, and app.py uses four spaces in its push function."
+       },
+       "verdict": "FAIL"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3129
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.000154"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "FAIL",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-ead69057e3a39423@1']; the turn's served set is not recorded per turn"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+      },
+      "R3": {
+       "result": "PASS",
+       "evidence": "required exact citations ['m-ead69057e3a39423@1']"
+      }
+     },
+     "task_verdict": "FAIL",
+     "over_allowance": false
+    },
+    {
+     "run": "P3",
+     "task": "P3",
+     "kind": "command",
+     "prompt": "/memory edit <P1 id>@1 We use four spaces for indentation in this project.",
+     "thread": "A",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": null,
+     "window": {
+      "from": "2026-11-19T07:12:12.996+00:00",
+      "to": "2026-11-19T07:18:40.611+00:00"
+     },
+     "status": "host command, updated to version 2",
+     "note": null,
+     "evidence": "evidence/on/P3-card.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 0,
+       "usd": "0"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:e6c288d416cfb4f5e908c568d0bc229f830fd3b5f0980dc999bc95797a4838f3",
+      "after_sha256": "hex:dd73caf7516a83de68c95bdc9788b6cd647e6c9badc3831ad0ed2006b0756140"
+     },
+     "acp_turns": [],
+     "attempts": [],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "host command, updated to version 2",
+      "latency_ms": [],
+      "cost": {
+       "attempts_used": 0,
+       "settled_usd": "0.000000"
+      }
+     },
+     "runner_outcome": [],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "UNKNOWN",
+       "evidence": "no ACP prompt turn found in the window"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: host command, updated to version 2; the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P4",
+     "task": "P4",
+     "kind": "question",
+     "prompt": "What indentation should a new file use? [p1211:C]",
+     "thread": "B (also held P3's text: unscored)",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T07:18:55.467+00:00",
+      "to": "2026-11-19T07:20:49.059+00:00"
+     },
+     "status": "kept as recorded, unscored: thread B held P3's text (Codex CP4 review 6, finding 6; on-deviations.md 2)",
+     "note": "observed citation [memory:m-ead69057e3a39423@2]; kept unscored for contamination (thread B held P3's text)",
+     "evidence": "evidence/on/P4-reply-thread-with-extra-P3.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:d0ddef9b26225ca595f8bb3d3722c0cc4fff6c79f4da1661dfea7900d0e7636d",
+      "after_sha256": "hex:a29e895d3581f8f21f087cc2087ba56b617f5631fd9afadb0d12342e67092620"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-add3662c991a4bf5b4d9cdf6424afd18:1",
+       "acp_request_id": "1091ffa6-cdd2-4ef5-9c4e-8935bf33f8ec",
+       "started": "2026-11-19T07:20:33.368+00:00",
+       "latency_ms": 3253,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 5
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-add3662c991a4bf5b4d9cdf6424afd18:1:answer:1:1:1",
+       "gateway_request_id": "gw-04c446cc12ad4099947921d3c5bcf589",
+       "provider_request_id": "gen-1795072838-LseSV0xGIJRXDOs6ZewZ",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 603,
+       "output_tokens": 178,
+       "reported_cost_usd": "0.0001493",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [
+        "m-ead69057e3a39423@2"
+       ],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "verdict": "UNSCORED",
+       "why": "no reply text recorded"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3253
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0001493"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "UNSCORED",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-ead69057e3a39423@2']; the turn's served set is not recorded per turn"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: ['m-ead69057e3a39423@1']"
+      }
+     },
+     "task_verdict": "INCOMPLETE",
+     "over_allowance": false
+    },
+    {
+     "run": "P4b",
+     "task": "P4",
+     "kind": "question",
+     "prompt": "What indentation should a new file use? [p1211:C]",
+     "thread": "C' (fresh, for P4b)",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T07:21:20.018+00:00",
+      "to": "2026-11-19T07:31:37.303+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/on/P4b-reply.jpg",
+     "reply": "A new file should use four spaces for indentation. The project memory records this convention: \"We use four spaces for indentation in this project.\" [memory:m-ead69057e3a39423@2] The workspace supports this in a limited way. The existing app.py uses four-space indentation for the function body, which matches the memory. However, the .editorconfig file shown only contains root = true, so it does not set an indent_style or indent_size rule. If you want editors to enforce four spaces automatically, you would need to add those settings to .editorconfig, but I have not made any change to it here.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:1a00a468076bc2efdb62dd66695be029339e3af11969010f6cd110e18f894394",
+      "after_sha256": "hex:b0ac4522659db544aaeb6abc6cc21eb2aa8a33e0403ab44b33690e9496fe166c"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-e4f543ec05584e16a0e33bcdefbacade:1",
+       "acp_request_id": "a4d52f74-c3b3-4e25-be5c-cbdaf4c0be42",
+       "started": "2026-11-19T07:31:22.265+00:00",
+       "latency_ms": 3627,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 5
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-e4f543ec05584e16a0e33bcdefbacade:1:answer:1:1:1",
+       "gateway_request_id": "gw-e5c5a3f33fe141168a75d72a3ca8cd79",
+       "provider_request_id": "gen-1795073486-8aRDfOdjZsAGPVvC63EP",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 603,
+       "output_tokens": 191,
+       "reported_cost_usd": "0.0001558",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [
+        "m-ead69057e3a39423@2"
+       ],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "four spaces"
+       ],
+       "accepted_context": {
+        "four spaces": "A new file should use four spaces for indentation."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3627
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0001558"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-ead69057e3a39423@2']; the turn's served set is not recorded per turn"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: ['m-ead69057e3a39423@1']"
+      },
+      "R3": {
+       "result": "PASS",
+       "evidence": "required exact citations ['m-ead69057e3a39423@2']"
+      }
+     },
+     "task_verdict": "INCOMPLETE",
+     "over_allowance": false
+    },
+    {
+     "run": "P5",
+     "task": "P5",
+     "kind": "command",
+     "prompt": "/forget <P1 id>@2",
+     "thread": "C' (P4b's thread)",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": null,
+     "window": {
+      "from": "2026-11-19T07:31:52.004+00:00",
+      "to": "2026-11-19T07:32:33.002+00:00"
+     },
+     "status": "host command, forgotten",
+     "note": null,
+     "evidence": "evidence/on/P5-card.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 0,
+       "usd": "0"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:e5b1f0c0370e74243ed346db904132ae66a670480383c5b1fa66e86ccb95d1ce",
+      "after_sha256": "hex:b0ac4522659db544aaeb6abc6cc21eb2aa8a33e0403ab44b33690e9496fe166c"
+     },
+     "acp_turns": [],
+     "attempts": [],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "host command, forgotten",
+      "latency_ms": [],
+      "cost": {
+       "attempts_used": 0,
+       "settled_usd": "0E-7"
+      }
+     },
+     "runner_outcome": [],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "UNKNOWN",
+       "evidence": "no ACP prompt turn found in the window"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: host command, forgotten; the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P6",
+     "task": "P6",
+     "kind": "question",
+     "prompt": "What indentation rule have I set? [p1211:F]",
+     "thread": "next fresh thread after C' (task thread C, shifted)",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T07:32:50.666+00:00",
+      "to": "2026-11-19T07:33:41.434+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/on/P6-reply.jpg",
+     "reply": "The only indentation rule I can see is in .editorconfig, and that file contains just one line: root = true. It sets no indent style, indent size, or tab width, so no indentation rule has been set there. The other shown files don't set one either. app.py uses four-space indentation in its function body, but that is just how the code is written, not a configured rule. README.md has no relevant settings. If you meant to set an indentation rule, you could add something like this to .editorconfig: [*] indent_style = space indent_size = 4 I can only see the files listed above, so if an indentation rule exists somewhere else, such as in editor settings or a different config file, I wouldn't be able to see it from here.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:178ac5216f555e0e232136467d3b6d942f5c273eb261b4395a3bd2375c4dad11",
+      "after_sha256": "hex:3aab0fb75273f0597322bb29114652918f9af0aa71819f3df77ee01822791c73"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-bbb720e379ad423398c7e07bd321b261:1",
+       "acp_request_id": "3a752083-719c-4f4e-b8dc-27f2fe018ae3",
+       "started": "2026-11-19T07:33:24.099+00:00",
+       "latency_ms": 3417,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 5
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-bbb720e379ad423398c7e07bd321b261:1:answer:1:1:1",
+       "gateway_request_id": "gw-cab426f7fa4f4efebc2620c300e4495c",
+       "provider_request_id": "gen-1795073608-BAWYut0Qzj5ylUA9RtNN",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 482,
+       "output_tokens": 234,
+       "reported_cost_usd": "0.0001652",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "no indentation rule"
+       ],
+       "accepted_context": {
+        "no indentation rule": "It sets no indent style, indent size, or tab width, so no indentation rule has been set there."
+       },
+       "rejected_found": [
+        "tab"
+       ],
+       "rejected_context": {
+        "tab": "It sets no indent style, indent size, or tab width, so no indentation rule has been set there."
+       },
+       "verdict": "FAIL"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3417
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0001652"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "FAIL",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "PASS",
+       "evidence": "the reply cites nothing"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: ['m-ead69057e3a39423@1', 'm-ead69057e3a39423@2']"
+      }
+     },
+     "task_verdict": "FAIL",
+     "over_allowance": false
+    },
+    {
+     "run": "P7",
+     "task": "P7",
+     "kind": "statement",
+     "prompt": "From now on, run the tests before every push.",
+     "thread": "P6's thread",
+     "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T07:33:56.116+00:00",
+      "to": "2026-11-19T07:34:48.456+00:00"
+     },
+     "status": "failed: extraction stopped at its 512-token cap on reasoning; receipt uncertain, reconciled from the provider record (on-deviations.md 3)",
+     "note": null,
+     "evidence": "evidence/on/P7-reply.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 3,
+       "usd": "0.431360"
+      },
+      "admitted": true,
+      "settled_after": false,
+      "next_sha256": "hex:1a2ceb52267925132fe2e35f99bb58988a5243156106a4b6a4c0430cbcecf742",
+      "after_sha256": "hex:10b2ef1712a99110ff0606208bbb4bc72a8052d6a4159bb6be7a62ce7d36a390"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-bbb720e379ad423398c7e07bd321b261:2",
+       "acp_request_id": "05b6119f-1795-438c-a45e-75b0d5887414",
+       "started": "2026-11-19T07:34:34.239+00:00",
+       "latency_ms": 4216,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-bbb720e379ad423398c7e07bd321b261:2:answer:1:1:1",
+       "gateway_request_id": "gw-902b0d39a88e43d38b1d200416d764fd",
+       "provider_request_id": "gen-1795073678-ig1TtmacVH1oJ39oPjpy",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 810,
+       "output_tokens": 307,
+       "reported_cost_usd": "0.0002345",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      },
+      {
+       "attempt_id": "session-bbb720e379ad423398c7e07bd321b261:2:summary:1:3b08c0160c3a483983e2c8adb397f19d:1",
+       "gateway_request_id": "gw-22def7fee82d486c874e259f933460cd",
+       "provider_request_id": null,
+       "purpose": "memory.extract_user",
+       "stage": "summarization",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": null,
+       "resolved_provider": null,
+       "input_tokens": null,
+       "output_tokens": null,
+       "reported_cost_usd": null,
+       "outcome": "uncertain",
+       "late": false,
+       "registry_hash": "hex:3e261ccd85b7f0fac948c2488c73a293fe1492a39164ea6d91eef3dd622a5a45"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "failed: extraction stopped at its 512-token cap on reasoning; receipt uncertain, reconciled from the provider record (on-deviations.md 3)",
+      "latency_ms": [
+       4216
+      ],
+      "cost": {
+       "attempts_used": 2,
+       "settled_usd": "0.0002345"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: failed: extraction stopped at its 512-token cap on reasoning; receipt uncertain, reconciled from the provider record (on-deviations.md 3); the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P7b",
+     "task": "P7",
+     "kind": "statement",
+     "prompt": "From now on, run the tests before every push.",
+     "thread": "C2 (fresh, after the restart on c5cb7b6)",
+     "head": "git:c5cb7b62f3f85d9382d3105e161215d679d97241",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T11:35:26.402+00:00",
+      "to": "2026-11-19T11:43:52.196+00:00"
+     },
+     "status": "kept with its finding: off record's span overshot, unswitchable; fixed in ddd5ce3 (on-deviations.md 4)",
+     "note": null,
+     "evidence": "evidence/on/P7b-memory-list.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 3,
+       "usd": "0.431360"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:730ad336df75c279d276c99eded3722f6abdb55cd1077a484633afa8c48d6a05",
+      "after_sha256": "hex:64e0f1b8769fb0a4ace5fbf59cc54d17ad0d339c60b28637c8882eddbb3dec27"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-e5a1da60225b44dcb9e84b3d833cd5d0:1",
+       "acp_request_id": "821a10cf-381f-476c-aef2-dcaa52959a88",
+       "started": "2026-11-19T11:43:37.934+00:00",
+       "latency_ms": 3926,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-e5a1da60225b44dcb9e84b3d833cd5d0:1:answer:1:1:1",
+       "gateway_request_id": "gw-56f53900a5c04cec81f27cd68f22908f",
+       "provider_request_id": "gen-1795088623-2gNbw1dwi4c2lzllKamR",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 477,
+       "output_tokens": 310,
+       "reported_cost_usd": "0.0002027",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      },
+      {
+       "attempt_id": "session-e5a1da60225b44dcb9e84b3d833cd5d0:1:summary:1:0b53d02dc52e469a9a8e893a89c26bfd:1",
+       "gateway_request_id": "gw-02a9128f82af4ded87db19d1f7a76104",
+       "provider_request_id": "gen-1795088626-622Gc3d5JM19nMJbYvKb",
+       "purpose": "memory.extract_user",
+       "stage": "summarization",
+       "reasoning": "none",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 320,
+       "output_tokens": 124,
+       "reported_cost_usd": "0.000094",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "kept with its finding: off record's span overshot, unswitchable; fixed in ddd5ce3 (on-deviations.md 4)",
+      "latency_ms": [
+       3926
+      ],
+      "cost": {
+       "attempts_used": 2,
+       "settled_usd": "0.0002967"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: kept with its finding: off record's span overshot, unswitchable; fixed in ddd5ce3 (on-deviations.md 4); the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P7c",
+     "task": "P7",
+     "kind": "statement",
+     "prompt": "From now on, run the tests before every push.",
+     "thread": "C3 (fresh, after the restart on ddd5ce3)",
+     "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T12:01:08.107+00:00",
+      "to": "2026-11-19T12:02:17.173+00:00"
+     },
+     "status": "extraction completed at reasoning none; off record m-4520707e08b9d143@1, one whole line (on-deviations.md 5)",
+     "note": null,
+     "evidence": "evidence/on/P7c-memory-list.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 3,
+       "usd": "0.431360"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:abca70e496cf9faa6531603435015a02a8a9cb26df74ddf6453fcdeb969b9c7b",
+      "after_sha256": "hex:4a58d0bf1533d69282a7462fe0ea358ecec2b567b476e673a8d80f3fd33bbe59"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-c04fb46b258d46a0bac40c8a0a8cd07a:1",
+       "acp_request_id": "cbc4a9da-a343-43df-99db-54ca8f43a35b",
+       "started": "2026-11-19T12:01:36.562+00:00",
+       "latency_ms": 3812,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-c04fb46b258d46a0bac40c8a0a8cd07a:1:answer:1:1:1",
+       "gateway_request_id": "gw-f493abfe44b04da194ef655f1f7389a4",
+       "provider_request_id": "gen-1795089701-ck9v8y8EiaWQ1mbvQKuL",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 477,
+       "output_tokens": 275,
+       "reported_cost_usd": "0.0001852",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      },
+      {
+       "attempt_id": "session-c04fb46b258d46a0bac40c8a0a8cd07a:1:summary:1:4f60d5ebe9bf47c68a37d9d7401cd4ec:1",
+       "gateway_request_id": "gw-2d83d04d1bf84be58c87aeb8c264e08e",
+       "provider_request_id": "gen-1795089704-ZPUM2AeZKSEuifUDcJyd",
+       "purpose": "memory.extract_user",
+       "stage": "summarization",
+       "reasoning": "none",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 320,
+       "output_tokens": 121,
+       "reported_cost_usd": "0.0000925",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "extraction completed at reasoning none; off record m-4520707e08b9d143@1, one whole line (on-deviations.md 5)",
+      "latency_ms": [
+       3812
+      ],
+      "cost": {
+       "attempts_used": 2,
+       "settled_usd": "0.0002777"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: extraction completed at reasoning none; off record m-4520707e08b9d143@1, one whole line (on-deviations.md 5); the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P8",
+     "task": "P8",
+     "kind": "command",
+     "prompt": "/memory switch-on <P7 off id>@1",
+     "thread": "C3",
+     "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+     "mode": null,
+     "window": {
+      "from": "2026-11-19T12:04:13.204+00:00",
+      "to": "2026-11-19T12:06:33.159+00:00"
+     },
+     "status": "host command: switched on as m-4554b0b60f99b2ca@1, off record retired",
+     "note": null,
+     "evidence": "evidence/on/P8-reply.jpg",
+     "reply": null,
+     "gate": {
+      "allowance": {
+       "attempts": 0,
+       "usd": "0"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:89178b0f3efa52b5e837fc224d85d94420c8b5d6a8f46833d85b70b08e2fde97",
+      "after_sha256": "hex:4a58d0bf1533d69282a7462fe0ea358ecec2b567b476e673a8d80f3fd33bbe59"
+     },
+     "acp_turns": [],
+     "attempts": [],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": false
+      },
+      "lifecycle": "host command: switched on as m-4554b0b60f99b2ca@1, off record retired",
+      "latency_ms": [],
+      "cost": {
+       "attempts_used": 0,
+       "settled_usd": "0E-7"
+      }
+     },
+     "runner_outcome": [],
+     "checks": {
+      "correctness": {
+       "result": "N/A",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "UNKNOWN",
+       "evidence": "no ACP prompt turn found in the window"
+      },
+      "R6": {
+       "result": "UNKNOWN",
+       "evidence": "host-visible result only: host command: switched on as m-4554b0b60f99b2ca@1, off record retired; the store's authoritative events are not extracted per turn"
+      }
+     },
+     "task_verdict": null,
+     "over_allowance": false
+    },
+    {
+     "run": "P9",
+     "task": "P9",
+     "kind": "question",
+     "prompt": "Should I run the tests before pushing? [p1211:W]",
+     "thread": "D (fresh)",
+     "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T12:06:53.183+00:00",
+      "to": "2026-11-19T12:19:08.542+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/on/P9-reply.jpg",
+     "reply": "Yes. Your saved project memory records this as your decision: \"From now on, run the tests before every push\" [memory:m-4554b0b60f99b2ca@1]. So before pushing, run the test suite. From what is shown here, I can't tell you how to run the tests. The workspace shows only .editorconfig, app.py, and README.md. app.py defines a push(branch) function whose docstring says it \"pushes a branch after its checks,\" but the function body only returns the branch and does not run any checks. The README doesn't describe a test command either. If you share the test configuration or the command you normally use, I can point you to the right step.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:74c63f19afd968b0552a7e46b27ebeb328405381c51fa7fd0591d4f51f165bb4",
+      "after_sha256": "hex:1377f44ff5f74303317371accdcd3695f89640c7d8f66af7ee5df5f8138edcf3"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-1d6707a551454d109bf56c58eabd3c95:1",
+       "acp_request_id": "bb3cb07a-ce71-4e65-bd23-faeba4e311a2",
+       "started": "2026-11-19T12:18:36.327+00:00",
+       "latency_ms": 4778,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-1d6707a551454d109bf56c58eabd3c95:1:answer:1:1:1",
+       "gateway_request_id": "gw-a3af902f03e64967afe6307d0f5f6ee6",
+       "provider_request_id": "gen-1795090721-4J2gwFwUlXw5QBToS1LU",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 606,
+       "output_tokens": 208,
+       "reported_cost_usd": "0.0001646",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [
+        "m-4554b0b60f99b2ca@1"
+       ],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "yes",
+        "run the tests"
+       ],
+       "accepted_context": {
+        "yes": "Yes.",
+        "run the tests": "Your saved project memory records this as your decision: \"From now on, run the tests before every push\" [memory:m-4554b0b60f99b2ca@1]."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       4778
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0001646"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: ['m-4520707e08b9d143@1', 'm-a8cf300a095f306b@1', 'm-ead69057e3a39423@1', 'm-ead69057e3a39423@2']"
+      },
+      "R3": {
+       "result": "PASS",
+       "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
+      }
+     },
+     "task_verdict": "INCOMPLETE",
+     "over_allowance": false
+    }
+   ]
+  },
+  {
+   "session": "M3-ZED-RETURN",
+   "workspace": "ws-on",
+   "entry": "optimus-p1211-return",
+   "cfg": "cfg-on",
+   "release": "operator release on #490: 4 attempts / $0.50, renewed with ON's (#490 comment 7007871000)",
+   "approval": "appr_7a6a701d8fe22451d7189392",
+   "cap": {
+    "attempts": 4,
+    "usd": "0.50"
+   },
+   "used": {
+    "physical_attempts": 5,
+    "settled_usd": "0.0023977",
+    "reported_usd": "0.0023977",
+    "reconciled_usd": "0"
+   },
+   "authorization_breach": true,
+   "accounting": {
+    "ledger_problems": [],
+    "end_sha256": "hex:dca2656809e0847f780b61c7c77d68f2dcb849f11e6cdad0896630f39eb0b557",
+    "streams": {
+     "stream:337c17e9b29942948a6413e05f290042": {
+      "seg-000001.log": "hex:cfc564bddd6860e27a096b6eabb2b5b99b8f9844d914966adc7183b208dfd34b"
+     }
+    },
+    "excluded": {
+     "before_begin": {
+      "count": 11,
+      "reason": "streams that existed at this session's `begin`: earlier sessions' and earlier runs' (gate.py begin)"
+     },
+     "excluded": null
+    }
+   },
+   "prompts": [
+    {
+     "run": "R1",
+     "task": "R1",
+     "kind": "question",
+     "prompt": "What were we working on? [p1211:R]",
+     "thread": "E",
+     "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+     "mode": "agent (planning stage)",
+     "window": {
+      "from": "2026-11-19T13:37:54.073+00:00",
+      "to": "2026-11-19T14:52:06.142+00:00"
+     },
+     "status": "answered",
+     "note": "the brief (host text) is not the reply's claim (Codex CP4 review 16, ruling 6); Agent mode",
+     "evidence": "evidence/return/R1-reply.jpg",
+     "reply": "No prior turns, carried observations, or workspace evidence are available, so I cannot determine what we were working on.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:ec9e131a605068d769134912d1a18fd5963ca0ba10a6af14eb6eafe4f299670c",
+      "after_sha256": "hex:35209ebb2744a85985c32dd7813f0a1eea352dbd3193416bc87d4d7c999a30b1"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-c21047ae240241ef9908325aff30a288:1",
+       "acp_request_id": "cdfee0e0-4702-4d7e-84a2-6d13e7ab86fe",
+       "started": "2026-11-19T14:51:50.377+00:00",
+       "latency_ms": 12422,
+       "planning_status": "failed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-c21047ae240241ef9908325aff30a288:1:planning:1:1:1",
+       "gateway_request_id": "gw-3844c75908b749cb9d40ff318340fadb",
+       "provider_request_id": "gen-1795099916-noTVzrOFOS1eCzdkuHuB",
+       "purpose": "agent.plan",
+       "stage": "planning",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 1850,
+       "output_tokens": 762,
+       "reported_cost_usd": "0.000566",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      },
+      {
+       "attempt_id": "session-c21047ae240241ef9908325aff30a288:1:planning:2:1:1",
+       "gateway_request_id": "gw-8187dad3ebe1489ba5740b4cb4511ae4",
+       "provider_request_id": "gen-1795099923-40Hf9LIzgvcfKY15VOjj",
+       "purpose": "agent.plan",
+       "stage": "planning",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 1766,
+       "output_tokens": 297,
+       "reported_cost_usd": "0.0003251",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": true
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [],
+       "accepted_context": {},
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "FAIL"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       12422
+      ],
+      "cost": {
+       "attempts_used": 2,
+       "settled_usd": "0.0008911"
+      }
+     },
+     "runner_outcome": [
+      "failed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "FAIL",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "PASS",
+       "evidence": "the reply cites nothing"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+      },
+      "brief": {
+       "result": "PASS",
+       "evidence": "the welcome-back brief in the first response (screenshot)"
+      }
+     },
+     "task_verdict": "FAIL",
+     "over_allowance": false
+    },
+    {
+     "run": "R2",
+     "task": "R2",
+     "kind": "question",
+     "prompt": "Should I run the tests before pushing? [p1211:R2]",
+     "thread": "E",
+     "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+     "mode": "agent (planning stage)",
+     "window": {
+      "from": "2026-11-19T14:54:33.916+00:00",
+      "to": "2026-11-19T15:01:07.741+00:00"
+     },
+     "status": "answered",
+     "note": "Agent mode; three planning turns (over its allowance of 2)",
+     "evidence": "evidence/return/R2-reply.jpg",
+     "reply": "This is a question, not a file change; per the saved project decision [memory:m-4554b0b60f99b2ca@1], yes, run the tests before every push. The README was read and documents no exception.",
+     "gate": {
+      "allowance": {
+       "attempts": 2,
+       "usd": "0.425984"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:b415da4e221e67628c095b30d6ab5d8b0977dbc29484488f0e761fa17fbe9ef0",
+      "after_sha256": "hex:c417106177348789301a5d49fc0c7c2720a73bcb4fa36c1cab30ece4237e08ea"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-c21047ae240241ef9908325aff30a288:2",
+       "acp_request_id": "46288d03-caa8-40a2-ad4a-f2626623ed26",
+       "started": "2026-11-19T15:00:14.954+00:00",
+       "latency_ms": 21670,
+       "planning_status": "failed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-c21047ae240241ef9908325aff30a288:2:planning:1:1:1",
+       "gateway_request_id": "gw-c4685d9e7b014757a441cb3d04c4facf",
+       "provider_request_id": "gen-1795100420-lgSooLnCXbW9MZcXZqFx",
+       "purpose": "agent.plan",
+       "stage": "planning",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 1970,
+       "output_tokens": 748,
+       "reported_cost_usd": "0.000571",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      },
+      {
+       "attempt_id": "session-c21047ae240241ef9908325aff30a288:2:planning:2:1:1",
+       "gateway_request_id": "gw-e1694626e4b7493ab4f41c60ef9e5e87",
+       "provider_request_id": "gen-1795100427-PP42uR1vBPN1TsNLFf7F",
+       "purpose": "agent.plan",
+       "stage": "planning",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 1886,
+       "output_tokens": 577,
+       "reported_cost_usd": "0.0004771",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      },
+      {
+       "attempt_id": "session-c21047ae240241ef9908325aff30a288:2:planning:3:1:1",
+       "gateway_request_id": "gw-76ee180ee0434406aaf0f0a29ed5f758",
+       "provider_request_id": "gen-1795100432-L0znSnZwe3s4irAQjYLl",
+       "purpose": "agent.plan",
+       "stage": "planning",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 2175,
+       "output_tokens": 482,
+       "reported_cost_usd": "0.0004585",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [
+        "m-4554b0b60f99b2ca@1"
+       ],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "yes",
+        "run the tests"
+       ],
+       "accepted_context": {
+        "yes": "This is a question, not a file change; per the saved project decision [memory:m-4554b0b60f99b2ca@1], yes, run the tests before every push.",
+        "run the tests": "This is a question, not a file change; per the saved project decision [memory:m-4554b0b60f99b2ca@1], yes, run the tests before every push."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       21670
+      ],
+      "cost": {
+       "attempts_used": 3,
+       "settled_usd": "0.0015066"
+      }
+     },
+     "runner_outcome": [
+      "failed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+      },
+      "R3": {
+       "result": "PASS",
+       "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
+      }
+     },
+     "task_verdict": "INCOMPLETE",
+     "over_allowance": true
+    }
+   ]
+  },
+  {
+   "session": "M3-ZED-RETURN-B",
+   "workspace": "ws-on",
+   "entry": "optimus-p1211-return",
+   "cfg": "cfg-on",
+   "release": "operator \"Approved, released\" 2026-11-19: 6 attempts / $1.30 (Codex CP4 review 17)",
+   "approval": "appr_b22cf310beb6567d27f63a1b",
+   "cap": {
+    "attempts": 6,
+    "usd": "1.30"
+   },
+   "used": {
+    "physical_attempts": 2,
+    "settled_usd": "0.0010126",
+    "reported_usd": "0.0010126",
+    "reconciled_usd": "0"
+   },
+   "authorization_breach": false,
+   "accounting": {
+    "ledger_problems": [],
+    "end_sha256": "hex:8c9716572fffb020d35159f211ee5100bb20e4270e2b64cff6e5e586c1f6cb59",
+    "streams": {
+     "stream:2d052707bd134a458148784d0f0c3eea": {
+      "seg-000001.log": "hex:c1fb5c1ac0748fa028abc48ebd93c47832ebb781ef17fd3aec51a0e9fb8594e7"
+     }
+    },
+    "excluded": {
+     "before_begin": {
+      "count": 12,
+      "reason": "streams that existed at this session's `begin`: earlier sessions' and earlier runs' (gate.py begin)"
+     },
+     "excluded": null
+    }
+   },
+   "prompts": [
+    {
+     "run": "R1b",
+     "task": "R1b",
+     "kind": "question",
+     "prompt": "What were we working on? [p1211:R]",
+     "thread": "F",
+     "head": "git:2a483ddd0ee3cc864f4103a7b5b7915e9239efd6",
+     "mode": "agent (planning stage)",
+     "window": {
+      "from": "2026-11-19T16:30:43.376+00:00",
+      "to": "2026-11-19T16:33:03.744+00:00"
+     },
+     "status": "answered",
+     "note": "the brief text excluded from scoring; Agent mode",
+     "evidence": "evidence/return-b/R1b-reply.jpg",
+     "reply": "No workspace change is needed to answer this. The welcome-back brief says the last work was on branch main (turn 2, 2026-11-27 15:00 UTC), it failed and ended unfinished, and no commits followed; the saved rule is to run tests before every push [memory:m-4554b0b60f99b2ca@1].",
+     "gate": {
+      "allowance": {
+       "attempts": 6,
+       "usd": "1.277952"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:6b0b780caacbf3bdea70d64c5469ca0e8b0bffb3a7a88a1beaa2c7e7dbd23d67",
+      "after_sha256": "hex:50c0135c263bb28d5a549e382a0d8cd094e280635625ec511be548325d5765f9"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-c493e352d38041d3ad48966033569e0d:1",
+       "acp_request_id": "d4ebb5c8-6e2a-47ca-be68-aeaff8849a94",
+       "started": "2026-11-19T16:32:42.097+00:00",
+       "latency_ms": 10041,
+       "planning_status": "failed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-c493e352d38041d3ad48966033569e0d:1:planning:1:1:1",
+       "gateway_request_id": "gw-f631dc4e13b94a1da69c3b8184155144",
+       "provider_request_id": "gen-1795105968-GQtDWdKQcT7VGtxPpRPs",
+       "purpose": "agent.plan",
+       "stage": "planning",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 2070,
+       "output_tokens": 577,
+       "reported_cost_usd": "0.0004955",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      },
+      {
+       "attempt_id": "session-c493e352d38041d3ad48966033569e0d:1:planning:2:1:1",
+       "gateway_request_id": "gw-876efe3a1fd34893a9fbb1b308a4c0ac",
+       "provider_request_id": "gen-1795105972-RQr1Rj2xRYcHYQJdemDX",
+       "purpose": "agent.plan",
+       "stage": "planning",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 1986,
+       "output_tokens": 637,
+       "reported_cost_usd": "0.0005171",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [
+        "m-4554b0b60f99b2ca@1"
+       ],
+       "brief_shown": true
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "test"
+       ],
+       "accepted_context": {
+        "test": "The welcome-back brief says the last work was on branch main (turn 2, 2026-11-27 15:00 UTC), it failed and ended unfinished, and no commits followed; the saved rule is to run tests before every push [memory:m-4554b0b60f99b2ca@1]."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       10041
+      ],
+      "cost": {
+       "attempts_used": 2,
+       "settled_usd": "0.0010126"
+      }
+     },
+     "runner_outcome": [
+      "failed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+      },
+      "brief": {
+       "result": "PASS",
+       "evidence": "the welcome-back brief in the first response (screenshot)"
+      }
+     },
+     "task_verdict": "INCOMPLETE",
+     "over_allowance": false
+    }
+   ]
+  },
+  {
+   "session": "M3-ZED-RETURN-OFF",
+   "workspace": "ws-off",
+   "entry": "optimus-p1211-off",
+   "cfg": "cfg-off",
+   "release": "operator \"Approved, released\" 2026-11-19: 12 attempts / $2.60 (Codex CP4 review 19)",
+   "approval": "appr_d5f3eb53db6a4b477e7050f7",
+   "cap": {
+    "attempts": 12,
+    "usd": "2.60"
+   },
+   "used": {
+    "physical_attempts": 2,
+    "settled_usd": "0.0004216",
+    "reported_usd": "0.0004216",
+    "reconciled_usd": "0"
+   },
+   "authorization_breach": false,
+   "accounting": {
+    "ledger_problems": [],
+    "end_sha256": "hex:cc3ab57e71039277484c00cdf47a2b60a0f7d89440c94f28de2b9d599eb6ce06",
+    "streams": {
+     "stream:3154c29527234dd9a8ca8ff19480f381": {
+      "seg-000001.log": "hex:c42a976c51158126d6756c090a8dd299545400c390d6d31d201133fcfa6023be"
+     }
+    },
+    "excluded": {
+     "before_begin": {
+      "count": 1,
+      "reason": "streams that existed at this session's `begin`: earlier sessions' and earlier runs' (gate.py begin)"
+     },
+     "excluded": null
+    }
+   },
+   "prompts": [
+    {
+     "run": "R1o",
+     "task": "R1o",
+     "kind": "question",
+     "prompt": "What were we working on? [p1211:R]",
+     "thread": "H",
+     "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T17:49:11.724+00:00",
+      "to": "2026-11-19T17:54:24.891+00:00"
+     },
+     "status": "answered",
+     "note": "memory off: no brief, as expected; 'test' is matched only by 'CP4 memory testing' (the README's description)",
+     "evidence": "evidence/return-off/R1o-reply.jpg",
+     "reply": "Based on the material I can see, there's not much to go on. The prior conversation is empty: the execution record shows no exact, summarized, or omitted turns, so I have no record of an earlier discussion in this session. The workspace has three files: README.md describes the project as \"a tiny project for the Plan 12.11 CP4 sessions\" with the title \"CP4 memory on.\" That suggests the work relates to CP4 memory testing or sessions under Plan 12.11. app.py contains a single function, push(branch), whose docstring says it \"pushes a branch after its checks.\" The body just returns the branch unchanged, so it looks like a placeholder or stub. .editorconfig only sets root = true. I can't see any notes, task list, or history that says what we were specifically doing. If you tell me the goal of the current session, or paste the relevant earlier discussion, I can pick it up from there.",
+     "gate": {
+      "allowance": {
+       "attempts": 6,
+       "usd": "1.277952"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:f3f21aac32006fabe8d22176999fad69bf129d61b2fa81946c88e57e8fa61f43",
+      "after_sha256": "hex:83e423c341d86948ab39bda26664c61ef0b752c79697f74fb3e623f16cd021d3"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-ceef61f14e6947929632272c0d31ef24:1",
+       "acp_request_id": "39fb0d5d-fffb-47b8-84d2-911a247ca354",
+       "started": "2026-11-19T17:49:35.128+00:00",
+       "latency_ms": 3109,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-ceef61f14e6947929632272c0d31ef24:1:answer:1:1:1",
+       "gateway_request_id": "gw-f939f558a0e44cf182f98fab336e21ae",
+       "provider_request_id": "gen-1795110581-lP6BraQncuhuYXNSQt2W",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 478,
+       "output_tokens": 301,
+       "reported_cost_usd": "0.0001983",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": false
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "test"
+       ],
+       "accepted_context": {
+        "test": "The workspace has three files: README.md describes the project as \"a tiny project for the Plan 12.11 CP4 sessions\" with the title \"CP4 memory on.\" That suggests the work relates to CP4 memory testing or sessions under Plan 12.11."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3109
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0001983"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      },
+      "brief": {
+       "result": "PASS",
+       "evidence": "memory off: no brief (screenshot)"
+      }
+     },
+     "task_verdict": "PASS",
+     "over_allowance": false
+    },
+    {
+     "run": "R2o",
+     "task": "R2o",
+     "kind": "question",
+     "prompt": "Should I run the tests before pushing? [p1211:R2]",
+     "thread": "H",
+     "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T17:54:44.454+00:00",
+      "to": "2026-11-19T18:00:13.544+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/return-off/R2o-reply.jpg",
+     "reply": "Yes, that's generally a good idea, though the workspace doesn't tell me much about your test setup. From the files shown, app.py has a push(branch) function whose docstring says it \"pushes a branch after its checks,\" but the body just returns branch and performs no checks or push. So right now there's nothing for a test run to validate in that function, and pushing through it wouldn't do anything. I also can't see any test files, a test command, or a CI configuration, so I can't confirm what \"the tests\" would cover. In general, running tests before pushing catches breakage before it reaches a shared branch, and it's cheap insurance. If you have a test suite, run it first. If the push function is meant to run checks itself, you'd want to implement those checks before relying on it. If you share the test command or any test or CI files, I can say more specifically what to run.",
+     "gate": {
+      "allowance": {
+       "attempts": 6,
+       "usd": "1.277952"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:96b3f7f5abd953e3263bef40c6dfb7fcd9dbc4344209278106e1bb0267f7a77c",
+      "after_sha256": "hex:ec39d84e6fe5cd77a65a0fa27b518d93f05b2f762fe19ea72ce5ed42bc3bb93a"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-ceef61f14e6947929632272c0d31ef24:2",
+       "acp_request_id": "c8b3f70c-fe92-4a1f-9748-585abcb4a44b",
+       "started": "2026-11-19T17:59:47.195+00:00",
+       "latency_ms": 3404,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-ceef61f14e6947929632272c0d31ef24:2:answer:1:1:1",
+       "gateway_request_id": "gw-53619c775869455797ccebe0f3da16f6",
+       "provider_request_id": "gen-1795111193-o1FHxjZx94PjLAkiogYl",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 883,
+       "output_tokens": 270,
+       "reported_cost_usd": "0.0002233",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "yes"
+       ],
+       "accepted_context": {
+        "yes": "Yes, that's generally a good idea, though the workspace doesn't tell me much about your test setup."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3404
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0002233"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "memory off: no store, so nothing is served; the reply cites nothing"
+      }
+     },
+     "task_verdict": "PASS",
+     "over_allowance": false
+    }
+   ]
+  },
+  {
+   "session": "M3-ZED-RETURN-C",
+   "workspace": "ws-on",
+   "entry": "optimus-p1211-return",
+   "cfg": "cfg-on",
+   "release": "operator \"Approved, released\" 2026-11-19: 12 attempts / $2.60 (Codex CP4 review 19)",
+   "approval": "appr_e294dbc9c009af7ca9dd6f7d",
+   "cap": {
+    "attempts": 12,
+    "usd": "2.60"
+   },
+   "used": {
+    "physical_attempts": 2,
+    "settled_usd": "0.0004931",
+    "reported_usd": "0.0004931",
+    "reconciled_usd": "0"
+   },
+   "authorization_breach": false,
+   "accounting": {
+    "ledger_problems": [],
+    "end_sha256": "hex:78c8420006640ddb36700e1d9e29392d15f61d612c7127321318d8cb664b8611",
+    "streams": {
+     "stream:1e03464e366342038d4ff3efbf99ff1b": {
+      "seg-000001.log": "hex:89cf4211fde5dbd37a61678fba6d000c1718a5e0f9ab06a9478e781b14908b02"
+     }
+    },
+    "excluded": {
+     "before_begin": {
+      "count": 13,
+      "reason": "streams that existed at this session's `begin`: earlier sessions' and earlier runs' (gate.py begin)"
+     },
+     "excluded": null
+    }
+   },
+   "prompts": [
+    {
+     "run": "R1c",
+     "task": "R1c",
+     "kind": "question",
+     "prompt": "What were we working on? [p1211:R]",
+     "thread": "G",
+     "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T18:02:23.321+00:00",
+      "to": "2026-11-19T18:27:25.657+00:00"
+     },
+     "status": "answered",
+     "note": "the brief (host text) excluded from scoring; it calls R1b's turn unfinished because that checkpoint was written on 2a483dd, before aa51a7f",
+     "evidence": "evidence/return-c/R1c-reply.jpg",
+     "reply": "Based on the welcome-back brief, the last work in this project was on 2026-12-05 at 16:32 UTC (about 9 days ago), on branch main, as turn 1. That work ended with an outcome of failed and was left unfinished, and no commits have been made since then. The brief doesn't say what the task itself was, so I can't tell you its goal from the history alone. The workspace files I can see are .editorconfig, app.py, and README.md. They show a small project described as \"CP4 memory on\" for the Plan 12.11 CP4 sessions. app.py contains a stub push(branch) function whose docstring says it pushes a branch after its checks, but the body just returns the branch. I can't see any other files, so I can't confirm whether that stub is related to the unfinished work. You also have a saved project decision, [memory:m-4554b0b60f99b2ca@1], that says to run the tests before every push. That applies to any future push work in this project. If you tell me what the unfinished task was, I can help you pick it up from there. Running /welcome will show this brief again, and /memory lists everything stored.",
+     "gate": {
+      "allowance": {
+       "attempts": 6,
+       "usd": "1.277952"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:26dcf06c8ae00d1252d84981a03a8078bf2e57a0840bfa86527396d14987f75f",
+      "after_sha256": "hex:4571fe23e820158790f9ce51b8416aa2339aafda5ca9b3915faaef4726d3d4ac"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-4e37b208ce924b41a1d756bffb476775:1",
+       "acp_request_id": "70e8a4e3-e9d0-4274-80e7-3ea9ca4cfcbe",
+       "started": "2026-11-19T18:26:49.193+00:00",
+       "latency_ms": 4577,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-4e37b208ce924b41a1d756bffb476775:1:answer:1:1:1",
+       "gateway_request_id": "gw-6219321731c74597a905b90685f18709",
+       "provider_request_id": "gen-1795112816-V0fHfPQSOcDtFR3pl1Mg",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 820,
+       "output_tokens": 373,
+       "reported_cost_usd": "0.0002685",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [
+        "m-4554b0b60f99b2ca@1"
+       ],
+       "brief_shown": true
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "test"
+       ],
+       "accepted_context": {
+        "test": "You also have a saved project decision, [memory:m-4554b0b60f99b2ca@1], that says to run the tests before every push."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       4577
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0002685"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+      },
+      "brief": {
+       "result": "PASS",
+       "evidence": "the welcome-back brief in the first response (screenshot)"
+      }
+     },
+     "task_verdict": "INCOMPLETE",
+     "over_allowance": false
+    },
+    {
+     "run": "R2c",
+     "task": "R2c",
+     "kind": "question",
+     "prompt": "Should I run the tests before pushing? [p1211:R2]",
+     "thread": "G",
+     "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+     "mode": "chat (answer stage)",
+     "window": {
+      "from": "2026-11-19T18:27:46.232+00:00",
+      "to": "2026-11-19T18:29:50.432+00:00"
+     },
+     "status": "answered",
+     "note": null,
+     "evidence": "evidence/return-c/R2c-reply.jpg",
+     "reply": "Yes. Your saved project decision says to run the tests before every push [memory:m-4554b0b60f99b2ca@1], so that's the rule to follow here. I can't see any test files in the workspace (only .editorconfig, app.py, and README.md are shown), so I can't tell you what the test command is or whether tests exist yet. The push(branch) function in app.py is a stub: its docstring says it pushes \"after its checks,\" but it only returns the branch and doesn't run any checks itself. So the testing step would need to happen before you call it, or be added to it, and I can't confirm which from what's shown. If you tell me where your tests live or how you usually run them, I can help you work out the steps.",
+     "gate": {
+      "allowance": {
+       "attempts": 6,
+       "usd": "1.277952"
+      },
+      "admitted": true,
+      "settled_after": true,
+      "next_sha256": "hex:e8268dc23f424e1b23cf2af5dcaad51acaf2b93f98853ebed05bf6b353cc0138",
+      "after_sha256": "hex:af1e06681f82ceec366b19ab904eadd6a70ca39ef75d21b6e7c0031d7b1ec151"
+     },
+     "acp_turns": [
+      {
+       "run_id": "session-4e37b208ce924b41a1d756bffb476775:2",
+       "acp_request_id": "6079abd0-90d8-4d6f-bf5f-3e576ba04f27",
+       "started": "2026-11-19T18:29:36.307+00:00",
+       "latency_ms": 3184,
+       "planning_status": "completed",
+       "plan_hash": null,
+       "permission_requests": 0,
+       "mcp_server_consent_requests": 0
+      }
+     ],
+     "attempts": [
+      {
+       "attempt_id": "session-4e37b208ce924b41a1d756bffb476775:2:answer:1:1:1",
+       "gateway_request_id": "gw-c346a7b61f594d93a8f13aa60120a101",
+       "provider_request_id": "gen-1795112982-163W22H9dGnR6nXQKQCq",
+       "purpose": "agent.answer",
+       "stage": "answer",
+       "reasoning": "low",
+       "route": [
+        "anthropic"
+       ],
+       "requested_model": "anthropic/claude-haiku-5.5",
+       "resolved_model": "anthropic/claude-haiku-5.5",
+       "resolved_provider": "Anthropic",
+       "input_tokens": 1071,
+       "output_tokens": 235,
+       "reported_cost_usd": "0.0002246",
+       "outcome": "completed",
+       "late": false,
+       "registry_hash": "hex:689eaa19df94fa2e5819a473aa2a2272a5bfc02b34703352dac2b6ebc401d20b"
+      }
+     ],
+     "dimensions": {
+      "retrieval": {
+       "citations": [
+        "m-4554b0b60f99b2ca@1"
+       ],
+       "brief_shown": null
+      },
+      "correctness_post_hoc_lexical": {
+       "scored": true,
+       "accepted_found": [
+        "yes",
+        "run the tests"
+       ],
+       "accepted_context": {
+        "yes": "Yes.",
+        "run the tests": "Your saved project decision says to run the tests before every push [memory:m-4554b0b60f99b2ca@1], so that's the rule to follow here."
+       },
+       "rejected_found": [],
+       "rejected_context": {},
+       "verdict": "PASS"
+      },
+      "lifecycle": null,
+      "latency_ms": [
+       3184
+      ],
+      "cost": {
+       "attempts_used": 1,
+       "settled_usd": "0.0002246"
+      }
+     },
+     "runner_outcome": [
+      "completed"
+     ],
+     "checks": {
+      "correctness": {
+       "result": "PASS",
+       "evidence": "post-hoc whole-reply lexical scoring"
+      },
+      "R5": {
+       "result": "PASS",
+       "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
+      },
+      "R2": {
+       "result": "UNKNOWN",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+      },
+      "R4": {
+       "result": "PASS",
+       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+      },
+      "R3": {
+       "result": "PASS",
+       "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
+      }
+     },
+     "task_verdict": "INCOMPLETE",
+     "over_allowance": false
+    }
+   ]
+  }
+ ],
+ "totals": {
+  "physical_attempts": 27,
+  "settled_usd": "0.0071920"
+ }
+}

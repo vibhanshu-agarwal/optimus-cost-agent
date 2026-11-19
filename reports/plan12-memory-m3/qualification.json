@@ -2,12 +2,12 @@
  "schema": "plan12-memory-m3.qualification.v1",
  "sources": [
   {
-   "head": "git:1b476551713f80b2ddad74382b79355adcaf6f0d",
+   "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
    "dirty": false,
    "config_id": "m3-cp4-v1",
-   "results_sha256": "hex:145c6706cb7e947be99598e244bfda3dc534e06816a04852d748653e14100aaf",
-   "log_sha256": "hex:972013c08e9438d0c461641d4bea0b0c6099454a37e749196e328665d237b1a3",
-   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-10-results.json and m3-run-10.log",
+   "results_sha256": "hex:f40b9437f67349000af398c45f19a47267b3dc785900719178d5ce5f7a405c34",
+   "log_sha256": "hex:9ade486d2b18ae58255a1bfeeb965ea6b2107e14d1b0091caa8312e113f14f84",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-12-results.json and m3-run-12.log",
    "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
    "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
    "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)"
@@ -165,11 +165,13 @@
  "not_covered": [
   {
    "what": "answer quality, abstention and citation support (answer layer)",
-   "owner": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   "owner": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+   "result": "see paid: recorded, not complete"
   },
   {
    "what": "retrieval of evidence in cases that require it (the stand-in runs no tools)",
-   "owner": "paid Zed sessions"
+   "owner": "paid Zed sessions",
+   "result": "see paid: recorded, not complete"
   },
   {
    "what": "decay (strength_faded, strength_raised)",
@@ -346,7 +348,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 21.9,
+   "seconds": 22.1,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -397,7 +399,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.1,
+   "seconds": 1.3,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -423,7 +425,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.1,
+   "seconds": 1.2,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -449,7 +451,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.3,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -539,7 +541,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -754,7 +756,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.9,
+   "seconds": 2.0,
    "steps": [
     "0:tool:tool_output",
     "1:host:compact",
@@ -886,7 +888,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.1,
    "steps": [
     "0:host:agent_work",
     "1:user:say"
@@ -924,7 +926,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.4,
    "steps": [
     "0:user:say",
     "1:tool:tool_output",
@@ -1099,7 +1101,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.4,
    "steps": [
     "0:user:say",
     "1:host:agent_work",
@@ -1169,7 +1171,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:host:agent_work",
@@ -1215,7 +1217,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.3,
+   "seconds": 41.2,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -1342,7 +1344,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.3,
+   "seconds": 41.2,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -1390,7 +1392,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.0,
+   "seconds": 0.9,
    "steps": [
     "0:host:untrusted",
     "1:user:say",
@@ -1681,7 +1683,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 21.9,
+   "seconds": 22.0,
    "steps": [
     "0:host:prior_off",
     "1:host:none",
@@ -1734,7 +1736,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1147.2,
+   "seconds": 1148.7,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -3407,7 +3409,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 134.7,
+   "seconds": 134.6,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -3658,7 +3660,7 @@
     "trace is missing coverage for ['memory.strength_faded:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 42.4,
+   "seconds": 42.3,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -3825,7 +3827,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 22.1,
+   "seconds": 22.2,
    "steps": [
     "0:host:none",
     "1:user:say",
@@ -3981,7 +3983,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 42.5,
+   "seconds": 42.7,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4029,7 +4031,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.2,
+   "seconds": 2.3,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say"
@@ -4059,7 +4061,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 45.8,
+   "seconds": 46.0,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4133,7 +4135,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 45.7,
+   "seconds": 46.2,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4203,7 +4205,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.2,
+   "seconds": 1.5,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -4229,7 +4231,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 6.5,
+   "seconds": 7.2,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -4256,7 +4258,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.7,
+   "seconds": 2.1,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -4284,7 +4286,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.2,
+   "seconds": 1.4,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -4310,7 +4312,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.5,
+   "seconds": 1.7,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4337,7 +4339,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.4,
+   "seconds": 1.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4364,7 +4366,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.7,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4454,7 +4456,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.4,
+   "seconds": 61.5,
    "steps": [
     "0:host:agent_work",
     "1:user:say",
@@ -4709,7 +4711,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.6,
+   "seconds": 1.7,
    "steps": [
     "0:user:say",
     "1:host:clone",
@@ -4763,7 +4765,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4799,7 +4801,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 21.9,
+   "seconds": 22.1,
    "steps": [
     "0:host:prior_off",
     "1:host:none",
@@ -4839,7 +4841,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1126.9,
+   "seconds": 1127.2,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -6467,10 +6469,10 @@
     "status": "PASS",
     "reasons": [],
     "archived": [
-     "m-63dcbba455ba45a8"
+     "m-d820f5ee82e91111"
     ],
     "arrival": [
-     "m-1bf902673d0583c9"
+     "m-5b0037263e3b59a5"
     ],
     "policy": "oldest live off record archived at the cap (memory_store._archived)"
    },
@@ -6507,7 +6509,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 114.6,
+   "seconds": 114.8,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -6625,7 +6627,7 @@
    ],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.2,
+   "seconds": 1.4,
    "steps": [
     "0:user:say",
     "1:host:change_file",
@@ -6652,7 +6654,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.2,
+   "seconds": 1.3,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -6667,7 +6669,7 @@
    "status": "UNRUN",
    "layers": {
     "authority": "FAIL",
-    "retrieval": "INCONCLUSIVE",
+    "retrieval": "FAIL",
     "answer": "UNRUN",
     "cost": "INCONCLUSIVE"
    },
@@ -6680,13 +6682,13 @@
     "required events ['memory.strength_faded:pref-indent'] are missing or out of order"
    ],
    "retrieval_reasons": [
-    "trace is missing coverage for ['memory.strength_faded:pref-indent']; no layer can pass"
+    "served order ['pref-indent', 'pref-ruff'] breaks the required rank ['pref-ruff', 'pref-indent']"
    ],
    "cost_reasons": [
     "trace is missing coverage for ['memory.strength_faded:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 1.7,
+   "seconds": 2.1,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -6731,7 +6733,7 @@
     "trace is missing coverage for ['memory.strength_raised:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 1.7,
+   "seconds": 2.0,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -6769,7 +6771,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.2,
+   "seconds": 2.3,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6824,7 +6826,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 5.6,
+   "seconds": 5.7,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6852,7 +6854,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 5.6,
+   "seconds": 6.1,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6863,5 +6865,388 @@
    "clock_days": 0.0
   }
  ],
- "offline_qualification_passed": true
+ "offline_qualification_passed": true,
+ "history": [
+  {
+   "head": "git:1b476551713f80b2ddad74382b79355adcaf6f0d",
+   "dirty": false,
+   "config_id": "m3-cp4-v1",
+   "results_sha256": "hex:145c6706cb7e947be99598e244bfda3dc534e06816a04852d748653e14100aaf",
+   "log_sha256": "hex:972013c08e9438d0c461641d4bea0b0c6099454a37e749196e328665d237b1a3",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-10-results.json and m3-run-10.log",
+   "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
+   "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+   "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)",
+   "summary": {
+    "FAIL": 29,
+    "INCONCLUSIVE": 45,
+    "UNRUN": 4
+   },
+   "passed": true
+  }
+ ],
+ "paid": {
+  "report": {
+   "path": "reports/plan12-memory-m3/paid-attempts.json",
+   "sha256": "hex:e5de0a083e999bec54714b4da491026012a6739580ceee9bf6222686097c30eb",
+   "schema": "plan12-memory-m3.paid-attempts.v3"
+  },
+  "correctness_rule": "POST-HOC whole-reply lexical scoring (Codex CP4 review 19, ruling 4): case-insensitive substring over the model's reply (host text such as the brief excluded); PASS when an accepted phrase is present and no rejected phrase is. The frozen rubric R1 names 'the reply's claim'; no claim selector was frozen, so this is not a pre-registered interpretation. Lists are alternatives. No superiority claim is made.",
+  "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn, so memory-on citations leave R2 UNKNOWN.",
+  "totals": {
+   "physical_attempts": 27,
+   "settled_usd": "0.0071920"
+  },
+  "sessions": [
+   {
+    "session": "M3-ZED-OFF",
+    "cap": {
+     "attempts": 8,
+     "usd": "0.50"
+    },
+    "used": {
+     "physical_attempts": 5,
+     "settled_usd": "0.0009815",
+     "reported_usd": null,
+     "reconciled_usd": null
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "cap": {
+     "attempts": 20,
+     "usd": "1.50"
+    },
+    "used": {
+     "physical_attempts": 11,
+     "settled_usd": "0.0018855",
+     "reported_usd": "0.0015978",
+     "reconciled_usd": "0.0002877"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN",
+    "cap": {
+     "attempts": 4,
+     "usd": "0.50"
+    },
+    "used": {
+     "physical_attempts": 5,
+     "settled_usd": "0.0023977",
+     "reported_usd": "0.0023977",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": true
+   },
+   {
+    "session": "M3-ZED-RETURN-B",
+    "cap": {
+     "attempts": 6,
+     "usd": "1.30"
+    },
+    "used": {
+     "physical_attempts": 2,
+     "settled_usd": "0.0010126",
+     "reported_usd": "0.0010126",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN-OFF",
+    "cap": {
+     "attempts": 12,
+     "usd": "2.60"
+    },
+    "used": {
+     "physical_attempts": 2,
+     "settled_usd": "0.0004216",
+     "reported_usd": "0.0004216",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C",
+    "cap": {
+     "attempts": 12,
+     "usd": "2.60"
+    },
+    "used": {
+     "physical_attempts": 2,
+     "settled_usd": "0.0004931",
+     "reported_usd": "0.0004931",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   }
+  ],
+  "scored_prompts": [
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P2",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "A",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P4",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "B",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P6",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "C",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P9",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "D",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P2",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "A",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P4b",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "C' (fresh, for P4b)",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P6",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "next fresh thread after C' (task thread C, shifted)",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P9",
+    "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+    "thread": "D (fresh)",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN",
+    "run": "R1",
+    "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+    "thread": "E",
+    "mode": "agent (planning stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN",
+    "run": "R2",
+    "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+    "thread": "E",
+    "mode": "agent (planning stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": true
+   },
+   {
+    "session": "M3-ZED-RETURN-B",
+    "run": "R1b",
+    "head": "git:2a483ddd0ee3cc864f4103a7b5b7915e9239efd6",
+    "thread": "F",
+    "mode": "agent (planning stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-OFF",
+    "run": "R1o",
+    "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+    "thread": "H",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-OFF",
+    "run": "R2o",
+    "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+    "thread": "H",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C",
+    "run": "R1c",
+    "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+    "thread": "G",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C",
+    "run": "R2c",
+    "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+    "thread": "G",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   }
+  ],
+  "unscored_prompts": [
+   {
+    "session": "M3-ZED-ON",
+    "run": "P4",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "B (also held P3's text: unscored)",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "UNSCORED",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   }
+  ],
+  "by_verdict": {
+   "FAIL": 5,
+   "PASS": 4,
+   "INCOMPLETE": 6
+  },
+  "paid_qualification_complete": false,
+  "limits": [
+   "scoring is post-hoc lexical and supports no superiority claim",
+   "the served set is not logged per turn, so a memory-on citation leaves R2 UNKNOWN and the task INCOMPLETE",
+   "M3-ZED-RETURN used 5 attempts against a cap of 4: an uncured authorization breach",
+   "Agent mode classifies an answered question as a failed run: #512"
+  ]
+ }
 }
