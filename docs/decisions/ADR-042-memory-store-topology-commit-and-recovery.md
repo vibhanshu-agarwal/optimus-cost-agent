@@ -9,8 +9,7 @@ once in a terminal from a hash-only ACL, a launch approval, and the manifest and
 binding its configuration. It departs from ADR-037 where accepted memory differs from an index: memory cannot be rebuilt from the workspace, so the
 store must keep every acknowledged write and never adopt data it cannot vouch for. Unchanged: alerts, not limits
 ([ADR-005](ADR-005-cost-alerts-not-limits.md)); models are configuration ([ADR-025](ADR-025-models-are-configuration-per-model-admission.md)). This
-record decides topology, the commit and the recovery boundary. Purge's journal (Task 2) and the recovery copy (Task 4) have landed; they are recorded
-under Amendments.
+record decides topology, the commit and the recovery boundary. Purge's journal (Task 2) and the recovery copy's format (Task 4) amend it when they land.
 
 ## Context
 
@@ -39,7 +38,7 @@ restore targets."
 | Agent-selected, fsync policy | `appendfsync always`, with `WAITAOF` on the appending connection still the proof | Chosen (Codex CP1 review 1) | Every memory write is waited on anyway. Measured on the released store: 50 saves in a row confirmed at p50 8.7 ms, max 15.6 ms. |
 | | `appendfsync everysec`, as Plan 12.11 proposed | Rejected after measurement | `WAITAOF` waited for the next periodic fsync: p50 1.003 s, max 1.006 s per save. With one serialized writer per Gateway that is about one save a second, so four simultaneous saves finish at about 1, 2, 3 and 4 seconds against a p95 target of 1.5 s. |
 | | A pool of writer connections sharing one fsync | Rejected | More concurrency machinery than `always` for the same effect. |
-| D5 and D8, recovery | A plaintext copy in the workspace, one confirmed location, restore only into an empty store | Chosen; delivered by Task 4 | Volume loss would otherwise lose everything. |
+| D5 and D8, recovery | A plaintext copy in the workspace, one confirmed location, restore only into an empty store | Chosen; lands with Task 4 | Volume loss would otherwise lose everything. |
 | | No copy in this part | Rejected by the operator | Thirteen days instead of sixteen, and no recovery from volume loss. |
 
 ## Decision
@@ -66,8 +65,8 @@ The ACL opens only `omem:*` and named commands: no scripting, `KEYS`, `CONFIG`, 
 `purge_status`, `export`, `restore` and `restore_status`. The bearer is checked before any body byte is read. Limits: 256 KiB requests, 1 MiB replies,
 a 5 second deadline that covers waiting and execution, two serving workers and a queue of eight;
 a full queue is refused at once, and memory traffic never holds a model or capture request. No command, key or filesystem path crosses the route,
-and a field outside the schema is refused. Every shape was fixed at CP1, when `purge` and `purge_status` answered `MEMORY_OPERATION_UNAVAILABLE`
-until Task 2's journal backed them, and `export`, `restore` and `restore_status` until Task 4's recovery copy did. Both now serve (Amendments).
+and a field outside the schema is refused. Every shape is fixed now; `purge` and `purge_status` answer `MEMORY_OPERATION_UNAVAILABLE` until Task 2's
+journal backs them, and `export`, `restore` and `restore_status` until Task 4's recovery copy does.
 
 **Projects are host-asserted, as ADR-037's scopes are.** A host holding the Gateway key can name another project; a test pins that residual. List
 cursors are sealed with HMAC to their project and scope.
@@ -118,7 +117,7 @@ rebuilt from the stream alone; a stream that went back discards them.
 ### Recovery (D5, D8)
 
 A plaintext copy of active payloads goes under `.optimus/memory-recovery/`, excluded from Git, in one confirmed location per project, and a restore
-refuses a healthy store that is not empty. Task 4 delivered it; its format is under Amendments.
+refuses a healthy store that is not empty. Task 4 delivers it and amends this record with its format.
 
 ## Consequences
 
@@ -128,33 +127,8 @@ refuses a healthy store that is not empty. Task 4 delivered it; its format is un
 - One writer per project at a time. A second writer waits for the lease or is refused; nothing merges.
 - Two workspaces on one key are not isolated from each other by the store.
 - An `unconfirmed` reply is honest, not a failure to report: the host must not say "Remembered" for it.
-- Losing the volume loses the store; the recovery copy (Amendments) restores what it last held. It is same-drive plaintext, not a backup.
+- Losing the volume loses the store. Until Task 4's copy lands, there is no recovery from that.
 - `users.acl` holds only the hash of a generated high-entropy password.
-
-## Amendments
-
-**Purge's deletion journal (Task 2, CP2).** `purge` destroys one item's text. Each step is recorded before it is dispatched, in a payload-free
-journal under `<memory-store root>/journal/`, outside the Redis volume, so a later restore still learns what was purged. The journal reuses the
-durable outbox's streams (ADR-032): one per Gateway process, fsynced, hash-chained, with verified-prefix recovery. Each record also carries an HMAC
-under a key derived from the Gateway's generated ACL password, so a record the Gateway did not write is refused (`MEMORY_JOURNAL_INVALID`). A
-record names the project by its key hash, plus the item, version, idempotency key, stream ids and persistence counters; never a title or a
-statement. The phases are `intent`, `tombstoned`, `physical` and `completed`. `purge_status` reports where a purge stands and moves it on; an
-intent with no later step is uncertain, never assumed done. Code: `src/optimus_gateway/memory_journal.py`.
-
-**The recovery copy (Task 4, CP3).** One location per project, `.optimus/memory-recovery/` in the trusted worktree the user confirmed. It is
-recorded privately in the host's config, ignored by Git (its own `.gitignore` holding `*` if it has none), and needs consent under a known sync
-root. A generation uses the Agent Memory Repo layout: `MEMORY.md`, `entries.jsonl` (every item's latest event as the Gateway signed it, active
-items whole and the rest payload-free) and `manifest.json`. The Gateway's seal binds the entries, the host's metadata and the count of
-deletion-journal records. A withdrawal or purge retires every older generation. `restore` sends one generation, the one whose seal the user was
-shown, and the Gateway:
-- verifies every entry and the seal;
-- refuses a project that holds anything;
-- applies the deletion journal, failing closed when it is damaged or shorter than when the copy was written, and this host's later deletions;
-- publishes in one fenced transaction.
-
-A `--map` restore maps a copy into this workspace's own registration, one to one. A store emptied for a project that held memory is reported as
-recovery-required: nothing is served and nothing is written until it is restored. Code: `src/optimus/context/memory_recovery.py` and
-`src/optimus_gateway/memory_store.py`.
 
 ## Evidence
 

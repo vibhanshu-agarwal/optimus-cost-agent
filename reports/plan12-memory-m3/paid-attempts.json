@@ -3,7 +3,7 @@
  "plan": "12.11",
  "issue": 490,
  "correctness_rule": "POST-HOC whole-reply lexical scoring (Codex CP4 review 19, ruling 4): case-insensitive substring over the model's reply (host text such as the brief excluded); PASS when an accepted phrase is present and no rejected phrase is. The frozen rubric R1 names 'the reply's claim'; no claim selector was frozen, so this is not a pre-registered interpretation. Lists are alternatives. No superiority claim is made.",
- "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn, so memory-on citations leave R2 UNKNOWN.",
+ "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6) and stay UNKNOWN where it cannot be derived. R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not served.",
  "attribution": {
   "rule": "a prompt's attempts and ACP turns are those inside its frozen window",
   "windows": "p1211-cp4-zed/evidence/attribution-windows.json",
@@ -94,6 +94,12 @@
   "replies_json": "hex:dedb201704b88d76f6f0a1d362388b9db328699491d46557729f543b08b76ace",
   "marks_json": "hex:b9d9ccfc77fa7dae49d666452f643c0a8f2147b7329d5aa8aad50e41f27eb0ec",
   "store_archive_sha256sums": "hex:861b0f08d86d5a5c2887c0b5022e38299b2d83a59061506b405b3f62a34a9169",
+  "served_reconstruction": {
+   "path": "p1211-cp4-zed/evidence/served-reconstruction.json",
+   "sha256": "hex:141a1f144c3e49d78a00e0d65de707e16db6f8faa0c9289f791a8d04fefe4067",
+   "script": "p1211-cp4-zed/reconstruct_served.py",
+   "script_sha256": "hex:bfbfcf532b961a0507f9798939fb5d3a2d9e87b9455851122ed80ba0af929394"
+  },
   "traces": {
    "ws-off": "hex:1dcbed7d4b96f08ff0802a6111acd3efb10ed54fdaf995b02321235604a465e5",
    "ws-on": "hex:3a2295fee9ce5d539fa77fb11097fef0ce8db913767d43ab9f21eae3620923f1"
@@ -187,8 +193,8 @@
        "evidence": "no ACP prompt turn found in the window"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: refused by Zed (unadvertised command, OFF has no store); the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "evidence": "memory off has no store, so nothing can be written; host result: refused by Zed (unadvertised command, OFF has no store)"
       }
      },
      "task_verdict": null,
@@ -362,8 +368,8 @@
        "evidence": "no ACP prompt turn found in the window"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: refused by Zed (unadvertised command); the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "evidence": "memory off has no store, so nothing can be written; host result: refused by Zed (unadvertised command)"
       }
      },
      "task_verdict": null,
@@ -533,8 +539,8 @@
        "evidence": "no ACP prompt turn found in the window"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: refused by Zed (unadvertised command); the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "evidence": "memory off has no store, so nothing can be written; host result: refused by Zed (unadvertised command)"
       }
      },
      "task_verdict": null,
@@ -744,8 +750,8 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: statement, unscored: memory off saves nothing; the reply explains Chat mode is read-only and suggests a pre-push hook, CI gate or shared hook tooling; the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "evidence": "memory off has no store, so nothing can be written; host result: statement, unscored: memory off saves nothing; the reply explains Chat mode is read-only and suggests a pre-push hook, CI gate or shared hook tooling"
       }
      },
      "task_verdict": null,
@@ -805,8 +811,8 @@
        "evidence": "no ACP prompt turn found in the window"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: refused by Zed (unadvertised command); the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "evidence": "memory off has no store, so nothing can be written; host result: refused by Zed (unadvertised command)"
       }
      },
      "task_verdict": null,
@@ -1025,8 +1031,11 @@
        "evidence": "no ACP prompt turn found in the window"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: host command, remembered; the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "store_events": [
+        "admit m-ead69057e3a39423@1 trust=user-authored words=True at 1795070491653-0"
+       ],
+       "evidence": "expected [('admit', 'user-authored', True)]; the archived store holds [('admit', 'user-authored', True)] in the window"
       }
      },
      "task_verdict": null,
@@ -1137,12 +1146,23 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "UNKNOWN",
-       "evidence": "cites ['m-ead69057e3a39423@1']; the turn's served set is not recorded per turn"
+       "result": "PASS",
+       "evidence": "cites ['m-ead69057e3a39423@1']; served ['m-ead69057e3a39423@1']; not served: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): []; cited of them: []; none exists, so none can be served"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-ead69057e3a39423@1"
+       ]
       },
       "R3": {
        "result": "PASS",
@@ -1206,8 +1226,11 @@
        "evidence": "no ACP prompt turn found in the window"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: host command, updated to version 2; the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "store_events": [
+        "update m-ead69057e3a39423@2 trust=user-authored words=True at 1795072709679-0"
+       ],
+       "evidence": "expected [('update', 'user-authored', True)]; the archived store holds [('update', 'user-authored', True)] in the window"
       }
      },
      "task_verdict": null,
@@ -1307,12 +1330,23 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "UNKNOWN",
-       "evidence": "cites ['m-ead69057e3a39423@2']; the turn's served set is not recorded per turn"
+       "result": "PASS",
+       "evidence": "cites ['m-ead69057e3a39423@2']; served ['m-ead69057e3a39423@2']; not served: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: ['m-ead69057e3a39423@1']"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-ead69057e3a39423@1']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-ead69057e3a39423@2"
+       ]
       }
      },
      "task_verdict": "INCOMPLETE",
@@ -1419,19 +1453,30 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "UNKNOWN",
-       "evidence": "cites ['m-ead69057e3a39423@2']; the turn's served set is not recorded per turn"
+       "result": "PASS",
+       "evidence": "cites ['m-ead69057e3a39423@2']; served ['m-ead69057e3a39423@2']; not served: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: ['m-ead69057e3a39423@1']"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-ead69057e3a39423@1']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-ead69057e3a39423@2"
+       ]
       },
       "R3": {
        "result": "PASS",
        "evidence": "required exact citations ['m-ead69057e3a39423@2']"
       }
      },
-     "task_verdict": "INCOMPLETE",
+     "task_verdict": "PASS",
      "over_allowance": false
     },
     {
@@ -1488,8 +1533,11 @@
        "evidence": "no ACP prompt turn found in the window"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: host command, forgotten; the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "store_events": [
+        "withdraw m-ead69057e3a39423@3 trust=user-authored words=False at 1795073539519-0"
+       ],
+       "evidence": "expected [('withdraw', 'user-authored', False)]; the archived store holds [('withdraw', 'user-authored', False)] in the window"
       }
      },
      "task_verdict": null,
@@ -1603,7 +1651,16 @@
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: ['m-ead69057e3a39423@1', 'm-ead69057e3a39423@2']"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": []
       }
      },
      "task_verdict": "FAIL",
@@ -1719,8 +1776,9 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: failed: extraction stopped at its 512-token cap on reasoning; receipt uncertain, reconciled from the provider record (on-deviations.md 3); the store's authoritative events are not extracted per turn"
+       "result": "FAIL",
+       "store_events": [],
+       "evidence": "expected [('off', 'off', False)]; the archived store holds [] in the window; recorded finding: extraction stopped at its token cap; no off record was written (on-deviations.md 3)"
       }
      },
      "task_verdict": null,
@@ -1836,8 +1894,11 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: kept with its finding: off record's span overshot, unswitchable; fixed in ddd5ce3 (on-deviations.md 4); the store's authoritative events are not extracted per turn"
+       "result": "FAIL",
+       "store_events": [
+        "off m-a8cf300a095f306b@1 trust=off words=False at 1795088626479-0"
+       ],
+       "evidence": "expected [('off', 'off', False)]; the archived store holds [('off', 'off', False)] in the window; recorded finding: the off record's source span overshot, so it could not be switched on; fixed in ddd5ce3 (on-deviations.md 4)"
       }
      },
      "task_verdict": null,
@@ -1953,8 +2014,11 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: extraction completed at reasoning none; off record m-4520707e08b9d143@1, one whole line (on-deviations.md 5); the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "store_events": [
+        "off m-4520707e08b9d143@1 trust=off words=False at 1795089701775-0"
+       ],
+       "evidence": "expected [('off', 'off', False)]; the archived store holds [('off', 'off', False)] in the window"
       }
      },
      "task_verdict": null,
@@ -2014,8 +2078,12 @@
        "evidence": "no ACP prompt turn found in the window"
       },
       "R6": {
-       "result": "UNKNOWN",
-       "evidence": "host-visible result only: host command: switched on as m-4554b0b60f99b2ca@1, off record retired; the store's authoritative events are not extracted per turn"
+       "result": "PASS",
+       "store_events": [
+        "admit m-4554b0b60f99b2ca@1 trust=user-authored words=True at 1795089971984-0",
+        "withdraw m-4520707e08b9d143@2 trust=off words=False at 1795089972008-0"
+       ],
+       "evidence": "expected [('admit', 'user-authored', True), ('withdraw', 'off', False)]; the archived store holds [('admit', 'user-authored', True), ('withdraw', 'off', False)] in the window"
       }
      },
      "task_verdict": null,
@@ -2124,19 +2192,30 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "UNKNOWN",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+       "result": "PASS",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; served ['m-4554b0b60f99b2ca@1']; not served: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: ['m-4520707e08b9d143@1', 'm-a8cf300a095f306b@1', 'm-ead69057e3a39423@1', 'm-ead69057e3a39423@2']"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-4520707e08b9d143@1', 'm-4520707e08b9d143@2', 'm-a8cf300a095f306b@1', 'm-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-4554b0b60f99b2ca@1"
+       ]
       },
       "R3": {
        "result": "PASS",
        "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
       }
      },
-     "task_verdict": "INCOMPLETE",
+     "task_verdict": "PASS",
      "over_allowance": false
     }
    ]
@@ -2296,7 +2375,18 @@
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-4520707e08b9d143@1', 'm-4520707e08b9d143@2', 'm-a8cf300a095f306b@1', 'm-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-4554b0b60f99b2ca@1"
+       ]
       },
       "brief": {
        "result": "PASS",
@@ -2449,19 +2539,30 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "UNKNOWN",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+       "result": "PASS",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; served ['m-4554b0b60f99b2ca@1']; not served: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-4520707e08b9d143@1', 'm-4520707e08b9d143@2', 'm-a8cf300a095f306b@1', 'm-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-4554b0b60f99b2ca@1"
+       ]
       },
       "R3": {
        "result": "PASS",
        "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
       }
      },
-     "task_verdict": "INCOMPLETE",
+     "task_verdict": "PASS",
      "over_allowance": true
     }
    ]
@@ -2622,19 +2723,30 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "UNKNOWN",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+       "result": "PASS",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; served ['m-4554b0b60f99b2ca@1']; not served: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-4520707e08b9d143@1', 'm-4520707e08b9d143@2', 'm-a8cf300a095f306b@1', 'm-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-4554b0b60f99b2ca@1"
+       ]
       },
       "brief": {
        "result": "PASS",
        "evidence": "the welcome-back brief in the first response (screenshot)"
       }
      },
-     "task_verdict": "INCOMPLETE",
+     "task_verdict": "PASS",
      "over_allowance": false
     }
    ]
@@ -3036,19 +3148,30 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "UNKNOWN",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+       "result": "PASS",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; served ['m-4554b0b60f99b2ca@1']; not served: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-4520707e08b9d143@1', 'm-4520707e08b9d143@2', 'm-a8cf300a095f306b@1', 'm-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-4554b0b60f99b2ca@1"
+       ]
       },
       "brief": {
        "result": "PASS",
        "evidence": "the welcome-back brief in the first response (screenshot)"
       }
      },
-     "task_verdict": "INCOMPLETE",
+     "task_verdict": "PASS",
      "over_allowance": false
     },
     {
@@ -3154,19 +3277,30 @@
        "evidence": "ACP trace: no plan hash settled and no plan or tool session/request_permission in the window (MCP server launch consents at session/new are counted apart)"
       },
       "R2": {
-       "result": "UNKNOWN",
-       "evidence": "cites ['m-4554b0b60f99b2ca@1']; the turn's served set is not recorded per turn"
+       "result": "PASS",
+       "evidence": "cites ['m-4554b0b60f99b2ca@1']; served ['m-4554b0b60f99b2ca@1']; not served: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
       },
       "R4": {
        "result": "PASS",
-       "evidence": "exact item@version against items withdrawn, superseded, off or retired by then: []"
+       "components": {
+        "cited": "PASS",
+        "served": "PASS"
+       },
+       "evidence": "prohibited by then (withdrawn, superseded, off or retired): ['m-4520707e08b9d143@1', 'm-4520707e08b9d143@2', 'm-a8cf300a095f306b@1', 'm-ead69057e3a39423@1', 'm-ead69057e3a39423@2', 'm-ead69057e3a39423@3']; cited of them: []; served of them: []; served set reconstructed from the archived store (evidence/served-reconstruction.json)"
+      },
+      "served_set": {
+       "result": "N/A",
+       "status": "DERIVED",
+       "served": [
+        "m-4554b0b60f99b2ca@1"
+       ]
       },
       "R3": {
        "result": "PASS",
        "evidence": "required exact citations ['m-4554b0b60f99b2ca@1']"
       }
      },
-     "task_verdict": "INCOMPLETE",
+     "task_verdict": "PASS",
      "over_allowance": false
     }
    ]

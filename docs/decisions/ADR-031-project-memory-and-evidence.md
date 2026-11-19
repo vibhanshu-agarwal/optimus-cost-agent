@@ -13,7 +13,7 @@ Plan 12.x memory gives Optimus project context, durable cross-session memory and
 **Architecture (the design v4, §1–2; operator-decided items are marked).**
 - **Engine boundary.** The engine is a separately extractable `context_engine` package ([ADR-001](ADR-001-context-engine-separate-product.md)). It imports no `optimus`, Gateway, security, evidence or model-policy implementation. The host injects authorized file reads, sanitization, model calls and opaque project identities. Engine absence keeps today's behaviour.
 - **Host-owned authority.** The host owns authority: ACP commands, notices, security decisions, the project registry, key custody and accounting. Memory never grants execution authority.
-- **Storage and retrieval (operator).** Automatic memory, with no review queue. (Amended 2026-11-18: automatic admission of user statements is narrowly superseded by [ADR-044](ADR-044-explicit-user-actions-for-user-memory.md). User memory needs an explicit user command; agent lessons stay automatic.) Hybrid retrieval. GraphRAG for project questions. Redis first, with no SQLite. Postgres for analytical facts. Option A for documentation code.
+- **Storage and retrieval (operator).** Automatic memory, with no review queue. Hybrid retrieval. GraphRAG for project questions. Redis first, with no SQLite. Postgres for analytical facts. Option A for documentation code.
 - **Delivery order.** M0a (now M0a-1 to M0a-3), then M0b, M1, M3, M2, M5a, M7, M6 and M5b. Each slice has its own plan and acceptance.
 
 **One includable-files policy (`optimus.guardrails.file_policy`, delivered by Plan 12.6 Task 1).**

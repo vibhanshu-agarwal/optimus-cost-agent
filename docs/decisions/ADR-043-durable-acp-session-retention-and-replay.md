@@ -25,8 +25,8 @@ earlier local draft was written as "ADR-039" against `main` `6e5478a0`; that num
   [ADR-038](ADR-038-context-index-retrieval-tools-and-caching.md) (the memory-index Redis is not the ACP session store);
   the memory store of [ADR-042](ADR-042-memory-store-topology-commit-and-recovery.md), which keeps accepted memory on
   its own Redis behind the Gateway and can store and serve continuation checkpoint records, is a separate service and
-  is not the ACP session store either (automatic checkpoint capture and new-session continuation were later Plan 12.11
-  work, delivered at its CP3, not established by this record);
+  is not the ACP session store either (automatic checkpoint capture and new-session continuation are later Plan 12.11
+  work, not established by it);
   durable usage capture ([ADR-032](ADR-032-durable-usage-capture-and-gateway-drain.md)); alerts, not limits
   ([ADR-005](ADR-005-cost-alerts-not-limits.md)); the checkpoint cadence ([ADR-016](ADR-016-checkpoint-review-cadence.md)).
 - **The plan is the contract.** The exact field lists, outcome map and task gates are in

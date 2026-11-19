@@ -1,0 +1,454 @@
+{
+ "schema": "plan12-memory-m3.served-reconstruction.v1",
+ "method": "Zero-paid reconstruction of each memory-on paid prompt's served set (Codex CP4 review 21, ruling 6), from the archived store\n(evidence/store-archive, read-only; no Redis, no Docker): the AOF's commands in order, each stream entry's id being its\ntransaction time. Writes evidence/served-reconstruction.json; make_paid_attempts.py reads it for R2 and R4's serving half.\n\nWhat a turn is served (src/optimus/context/memory_serving.py `from_store` at every paid head, checked below): the project's\nitems whose latest confirmed version is servable (trust not off, status active, `context_engine.memory_projection`) and has a\nstatement, minus branch-limited items on another branch and items whose pinned file changed (both come from the item's\nlineage), then at most 50 user items and 3 agent lessons. For a prompt, the served set is derived only when the inputs fix it:\n- the confirmed view is known: every event at or before the window's start is confirmed there (a `durable` watermark at or\n  past it);\n- no item event falls inside the window, so the read time within it cannot matter;\n- every servable item's lineage has no branch limit and no file pin, so no workspace or branch state is needed;\n- no agent lesson exists and at most 50 user items do, so no ranking or limit applies.\nOtherwise the prompt is UNKNOWN, with the input that is missing.",
+ "source": {
+  "aof": "p1211-cp4-zed/evidence/store-archive/appendonly.aof.1.incr.aof",
+  "aof_sha256": "hex:bcf176be2038f6813c155b4040b8ecb64c39a4f84a8b9e4884cc94ed0dda5f09",
+  "base_rdb_bytes": 89,
+  "checksums": "p1211-cp4-zed/evidence/store-archive/SHA256SUMS"
+ },
+ "project": "project:cb9236e3f238224b306b0f7893a9b89f",
+ "serving_rule": {
+  "from_store_sha256": "hex:ef549703863565e8e17c053875eb94de9a51910c570ef1031e7df917cfbd988e",
+  "same_at_heads": [
+   "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+   "git:c5cb7b62f3f85d9382d3105e161215d679d97241",
+   "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+   "git:2a483ddd0ee3cc864f4103a7b5b7915e9239efd6",
+   "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97"
+  ]
+ },
+ "item_events": 7,
+ "prompts": {
+  "M3-ZED-ON/P1": {
+   "window_ms": [
+    1795070411991.813,
+    1795070502439.2114
+   ],
+   "served": null,
+   "status": "UNKNOWN",
+   "why_unknown": [
+    "item events inside the window: ['m-ead69057e3a39423@1 at 1795070491653-0']"
+   ],
+   "latest_events_at_start": [],
+   "events_in_window": [
+    {
+     "item": "m-ead69057e3a39423",
+     "version": 1,
+     "action": "admit",
+     "status": "active",
+     "trust": "user-authored",
+     "statement": true,
+     "stream_id": "1795070491653-0"
+    }
+   ],
+   "prohibited_at_start": []
+  },
+  "M3-ZED-ON/P2": {
+   "window_ms": [
+    1795070530469.0195,
+    1795072318749.4814
+   ],
+   "served": [
+    "m-ead69057e3a39423@1"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@1 active trust=user-authored at 1795070491653-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": []
+  },
+  "M3-ZED-ON/P3": {
+   "window_ms": [
+    1795072332996.0962,
+    1795072720611.7705
+   ],
+   "served": null,
+   "status": "UNKNOWN",
+   "why_unknown": [
+    "item events inside the window: ['m-ead69057e3a39423@2 at 1795072709679-0']"
+   ],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@1 active trust=user-authored at 1795070491653-0"
+   ],
+   "events_in_window": [
+    {
+     "item": "m-ead69057e3a39423",
+     "version": 2,
+     "action": "update",
+     "status": "active",
+     "trust": "user-authored",
+     "statement": true,
+     "stream_id": "1795072709679-0"
+    }
+   ],
+   "prohibited_at_start": [
+    "m-ead69057e3a39423@1"
+   ]
+  },
+  "M3-ZED-ON/P4": {
+   "window_ms": [
+    1795072735467.234,
+    1795072849059.266
+   ],
+   "served": [
+    "m-ead69057e3a39423@2"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@2 active trust=user-authored at 1795072709679-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-ead69057e3a39423@1"
+   ]
+  },
+  "M3-ZED-ON/P4b": {
+   "window_ms": [
+    1795072880018.6401,
+    1795073497303.4253
+   ],
+   "served": [
+    "m-ead69057e3a39423@2"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@2 active trust=user-authored at 1795072709679-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-ead69057e3a39423@1"
+   ]
+  },
+  "M3-ZED-ON/P5": {
+   "window_ms": [
+    1795073512004.035,
+    1795073553002.94
+   ],
+   "served": null,
+   "status": "UNKNOWN",
+   "why_unknown": [
+    "item events inside the window: ['m-ead69057e3a39423@3 at 1795073539519-0']"
+   ],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@2 active trust=user-authored at 1795072709679-0"
+   ],
+   "events_in_window": [
+    {
+     "item": "m-ead69057e3a39423",
+     "version": 3,
+     "action": "withdraw",
+     "status": "withdrawn",
+     "trust": "user-authored",
+     "statement": false,
+     "stream_id": "1795073539519-0"
+    }
+   ],
+   "prohibited_at_start": [
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2"
+   ]
+  },
+  "M3-ZED-ON/P6": {
+   "window_ms": [
+    1795073570666.8804,
+    1795073621434.6943
+   ],
+   "served": [],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-ON/P7": {
+   "window_ms": [
+    1795073636116.171,
+    1795073688456.81
+   ],
+   "served": [],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-ON/P7b": {
+   "window_ms": [
+    1795088126402.464,
+    1795088632196.3596
+   ],
+   "served": null,
+   "status": "UNKNOWN",
+   "why_unknown": [
+    "item events inside the window: ['m-a8cf300a095f306b@1 at 1795088626479-0']"
+   ],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0"
+   ],
+   "events_in_window": [
+    {
+     "item": "m-a8cf300a095f306b",
+     "version": 1,
+     "action": "off",
+     "status": "active",
+     "trust": "off",
+     "statement": false,
+     "stream_id": "1795088626479-0"
+    }
+   ],
+   "prohibited_at_start": [
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-ON/P7c": {
+   "window_ms": [
+    1795089668107.6238,
+    1795089737173.625
+   ],
+   "served": null,
+   "status": "UNKNOWN",
+   "why_unknown": [
+    "item events inside the window: ['m-4520707e08b9d143@1 at 1795089701775-0']"
+   ],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
+    "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0"
+   ],
+   "events_in_window": [
+    {
+     "item": "m-4520707e08b9d143",
+     "version": 1,
+     "action": "off",
+     "status": "active",
+     "trust": "off",
+     "statement": false,
+     "stream_id": "1795089701775-0"
+    }
+   ],
+   "prohibited_at_start": [
+    "m-a8cf300a095f306b@1",
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-ON/P8": {
+   "window_ms": [
+    1795089853204.801,
+    1795089993159.1978
+   ],
+   "served": null,
+   "status": "UNKNOWN",
+   "why_unknown": [
+    "item events inside the window: ['m-4554b0b60f99b2ca@1 at 1795089971984-0', 'm-4520707e08b9d143@2 at 1795089972008-0']"
+   ],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
+    "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0",
+    "m-4520707e08b9d143@1 active trust=off at 1795089701775-0"
+   ],
+   "events_in_window": [
+    {
+     "item": "m-4554b0b60f99b2ca",
+     "version": 1,
+     "action": "admit",
+     "status": "active",
+     "trust": "user-authored",
+     "statement": true,
+     "stream_id": "1795089971984-0"
+    },
+    {
+     "item": "m-4520707e08b9d143",
+     "version": 2,
+     "action": "withdraw",
+     "status": "withdrawn",
+     "trust": "off",
+     "statement": false,
+     "stream_id": "1795089972008-0"
+    }
+   ],
+   "prohibited_at_start": [
+    "m-4520707e08b9d143@1",
+    "m-a8cf300a095f306b@1",
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-ON/P9": {
+   "window_ms": [
+    1795090013183.1428,
+    1795090748542.016
+   ],
+   "served": [
+    "m-4554b0b60f99b2ca@1"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
+    "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0",
+    "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
+    "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-4520707e08b9d143@1",
+    "m-4520707e08b9d143@2",
+    "m-a8cf300a095f306b@1",
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-RETURN/R1": {
+   "window_ms": [
+    1795095474073.277,
+    1795099926142.5852
+   ],
+   "served": [
+    "m-4554b0b60f99b2ca@1"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
+    "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0",
+    "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
+    "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-4520707e08b9d143@1",
+    "m-4520707e08b9d143@2",
+    "m-a8cf300a095f306b@1",
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-RETURN/R2": {
+   "window_ms": [
+    1795100073916.641,
+    1795100467741.324
+   ],
+   "served": [
+    "m-4554b0b60f99b2ca@1"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
+    "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0",
+    "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
+    "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-4520707e08b9d143@1",
+    "m-4520707e08b9d143@2",
+    "m-a8cf300a095f306b@1",
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-RETURN-B/R1b": {
+   "window_ms": [
+    1795105843376.6995,
+    1795105983744.014
+   ],
+   "served": [
+    "m-4554b0b60f99b2ca@1"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
+    "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0",
+    "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
+    "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-4520707e08b9d143@1",
+    "m-4520707e08b9d143@2",
+    "m-a8cf300a095f306b@1",
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-RETURN-C/R1c": {
+   "window_ms": [
+    1795111343321.11,
+    1795112845657.8933
+   ],
+   "served": [
+    "m-4554b0b60f99b2ca@1"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
+    "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0",
+    "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
+    "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-4520707e08b9d143@1",
+    "m-4520707e08b9d143@2",
+    "m-a8cf300a095f306b@1",
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  },
+  "M3-ZED-RETURN-C/R2c": {
+   "window_ms": [
+    1795112866232.7441,
+    1795112990432.3245
+   ],
+   "served": [
+    "m-4554b0b60f99b2ca@1"
+   ],
+   "status": "DERIVED",
+   "why_unknown": [],
+   "latest_events_at_start": [
+    "m-ead69057e3a39423@3 withdrawn trust=user-authored at 1795073539519-0",
+    "m-a8cf300a095f306b@1 active trust=off at 1795088626479-0",
+    "m-4520707e08b9d143@2 withdrawn trust=off at 1795089972008-0",
+    "m-4554b0b60f99b2ca@1 active trust=user-authored at 1795089971984-0"
+   ],
+   "events_in_window": [],
+   "prohibited_at_start": [
+    "m-4520707e08b9d143@1",
+    "m-4520707e08b9d143@2",
+    "m-a8cf300a095f306b@1",
+    "m-ead69057e3a39423@1",
+    "m-ead69057e3a39423@2",
+    "m-ead69057e3a39423@3"
+   ]
+  }
+ }
+}

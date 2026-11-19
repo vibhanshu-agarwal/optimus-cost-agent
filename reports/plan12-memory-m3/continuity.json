@@ -134,7 +134,7 @@
    "tests/unit/context/test_memory_continuity.py::test_a_delivered_reply_is_never_called_unfinished_or_completed_and_the_outcome_stays",
    "tests/unit/acp/test_memory_commands.py::test_a_reply_on_the_planners_refusal_stop_is_checkpointed_as_delivered_and_failed"
   ],
-  "tests_from": "the final-head full suite (reports/plan12-memory-m3/verification.json); src and tests there equal git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+  "tests_from": "PENDING: the final-head full suite, to be recorded in reports/plan12-memory-m3/verification.json; src and tests at that head equal git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
   "revert": [
    {
     "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-brief-cb4a29c.log",
@@ -142,8 +142,8 @@
     "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_brief.py",
     "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/run-fix-reverts.ps1",
     "head": "git:cb4a29c78d6dd3d4016a3c29b1020c2810487e36",
-    "dirty": false,
-    "head_source": "the runner's `git rev-parse` at launch (in the log's file name); the log itself prints no head",
+    "dirty": null,
+    "head_source": "the runner's `git rev-parse` at launch, recorded only in the log's file name; the log prints neither head nor cleanliness. The docs log the same runner wrote afterwards records dirty_after=0 (evidence/docs-tests-cb4a29c.log), which does not prove the tree was clean before",
     "baseline": "PASS",
     "caught": 6,
     "mutants": 6,
@@ -155,8 +155,8 @@
     "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_outcome.py",
     "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/run-fix-reverts.ps1",
     "head": "git:cb4a29c78d6dd3d4016a3c29b1020c2810487e36",
-    "dirty": false,
-    "head_source": "the runner's `git rev-parse` at launch (in the log's file name); the log itself prints no head",
+    "dirty": null,
+    "head_source": "the runner's `git rev-parse` at launch, recorded only in the log's file name; the log prints neither head nor cleanliness. The docs log the same runner wrote afterwards records dirty_after=0 (evidence/docs-tests-cb4a29c.log), which does not prove the tree was clean before",
     "baseline": "PASS",
     "caught": 4,
     "mutants": 4,

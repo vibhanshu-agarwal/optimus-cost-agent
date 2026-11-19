@@ -219,7 +219,7 @@ is not a realized saving or the result of turning Auto off. The report makes no 
 context. References come from the packaged `optimus_model_policy/savings_references.yaml`, or from a launch-approved
 `accounting/savings-references.yaml` that replaces it whole.
 
-Project memory (Plan 12.11, M3; [ADR-042](docs/decisions/ADR-042-memory-store-topology-commit-and-recovery.md),
+Project memory (Plan 12.11, M3; [ADR-042](docs/decisions/ADR-042-memory-store-topology-commit-and-recovery.md), [ADR-045](docs/decisions/ADR-045-completes-adr-042-deletion-journal-and-recovery-copy.md),
 [ADR-044](docs/decisions/ADR-044-explicit-user-actions-for-user-memory.md)) keeps what the user asks it to remember
 across sessions, on a dedicated Redis behind the Gateway that `optimus-trust memory-setup --store` sets up once in a
 terminal. Only the user's explicit commands change user memory: `/remember [--branch <ref>] <statement>`, and, by
@@ -904,7 +904,7 @@ unparsed source code: the plan store is short-TTL operational approval state (th
 expiry is the control), keyed by run and plan hash, never indexed or searched by content, and
 exact text is required for replay correctness. The exception does not extend to the context
 index's Redis (vector/structural index structures), which holds only signatures, summaries
-and relative paths, never raw source code. The M3 memory store (ADR-042) is different: it holds
+and relative paths, never raw source code. The M3 memory store (ADR-042, ADR-045) is different: it holds
 the statements users asked it to remember and agent lessons, in plaintext, and so does its
 recovery copy under `.optimus/memory-recovery/` (same-drive, ignored by Git).
 
@@ -1093,8 +1093,8 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained; Plans 12.10 and 12.11's memory (M1, M3) not yet covered: see ADR-037 to ADR-044 |
-| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 and 12.11's memory (M1, M3) not yet covered: see ADR-037 to ADR-044 |
+| [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained; Plans 12.10 and 12.11's memory (M1, M3) not yet covered: see ADR-037 to ADR-045 |
+| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 and 12.11's memory (M1, M3) not yet covered: see ADR-037 to ADR-045 |
 | [docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf) | Testing approach; real Postgres report tier and Plan 12.9's qualified evidence, preserving failed Windows and separately successful Linux PR/main gates |
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
