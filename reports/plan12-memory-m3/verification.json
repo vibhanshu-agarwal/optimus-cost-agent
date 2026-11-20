@@ -3,6 +3,7 @@
  "code_head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
  "code_head_meaning": "the head every gate below ran on; the commit carrying this file changes only reports/plan12-memory-m3/",
  "reports_only_after_code_head": [
+  "reports/plan12-memory-m3/credential-boundary.json",
   "reports/plan12-memory-m3/qualification.json",
   "reports/plan12-memory-m3/revert-checks.json",
   "reports/plan12-memory-m3/verification.json"
@@ -187,11 +188,16 @@
  "linux_native_keyring": {
   "report": "reports/plan12-memory-m3/credential-boundary.json",
   "key": "linux_native_keyring",
-  "result": "qualified under WSL2 Ubuntu on the Secret Service (gnome-keyring), operator release \"Release all three\""
+  "result": "qualified under WSL2 Ubuntu on the Secret Service (gnome-keyring), run 4 on git:913bc08c994b91b750ee98a380c37952fa4bc122 (the code head's code, reports only after it), source head and status recorded before and after; operator release \"Release keyring run 4\" (Codex CP4 review 27, ruling 2)"
  },
  "paid_rerun": {
   "report": "reports/plan12-memory-m3/paid-attempts.json",
-  "summary": "reports/plan12-memory-m3/qualification.json paid.rerun"
+  "summary": "reports/plan12-memory-m3/qualification.json paid.rerun",
+  "served_records_extract": {
+   "path": "optimus-handoff/p1211-cp4-zed/evidence/served-records-rerun.json",
+   "sha256": "hex:0a1b697819666b499e6312cf1d1495f00d18a819df38f8f5078c10bea78e5b9d",
+   "source_trace_sha256": "hex:9f39b391243b5ea150e1a1e7bb9b075b72150e9b5231cadb823ad74ceb467609"
+  }
  },
  "linux_ci": {
   "pr": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/504",
