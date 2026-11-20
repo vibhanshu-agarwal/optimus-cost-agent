@@ -1,0 +1,99 @@
+{
+  "schema": "plan12-memory-m3-part2.targets.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "frozen_on": "2026-11-21",
+  "frozen_before": "Task 1; no measured run of this plan has happened",
+  "rule": "Values are the plan's agent-selected targets, copied unchanged. A miss stays a miss: no target, case or workload changes after a result; a change needs a recorded successor disposition.",
+  "backups": {
+    "default": "off",
+    "due_check_interval_s": 60,
+    "snapshot_after_last_success_h": 24,
+    "catch_up_after_downtime": "one snapshot, never a backlog",
+    "publishers_per_project_target": 1,
+    "transient_retry_attempts_max": 3,
+    "permanent_failure_retry": "none",
+    "retention_max_days": 30,
+    "prune_requires": "a newer verified generation; never the last usable one, never foreign or unknown directories",
+    "format": "optimus-agent-memory-repo/2 generation bytes unchanged (MEMORY.md, entries.jsonl, manifest.json)",
+    "publication": "exclusive staging, flush/fsync, verify, atomic publish",
+    "cloud_write": "each write needs its own named release; consent binds the resolved target and plaintext disclosure",
+    "encryption": "unavailable; an encrypted request writes nothing"
+  },
+  "import": {
+    "max_file_bytes": 1048576,
+    "max_total_bytes": 16777216,
+    "max_entries": 1000,
+    "max_statement_chars": 2000,
+    "over_limit_statement": "refused whole, never truncated",
+    "reachable_from": "MEMORY.md only; selected Markdown files",
+    "trust": "legacy-import, optional pool only",
+    "commit": "per item through the ordinary Gate, fence, expected state and durable commit; resumable, not atomic"
+  },
+  "k2_contention": {
+    "rule": "Backup and import run beside the Plan 12.11 K2 writer arrangement; the K2 targets in reports/plan12-memory-m3/targets.json apply unchanged (ack p95 1.5 s; projection after ack p95 250 ms; RSS 1 GiB; persistence disk 4 GiB; acknowledged write loss 0). A miss under contention is retained, never re-targeted. Backup and import durations are observations only: no duration threshold exists.",
+    "projects": {
+      "writers": [
+        "p-k2-0",
+        "p-k2-1",
+        "p-k2-2",
+        "p-k2-3"
+      ],
+      "backup_and_import": "p-bi-0",
+      "why": "K2's writers each hold their own project lease for their whole load (tools/plan12_memory/m3_k2.py); backup and import use a fifth project so they interleave with the writers at the store and route, without competing for a writer's lease"
+    },
+    "leases": {
+      "writers": "each acquires its project's lease once before the barrier (ttl 300 s, renewed as m3_k2.py does) and releases it after its last event",
+      "import": "the host acquires p-bi-0's lease at apply start and releases it when import status settles",
+      "backup": "reads only; takes no lease"
+    },
+    "initial_population": {
+      "project": "p-bi-0",
+      "items": 10000,
+      "generator": "m3_k2.py _item(4, slot) and _statement(4, slot, 1) for slots 0-9999 (client index 4), unchanged",
+      "written": "before the window, with p-bi-0's lease then released"
+    },
+    "writers": {
+      "events_per_writer": 5000,
+      "events_total": 20000,
+      "items_per_writer": 2500,
+      "generator": "m3_k2.py schedule(), unchanged"
+    },
+    "import_leg": {
+      "entries": 1000,
+      "generator": "random.Random(1212): entry i has statement 'p1212 import entry <i>: ' followed by seeded lowercase words to a length drawn uniformly from 200 to 2000 characters inclusive; one Agent Memory Repo MEMORY.md plus ten topic files of 100 entries each",
+      "mapping": "all entries mapped to p-bi-0",
+      "applies": 1
+    },
+    "barrier": "starts when every writer has received 2000 acknowledgements; at the barrier, backup generation 1 and the import apply start together",
+    "backup_leg": {
+      "generation_1": "starts at the barrier",
+      "generation_2": "starts when import status settles",
+      "expected_inventory": "derived from each generation's observed head: the 10,000 initial items plus the import items confirmed at that head; never a fixed count",
+      "target": "the released test directory on the separate physical disk"
+    },
+    "overlap_requirement": "every writer must still be writing when generation 2 is verified; otherwise the contention evidence is INCOMPLETE and is reported as such, never as a pass",
+    "measurement_interval": "from the barrier to the last of: writer window end, generation 2 verified, import status settled",
+    "evidence": "backups.json contention section: ack p95, projection p95, RSS, disk and loss count against their targets; backup and import durations as observations; overlap established or INCOMPLETE"
+  },
+  "paid_release_proposals": {
+    "zero_paid_sessions": {
+      "attempts": 0,
+      "usd": 0
+    },
+    "pilot_answer_comparison": {
+      "attempts_max": 12,
+      "usd_max": 0.5
+    },
+    "two_route_continuity_proof": {
+      "attempts_max": 8,
+      "usd_max": 0.5,
+      "status": "no eligible second route at Task 0"
+    },
+    "new_route_qualification": {
+      "attempts_max": 0,
+      "usd_max": 0
+    },
+    "note": "proposals, not releases; each paid run needs its own named release"
+  }
+}
