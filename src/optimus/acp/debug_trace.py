@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import json
+import re
 import secrets
 import shutil
 import subprocess
@@ -543,6 +544,32 @@ def log_auto_route(
         _emit_failure(telemetry, error_type="auto_route", record=record, run_id=run, session_id=session, request_id=None)
     except Exception:  # noqa: BLE001 - a diagnostic never fails the turn
         return
+
+
+# How a turn's memory read ended (#514): served (possibly empty), or none after a store error or after the serving timeout.
+MEMORY_READ_OUTCOMES = frozenset({"served", "error", "timeout"})
+MEMORY_READ_SOURCES = frozenset({"turn", "brief"})  # the turn's own read, or the welcome-back brief's read the turn reuses
+_STREAM_POSITION = re.compile(r"[0-9]{1,20}-[0-9]{1,20}")  # the memory contract's stream-id form
+
+
+def log_memory_served(*, run_id: str, source: str, outcome: str, served: Any = None) -> None:
+    """The memory one turn was given (#514), in the trace: how the read ended, each served item as `id@version`, what was
+    left out (counts, and `id@version` for items needing re-verification or saved for another branch) and the confirmed
+    stream position each page came from. Never a statement, title, path or branch."""
+
+    def data() -> dict[str, Any]:
+        record: dict[str, Any] = {"run_id": host_route_id(run_id), "source": bounded(source, MEMORY_READ_SOURCES),
+                                  "outcome": bounded(outcome, MEMORY_READ_OUTCOMES)}
+        if served is not None:
+            record.update({"served": [f"{item.item}@{item.version}" for item in served.items],
+                           "omitted_protected": served.omitted_protected, "omitted_optional": served.omitted_optional,
+                           "complete": served.complete, "reverify": [f"{item}@{version}" for item, version, _path in served.reverify],
+                           "elsewhere": [f"{item}@{version}" for item, version, _branch in served.elsewhere],
+                           "watermarks": [mark if isinstance(mark, str) and _STREAM_POSITION.fullmatch(mark) else UNRECOGNIZED
+                                          for mark in served.watermarks]})
+        return record
+
+    acp_debug_log(location="debug_trace.py:log_memory_served", message="memory served", data=data, hypothesis_id="P12.11-MEMORY")
 
 
 def log_late_worker_failure(*, run_id: str, telemetry: JsonlTelemetryWriter | None = None) -> None:

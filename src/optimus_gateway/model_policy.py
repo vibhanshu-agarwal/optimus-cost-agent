@@ -47,7 +47,7 @@ from optimus_model_policy.binding import (
 )
 from optimus_model_policy.capacity import estimate_decision
 from optimus_model_policy.experimental import EMPIRICAL_ESTIMATOR_METHOD, ExperimentalRoute, experimental_route
-from optimus_model_policy.registry import CLASSIFIER_REQUEST_BOUND_TOKENS
+from optimus_model_policy.registry import CLASSIFIER_REQUEST_BOUND_TOKENS, ModelEntry
 from optimus_security.failure_facts import MISSING, bounded
 
 __all__ = [
@@ -60,6 +60,7 @@ __all__ = [
     "check_decision_reply",
     "check_experimental_reply",
     "check_finish_status",
+    "check_reply_content",
     "parse_route_binding",
     "unflagged_guardrail_only",
 ]
@@ -163,6 +164,16 @@ def parse_route_binding(request_body: Mapping[str, Any], policy: GatewayModelPol
         raise ModelPolicyRefusal(exc.code, exc.detail) from exc
 
 
+def _bound_reasoning(entry: ModelEntry, binding: RouteBinding) -> str | None:
+    """The reasoning this request is sent with: the entry's default, or the purpose-scoped setting the binding names, which
+    must be exactly the purpose and reasoning pair the entry approves (CP4 review 10); anything else is refused unsent."""
+    if binding.reasoning is None:
+        return entry.default_reasoning
+    if binding.purpose is None or entry.purpose_reasoning.get(binding.purpose) != binding.reasoning:
+        raise ModelPolicyRefusal("REASONING_NOT_APPROVED", "the entry approves no such purpose and reasoning pair")
+    return binding.reasoning
+
+
 def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, binding: RouteBinding) -> AdmittedRequest:
     """Admit one final upstream request or raise :class:`ModelPolicyRefusal`. Makes no calls."""
     snapshot = policy.snapshot
@@ -179,6 +190,7 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
     stopped = None if experimental is None else policy.route_stops.code(model)
     if stopped is not None:
         raise ModelPolicyRefusal("EMPIRICAL_ROUTE_STOPPED", f"an earlier reply failed {stopped}", status=503)
+    reasoning = _bound_reasoning(entry, binding)
 
     # The Gateway's upstream request is one user message holding the final flattened input.
     messages = (Message(role="user", content=input_text),)
@@ -212,7 +224,7 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
             model_id=model,
             route=route_digest(model, entry),
             payload=payload_digest(
-                model, messages, binding.output_cap, reasoning=entry.default_reasoning, prompt_cache=entry.route.prompt_cache, cache_prefix_chars=boundary
+                model, messages, binding.output_cap, reasoning=reasoning, prompt_cache=entry.route.prompt_cache, cache_prefix_chars=boundary
             ),
         ):
             raise ModelPolicyRefusal("DISCLOSURE_INVALID", "the disclosure does not cover this request, route and payload")
@@ -230,7 +242,7 @@ def admit_request(policy: GatewayModelPolicy, *, model: str, input_text: str, bi
         provider_controls=MappingProxyType(controls),
         decision=decision,
         request_id=binding.request_id,
-        reasoning=entry.default_reasoning,
+        reasoning=reasoning,
         experimental=experimental,
         prompt_cache=entry.route.prompt_cache,
         cache_prefix_chars=boundary,
@@ -329,6 +341,8 @@ def admit_decision(policy: GatewayModelPolicy, *, model: str, payload_text: str,
         raise ModelPolicyRefusal("DECISION_DISCLOSURE_UNSUPPORTED", "the decision route cannot verify a Contributor disclosure")
     if binding.cache_prefix_chars is not None:
         raise ModelPolicyRefusal("CACHE_PREFIX_INVALID", "a decision request has no cached prefix")
+    if binding.reasoning is not None:
+        raise ModelPolicyRefusal("REASONING_NOT_APPROVED", "a decision request has no reasoning setting")
     profile = snapshot.policy.estimators[entry.route.estimator]
     if not profile.verified and not (experimental is not None and experimental.empirical_estimate and profile.method == EMPIRICAL_ESTIMATOR_METHOD):
         raise ModelPolicyRefusal("ESTIMATOR_UNVERIFIED")
@@ -389,6 +403,13 @@ def check_decision_reply(admitted: AdmittedRequest, result: Any, policy: Gateway
             f"reported {result.input_tokens} input tokens, estimated at most {admitted.decision.input_tokens}",
             status=422,
         )
+
+
+def check_reply_content(error: str | None) -> None:
+    """A completed reply whose choice, message, content or answers could not be read is refused as a permanent (422)
+    billed result, its usage kept (CP4 review 9). ``error`` is the parser's own reason, never the reply's text."""
+    if error is not None:
+        raise ModelPolicyRefusal("REPLY_CONTENT_MALFORMED", error, status=422)
 
 
 def check_finish_status(finish_reason: str | None) -> None:

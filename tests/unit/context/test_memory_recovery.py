@@ -689,3 +689,127 @@ def test_a_held_lock_is_never_taken_over_by_its_age(tmp_path: Path, monkeypatch:
     assert outcome == ["busy"] and attempts == []
     with mr._file_lock(lock, wait=0.3):  # released by its owner: free again at once
         pass
+
+
+# --- a mapped restore: an earlier registration's copy into this project (Plan 12.11 Task 5, M21) ---------------------------
+
+def _earlier(tmp_path: Path, repo: Path, project: str, key: str = "git:x") -> _Host:
+    return _Host(tmp_path, repo, project=project, registry=_snapshot({key: project}))
+
+
+def test_an_earlier_registration_s_copy_is_mapped_into_this_project_only_on_confirmation(tmp_path: Path, repo: Path) -> None:
+    (repo / ".editorconfig").write_text("indent_style = tab\n", encoding="utf-8")
+    old = _earlier(tmp_path, repo, "u-alpha-old")
+    indent = old.remember("Use tabs for indentation, as .editorconfig says.")
+    gone = old.remember(CANARY)
+    old.run(f"/forget {gone[0]}@1 --purge")  # the copy's own deletion journal names it purged
+    old.run("/memory export")
+    before = old.items()
+    (generation,) = mr.generations(mr.location(repo))
+    new = _Host(tmp_path, repo, Server(), project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}))
+    listing = new.run("/memory restore").text
+    assert generation.name in listing and "written for project `u-alpha-old`" in listing
+    plain = new.run(f"/memory restore {generation.name}").text
+    assert "--map" in plain and new.items() == {}  # never restored into another project without the mapping
+    question = new.commands.run(mc.parse_command(f"/memory restore {generation.name} --map", attachments=False), block="b")
+    assert question.confirm is not None and "Map project `u-alpha-old` to this project (`proj-alpha`)" in question.confirm.text
+    assert new.items() == {}  # nothing before the confirmation
+    answer = new.commands.confirmed(question.confirm)
+    assert "into this project" in answer.text and "is mapped to this one" in answer.text, answer.text
+    assert new.items() == before and new.items()[gone[0]][2:] == ("purged", "")
+    assert [item.item for item in new.commands.served().items] == [indent[0]]  # its pinned file holds here: served
+    assert new.recovery.state().mapped_from == "u-alpha-old"
+    text = answer.text  # in the order the restore did them: mapping, pins, deletions
+    assert text.index("is mapped to this one") < text.index(f"Pinned files hold for `{indent[0]}@1`") < text.index("stay deleted")
+
+
+@pytest.mark.parametrize("change", ["edited", "ignored"])
+def test_a_restore_validates_each_pin_before_it_writes_and_reports_what_no_longer_holds(
+        tmp_path: Path, repo: Path, change: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    (repo / ".editorconfig").write_text("indent_style = tab\n", encoding="utf-8")
+    old = _earlier(tmp_path, repo, "u-alpha-old")
+    indent = old.remember("Use tabs for indentation, as .editorconfig says.")
+    old.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    if change == "edited":
+        (repo / ".editorconfig").write_text("indent_style = space\n", encoding="utf-8")
+    else:  # unchanged bytes, but no longer a file an anchor may read
+        (repo / ".gitignore").write_text(".editorconfig\n", encoding="utf-8")
+    new = _Host(tmp_path, repo, Server(), project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}))
+    order: list[str] = []
+    check, call = mr.check_anchors, new.store.call
+    monkeypatch.setattr(mr, "check_anchors", lambda *a, **k: order.append("anchors") or check(*a, **k))
+    monkeypatch.setattr(new.store, "call", lambda op, **body: order.append(op) or call(op, **body))
+    question = new.commands.run(mc.parse_command(f"/memory restore {generation.name} --map", attachments=False), block="b")
+    answer = new.commands.confirmed(question.confirm)
+    assert f"`{indent[0]}@1` needs re-verification: `.editorconfig` changed" in answer.text, answer.text
+    assert "Pinned files hold" not in answer.text
+    assert order.index("anchors") < order.index("restore")  # validated before anything is written
+    assert new.items()[indent[0]][2] == "active"  # still restored: nothing the user saved is dropped
+    served = new.commands.served()
+    assert served.items == () and served.reverify == ((indent[0], 1, ".editorconfig"),)
+
+
+@pytest.mark.parametrize("later", ["withdraw", "purge"])
+def test_deletions_in_the_mapped_project_after_the_copy_still_apply(tmp_path: Path, repo: Path, later: str) -> None:
+    old = _earlier(tmp_path, repo, "u-alpha-old")
+    indent = old.remember("Use tabs for indentation.")
+    old.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    new = _Host(tmp_path, repo, Server(), project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}))
+    new.run(f"/memory restore {generation.name} --map")
+    new.run(f"/forget {indent[0]}@1" + (" --purge" if later == "purge" else ""))
+    again = _Host(tmp_path, repo, Server(), project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}))  # lost again
+    answer = again.run(f"/memory restore {generation.name} --map")
+    assert "Restored" in answer.text, answer.text
+    status = "purged" if later == "purge" else "withdrawn"
+    assert again.items()[indent[0]][2:] == (status, "") and again.commands.served().items == ()  # the freshest deletion wins
+
+
+def test_a_mapping_is_one_to_one_and_only_from_this_workspace_s_registration(tmp_path: Path, repo: Path) -> None:
+    for project in ("u-alpha-old", "u-beta-old"):
+        earlier = _earlier(tmp_path, repo, project)
+        earlier.remember("Use tabs for indentation.")
+        earlier.run("/memory export")
+    alpha = next(g for g in mr.generations(mr.location(repo)) if g.project == "u-alpha-old")
+    new = _Host(tmp_path, repo, Server(), project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}))
+    refused = new.run(f"/memory restore {alpha.name} --map").text
+    assert "more than one earlier project claims this one" in refused and new.items() == {}
+    elsewhere = _Host(tmp_path, repo, Server(), project="proj-gamma", registry=_snapshot({"git:other": "proj-gamma"}))
+    assert "another workspace's registration" in elsewhere.run(f"/memory restore {alpha.name} --map").text
+    assert elsewhere.items() == {}
+
+
+def test_a_mapped_restore_authenticates_the_copy_as_its_source_project_s(tmp_path: Path, repo: Path) -> None:
+    """The host refuses a copy whose metadata names another project than the confirmed source, and the Gateway refuses entries
+    that were not written for the source it is told, so neither can restore another project's copy under a false mapping."""
+    old = _earlier(tmp_path, repo, "u-alpha-old")
+    old.remember("Use tabs for indentation.")
+    old.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    directory = mr.location(repo) / generation.name
+    new = _Host(tmp_path, repo, Server(), project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}))
+    new.recovery.mapping_source = lambda _name, _place: "u-forged"  # type: ignore[method-assign]  # a host naming the wrong source
+    with pytest.raises(mr.RecoveryError) as foreign:
+        new.recovery.restore(generation.name, seal=generation.seal, source="u-forged", directory=directory)
+    assert foreign.value.code == "RECOVERY_GENERATION_FOREIGN" and new.items() == {}
+    manifest, entries = mr.read_generation(directory, "u-alpha-old")
+    with new.store.lease(guarded=False) as token, pytest.raises(MemoryStoreRefused) as refused:
+        new.store.call("restore", project="proj-alpha", token=token, generation=manifest["seal"], batch=0, final=False,
+                       entries=entries, source="u-forged")
+    assert refused.value.code == "RESTORE_ENTRY_INVALID" and new.items() == {}
+
+
+def test_a_mapping_is_checked_again_when_it_is_confirmed(tmp_path: Path, repo: Path) -> None:
+    old = _earlier(tmp_path, repo, "u-alpha-old")
+    old.remember("Use tabs for indentation.")
+    old.run("/memory export")
+    (generation,) = mr.generations(mr.location(repo))
+    new = _Host(tmp_path, repo, Server(), project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}))
+    question = new.commands.run(mc.parse_command(f"/memory restore {generation.name} --map", attachments=False), block="b")
+    assert question.confirm is not None
+    other = _earlier(tmp_path, repo, "u-beta-old")  # a second earlier project appears before the user confirms
+    other.remember("Use spaces for indentation.")
+    other.run("/memory export")
+    assert "more than one earlier project claims this one" in new.commands.confirmed(question.confirm).text
+    assert new.items() == {}

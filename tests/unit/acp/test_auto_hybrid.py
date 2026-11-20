@@ -226,7 +226,8 @@ def test_a_choice_the_gateway_refuses_stops_the_classifier_for_the_launch(snapsh
     outcome = h(_contract(UNSURE), stops, turn.call)
     assert outcome.failure_kind == "stopped_classifier" and JEV in stops
     [receipt] = turn.receipts()
-    assert (receipt.outcome, receipt.reported_cost_usd) == ("uncertain", None)
+    # CP4 review 9 (A1): a billed reply whose answers do not fit is refused (REPLY_CONTENT_MALFORMED) with its usage kept.
+    assert (receipt.outcome, receipt.reported_cost_usd) == ("completed", Decimal("0.0000042"))
 
 
 def test_a_stopped_classifier_is_never_called(snapshot) -> None:

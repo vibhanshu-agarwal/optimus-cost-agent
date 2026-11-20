@@ -142,5 +142,401 @@
  "paid_calls": 0,
  "evidence_head": "git:33d6f7b1d96ff5ae49c5bd22f043b5ea82e8cc4b",
  "product_source_unchanged_from_proof_head": true,
- "passed": true
+ "passed": true,
+ "cp4_paid": {
+  "client": {
+   "name": "zed",
+   "version": "1.29.2+stable.393.2de9e435a5d98657f35c260b5f4dd0979df659e6",
+   "platform": "Windows 11 Pro 10.0.26300",
+   "launch": "bin\\Zed.exe -n <workspace> (Zed.exe rejects -n since 1.x)"
+  },
+  "entries": {
+   "optimus-p1211-off": {
+    "gateway": "http://127.0.0.1:18781",
+    "config_root": "cfg-off",
+    "return_days": null,
+    "debug_trace": true
+   },
+   "optimus-p1211-on": {
+    "gateway": "http://127.0.0.1:18782",
+    "config_root": "cfg-on",
+    "return_days": null,
+    "debug_trace": true
+   },
+   "optimus-p1211-return": {
+    "gateway": "http://127.0.0.1:18783",
+    "config_root": "cfg-on",
+    "return_days": "25",
+    "debug_trace": true
+   }
+  },
+  "entries_lifecycle": "added by zed-entry.py with a byte-exact backup of Zed's settings and removed by restoring it, around each run; 0 optimus-p1211 entries remain (checked after the last session)",
+  "operator_typed": "every prompt was pasted and sent by the operator; Claude opened Zed, picked the entry and the thread mode, and captured cropped screenshots of the Zed panel only",
+  "sessions": [
+   {
+    "session": "M3-ZED-OFF",
+    "workspace": "ws-off",
+    "entry": "optimus-p1211-off",
+    "prompts": [
+     {
+      "run": "P1",
+      "thread": "A",
+      "mode": null,
+      "status": "refused by Zed (unadvertised command, OFF has no store)",
+      "evidence": "evidence/off/P1-zed-refusal.png"
+     },
+     {
+      "run": "P2",
+      "thread": "A",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/off/P2-reply.jpg"
+     },
+     {
+      "run": "P3",
+      "thread": "A",
+      "mode": null,
+      "status": "refused by Zed (unadvertised command)",
+      "evidence": "evidence/off/P3-zed-refusal.png"
+     },
+     {
+      "run": "P4",
+      "thread": "B",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/off/P4-reply.jpg"
+     },
+     {
+      "run": "P5",
+      "thread": "B",
+      "mode": null,
+      "status": "refused by Zed (unadvertised command)",
+      "evidence": "evidence/off/P5-zed-refusal.png"
+     },
+     {
+      "run": "P6",
+      "thread": "C",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/off/P6-reply.jpg"
+     },
+     {
+      "run": "P7",
+      "thread": "C",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/off/P7-reply.jpg"
+     },
+     {
+      "run": "P8",
+      "thread": "C",
+      "mode": null,
+      "status": "refused by Zed (unadvertised command)",
+      "evidence": "evidence/off/P8-zed-refusal.png"
+     },
+     {
+      "run": "P9",
+      "thread": "D",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/off/P9-reply.jpg"
+     }
+    ]
+   },
+   {
+    "session": "M3-ZED-ON",
+    "workspace": "ws-on",
+    "entry": "optimus-p1211-on",
+    "prompts": [
+     {
+      "run": "P1",
+      "thread": "A",
+      "mode": null,
+      "status": "host command, remembered",
+      "evidence": "evidence/on/P1-card.jpg"
+     },
+     {
+      "run": "P2",
+      "thread": "A",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/on/P2-reply.jpg"
+     },
+     {
+      "run": "P3",
+      "thread": "A",
+      "mode": null,
+      "status": "host command, updated to version 2",
+      "evidence": "evidence/on/P3-card.jpg"
+     },
+     {
+      "run": "P4",
+      "thread": "B (also held P3's text: unscored)",
+      "mode": "chat (answer stage)",
+      "status": "kept as recorded, unscored: thread B held P3's text (Codex CP4 review 6, finding 6; on-deviations.md 2)",
+      "evidence": "evidence/on/P4-reply-thread-with-extra-P3.jpg"
+     },
+     {
+      "run": "P4b",
+      "thread": "C' (fresh, for P4b)",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/on/P4b-reply.jpg"
+     },
+     {
+      "run": "P5",
+      "thread": "C' (P4b's thread)",
+      "mode": null,
+      "status": "host command, forgotten",
+      "evidence": "evidence/on/P5-card.jpg"
+     },
+     {
+      "run": "P6",
+      "thread": "next fresh thread after C' (task thread C, shifted)",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/on/P6-reply.jpg"
+     },
+     {
+      "run": "P7",
+      "thread": "P6's thread",
+      "mode": "chat (answer stage)",
+      "status": "failed: extraction stopped at its 512-token cap on reasoning; receipt uncertain, reconciled from the provider record (on-deviations.md 3)",
+      "evidence": "evidence/on/P7-reply.jpg"
+     },
+     {
+      "run": "P7b",
+      "thread": "C2 (fresh, after the restart on c5cb7b6)",
+      "mode": "chat (answer stage)",
+      "status": "kept with its finding: off record's span overshot, unswitchable; fixed in ddd5ce3 (on-deviations.md 4)",
+      "evidence": "evidence/on/P7b-memory-list.jpg"
+     },
+     {
+      "run": "P7c",
+      "thread": "C3 (fresh, after the restart on ddd5ce3)",
+      "mode": "chat (answer stage)",
+      "status": "extraction completed at reasoning none; off record m-4520707e08b9d143@1, one whole line (on-deviations.md 5)",
+      "evidence": "evidence/on/P7c-memory-list.jpg"
+     },
+     {
+      "run": "P8",
+      "thread": "C3",
+      "mode": null,
+      "status": "host command: switched on as m-4554b0b60f99b2ca@1, off record retired",
+      "evidence": "evidence/on/P8-reply.jpg"
+     },
+     {
+      "run": "P9",
+      "thread": "D (fresh)",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/on/P9-reply.jpg"
+     }
+    ]
+   },
+   {
+    "session": "M3-ZED-RETURN",
+    "workspace": "ws-on",
+    "entry": "optimus-p1211-return",
+    "prompts": [
+     {
+      "run": "R1",
+      "thread": "E",
+      "mode": "agent (planning stage)",
+      "status": "answered",
+      "evidence": "evidence/return/R1-reply.jpg"
+     },
+     {
+      "run": "R2",
+      "thread": "E",
+      "mode": "agent (planning stage)",
+      "status": "answered",
+      "evidence": "evidence/return/R2-reply.jpg"
+     }
+    ]
+   },
+   {
+    "session": "M3-ZED-RETURN-B",
+    "workspace": "ws-on",
+    "entry": "optimus-p1211-return",
+    "prompts": [
+     {
+      "run": "R1b",
+      "thread": "F",
+      "mode": "agent (planning stage)",
+      "status": "answered",
+      "evidence": "evidence/return-b/R1b-reply.jpg"
+     }
+    ]
+   },
+   {
+    "session": "M3-ZED-RETURN-OFF",
+    "workspace": "ws-off",
+    "entry": "optimus-p1211-off",
+    "prompts": [
+     {
+      "run": "R1o",
+      "thread": "H",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/return-off/R1o-reply.jpg"
+     },
+     {
+      "run": "R2o",
+      "thread": "H",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/return-off/R2o-reply.jpg"
+     }
+    ]
+   },
+   {
+    "session": "M3-ZED-RETURN-C",
+    "workspace": "ws-on",
+    "entry": "optimus-p1211-return",
+    "prompts": [
+     {
+      "run": "R1c",
+      "thread": "G",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/return-c/R1c-reply.jpg"
+     },
+     {
+      "run": "R2c",
+      "thread": "G",
+      "mode": "chat (answer stage)",
+      "status": "answered",
+      "evidence": "evidence/return-c/R2c-reply.jpg"
+     }
+    ]
+   }
+  ],
+  "observations": [
+   "Zed starts the last-used agent entry when a workspace opens and tries to resume its last thread; the agent refuses ('Loading or resuming sessions is not supported by this agent') with zero paid calls and no capture stream. Each paid session's `begin` came after that refusal.",
+   "Zed keeps the mode per thread. OFF and ON threads were in Chat mode (session/set_config_option before their prompts); RETURN, R2 and R1b ran in the default Agent mode, and RETURN-OFF and RETURN-C were switched to Chat before their prompts.",
+   "Memory off advertises no memory commands, so Zed refuses /remember, /memory and /forget client-side before sending them (zero attempts).",
+   "An agent whose approval no longer matches its effective configuration refuses to launch (exit 1, zero paid).",
+   "After a workspace window closed, its agent's Gateway (OFF, 18781) stayed listening idle while another workspace ran; it served no prompt."
+  ],
+  "screenshots": [
+   {
+    "path": "evidence/off/P1-zed-refusal-gateway-down.png",
+    "sha256": "hex:a9faca54148015477077c2daa89218c61d63f24cd7c391c800eba271b9ac7acd"
+   },
+   {
+    "path": "evidence/off/P1-zed-refusal.png",
+    "sha256": "hex:ee72bbd97c5a046fd48145775696accd98244fda0f1b0a6a07ffc1702bc60ecc"
+   },
+   {
+    "path": "evidence/off/P2-reply.jpg",
+    "sha256": "hex:9246c8f5483462dcc07be9671baa98582a52d8dfc5f450666600351b4beb16c2"
+   },
+   {
+    "path": "evidence/off/P3-zed-refusal.png",
+    "sha256": "hex:7bdcb740d8752c87477365687de1e62aed8ae966ca0999195d1796211e6398f6"
+   },
+   {
+    "path": "evidence/off/P4-reply.jpg",
+    "sha256": "hex:c42c4fa28f10854069a58ac164ee9ac9d62dbebbb3a39cd47960a9a1dd3c3b8b"
+   },
+   {
+    "path": "evidence/off/P5-zed-refusal.png",
+    "sha256": "hex:a9bd65e33771651391efe12a35dfe0afd0ea163f7d26589d2196f74fc8b9096e"
+   },
+   {
+    "path": "evidence/off/P6-reply.jpg",
+    "sha256": "hex:b0dcf4e6399278ac36dd35feb7a12a817c9b172844af93ec6bd9c55cccf85935"
+   },
+   {
+    "path": "evidence/off/P7-reply.jpg",
+    "sha256": "hex:862dc13b49219a7073803bf4d35d533b0f809181e98128580df709a60e1be7ad"
+   },
+   {
+    "path": "evidence/off/P8-zed-refusal.png",
+    "sha256": "hex:13a893132059e2851d8122afb677eae630a02b716a2366da15e875c75f977273"
+   },
+   {
+    "path": "evidence/off/P9-reply.jpg",
+    "sha256": "hex:d118ae6d7490b7b1029ff4355fd687c92a27866fa8dde8b65dfa56d8bb85df09"
+   },
+   {
+    "path": "evidence/on/P1-card.jpg",
+    "sha256": "hex:9073311c947b28c2810d7a9074efc34b3305ac415680a3e3879aa8aaa1e3b47b"
+   },
+   {
+    "path": "evidence/on/P2-reply.jpg",
+    "sha256": "hex:7cf1b0625cc7b31b5c12388b3c304f69d8b4b2e440084de61e2911cee1d5b06a"
+   },
+   {
+    "path": "evidence/on/P3-card.jpg",
+    "sha256": "hex:7f5ea12d0f3643989d3e18c780ffce266ef7a8e68fd7b451db70d67ab2d0dc1c"
+   },
+   {
+    "path": "evidence/on/P4-reply-thread-with-extra-P3.jpg",
+    "sha256": "hex:afd2e509f24845bc0813d8b467154c60826dfb10e714074071ae25a472998892"
+   },
+   {
+    "path": "evidence/on/P4b-reply.jpg",
+    "sha256": "hex:064a5f71b2de5c29fa4b1e3ad4945e94e802795c23147471e5db2880865c86be"
+   },
+   {
+    "path": "evidence/on/P5-card.jpg",
+    "sha256": "hex:7243bdf38024ba4fc89de34a3aee350c6c12d8f342e28a10edd5c9b05c07bab8"
+   },
+   {
+    "path": "evidence/on/P6-reply.jpg",
+    "sha256": "hex:8a9cc81cb184851f433f2dad633c345850eee1a48a57256e6678038e8800f54b"
+   },
+   {
+    "path": "evidence/on/P7-reply.jpg",
+    "sha256": "hex:561b9cb01f8ca2a9fd538925a92a726c3da49d258cfb2c7531952531ea608f82"
+   },
+   {
+    "path": "evidence/on/P7b-memory-list.jpg",
+    "sha256": "hex:57d1f73724120eb178d06c1fce6bdadd21e65829698e86fee1fbaec209291a04"
+   },
+   {
+    "path": "evidence/on/P7c-memory-list.jpg",
+    "sha256": "hex:20bc5f03b7e39eedc5ee588474ca340392153b9f91a50d908d1f7e84fbb4f601"
+   },
+   {
+    "path": "evidence/on/P8-reply.jpg",
+    "sha256": "hex:c73718dbb907a1d73fcc06d0c5b4cba997950919b563df0002c6b32144d5e6a9"
+   },
+   {
+    "path": "evidence/on/P9-reply.jpg",
+    "sha256": "hex:5519e31225e06b09b86f6dd913a2fb44f8a7f7331ff95038b89009fa556e27a7"
+   },
+   {
+    "path": "evidence/return/R1-reply.jpg",
+    "sha256": "hex:276ce9b93ca6f1fb36bb7a4943c2558b8f551a90647d516cf6c634f68acca899"
+   },
+   {
+    "path": "evidence/return/R2-reply.jpg",
+    "sha256": "hex:d30c900a8e5d071de6ef30d645edfc3f580e86f588c985c8cd9575eeddc424ba"
+   },
+   {
+    "path": "evidence/return-b/R1b-reply.jpg",
+    "sha256": "hex:b7f16d520a0192671f5a6eeed55fa2bd240a5e4eb2875a540192bd602d4a976b"
+   },
+   {
+    "path": "evidence/return-c/R1c-reply.jpg",
+    "sha256": "hex:e4e904060364e45898477715721231f001c19e1633213894a5b6b6d7856e4afb"
+   },
+   {
+    "path": "evidence/return-c/R2c-reply.jpg",
+    "sha256": "hex:af8775abc60e6cc4a1497d90bf27723853947c44b8afeb59626284d5eea6c17a"
+   },
+   {
+    "path": "evidence/return-off/R1o-reply.jpg",
+    "sha256": "hex:a7bdf611cb30ecdf6ce5d1b19e2a9c931df654d2a9a7846875673243ed5ed662"
+   },
+   {
+    "path": "evidence/return-off/R2o-reply.jpg",
+    "sha256": "hex:3ad577b5e635ccf3ccc030aae710bcf7bf982fe156a053aff101f4e9f27fe8de"
+   }
+  ],
+  "paid_report": "reports/plan12-memory-m3/paid-attempts.json"
+ }
 }

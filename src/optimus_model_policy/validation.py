@@ -151,6 +151,12 @@ def _model_role_issues(snapshot: RegistrySnapshot, model_id: str, entry: ModelEn
         issue("REASONING_UNSET", "this route has reasoning levels, so the approved reasoning setting must be explicit")
     if entry.default_reasoning is not None and entry.default_reasoning not in WIRE_REASONING_EFFORTS:
         issue("REASONING_NOT_EXPRESSIBLE", f"reasoning {entry.default_reasoning!r} has no upstream request form")
+    for scoped in sorted(set(entry.purpose_reasoning.values())):
+        # A purpose-scoped setting (CP4 review 10) meets the same rules as the default one.
+        if scoped not in entry.capabilities.reasoning_levels:
+            issue("UNSUPPORTED_REASONING", f"purpose reasoning {scoped!r} is not supported on this route")
+        if scoped not in WIRE_REASONING_EFFORTS:
+            issue("REASONING_NOT_EXPRESSIBLE", f"reasoning {scoped!r} has no upstream request form")
 
     if role is Role.SUMMARIZER and not any(
         # The exact registry key that owns the entry: a receipt never carries over to another model

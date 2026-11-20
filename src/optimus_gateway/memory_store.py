@@ -951,7 +951,8 @@ class MemoryStore:
                     break
                 items.append(record)
             cursor = self._seal(body["project"], body["scope"], items[-1]["item"]) if len(ids) > len(items) else None
-            return {"status": "ok", "items": items, "cursor": cursor}
+            # #514: the confirmed stream position this page was answered from, so a turn's record can name it
+            return {"status": "ok", "items": items, "cursor": cursor, "watermark": fold.head}
 
         return self._served(body["project"], page)
 
@@ -1055,13 +1056,15 @@ class MemoryStore:
         """Stage one verified batch of a generation, unserved; on the last, verify the whole generation's seal and publish it
         into the empty project in one fenced transaction. Never into a project holding anything (`RESTORE_TARGET_NOT_EMPTY`,
         before any live event or idempotency record is touched); never over an uncertain deletion. The deletion journal and
-        the host's own later withdrawals apply whatever the generation's age: they only take payloads away."""
+        the host's own later withdrawals apply whatever the generation's age: they only take payloads away. With `source` (a
+        user-confirmed mapping), the generation is authenticated as that project's and published into this one."""
         key = self._need_recovery()
         project, generation, batch = body["project"], body["generation"], body["batch"]
+        source = body.get("source", project)
         staged, cursor_key = self._restore_keys(project, generation)
         stream, payloads, lease = self._key(project, "events"), self._key(project, "payloads"), self._key(project, "lease")
         for shaped in body["entries"]:
-            if not hmac.compare_digest(shaped["mac"], self._entry_mac(key, project, shaped["entry"])):
+            if not hmac.compare_digest(shaped["mac"], self._entry_mac(key, source, shaped["entry"])):
                 raise msc.MemoryRequestError("RESTORE_ENTRY_INVALID", 422)
         with self._writing():
             connection = int(self._writer.client_id())
@@ -1091,13 +1094,17 @@ class MemoryStore:
     def _publish_restore(self, key: bytes, body: dict[str, Any], staged: str, cursor_key: str, stream: str, payloads: str, lease: str,
                          connection: int) -> dict[str, Any]:
         project = body["project"]
+        source = body.get("source", project)
         raw = self._writer.hgetall(staged)
         entries = [json.loads(value)["entry"] for value in raw.values()]
-        macs = [(entry["item"], self._entry_mac(key, project, entry)) for entry in entries]
-        seal = self._generation_seal(key, project, body["head"], macs, body["frontier"], body["bind"], body["journal"])
+        macs = [(entry["item"], self._entry_mac(key, source, entry)) for entry in entries]
+        seal = self._generation_seal(key, source, body["head"], macs, body["frontier"], body["bind"], body["journal"])
         if not hmac.compare_digest(body["generation"], seal) or body["frontier"] != _frontier(entries):
             raise msc.MemoryRequestError("RESTORE_GENERATION_INVALID", 422)  # a missing, extra or altered entry, or another head
-        purged = self._journalled_purges(project, body["journal"], body["purged"])
+        if source == project:
+            purged = self._journalled_purges(project, body["journal"], body["purged"])
+        else:  # a mapping: the source's journal as the generation knew it, and every purge since in the project it maps to
+            purged = self._journalled_purges(source, body["journal"], []) | self._journalled_purges(project, 0, body["purged"])
         withdrawn = set(body["withdrawn"])
         records: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
         for entry in sorted(entries, key=lambda value: _order(value["stream_id"])):

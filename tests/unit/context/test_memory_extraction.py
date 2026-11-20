@@ -142,7 +142,7 @@ def test_an_optional_agent_lesson_needs_complete_inside_lineage() -> None:
     (good,) = _agent(["ev-1"], work)
     decision = memory_gate.admit(good.candidate, good.verdict)
     assert (decision.outcome, decision.reason, decision.draft.trust, decision.draft.lineage) == ("append", "ADMITTED", "agent-derived", ("ev-1",))  # type: ignore[union-attr]
-    for refs in (["ev-1", "ev-9"], []):  # an evidence id the host never issued, nothing cited
+    for refs in (["ev-1", "ev-9"], [], ["ev-3"]):  # an evidence id the host never issued, nothing cited, only what a read showed
         (candidate,) = _agent(refs, work)
         assert memory_gate.admit(candidate.candidate, candidate.verdict).reason == "LINEAGE_UNRESOLVED"
     assert _agent(["ev-1"], work, kind="preference") == []  # an agent never proposes a user kind
@@ -163,6 +163,26 @@ def test_a_cut_down_span_is_widened_to_the_user_s_whole_sentence() -> None:
     candidate = _user("push to main", [{"block": "b-1", "start": 6, "end": 18}], text=text)
     assert candidate.verdict.spans_verified and candidate.candidate.statement == "Never push to main; always open a pull request instead."
     assert candidate.candidate.title == candidate.candidate.statement  # the user's words, never the model's title
+
+
+def test_a_span_running_past_its_block_is_cut_at_the_end_and_keeps_the_user_s_words() -> None:
+    """CP4 ON P7b (paid Zed run): Haiku 5.5 gave 0-52 for this 45-character message. Left unsnapped, the support check refused it,
+    the off record kept the model's paraphrase and its anchor ran past the source, so switch-on could not recover the line."""
+    text = "From now on, run the tests before every push."
+    candidate = _user("Run tests before every push.", [{"block": "b-1", "start": 0, "end": 52}], text=text)
+    assert candidate.verdict.spans_verified and candidate.candidate.statement == text == candidate.candidate.title
+    assert [(span.block, span.start, span.end) for span in candidate.candidate.spans] == [("b-1", 0, len(text))]  # one whole line
+
+
+@pytest.mark.parametrize("bounds", [(45, 60), (50, 52)], ids=["starts-at-end", "starts-past"])
+def test_a_span_that_does_not_start_inside_its_block_still_gains_nothing(bounds: tuple[int, int]) -> None:
+    text = "From now on, run the tests before every push."
+    candidate = _user("Run tests before every push.", [{"block": "b-1", "start": bounds[0], "end": bounds[1]}], text=text)
+    assert not candidate.verdict.spans_verified
+    assert [(span.start, span.end) for span in candidate.candidate.spans] == [bounds]  # kept as given: refused, never moved
+    for bad in ((20, 20), (30, 10), (-5, 20)):  # empty, reversed and negative spans never get this far: the reply is malformed
+        with pytest.raises(mx.ExtractionIncomplete, match="malformed_span"):
+            _user("Run tests before every push.", [{"block": "b-1", "start": bad[0], "end": bad[1]}], text=text)
 
 
 def test_reading_a_document_is_document_evidence() -> None:

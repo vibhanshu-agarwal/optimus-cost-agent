@@ -44,6 +44,7 @@ __all__ = [
     "EmpiricalEstimateAdmission",
     "Endpoint",
     "EstimatorProfile",
+    "MEMORY_PURPOSES",
     "ModelEntry",
     "Origin",
     "Policy",
@@ -56,6 +57,7 @@ __all__ = [
     "SummaryReceipt",
     "Tier",
     "load_registry",
+    "reasoning_for",
 ]
 
 MAX_CONTEXT_CEILING_TOKENS = 262_144
@@ -385,6 +387,37 @@ class ModelEntry(BaseModel):
     admission: Admission | None = None
     summary_receipts: tuple[SummaryReceipt, ...] = ()
     evidence: tuple[str, ...] = ()
+    purpose_reasoning: dict[str, str] = Field(default_factory=dict)
+    """Purpose-scoped reasoning (CP4 review 10, design R; operator-accepted 2026-11-19): a request bound to one of these
+    memory purposes is sent with its setting instead of ``default_reasoning``; nothing else changes. The Gateway admits
+    only the exact pair. Absent from the canonical policy when empty, so registries without it keep their hashes."""
+
+    @field_validator("purpose_reasoning")
+    @classmethod
+    def memory_purposes_only(cls, value: dict[str, str]) -> dict[str, str]:
+        unknown = set(value) - set(MEMORY_PURPOSES)
+        if unknown:
+            raise ValueError(f"purpose_reasoning names {len(unknown)} purpose(s) that are not memory purposes")
+        return value
+
+    @model_serializer(mode="wrap")
+    def absent_purpose_reasoning_keeps_identity(self, handler: Any) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if not self.purpose_reasoning:
+            data.pop("purpose_reasoning", None)
+        return data
+
+
+MEMORY_PURPOSES = ("memory.extract_user", "memory.extract_agent", "memory.compaction")
+"""The memory calls a ``purpose_reasoning`` entry may name (`optimus.context.memory_extraction`; a test keeps them equal)."""
+
+
+def reasoning_for(entry: ModelEntry, purpose: str | None) -> str | None:
+    """The reasoning a request of ``purpose`` is sent with: the entry's purpose-scoped setting, else its default. The host
+    binds with it and the Gateway admits it from the same rule."""
+    if purpose is None:
+        return entry.default_reasoning
+    return entry.purpose_reasoning.get(purpose, entry.default_reasoning)
 
 
 class Alerts(BaseModel):

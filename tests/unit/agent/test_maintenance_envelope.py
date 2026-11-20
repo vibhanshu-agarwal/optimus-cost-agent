@@ -70,8 +70,8 @@ def _summarize(snapshot, engine_text: str):
         model_id=MODEL,
         session_id="s",
         request_ids=lambda: "s:1:summary:1",
-        bind=lambda request_id, input_text, output_cap: disclosure.binding(
-            model_id=MODEL, request_id=request_id, input_text=input_text, output_cap=output_cap
+        bind=lambda request_id, input_text, output_cap, purpose: disclosure.binding(
+            model_id=MODEL, request_id=request_id, input_text=input_text, output_cap=output_cap, purpose=purpose
         ),
     )
     receipts: list = []

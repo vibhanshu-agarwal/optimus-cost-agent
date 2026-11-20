@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import sys
 import urllib.request
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -100,6 +101,40 @@ def test_a_schema_failure_names_the_module_reason_and_never_the_reply(monkeypatc
     failure = _failure(monkeypatch, Wire(reply=http_reply(200, json.dumps(reply).encode())))
     assert failure.failure["kind"] == "schema"
     assert failure.failure["reason"].startswith("upstream_response_has_") and failure.failure["reason"] != "unrecognized"
+
+
+# CP4 review 9 (A1): synthetic bodies shaped like OpenRouter's chat completion (the P7 reply was not retained).
+_BILLED = {"prompt_tokens": 100, "completion_tokens": 512, "total_tokens": 612, "cost": "0.0028", "completion_tokens_details": {"reasoning_tokens": 512}}
+
+
+@pytest.mark.parametrize(
+    ("choices", "error"),
+    [
+        ([{"message": {"role": "assistant", "content": None}, "finish_reason": "length"}], None),
+        ([{"message": {"role": "assistant"}, "finish_reason": "length"}], None),
+        ([], "upstream response missing choices"),
+        (["x"], "upstream response missing choices[0]"),
+        ([{"finish_reason": "length"}], "upstream response missing message"),
+        ([{"message": {"content": [CANARY]}, "finish_reason": "length"}], "upstream response message content is not text"),
+        ([{"message": {"content": 3}, "finish_reason": "length"}], "upstream response message content is not text"),
+    ],
+    ids=["null-content", "absent-content", "no-choices", "choice-not-object", "no-message", "list-content", "number-content"],
+)
+def test_the_reply_shape_never_discards_the_billed_usage(choices: list, error: str | None) -> None:
+    result = parse_openai_chat_completion({"id": "gen-synthetic-1", "choices": choices, "usage": _BILLED}, {}, requested_model="cn/alpha")
+    assert (result.output_text, result.content_error, result.message_id) == ("", error, "gen-synthetic-1")
+    assert (result.cost_usd, result.output_tokens, result.reasoning_tokens) == (Decimal("0.0028"), 512, 512)
+    assert result.finish_reason == (None if error in {"upstream response missing choices", "upstream response missing choices[0]"} else "length")
+
+
+def test_the_legacy_path_still_fails_a_malformed_reply_without_its_text(monkeypatch) -> None:
+    reply = {"id": "gen-synthetic-1", "choices": [{"message": {"content": [CANARY]}, "finish_reason": "stop"}], "usage": _BILLED}
+    Wire(reply=http_reply(200, json.dumps(reply).encode())).install(monkeypatch)
+    urllib.request.install_opener(None)
+    client = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url=_URL, sleep=lambda _s: None)
+    with pytest.raises(RuntimeError, match="message content is not text") as caught:
+        client.create_message(model="cn/alpha", input_text="hi")
+    assert CANARY not in str(caught.value)
 
 
 def test_the_legacy_path_names_the_transport_class(monkeypatch) -> None:

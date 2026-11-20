@@ -92,6 +92,7 @@ PREFLIGHT_REFUSAL_CODES = frozenset(
         "ROUTE_UNVERIFIED",
         "SNAPSHOT_NOT_APPROVED",
         "STAGE_C_ATTEMPTS_EXHAUSTED",
+        "REASONING_NOT_APPROVED",
         "STAGE_C_ATTEMPT_IN_FLIGHT",
         "STAGE_C_BUDGET_EXHAUSTED",
         "STAGE_C_HALTED",
@@ -115,6 +116,7 @@ REPLY_REFUSAL_CODES = frozenset(
         "EMPIRICAL_ROUTER_METADATA_MISSING",
         "EMPIRICAL_ROUTER_PIPELINE",
         "FINISH_STATUS_UNVERIFIED",
+        "REPLY_CONTENT_MALFORMED",
     }
 )
 # The enforced attempt contract's failures (optimus_gateway.responses: `UPSTREAM_ATTEMPT_<outcome>`).

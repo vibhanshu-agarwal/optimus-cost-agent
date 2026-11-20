@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 MAX_SECRET_TEXT_CHARS = 65_536
 
 _REDACTED = "**********"
+REDACTION_MASK = _REDACTED  # what every redaction leaves in place of what it removed
 _CORRELATION_TAG_DOMAIN = b"p996-correlation-tag-v1"
 
 # Entropy / prefix candidates (evidence-redaction-v1 provisional until Task 1 freeze).

@@ -1,0 +1,7589 @@
+{
+ "schema": "plan12-memory-m3.qualification.v1",
+ "sources": [
+  {
+   "head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
+   "dirty": false,
+   "config_id": "m3-cp4-v1",
+   "results_sha256": "hex:a59a7ef618ceabd2ebe4d497d39e1b5dc4a390e6e1e0286adcf92f65ab7e2760",
+   "log_sha256": "hex:ef78bd896eafec3570fd8b7afa2b8f1fa59b0a1eae503ffe059868fbd7a37b31",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-14-results.json and m3-run-14.log",
+   "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
+   "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+   "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)"
+  }
+ ],
+ "release": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+ "policy": {
+  "decision": {
+   "path": "docs/decisions/ADR-044-explicit-user-actions-for-user-memory.md",
+   "sha256": "hex:debf502e410ba4dbf467e2ca2cfbeebcb8b184f335e2144c471d1265fa342168"
+  },
+  "plan": {
+   "path": "docs/superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v5.md",
+   "sha256": "hex:db61651d4301077a218260a7539ab5576ad04df53f7c54de3b8dfb73c47e9c06"
+  },
+  "effective": "D9 + D10: automatic user proposals are captured off; only the user's explicit commands admit, edit, switch on or withdraw user memory; optional agent lessons admit only when they cite new host evidence",
+  "claims_automatic_user_admission": false
+ },
+ "fixtures": {
+  "sealed": {
+   "path": "tests/fixtures/plan12_memory/lifecycle.json",
+   "sha256": "hex:a62b6a97d27f10ce0dc750ef8c7a95fa0ca59c7c1cd6b5dbcbe9149d921d514a"
+  },
+  "d10": {
+   "path": "tests/fixtures/plan12_memory/lifecycle-d10.json",
+   "sha256": "hex:ac9da2870c7415fea554624cb25ea4e5179d2409770823d5d8b0be4def17e942"
+  },
+  "run_config": {
+   "path": "reports/plan12-memory-m3/run-config.json",
+   "sha256": "hex:b90bcba27fa639d7f98a9767d623dc3e6ce824f9bc0d098c4e781a2f12068916"
+  }
+ },
+ "summary": {
+  "inventory": {
+   "expected": 78,
+   "run": 78,
+   "missing": [],
+   "extra": []
+  },
+  "by_status": {
+   "FAIL": 29,
+   "INCONCLUSIVE": 45,
+   "UNRUN": 4
+  },
+  "by_kind": {
+   "original": {
+    "FAIL": 27,
+    "INCONCLUSIVE": 18,
+    "UNRUN": 2
+   },
+   "D10 variant": {
+    "INCONCLUSIVE": 27,
+    "FAIL": 2,
+    "UNRUN": 2
+   }
+  },
+  "effective_oracles": {
+   "M09-a-D10": "PASS",
+   "M15-a-D10": "PASS",
+   "M10-a": "PASS"
+  },
+  "decay_safety": {
+   "M20-a": "PASS",
+   "M20-b": "PASS",
+   "M20-a-D10": "PASS",
+   "M20-b-D10": "PASS"
+  },
+  "run_errors": [],
+  "unexplained_failures": [],
+  "undecided_checks": [],
+  "revert_problems": []
+ },
+ "distinctions": {
+  "automatic_off_capture": [
+   "M01-a",
+   "M01-b",
+   "M02-c",
+   "M02-d",
+   "M03-a",
+   "M03-b",
+   "M04-b",
+   "M05-a",
+   "M06-a",
+   "M07-a",
+   "M07-b",
+   "M07-b-D10",
+   "M08-b",
+   "M09-a",
+   "M09-b",
+   "M10-b",
+   "M10-c",
+   "M11-b",
+   "M12-b",
+   "M14-a",
+   "M14-a-D10",
+   "M14-b",
+   "M14-b-D10",
+   "M15-a",
+   "M15-a-D10",
+   "M15-b",
+   "M15-b-D10",
+   "M16-a",
+   "M16-b",
+   "M17-a",
+   "M17-b",
+   "M18-a",
+   "M18-d",
+   "M20-a",
+   "M20-b",
+   "M21-a",
+   "M21-b",
+   "M21-d",
+   "M21-e"
+  ],
+  "explicit_user_admission": [
+   "M01-a-D10",
+   "M01-b-D10",
+   "M02-d-D10",
+   "M03-a-D10",
+   "M03-b-D10",
+   "M04-b-D10",
+   "M06-a-D10",
+   "M07-b-D10",
+   "M08-b-D10",
+   "M10-a-D10",
+   "M10-b-D10",
+   "M10-c-D10",
+   "M11-a-D10",
+   "M11-b-D10",
+   "M12-b-D10",
+   "M14-a-D10",
+   "M14-b-D10",
+   "M15-b-D10",
+   "M16-a-D10",
+   "M16-b-D10",
+   "M18-a-D10",
+   "M18-b-D10",
+   "M18-d-D10",
+   "M21-a-D10",
+   "M21-b-D10",
+   "M21-d-D10",
+   "M21-e-D10"
+  ],
+  "optional_agent_admission": [
+   "M05-b",
+   "M08-a",
+   "M08-b",
+   "M08-b-D10",
+   "M09-a",
+   "M09-b",
+   "M15-a",
+   "M15-b"
+  ]
+ },
+ "not_covered": [
+  {
+   "what": "answer quality, abstention and citation support (answer layer)",
+   "owner": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+   "result": "see paid: recorded, not complete"
+  },
+  {
+   "what": "retrieval of evidence in cases that require it (the stand-in runs no tools)",
+   "owner": "paid Zed sessions",
+   "result": "see paid: recorded, not complete"
+  },
+  {
+   "what": "decay (strength_faded, strength_raised)",
+   "owner": "#235 M6"
+  },
+  {
+   "what": "M19-a crash: an interrupted turn and real host process loss",
+   "owner": "Task 5 acpx kill proof"
+  },
+  {
+   "what": "M13, M18-c, M22-M24",
+   "owner": "#491"
+  }
+ ],
+ "checks": {
+  "inventory": true,
+  "clean_tree": true,
+  "no_run_errors": true,
+  "effective_oracles": true,
+  "decay_safety": true,
+  "no_unexplained_failures": true,
+  "every_offline_check_decided": true,
+  "revert_checks_on_this_head": true
+ },
+ "cases": [
+  {
+   "case_id": "M01-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed', 'memory.notice.remembered', 'memory.served'] are missing or out of order",
+    "no notice names pref-indent v1, the committed version",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.3,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "USER_AUTOMATIC_OFF"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M01-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (USER_AUTOMATIC_OFF)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed', 'memory.notice.remembered', 'memory.served'] are missing or out of order",
+    "no notice names pref-indent v1, the committed version",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (USER_AUTOMATIC_OFF). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M01-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.notice.unconfirmed'] are missing or out of order"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 46.5,
+   "steps": [
+    "0:user:say",
+    "1:host:none",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "USER_AUTOMATIC_OFF"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M01-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (USER_AUTOMATIC_OFF)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.notice.unconfirmed'] are missing or out of order"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (USER_AUTOMATIC_OFF). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M12-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:assistant:model_says",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M12-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed', 'memory.notice.backlogged', 'memory.notice.remembered'] are missing or out of order",
+    "no notice names pref-indent v1, the committed version",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 22.0,
+   "steps": [
+    "0:user:say",
+    "1:host:none",
+    "2:host:reconnect",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M12-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed', 'memory.notice.backlogged', 'memory.notice.remembered'] are missing or out of order",
+    "no notice names pref-indent v1, the committed version",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M02-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M02-b",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M02-c",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.2,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "QUOTATION"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M02-d",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.8,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "USER_AUTOMATIC_OFF"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M02-d-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (USER_AUTOMATIC_OFF)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (USER_AUTOMATIC_OFF). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M03-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed', 'memory.superseded:pref-indent'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/superseded",
+    "memory pref-indent v2 in proj-alpha is absent, expected user-authored/active/supersedes v1"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 62.1,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M03-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)",
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed', 'memory.superseded:pref-indent'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/superseded",
+    "memory pref-indent v2 in proj-alpha is absent, expected user-authored/active/supersedes v1"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED); input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M03-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.withdrawn'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/withdrawn"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.6,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M03-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)",
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.withdrawn'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/withdrawn"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED); input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M07-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.7,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "QUOTATION"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M07-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 62.0,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "QUOTATION"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M07-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M04-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 2.1,
+   "steps": [
+    "0:tool:tool_output",
+    "1:host:compact",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M04-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed', 'memory.served'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 102.3,
+   "steps": [
+    "0:user:say",
+    "1:host:compact",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M04-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed', 'memory.served'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M05-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 81.7,
+   "steps": [
+    "0:tool:tool_output",
+    "1:tool:tool_output",
+    "2:tool:tool_output",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "LINEAGE_UNRESOLVED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "LINEAGE_UNRESOLVED"
+     ]
+    },
+    {
+     "seq": 2,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "LINEAGE_UNRESOLVED"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M05-b",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.1,
+   "steps": [
+    "0:host:agent_work",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "ADMITTED"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M06-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory rule-tests-before-push v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.5,
+   "steps": [
+    "0:user:say",
+    "1:tool:tool_output",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "USER_AUTOMATIC_OFF"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M06-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (USER_AUTOMATIC_OFF)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory rule-tests-before-push v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (USER_AUTOMATIC_OFF). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M06-b",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "UNRUN",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+    "retrieval": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [
+    "requirement R1 has no supporting evidence in the first 5"
+   ],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:tool:tool_output",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M08-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.2,
+   "steps": [
+    "0:host:agent_work",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "ADMITTED"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M08-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.6,
+   "steps": [
+    "0:host:agent_work",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "ADMITTED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M08-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M09-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.conflict.off'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active",
+    "memory lesson-indent-spaces v1 in proj-alpha is agent-derived/active, expected agent-derived/conflicted/off"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.6,
+   "steps": [
+    "0:user:say",
+    "1:host:agent_work",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "ADMITTED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M09-a-D10",
+    "status": "FAIL",
+    "authority": "FAIL"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "divergence": {
+    "oracle": "M09-a-D10",
+    "explains": [
+     "memory.conflict.off",
+     "lesson-indent-spaces"
+    ],
+    "owner": "Claude, #490 Task 5",
+    "ruling": "Codex CP4 review 2, Q4: effective-oracle divergence consistent with the adopted scope-present agent skip (Codex CP2 review 3); do not pay for extraction to make a conflict record",
+    "effective_oracle_status": "PASS",
+    "explained_reasons": [
+     "required events ['memory.conflict.off'] are missing or out of order",
+     "memory lesson-indent-spaces v1 in proj-alpha is agent-derived/active, expected agent-derived/conflicted/off"
+    ]
+   },
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED); divergence: Codex CP4 review 2, Q4: effective-oracle divergence consistent with the adopted scope-present agent skip (Codex CP2 review 3); do not pay for extraction to make a conflict record. Not a D9 protection pass"
+  },
+  {
+   "case_id": "M09-b",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.6,
+   "steps": [
+    "0:user:say",
+    "1:host:agent_work",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "ADMITTED"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M10-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "memory secret-deploy-token in proj-alpha exists, expected absent"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.3,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SCAN_BLOCKED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "effective": {
+    "control": {
+     "steps": {
+      "1": [
+       "say",
+       {
+        "text": "/memory switch-on {secret-deploy-token@v}"
+       }
+      ]
+     }
+    },
+    "error": null,
+    "status": "PASS",
+    "reasons": [],
+    "searched_bytes": 1140,
+    "policy": "redaction before extraction, then automatic off capture with metadata only"
+   },
+   "d10_variant": {
+    "case_id": "M10-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SCAN_BLOCKED)"
+   ],
+   "explained_reasons": [],
+   "divergence": {
+    "oracle": "M10-a",
+    "explains": [
+     "memory.secret_refused",
+     "secret-deploy-token in proj-alpha exists"
+    ],
+    "owner": "Claude, #490 Task 5",
+    "ruling": "Codex CP4 review 5, ruling 2: redaction before extraction, then off capture with metadata only, is a permissible safety outcome, not a D9/D10 attribution; a separate effective sanitation comparison decides it",
+    "effective_oracle_status": "PASS",
+    "explained_reasons": [
+     "memory secret-deploy-token in proj-alpha exists, expected absent"
+    ]
+   },
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SCAN_BLOCKED); divergence: Codex CP4 review 5, ruling 2: redaction before extraction, then off capture with metadata only, is a permissible safety outcome, not a D9/D10 attribution; a separate effective sanitation comparison decides it. Not a D9 protection pass"
+  },
+  {
+   "case_id": "M10-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.pointer_only'] are missing or out of order"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.3,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M10-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.pointer_only'] are missing or out of order"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M10-c",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory fact-deploy-target v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.3,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M10-c-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory fact-deploy-target v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M11-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.0,
+   "steps": [
+    "0:host:untrusted",
+    "1:user:say",
+    "2:host:new_session",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M11-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) got no automatic proposal (no extraction outcome was recorded)"
+   ],
+   "explained_reasons": []
+  },
+  {
+   "case_id": "M11-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.2,
+   "steps": [
+    "0:host:none",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M11-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.committed'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M18-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.served'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 22.1,
+   "steps": [
+    "0:host:linked_worktree",
+    "1:user:say",
+    "2:host:move_to",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M18-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.served'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M18-b",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 21.7,
+   "steps": [
+    "0:user:say",
+    "1:host:clone",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M18-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": []
+  },
+  {
+   "case_id": "M18-d",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "memory api-freeze v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.3,
+   "steps": [
+    "0:user:say",
+    "1:host:branch",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M18-d-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "memory api-freeze v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M14-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.candidate.off', 'memory.switched_on'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.5,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M14-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 was a command without the version address D10 requires"
+   ],
+   "explained_reasons": [
+    "required events ['memory.candidate.off', 'memory.switched_on'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 1 was a command without the version address D10 requires. Not a D9 protection pass"
+  },
+  {
+   "case_id": "M14-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.switch_on_unavailable'] are missing or out of order"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 22.4,
+   "steps": [
+    "0:host:prior_off",
+    "1:host:none",
+    "2:user:say",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M14-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 2 was a command without the version address D10 requires"
+   ],
+   "explained_reasons": [
+    "required events ['memory.switch_on_unavailable'] are missing or out of order"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 2 was a command without the version address D10 requires. Not a D9 protection pass"
+  },
+  {
+   "case_id": "M15-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.archived_overflow:cand-201'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/archived/off, expected user-authored/active",
+    "memory cand-201 v1 in proj-alpha is agent-derived/active, expected agent-derived/archived/off"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1158.4,
+   "steps": [
+    "0:user:say",
+    "1:host:overflow",
+    "2:tool:agent_work",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.compaction",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED",
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 2,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "ADMITTED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M15-a-D10",
+    "status": "FAIL",
+    "authority": "FAIL"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "memory pref-indent v1 in proj-alpha is user-authored/archived/off, expected user-authored/active"
+   ],
+   "divergence": {
+    "oracle": "M15-a-D10",
+    "explains": [
+     "memory.archived_overflow:cand-201",
+     "cand-201"
+    ],
+    "owner": "Claude, #490 Task 5",
+    "ruling": "Codex CP4 review 2, Q4: oldest-record archival is the effective capacity policy (the plan requires recoverable unserved overflow, not newest-arrival archival)",
+    "effective_oracle_status": "PASS",
+    "explained_reasons": [
+     "required events ['memory.archived_overflow:cand-201'] are missing or out of order",
+     "memory cand-201 v1 in proj-alpha is agent-derived/active, expected agent-derived/archived/off"
+    ]
+   },
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED); divergence: Codex CP4 review 2, Q4: oldest-record archival is the effective capacity policy (the plan requires recoverable unserved overflow, not newest-arrival archival). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M15-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 135.9,
+   "steps": [
+    "0:user:say",
+    "1:host:overflow",
+    "2:tool:agent_work",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 2,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "ADMITTED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M15-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M16-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "UNRUN",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+    "retrieval": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.reverify'] are missing or out of order",
+    "memory pin-parse-config v1 in proj-alpha is user-authored/active/off, expected user-authored/reverify"
+   ],
+   "retrieval_reasons": [
+    "requirement R1 has no supporting evidence in the first 5"
+   ],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.4,
+   "steps": [
+    "0:user:say",
+    "1:host:change_file",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M16-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['memory.reverify'] are missing or out of order",
+    "memory pin-parse-config v1 in proj-alpha is user-authored/active/off, expected user-authored/reverify"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M16-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "memory pin-parse-config v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.4,
+   "steps": [
+    "0:user:say",
+    "1:host:none",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M16-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "memory pin-parse-config v1 in proj-alpha is user-authored/active/off, expected user-authored/active"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M20-a",
+   "kind": "original",
+   "status": "UNRUN",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "FAIL",
+    "answer": "UNRUN",
+    "cost": "INCONCLUSIVE"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+    "case": "#235 M6 (decay)"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.strength_faded:pref-indent'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active",
+    "memory pref-ruff v1 in proj-alpha is absent, expected user-authored/active"
+   ],
+   "retrieval_reasons": [
+    "ranked memories ['pref-ruff', 'pref-indent'] were not served"
+   ],
+   "cost_reasons": [
+    "trace is missing coverage for ['memory.strength_faded:pref-indent']; no layer can pass"
+   ],
+   "error": null,
+   "seconds": 42.6,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:clock:clock",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 120.0,
+   "safety": {
+    "status": "PASS",
+    "reasons": [],
+    "checked": [
+     "memory.expired",
+     "memory.trust_promoted",
+     "memory.trust_changed",
+     "expected active items stay active"
+    ]
+   },
+   "d10_variant": {
+    "case_id": "M20-a-D10",
+    "status": "UNRUN",
+    "authority": "FAIL"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)",
+    "input 1 (the user's words) got no automatic proposal (no extraction outcome was recorded)"
+   ],
+   "explained_reasons": [
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active",
+    "memory pref-ruff v1 in proj-alpha is absent, expected user-authored/active"
+   ]
+  },
+  {
+   "case_id": "M20-b",
+   "kind": "original",
+   "status": "UNRUN",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "FAIL",
+    "answer": "UNRUN",
+    "cost": "INCONCLUSIVE"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+    "case": "#235 M6 (decay)"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.strength_raised:pref-indent'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active",
+    "memory pref-ruff v1 in proj-alpha is absent, expected user-authored/active"
+   ],
+   "retrieval_reasons": [
+    "ranked memories ['pref-indent', 'pref-ruff'] were not served"
+   ],
+   "cost_reasons": [
+    "trace is missing coverage for ['memory.strength_raised:pref-indent']; no layer can pass"
+   ],
+   "error": null,
+   "seconds": 42.3,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:clock:clock",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 1.0,
+   "safety": {
+    "status": "PASS",
+    "reasons": [],
+    "checked": [
+     "memory.expired",
+     "memory.trust_promoted",
+     "memory.trust_changed",
+     "expected active items stay active"
+    ]
+   },
+   "d10_variant": {
+    "case_id": "M20-b-D10",
+    "status": "UNRUN",
+    "authority": "FAIL"
+   },
+   "changed_inputs": [
+    "input 0 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)",
+    "input 1 (the user's words) got no automatic proposal (no extraction outcome was recorded)"
+   ],
+   "explained_reasons": [
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active",
+    "memory pref-ruff v1 in proj-alpha is absent, expected user-authored/active"
+   ]
+  },
+  {
+   "case_id": "M17-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 22.3,
+   "steps": [
+    "0:host:none",
+    "1:user:say",
+    "2:host:none",
+    "3:clock:clock",
+    "4:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 8.0
+  },
+  {
+   "case_id": "M17-b",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 22.7,
+   "steps": [
+    "0:host:none",
+    "1:user:say",
+    "2:clock:clock",
+    "3:user:say",
+    "4:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 3.0
+  },
+  {
+   "case_id": "M19-a",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "INCONCLUSIVE",
+    "retrieval": "INCONCLUSIVE",
+    "answer": "UNRUN",
+    "cost": "INCONCLUSIVE"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [
+    "trace is missing coverage for ['crash: an interrupted, unsettled turn and real host process loss are not exercised in process (owned by the Task 5 acpx kill proof)']; no layer can pass"
+   ],
+   "retrieval_reasons": [
+    "trace is missing coverage for ['crash: an interrupted, unsettled turn and real host process loss are not exercised in process (owned by the Task 5 acpx kill proof)']; no layer can pass"
+   ],
+   "cost_reasons": [
+    "trace is missing coverage for ['crash: an interrupted, unsettled turn and real host process loss are not exercised in process (owned by the Task 5 acpx kill proof)']; no layer can pass"
+   ],
+   "error": null,
+   "seconds": 2.0,
+   "steps": [
+    "0:user:say",
+    "1:host:crash",
+    "2:host:restart",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M19-b",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 2.4,
+   "steps": [
+    "0:user:say",
+    "1:host:rebase",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M21-a",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['restore.rekey_mapped', 'restore.anchor_mapped:pref-indent', 'restore.tombstones_applied'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active",
+    "memory pref-old v1 in proj-alpha is absent, expected user-authored/purged"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 42.5,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:say",
+    "2:host:none",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M21-a-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['restore.rekey_mapped', 'restore.anchor_mapped:pref-indent', 'restore.tombstones_applied'] are missing or out of order",
+    "memory pref-indent v1 in proj-alpha is user-authored/active/off, expected user-authored/active",
+    "memory pref-old v1 in proj-alpha is absent, expected user-authored/purged"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M21-b",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['restore.mapping_rejected'] are missing or out of order"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 42.7,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M21-b-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "required events ['restore.mapping_rejected'] are missing or out of order"
+   ],
+   "attribution": "historical mismatch explained reason by reason: input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M21-c",
+   "kind": "original",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 2.3,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M21-d",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "prohibited event memory.served occurred",
+    "prohibited serving memory.served appears in served_memory",
+    "memory pref-indent v1 in proj-alpha is absent, expected user-authored/withdrawn"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 46.0,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:say",
+    "2:host:delete_then_lose",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M21-d-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "memory pref-indent v1 in proj-alpha is absent, expected user-authored/withdrawn"
+   ],
+   "effective": {
+    "status": "PASS",
+    "reasons": [],
+    "from": "M21-d-D10"
+   },
+   "divergence": {
+    "oracle": "builder:M21-d-D10",
+    "deletion": "memory.withdrawn",
+    "disposition_recorded": true,
+    "explains": [
+     "prohibited event memory.served occurred",
+     "prohibited serving memory.served appears in served_memory"
+    ],
+    "owner": "Claude, #490 Task 5",
+    "ruling": "Codex CP4 review 6, finding 3: the original's natural-language mapping does nothing, so its later forget withdraws the wrong logical item; the intended recovery claim is shown by the explicit-command variant (effective comparison below); disposition recorded by Codex CP4 review 7, ruling 1 (run 10)",
+    "effective_oracle_status": "PASS",
+    "explained_reasons": [
+     "prohibited event memory.served occurred",
+     "prohibited serving memory.served appears in served_memory"
+    ]
+   },
+   "attribution": "historical mismatch explained reason by reason: input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED); divergence: Codex CP4 review 6, finding 3: the original's natural-language mapping does nothing, so its later forget withdraws the wrong logical item; the intended recovery claim is shown by the explicit-command variant (effective comparison below); disposition recorded by Codex CP4 review 7, ruling 1 (run 10). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M21-e",
+   "kind": "original",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "prohibited event memory.served occurred",
+    "prohibited serving memory.served appears in served_memory",
+    "memory pref-indent v1 in proj-alpha is absent, expected user-authored/purged"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 45.9,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:say",
+    "2:host:delete_then_lose",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0,
+   "d10_variant": {
+    "case_id": "M21-e-D10",
+    "status": "INCONCLUSIVE",
+    "authority": "PASS"
+   },
+   "changed_inputs": [
+    "input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED)"
+   ],
+   "explained_reasons": [
+    "memory pref-indent v1 in proj-alpha is absent, expected user-authored/purged"
+   ],
+   "effective": {
+    "status": "PASS",
+    "reasons": [],
+    "from": "M21-e-D10"
+   },
+   "divergence": {
+    "oracle": "builder:M21-e-D10",
+    "deletion": "memory.purged",
+    "disposition_recorded": true,
+    "explains": [
+     "prohibited event memory.served occurred",
+     "prohibited serving memory.served appears in served_memory"
+    ],
+    "owner": "Claude, #490 Task 5",
+    "ruling": "Codex CP4 review 6, finding 3: as M21-d, with a purge; disposition recorded by Codex CP4 review 7, ruling 1 (run 10)",
+    "effective_oracle_status": "PASS",
+    "explained_reasons": [
+     "prohibited event memory.served occurred",
+     "prohibited serving memory.served appears in served_memory"
+    ]
+   },
+   "attribution": "historical mismatch explained reason by reason: input 1 (the user's words) was captured off by the automatic path (SPANS_UNVERIFIED); divergence: Codex CP4 review 6, finding 3: as M21-d, with a purge; disposition recorded by Codex CP4 review 7, ruling 1 (run 10). Not a D9 protection pass"
+  },
+  {
+   "case_id": "M01-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.3,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M01-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 6.6,
+   "steps": [
+    "0:user:say",
+    "1:host:none",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M12-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.8,
+   "steps": [
+    "0:user:say",
+    "1:host:none",
+    "2:host:reconnect",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M02-d-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M03-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.6,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M03-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.5,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M07-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.6,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "QUOTATION"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M04-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 2.1,
+   "steps": [
+    "0:user:say",
+    "1:host:compact",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M06-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.4,
+   "steps": [
+    "0:user:say",
+    "1:tool:tool_output",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M08-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.6,
+   "steps": [
+    "0:host:agent_work",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_agent",
+     "skipped": null,
+     "reasons": [
+      "ADMITTED"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M09-a-D10",
+   "kind": "D10 variant",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.conflict.off'] are missing or out of order",
+    "memory lesson-indent-spaces v1 in proj-alpha is absent, expected agent-derived/conflicted/off"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 41.5,
+   "steps": [
+    "0:user:say",
+    "1:host:agent_work",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_agent",
+     "skipped": "user_items_in_scope",
+     "reasons": []
+    }
+   ],
+   "clock_days": 0.0,
+   "effective": {
+    "control": null,
+    "error": null,
+    "status": "PASS",
+    "reasons": [],
+    "policy": "scope-present agent skip (Codex CP2 review 3)"
+   },
+   "divergence": {
+    "oracle": "M09-a-D10",
+    "explains": [
+     "memory.conflict.off",
+     "lesson-indent-spaces"
+    ],
+    "owner": "Claude, #490 Task 5",
+    "ruling": "Codex CP4 review 2, Q4: effective-oracle divergence consistent with the adopted scope-present agent skip (Codex CP2 review 3); do not pay for extraction to make a conflict record",
+    "effective_oracle_status": "PASS",
+    "explained_reasons": [
+     "required events ['memory.conflict.off'] are missing or out of order",
+     "memory lesson-indent-spaces v1 in proj-alpha is absent, expected agent-derived/conflicted/off"
+    ]
+   }
+  },
+  {
+   "case_id": "M10-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M10-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.4,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M10-c-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.4,
+   "steps": [
+    "0:user:say",
+    "1:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M11-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:host:untrusted",
+    "1:user:say",
+    "2:host:new_session",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M11-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.4,
+   "steps": [
+    "0:host:none",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M18-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.6,
+   "steps": [
+    "0:host:linked_worktree",
+    "1:user:say",
+    "2:host:move_to",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M18-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.7,
+   "steps": [
+    "0:user:say",
+    "1:host:clone",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M18-d-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.3,
+   "steps": [
+    "0:user:say",
+    "1:host:branch",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M14-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 61.6,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M14-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 22.0,
+   "steps": [
+    "0:host:prior_off",
+    "1:host:none",
+    "2:user:say",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 0,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M15-a-D10",
+   "kind": "D10 variant",
+   "status": "FAIL",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.archived_overflow:cand-201'] are missing or out of order",
+    "memory cand-201 v1 in proj-alpha is absent, expected agent-derived/archived/off"
+   ],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1128.4,
+   "steps": [
+    "0:user:say",
+    "1:host:overflow",
+    "2:tool:agent_work",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 2,
+     "purpose": "memory.extract_agent",
+     "skipped": "user_items_in_scope",
+     "reasons": []
+    }
+   ],
+   "clock_days": 0.0,
+   "effective": {
+    "control": {
+     "steps": {
+      "2": [
+       "off_arrival"
+      ]
+     }
+    },
+    "error": null,
+    "status": "PASS",
+    "reasons": [],
+    "archived": [
+     "m-91f88f5215cd95cc"
+    ],
+    "arrival": [
+     "m-dbae60f2ea777def"
+    ],
+    "policy": "oldest live off record archived at the cap (memory_store._archived)"
+   },
+   "divergence": {
+    "oracle": "M15-a-D10",
+    "explains": [
+     "memory.archived_overflow:cand-201",
+     "cand-201"
+    ],
+    "owner": "Claude, #490 Task 5",
+    "ruling": "Codex CP4 review 2, Q4: oldest-record archival is the effective capacity policy (the plan requires recoverable unserved overflow, not newest-arrival archival)",
+    "effective_oracle_status": "PASS",
+    "explained_reasons": [
+     "required events ['memory.archived_overflow:cand-201'] are missing or out of order",
+     "memory cand-201 v1 in proj-alpha is absent, expected agent-derived/archived/off"
+    ]
+   }
+  },
+  {
+   "case_id": "M15-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 115.0,
+   "steps": [
+    "0:user:say",
+    "1:host:overflow",
+    "2:tool:agent_work",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 1,
+     "purpose": "memory.extract_user",
+     "skipped": null,
+     "reasons": [
+      "SPANS_UNVERIFIED"
+     ]
+    },
+    {
+     "seq": 2,
+     "purpose": "memory.extract_agent",
+     "skipped": "user_items_in_scope",
+     "reasons": []
+    }
+   ],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M16-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "UNRUN",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+    "retrieval": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [
+    "requirement R1 has no supporting evidence in the first 5"
+   ],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:user:say",
+    "1:host:change_file",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M16-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 1.2,
+   "steps": [
+    "0:user:say",
+    "1:host:none",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M20-a-D10",
+   "kind": "D10 variant",
+   "status": "UNRUN",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "FAIL",
+    "answer": "UNRUN",
+    "cost": "INCONCLUSIVE"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+    "case": "#235 M6 (decay)"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.strength_faded:pref-indent'] are missing or out of order"
+   ],
+   "retrieval_reasons": [
+    "served order ['pref-indent', 'pref-ruff'] breaks the required rank ['pref-ruff', 'pref-indent']"
+   ],
+   "cost_reasons": [
+    "trace is missing coverage for ['memory.strength_faded:pref-indent']; no layer can pass"
+   ],
+   "error": null,
+   "seconds": 1.7,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:clock:clock",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 120.0,
+   "safety": {
+    "status": "PASS",
+    "reasons": [],
+    "checked": [
+     "memory.expired",
+     "memory.trust_promoted",
+     "memory.trust_changed",
+     "expected active items stay active"
+    ]
+   }
+  },
+  {
+   "case_id": "M20-b-D10",
+   "kind": "D10 variant",
+   "status": "UNRUN",
+   "layers": {
+    "authority": "FAIL",
+    "retrieval": "FAIL",
+    "answer": "UNRUN",
+    "cost": "INCONCLUSIVE"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN",
+    "case": "#235 M6 (decay)"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [
+    "required events ['memory.strength_raised:pref-indent'] are missing or out of order"
+   ],
+   "retrieval_reasons": [
+    "served order ['pref-ruff', 'pref-indent'] breaks the required rank ['pref-indent', 'pref-ruff']"
+   ],
+   "cost_reasons": [
+    "trace is missing coverage for ['memory.strength_raised:pref-indent']; no layer can pass"
+   ],
+   "error": null,
+   "seconds": 1.7,
+   "steps": [
+    "0:user:say",
+    "1:user:say",
+    "2:clock:clock",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 1.0,
+   "safety": {
+    "status": "PASS",
+    "reasons": [],
+    "checked": [
+     "memory.expired",
+     "memory.trust_promoted",
+     "memory.trust_changed",
+     "expected active items stay active"
+    ]
+   }
+  },
+  {
+   "case_id": "M21-a-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "INCONCLUSIVE",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 2.3,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:confirm",
+    "2:host:none",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M21-b-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 2.6,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:confirm",
+    "2:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M21-d-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 5.7,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:confirm",
+    "2:host:delete_then_lose",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  },
+  {
+   "case_id": "M21-e-D10",
+   "kind": "D10 variant",
+   "status": "INCONCLUSIVE",
+   "layers": {
+    "authority": "PASS",
+    "retrieval": "PASS",
+    "answer": "UNRUN",
+    "cost": "PASS"
+   },
+   "owners": {
+    "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+   },
+   "grader_status": "FAIL",
+   "authority_reasons": [],
+   "retrieval_reasons": [],
+   "cost_reasons": [],
+   "error": null,
+   "seconds": 5.7,
+   "steps": [
+    "0:host:earlier_registration",
+    "1:user:confirm",
+    "2:host:delete_then_lose",
+    "3:user:say"
+   ],
+   "extraction_outcomes": [],
+   "clock_days": 0.0
+  }
+ ],
+ "offline_qualification_passed": true,
+ "history": [
+  {
+   "head": "git:1b476551713f80b2ddad74382b79355adcaf6f0d",
+   "dirty": false,
+   "config_id": "m3-cp4-v1",
+   "results_sha256": "hex:145c6706cb7e947be99598e244bfda3dc534e06816a04852d748653e14100aaf",
+   "log_sha256": "hex:972013c08e9438d0c461641d4bea0b0c6099454a37e749196e328665d237b1a3",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-10-results.json and m3-run-10.log",
+   "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
+   "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+   "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)",
+   "summary": {
+    "FAIL": 29,
+    "INCONCLUSIVE": 45,
+    "UNRUN": 4
+   },
+   "passed": true
+  },
+  {
+   "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+   "dirty": false,
+   "config_id": "m3-cp4-v1",
+   "results_sha256": "hex:f40b9437f67349000af398c45f19a47267b3dc785900719178d5ce5f7a405c34",
+   "log_sha256": "hex:9ade486d2b18ae58255a1bfeeb965ea6b2107e14d1b0091caa8312e113f14f84",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-12-results.json and m3-run-12.log",
+   "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
+   "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+   "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)",
+   "summary": {
+    "FAIL": 29,
+    "INCONCLUSIVE": 45,
+    "UNRUN": 4
+   },
+   "passed": true
+  },
+  {
+   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
+   "dirty": false,
+   "config_id": "m3-cp4-v1",
+   "results_sha256": "hex:2eb939d78b563090a364dbbf13eb653f334f112d1d20accd8a2143ebb353ae42",
+   "log_sha256": "hex:17b2ec549b4e27beb88f91794ed5a479845799e821152e1dcfc972dc1ef78299",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-13-results.json and m3-run-13.log",
+   "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
+   "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+   "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)",
+   "summary": {
+    "FAIL": 29,
+    "INCONCLUSIVE": 45,
+    "UNRUN": 4
+   },
+   "passed": true
+  }
+ ],
+ "paid": {
+  "report": {
+   "path": "reports/plan12-memory-m3/paid-attempts.json",
+   "sha256": "hex:4fe108c0c35535508a65b89a3a5ea3c196827f6c3f49982c4291f4e261f1c362",
+   "schema": "plan12-memory-m3.paid-attempts.v3"
+  },
+  "correctness_rule": "POST-HOC whole-reply lexical scoring (Codex CP4 review 19, ruling 4): case-insensitive substring over the model's reply (host text such as the brief excluded); PASS when an accepted phrase is present and no rejected phrase is. The frozen rubric R1 names 'the reply's claim'; no claim selector was frozen, so this is not a pre-registered interpretation. Lists are alternatives. No superiority claim is made.",
+  "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the eligible set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6; review 22, rulings 2-3; review 23, rulings 2 and 4), UNKNOWN where it cannot be derived; R2 also needs positive proof the turn's read succeeded (only a brief that lists the item gives one). R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not its item's newest servable version, which holds whether or not the eligible set is known. The rerun sessions (tasks.json disposition 3: M3-ZED-ON-2, M3-ZED-RETURN-2, M3-ZED-RETURN-C-2) are graded instead by rerun_grade.py, fixed before the first rerun prompt (Codex CP4 review 26, ruling 7): R2 and R4 from each turn's `memory served` records and the rerun store's events (evidence/store-archive-2), R3 by role. Earlier sessions keep their own grading and results.",
+  "totals": {
+   "physical_attempts": 38,
+   "settled_usd": "0.0105533"
+  },
+  "sessions": [
+   {
+    "session": "M3-ZED-OFF",
+    "cap": {
+     "attempts": 8,
+     "usd": "0.50"
+    },
+    "used": {
+     "physical_attempts": 5,
+     "settled_usd": "0.0009815",
+     "reported_usd": null,
+     "reconciled_usd": null
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "cap": {
+     "attempts": 20,
+     "usd": "1.50"
+    },
+    "used": {
+     "physical_attempts": 11,
+     "settled_usd": "0.0018855",
+     "reported_usd": "0.0015978",
+     "reconciled_usd": "0.0002877"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN",
+    "cap": {
+     "attempts": 4,
+     "usd": "0.50"
+    },
+    "used": {
+     "physical_attempts": 5,
+     "settled_usd": "0.0023977",
+     "reported_usd": "0.0023977",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": true
+   },
+   {
+    "session": "M3-ZED-RETURN-B",
+    "cap": {
+     "attempts": 6,
+     "usd": "1.30"
+    },
+    "used": {
+     "physical_attempts": 2,
+     "settled_usd": "0.0010126",
+     "reported_usd": "0.0010126",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN-OFF",
+    "cap": {
+     "attempts": 12,
+     "usd": "2.60"
+    },
+    "used": {
+     "physical_attempts": 2,
+     "settled_usd": "0.0004216",
+     "reported_usd": "0.0004216",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C",
+    "cap": {
+     "attempts": 12,
+     "usd": "2.60"
+    },
+    "used": {
+     "physical_attempts": 2,
+     "settled_usd": "0.0004931",
+     "reported_usd": "0.0004931",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "cap": {
+     "attempts": 20,
+     "usd": "1.50"
+    },
+    "used": {
+     "physical_attempts": 6,
+     "settled_usd": "0.0010838",
+     "reported_usd": "0.0010838",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN-2",
+    "cap": {
+     "attempts": 12,
+     "usd": "2.60"
+    },
+    "used": {
+     "physical_attempts": 3,
+     "settled_usd": "0.0016691",
+     "reported_usd": "0.0016691",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C-2",
+    "cap": {
+     "attempts": 12,
+     "usd": "2.60"
+    },
+    "used": {
+     "physical_attempts": 2,
+     "settled_usd": "0.0006084",
+     "reported_usd": "0.0006084",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   }
+  ],
+  "scored_prompts": [
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P2",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "A",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P4",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "B",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P6",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "C",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P9",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "D",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P2",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "A",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "served_set": "N/A",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P4b",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "C' (fresh, for P4b)",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "served_set": "N/A",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P6",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "next fresh thread after C' (task thread C, shifted)",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "UNKNOWN",
+     "served_set": "N/A"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P9",
+    "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+    "thread": "D (fresh)",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "served_set": "N/A",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN",
+    "run": "R1",
+    "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+    "thread": "E",
+    "mode": "agent (planning stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS",
+     "served_set": "N/A",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN",
+    "run": "R2",
+    "head": "git:ddd5ce3c520a6292bd196cb3f9bbd372b77f41a8",
+    "thread": "E",
+    "mode": "agent (planning stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "served_set": "N/A",
+     "R3": "PASS"
+    },
+    "over_allowance": true
+   },
+   {
+    "session": "M3-ZED-RETURN-B",
+    "run": "R1b",
+    "head": "git:2a483ddd0ee3cc864f4103a7b5b7915e9239efd6",
+    "thread": "F",
+    "mode": "agent (planning stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS",
+     "served_set": "N/A",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-OFF",
+    "run": "R1o",
+    "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+    "thread": "H",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-OFF",
+    "run": "R2o",
+    "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+    "thread": "H",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C",
+    "run": "R1c",
+    "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+    "thread": "G",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "PASS",
+     "R4": "PASS",
+     "served_set": "N/A",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C",
+    "run": "R2c",
+    "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+    "thread": "G",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "PASS",
+     "served_set": "N/A",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P2",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "A",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P4",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "B",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P6",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "C",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P9",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "D",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-2",
+    "run": "R1",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "E",
+    "mode": "agent (planning stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-2",
+    "run": "R2",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "E",
+    "mode": "agent (planning stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C-2",
+    "run": "R1c",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "G",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C-2",
+    "run": "R2c",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "G",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   }
+  ],
+  "unscored_prompts": [
+   {
+    "session": "M3-ZED-ON",
+    "run": "P4",
+    "head": "git:a5ebcb86b11a77ec5f24c58d70202aa83f48e2e6",
+    "thread": "B (also held P3's text: unscored)",
+    "mode": "chat (answer stage)",
+    "task_verdict": "INCOMPLETE",
+    "checks": {
+     "correctness": "UNSCORED",
+     "R5": "PASS",
+     "R2": "UNKNOWN",
+     "R4": "UNKNOWN",
+     "served_set": "N/A"
+    },
+    "over_allowance": false
+   }
+  ],
+  "by_verdict": {
+   "FAIL": 6,
+   "PASS": 13,
+   "INCOMPLETE": 4
+  },
+  "lifecycle": [
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P1",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P3",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P5",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P7",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-OFF",
+    "run": "P8",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P1",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P3",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P5",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P7",
+    "R6": "FAIL"
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P7b",
+    "R6": "FAIL"
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P7c",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON",
+    "run": "P8",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P1",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P3",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P5",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P7",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P8",
+    "R6": "PASS"
+   }
+  ],
+  "paid_qualification_complete": false,
+  "limits": [
+   "scoring is post-hoc lexical and supports no superiority claim",
+   "the earlier sessions had no served-set record; their R2, R4's serving half and R6 come from an offline reconstruction over the archived store (p1211-cp4-zed/evidence/served-reconstruction.json), UNKNOWN wherever its inputs do not fix them",
+   "M3-ZED-RETURN used 5 attempts against a cap of 4: an uncured authorization breach",
+   "Agent mode classifies an answered question as a failed run: #512 (RETURN-C-2's brief shows it for RETURN-2's R2)"
+  ],
+  "rerun": {
+   "sessions": [
+    "M3-ZED-ON-2",
+    "M3-ZED-RETURN-2",
+    "M3-ZED-RETURN-C-2"
+   ],
+   "by_verdict": {
+    "PASS": 7,
+    "FAIL": 1
+   },
+   "authorization_breach": false,
+   "lifecycle_all_pass": true,
+   "serving_proof_complete": true,
+   "required_citations_all_pass": true,
+   "failed": [
+    {
+     "session": "M3-ZED-ON-2",
+     "run": "P6",
+     "checks": {
+      "correctness": "FAIL",
+      "R5": "PASS",
+      "served_set": "N/A",
+      "R2": "PASS",
+      "R4": "PASS"
+     }
+    }
+   ]
+  }
+ }
+}

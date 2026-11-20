@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -93,6 +94,7 @@ ROUTE_BINDING_VERSION: Final = 1
 _DISCLOSURE_KEY_DOMAIN: Final = b"plan12-contributor-disclosure-key-v1"
 _DISCLOSURE_MAC_DOMAIN: Final = b"plan12-contributor-disclosure-v1"
 _HEX_DIGEST_LENGTH: Final = 64
+_PURPOSE: Final = re.compile(r"(?=.{3,64}\Z)[a-z][a-z0-9_]*(\.[a-z0-9_]+)+")  # the capture contract's purpose shape, bounded
 
 
 class BindingError(ValueError):
@@ -314,6 +316,10 @@ class RouteBinding:
     output_cap: int
     disclosure: DisclosureAuthorization | None = None
     cache_prefix_chars: int | None = None
+    purpose: str | None = None
+    reasoning: str | None = None
+    """A purpose-scoped reasoning setting and the purpose it is approved for (``ModelEntry.purpose_reasoning``; CP4
+    review 10), both or neither. Neither: the entry's default reasoning."""
 
     def to_wire(self) -> dict[str, Any]:
         wire: dict[str, Any] = {
@@ -330,6 +336,8 @@ class RouteBinding:
             }
         if self.cache_prefix_chars is not None:
             wire["cache_prefix_chars"] = self.cache_prefix_chars
+        if self.reasoning is not None:
+            wire["purpose"], wire["reasoning"] = self.purpose, self.reasoning
         return wire
 
     @classmethod
@@ -337,7 +345,7 @@ class RouteBinding:
         """Strict parse: unknown fields, other versions and malformed values are rejected."""
         if not isinstance(raw, Mapping):
             raise BindingError("BINDING_MALFORMED", "route_binding must be an object")
-        _exact_keys(raw, required={"version", "registry_hash", "request_id", "output_cap"}, optional={"disclosure", "cache_prefix_chars"})
+        _exact_keys(raw, required={"version", "registry_hash", "request_id", "output_cap"}, optional={"disclosure", "cache_prefix_chars", "purpose", "reasoning"})
         version = raw["version"]
         if isinstance(version, bool) or not isinstance(version, int):
             raise BindingError("BINDING_MALFORMED", "version must be an integer")
@@ -363,12 +371,21 @@ class RouteBinding:
         cache_prefix_chars = raw.get("cache_prefix_chars")
         if cache_prefix_chars is not None and (isinstance(cache_prefix_chars, bool) or not isinstance(cache_prefix_chars, int) or cache_prefix_chars <= 0):
             raise BindingError("BINDING_MALFORMED", "cache_prefix_chars must be a positive integer")
+        purpose, reasoning = raw.get("purpose"), raw.get("reasoning")
+        if (purpose is None) != (reasoning is None):
+            raise BindingError("BINDING_MALFORMED", "purpose and reasoning are bound together or not at all")
+        if purpose is not None and not (isinstance(purpose, str) and _PURPOSE.fullmatch(purpose)):
+            raise BindingError("BINDING_MALFORMED", "purpose must be a dotted lowercase name")
+        if reasoning is not None and not (isinstance(reasoning, str) and reasoning in WIRE_REASONING_EFFORTS):
+            raise BindingError("BINDING_MALFORMED", "reasoning must be an upstream reasoning level")
         return cls(
             registry_hash=_hex_digest(raw["registry_hash"], "registry_hash"),
             request_id=request_id,
             output_cap=output_cap,
             disclosure=disclosure,
             cache_prefix_chars=cache_prefix_chars,
+            purpose=purpose,
+            reasoning=reasoning,
         )
 
 

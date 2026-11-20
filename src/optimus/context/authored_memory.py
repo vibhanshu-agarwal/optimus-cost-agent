@@ -104,8 +104,13 @@ class GatewayMemoryStore:
 
     def items(self, scope: str, *, limit: int, cursor: str | None = None) -> tuple[list[StoredEvent], str | None]:
         """One page of every confirmed item in a scope (live, off, withdrawn and purged), for `/memory`."""
+        rows, after, _watermark = self.page(scope, limit=limit, cursor=cursor)
+        return rows, after
+
+    def page(self, scope: str, *, limit: int, cursor: str | None = None) -> tuple[list[StoredEvent], str | None, str]:
+        """`items`, with the confirmed stream position the Gateway answered from (#514)."""
         reply = self.call("list", project=self.project, scope=scope, limit=limit, **({"cursor": cursor} if cursor else {}))
-        return [StoredEvent.from_record(self.project, record) for record in reply["items"]], reply["cursor"]
+        return [StoredEvent.from_record(self.project, record) for record in reply["items"]], reply["cursor"], str(reply["watermark"])
 
     def history(self, item: str, *, limit: int, before: int | None = None) -> tuple[list[dict[str, Any]], bool]:
         """One page of an item's versions, newest first, and whether older ones remain (Q4)."""

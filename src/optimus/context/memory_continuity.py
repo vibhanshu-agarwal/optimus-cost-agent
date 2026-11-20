@@ -36,6 +36,7 @@ BRIEF_AFTER_MS: Final = 7 * 24 * 3600 * 1000  # plan v5: after >= 7 days, at the
 MAX_AMENDMENTS: Final = 8
 MAX_COMMITS_SHOWN: Final = 10
 MAX_ITEMS_SHOWN: Final = 10
+RESPONDED: Final = "responded"  # a remaining-work reference's suffix: the model's own reply was delivered (`Settled.responded`)
 MAX_CHECKPOINTS: Final = 20  # what the store keeps per project (memory_store_contract.MAX_CHECKPOINTS)
 CHECKPOINT_TRIES: Final = 3
 _OBJECTIVE_REASONS: Final = frozenset({"task_request", "ambiguous_assertion", "durable_marker"})
@@ -54,6 +55,9 @@ class Settled:
     plan_hash: str = ""
     verification: tuple[str, ...] = ()  # host evidence references of checks that ran
     pending: bool = False  # the turn ended awaiting the user's approval
+    # Planning stopped on the model's own reply (PLANNING_MODEL_REFUSED), which was delivered: an answer to a question or a
+    # genuine refusal alike, never a completed task. The outcome stays as settled (Codex CP4 review 18, ruling 2).
+    responded: bool = False
 
 
 class Continuity:
@@ -149,7 +153,8 @@ class Continuity:
             provenance=settled.run_id, plan_hash=settled.plan_hash, pending=(f"{settled.run_id}:approval",) if settled.pending else (),
             amendments=amendments, completion=(f"{settled.run_id}:completed",) if settled.outcome == "completed" else (),
             verification=tuple(settled.verification[:32]),
-            remaining=() if settled.outcome == "completed" or settled.pending else (f"{settled.run_id}:{_opaque(settled.outcome)}",))
+            remaining=() if settled.outcome == "completed" or settled.pending
+            else (f"{settled.run_id}:{RESPONDED if settled.responded else _opaque(settled.outcome)}",))
         for attempt in range(CHECKPOINT_TRIES):
             try:
                 with self._store.lease() as token:
@@ -190,7 +195,9 @@ class Continuity:
             lines.append(f"- Its plan: `{point.plan_hash[:12]}` (history: an earlier approval is never a current one).")
         if point.pending:
             lines.append("- It ended waiting for an approval; that approval is not carried over.")
-        if point.remaining:
+        if point.remaining and all(ref.endswith(f":{RESPONDED}") for ref in point.remaining):
+            lines.append("- A reply was delivered, but planning did not complete a task (the reply may have been an answer or a refusal).")
+        elif point.remaining:
             lines.append("- It ended unfinished.")
         if point.amendments:
             lines.append(f"- The objective was amended {len(point.amendments)} time{'s' if len(point.amendments) != 1 else ''}.")
@@ -227,37 +234,35 @@ class Continuity:
         lines += [f"  - {escape_text(line, 120)}" for line in shown]
         return lines
 
-    def welcome(self) -> str:
-        """The brief with what memory holds now: the user's served items, and every item withdrawn, purged or needing
-        re-verification since the predecessor settled (from the store's own transaction times)."""
+    def welcome(self, served: Any) -> str:
+        """The brief with what memory holds now: the user's items in `served` (a `memory_serving.ServedSet` from checked
+        serving, so the brief never lists an item a turn would not be served: another branch's, or one whose file changed), and
+        every item withdrawn, purged or needing re-verification since the predecessor settled (the store's transaction times)."""
         from optimus.context import memory_serving
 
         _stored, found = self.previous()
         since = found.checkpoint.settled_at_ms if found is not None else None
-        served: list[Any] = []
         changed: list[tuple[str, str]] = []
         cursor: str | None = None
         for _ in range(memory_serving.MAX_PAGES):
             rows, cursor = self._store.items("project", limit=100, cursor=cursor)
             for row in rows:
                 event = row.event
-                if event.trust == "user-authored" and event.status == "active" and event.statement:
-                    served.append(memory_serving.ServedMemory(event.project, event.item, event.version, event.trust, event.kind,
-                                                              event.scope, event.title, event.statement, event.anchors))
-                elif (since is not None and event.trust != "off" and event.status in _CHANGED
-                      and int(row.stream_id.split("-")[0]) >= since):  # an off record was never memory (Zed proof: one switched on)
+                if (since is not None and event.trust != "off" and event.status in _CHANGED
+                        and int(row.stream_id.split("-")[0]) >= since):  # an off record was never memory (Zed proof: one switched on)
                     changed.append((f"{event.item}@{event.version}", _CHANGED[event.status]))
             if cursor is None:
                 break
-        return self.brief(served=memory_serving.select(served).protected, changed=changed)
+        return self.brief(served=served.protected, changed=changed)
 
-    def first_response_brief(self) -> str | None:
-        """The brief for this session's first response when it is due, once; None otherwise."""
+    def first_response_brief(self, served: Callable[[], Any]) -> str | None:
+        """The brief for this session's first response when it is due, once; None otherwise. `served` reads the turn's checked
+        served set, only when the brief is due."""
         with self._lock:
             if self._shown:
                 return None
             self._shown = True
-        return self.welcome() if self.due() else None
+        return self.welcome(served()) if self.due() else None
 
 
 def _opaque(value: str) -> str:

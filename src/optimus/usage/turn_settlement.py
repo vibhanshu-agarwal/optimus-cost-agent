@@ -350,7 +350,7 @@ def receipt_from_maintenance(receipt: MaintenanceReceipt) -> StageReceipt:
         requested_model=identity.model_id,
         role=identity.role,
         route=identity.route,
-        reasoning=identity.reasoning,
+        reasoning=receipt.reasoning if receipt.reasoning is not None else identity.reasoning,  # the call's own, else the turn's
         quantizations=identity.quantizations,
         provider=receipt.provider,
         resolved_provider=receipt.resolved_provider,

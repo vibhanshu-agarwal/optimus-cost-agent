@@ -13,6 +13,10 @@ never executes an update or a withdrawal a model proposed. Purge also needs a fr
 (`session/request_permission`); this module prepares it and checks its binding.
 
 D9's automatic-extraction boundary is unchanged: nothing here turns automatic user admission back on.
+
+`/remember --branch <name>` limits an item to one branch. An item also rests on the workspace files its statement names, as they
+were when it was saved. Both are host conditions in the item's lineage (`memory_serving`): an item is served only on its branch,
+and an item whose file changed is not served until the user edits it.
 """
 
 from __future__ import annotations
@@ -38,12 +42,14 @@ from context_engine.memory_contracts import (
 )
 from context_engine.memory_projection import ItemState
 from optimus.acp.memory_notices import escape_text, headline
+from optimus.context import memory_serving
 from optimus.context.memory_extraction import digest, scans_pass, sentence_bounds, title_of
+from optimus.context.memory_workspace import current_branch
 from optimus_security import memory_store_contract as msc
 
 COMMANDS: Final = ("remember", "forget", "memory", "welcome")
 DESCRIPTIONS: Final = {
-    "remember": ("Save a rule or fact to this project's memory", "<statement>"),
+    "remember": ("Save a rule or fact to this project's memory", "[--branch <name>] <statement>"),
     "forget": ("Withdraw a memory item (history is kept); --purge deletes its text", "<id>@<version> [--purge]"),
     "memory": ("List memory, or view, edit, switch on or forget one item; export or restore the recovery copy",
                "[view <id> | edit <id>@<version> <statement> | switch-on <id>@<version> | forget <id>@<version> | page <n> | "
@@ -56,14 +62,16 @@ PURGE_OPTION: Final = "memory-purge"
 PURGE_CANCEL: Final = "memory-purge-cancel"
 USAGE: Final = (
     "Memory commands:\n"
-    "- `/remember <statement>` saves a rule or fact for this project.\n"
+    "- `/remember <statement>` saves a rule or fact for this project; `/remember --branch <name> <statement>` saves one that "
+    "applies only on that branch.\n"
     "- `/forget <id>@<version>` withdraws an item; its history is kept. Add `--purge` to delete its text, after you confirm.\n"
     "- `/memory` lists memory (`/memory page <n>` for more); `/memory view <id>` shows an item's history.\n"
     "- `/memory edit <id>@<version> <statement>` replaces one of your items.\n"
     "- `/memory switch-on <id>@<version>` saves an off item from your exact words, while this session still holds them.\n"
     "- `/welcome` shows the welcome-back brief.\n"
     "- `/memory export` saves the recovery copy now (the first time, you confirm where); `/memory restore` lists the copies and "
-    "`/memory restore <generation>` restores one into an empty store.\n"
+    "`/memory restore <generation>` restores one into an empty store; `/memory restore <generation> --map` restores an earlier "
+    "registration's copy into this project, after you confirm.\n"
     "A change names the version you saw in `/memory`, for example `m-0123456789abcdef@2`."
 )
 NEEDS_VERSION: Final = "Name the version you mean, as `/memory` shows it: for example `{verb} {item}@2`. Nothing was changed."
@@ -86,6 +94,8 @@ class MemoryCommand:
     page: int = 1
     before: int | None = None
     generation: str | None = None
+    branch: str | None = None  # remember: the one branch the item applies on
+    mapped: bool = False  # restore: an earlier registration's copy, mapped into this project once the user confirms
 
 
 @dataclass(frozen=True)
@@ -164,8 +174,14 @@ def parse_command(text: str, *, attachments: bool) -> MemoryCommand | str | None
     verb, rest = words[0][1:], words[1:]
     lead = len(text) - len(stripped) + len(words[0])
     if verb == "remember":
+        branch = None
+        if rest and rest[0] == "--branch":
+            if len(rest) < 3 or memory_serving.branch_ref(rest[1]) is None:
+                return USAGE
+            branch = rest[1]
+            lead = text.index(branch, text.index("--branch", lead) + len("--branch")) + len(branch)
         said = _statement_after(text, lead)
-        return USAGE if said is None else MemoryCommand("remember", statement=said[0], start=said[1])
+        return USAGE if said is None else MemoryCommand("remember", statement=said[0], start=said[1], branch=branch)
     if verb == "welcome":
         return MemoryCommand("welcome") if not rest else USAGE
     if verb == "forget":
@@ -178,10 +194,12 @@ def parse_command(text: str, *, attachments: bool) -> MemoryCommand | str | None
         return MemoryCommand("list")
     if rest == ["export"]:
         return MemoryCommand("export")
-    if rest[0] == "restore" and len(rest) <= 2:
+    if rest[0] == "restore" and len(rest) <= 3:
         if len(rest) == 1:
             return MemoryCommand("restore")
-        return MemoryCommand("restore", generation=rest[1]) if _GENERATION.fullmatch(rest[1]) else USAGE
+        if not _GENERATION.fullmatch(rest[1]) or (len(rest) == 3 and rest[2] != "--map"):
+            return USAGE
+        return MemoryCommand("restore", generation=rest[1], mapped=len(rest) == 3)
     if rest[0] == "page" and len(rest) == 2 and rest[1].isdigit() and 1 <= int(rest[1]) <= 1000:
         return MemoryCommand("list", page=int(rest[1]))
     if rest[0] == "view" and len(rest) in (2, 4):
@@ -253,7 +271,7 @@ class MemoryCommands:
     def __init__(self, store: Any, *, trusted: bool, sanitize: Callable[[str], str], keyed: Callable[[str], str] = digest,
                  scope: str = "project", source: Callable[[str], str | None] = lambda _block: None,
                  source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
-                 brief: Callable[[], str] | None = None, registry_recovery: Any = None) -> None:
+                 brief: Callable[[memory_serving.ServedSet], str] | None = None, registry_recovery: Any = None) -> None:
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
@@ -270,6 +288,24 @@ class MemoryCommands:
     @property
     def store(self) -> Any:
         return self._store
+
+    def served(self) -> memory_serving.ServedSet:
+        """What a turn is served now: the project's servable items whose conditions hold in this workspace on its current
+        branch. A store error raises."""
+        branch = current_branch(self._workspace) if self._workspace is not None else None
+        return memory_serving.from_store(self._store, self._scope, root=self._workspace, branch=branch)
+
+    def _conditions(self, lineage: Sequence[str], *, live: bool) -> str:
+        """How `/memory` shows an item's host conditions: its branch, and a pinned file that changed."""
+        words = []
+        branch = memory_serving.branch_of(lineage)
+        if branch is not None:
+            words.append(f"only on branch `{branch}`")  # a host reference: no backtick or markup can occur
+        changed = memory_serving.changed_file(lineage, self._workspace) if live else None
+        if changed is not None:
+            words.append(f"needs re-verification: `{changed}` changed since it was saved; "
+                         "`/memory edit` saves it again")
+        return "".join(f" · {word}" for word in words)
 
     def label(self, item: str) -> str:
         """An item's title for its card, from the store; empty when it cannot be read (the card still names the item)."""
@@ -296,14 +332,16 @@ class MemoryCommands:
                 assert command.item is not None
                 return MemoryAnswer(self._view(command.item, command.before))
             if command.verb == "welcome":
-                return MemoryAnswer(self._brief() if self._brief is not None else "No welcome-back brief is available for this project yet.")
+                return MemoryAnswer(self._brief(self.served()) if self._brief is not None
+                                    else "No welcome-back brief is available for this project yet.")
             if command.verb in ("export", "restore"):
                 return self._recovery_command(command)
             if not self._trusted:
                 return MemoryAnswer(READ_ONLY)
             if command.verb == "remember":
                 assert command.statement is not None
-                return self._remember(command.statement, Span(block, command.start, command.start + len(command.statement)))
+                return self._remember(command.statement, Span(block, command.start, command.start + len(command.statement)),
+                                      command.branch)
             assert command.item is not None and command.version is not None
             if command.verb == "forget":
                 return self._forget(command.item, command.version)
@@ -327,11 +365,17 @@ class MemoryCommands:
         return HostVerdict(workspace_trusted=self._trusted, scope_valid=True, spans_verified=True, lineage_complete=True,
                            scans_passed=scans_pass(title, statement, sanitize=self._sanitize, sources=()))
 
-    def _remember(self, statement: str, span: Span) -> MemoryAnswer:
+    def _lineage(self, statement: str, branch: str | None) -> tuple[str, ...]:
+        limited = memory_serving.branch_ref(branch) if branch is not None else None
+        return ((limited,) if limited else ()) + memory_serving.file_refs(statement, self._workspace)
+
+    def _remember(self, statement: str, span: Span, branch: str | None = None) -> MemoryAnswer:
         title = title_of(statement)
-        key = self._keyed(f"{_COMMAND_KEY}\0remember\0{self.project}\0{self._scope}\0{statement}")
+        lineage = self._lineage(statement, branch)
+        key = self._keyed(f"{_COMMAND_KEY}\0remember\0{self.project}\0{self._scope}\0{statement}"
+                          + (f"\0{chr(0).join(lineage)}" if lineage else ""))
         candidate = MemoryCandidate(self.project, self._scope, "user-authored", "fact", "assertion", statement, title, spans=(span,),
-                                    idempotency_key=key)
+                                    evidence=lineage, idempotency_key=key)
         verdict = self._verdict(title, statement)
         if not verdict.scans_passed:
             return MemoryAnswer(_SCAN_REFUSED)
@@ -373,8 +417,10 @@ class MemoryCommands:
             if not target.live:
                 return MemoryAnswer(f"`{item}` is {_STATUS_WORDS[target.status]}, so it cannot be edited.")
             key = self._keyed(f"{_COMMAND_KEY}\0edit\0{self.project}\0{item}\0{version}\0{statement}")
+            # an edit keeps the item's branch and pins the files the new words name, as they are now
+            lineage = self._lineage(statement, memory_serving.branch_of(target.lineage))
             candidate = MemoryCandidate(self.project, target.scope, "user-authored", target.kind, "assertion", statement, title,
-                                        spans=(span,), target=item, idempotency_key=key)
+                                        spans=(span,), evidence=lineage, target=item, idempotency_key=key)
             verdict = self._verdict(title, statement)
             if not verdict.scans_passed:
                 return MemoryAnswer(_SCAN_REFUSED)
@@ -543,8 +589,9 @@ class MemoryCommands:
             title = escape_text(event.title or "(no text kept)", 80)
             archived = event.trust == "off" and event.status == "superseded"  # the overflow archive: kept, never used
             status = "archived: too many off items, kept but never used" if archived else _STATUS_WORDS[event.status]
-            line = f"- `{event.item}@{event.version}` · {_ORIGIN_WORDS[event.trust]} · {status} · {title}"
             state = _state(stored)
+            line = f"- `{event.item}@{event.version}` · {_ORIGIN_WORDS[event.trust]} · {status}"
+            line += self._conditions(event.lineage, live=state is not None and state.servable) + f" · {title}"
             if event.trust == "off" and state is not None and state.live:
                 line += f" · {self._availability(Locator.of(state))}"
             lines.append(line)
@@ -570,7 +617,9 @@ class MemoryCommands:
             return f"No memory item `{item}` in this project."
         versions, more = self._store.history(item, limit=HISTORY_PAGE, before=before)
         event = stored.event
-        lines = [f"**`{item}@{event.version}`** · {_ORIGIN_WORDS[event.trust]} · {_STATUS_WORDS[event.status]}"]
+        state = _state(stored)
+        lines = [f"**`{item}@{event.version}`** · {_ORIGIN_WORDS[event.trust]} · {_STATUS_WORDS[event.status]}"
+                 + self._conditions(event.lineage, live=state is not None and state.servable)]
         if event.trust != "off" and event.status == "active":
             lines.append(f"Cited as `[memory:{item}@{event.version}]`.")
         for version in versions:
@@ -603,20 +652,36 @@ class MemoryCommands:
                 generation = recovery.export()
                 return MemoryAnswer(f"Saved the recovery copy `{generation.name}`: {generation.count} items, deletion frontier "
                                     f"{generation.deletions}. {recovery.status_line()}")
-            if state.destination is None:
+            # a project with no location yet (a new registration of this workspace) still reads its worktree's default one
+            place = Path(state.destination) if state.destination else mr.location(self._workspace) if self._workspace else None
+            if place is None or (not state.destination and not place.is_dir()):
                 return MemoryAnswer("No recovery location is set up for this project, so there is nothing to restore.")
-            found = mr.generations(Path(state.destination))
+            found = mr.generations(place)
             if command.generation is None:
                 if not found:
-                    return MemoryAnswer(f"No recovery copies are in {state.destination}.")
-                lines = [f"Recovery copies in {state.destination} (newest first). Restore one with `/memory restore <generation>`; "
+                    return MemoryAnswer(f"No recovery copies are in {place}.")
+                lines = [f"Recovery copies in {place} (newest first). Restore one with `/memory restore <generation>`; "
                          "nothing chooses for you when they differ:"]
                 lines += [f"- `{g.name}`: {g.count} items, head {g.head}, {g.deletions} withdrawn or deleted, saved "
-                          f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(g.created_ms / 1000))}" for g in found[:10]]
+                          f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(g.created_ms / 1000))}"
+                          + ("" if g.project == self.project else f" · written for project `{g.project}`: `/memory restore {g.name} "
+                             "--map` maps it to this project") for g in found[:10]]
                 return MemoryAnswer("\n".join(lines))
             chosen = next((g for g in found if g.name == command.generation), None)
             if chosen is None:
-                return MemoryAnswer(f"There is no recovery copy `{command.generation}` in {state.destination}.")
+                return MemoryAnswer(f"There is no recovery copy `{command.generation}` in {place}.")
+            if command.mapped:
+                source = recovery.mapping_source(chosen.name, place)
+                text = (f"Map project `{source}` to this project (`{self.project}`) and restore `{chosen.name}` ({chosen.count} "
+                        f"items, {chosen.deletions} withdrawn or deleted) into its memory store? `{source}` was an earlier "
+                        "registration of this workspace. Only an empty store is restored into; deletions recorded since, in "
+                        "either project, still apply.")
+                return MemoryAnswer("", confirm=Confirmation("restore", f"Map {source} and restore {chosen.name}?", text,
+                                                             {"project": self.project, "generation": chosen.name, "seal": chosen.seal,
+                                                              "source": source, "place": str(place)}, secrets.token_hex(16)))
+            if chosen.project != self.project:
+                return MemoryAnswer(f"`{chosen.name}` was written for project `{chosen.project}`. To restore it into this project, "
+                                    f"map it: `/memory restore {chosen.name} --map`. Nothing was changed.")
             text = (f"Restore `{chosen.name}` ({chosen.count} items, head {chosen.head}, {chosen.deletions} withdrawn or deleted) into "
                     "this project's memory store? Only an empty store is restored into; deletions recorded since still apply.")
             return MemoryAnswer("", confirm=Confirmation("restore", f"Restore memory from {chosen.name}?", text,
@@ -686,10 +751,20 @@ class MemoryCommands:
                 generation = recovery.export()
                 return MemoryAnswer(f"Recovery copies now go to {confirmation.meta['destination']}. Saved `{generation.name}`: "
                                     f"{generation.count} items.")
-            reply = recovery.restore(confirmation.meta["generation"], seal=confirmation.meta["seal"])  # exactly what was confirmed
-            return MemoryAnswer(f"Restored `{confirmation.meta['generation']}`: {reply.get('restored', 0)} items, "
-                                f"{reply.get('durable_state')} on disk." + (f" {len(reply['purged'])} were deleted since and stay "
-                                                                            "deleted." if reply.get("purged") else ""))
+            source = confirmation.meta.get("source")
+            directory = Path(confirmation.meta["place"]) / confirmation.meta["generation"] if source else None
+            reply = recovery.restore(confirmation.meta["generation"], seal=confirmation.meta["seal"], source=source,
+                                     directory=directory, workspace=self._workspace)  # exactly what was confirmed
+            # In the order the restore did them: the mapping was confirmed, the pins were validated, the deletions applied.
+            steps = [f"Project `{source}` is mapped to this one."] if source else []
+            anchors = reply.get("anchors") or {}
+            if anchors.get("held"):
+                steps.append("Pinned files hold for " + ", ".join(f"`{item}@{version}`" for item, version in anchors["held"]) + ".")
+            steps += [f"`{item}@{version}` needs re-verification: `{path}` changed." for item, version, path in anchors.get("changed", ())]
+            if reply.get("purged"):
+                steps.append(f"{len(reply['purged'])} were deleted since and stay deleted.")
+            return MemoryAnswer(" ".join([f"Restored `{confirmation.meta['generation']}`{' into this project' if source else ''}: "
+                                          f"{reply.get('restored', 0)} items, {reply.get('durable_state')} on disk.", *steps]))
         except mr.RecoveryError as failure:
             return MemoryAnswer(failure.message)
         except MemoryStoreUnavailable:

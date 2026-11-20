@@ -333,11 +333,14 @@ def _entries(value: Any) -> None:
 def _restore(body: dict[str, Any]) -> None:
     """One batch of a recovery generation into an empty project (D8): batches are numbered from 0 and the last says so. The last
     names the generation's head and deletion frontier, which its seal binds, and the items the host withdrew since (each can
-    only remove a payload, never add one)."""
+    only remove a payload, never add one). `source`, on every batch, is the project a user-confirmed mapping restores from: the
+    generation is authenticated as that project's, and published into `project` (Plan 12.11 Task 5, M21)."""
     final = body.get("final")
+    if "source" in body:
+        _opaque(body["source"])
     if final is True:
         _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries", "head", "frontier", "withdrawn", "bind",
-                       "journal", "purged"})
+                       "journal", "purged"}, frozenset({"source"}))
         _match(body["head"], _STREAM)
         _match(body["bind"], _DIGEST)
         _integer(body["journal"], 0, MAX_VERSION)
@@ -355,7 +358,7 @@ def _restore(body: dict[str, Any]) -> None:
             for item in body[name]:
                 _match(item, _ITEM)
     elif final is False:
-        _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries"})
+        _fields(body, {"op", "project", "token", "generation", "batch", "final", "entries"}, frozenset({"source"}))
     else:
         raise _refuse()
     _opaque(body["project"])

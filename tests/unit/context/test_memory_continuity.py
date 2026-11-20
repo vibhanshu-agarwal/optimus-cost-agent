@@ -11,7 +11,9 @@ from typing import Any
 
 import pytest
 
+from context_engine.memory_contracts import ServedMemory
 from optimus.acp.trusted_paths import resolve_workspace_identity
+from optimus.context import memory_serving
 from optimus.context.memory_continuity import BRIEF_AFTER_MS, Continuity, Settled
 from optimus.context.memory_extraction import worktree_id
 from optimus.context.project_registry import ProjectRegistry
@@ -59,6 +61,25 @@ def _session(adapter: Any, workspace: Path, name: str, clock: _Clock, worktree: 
 
 def _turn(n: int, prompt: str, outcome: str = "completed", **kwargs: Any) -> Settled:
     return Settled(sequence=n, run_id=f"run-{n}", outcome=outcome, prompt=prompt, **kwargs)
+
+
+@pytest.mark.parametrize(("responded", "line"), [
+    (True, "- A reply was delivered, but planning did not complete a task (the reply may have been an answer or a refusal)."),
+    (False, "- It ended unfinished."),
+])
+def test_a_delivered_reply_is_never_called_unfinished_or_completed_and_the_outcome_stays(repo: Path, responded: bool, line: str) -> None:
+    """Codex CP4 review 18, ruling 2 (Zed RETURN R2): an Agent-mode question answered on the planner's refusal stop settled as
+    failed; the brief then said it ended unfinished. The raw outcome stays; a delivered reply is said to be one, not completion."""
+    adapter = _adapter(store()[0])
+    clock = _Clock()
+    assert _session(adapter, repo, "s-1", clock).record(_turn(1, "Should I run the tests before pushing?", "failed", responded=responded))
+    point = _session(adapter, repo, "s-1b", clock).previous()[1].checkpoint
+    assert point.outcome == "failed" and point.completion == ()
+    assert point.remaining == ("run-1:responded",) if responded else point.remaining == ("run-1:failed",)
+    clock.now += BRIEF_AFTER_MS
+    brief = _session(adapter, repo, "s-2", clock).brief()
+    assert "outcome failed." in brief and line in brief.splitlines()
+    assert ("It ended unfinished." in brief) is not responded
 
 
 def test_each_settled_turn_is_checkpointed_from_host_state_and_a_status_question_never_replaces_the_objective(repo: Path) -> None:
@@ -119,8 +140,15 @@ def test_the_brief_shows_after_seven_days_and_nothing_expires(repo: Path, gap_da
     assert later.due() is due
     brief = later.brief()
     assert brief.startswith("**Welcome back.**") and "branch `main`" in brief  # /welcome works at any gap, below the threshold too
-    assert (later.first_response_brief() is not None) is due
-    assert later.first_response_brief() is None  # once per session
+    reads: list[int] = []
+
+    def served() -> memory_serving.ServedSet:
+        reads.append(1)
+        return memory_serving.EMPTY
+
+    assert (later.first_response_brief(served) is not None) is due
+    assert later.first_response_brief(served) is None  # once per session
+    assert len(reads) == (1 if due else 0)  # memory is read for the brief only when it is due
 
 
 def test_the_gap_is_measured_before_this_session_writes_its_own_checkpoint(repo: Path) -> None:
@@ -244,6 +272,11 @@ def test_the_brief_lists_memory_changes_but_never_an_off_record(repo: Path) -> N
     later = _session(adapter, repo, "s-2", clock)
     later._store = SimpleNamespace(project=adapter.project, checkpoints=adapter.checkpoints,  # type: ignore[assignment]
                                    items=lambda *_a, **_k: (rows, None))
-    brief = later.welcome()
+    served = memory_serving.select([ServedMemory(adapter.project, "m-000000000000000c", 2, "user-authored", "preference", "project",
+                                                 "uv", "From now on we use uv for every command.", ())])
+    brief = later.welcome(served)
+    # Codex CP4 review 16: the brief lists only what checked serving serves (an item of another branch, or one whose file
+    # changed, is not in the served set), never an active item the store merely holds
+    assert "m-000000000000000c" in brief and "m-000000000000000c" not in later.welcome(memory_serving.EMPTY)
     assert "`m-000000000000000a@2` was forgotten" in brief and "m-000000000000000b" not in brief
     assert "\n\nYour items that apply now:\n" in brief and "\n\nMemory changed since then:\n" in brief

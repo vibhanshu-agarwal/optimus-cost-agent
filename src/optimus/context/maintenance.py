@@ -70,6 +70,8 @@ class SummarizerAttempt:
     resolved_model: str | None = None
     gateway_usage: GatewayUsage | None = None
     """The Gateway's original normalized usage, on the attempt that settled the request only."""
+    reasoning: str | None = None
+    """The purpose-scoped reasoning its binding named (CP4 review 10); None: the route's own setting, the turn identity's."""
 
     def __post_init__(self) -> None:
         if not self.attempt_id or self.outcome not in ATTEMPT_OUTCOMES:
@@ -151,6 +153,7 @@ class MaintenanceReceipt:
     resolved_model: str | None = None
     gateway_usage: GatewayUsage | None = None
     purpose: str | None = None  # a memory extraction's `memory.*` purpose; None for compaction's ordinary summary
+    reasoning: str | None = None  # the call's purpose-scoped reasoning (CP4 review 10); None: the identity's
 
 
 def _utc_now() -> datetime:
@@ -235,6 +238,7 @@ class HostMaintenance:
                 resolved_provider=attempt.resolved_provider,
                 resolved_model=attempt.resolved_model,
                 gateway_usage=attempt.gateway_usage,
+                reasoning=attempt.reasoning,
             )
         )
 
@@ -261,9 +265,10 @@ class GatewaySummarizerCall:
     report it cannot attribute truthfully comes back as the records its `AttemptIntegrityError` carries,
     with that error, and the host records them before raising it (Codex CP3 correction ruling C2).
 
-    `bind(request_id, input_text, output_cap)` returns the request's route binding (with its
-    Contributor disclosure, noticed first, where required) or None when a required notice was not
-    delivered: then nothing is sent. Without `bind` no binding is sent (registry enforcement inactive).
+    `bind(request_id, input_text, output_cap, purpose)` returns the request's route binding (with its
+    Contributor disclosure, noticed first, where required, and a purpose-scoped reasoning setting where the entry approves
+    one) or None when a required notice was not delivered: then nothing is sent. Without `bind` no binding is sent
+    (registry enforcement inactive). Every attempt carries the reasoning its binding named, for its receipt.
     `experimental`: the trusted snapshot names this route experimental, so a stop-tripping failure proves it
     stopped (#400). `model_stops`, an Auto launch's stop set (Plan 12.4 Task 4), is told each proven stop and
     checked before any call: a stopped model is never sent another request.
@@ -276,7 +281,7 @@ class GatewaySummarizerCall:
         model_id: str,
         session_id: str,
         request_ids: Callable[[], str],
-        bind: Callable[[str, str, int], RouteBinding | None] | None = None,
+        bind: Callable[[str, str, int, str | None], RouteBinding | None] | None = None,
         attempt_observer: Callable[..., None] | None = None,
         experimental: bool = False,
         model_stops: Any | None = None,
@@ -302,12 +307,13 @@ class GatewaySummarizerCall:
             return self._observed(request_id, (), skipped, reason="summary_model_stopped")
         binding = None
         if self._bind is not None:
-            binding = self._bind(request_id, prompt, max_output_tokens)
+            binding = self._bind(request_id, prompt, max_output_tokens, purpose)
             if binding is None:
                 unsent = SummarizerAttempt(attempt_id=f"{request_id}:1", gateway_request_id=None, outcome="not_sent", cost_usd=Decimal("0"))
                 # The disclosure notice was not delivered, so nothing was sent: diagnosable, never silent.
                 response = SummarizerResponse(text=None, finish_status=None, attempts=(unsent,))
                 return self._observed(request_id, (), response, reason="summary_disclosure_undelivered")
+        reasoning = binding.reasoning if binding is not None else None  # the call's own setting, from its binding only
         metadata = {"session_id": self._session_id, "purpose": purpose or "context_summary", "request_id": request_id}
         try:
             if self._turn_id is None:
@@ -323,14 +329,14 @@ class GatewaySummarizerCall:
             try:
                 provider = attempts_from_failure(exc)
             except AttemptIntegrityError as error:
-                return self._observed(request_id, error.attempts, _unattributable(request_id, error), failure=exc)
-            failed = SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider), route_stopped=stopped)
+                return self._observed(request_id, error.attempts, _unattributable(request_id, error, reasoning), failure=exc)
+            failed = SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, provider, reasoning), route_stopped=stopped)
             return self._observed(request_id, provider, failed, failure=exc)
         try:
             provider = attempts_from_response(response)
         except AttemptIntegrityError as error:
-            return self._observed(request_id, error.attempts, _unattributable(request_id, error))
-        attempts = _attempts(request_id, provider)
+            return self._observed(request_id, error.attempts, _unattributable(request_id, error, reasoning))
+        attempts = _attempts(request_id, provider, reasoning)
         return self._observed(request_id, provider, SummarizerResponse(text=response.output_text, finish_status=response.finish_reason, attempts=attempts))
 
     def _observed(
@@ -367,12 +373,12 @@ def _run_diagnostic(response: SummarizerResponse) -> None:
             response.diagnostic()
 
 
-def _unattributable(request_id: str, error: AttemptIntegrityError) -> SummarizerResponse:
+def _unattributable(request_id: str, error: AttemptIntegrityError, reasoning: str | None) -> SummarizerResponse:
     """No summary from a report that cannot be attributed: only its recordable facts, and its error."""
-    return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, error.attempts), integrity_error=error)
+    return SummarizerResponse(text=None, finish_status=None, attempts=_attempts(request_id, error.attempts, reasoning), integrity_error=error)
 
 
-def _attempts(request_id: str, attempts: tuple[ProviderAttempt, ...]) -> tuple[SummarizerAttempt, ...]:
+def _attempts(request_id: str, attempts: tuple[ProviderAttempt, ...], reasoning: str | None) -> tuple[SummarizerAttempt, ...]:
     return tuple(
         SummarizerAttempt(
             attempt_id=f"{request_id}:{attempt.key}",
@@ -385,6 +391,7 @@ def _attempts(request_id: str, attempts: tuple[ProviderAttempt, ...]) -> tuple[S
             resolved_provider=attempt.gateway_usage.resolved_provider if attempt.gateway_usage else None,
             resolved_model=attempt.gateway_usage.resolved_model if attempt.gateway_usage else None,
             gateway_usage=attempt.gateway_usage,
+            reasoning=reasoning,
         )
         for attempt in attempts
     )
@@ -441,8 +448,8 @@ def gateway_summarizer_factory(
         if snapshot is not None and disclosure_key is not None:
             disclosure = ContributorDisclosure(snapshot=snapshot, key=disclosure_key, deliver_notice=deliver_notice)
 
-            def bind(request_id: str, input_text: str, output_cap: int) -> RouteBinding | None:
-                return disclosure.binding(model_id=route.model_id, request_id=request_id, input_text=input_text, output_cap=output_cap)
+            def bind(request_id: str, input_text: str, output_cap: int, purpose: str | None) -> RouteBinding | None:
+                return disclosure.binding(model_id=route.model_id, request_id=request_id, input_text=input_text, output_cap=output_cap, purpose=purpose)
 
         return GatewaySummarizerCall(
             gateway_client=gateway_client,

@@ -42,14 +42,17 @@ from optimus.gateway.route_binding import RoutePolicy
 from optimus.runtime.modes import ExecutionMode
 from optimus.usage.turn_settlement import StageReceipt
 from optimus_gateway.responses import handle_responses_request
-from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamAttemptFailure
+from optimus_gateway.upstream_client import ProviderMessageResult, UpstreamAttemptFailure, UrllibOpenAICompatibleClient
 from optimus_model_policy import test_profiles as profiles
 from optimus_model_policy.binding import ATTEMPT_REJECTED, ATTEMPT_UNCERTAIN, disclosure_key
 from tests.unit.optimus_gateway.model_policy_support import (
     AUTH,
+    PROVIDER_KEY,
     SHARED_SECRET,
     RecordingUpstream,
+    Wire,
     gateway_config,
+    http_reply,
     model_policy,
     verified_snapshot,
 )
@@ -157,6 +160,7 @@ REPLY_REFUSALS = {
     "EMPIRICAL_ROUTER_PIPELINE": {"router_pipeline": ("context_compression",)},
     "EMPIRICAL_ROUTER_METADATA_MALFORMED": {"router_metadata_error": "ambiguous", "resolved_provider": None},
     "FINISH_STATUS_UNVERIFIED": {"finish_reason": None},
+    "REPLY_CONTENT_MALFORMED": {"content_error": "upstream response message content is not text", "output_text": ""},
 }
 
 
@@ -303,6 +307,54 @@ def test_a_plan_mode_request_records_its_gateway_failure_too(tmp_path) -> None:
     [record] = _records(log)
     assert (record["stage"], record["gateway_failure"]) == ("planning", {"code": "UPSTREAM_ATTEMPT_REJECTED", "http_status": 502})
     assert CANARY not in log.read_text(encoding="utf-8")
+
+
+# --- CP4 review 9 (A1): the real parser to the host receipt --------------------------------------------------------
+# Synthetic bodies, shaped like OpenRouter's chat completion (the P7 reply's body was not retained).
+
+_BILLED = {"prompt_tokens": 100, "completion_tokens": 512, "total_tokens": 612, "cost": "0.0028", "completion_tokens_details": {"reasoning_tokens": 512}}
+
+
+def _completion(content: Any) -> bytes:
+    choice = {"message": {"role": "assistant", "content": content}, "finish_reason": "length"}
+    return http_reply(200, json.dumps({"id": "gen-synthetic-1", "model": ORDINARY, "choices": [choice], "usage": _BILLED}).encode())
+
+
+@pytest.mark.parametrize(
+    ("content", "gateway", "stop_reason"),
+    [(None, (200, None), "CHAT_OUTPUT_TRUNCATED"), ([{"type": "text", "text": CANARY}], (422, "REPLY_CONTENT_MALFORMED"), "CHAT_GATEWAY_FAILURE"), (3, (422, "REPLY_CONTENT_MALFORMED"), "CHAT_GATEWAY_FAILURE")],
+    ids=["null-content", "list-content", "number-content"],
+)
+def test_a_billed_reply_keeps_its_cost_in_the_host_receipt_whatever_its_content(tmp_path, monkeypatch, content, gateway, stop_reason) -> None:
+    """P7's class: a 200 reply the provider billed reached the host as an uncertain attempt of unknown cost, because
+    its content was not text. Through the real client, parser, Gateway and runner the receipt is completed at the
+    reported cost; malformed content is still refused, visibly, never as empty text."""
+    Wire(reply=_completion(content)).install(monkeypatch)
+    policy, model = _ordinary(tmp_path)
+    upstream = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="https://openrouter.ai/api/v1", sleep=lambda _s: None)
+    replies = InProcessGateway(policy, upstream, monkeypatch).replies
+
+    result, receipts = _chat(tmp_path, policy, model)
+
+    assert [(status, body.get("code")) for status, body in replies] == [gateway]
+    assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("completed", Decimal("0.0028"))]
+    assert (result.cost_complete, result.unknown_cost_attempt_count, result.total_cost_usd) == (True, 0, Decimal("0.0028"))
+    assert result.stop_reason == stop_reason
+    assert CANARY not in json.dumps(replies, default=str)
+
+
+def test_a_reply_without_usage_stays_uncertain_whatever_its_content(tmp_path, monkeypatch) -> None:
+    body = {"id": "gen-synthetic-1", "model": ORDINARY, "choices": [{"message": {"content": None}, "finish_reason": "length"}]}
+    Wire(reply=http_reply(200, json.dumps(body).encode())).install(monkeypatch)
+    policy, model = _ordinary(tmp_path)
+    upstream = UrllibOpenAICompatibleClient(api_key=PROVIDER_KEY, base_url="https://openrouter.ai/api/v1", sleep=lambda _s: None)
+    replies = InProcessGateway(policy, upstream, monkeypatch).replies
+
+    result, receipts = _chat(tmp_path, policy, model)
+
+    assert [(status, body.get("code")) for status, body in replies] == [(502, "UPSTREAM_ATTEMPT_UNCERTAIN")]
+    assert [(r.outcome, r.reported_cost_usd) for r in receipts] == [("uncertain", None)]
+    assert (result.cost_complete, result.unknown_cost_attempt_count) == (False, 1)
 
 
 # --- Ordinary routes keep their wording and recovery --------------------------------------------------------------

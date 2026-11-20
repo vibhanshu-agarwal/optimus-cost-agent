@@ -146,6 +146,7 @@ class RecoveryState:
     cleanup_pending: list[str] = field(default_factory=list)  # withdrawn items older generations may still hold
     prior: list[str] = field(default_factory=list)  # earlier locations that may still hold managed copies
     revision: int = 0  # moves with every confirmed change, so an export knows whether it saw the latest
+    mapped_from: str | None = None  # the earlier project id a confirmed mapping restored this project from (M21)
     dirty: bool = True
     failure: str | None = None
 
@@ -337,6 +338,8 @@ class Generation:
     deletions: int
     created_ms: int
     seal: str
+    project: str = ""  # the project the generation was written for
+    registry_key: str = ""  # that project's registry key when it was written: an earlier registration of this workspace shares it
 
 
 def generations(destination: Path) -> list[Generation]:
@@ -347,8 +350,10 @@ def generations(destination: Path) -> list[Generation]:
             manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
             if manifest.get("format") != FORMAT:
                 continue
+            project = manifest["metadata"]["project"]
+            entry = registry_entry(manifest["metadata"].get("registry"), project) or {}
             found.append(Generation(directory.name, manifest["head"], manifest["count"], manifest["frontier"]["deletions"],
-                                    manifest["metadata"]["created_ms"], manifest["seal"]))
+                                    manifest["metadata"]["created_ms"], manifest["seal"], project, str(entry.get("key", ""))))
         except (OSError, ValueError, KeyError, TypeError):
             continue
     return sorted(found, key=lambda g: (g.created_ms, g.name), reverse=True)
@@ -578,50 +583,85 @@ class Recovery:
 
     # --- restore -------------------------------------------------------------------------------------------------------
 
-    def read_generation(self, name: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    def read_generation(self, name: str, *, source: str | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         state = self._state.load()
         if state.destination is None:
             raise RecoveryError("RECOVERY_NOT_SET_UP", "No recovery location is set up for this project.")
         directory = Path(state.destination) / name
         if not name.startswith("gen-") or directory.parent != Path(state.destination) or not directory.is_dir():
             raise RecoveryError("RECOVERY_GENERATION_UNKNOWN", f"There is no recovery generation `{name}` here.")
-        return read_generation(directory, self._store.project)
+        return read_generation(directory, source or self._store.project)
 
-    def restore(self, name: str, *, seal: str, directory: Path | None = None) -> dict[str, Any]:
+    def mapping_source(self, name: str, place: Path) -> str:
+        """The earlier project a generation may be mapped from into this one (Plan 12.11 Task 5, M21), or a refusal. One to one:
+        it must be an earlier registration of this same workspace (its registry key is this project's current key), the only
+        earlier project id this location holds for that key, and not another than one this project was already mapped from.
+        `place` is where the copies are: this project's location, or, before it has one, its worktree's default location."""
+        state = self._state.load()
+        found = generations(place)
+        chosen = next((g for g in found if g.name == name), None)
+        if chosen is None:
+            raise RecoveryError("RECOVERY_GENERATION_UNKNOWN", f"There is no recovery generation `{name}` here.")
+        project = self._store.project
+        if chosen.project == project:
+            raise RecoveryError("RECOVERY_MAPPING_NOT_NEEDED", f"`{name}` is this project's own copy: `/memory restore {name}` restores it.")
+        current = registry_entry(self._registry(), project) if self._registry is not None else None
+        if not current or not chosen.registry_key or chosen.registry_key != current.get("key"):
+            raise RecoveryError("RECOVERY_MAPPING_MISMATCH", "That copy was written for another workspace's registration; nothing was "
+                                "restored.")
+        claims = {g.project for g in found if g.registry_key == chosen.registry_key and g.project != project}
+        if len(claims) > 1 or (state.mapped_from is not None and state.mapped_from != chosen.project):
+            raise RecoveryError("RECOVERY_MAPPING_REJECTED", "Not restored: more than one earlier project claims this one ("
+                                + ", ".join(sorted(claims | ({state.mapped_from} if state.mapped_from else set()))) + "), so no "
+                                "mapping is chosen for you. Nothing was changed.")
+        return chosen.project
+
+    def restore(self, name: str, *, seal: str, directory: Path | None = None, source: str | None = None,
+                workspace: Path | None = None) -> dict[str, Any]:
         """Restore exactly the generation the user confirmed (its seal must match: Codex CP3 review 1, finding 3) into the empty
-        store, after checking its registry mapping is this project's current one. The Gateway verifies every entry, the seal
-        over the entries and the metadata, refuses a project holding anything, applies the deletion journal and this host's
-        later deletions, and publishes only on the last batch."""
-        manifest, entries = read_generation(directory, self._store.project) if directory is not None else self.read_generation(name)
+        store, after checking its registry mapping is this project's current one. Then, before anything is written, each restored
+        live item's pinned files are validated in `workspace` (plan v5 Recovery: "validate anchors"; Codex CP4 review 2, F8);
+        the reply's `anchors` says which hold and which need re-verification. An item whose pin no longer holds is still restored:
+        serving keeps it out until the user edits it. The Gateway verifies every entry, the seal over the entries and the
+        metadata, refuses a project holding anything, applies the deletion journal and this host's later deletions, and publishes
+        only on the last batch."""
+        if source is not None and (directory is None or self.mapping_source(name, directory.parent) != source):  # rechecked now
+            raise RecoveryError("RECOVERY_MAPPING_REJECTED", "Not restored: the mapping you confirmed no longer holds. Nothing was changed.")
+        manifest, entries = (read_generation(directory, source or self._store.project) if directory is not None
+                             else self.read_generation(name, source=source))
         if manifest["seal"] != seal:
             raise RecoveryError("RECOVERY_GENERATION_CHANGED", f"`{name}` is not the copy you confirmed (it changed meanwhile). "
                                 "Nothing was restored.")
         project = self._store.project
         snapshot = manifest["metadata"].get("registry")
-        mapped = registry_entry(snapshot, project) if isinstance(snapshot, dict) else None
+        mapped = registry_entry(snapshot, source or project) if isinstance(snapshot, dict) else None
         current = registry_entry(self._registry(), project) if self._registry is not None else None
         if current and mapped and mapped.get("key") != current.get("key"):
             raise RecoveryError("RECOVERY_MAPPING_MISMATCH", "That copy was written for another workspace's registration; nothing was restored.")
         known = self._state.load()
         withdrawn, purged = sorted(set(known.withdrawn)), sorted(set(known.purged))
+        held, changed = check_anchors(entries, workspace, excluded=set(withdrawn) | set(purged))
         batches = [entries[n:n + BATCH] for n in range(0, len(entries), BATCH)] or [[]]
         if len(batches[-1]) == BATCH:
             batches.append([])
+        mapping = {"source": source} if source is not None else {}
         with self._store.lease(guarded=False) as token:
             for number, batch in enumerate(batches[:-1]):
                 self._store.call("restore", project=self._store.project, token=token, generation=seal, batch=number, final=False,
-                                 entries=batch)
+                                 entries=batch, **mapping)
             reply: dict[str, Any] = self._store.call(
                 "restore", project=self._store.project, token=token, generation=seal, batch=len(batches) - 1, final=True,
                 entries=batches[-1], head=manifest["head"], frontier=manifest["frontier"], withdrawn=withdrawn, bind=manifest["bind"],
-                journal=manifest["journal"], purged=purged)
+                journal=manifest["journal"], purged=purged, **mapping)
         self._required = None
 
         def change(state: RecoveryState) -> None:
             state.held_memory = True
             state.dirty = True
+            if source is not None:
+                state.mapped_from = source
         self._state.update(change)
-        return reply
+        return {**reply, "anchors": {"held": held, "changed": changed}}
 
     # --- what `/memory` says -------------------------------------------------------------------------------------------
 
@@ -692,8 +732,36 @@ class RegistryRecovery:
         state = self._state_for(project)
         state.update(lambda s: setattr(s, "held_memory", True))
         recovery = Recovery(store, state, registry=lambda: snapshot)
-        reply = recovery.restore(name, seal=seal, directory=location(self.workspace) / name)
+        reply = recovery.restore(name, seal=seal, directory=location(self.workspace) / name, workspace=self.workspace)
         return f"Restored the project registry and {reply.get('restored', 0)} items from `{name}`."
+
+
+def check_anchors(entries: list[dict[str, Any]], workspace: Path | None, *,
+                  excluded: set[str]) -> tuple[list[list[Any]], list[list[Any]]]:
+    """Each live item's newest restored version that rests on workspace files (`file:` lineage), checked now in `workspace`
+    through the anchor file policy: ([item, version] whose files hold, [item, version, path] whose file changed, is gone or is no
+    longer readable as an anchor). Items this host already withdrew or purged are not checked: they will not be served."""
+    from optimus.context import memory_serving
+    from optimus.guardrails.file_policy import FilePolicy
+
+    newest: dict[str, dict[str, Any]] = {}
+    for entry in (shaped["entry"] for shaped in entries):
+        if entry["item"] not in newest or entry["version"] > newest[entry["item"]]["version"]:
+            newest[entry["item"]] = entry
+    policy = FilePolicy(workspace) if workspace is not None else None
+    held: list[list[Any]] = []
+    changed: list[list[Any]] = []
+    for item, entry in sorted(newest.items()):
+        lineage = entry.get("lineage") or ()
+        if item in excluded or entry.get("status") not in ("active", "reverify") or not any(
+                ref.startswith(memory_serving.FILE_PREFIX) for ref in lineage):
+            continue
+        path = memory_serving.changed_file(lineage, workspace, policy)
+        if path is None:
+            held.append([item, entry["version"]])
+        else:
+            changed.append([item, entry["version"], path])
+    return held, changed
 
 
 class Scheduler:

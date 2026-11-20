@@ -448,8 +448,15 @@ def overlaps_source(text: str, sources: Iterable[str]) -> bool:
 
 
 def scans_pass(title: str, statement: str, *, sanitize: Callable[[str], str], sources: Iterable[str] | None) -> bool:
-    """Injection, secret and source-overlap checks on what would be persisted. A scanner ALLOW is not proof; it is the floor."""
+    """Injection, secret and source-overlap checks on what would be persisted. A scanner ALLOW is not proof; it is the floor.
+    Text a redaction already changed (it holds the redaction mask) never passes: the user's words held something secret-shaped,
+    and what is left may still hold part of it. The session keeps only redacted words, so sanitizing them again shows nothing
+    (Plan 12.11 CP4: M10-a's switch-on saved a token the redaction had missed beside its mask)."""
+    from optimus_security.sanitization import REDACTION_MASK
+
     text = f"{title}\n{statement}"
+    if REDACTION_MASK in text:
+        return False
     if not ConfigTrustScanner().scan_text(text, subject=TrustScanSubject.TOOL_OUTPUT, source_path="memory-candidate").allowed:
         return False
     if sanitize(title) != title or sanitize(statement) != statement:
@@ -470,9 +477,12 @@ def _snapped(proposal: Proposal, blocks: dict[str, str]) -> Proposal:
     spans = []
     for span in proposal.spans:
         text = blocks.get(span.block)
-        if text is None or span.end > len(text):
+        if text is None:
             spans.append(span)  # refused by the support check
             continue
+        # A span that runs past its block's end is widened like any other, so it ends at a sentence end inside the block; one that
+        # starts at or past the end touches no sentence and stays as given, refused (CP4 ON P7b: Haiku gave 0-52 for a
+        # 45-character message; left raw, the record kept the model's paraphrase and could not be switched on).
         touched = [(start, end) for start, end in sentence_bounds(text) if start < max(span.end, span.start + 1) and span.start < end]
         spans.append(Span(span.block, min(start for start, _ in touched), max(end for _, end in touched)) if touched else span)
     return dataclasses.replace(proposal, spans=tuple(spans))
@@ -528,7 +538,9 @@ def user_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, 
 def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str, work: CompletedWork, trusted: bool,
                      sanitize: Callable[[str], str], sources: Sequence[str] | None, keyed: Callable[[str], str] = digest) -> list[Candidate]:
     """Each proposal as an optional agent-derived candidate. Lineage is complete only when every cited reference is evidence the
-    host issued for this work and none of it came from outside (a document's or a tool's directive goes off)."""
+    host issued for this work, at least one of them is new evidence of the work's outcome (a check or a command that ran), and
+    none of it came from outside (a document's or a tool's directive goes off). A lesson resting only on what a read or an edit
+    showed is that text's claim, not a lesson the work proved (Codex CP4 review 2, F5: M05-a), so it goes off too."""
     issued = {item.ref: item for item in work.evidence}
     out = []
     for proposal in proposals:
@@ -539,7 +551,8 @@ def agent_candidates(proposals: Sequence[Proposal], *, project: str, scope: str,
         # the model chose to cite, so nothing it learned is vouched for.
         tainted = any(item.external or item.kind in _TAINTING for item in work.evidence)
         whole = len(proposal.statement) <= MAX_STATEMENT_CHARS  # a clipped lesson may have lost its condition
-        complete = bool(cited) and all(item is not None for item in cited) and not tainted and whole
+        proven = any(item is not None and item.kind in _NEW_EVIDENCE for item in cited)
+        complete = bool(cited) and all(item is not None for item in cited) and proven and not tainted and whole
         key = keyed(f"agent\0{project}\0{scope}\0{proposal.statement}\0{','.join(sorted(proposal.evidence))}")
         evidence = tuple(ref for ref in proposal.evidence if ref in issued)
         try:
@@ -958,15 +971,18 @@ def worktree_id(canonical_path: str) -> str:
     return "worktree:" + hashlib.sha256(f"optimus-memory-worktree-v1\0{canonical_path}".encode()).hexdigest()[:32]
 
 
-def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., MemoryExtractor | None]:
+def extractor_factory(*, config_root: Any, settings: Any, post: Callable[..., Any] | None = None) -> Callable[..., MemoryExtractor | None]:
     """How a launch with an approved, ready memory store opens one extractor per session. A workspace that cannot be
-    registered (an untrusted or unresolvable path) gets none: memory stays read-only there."""
+    registered (an untrusted or unresolvable path) gets none: memory stays read-only there. `post` defaults to the launch's
+    Gateway client; the Plan 12.11 qualification passes the Gateway's handler in process, so it runs this same factory."""
     from pathlib import Path
 
     from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
-    from optimus.context.authored_memory import GatewayMemoryStore
+    from optimus.context.authored_memory import GatewayMemoryStore, gateway_post
     from optimus.context.memory_recovery import NoticeBacklog, Recovery, RegistryRecovery, StateFile
     from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError, project_key
+
+    post = post or gateway_post
 
     registry = ProjectRegistry(config_root)
     # Ids derived from what was said are keyed with the host's own secret, which the store never holds: an id kept after a
@@ -987,11 +1003,11 @@ def extractor_factory(*, config_root: Any, settings: Any) -> Callable[..., Memor
             # the registry is lost although projects were registered: only its authenticated repair is offered
             return RegistryRepair(RegistryRecovery(
                 Path(workspace), key=project_key(identity), restore_registry=registry.restore,
-                open_store=lambda project: GatewayMemoryStore(settings, project=project, owner=f"session:{session_id}"),
+                open_store=lambda project: GatewayMemoryStore(settings, project=project, owner=f"session:{session_id}", post=post),
                 state_for=lambda project: StateFile.shared(Path(config_root), project)))
         except (TrustedPathError, OSError, ValueError):
             return None
-        store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}")
+        store = GatewayMemoryStore(settings, project=registration.project_id, owner=f"session:{session_id}", post=post)
         project = registration.project_id
         recovery = Recovery(store, StateFile.shared(Path(config_root), project),
                             registry=registry.snapshot)

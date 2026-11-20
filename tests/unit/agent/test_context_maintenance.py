@@ -260,7 +260,7 @@ def _gateway_call(client: _Client, *, registry_hash: str | None = "f" * 64):
     from optimus.context.maintenance import GatewaySummarizerCall
     from optimus_model_policy.binding import RouteBinding
 
-    def bind(request_id: str, input_text: str, output_cap: int) -> RouteBinding:
+    def bind(request_id: str, input_text: str, output_cap: int, purpose: str | None = None) -> RouteBinding:
         return RouteBinding(registry_hash=registry_hash, request_id=request_id, output_cap=output_cap)
 
     return GatewaySummarizerCall(
@@ -404,6 +404,7 @@ def test_the_preflight_codes_are_exactly_the_gateways_refusals_before_any_attemp
         "EMPIRICAL_ROUTER_METADATA_MALFORMED",
         "EMPIRICAL_ROUTER_METADATA_MISSING",
         "EMPIRICAL_ROUTER_PIPELINE",
+        "REPLY_CONTENT_MALFORMED",
         "FIXTURE_POLICY",
         "STAGE_C_LEDGER_NOT_ABSOLUTE",
         "STAGE_C_PROFILE_MIGRATED",
