@@ -1,39 +1,48 @@
 """Configured memory backups (Plan 12.12 Task 1, D2): copies of the recovery copy's signed generations on another drive or a
 consented sync folder, off by default.
 
-**What a backup is.** The exact bytes of a generation the recovery copy (`memory_recovery`) published: `MEMORY.md`,
-`entries.jsonl` and `manifest.json`, sealed by the Gateway. A backup never re-serializes memory and never copies a live Redis
+**What a backup is.** The exact bytes of a generation the recovery copy (`memory_recovery`) published for this project:
+`MEMORY.md`, `entries.jsonl` and `manifest.json`, sealed by the Gateway. The source generation is checked before it is copied,
+and every copied file is compared byte for byte with it. A backup never re-serializes memory and never copies a live Redis
 directory, so restoring one goes through the same authenticated, empty-store, deletion-reconciled restore as the recovery copy.
 Backups are plaintext: encryption is unavailable until the recovery-secret channel and key rotation are qualified (#491).
 
 **Where.** One target per project, recorded privately in the host's config (`<config>/memory-backups/<project>.json`), never in
-the workspace. A target is refused when it lies inside a Git work tree, overlaps the workspace, the host's config or the recovery
-copy, or reaches its folder through a link or reparse point. Its identity (volume and folder id) is recorded at configuration and
-checked again before every write and every removal: a target that changed is never written or pruned through.
+the workspace. A target is refused when it lies inside a Git work tree (or under any folder holding a `.git` entry, so a Git
+error never reads as "no repository"), overlaps the workspace, the host's config or the recovery copy, reaches its folder through
+a link or reparse point (cloud placeholders excepted), or has no stable folder identity. These checks, the target's identity
+(volume and folder id) and its sync status are checked again before every write and every removal: a target that changed is
+never written or pruned through. Several projects may share one folder: each only ever lists, prunes or cleans its own
+generations.
 
-**Failure domain.** The physical disks behind the target are compared with those behind the memory store's data and the recovery
-copy. Only disjoint, known disks count as a separate drive; a shared disk gets the same-drive warning and no drive-loss credit;
-anything not established stays unknown. Drive letters or mount points alone prove nothing.
+**Failure domain.** The physical disks behind the target are compared, at every backup, with those behind the memory store's data
+(Docker's disk image when it is found where Docker keeps it) and the recovery copy. Only disjoint, known, physical disks count as
+a separate drive; virtual, file-backed or pooled disks and anything not established stay unknown; a shared disk gets the
+same-drive warning and no drive-loss credit. Drive letters or mount points alone prove nothing.
 
-**Sync folders.** A target in a known sync root, or one the user declares synced, needs consent bound to it; relocating it voids
-the consent. Each write to such a target is the user's own `/memory backup now`: scheduled snapshots stay due, with the reason.
+**Sync folders.** A target in a known sync root, or one the user declares synced, needs consent bound to it; relocating it, or
+a sync root appearing later, voids the consent. Each write to such a target is the user's own `/memory backup now`: scheduled
+snapshots stay due, with the reason.
 
 **When.** While a session of the project runs, the host checks every minute and takes one snapshot once 24 hours have passed
-since the last success (one catch-up after downtime, never a backlog). One publisher per project: a busy lock means another host
-is doing it. A failure keeps the last good backup and its time; a transient failure is tried at most three times.
+since the last success (one catch-up after downtime, never a backlog); scheduling pauses while no session is open. One
+publisher per project: a busy lock means another host is doing it. A failure keeps the last good backup and its time; a
+transient failure is tried at most three times, and after any failure the next scheduled attempt waits a day (the user's own
+`/memory backup now` tries at once).
 
-**Retention and deletion.** Generations older than 30 days are removed only after a newer one is verified; unknown folders and the
-newest usable generation are never removed. After a withdrawal or purge, a clean generation is published first and every older
-managed generation, here and in earlier targets, is then removed; a target that cannot be reached keeps cleanup pending and
-says so. Synced history, recycle bins and copies made elsewhere are outside what Optimus can erase.
+**Retention and deletion.** Generations older than 30 days are removed only after a newer one is verified; folders that are not
+this project's readable generations, and the newest usable generation, are never removed. After a withdrawal or purge, a clean
+generation is published first and every older managed generation is then removed, here and in earlier targets (each checked
+against the identity it had); a target that cannot be reached or verified, or an unreadable folder that may hold the text, keeps
+cleanup pending and says so. Synced history, recycle bins and copies made elsewhere are outside what Optimus can erase.
 """
 
 from __future__ import annotations
 
-import contextlib
 import errno
 import hashlib
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -48,6 +57,7 @@ from typing import Any, Final
 from optimus.context import memory_recovery as mr
 from optimus.context.memory_workspace import _git
 
+_LOG = logging.getLogger(__name__)
 CHECK_SECONDS: Final = 60
 DUE_AFTER_MS: Final = 24 * 3600 * 1000
 RETENTION_MS: Final = 30 * 24 * 3600 * 1000
@@ -58,6 +68,7 @@ ENCRYPTION_UNAVAILABLE: Final = ("Encryption unavailable: the recovery-secret ch
 _TRANSIENT_ERRNOS: Final = frozenset({errno.EAGAIN, errno.EBUSY, errno.EINTR, errno.ETIMEDOUT})
 _SHARING_VIOLATION: Final = 32  # Windows ERROR_SHARING_VIOLATION
 _REPARSE_POINT: Final = 0x400  # FILE_ATTRIBUTE_REPARSE_POINT
+_VIRTUAL_BUSES: Final = frozenset({0x0E, 0x0F, 0x10})  # STORAGE_BUS_TYPE Virtual, FileBackedVirtual, Spaces
 
 
 class BackupError(Exception):
@@ -74,7 +85,7 @@ class BackupState:
     target: str | None = None  # the configured target's canonical path
     enabled: bool = False
     identity: dict[str, Any] | None = None  # the target's volume and folder id when it was configured
-    domain: str = "unknown"  # "separate" | "same" | "unknown"
+    domain: str = "unknown"  # "separate" | "same" | "unknown", refreshed at every backup
     domain_reason: str = ""
     synced: str | None = None  # the sync service the target lies in, or "declared"
     consent: str | None = None  # the canonical target the user consented to although it is synced
@@ -82,16 +93,24 @@ class BackupState:
     last_attempt_ms: int | None = None
     failure: dict[str, Any] | None = None  # code, message, at_ms, attempts
     held: str | None = None  # why a due snapshot was not written
-    cleanup_pending: list[str] = field(default_factory=list)  # withdrawn items older generations may still hold
-    prior: list[str] = field(default_factory=list)  # earlier targets that may still hold managed generations
+    cleanup_pending: list[str] = field(default_factory=list)  # withdrawn items older generations at the target may still hold
+    unreadable: list[str] = field(default_factory=list)  # folders at the target that may hold withdrawn text but cannot be read
+    prior: list[dict[str, Any]] = field(default_factory=list)  # earlier targets: path, identity, owes_cleanup, unreachable
 
     def to_json(self) -> dict[str, Any]:
-        return {"version": 1, **self.__dict__}
+        return {"version": 2, **self.__dict__}
 
     @classmethod
-    def from_json(cls, data: dict[str, Any]) -> BackupState:
+    def from_json(cls, data: Any, project: str) -> BackupState:
+        if not isinstance(data, dict) or data.get("project") != project:
+            raise BackupError("BACKUP_STATE_CORRUPT", "The backup settings cannot be read; nothing was changed.")
         names = set(cls.__dataclass_fields__)
-        return cls(**{name: value for name, value in data.items() if name in names})
+        try:
+            state = cls(**{name: value for name, value in data.items() if name in names})
+        except TypeError:
+            raise BackupError("BACKUP_STATE_CORRUPT", "The backup settings cannot be read; nothing was changed.") from None
+        state.prior = [entry for entry in state.prior if isinstance(entry, dict) and isinstance(entry.get("path"), str)]
+        return state
 
 
 class BackupStateFile:
@@ -118,20 +137,26 @@ class BackupStateFile:
             return BackupState(self._project)
         except (OSError, ValueError):
             raise BackupError("BACKUP_STATE_CORRUPT", "The backup settings cannot be read; nothing was changed.") from None
-        state = BackupState.from_json(data)
-        if state.project != self._project:
-            raise BackupError("BACKUP_STATE_CORRUPT", "The backup settings name another project; nothing was changed.")
-        return state
+        return BackupState.from_json(data, self._project)
 
     def update(self, change: Callable[[BackupState], None]) -> BackupState:
-        with self._lock, mr._file_lock(self.path.with_name(self.path.name + ".lock")):
-            state = self.load()
-            change(state)
-            mr._durable_json(self.path, state.to_json())
-            return state
+        try:
+            with self._lock, mr._file_lock(self.path.with_name(self.path.name + ".lock")):
+                state = self.load()
+                change(state)
+                mr._durable_json(self.path, state.to_json())
+                return state
+        except mr.RecoveryError as busy:
+            raise BackupError("BACKUP_BUSY", busy.message, transient=True) from None
 
 
 # --- the target's identity and disks ------------------------------------------------------------------------------------
+
+
+def _cloud_placeholder(info: os.stat_result) -> bool:
+    """A sync service's cloud-file reparse tag (IO_REPARSE_TAG_CLOUD*): a placeholder, not a redirection."""
+    tag = getattr(info, "st_reparse_tag", 0)
+    return bool(tag) and (tag & 0xFFFF0FFF) == 0x9000001A
 
 
 def _reparse_in_chain(path: Path) -> Path | None:
@@ -143,9 +168,49 @@ def _reparse_in_chain(path: Path) -> Path | None:
             continue
         except OSError:
             return candidate
-        if os.path.islink(candidate) or getattr(info, "st_file_attributes", 0) & _REPARSE_POINT:
+        if os.path.islink(candidate) or (getattr(info, "st_file_attributes", 0) & _REPARSE_POINT and not _cloud_placeholder(info)):
             return candidate
     return None
+
+
+def _in_repository(path: Path, git: Callable[..., str | None]) -> bool:
+    """Inside a Git work tree, by Git or by a `.git` entry in any existing ancestor (a Git failure never means "not one")."""
+    existing = next((p for p in [path, *path.parents] if p.exists()), None)
+    if existing is None:
+        return False
+    if any((ancestor / ".git").exists() for ancestor in [existing, *existing.parents]):
+        return True
+    return git(existing if existing.is_dir() else existing.parent, "rev-parse", "--is-inside-work-tree") is not None
+
+
+def _windows_physical(disk: int) -> bool:
+    """Whether disk number `disk` is a physical disk: not a virtual, file-backed virtual or Storage Spaces disk."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    create = kernel.CreateFileW
+    create.restype = wintypes.HANDLE
+    create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = create(f"\\\\.\\PhysicalDrive{disk}", 0, 3, None, 3, 0, None)
+    if handle in (None, wintypes.HANDLE(-1).value):
+        return False
+    try:
+        control = kernel.DeviceIoControl
+        control.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                            ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID]
+        query = ctypes.create_string_buffer(12)  # STORAGE_PROPERTY_QUERY: StorageDeviceProperty, PropertyStandardQuery
+        out = ctypes.create_string_buffer(1024)
+        returned = wintypes.DWORD()
+        if not control(handle, 0x002D1400, query, len(query), out, len(out), ctypes.byref(returned), None):  # STORAGE_QUERY_PROPERTY
+            return False
+        if returned.value < 32:
+            return False
+        bus = int.from_bytes(out.raw[28:32], "little")  # STORAGE_DEVICE_DESCRIPTOR.BusType
+        return bus not in _VIRTUAL_BUSES
+    finally:
+        kernel.CloseHandle(handle)
 
 
 def _disks_windows(path: Path) -> frozenset[str] | None:
@@ -160,6 +225,7 @@ def _disks_windows(path: Path) -> frozenset[str] | None:
     create = kernel.CreateFileW
     create.restype = wintypes.HANDLE
     create.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
     handle = create(volume.value.rstrip("\\"), 0, 3, None, 3, 0, None)  # no access rights needed for the extents query
     if handle in (None, wintypes.HANDLE(-1).value):
         return None
@@ -173,9 +239,12 @@ def _disks_windows(path: Path) -> frozenset[str] | None:
             return None
         raw = out.raw
         count = int.from_bytes(raw[0:4], "little")  # VOLUME_DISK_EXTENTS: count, then 24-byte DISK_EXTENTs from offset 8
-        return frozenset(f"disk{int.from_bytes(raw[8 + 24 * n:12 + 24 * n], 'little')}" for n in range(min(count, 32))) or None
+        numbers = {int.from_bytes(raw[8 + 24 * n:12 + 24 * n], "little") for n in range(min(count, 32))}
     finally:
         kernel.CloseHandle(handle)
+    if not numbers or not all(_windows_physical(number) for number in numbers):
+        return None  # a virtual, file-backed or pooled disk stands on disks this cannot name
+    return frozenset(f"disk{number}" for number in numbers)
 
 
 def _disks_linux(path: Path) -> frozenset[str] | None:
@@ -189,8 +258,8 @@ def _disks_linux(path: Path) -> frozenset[str] | None:
     if (node / "partition").exists():
         node = node.parent
     slaves = node / "slaves"
-    if slaves.is_dir() and any(slaves.iterdir()):
-        return None  # device mapper, RAID or LVM: not established here
+    if (slaves.is_dir() and any(slaves.iterdir())) or not (node / "device").exists():
+        return None  # device mapper, RAID, LVM, loop or other virtual devices: not established here
     return frozenset({node.name})
 
 
@@ -206,13 +275,14 @@ def disks(path: Path) -> frozenset[str] | None:
 
 
 def default_store_data() -> Path | None:
-    """Where the memory store's container data most likely lives: Docker Desktop's WSL disk on Windows, Docker's root on Linux."""
+    """Where the memory store's container data is, only when found where Docker keeps it: Docker Desktop's WSL disk image on
+    Windows, Docker's data root on Linux. Anything else (moved images, other data roots, remote stores) gives None: unknown."""
     if sys.platform == "win32":
         local = os.environ.get("LOCALAPPDATA")
-        candidate = Path(local) / "Docker" / "wsl" if local else None
-    else:
-        candidate = Path("/var/lib/docker")
-    return candidate if candidate is not None and candidate.exists() else None
+        image = Path(local) / "Docker" / "wsl" / "disk" / "docker_data.vhdx" if local else None
+        return image if image is not None and image.is_file() else None
+    root = Path("/var/lib/docker")
+    return root if (root / "volumes").is_dir() else None
 
 
 def failure_domain(target: Path, references: dict[str, Path | None],
@@ -263,8 +333,37 @@ class Backups:
         self._store_data, self._disk_of, self._clock, self._git, self._sleep = store_data, disk_of, clock, git, sleep
         self._lock = threading.Lock()
 
+    @property
+    def project(self) -> str:
+        return self._state._project
+
     def state(self) -> BackupState:
         return self._state.load()
+
+    # --- checks shared by configuration and every write --------------------------------------------------------------
+
+    def _placement(self, resolved: Path) -> None:
+        """Raise when the folder overlaps the workspace, the config or the recovery copy, or lies in a Git work tree."""
+        recovery_place = self._recovery.state().destination
+        for name, other in (("workspace", self._workspace), ("Optimus configuration", self._config),
+                            ("recovery copy", Path(recovery_place) if recovery_place else None)):
+            if other is None:
+                continue
+            other = Path(os.path.realpath(other))
+            if _inside(resolved, other) or _inside(other, resolved):
+                raise BackupError("BACKUP_TARGET_OVERLAP", f"The backup folder overlaps the {name} ({other}); choose one outside it. "
+                                  "Nothing was changed.")
+        if _in_repository(resolved, self._git):
+            raise BackupError("BACKUP_TARGET_IN_GIT", f"{resolved} is inside a Git work tree, so backups could be committed. Choose a "
+                              "folder outside any repository. Nothing was changed.")
+
+    def _domain(self, target: Path) -> tuple[str, str]:
+        recovery_place = self._recovery.state().destination
+        references: dict[str, Path | None] = {"memory store's data": self._store_data()}
+        if recovery_place:  # without a recovery copy there is nothing to back up yet, so it is not a reference
+            references["recovery copy"] = Path(recovery_place)
+        existing = next((p for p in [target, *target.parents] if p.exists()), target)
+        return failure_domain(existing, references, self._disk_of)
 
     # --- configuration -----------------------------------------------------------------------------------------------
 
@@ -277,41 +376,32 @@ class Backups:
             raise BackupError("BACKUP_TARGET_LINKED", f"{linked} is a link or reparse point, so the backup folder could be redirected. "
                               "Choose a folder reached without links. Nothing was changed.")
         resolved = Path(os.path.realpath(target))
-        recovery_place = self._recovery.state().destination
-        for name, other in (("workspace", self._workspace), ("Optimus configuration", self._config),
-                            ("recovery copy", Path(recovery_place) if recovery_place else None)):
-            if other is None:
-                continue
-            other = Path(os.path.realpath(other))
-            if _inside(resolved, other) or _inside(other, resolved):
-                raise BackupError("BACKUP_TARGET_OVERLAP", f"The backup folder overlaps the {name} ({other}); choose one outside it. "
-                                  "Nothing was changed.")
-        existing = next((p for p in [resolved, *resolved.parents] if p.exists()), None)
-        if existing is not None and self._git(existing if existing.is_dir() else existing.parent,
-                                              "rev-parse", "--is-inside-work-tree") is not None:
-            raise BackupError("BACKUP_TARGET_IN_GIT", f"{resolved} is inside a Git work tree, so backups could be committed. Choose a "
-                              "folder outside any repository. Nothing was changed.")
+        self._placement(resolved)
         synced = mr.sync_root(resolved)
-        references: dict[str, Path | None] = {"memory store's data": self._store_data()}
-        if recovery_place:  # without a recovery copy there is nothing to back up yet, so it is not a reference
-            references["recovery copy"] = Path(recovery_place)
-        domain, reason = failure_domain(resolved if resolved.exists() else existing or resolved, references, self._disk_of)
+        domain, reason = self._domain(resolved)
         return {"target": str(resolved), "synced": synced or ("declared" if declared_sync else None), "domain": domain, "reason": reason}
 
     def configure(self, assessed: dict[str, Any], *, consent: bool) -> BackupState:
         """Record a target the user confirmed, with their consent when it is synced, and switch backups on. The previous target
-        stays in the inventory until no managed generation is left in it."""
+        stays in the inventory, with its identity, until no managed generation of this project is left in it."""
         if assessed["synced"] and not consent:
             raise BackupError("BACKUP_SYNC_CONSENT", "That folder is synced; backups there need your consent. Nothing was changed.")
         target = Path(assessed["target"])
+        if _reparse_in_chain(target) is not None:
+            raise BackupError("BACKUP_TARGET_CHANGED", "The backup folder changed while you confirmed it; nothing was changed.")
         target.mkdir(parents=True, exist_ok=True)
         if _reparse_in_chain(target) is not None or str(target.resolve()) != assessed["target"]:
             raise BackupError("BACKUP_TARGET_CHANGED", "The backup folder changed while you confirmed it; nothing was changed.")
         found = identity(target)
+        if not found["folder"]:
+            raise BackupError("BACKUP_TARGET_NO_IDENTITY", f"{target} has no stable folder identity (some network shares), so a "
+                              "replaced folder could not be told apart. Choose a local drive. Nothing was changed.")
 
         def change(state: BackupState) -> None:
-            if state.target is not None and state.target != assessed["target"] and state.target not in state.prior:
-                state.prior.append(state.target)
+            if state.target is not None and state.target != assessed["target"] and not any(p["path"] == state.target for p in state.prior):
+                state.prior.append({"path": state.target, "identity": state.identity, "owes_cleanup": bool(state.cleanup_pending),
+                                    "unreachable": False})
+            state.prior = [p for p in state.prior if p["path"] != assessed["target"]]  # the new target is never also an earlier one
             state.target, state.identity, state.enabled = assessed["target"], found, True
             state.domain, state.domain_reason, state.synced = assessed["domain"], assessed["reason"], assessed["synced"]
             state.consent = assessed["target"] if assessed["synced"] else None
@@ -323,10 +413,16 @@ class Backups:
         return self._state.update(lambda state: setattr(state, "enabled", False))
 
     def withdrawn(self, item: str) -> None:
-        """A withdrawal or purge: older generations may hold the item, so they owe cleanup until a clean one is published."""
+        """A withdrawal or purge: older generations may hold the item, so they owe cleanup until a clean one is published. Nothing
+        is recorded for a project that never had a backup target."""
         def change(state: BackupState) -> None:
+            if state.target is None and not state.prior:
+                return
             if item not in state.cleanup_pending:
                 state.cleanup_pending.append(item)
+            del state.cleanup_pending[:-10_000]
+            for prior in state.prior:
+                prior["owes_cleanup"] = True
         self._state.update(change)
 
     # --- taking a backup ---------------------------------------------------------------------------------------------
@@ -339,10 +435,15 @@ class Backups:
         return last is None or self._clock() - last >= DUE_AFTER_MS or bool(state.cleanup_pending)
 
     def run_if_due(self) -> mr.Generation | None:
-        """A scheduled check: one snapshot when due. A synced target waits for the user's own `/memory backup now`."""
+        """A scheduled check: earlier targets that owe cleanup are retried cheaply; one snapshot is taken when due and no failure
+        happened in the last day. A synced target waits for the user's own `/memory backup now`."""
         state = self._state.load()
+        if any(prior.get("owes_cleanup") for prior in state.prior) and not state.cleanup_pending:
+            self._clean_prior()
         if not self.due(state) or self._recovery.recovery_required():
             return None
+        if state.failure is not None and state.last_attempt_ms is not None and self._clock() - state.last_attempt_ms < DUE_AFTER_MS:
+            return None  # no permanent retry: the next scheduled attempt is a day later
         if state.synced:
             reason = "a synced target is written only by `/memory backup now`"
             if state.held != reason:
@@ -350,7 +451,8 @@ class Backups:
             return None
         try:
             return self.backup()
-        except BackupError:
+        except BackupError as failure:
+            _LOG.warning("memory backup failed: %s", failure.code)
             return None
 
     def backup(self) -> mr.Generation:
@@ -368,7 +470,8 @@ class Backups:
                         if failure.transient and attempts < TRANSIENT_TRIES:
                             self._sleep(0.5 * attempts)
                             continue
-                        self._failed(failure, attempts)
+                        if failure.code != "BACKUP_BUSY":
+                            self._failed(failure, attempts)
                         raise
                     return generation
         except mr.RecoveryError as busy:
@@ -383,21 +486,25 @@ class Backups:
         self._state.update(change)
 
     def _checked_target(self, state: BackupState) -> Path:
+        """Every check configuration made, again, plus the identity recorded then; raises when any no longer holds."""
         if not state.enabled or state.target is None or state.identity is None:
             raise BackupError("BACKUP_OFF", "Backups are off for this project: `/memory backup configure <folder>` sets them up.")
         target = Path(state.target)
         if not target.is_dir():
             raise BackupError("BACKUP_TARGET_MISSING", f"The backup folder {target} is not available (drive missing or folder removed). "
-                              "The last backup is kept; nothing was written.", transient=False)
+                              "The last backup is kept; nothing was written.")
         if _reparse_in_chain(target) is not None or identity(target) != state.identity:
             raise BackupError("BACKUP_TARGET_CHANGED", f"The backup folder {target} is not the folder you configured (it was replaced, "
                               "linked or remounted). Nothing was written or removed; configure it again.")
-        if state.synced and state.consent != state.target:
-            raise BackupError("BACKUP_SYNC_CONSENT", f"{target} is synced and its consent no longer holds; configure it again.")
+        self._placement(target)
+        synced = mr.sync_root(target) or (state.synced if state.synced == "declared" else None)
+        if synced and state.consent != state.target:
+            raise BackupError("BACKUP_SYNC_CONSENT", f"{target} is synced ({synced}) and has no consent for it; configure it again. "
+                              "Nothing was written.")
         return target
 
-    def _source(self) -> tuple[mr.Generation, Path]:
-        """The newest recovery generation, exported first when changes are not in it yet."""
+    def _source(self, project: str) -> tuple[mr.Generation, Path]:
+        """This project's newest recovery generation, exported first when changes are not in it yet, and checked before use."""
         recovery_state = self._recovery.state()
         if recovery_state.destination is None:
             raise BackupError("BACKUP_NEEDS_RECOVERY_COPY", "Backups copy the recovery copy, which is not set up: `/memory export` sets "
@@ -405,44 +512,60 @@ class Backups:
         try:
             if recovery_state.dirty or recovery_state.exported is None or recovery_state.cleanup_pending:
                 self._recovery.export()
+            exported = self._recovery.state()
+            if exported.exported is None or exported.destination is None:
+                raise BackupError("BACKUP_NO_GENERATION", "The recovery copy holds no generation to back up yet.")
+            place = Path(exported.destination)
+            name = exported.exported["name"]
+            mr.read_generation(place / name, project)  # the exact generation to copy, this project's, intact
         except mr.RecoveryError as failure:
-            raise BackupError(failure.code, failure.message, transient=failure.code == "RECOVERY_BUSY") from None
-        place = Path(self._recovery.state().destination or "")
-        newest = mr.generations(place)
-        if not newest:
-            raise BackupError("BACKUP_NO_GENERATION", "The recovery copy holds no generation to back up yet.")
-        return newest[0], place / newest[0].name
+            transient = failure.code in ("RECOVERY_BUSY", "RECOVERY_STATE_BUSY")  # a damaged source stays damaged: not retried
+            raise BackupError(failure.code, failure.message, transient=transient) from None
+        chosen = next((g for g in mr.generations(place) if g.name == name), None)
+        if chosen is None:
+            raise BackupError("BACKUP_NO_GENERATION", "The recovery copy's newest generation moved meanwhile; it will be tried again.",
+                              transient=True)
+        return chosen, place / name
 
     def _backup(self) -> mr.Generation:
+        project = self.project
+        generation, source = self._source(project)  # first: an export may wait; the target is checked after it
         state = self._state.load()
         target = self._checked_target(state)
-        generation, source = self._source()
         pending = list(state.cleanup_pending)
         try:
             with mr.writer_lock(target):
+                if identity(target) != state.identity or _reparse_in_chain(target) is not None:
+                    raise BackupError("BACKUP_TARGET_CHANGED", f"The backup folder {target} changed while the backup started; nothing "
+                                      "was written or removed.")
                 if not (target / generation.name).is_dir():
                     self._publish(source, target / generation.name)
-                mr.read_generation(target / generation.name, None)  # the published copy reads back as the generation it copies
-                self._retire(target, keep=generation.name, all_older=bool(pending))
+                mr.read_generation(target / generation.name, project)  # the published copy reads back as the generation it copies
+                unreadable = self._retire(target, keep=generation.name, all_older=bool(pending))
                 for stale in target.glob(".staging-*"):
                     shutil.rmtree(stale, ignore_errors=True)  # an interrupted earlier attempt: never a generation
         except mr.RecoveryError as failure:
-            raise BackupError(failure.code, failure.message, transient=failure.code in ("RECOVERY_BUSY",)) from None
+            raise BackupError(failure.code, failure.message, transient=failure.code == "RECOVERY_BUSY") from None
+        except FileNotFoundError:
+            raise BackupError("BACKUP_SOURCE_MOVED", "The recovery copy changed while it was copied; it will be tried again.",
+                              transient=True) from None
         except OSError as failure:
             transient = failure.errno in _TRANSIENT_ERRNOS or getattr(failure, "winerror", None) == _SHARING_VIOLATION
             raise BackupError("BACKUP_WRITE_FAILED", f"The backup could not be written to {target} ({failure.strerror or failure}). "
                               "The last backup is kept.", transient=transient) from None
-        if pending:
-            self._clean_prior()
-
+        domain, reason = self._domain(target)
         now = self._clock()
 
         def change(current: BackupState) -> None:
             current.last_success = {"name": generation.name, "head": generation.head, "count": generation.count, "at_ms": now}
             current.last_attempt_ms = now
             current.failure = current.held = None
-            current.cleanup_pending = [item for item in current.cleanup_pending if item not in pending]
+            current.domain, current.domain_reason = domain, reason
+            current.unreadable = unreadable
+            if not unreadable:  # an unreadable folder may still hold the text: its items stay pending
+                current.cleanup_pending = [item for item in current.cleanup_pending if item not in pending]
         self._state.update(change)
+        self._clean_prior()
         return generation
 
     @staticmethod
@@ -463,40 +586,68 @@ class Backups:
             raise
         mr._fsync_dir(final.parent)
 
-    def _retire(self, target: Path, *, keep: str, all_older: bool) -> None:
-        """Remove readable managed generations older than 30 days, or every older one after a withdrawal. Folders that are not
-        readable generations are never removed."""
+    def _retire(self, folder: Path, *, keep: str | None, all_older: bool) -> list[str]:
+        """Remove this project's readable generations older than 30 days, or every one but `keep` after a withdrawal. Another
+        project's generations and other folders are never removed. Returns the `gen-*` folders that cannot be read, which may
+        hold withdrawn text, when `all_older`."""
         cutoff = self._clock() - RETENTION_MS
-        for generation in mr.generations(target):
-            if generation.name == keep or not (all_older or generation.created_ms < cutoff):
+        readable = mr.generations(folder)
+        for generation in readable:
+            if generation.project != self.project or generation.name == keep or not (all_older or generation.created_ms < cutoff):
                 continue
-            shutil.rmtree(target / generation.name, ignore_errors=True)
-            if (target / generation.name).exists():
+            shutil.rmtree(folder / generation.name, ignore_errors=True)
+            if (folder / generation.name).exists():
                 raise BackupError("BACKUP_CLEANUP_FAILED", f"An older backup ({generation.name}) could not be removed; withdrawn text "
                                   "may remain in it. Cleanup stays pending.")
+        if not all_older:
+            return []
+        known = {g.name for g in readable}
+        return sorted(p.name for p in folder.glob("gen-*") if p.is_dir() and p.name not in known and p.name != keep)
 
     def _clean_prior(self) -> None:
-        """After a clean publication: remove managed generations from earlier targets that are still reachable."""
+        """Earlier targets: remove this project's generations that owe cleanup (after a withdrawal) or are older than 30 days,
+        through the identity each had and under its writer lock. One that is missing or changed stays listed as unreachable;
+        one left with none of this project's generations leaves the inventory."""
         state = self._state.load()
-        cleaned = []
-        for path in state.prior:
-            folder = Path(path)
-            if not folder.is_dir():
-                continue  # offline or removed: cleanup stays pending for it
-            for generation in mr.generations(folder):
-                shutil.rmtree(folder / generation.name, ignore_errors=True)
-            if not mr.generations(folder):
-                cleaned.append(path)
-        if cleaned:
-            self._state.update(lambda s: setattr(s, "prior", [p for p in s.prior if p not in cleaned]))
+        if not state.prior:
+            return
+        outcome: dict[str, tuple[bool, bool]] = {}  # path -> (unreachable, still owes or holds)
+        for prior in state.prior:
+            folder = Path(prior["path"])
+            if (not folder.is_dir() or prior.get("identity") is None or _reparse_in_chain(folder) is not None
+                    or identity(folder) != prior["identity"]):
+                outcome[prior["path"]] = (True, True)
+                continue
+            try:
+                with mr.writer_lock(folder):
+                    unreadable = self._retire(folder, keep=None, all_older=bool(prior.get("owes_cleanup")))
+            except (BackupError, mr.RecoveryError, OSError):
+                outcome[prior["path"]] = (True, True)
+                continue
+            left = [g for g in mr.generations(folder) if g.project == self.project]
+            outcome[prior["path"]] = (False, bool(left or unreadable))
+
+        def change(current: BackupState) -> None:
+            kept = []
+            for prior in current.prior:
+                unreachable, holds = outcome.get(prior["path"], (prior.get("unreachable", False), True))
+                if not holds:
+                    continue
+                prior["unreachable"] = unreachable
+                if not unreachable and prior.get("owes_cleanup") and prior["path"] in outcome:
+                    prior["owes_cleanup"] = False
+                kept.append(prior)
+            current.prior = kept
+        self._state.update(change)
 
     # --- restore and status ------------------------------------------------------------------------------------------
 
     def generations(self) -> list[mr.Generation]:
+        """This project's generations at the target (another project's in a shared folder are never listed)."""
         state = self._state.load()
         if state.target is None or not Path(state.target).is_dir():
             return []
-        return mr.generations(Path(state.target))
+        return [g for g in mr.generations(Path(state.target)) if g.project == self.project]
 
     def place(self) -> Path | None:
         state = self._state.load()
@@ -507,32 +658,39 @@ class Backups:
             state = self._state.load()
         except BackupError as failure:
             return failure.message
-        if state.target is None:
+        if state.target is None and not state.prior:
             return "Backups: off (not configured). `/memory backup configure <folder>` copies the recovery copy to another drive daily."
-        lines = [f"Backups: {'on' if state.enabled else 'off'}, to {state.target}"]
-        lines.append({"separate": "a separate physical disk", "same": "SAME physical disk as the memory store or recovery copy: no "
-                      "protection against losing that drive", "unknown": "drive independence unknown"}[state.domain]
-                     + (f" ({state.domain_reason})" if state.domain_reason else ""))
-        if state.synced:
-            lines.append(f"synced folder ({state.synced}): the sync service may keep copies Optimus cannot erase")
-        if not Path(state.target).is_dir():
-            lines.append("the folder is not available now")
+        lines = [f"Backups: {'on' if state.enabled else 'off'}, to {state.target}" if state.target else "Backups: off"]
+        if state.target:
+            lines.append({"separate": "a separate physical disk", "same": "SAME physical disk as the memory store or recovery copy: "
+                          "no protection against losing that drive", "unknown": "drive independence unknown"}[state.domain]
+                         + (f" ({state.domain_reason})" if state.domain_reason else ""))
+            if state.synced:
+                lines.append(f"synced folder ({state.synced}): the sync service may keep copies Optimus cannot erase")
+            if not Path(state.target).is_dir():
+                lines.append("the folder is not available now")
         if state.last_success:
             when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(state.last_success["at_ms"] / 1000))
             lines.append(f"last backup {when}, {state.last_success['count']} items ({state.last_success['name']})")
-        else:
+        elif state.target:
             lines.append("no backup taken yet")
         if state.enabled and self.due(state):
-            lines.append("a backup is due" + (f" (overdue since {time.strftime('%Y-%m-%d', time.gmtime((state.last_success['at_ms'] + DUE_AFTER_MS) / 1000))})"
-                                              if state.last_success else "") + "; taken while a session of this project is open")
+            overdue = (f" (overdue since {time.strftime('%Y-%m-%d', time.gmtime((state.last_success['at_ms'] + DUE_AFTER_MS) / 1000))})"
+                       if state.last_success else "")
+            lines.append(f"a backup is due{overdue}; backups are taken while a session of this project is open and pause while none is")
         if state.held:
             lines.append(f"held: {state.held}")
         if state.failure:
-            lines.append(f"last attempt failed: {state.failure['message']}")
+            lines.append(f"last attempt failed: {state.failure['message']} (next scheduled attempt a day later; `/memory backup now` "
+                         "tries at once)")
         if state.cleanup_pending:
             lines.append(f"withdrawn; backup cleanup pending for {len(state.cleanup_pending)} item(s)")
-        if state.prior:
-            lines.append("earlier backup folders still listed: " + ", ".join(state.prior))
+        if state.unreadable:
+            lines.append("unreadable folders in the backup folder may hold withdrawn text: " + ", ".join(state.unreadable))
+        for prior in state.prior:
+            words = "cleanup pending, folder unreachable or changed" if prior.get("unreachable") else (
+                "cleanup pending" if prior.get("owes_cleanup") else "still holds backups")
+            lines.append(f"earlier backup folder {prior['path']}: {words}")
         lines.append(ENCRYPTION_UNAVAILABLE)
         return "; ".join(lines)
 
@@ -550,8 +708,11 @@ class Scheduler:
 
     def _loop(self) -> None:
         while not self._stop.wait(self._every):
-            with contextlib.suppress(Exception):
+            try:
                 self._backups.run_if_due()
+            except Exception as failure:  # never ends the schedule; the cause is logged by type only
+                _LOG.warning("memory backup check failed: %s", type(failure).__name__)
 
     def close(self) -> None:
         self._stop.set()
+

@@ -6849,6 +6849,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_backups:Backups.run_if_due:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 1: a scheduled backup that failed logs only its stable code (for example BACKUP_TARGET_MISSING); no path, memory text, prompt or diagnostic text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_backups.py::test_f4_a_failure_is_not_retried_every_minute",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_backups:Scheduler._loop:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 1: an unexpected error in a scheduled backup check logs only the exception's type name, never its message, a path or memory text; the schedule continues.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_backups.py::test_b03_after_downtime_exactly_one_catch_up_snapshot",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_backups:Scheduler.close:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch (Plan 12.12 Task 1): `threading.Event.set()` stops the backup scheduler's checks; nothing is written to Redis or anywhere else.",

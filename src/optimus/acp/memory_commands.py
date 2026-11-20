@@ -693,13 +693,23 @@ class MemoryCommands:
             if place is None or (not state.destination and not place.is_dir()):
                 return MemoryAnswer("No recovery location is set up for this project, so there is nothing to restore.")
             found = mr.generations(place)
-            backup_place = self._backups.place() if self._backups is not None else None
-            backed = [g for g in self._backups.generations() if g.name not in {f.name for f in found}] if backup_place else []
+            backup_place: Path | None = None
+            backup_all: list[mr.Generation] = []
+            backup_note = ""
+            if self._backups is not None:
+                from optimus.context import memory_backups as mb
+
+                try:  # damaged backup settings never take the recovery copy's restore down with them
+                    backup_place = self._backups.place()
+                    backup_all = self._backups.generations() if backup_place else []
+                except mb.BackupError as failure:
+                    backup_place, backup_note = None, f" (Backups unavailable: {failure.message})"
+            backed = [g for g in backup_all if g.name not in {f.name for f in found}]
             if command.generation is None:
                 if backed:
                     found = found + backed
                 if not found:
-                    return MemoryAnswer(f"No recovery copies are in {place}.")
+                    return MemoryAnswer(f"No recovery copies are in {place}.{backup_note}")
                 lines = [f"Recovery copies in {place} (newest first). Restore one with `/memory restore <generation>`; "
                          "nothing chooses for you when they differ:"]
                 lines += [f"- `{g.name}`: {g.count} items, head {g.head}, {g.deletions} withdrawn or deleted, saved "
@@ -707,9 +717,15 @@ class MemoryCommands:
                           + (f" · backup in {backup_place}" if g in backed else "")
                           + ("" if g.project == self.project else f" · written for project `{g.project}`: `/memory restore {g.name} "
                              "--map` maps it to this project") for g in found[:10]]
-                return MemoryAnswer("\n".join(lines))
+                return MemoryAnswer("\n".join(lines) + backup_note)
             chosen = next((g for g in found if g.name == command.generation), None)
             from_backup = None
+            twin = next((g for g in backup_all if g.name == command.generation), None)
+            if chosen is not None and twin is not None and backup_place is not None and not command.mapped:
+                try:  # the recovery copy's own files are damaged: the backup of the same generation is offered instead
+                    recovery.read_generation(chosen.name)
+                except mr.RecoveryError:
+                    chosen, from_backup = twin, backup_place
             if chosen is None and backup_place is not None:
                 chosen = next((g for g in backed if g.name == command.generation), None)
                 from_backup = backup_place if chosen is not None else None
@@ -743,6 +759,7 @@ class MemoryCommands:
     def _backup_command(self, command: MemoryCommand) -> MemoryAnswer:
         """`/memory backup ...`: host-only file actions on the recovery copy's generations; no model call, no Gateway path."""
         from optimus.context import memory_backups as mb
+        from optimus.context import memory_recovery as mr
 
         backups = self._backups
         if backups is None or not self._trusted:
@@ -763,6 +780,8 @@ class MemoryCommands:
             assessed = backups.assess(Path(command.target), declared_sync=command.cloud)
         except mb.BackupError as failure:
             return MemoryAnswer(failure.message)
+        except mr.RecoveryError as failure:
+            return MemoryAnswer(failure.message)
         domain = {"separate": f"It is on a separate physical disk ({assessed['reason']}).",
                   "same": f"WARNING: it is on the same physical disk as the memory store or the recovery copy ({assessed['reason']}), "
                           "so it does not protect against losing that drive.",
@@ -779,6 +798,7 @@ class MemoryCommands:
 
     def _backup_confirmed(self, confirmation: Confirmation) -> MemoryAnswer:
         from optimus.context import memory_backups as mb
+        from optimus.context import memory_recovery as mr
 
         if self._backups is None:
             return MemoryAnswer("Backups are not available for this session.")
@@ -789,6 +809,8 @@ class MemoryCommands:
                 return MemoryAnswer(f"Backups now go to {assessed['target']}. Take each one with `/memory backup now`.")
             generation = self._backups.backup()
         except mb.BackupError as failure:
+            return MemoryAnswer(failure.message)
+        except mr.RecoveryError as failure:
             return MemoryAnswer(failure.message)
         return MemoryAnswer(f"Backups now go to {assessed['target']}. Backed up `{generation.name}`: {generation.count} items.")
 

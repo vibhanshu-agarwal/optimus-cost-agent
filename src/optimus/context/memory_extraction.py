@@ -1017,9 +1017,11 @@ def extractor_factory(*, config_root: Any, settings: Any, post: Callable[..., An
                           config_root=Path(config_root))
 
         def written(action: str, item: str) -> None:
-            recovery.written(action, item)
-            if action in ("withdraw", "tombstone"):
-                backups.withdrawn(item)  # older backups owe cleanup until a clean one is published (Plan 12.12 Task 1)
+            try:  # each bookkeeper on its own: a failing recovery record never skips the backups' (Fable CP1 review, 16)
+                recovery.written(action, item)
+            finally:
+                if action in ("withdraw", "tombstone"):
+                    backups.withdrawn(item)  # older backups owe cleanup until a clean one is published (Plan 12.12 Task 1)
 
         store.guard, store.written = recovery.recovery_required, written  # Q3: nothing is written before a restore
         extractor = MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed,

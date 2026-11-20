@@ -7,6 +7,7 @@ from __future__ import annotations
 import errno
 import os
 import shutil
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -315,7 +316,7 @@ def test_b14_withdrawal_publishes_clean_then_retires_older_copies_here_and_in_ea
     host.set_up(first_target)
     clock.now += 1000
     host.set_up(second_target)  # the first target stays listed
-    assert host.backups.state().prior == [str(first_target.resolve())]
+    assert [prior["path"] for prior in host.backups.state().prior] == [str(first_target.resolve())]
     host.run(f"/forget {gone[0]}@1")
     assert host.backups.state().cleanup_pending == [gone[0]] and host.backups.due()
     assert "cleanup pending" in host.backups.status_line()
@@ -335,8 +336,15 @@ def test_b14_an_offline_earlier_target_keeps_cleanup_pending(tmp_path: Path, rep
     shutil.move(str(places["separate"] / "a"), str(places["nowhere"] / "unplugged"))  # the drive is gone for now
     host.run(f"/forget {gone[0]}@1")
     host.backups.backup()
-    assert host.backups.state().prior == [str((places["separate"] / "a").resolve())]
-    assert "earlier backup folders still listed" in host.backups.status_line()
+    (prior,) = host.backups.state().prior
+    assert prior["path"] == str((places["separate"] / "a").resolve()) and prior["owes_cleanup"] and prior["unreachable"]
+    assert "cleanup pending, folder unreachable or changed" in host.backups.status_line()
+    clock.now += 2 * DAY
+    host.backups.run_if_due()  # the drive is still away: the obligation survives the daily backup
+    assert host.backups.state().prior and host.backups.state().prior[0]["owes_cleanup"]
+    shutil.move(str(places["nowhere"] / "unplugged"), str(places["separate"] / "a"))  # the drive is back, same folder
+    host.backups.run_if_due()
+    assert _published(places["separate"] / "a") == [] and host.backups.state().prior == []
 
 
 def test_b16_b23_restore_from_a_backup_into_an_empty_store_only(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
@@ -465,11 +473,280 @@ def test_b31_status_separates_boundaries_and_never_claims_external_erasure(tmp_p
 def test_the_launch_factory_wires_backups_and_withdrawal_cleanup(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
     host = _Backed(tmp_path, repo, places, _Clock())
     gone = host.remember(CANARY)
+    host.set_up(places["separate"] / "b")
     host.run(f"/forget {gone[0]}@1")
     assert host.backups.state().cleanup_pending == [gone[0]]
 
 
 def test_real_disk_query_names_a_disk_for_an_existing_local_folder(tmp_path: Path) -> None:
     found = mb.disks(tmp_path)
-    assert found is None or (found and all(isinstance(name, str) and name for name in found))
+    if sys.platform == "win32":
+        assert found and all(name.startswith("disk") for name in found)  # a local NTFS temp folder is on a named physical disk
+    else:
+        assert found is None or (found and all(isinstance(name, str) and name for name in found))
     assert mb.failure_domain(tmp_path, {"same folder": tmp_path})[0] in ("same", "unknown")
+
+
+# --- Fable CP1 review findings ------------------------------------------------------------------------------------------
+
+
+def test_f1_projects_sharing_a_folder_never_touch_each_others_backups(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    clock = _Clock()
+    folder = places["separate"] / "shared"
+    one = _Backed(tmp_path / "one", repo, places, clock, project="p-1")
+    two = _Backed(tmp_path / "two", repo, places, clock, project="p-2")
+    two.remember("Use uv for every command.")
+    two.set_up(folder)
+    (theirs,) = [g.name for g in mr.generations(folder) if g.project == "p-2"]
+    gone = one.remember(CANARY)
+    one.set_up(folder)
+    one.run(f"/forget {gone[0]}@1")
+    one.backups.backup()  # withdrawal cleanup: every older generation of p-1 only
+    clock.now += 40 * 24 * 3600 * 1000
+    one.remember("Tests run with pytest -q.")
+    one.backups.backup()  # retention: only p-1's old generations
+    assert theirs in [g.name for g in mr.generations(folder)]
+    assert all(g.project == "p-1" for g in one.backups.generations()) and theirs not in one.run("/memory restore").text
+
+
+def test_f2_returning_to_an_earlier_folder_keeps_its_newest_generation(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    gone = host.remember(CANARY)
+    a, b = places["separate"] / "a", places["separate"] / "b"
+    host.set_up(a)
+    host.set_up(b)
+    host.set_up(a)  # back to A: A is the target again, never also an earlier one
+    assert [prior["path"] for prior in host.backups.state().prior] == [str(b.resolve())]
+    host.run(f"/forget {gone[0]}@1")
+    generation = host.backups.backup()
+    assert _published(a) == [generation.name] and host.backups.state().last_success["name"] == generation.name  # type: ignore[index]
+
+
+def test_f4_a_failure_is_not_retried_every_minute(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    shutil.rmtree(places["separate"] / "b")
+    clock.now += 2 * DAY
+    for _minute in range(10):
+        host.backups.run_if_due()
+        clock.now += 60_000
+    state = host.backups.state()
+    assert state.failure is not None and state.failure["code"] == "BACKUP_TARGET_MISSING"
+    assert state.last_attempt_ms is not None and clock.now - state.last_attempt_ms >= 9 * 60_000  # only the first tick tried
+    assert "next scheduled attempt a day later" in host.backups.status_line()
+
+
+def test_f5_an_earlier_folder_that_changed_is_never_cleaned_through(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    gone = host.remember(CANARY)
+    a = places["separate"] / "a"
+    host.set_up(a)
+    host.set_up(places["separate"] / "b")
+    (old,) = _published(a)
+    a.rename(places["nowhere"] / "moved-a")
+    a.mkdir()  # another folder answers to A's path now
+    shutil.copytree(places["nowhere"] / "moved-a" / old, a / old)  # and holds a copy of the generation
+    host.run(f"/forget {gone[0]}@1")
+    host.backups.backup()
+    assert _published(a) == [old] and host.backups.state().prior[0]["unreachable"]
+
+
+def test_f6_f7_placement_and_sync_are_checked_again_before_every_write(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "parent" / "b")
+    clock.now += 2 * DAY
+    monkeypatch.setenv("OneDrive", str(places["separate"]))  # a sync root now covers the folder
+    with pytest.raises(mb.BackupError) as synced:
+        host.backups.backup()
+    assert synced.value.code == "BACKUP_SYNC_CONSENT"
+    monkeypatch.delenv("OneDrive")
+    _git(places["separate"] / "parent", "init", "-q")  # a repository now holds it
+    with pytest.raises(mb.BackupError) as in_git:
+        host.backups.backup()
+    assert in_git.value.code == "BACKUP_TARGET_IN_GIT" and len(_published(places["separate"] / "parent" / "b")) == 1
+
+
+def test_f8_a_git_entry_refuses_even_when_git_itself_fails(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.backups._git = lambda *_a, **_k: None  # Git missing, timing out or refusing a dubious owner
+    (places["separate"] / "repo-ish").mkdir()
+    (places["separate"] / "repo-ish" / ".git").write_text("gitdir: elsewhere", encoding="utf-8")
+    with pytest.raises(mb.BackupError) as refused:
+        host.backups.assess(places["separate"] / "repo-ish" / "b")
+    assert refused.value.code == "BACKUP_TARGET_IN_GIT"
+
+
+def test_f9_the_store_location_is_used_only_when_found_and_the_domain_is_refreshed(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    if sys.platform == "win32":
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "no-docker"))
+        assert mb.default_store_data() is None
+        image = tmp_path / "no-docker" / "Docker" / "wsl" / "disk" / "docker_data.vhdx"
+        image.parent.mkdir(parents=True)
+        image.write_bytes(b"")
+        assert mb.default_store_data() == image
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    assert host.backups.state().domain == "separate"
+    host.backups._disk_of = lambda path: frozenset({"disk1"})  # the store's image moved onto the backup's disk
+    host.remember("Tests run with pytest -q.")
+    host.backups.backup()
+    assert host.backups.state().domain == "same"
+
+
+def test_f10_an_unreadable_generation_folder_keeps_cleanup_pending(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    gone = host.remember(CANARY)
+    target = places["separate"] / "b"
+    host.set_up(target)
+    (old,) = _published(target)
+    (target / old / "manifest.json").write_text("{damaged", encoding="utf-8")
+    host.run(f"/forget {gone[0]}@1")
+    host.backups.backup()
+    state = host.backups.state()
+    assert state.cleanup_pending == [gone[0]] and state.unreadable == [old]
+    assert "unreadable folders in the backup folder may hold withdrawn text" in host.backups.status_line()
+
+
+def test_f11_damaged_backup_settings_never_break_restore_and_a_damaged_recovery_generation_offers_its_backup(
+        tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    (name,) = _published(places["separate"] / "b")
+    recovery_entries = Path(host.recovery.state().destination or "") / name / "entries.jsonl"
+    recovery_entries.write_bytes(recovery_entries.read_bytes().replace(b"main", b"prod"))
+    question = host.commands.run(mc.MemoryCommand("restore", generation=name), block="c").confirm
+    assert question is not None and "read from the backup" in question.text and question.meta.get("backup")
+    host.backups._state.path.write_text("[1, 2]", encoding="utf-8")
+    listed = host.run("/memory restore").text
+    assert "Backups unavailable" in listed and name in listed
+
+
+def test_f12_a_damaged_source_generation_is_never_published(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    name = (host.recovery.state().exported or {})["name"]
+    entries = Path(host.recovery.state().destination or "") / name / "entries.jsonl"
+    entries.write_bytes(entries.read_bytes().replace(b"main", b"prod"))
+    answer = host.run(f"/memory backup configure {places['separate'] / 'b'}")
+    assert "Backed up" not in answer.text and _published(places["separate"] / "b") == []
+
+
+def test_f14_a_second_host_waits_and_both_show_the_same_status(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    other = mb.Backups(host.recovery, mb.BackupStateFile(tmp_path / "config", host.store.project), workspace=repo,
+                       config_root=tmp_path / "config", store_data=lambda: places["store-data"], disk_of=_disks(places, repo),
+                       clock=clock, sleep=lambda _s: None)  # a second host process: its own objects, the same files
+    assert other.status_line() == host.backups.status_line()
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+    assert other.run_if_due() is not None and host.backups.run_if_due() is None  # the second one finds it already done
+    assert other.status_line() == host.backups.status_line() and len(_published(places["separate"] / "b")) == 2
+
+
+def test_f14_verification_catches_bytes_that_did_not_reach_the_disk(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    host.remember("Tests run with pytest -q.")
+    clock.now += 40 * DAY
+    original = mr._write
+
+    def short(path: Path, data: bytes) -> None:
+        original(path, data[:-1] if path.name == "entries.jsonl" and str(target) in str(path) else data)
+    monkeypatch.setattr(mr, "_write", short)
+    with pytest.raises(mb.BackupError) as failed:
+        host.backups.backup()
+    assert failed.value.code == "BACKUP_VERIFY_FAILED" and len(_published(target)) == 1  # the old one survives retention
+
+
+def test_f14_a_crash_while_writing_a_file_leaves_no_generation(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+    original = mr._write
+
+    def crash(path: Path, data: bytes) -> None:
+        if path.name == "MEMORY.md" and str(target) in str(path):
+            raise KeyboardInterrupt
+        original(path, data)
+    monkeypatch.setattr(mr, "_write", crash)
+    monkeypatch.setattr(mb.shutil, "rmtree", lambda *_a, **_k: None)
+    with pytest.raises(KeyboardInterrupt):
+        host.backups.backup()
+    monkeypatch.undo()
+    assert len(_published(target)) == 1 and list(target.glob(".staging-*"))
+    host.backups.backup()
+    assert len(_published(target)) == 2 and not list(target.glob(".staging-*"))
+
+
+def test_b17_with_backups_off_a_lost_store_has_only_the_recovery_copy(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    assert "Backups: off (not configured)" in host.run("/memory").text  # the risk is shown before any loss
+    fresh = _Backed(tmp_path / "lost", repo, places, _Clock())
+    host.rebind(fresh.service)
+    listed = host.run("/memory restore").text
+    assert "backup in" not in listed  # expected loss: no other drive holds a copy
+
+
+def test_b24_a_backup_of_another_registration_is_never_mapped(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    (name,) = _published(places["separate"] / "b")
+    shutil.rmtree(host.recovery.state().destination or "")
+    answer = host.run(f"/memory restore {name} --map")
+    assert "Restored" not in answer.text
+
+
+def test_f17_withdrawals_before_any_backup_target_record_nothing(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    gone = host.remember(CANARY)
+    host.run(f"/forget {gone[0]}@1")
+    assert host.backups.state().cleanup_pending == []
+
+
+def test_f21_a_folder_without_a_stable_identity_is_refused(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.run("/memory export")
+    assessed = host.backups.assess(places["separate"] / "b")
+    monkeypatch.setattr(mb, "identity", lambda path: {"path": str(path), "volume": 1, "folder": 0})
+    with pytest.raises(mb.BackupError) as refused:
+        host.backups.configure(assessed, consent=False)
+    assert refused.value.code == "BACKUP_TARGET_NO_IDENTITY"
+
+
+def test_status_says_scheduling_pauses_while_no_session_is_open(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    clock.now += 3 * DAY
+    assert "pause while none is" in host.backups.status_line()
