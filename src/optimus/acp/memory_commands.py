@@ -701,7 +701,7 @@ class MemoryCommands:
 
                 try:  # damaged backup settings never take the recovery copy's restore down with them
                     backup_place = self._backups.place()
-                    backup_all = self._backups.generations() if backup_place else []
+                    backup_all = self._backups.generations(mapping=True) if backup_place else []
                 except mb.BackupError as failure:
                     backup_place, backup_note = None, f" (Backups unavailable: {failure.message})"
             backed = [g for g in backup_all if g.name not in {f.name for f in found}]
@@ -731,17 +731,16 @@ class MemoryCommands:
                 from_backup = backup_place if chosen is not None else None
             if chosen is None:
                 return MemoryAnswer(f"There is no recovery copy `{command.generation}` in {place}.")
-            if from_backup is not None and command.mapped:
-                return MemoryAnswer("A backup is restored into its own project only; nothing was changed.")
             if command.mapped:
-                source = recovery.mapping_source(chosen.name, place)
+                mapped_place = from_backup if from_backup is not None else place
+                source = recovery.mapping_source(chosen.name, mapped_place)  # the same registry-key and ambiguity checks
                 text = (f"Map project `{source}` to this project (`{self.project}`) and restore `{chosen.name}` ({chosen.count} "
                         f"items, {chosen.deletions} withdrawn or deleted) into its memory store? `{source}` was an earlier "
                         "registration of this workspace. Only an empty store is restored into; deletions recorded since, in "
                         "either project, still apply.")
                 return MemoryAnswer("", confirm=Confirmation("restore", f"Map {source} and restore {chosen.name}?", text,
                                                              {"project": self.project, "generation": chosen.name, "seal": chosen.seal,
-                                                              "source": source, "place": str(place)}, secrets.token_hex(16)))
+                                                              "source": source, "place": str(mapped_place)}, secrets.token_hex(16)))
             if chosen.project != self.project:
                 return MemoryAnswer(f"`{chosen.name}` was written for project `{chosen.project}`. To restore it into this project, "
                                     f"map it: `/memory restore {chosen.name} --map`. Nothing was changed.")
@@ -772,7 +771,7 @@ class MemoryCommands:
                 return MemoryAnswer("Backups are off for this project. Existing backups are kept and still listed. "
                                     + backups.status_line())
             if command.verb == "backup_now":
-                generation = backups.backup()
+                generation = backups.backup(explicit=True)  # the user's own write: also releases held synced cleanup
                 return MemoryAnswer(f"Backed up `{generation.name}`: {generation.count} items. {backups.status_line()}")
             if command.encrypted:
                 return MemoryAnswer(f"Not set up: {mb.ENCRYPTION_UNAVAILABLE} Nothing was written.")
@@ -802,7 +801,7 @@ class MemoryCommands:
 
         if self._backups is None:
             return MemoryAnswer("Backups are not available for this session.")
-        assessed = {name: confirmation.meta[name] for name in ("target", "synced", "domain", "reason")}
+        assessed = {name: confirmation.meta[name] for name in ("target", "synced", "domain", "reason", "anchor")}
         try:
             self._backups.configure(assessed, consent=bool(assessed["synced"]))
             if assessed["synced"]:

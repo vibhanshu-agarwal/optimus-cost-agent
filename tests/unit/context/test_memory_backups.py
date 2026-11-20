@@ -5,6 +5,7 @@ injected here; the real disk query and the real store are exercised in tests/int
 from __future__ import annotations
 
 import errno
+import json
 import os
 import shutil
 import sys
@@ -294,7 +295,7 @@ def test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified
     clock.now += 31 * DAY
     host.remember("Tests run with pytest -q.")
 
-    def broken(_source: Path, _final: Path) -> None:
+    def broken(_source: Path, _final: Path, _prefix: str) -> None:
         raise mb.BackupError("BACKUP_VERIFY_FAILED", "does not match")
     monkeypatch.setattr(mb.Backups, "_publish", staticmethod(broken))
     with pytest.raises(mb.BackupError):
@@ -493,8 +494,10 @@ def test_real_disk_query_names_a_disk_for_an_existing_local_folder(tmp_path: Pat
 def test_f1_projects_sharing_a_folder_never_touch_each_others_backups(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
     clock = _Clock()
     folder = places["separate"] / "shared"
-    one = _Backed(tmp_path / "one", repo, places, clock, project="p-1")
-    two = _Backed(tmp_path / "two", repo, places, clock, project="p-2")
+    from tests.unit.context.test_memory_recovery import _snapshot
+
+    one = _Backed(tmp_path / "one", repo, places, clock, project="p-1", registry=_snapshot({"git:one": "p-1"}))
+    two = _Backed(tmp_path / "two", repo, places, clock, project="p-2", registry=_snapshot({"git:two": "p-2"}))
     two.remember("Use uv for every command.")
     two.set_up(folder)
     (theirs,) = [g.name for g in mr.generations(folder) if g.project == "p-2"]
@@ -536,7 +539,7 @@ def test_f4_a_failure_is_not_retried_every_minute(tmp_path: Path, repo: Path, pl
     state = host.backups.state()
     assert state.failure is not None and state.failure["code"] == "BACKUP_TARGET_MISSING"
     assert state.last_attempt_ms is not None and clock.now - state.last_attempt_ms >= 9 * 60_000  # only the first tick tried
-    assert "next scheduled attempt a day later" in host.backups.status_line()
+    assert "not retried until `/memory backup now`" in host.backups.status_line()  # a missing folder is permanent
 
 
 def test_f5_an_earlier_folder_that_changed_is_never_cleaned_through(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
@@ -715,14 +718,37 @@ def test_b17_with_backups_off_a_lost_store_has_only_the_recovery_copy(tmp_path: 
     assert "backup in" not in listed  # expected loss: no other drive holds a copy
 
 
-def test_b24_a_backup_of_another_registration_is_never_mapped(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
-    host = _Backed(tmp_path, repo, places, _Clock())
-    host.remember("Never push to main.")
-    host.set_up(places["separate"] / "b")
-    (name,) = _published(places["separate"] / "b")
-    shutil.rmtree(host.recovery.state().destination or "")
-    answer = host.run(f"/memory restore {name} --map")
-    assert "Restored" not in answer.text
+def test_b24_an_earlier_registrations_backup_restores_only_through_a_confirmed_mapping(tmp_path: Path, repo: Path,
+                                                                                      places: dict[str, Path]) -> None:
+    from tests.unit.context.test_memory_recovery import _snapshot
+    from tests.unit.optimus_gateway.test_memory_store_commit import Server
+
+    clock = _Clock()
+    folder = places["separate"] / "shared"
+    old = _Backed(tmp_path / "old", repo, places, clock, project="u-alpha-old", registry=_snapshot({"git:x": "u-alpha-old"}))
+    rule = old.remember("Never push to main.")
+    old.set_up(folder)
+    (name,) = _published(folder)
+    stranger = _Backed(tmp_path / "other", repo, places, clock, project="p-other", registry=_snapshot({"git:other": "p-other"}))
+    stranger.remember("Use poetry.")
+    stranger.set_up(folder)  # another workspace's project shares the folder: never offered for mapping
+    shutil.rmtree(old.recovery.state().destination or "")
+    new = _Backed(tmp_path / "new", repo, places, clock, project="proj-alpha", registry=_snapshot({"git:x": "proj-alpha"}),
+                  server=Server())
+    new.run("/memory export")
+    new.run(f"/memory backup configure {folder}")
+    listed = new.run("/memory restore").text
+    assert name in listed and "written for project `u-alpha-old`" in listed and "p-other" not in listed
+    plain = new.run(f"/memory restore {name}").text
+    assert "--map" in plain
+    question = new.commands.run(mc.parse_command(f"/memory restore {name} --map", attachments=False), block="b").confirm
+    assert question is not None and question.meta["place"] == str(folder.resolve())
+    answer = new.commands.confirmed(question)
+    assert "into this project" in answer.text, answer.text
+    assert new.items()[rule[0]][3] == "Never push to main."
+    (theirs,) = [g.name for g in mr.generations(folder) if g.project == "p-other"]
+    refused = new.run(f"/memory restore {theirs} --map").text
+    assert "Restored" not in refused and "There is no recovery copy" in refused
 
 
 def test_f17_withdrawals_before_any_backup_target_record_nothing(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
@@ -737,7 +763,9 @@ def test_f21_a_folder_without_a_stable_identity_is_refused(tmp_path: Path, repo:
     host = _Backed(tmp_path, repo, places, _Clock())
     host.run("/memory export")
     assessed = host.backups.assess(places["separate"] / "b")
-    monkeypatch.setattr(mb, "identity", lambda path: {"path": str(path), "volume": 1, "folder": 0})
+    real = mb.identity
+    target = places["separate"] / "b"
+    monkeypatch.setattr(mb, "identity", lambda path: {**real(path), "folder": 0} if Path(path) == target else real(path))
     with pytest.raises(mb.BackupError) as refused:
         host.backups.configure(assessed, consent=False)
     assert refused.value.code == "BACKUP_TARGET_NO_IDENTITY"
@@ -750,3 +778,199 @@ def test_status_says_scheduling_pauses_while_no_session_is_open(tmp_path: Path, 
     host.set_up(places["separate"] / "b")
     clock.now += 3 * DAY
     assert "pause while none is" in host.backups.status_line()
+
+
+# --- Codex CP1 review 1 findings ----------------------------------------------------------------------------------------
+
+
+def test_c1_a_withdrawal_during_the_backup_stays_pending_for_the_next(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    gone = host.remember(CANARY)
+    host.set_up(places["separate"] / "b")
+    clock.now += 2 * DAY
+    original = mb.Backups._source
+
+    raced: list[bool] = []
+
+    def racing(self: mb.Backups, project: str) -> Any:
+        found = original(self, project)  # the generation is chosen, still holding the text
+        if not raced:
+            raced.append(True)
+            host.run(f"/forget {gone[0]}@1")  # the withdrawal lands now
+        return found
+    monkeypatch.setattr(mb.Backups, "_source", racing)
+    host.backups.backup()
+    monkeypatch.undo()
+    if not host.backups.state().cleanup_pending:  # marked clean only when every remaining generation provably lacks the text
+        for name in _published(places["separate"] / "b"):
+            assert b"zebra-quartz" not in (places["separate"] / "b" / name / "entries.jsonl").read_bytes()
+    host.backups.backup()
+    assert host.backups.state().cleanup_pending == []
+    for name in _published(places["separate"] / "b"):
+        assert b"zebra-quartz" not in (places["separate"] / "b" / name / "entries.jsonl").read_bytes()
+
+
+def test_c2_unknown_staging_folders_are_never_removed(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    target.mkdir()
+    (target / ".staging-family-photos").mkdir()
+    (target / ".staging-family-photos" / "a.jpg").write_bytes(b"x")
+    host.set_up(target)
+    assert (target / ".staging-family-photos" / "a.jpg").is_file()
+
+
+def test_c3_a_copy_whose_seal_the_store_does_not_confirm_is_not_counted_and_retires_nothing(tmp_path: Path, repo: Path,
+                                                                                            places: dict[str, Path]) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    (old,) = _published(target)
+    host.remember("Tests run with pytest -q.")
+    host.run("/memory export")
+    clock.now += 40 * DAY
+    name = (host.recovery.state().exported or {})["name"]
+    manifest_path = Path(host.recovery.state().destination or "") / name / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["seal"] = "0" * 64  # only the seal: digests and metadata still match
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True), encoding="utf-8")
+    with pytest.raises(mb.BackupError) as unauthentic:
+        host.backups.backup()
+    assert unauthentic.value.code == "BACKUP_GENERATION_UNAUTHENTIC"
+    assert _published(target) == [old] and host.backups.state().last_success["name"] == old  # type: ignore[index]
+
+
+def test_c4_an_earlier_synced_folder_is_cleaned_only_by_the_users_own_backup(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    monkeypatch.setenv("OneDrive", str(places["same"]))
+    host = _Backed(tmp_path, repo, places, clock)
+    gone = host.remember(CANARY)
+    host.set_up(places["same"] / "cloud")
+    host.run("/memory backup now")
+    host.set_up(places["separate"] / "local")
+    host.run(f"/forget {gone[0]}@1")
+    host.backups.backup()  # scheduled-equivalent: not the user's own command
+    assert _published(places["same"] / "cloud") and "cleaned only by `/memory backup now`" in host.backups.status_line()
+    host.run("/memory backup now")
+    assert _published(places["same"] / "cloud") == [] and host.backups.state().prior == []
+
+
+def test_c5_an_earlier_folder_now_inside_a_repository_is_not_cleaned(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    gone = host.remember(CANARY)
+    a = places["separate"] / "parent" / "a"
+    host.set_up(a)
+    host.set_up(places["separate"] / "b")
+    _git(places["separate"] / "parent", "init", "-q")
+    host.run(f"/forget {gone[0]}@1")
+    host.backups.backup()
+    assert len(_published(a)) == 1 and host.backups.state().prior[0]["unreachable"]
+
+
+def test_c6_an_unreadable_folder_in_an_earlier_target_keeps_its_obligation(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    gone = host.remember(CANARY)
+    a = places["separate"] / "a"
+    host.set_up(a)
+    (old,) = _published(a)
+    host.set_up(places["separate"] / "b")
+    (a / old / "manifest.json").write_text("{damaged", encoding="utf-8")
+    host.run(f"/forget {gone[0]}@1")
+    host.backups.backup()
+    (prior,) = host.backups.state().prior
+    assert prior["owes_cleanup"] and not prior["unreachable"] and "cleanup pending" in host.backups.status_line()
+
+
+def test_c8_a_sync_root_chosen_exactly_needs_consent(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    root = places["separate"] / "CompanyData"
+    root.mkdir()
+    monkeypatch.setenv("OneDriveCommercial", str(root))
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.run("/memory export")
+    assert host.backups.assess(root)["synced"] == "OneDriveCommercial"
+
+
+def test_c9_a_folder_replaced_while_the_confirmation_is_open_is_refused(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.run("/memory export")
+    target = places["separate"] / "b"
+    target.mkdir()
+    question = host.commands.run(mc.MemoryCommand("backup_configure", target=str(target)), block="c").confirm
+    assert question is not None
+    target.rename(places["separate"] / "b-old")
+    target.mkdir()
+    answer = host.commands.confirmed(question)
+    assert "changed while you confirmed" in answer.text and host.backups.state().target is None
+
+
+def test_c10_malformed_backup_settings_are_corrupt_and_never_break_restore(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    for bad in ({"project": host.store.project, "prior": None}, {"project": host.store.project, "enabled": "yes"},
+                {"project": host.store.project, "last_success": {"at_ms": "soon"}}):
+        host.backups._state.path.write_text(json.dumps(bad), encoding="utf-8")
+        with pytest.raises(mb.BackupError) as corrupt:
+            host.backups.state()
+        assert corrupt.value.code == "BACKUP_STATE_CORRUPT"
+        assert "Backups unavailable" in host.run("/memory restore").text
+
+
+def test_c11_a_permanent_failure_is_held_until_the_user_acts(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+    original = mr._write
+
+    def denied(path: Path, data: bytes) -> None:
+        if str(places["separate"]) in str(path):
+            raise OSError(errno.EACCES, "denied")
+        original(path, data)
+    monkeypatch.setattr(mr, "_write", denied)
+    assert host.backups.run_if_due() is None
+    first = host.backups.state().last_attempt_ms
+    clock.now += 3 * DAY
+    assert host.backups.run_if_due() is None and host.backups.state().last_attempt_ms == first  # not retried by the schedule
+    assert "not retried until `/memory backup now`" in host.backups.status_line()
+    monkeypatch.undo()
+    assert "Backed up" in host.run("/memory backup now").text
+
+
+def test_c12_the_memory_store_data_overlap_is_refused_both_ways(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    with pytest.raises(mb.BackupError) as inside:
+        host.backups.assess(places["store-data"] / "b")
+    assert inside.value.code == "BACKUP_TARGET_OVERLAP" and "memory store's data" in inside.value.message
+    host.backups._store_data = lambda: places["separate"] / "docker" / "data"
+    with pytest.raises(mb.BackupError) as around:
+        host.backups.assess(places["separate"] / "docker")
+    assert around.value.code == "BACKUP_TARGET_OVERLAP"
+
+
+def test_c13_a_moved_docker_disk_image_never_counts_the_stale_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    if sys.platform != "win32":
+        pytest.skip("Docker Desktop's settings exist on Windows only")
+    default = tmp_path / "local" / "Docker" / "wsl" / "disk" / "docker_data.vhdx"
+    default.parent.mkdir(parents=True)
+    default.write_bytes(b"")
+    settings = tmp_path / "roaming" / "Docker" / "settings-store.json"
+    settings.parent.mkdir(parents=True)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
+    settings.write_text(json.dumps({"CustomWslDistroDir": str(tmp_path / "moved")}), encoding="utf-8")
+    assert mb.default_store_data() is None  # moved, and not found where it was moved to: unknown, never the stale default
+    moved = tmp_path / "moved" / "disk" / "docker_data.vhdx"
+    moved.parent.mkdir(parents=True)
+    moved.write_bytes(b"")
+    assert mb.default_store_data() == moved

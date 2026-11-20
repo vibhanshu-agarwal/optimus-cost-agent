@@ -5,6 +5,7 @@ from P1212_BACKUP_TEST_ROOT (the released `F:\\optimus-p1212-test`), else every 
 
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import shutil
@@ -127,9 +128,17 @@ def test_corrupted_generation_refuses_restore(provisioned: Provisioned, tmp_path
     _go(commands, f"/memory backup configure {backup_root}")
     (generation,) = mr.generations(backup_root)
     entries = backup_root / generation.name / "entries.jsonl"
-    entries.write_bytes(entries.read_bytes().replace(b"main", b"prod"))
+    original = entries.read_bytes()
+    entries.write_bytes(original.replace(b"main", b"prod"))
     shutil.rmtree(mr.location(repo))
     _lose_the_volume(provisioned)
     _store, recovery, _backups, commands = _host(provisioned, tmp_path, project, repo)
     answer = _go(commands, f"/memory restore {generation.name}")
-    assert "do not match its manifest" in answer.text and _stream(provisioned, project) == [], answer.text
+    assert "do not match its manifest" in answer.text and _stream(provisioned, project) == [], answer.text  # the host's check
+    entries.write_bytes(original)
+    manifest_path = backup_root / generation.name / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["seal"] = "0" * 64  # only the seal: the host's digests still match, so only the Gateway can refuse it
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True), encoding="utf-8")
+    answer = _go(commands, f"/memory restore {generation.name}")
+    assert "Restored" not in answer.text and _stream(provisioned, project) == [], answer.text  # the Gateway's seal check
