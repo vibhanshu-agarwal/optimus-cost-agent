@@ -2088,6 +2088,41 @@ def test_an_unreadable_unrelated_artifact_is_a_custody_failure_not_an_exception(
     assert "artifact_unreadable" in raw["custody_failures"]
 
 
+@pytest.mark.parametrize(
+    ("reopen_arm", "expected"),
+    [
+        ("r_refusal", D.ZERO_ENTRY_REACHABLE_STOP),
+        (None, D.INVALID_CURRENT_CLIENT_GATE),
+    ],
+    ids=("later-stop", "no-positive"),
+)
+def test_redaction_continues_after_unrelated_checkpoint_copy_error(tmp_path, windows_shaped_paths, monkeypatch, reopen_arm, expected):
+    run = Run(tmp_path, run_options(reopen_load_arm=reopen_arm))
+    run.collect()
+    copyfile = col.shutil.copyfile
+    copy_failed = False
+
+    def fail_first_database_copy(source, target, *args, **kwargs):
+        nonlocal copy_failed
+        if not copy_failed and Path(source).name == "db.sqlite-main" and Path(target).name == "db.sqlite":
+            copy_failed = True
+            raise PermissionError("closed checkpoint copy denied")
+        return copyfile(source, target, *args, **kwargs)
+
+    monkeypatch.setattr(col.shutil, "copyfile", fail_first_database_copy)
+    redaction = col.compute_redaction(run.context, identity_tokens=())
+
+    assert redaction.gate.disposition is expected
+    assert R.CUSTODY_ARTIFACT_FAILURE in _codes(redaction.gate)
+    assert redaction.raw is not None
+    assert "checkpoint_copy_unreadable" in redaction.raw.custody_failures
+    first_checkpoint = redaction.raw.arms[0].checkpoints[0]
+    assert first_checkpoint.readable is False
+    assert first_checkpoint.files[0].presence == "present"
+    if reopen_arm is not None:
+        assert redaction.gate.primary.subject == reopen_arm
+
+
 @pytest.mark.parametrize("presence", [{"main": False, "wal": False, "shm": False}, {}, {"wal": False}])
 def test_presence_metadata_cannot_hide_a_captured_database_binding(tmp_path, windows_shaped_paths, presence):
     run = Run(tmp_path, run_options(pre_reopen_binding_arm="r_refusal"))
