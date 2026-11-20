@@ -2,12 +2,12 @@
  "schema": "plan12-memory-m3.qualification.v1",
  "sources": [
   {
-   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
+   "head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
    "dirty": false,
    "config_id": "m3-cp4-v1",
-   "results_sha256": "hex:2eb939d78b563090a364dbbf13eb653f334f112d1d20accd8a2143ebb353ae42",
-   "log_sha256": "hex:17b2ec549b4e27beb88f91794ed5a479845799e821152e1dcfc972dc1ef78299",
-   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-13-results.json and m3-run-13.log",
+   "results_sha256": "hex:a59a7ef618ceabd2ebe4d497d39e1b5dc4a390e6e1e0286adcf92f65ab7e2760",
+   "log_sha256": "hex:ef78bd896eafec3570fd8b7afa2b8f1fa59b0a1eae503ffe059868fbd7a37b31",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-14-results.json and m3-run-14.log",
    "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
    "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
    "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)"
@@ -451,7 +451,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.3,
+   "seconds": 41.2,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -489,7 +489,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.8,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -541,7 +541,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 62.1,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -603,7 +603,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -661,7 +661,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.7,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -699,7 +699,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 62.0,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -756,7 +756,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.0,
+   "seconds": 2.1,
    "steps": [
     "0:tool:tool_output",
     "1:host:compact",
@@ -786,7 +786,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 102.1,
+   "seconds": 102.3,
    "steps": [
     "0:user:say",
     "1:host:compact",
@@ -835,7 +835,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 81.6,
+   "seconds": 81.7,
    "steps": [
     "0:tool:tool_output",
     "1:tool:tool_output",
@@ -888,7 +888,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.3,
+   "seconds": 41.1,
    "steps": [
     "0:host:agent_work",
     "1:user:say"
@@ -926,7 +926,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.4,
+   "seconds": 61.5,
    "steps": [
     "0:user:say",
     "1:tool:tool_output",
@@ -1041,7 +1041,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.4,
+   "seconds": 61.6,
    "steps": [
     "0:host:agent_work",
     "1:user:say",
@@ -1101,7 +1101,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.4,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:host:agent_work",
@@ -1171,7 +1171,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.4,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:host:agent_work",
@@ -1217,7 +1217,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.3,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -1294,7 +1294,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.3,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -1344,7 +1344,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.3,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -1484,7 +1484,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 21.9,
+   "seconds": 22.1,
    "steps": [
     "0:host:linked_worktree",
     "1:user:say",
@@ -1534,7 +1534,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 21.6,
+   "seconds": 21.7,
    "steps": [
     "0:user:say",
     "1:host:clone",
@@ -1632,7 +1632,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.6,
+   "seconds": 61.5,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -1683,7 +1683,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 22.1,
+   "seconds": 22.4,
    "steps": [
     "0:host:prior_off",
     "1:host:none",
@@ -1736,7 +1736,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1147.5,
+   "seconds": 1158.4,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -2610,9 +2610,10 @@
     },
     {
      "seq": 1,
-     "purpose": "memory.extract_user",
+     "purpose": "memory.compaction",
      "skipped": null,
      "reasons": [
+      "SPANS_UNVERIFIED",
       "SPANS_UNVERIFIED"
      ]
     },
@@ -3409,7 +3410,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 134.5,
+   "seconds": 135.9,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -3552,7 +3553,7 @@
    ],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.4,
    "steps": [
     "0:user:say",
     "1:host:change_file",
@@ -3603,7 +3604,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.2,
+   "seconds": 41.4,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -3660,7 +3661,7 @@
     "trace is missing coverage for ['memory.strength_faded:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 42.3,
+   "seconds": 42.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -3729,7 +3730,7 @@
     "trace is missing coverage for ['memory.strength_raised:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 41.9,
+   "seconds": 42.3,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -3789,7 +3790,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 22.0,
+   "seconds": 22.3,
    "steps": [
     "0:host:none",
     "1:user:say",
@@ -3827,7 +3828,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 22.3,
+   "seconds": 22.7,
    "steps": [
     "0:host:none",
     "1:user:say",
@@ -3871,7 +3872,7 @@
     "trace is missing coverage for ['crash: an interrupted, unsettled turn and real host process loss are not exercised in process (owned by the Task 5 acpx kill proof)']; no layer can pass"
    ],
    "error": null,
-   "seconds": 1.7,
+   "seconds": 2.0,
    "steps": [
     "0:user:say",
     "1:host:crash",
@@ -3899,7 +3900,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.0,
+   "seconds": 2.4,
    "steps": [
     "0:user:say",
     "1:host:rebase",
@@ -3930,7 +3931,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 42.3,
+   "seconds": 42.5,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -3983,7 +3984,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 42.6,
+   "seconds": 42.7,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4031,7 +4032,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.2,
+   "seconds": 2.3,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say"
@@ -4061,7 +4062,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 45.8,
+   "seconds": 46.0,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4135,7 +4136,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 45.8,
+   "seconds": 45.9,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4231,7 +4232,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 6.5,
+   "seconds": 6.6,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -4258,7 +4259,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.7,
+   "seconds": 1.8,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -4312,7 +4313,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.5,
+   "seconds": 1.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4339,7 +4340,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.4,
+   "seconds": 1.5,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4456,7 +4457,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.6,
    "steps": [
     "0:host:agent_work",
     "1:user:say",
@@ -4495,7 +4496,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.4,
+   "seconds": 41.5,
    "steps": [
     "0:user:say",
     "1:host:agent_work",
@@ -4550,7 +4551,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.1,
+   "seconds": 1.2,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -4576,7 +4577,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.2,
+   "seconds": 1.4,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -4602,7 +4603,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.2,
+   "seconds": 1.4,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -4628,7 +4629,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 0.9,
+   "seconds": 1.2,
    "steps": [
     "0:host:untrusted",
     "1:user:say",
@@ -4656,7 +4657,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.2,
+   "seconds": 1.4,
    "steps": [
     "0:host:none",
     "1:user:say",
@@ -4683,7 +4684,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.5,
+   "seconds": 1.6,
    "steps": [
     "0:host:linked_worktree",
     "1:user:say",
@@ -4711,7 +4712,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.6,
+   "seconds": 1.7,
    "steps": [
     "0:user:say",
     "1:host:clone",
@@ -4765,7 +4766,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4841,7 +4842,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1130.1,
+   "seconds": 1128.4,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -6469,10 +6470,10 @@
     "status": "PASS",
     "reasons": [],
     "archived": [
-     "m-f256698cb65624d6"
+     "m-91f88f5215cd95cc"
     ],
     "arrival": [
-     "m-bac32cd59d4dabfa"
+     "m-dbae60f2ea777def"
     ],
     "policy": "oldest live off record archived at the cap (memory_store._archived)"
    },
@@ -6509,7 +6510,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 114.9,
+   "seconds": 115.0,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -6654,7 +6655,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.3,
+   "seconds": 1.2,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -6688,7 +6689,7 @@
     "trace is missing coverage for ['memory.strength_faded:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 1.8,
+   "seconds": 1.7,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -6733,7 +6734,7 @@
     "trace is missing coverage for ['memory.strength_raised:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 1.8,
+   "seconds": 1.7,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -6771,7 +6772,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.4,
+   "seconds": 2.3,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6799,7 +6800,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.5,
+   "seconds": 2.6,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6826,7 +6827,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 5.8,
+   "seconds": 5.7,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6854,7 +6855,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 5.9,
+   "seconds": 5.7,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6900,19 +6901,36 @@
     "UNRUN": 4
    },
    "passed": true
+  },
+  {
+   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
+   "dirty": false,
+   "config_id": "m3-cp4-v1",
+   "results_sha256": "hex:2eb939d78b563090a364dbbf13eb653f334f112d1d20accd8a2143ebb353ae42",
+   "log_sha256": "hex:17b2ec549b4e27beb88f91794ed5a479845799e821152e1dcfc972dc1ef78299",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-13-results.json and m3-run-13.log",
+   "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
+   "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+   "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)",
+   "summary": {
+    "FAIL": 29,
+    "INCONCLUSIVE": 45,
+    "UNRUN": 4
+   },
+   "passed": true
   }
  ],
  "paid": {
   "report": {
    "path": "reports/plan12-memory-m3/paid-attempts.json",
-   "sha256": "hex:f88d659052d5096b01702cbd3eac99f1edb87915694217e862627b889678c416",
+   "sha256": "hex:4fe108c0c35535508a65b89a3a5ea3c196827f6c3f49982c4291f4e261f1c362",
    "schema": "plan12-memory-m3.paid-attempts.v3"
   },
   "correctness_rule": "POST-HOC whole-reply lexical scoring (Codex CP4 review 19, ruling 4): case-insensitive substring over the model's reply (host text such as the brief excluded); PASS when an accepted phrase is present and no rejected phrase is. The frozen rubric R1 names 'the reply's claim'; no claim selector was frozen, so this is not a pre-registered interpretation. Lists are alternatives. No superiority claim is made.",
-  "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the eligible set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6; review 22, rulings 2-3; review 23, rulings 2 and 4), UNKNOWN where it cannot be derived; R2 also needs positive proof the turn's read succeeded (only a brief that lists the item gives one). R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not its item's newest servable version, which holds whether or not the eligible set is known.",
+  "task_rule": "PASS only when every applicable check is PASS; any FAIL is FAIL; otherwise an UNKNOWN check makes it INCOMPLETE (Codex CP4 review 20, ruling 1). The served set is not logged per turn; R2 and R4's serving half use the eligible set reconstructed offline from the archived store (Codex CP4 review 21, rulings 3 and 6; review 22, rulings 2-3; review 23, rulings 2 and 4), UNKNOWN where it cannot be derived; R2 also needs positive proof the turn's read succeeded (only a brief that lists the item gives one). R4's prohibited set is the declared one plus every version recorded by the prompt's start that is not its item's newest servable version, which holds whether or not the eligible set is known. The rerun sessions (tasks.json disposition 3: M3-ZED-ON-2, M3-ZED-RETURN-2, M3-ZED-RETURN-C-2) are graded instead by rerun_grade.py, fixed before the first rerun prompt (Codex CP4 review 26, ruling 7): R2 and R4 from each turn's `memory served` records and the rerun store's events (evidence/store-archive-2), R3 by role. Earlier sessions keep their own grading and results.",
   "totals": {
-   "physical_attempts": 27,
-   "settled_usd": "0.0071920"
+   "physical_attempts": 38,
+   "settled_usd": "0.0105533"
   },
   "sessions": [
    {
@@ -6995,6 +7013,48 @@
      "physical_attempts": 2,
      "settled_usd": "0.0004931",
      "reported_usd": "0.0004931",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "cap": {
+     "attempts": 20,
+     "usd": "1.50"
+    },
+    "used": {
+     "physical_attempts": 6,
+     "settled_usd": "0.0010838",
+     "reported_usd": "0.0010838",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN-2",
+    "cap": {
+     "attempts": 12,
+     "usd": "2.60"
+    },
+    "used": {
+     "physical_attempts": 3,
+     "settled_usd": "0.0016691",
+     "reported_usd": "0.0016691",
+     "reconciled_usd": "0"
+    },
+    "authorization_breach": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C-2",
+    "cap": {
+     "attempts": 12,
+     "usd": "2.60"
+    },
+    "used": {
+     "physical_attempts": 2,
+     "settled_usd": "0.0006084",
+     "reported_usd": "0.0006084",
      "reconciled_usd": "0"
     },
     "authorization_breach": false
@@ -7243,6 +7303,141 @@
      "R3": "PASS"
     },
     "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P2",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "A",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P4",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "B",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P6",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "C",
+    "mode": "chat (answer stage)",
+    "task_verdict": "FAIL",
+    "checks": {
+     "correctness": "FAIL",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P9",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "D",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-2",
+    "run": "R1",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "E",
+    "mode": "agent (planning stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-2",
+    "run": "R2",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "E",
+    "mode": "agent (planning stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C-2",
+    "run": "R1c",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "G",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "brief": "PASS"
+    },
+    "over_allowance": false
+   },
+   {
+    "session": "M3-ZED-RETURN-C-2",
+    "run": "R2c",
+    "head": "git:c147510469e0725487c0be317be1a2bdc8d19c6f",
+    "thread": "G",
+    "mode": "chat (answer stage)",
+    "task_verdict": "PASS",
+    "checks": {
+     "correctness": "PASS",
+     "R5": "PASS",
+     "served_set": "N/A",
+     "R2": "PASS",
+     "R4": "PASS",
+     "R3": "PASS"
+    },
+    "over_allowance": false
    }
   ],
   "unscored_prompts": [
@@ -7264,8 +7459,8 @@
    }
   ],
   "by_verdict": {
-   "FAIL": 5,
-   "PASS": 6,
+   "FAIL": 6,
+   "PASS": 13,
    "INCOMPLETE": 4
   },
   "lifecycle": [
@@ -7328,14 +7523,67 @@
     "session": "M3-ZED-ON",
     "run": "P8",
     "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P1",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P3",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P5",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P7",
+    "R6": "PASS"
+   },
+   {
+    "session": "M3-ZED-ON-2",
+    "run": "P8",
+    "R6": "PASS"
    }
   ],
   "paid_qualification_complete": false,
   "limits": [
    "scoring is post-hoc lexical and supports no superiority claim",
-   "the product does not log a turn's served set; R2, R4's serving half and R6 come from an offline reconstruction over the archived store (p1211-cp4-zed/evidence/served-reconstruction.json), UNKNOWN wherever its inputs do not fix them",
+   "the earlier sessions had no served-set record; their R2, R4's serving half and R6 come from an offline reconstruction over the archived store (p1211-cp4-zed/evidence/served-reconstruction.json), UNKNOWN wherever its inputs do not fix them",
    "M3-ZED-RETURN used 5 attempts against a cap of 4: an uncured authorization breach",
-   "Agent mode classifies an answered question as a failed run: #512"
-  ]
+   "Agent mode classifies an answered question as a failed run: #512 (RETURN-C-2's brief shows it for RETURN-2's R2)"
+  ],
+  "rerun": {
+   "sessions": [
+    "M3-ZED-ON-2",
+    "M3-ZED-RETURN-2",
+    "M3-ZED-RETURN-C-2"
+   ],
+   "by_verdict": {
+    "PASS": 7,
+    "FAIL": 1
+   },
+   "authorization_breach": false,
+   "lifecycle_all_pass": true,
+   "serving_proof_complete": true,
+   "required_citations_all_pass": true,
+   "failed": [
+    {
+     "session": "M3-ZED-ON-2",
+     "run": "P6",
+     "checks": {
+      "correctness": "FAIL",
+      "R5": "PASS",
+      "served_set": "N/A",
+      "R2": "PASS",
+      "R4": "PASS"
+     }
+    }
+   ]
+  }
  }
 }

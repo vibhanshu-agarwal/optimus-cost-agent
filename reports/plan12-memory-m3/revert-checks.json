@@ -2,20 +2,24 @@
  "schema": "plan12-memory-m3.revert-checks.v1",
  "sources": [
   {
-   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
+   "head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_gaps.py"
   },
   {
-   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
+   "head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_cp4r2.py"
+  },
+  {
+   "head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
+   "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_served_record.py"
   }
  ],
  "release": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
  "checks": [
   {
-   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-gaps-5d427a2.log",
-   "sha256": "hex:0533917dacdb03325d4fc11aa75addd22a45f9cf835bce58c7bb00132f08657f",
-   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
+   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-gaps-9f0e217.log",
+   "sha256": "hex:b6e29586b6f39d51e8116f1fd05f339a7d37864ccd8c79cf7ab31b7b89a25ad8",
+   "head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
    "dirty": false,
    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_gaps.py",
    "caught": 11,
@@ -25,13 +29,25 @@
    "baseline": "PASS"
   },
   {
-   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-cp4r2-5d427a2.log",
-   "sha256": "hex:d3f3bc89c1f5af0da7fd4915bc9d8b391edcc38e1a142a118bbbf12a41d29c16",
-   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
+   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-cp4r2-9f0e217.log",
+   "sha256": "hex:6ebfee6363727711d017d1f0c717674300412fe3a77985183929b08c1391e0e6",
+   "head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
    "dirty": false,
    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_cp4r2.py",
    "caught": 49,
    "mutants": 49,
+   "missed": [],
+   "invalid": [],
+   "baseline": "PASS"
+  },
+  {
+   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-served-record-9f0e217.log",
+   "sha256": "hex:2fd4238be014bcee24b42924eda396d7c2379f564c5c9d0e841c0dfa00f52bd1",
+   "head": "git:9f0e217a0079813b56b5115006ffe16ac1c42225",
+   "dirty": false,
+   "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_served_record.py",
+   "caught": 13,
+   "mutants": 13,
    "missed": [],
    "invalid": [],
    "baseline": "PASS"
