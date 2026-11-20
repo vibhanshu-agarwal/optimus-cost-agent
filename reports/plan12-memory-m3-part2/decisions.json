@@ -7,7 +7,9 @@
     "D1_split": "This plan: plaintext backups, Agent Memory Repo import, the consented pilot. Later unnumbered plan under #491: encryption, catalog, recovery-phrase channel and mediation, rotation, encrypted restore, crypto erasure, native K5-R1/R2, real-store M22-M24, host/keyring co-loss recovery.",
     "D2_plaintext_cloud": "Allowed only with target-bound warning and consent while encryption is visibly unavailable; a verified separate local drive is preferred. Each cloud write needs its own release.",
     "D3_pilot": "Run the 20-30-item pilot in this plan. The operator confirms sources, project mapping, private custody and comparison before any private read.",
-    "D4_second_model_proof": "Only on an already eligible route under a separate release; otherwise UNRUN with #491 later-plan custody. Task 0 found no second eligible route."
+    "D4_second_model_proof": "Only on an already eligible route under a separate release; otherwise UNRUN with #491 later-plan custody. Task 0 found no second eligible route.",
+    "D3_binding": "2026-11-21: sources approved (\"Both sources\") and the item list confirmed (\"Confirm list\"): 26 pilot items (16 Claude notes, 10 Codex notes; 4 expected stale or superseded) mapped to this repository's registration, plus 5 other-project negative controls that must be refused. Private selection hex:732123dd5d4d0b6cc9c901188100dcc7aa19554bb2913d60758282d219906d14 in the review kit; the repository records counts and hashes only. Comparison questions and the paid release are Task 3's.",
+    "backup_target": "2026-11-21: F:, physical disk 2, separate from the store's disk 1"
   },
   "oracle_mapping": {
     "status": "agreed at review level by Codex, round 110 review 1 (CLI session 01a1fa9e-3a9d-7423-9b17-d2e4011e441e, posted on #491 comment 7049805469); no operator escalation needed. Scope: a mapped PASS covers only the named invariant; skipping existing withdrawn items does not prove fresh-import provenance preservation",
@@ -45,5 +47,8 @@
         "coverage_note": "the original comparison's storage-state mismatch (stored off versus absent) is reported separately beside the mapped result"
       }
     ]
+  },
+  "operator_releases": {
+    "task1": "2026-11-21 (\"Release all\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test; keyring writes only under the isolated test service; all removed at CP1 close; zero paid calls"
   }
 }

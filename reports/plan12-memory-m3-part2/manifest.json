@@ -78,10 +78,10 @@
       "C:\\Users\\pc\\.codex\\memories (mixed projects)",
       "public formats: Agent Memory Repo, JetBrains Junie guidelines"
     ],
-    "pilot_sources_read": "none; D3 binds the manifest before any private read",
+    "pilot_sources_read": "operator approved reading both OC-2 sources on 2026-11-21 (\"Both sources\"). Snapshot at 2026-11-20T20:37:33Z kept privately in the review kit (389 files; SHA256SUMS hex:acd3fdfe6862e3c24e7984b90f7975ad2873b3d91fc911a0fce6b0768d9f8d0c). Draft selection: 26 pilot items (16 Claude notes, 10 Codex notes, 4 expected stale) plus 5 other-project negative controls; list confirmed by the operator the same day (decisions.json D3_binding). No personal text enters the repository.",
     "paid_calls": 0,
     "live_operations": "none",
-    "backup_target": "selection pending the operator. Recommended: a dedicated directory on F: (physical disk 2, NVMe, NTFS, 472 GB free), a different physical disk from the store's Docker data on C: (disk 1). Alternatives: D: (disk 0, SATA HDD) or E: (disk 3, USB, may be offline).",
+    "backup_target": "operator selected F: (physical disk 2, NVMe) on 2026-11-21 (\"F: second NVMe\"); test root needs its own release",
     "cloud_target": "none selected; OneDrive exists on C: (same physical disk as the store) and would need D2 consent plus a per-write release",
     "environments": "Windows: this worktree's .venv (CPython 3.14.4, uv sync --frozen --extra dev --extra memory). Linux: WSL Ubuntu-24.04 with its own environment for path and permission checks; created at Task 1, never shared with the Windows venv.",
     "proposed_test_resources": {
