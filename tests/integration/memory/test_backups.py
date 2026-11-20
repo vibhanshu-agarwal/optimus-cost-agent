@@ -53,18 +53,16 @@ def _host(provisioned: Provisioned, tmp_path: Path, project: str, repo: Path) ->
     return store, recovery, backups, commands
 
 
-def test_the_real_disk_query_marks_the_released_folder_as_a_separate_drive(provisioned: Provisioned, tmp_path: Path,
-                                                                            backup_root: Path) -> None:
+def test_drive_independence_stays_unknown_until_the_store_is_bound(provisioned: Provisioned, tmp_path: Path, backup_root: Path) -> None:
+    """The real disk query names the released folder's disk, but the store's storage is not bound to the active engine, so the
+    product reports independence unknown (Codex CP1 review 3 ruling); nothing claims a separate drive."""
     repo, project = _workspace(tmp_path), _project()
     _store, _recovery, backups, commands = _host(provisioned, tmp_path, project, repo)
     _go(commands, "/remember Never push to main.")
     _go(commands, "/memory export")
-    store_disks, folder_disks = mb.disks(mb.default_store_data() or Path("/nonexistent")), mb.disks(backup_root.parent)
-    expected = "separate" if store_disks and folder_disks and not store_disks & folder_disks else None
+    assert mb.disks(backup_root.parent)  # a named physical disk
     assessed = backups.assess(backup_root)
-    if expected is None:
-        pytest.skip(f"the released folder's disk ({folder_disks}) is not established as separate from the store's ({store_disks})")
-    assert assessed["domain"] == expected and "disk" in assessed["reason"], assessed
+    assert assessed["domain"] == "unknown" and "memory store" in assessed["reason"], assessed
 
 
 def test_restore_applies_newer_deletions(provisioned: Provisioned, tmp_path: Path,

@@ -590,11 +590,11 @@ def test_f9_the_store_location_is_used_only_when_found_and_the_domain_is_refresh
                                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
     if sys.platform == "win32":
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "no-docker"))
-        assert mb.default_store_data() is None
+        assert mb.docker_data_location() is None
         image = tmp_path / "no-docker" / "Docker" / "wsl" / "disk" / "docker_data.vhdx"
         image.parent.mkdir(parents=True)
         image.write_bytes(b"")
-        assert mb.default_store_data() == image
+        assert mb.docker_data_location() == image
     clock = _Clock()
     host = _Backed(tmp_path, repo, places, clock)
     host.remember("Never push to main.")
@@ -973,11 +973,11 @@ def test_c13_a_moved_docker_disk_image_never_counts_the_stale_default(tmp_path: 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
     settings.write_text(json.dumps({"CustomWslDistroDir": str(tmp_path / "moved")}), encoding="utf-8")
-    assert mb.default_store_data() is None  # moved, and not found where it was moved to: unknown, never the stale default
+    assert mb.docker_data_location() is None  # moved, and not found where it was moved to: unknown, never the stale default
     moved = tmp_path / "moved" / "disk" / "docker_data.vhdx"
     moved.parent.mkdir(parents=True)
     moved.write_bytes(b"")
-    assert mb.default_store_data() == moved
+    assert mb.docker_data_location() == moved
 
 
 # --- Codex CP1 review 2 findings ----------------------------------------------------------------------------------------
@@ -1071,7 +1071,8 @@ def test_r5_only_authenticated_bytes_are_published_and_a_crash_after_publication
     clock.now += 2 * DAY
     order: list[str] = []
     authenticate, replace = mb.Backups._authenticate, os.replace
-    monkeypatch.setattr(mb.Backups, "_authenticate", lambda self, d, p: order.append("authenticated") or authenticate(self, d, p))
+    monkeypatch.setattr(mb.Backups, "_authenticate",
+                        lambda self, c, n, p: order.append("authenticated") or authenticate(self, c, n, p))
 
     def renamed(source: Any, destination: Any) -> None:
         replace(source, destination)
@@ -1095,11 +1096,11 @@ def test_r6_docker_storage_counts_only_for_the_default_engine(tmp_path: Path, mo
     monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
     assert mb._default_engine_selected()
     monkeypatch.setenv("DOCKER_HOST", "tcp://elsewhere:2375")
-    assert not mb._default_engine_selected() and mb.default_store_data() is None
+    assert not mb._default_engine_selected() and mb.docker_data_location() is None
     monkeypatch.delenv("DOCKER_HOST")
     (tmp_path / "docker-config").mkdir()
     (tmp_path / "docker-config" / "config.json").write_text(json.dumps({"currentContext": "remote-box"}), encoding="utf-8")
-    assert not mb._default_engine_selected() and mb.default_store_data() is None
+    assert not mb._default_engine_selected() and mb.docker_data_location() is None
     if sys.platform == "win32":
         (tmp_path / "docker-config" / "config.json").write_text(json.dumps({"currentContext": "desktop-linux"}), encoding="utf-8")
         monkeypatch.setenv("APPDATA", str(tmp_path / "no-roaming"))
@@ -1107,54 +1108,106 @@ def test_r6_docker_storage_counts_only_for_the_default_engine(tmp_path: Path, mo
         default.parent.mkdir(parents=True)
         default.write_bytes(b"")
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-        assert mb.default_store_data() is None  # unreadable Docker Desktop settings: never the default image
+        assert mb.docker_data_location() is None  # unreadable Docker Desktop settings: never the default image
 
 
-def test_b18_a_lost_verification_key_refuses_restore_readably(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+def _restart(tmp_path: Path, repo: Path, places: dict[str, Path], service: Any) -> _Backed:
+    """A new host process for the same project: fresh objects over the same config folder, bound to `service` (the store)."""
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.rebind(service)
+    return host
+
+
+def test_b18_a_lost_verification_key_refuses_restore_from_the_backup_readably(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    """Unit fault injection: the store's recovery key is replaced in process (a new password after keyring loss)."""
     from optimus_gateway import memory_store
 
     host = _Backed(tmp_path, repo, places, _Clock())
     host.remember("Never push to main.")
     host.set_up(places["separate"] / "b")
     (name,) = _published(places["separate"] / "b")
+    shutil.rmtree(host.recovery.state().destination or "")  # only the backup holds the generation
     fresh = _Backed(tmp_path / "lost", repo, places, _Clock())
     fresh.service._store._recovery_key = memory_store.recovery_key("a new password after the keyring was lost")  # type: ignore[attr-defined]
     host.rebind(fresh.service)
-    answer = host.run(f"/memory restore {name}")
+    question = host.commands.run(mc.MemoryCommand("restore", generation=name), block="c").confirm
+    assert question is not None and question.meta.get("backup") == str((places["separate"] / "b").resolve())  # the backup is used
+    answer = host.commands.confirmed(question)
     assert "Not restored" in answer.text and host.items() == {}, answer.text
 
 
 def test_b26_an_interrupted_restore_from_a_backup_publishes_nothing_and_a_restart_reconciles(
         tmp_path: Path, repo: Path, places: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit fault injection: an interruption is raised inside the restore, and each restart is a new host object set over the
+    same config folder. A real process kill and a kill inside the store's fenced publication transaction are not exercised."""
     host = _Backed(tmp_path, repo, places, _Clock())
     for n in range(12):
         host.remember(f"Rule number {n} holds.")
     host.set_up(places["separate"] / "b")
     (name,) = _published(places["separate"] / "b")
     expected = host.items()
+    shutil.rmtree(host.recovery.state().destination or "")  # only the backup holds the generation
     fresh = _Backed(tmp_path / "lost", repo, places, _Clock())
-    host.rebind(fresh.service)
-    call = host.store.call
+    first = _restart(tmp_path, repo, places, fresh.service)
+    call = first.store.call
 
     def killed(op: str, **body: Any) -> Any:
         if op == "restore" and body.get("batch") == 1:
-            raise KeyboardInterrupt  # killed between batches: staged, never published
+            raise KeyboardInterrupt  # interrupted between batches: staged, never published
         return call(op, **body)
-    monkeypatch.setattr(host.store, "call", killed)
+    monkeypatch.setattr(first.store, "call", killed)
+    question = first.commands.run(mc.MemoryCommand("restore", generation=name), block="c").confirm
+    assert question is not None and question.meta.get("backup")
     with pytest.raises(KeyboardInterrupt):
-        host.run(f"/memory restore {name}")
+        first.commands.confirmed(question)
     monkeypatch.undo()
-    assert host.items() == {} and host.recovery.recovery_required(fresh=True)  # nothing staged is served
-    update = host.recovery._state.update
-    state_calls: list[int] = []
+    second = _restart(tmp_path, repo, places, fresh.service)
+    assert second.items() == {} and second.recovery.recovery_required(fresh=True)  # nothing staged is served
 
     def crash_after_publication(change: Any) -> Any:
-        state_calls.append(1)
-        raise KeyboardInterrupt  # the store published; the host died before recording it
-    monkeypatch.setattr(host.recovery._state, "update", crash_after_publication)
+        raise KeyboardInterrupt  # the store published; the host stopped before recording it
+    monkeypatch.setattr(second.recovery._state, "update", crash_after_publication)
+    question = second.commands.run(mc.MemoryCommand("restore", generation=name), block="c").confirm
+    assert question is not None and question.meta.get("backup")
     with pytest.raises(KeyboardInterrupt):
-        host.run(f"/memory restore {name}")
-    monkeypatch.setattr(host.recovery._state, "update", update)
-    assert host.items() == expected  # published whole, exactly once
-    again = host.run(f"/memory restore {name}").text
-    assert "Restored" not in again and host.items() == expected  # a restart's retry finds it done and changes nothing
+        second.commands.confirmed(question)
+    monkeypatch.undo()
+    third = _restart(tmp_path, repo, places, fresh.service)
+    assert third.items() == expected  # published whole, exactly once
+    again = third.run(f"/memory restore {name}").text
+    assert "Restored" not in again and third.items() == expected  # the restart's retry finds it done and changes nothing
+
+
+def test_r7_only_the_captured_authenticated_bytes_are_published(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    (old,) = _published(target)
+    host.remember("Tests run with pytest -q.")
+    clock.now += 40 * DAY
+    authenticate = mb.Backups._authenticate
+    sealed: list[str] = []
+
+    def then_tamper(self: mb.Backups, captured: dict[str, bytes], name: str, project: str) -> Any:
+        entries = authenticate(self, captured, name, project)
+        sealed.append(json.loads(captured["manifest.json"])["seal"])
+        _tamper_source(host, lambda m: m.__setitem__("seal", "0" * 64))  # the source changes right after authentication
+        return entries
+    monkeypatch.setattr(mb.Backups, "_authenticate", then_tamper)
+    generation = host.backups.backup()
+    monkeypatch.undo()
+    published = json.loads((target / generation.name / "manifest.json").read_text(encoding="utf-8"))
+    assert published["seal"] == sealed[0] != "0" * 64  # the authenticated bytes, never the changed source
+    assert old not in _published(target)  # retention ran on an authentic replacement only
+
+
+def test_product_default_reports_drive_independence_unknown(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.run("/memory export")
+    product = mb.Backups(host.recovery, mb.BackupStateFile(tmp_path / "config", host.store.project), workspace=repo,
+                         config_root=tmp_path / "config", disk_of=_disks(places, repo))  # the launch's store reference
+    assessed = product.assess(places["separate"] / "b")  # a different disk from the recovery copy's
+    assert assessed["domain"] == "unknown" and "memory store" in assessed["reason"]  # never "separate" without the store bound

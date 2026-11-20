@@ -131,6 +131,24 @@ class BackupState:
         return state
 
 
+def _manifest_and_entries(captured: dict[str, bytes], name: str, project: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """`memory_recovery.read_generation`'s host checks on bytes already in memory."""
+    damaged = BackupError("RECOVERY_GENERATION_DAMAGED", "That generation's files do not match its manifest; it is not used.")
+    try:
+        manifest = json.loads(captured["manifest.json"].decode("ascii"))
+        entries = [json.loads(line) for line in captured["entries.jsonl"].splitlines() if line.strip()]
+    except (UnicodeDecodeError, ValueError):
+        raise damaged from None
+    metadata = manifest.get("metadata") if isinstance(manifest, dict) else None
+    if (not isinstance(metadata, dict) or manifest.get("format") != mr.FORMAT or metadata.get("format") != mr.FORMAT
+            or metadata.get("project") != project or tuple(metadata.get("layout", ())) != mr.LAYOUT):
+        raise BackupError("RECOVERY_GENERATION_FOREIGN", "That generation is not this project's, or not a format this host reads.")
+    if (hashlib.sha256(captured["entries.jsonl"]).hexdigest() != manifest.get("entries_sha256")
+            or mr.bind_digest(metadata) != manifest.get("bind") or captured["MEMORY.md"] != mr.memory_md(entries, name)):
+        raise damaged
+    return manifest, entries
+
+
 def _int(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
@@ -330,8 +348,15 @@ def disks(path: Path) -> frozenset[str] | None:
         return None
 
 
-def default_store_data() -> Path | None:
-    """Where the memory store's container data is, as Docker records it. The store is always a local Docker container
+def unbound_store_disk() -> Path | None:
+    """The memory store's storage as a failure-domain reference: not bound to the active engine and resource yet, so None,
+    and every target's drive independence is reported unknown (Codex CP1 review 3 ruling)."""
+    return None
+
+
+def docker_data_location() -> Path | None:
+    """Where Docker most likely keeps container data, for refusing backup folders that overlap it (a false refusal is safe;
+    it is never used as failure-domain evidence). The store is always a local Docker container
     (`local_infra.ensure_memory_store_redis`), so its data is the engine's: on Windows, Docker Desktop's WSL disk image (its
     configured custom location, else the default one); on Linux, the configured `data-root`, else `/var/lib/docker`, but not when
     a rootless engine's root also exists. Anything not found where Docker records it gives None: unknown."""
@@ -420,12 +445,14 @@ class Backups:
     """One project's configured backups, shared by every session of that project in this host."""
 
     def __init__(self, recovery: mr.Recovery, state: BackupStateFile, *, workspace: Path | None, config_root: Path,
-                 store_data: Callable[[], Path | None] = default_store_data,
+                 store_data: Callable[[], Path | None] = unbound_store_disk,
+                 runtime_data: Callable[[], Path | None] = docker_data_location,
                  disk_of: Callable[[Path], frozenset[str] | None] = disks,
                  clock: Callable[[], int] = lambda: int(time.time() * 1000), git: Callable[..., str | None] = _git,
                  sleep: Callable[[float], None] = time.sleep) -> None:
         self._recovery, self._state, self._workspace, self._config = recovery, state, workspace, config_root
         self._store_data, self._disk_of, self._clock, self._git, self._sleep = store_data, disk_of, clock, git, sleep
+        self._runtime_data = runtime_data
         self._lock = threading.Lock()
 
     @property
@@ -445,10 +472,10 @@ class Backups:
         """Raise when the folder overlaps the workspace, the config, the recovery copy or the store's data, or lies in a Git work
         tree."""
         recovery_place = self._recovery.state().destination
-        store = self._store_data()
+        stores = [path for path in (self._store_data(), self._runtime_data()) if path is not None]
         for name, other in (("workspace", self._workspace), ("Optimus configuration", self._config),
                             ("recovery copy", Path(recovery_place) if recovery_place else None),
-                            ("memory store's data", (store.parent if store.is_file() else store) if store is not None else None)):
+                            *(("memory store's data", store.parent if store.is_file() else store) for store in stores)):
             if other is None:
                 continue
             other = Path(os.path.realpath(other))
@@ -647,12 +674,25 @@ class Backups:
                               transient=True)
         return chosen, place / name
 
-    def _authenticate(self, directory: Path, project: str) -> list[dict[str, Any]]:
-        """A generation against the Gateway, before any byte of it is staged: the same generation read again from the store
-        (same host metadata) must be at the same head and deletion-journal count, and then give byte-equal entries, the same
-        deletion frontier and the same seal; the manifest's count must be its entries'. Memory moving on (head or journal) is
-        transient: the generation is refreshed. Returns the entries."""
-        manifest, entries = mr.read_generation(directory, project)
+    @staticmethod
+    def _capture(directory: Path, project: str) -> dict[str, bytes]:
+        """The generation's three files read once into memory, checked by the host as `memory_recovery.read_generation` checks
+        them (format, project, layout, entries and metadata digests, an entry point derived from the entries). Everything after
+        this, authentication, staging and comparison, uses these same bytes and never the files again."""
+        try:
+            captured = {name: (directory / name).read_bytes() for name in mr.LAYOUT}
+        except OSError:
+            raise BackupError("BACKUP_SOURCE_MOVED", "The recovery copy changed while it was read; it will be tried again.",
+                              transient=True) from None
+        _manifest_and_entries(captured, directory.name, project)
+        return captured
+
+    def _authenticate(self, captured: dict[str, bytes], name: str, project: str) -> list[dict[str, Any]]:
+        """The captured generation against the Gateway, before any byte of it is staged: the same generation read again from the
+        store (same host metadata) must be at the same head and deletion-journal count, and then give byte-equal entries, the
+        same deletion frontier and the same seal; the manifest's count must be its entries'. Memory moving on (head or journal)
+        is transient: the generation is refreshed. Returns the entries."""
+        manifest, entries = _manifest_and_entries(captured, name, project)
         try:
             fresh, final = self._recovery._read_generation(manifest["bind"])
         except mr.RecoveryError as failure:
@@ -670,7 +710,8 @@ class Backups:
         project = self.project
         pending = list(self._state.load().cleanup_pending)  # before the source: a withdrawal after this point stays pending
         generation, source = self._source(project)  # an export may wait; the target is checked after it
-        entries = self._authenticate(source, project)  # the exact bytes to copy, authenticated before anything is staged
+        captured = self._capture(source, project)  # one immutable copy of the bytes: authenticated, then staged or compared
+        entries = self._authenticate(captured, generation.name, project)
         state = self._state.load()
         target = self._checked_target(state)
         published = target / generation.name
@@ -680,12 +721,12 @@ class Backups:
                     raise BackupError("BACKUP_TARGET_CHANGED", f"The backup folder {target} changed while the backup started; nothing "
                                       "was written or removed.")
                 if published.is_dir():
-                    for name in mr.LAYOUT:  # an earlier run published it: it must be byte for byte the authenticated source
-                        if (published / name).read_bytes() != (source / name).read_bytes():
+                    for name in mr.LAYOUT:  # an earlier run published it: it must be byte for byte the authenticated capture
+                        if (published / name).read_bytes() != captured[name]:
                             raise BackupError("BACKUP_GENERATION_UNAUTHENTIC", f"The existing backup {generation.name} differs from "
                                               "what the memory store sealed; nothing was removed.")
                 else:
-                    self._publish(source, published, self._staging_prefix)  # staged bytes equal the authenticated source
+                    self._publish(captured, published, self._staging_prefix)  # only the authenticated captured bytes
                 mr.read_generation(published, project)
                 live = {shaped["entry"]["item"] for shaped in entries if shaped["entry"].get("statement")}
                 proven = [item for item in pending if item not in live]  # this generation holds no text for these items
@@ -718,14 +759,14 @@ class Backups:
         return generation
 
     @staticmethod
-    def _publish(source: Path, final: Path, prefix: str) -> None:
-        """Exclusive staging named for this project, every file fsynced and compared byte for byte with the authenticated generation
-        it copies, then one atomic rename: what is published is only ever the authenticated bytes."""
+    def _publish(captured: dict[str, bytes], final: Path, prefix: str) -> None:
+        """Exclusive staging named for this project, every file written from the authenticated capture, fsynced and compared byte
+        for byte with it, then one atomic rename: what is published is only ever the authenticated bytes."""
         staging = final.parent / f"{prefix}{secrets.token_hex(8)}"
         staging.mkdir()
         try:
             for name in mr.LAYOUT:
-                data = (source / name).read_bytes()
+                data = captured[name]
                 mr._write(staging / name, data)
                 if (staging / name).read_bytes() != data:
                     raise BackupError("BACKUP_VERIFY_FAILED", "The written backup does not match its generation; it was not kept.")
