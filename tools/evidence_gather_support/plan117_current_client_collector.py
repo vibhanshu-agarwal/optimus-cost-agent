@@ -28,6 +28,7 @@ from evidence_handoff.collector.models import CapturedArtifact, CollectionBatch,
 from evidence_handoff.collector.pipeline import _OBSERVATION_SCHEMA as OBSERVATION_SCHEMA
 from tools.evidence_gather_support import plan117_current_client_contract as contract
 from tools.evidence_gather_support.common import HostError
+from tools.evidence_gather_support.plan117_launcher import MODULE_CLOSURE_SCHEMA, render_launcher_bytes
 from tools.evidence_gather_support.plan117_workspace_approval import (
     ApprovalWorkspace,
     LaunchApproval,
@@ -38,7 +39,6 @@ from tools.evidence_gather_support.plan117_workspace_approval import (
 COLLECTOR_ID = "plan117_v5_current_client_collector"
 CONTRACT_VERSION = "v1"
 FIXTURE_ADAPTER_ID = "plan117_v5_isolated_source_fixture"
-MODULE_CLOSURE_SCHEMA = "plan-11-7-v5-module-closure-report-v1"
 
 
 # --------------------------------------------------------------------------- R census tracing
@@ -204,81 +204,6 @@ def render_isolated_spec(spec_bytes: bytes, source_kind: str, fixture: contract.
 #
 # The hook mechanism (wrap AcpStreamServer.serve/serve_ndjson so the report is written after bootstrap
 # imports and before the first byte is read) follows candidate 6208177's launcher.
-
-_LAUNCHER_TEMPLATE = '''"""Plan 11.7 v5 throwaway isolated launcher (Task 0 source only; never production)."""
-
-from __future__ import annotations
-
-import hashlib
-import json
-import os
-import sys
-import time
-from pathlib import Path
-
-_SOURCE = Path({source!r}).resolve()
-_REPORT = Path({report!r})
-sys.path.insert(0, str(_SOURCE / "src"))
-
-
-def _write_module_closure_report() -> None:
-    entries = []
-    failures = []
-    for name, module in sorted(sys.modules.items()):
-        module_file = getattr(module, "__file__", None)
-        if not module_file:
-            continue
-        try:
-            Path(module_file).resolve().relative_to(_SOURCE)
-        except ValueError:
-            continue  # outside the isolated source root: not part of the closure
-        try:
-            resolved = Path(module_file).resolve(strict=True)
-            relative = resolved.relative_to(_SOURCE)
-            payload = resolved.read_bytes()
-        except (OSError, ValueError):
-            failures.append(name)  # in-root but not inspectable: the closure is incomplete
-            continue
-        entries.append({{"module_name": name, "resolved_path": str(resolved), "source_relative_path": relative.as_posix(),
-                         "size_bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}})
-    report = {{"schema": {schema!r}, "pid": os.getpid(), "monotonic_ns": time.monotonic_ns(),
-               "entrypoint_module": "optimus.acp.__main__", "source_root": str(_SOURCE), "entries": entries, "inspection_failures": failures}}
-    partial = _REPORT.with_name(_REPORT.name + ".partial")
-    partial.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
-    os.replace(partial, _REPORT)
-
-
-def _install_module_closure_hook() -> None:
-    from optimus.acp.server import AcpStreamServer
-
-    reported = []
-
-    def wrap(original):
-        async def serve_with_report(self, *args, **kwargs):
-            if not reported:
-                reported.append(True)
-                _write_module_closure_report()
-            return await original(self, *args, **kwargs)
-
-        return serve_with_report
-
-    AcpStreamServer.serve = wrap(AcpStreamServer.serve)
-    AcpStreamServer.serve_ndjson = wrap(AcpStreamServer.serve_ndjson)
-
-
-_install_module_closure_hook()
-
-from optimus.acp.__main__ import main  # noqa: E402
-
-if __name__ == "__main__":
-    raise SystemExit(main())
-'''
-
-
-def render_launcher_bytes(source_root: Path, report_path: Path) -> bytes:
-    """A launcher whose hook reports the in-root module closure before the server reads stdin."""
-    return _LAUNCHER_TEMPLATE.format(source=str(source_root), report=str(report_path), schema=MODULE_CLOSURE_SCHEMA).encode("utf-8")
-
 
 _CLOSURE_KEYS = ("schema", "pid", "monotonic_ns", "entrypoint_module", "source_root", "entries", "inspection_failures")
 _CLOSURE_ENTRY_KEYS = ("module_name", "resolved_path", "source_relative_path", "size_bytes", "sha256")
@@ -859,6 +784,7 @@ class _Emitter:
         self.run_dir = context.capture_root / context.run_id
         self.observations: list[Observation] = []
         self.artifacts: list[CapturedArtifact] = []
+        self.checkpoint_pending = False
 
     def artifact(self, role: str, locator: str, payload: bytes | None, media_type: str) -> CapturedArtifact:
         path = self.run_dir.joinpath(*locator.split("/"))
@@ -1042,12 +968,13 @@ def collect_current_client_gate(inputs: CollectInputs, actions: HostActions) -> 
         tail_record("restoration", {"normal_source_sha256_after": restored})
     finally:
         started = actions.monotonic_ns()
-        try:
-            if recovered:
+        removed = False
+        if recovered and not emit.checkpoint_pending:
+            try:
                 actions.remove_tree(run_root)
-            removed = recovered
-        except OSError:
-            removed = False
+                removed = True
+            except OSError:
+                pass
     tail_record("cleanup", {
         "started_monotonic_ns": started, "ended_monotonic_ns": actions.monotonic_ns(),
         "targets": [{"role": "run_root", "removed": removed, "absent_after": not run_root.exists()}]})
@@ -1075,6 +1002,8 @@ def _collect_launch(emit: _Emitter, actions: HostActions, fixture: contract.Desc
         raise HostError("zed_tree_unconfirmed") from exc
     if not result.tree_stopped:
         raise HostError("zed_tree_unconfirmed")
+    # The private profile may be the only copy until the checkpoint is recorded.
+    emit.checkpoint_pending = True
     base = f"artifacts/plan117/arms/{arm_id}/{launch_id}"
     for name in _RELAY_FILES:
         path = relay_dir / name
@@ -1103,6 +1032,7 @@ def _collect_launch(emit: _Emitter, actions: HostActions, fixture: contract.Desc
             emit.artifact(f"plan117_v5_db:{arm_id}:{label}:{file_role}", f"{db_base}/db.sqlite-{file_role}", sidecar.read_bytes(), "application/octet-stream")
     emit.document("checkpoint", f"plan117_v5_checkpoint:{arm_id}:{label}", f"artifacts/plan117/arms/{arm_id}/{label}/checkpoint.json", {
         "arm_id": arm_id, "label": label, "copied_monotonic_ns": actions.monotonic_ns(), "presence": presence}, arm_id, launch_id)
+    emit.checkpoint_pending = False
     if result.interrupted:
         raise HostError("run_interrupted")
     if not _matches_audit_event(result.audit_event, approval.approval_id, approval.workspace_digest, request.launch_session_id):
@@ -1231,15 +1161,17 @@ def derive_raw_document(context: RunContext, batches: Sequence[CollectionBatch],
     for arm_id in contract.ARM_IDS:
         launches, checkpoints = [], []
         for launch_id in launch_ids_for(arm_id):
-            if f"plan117_v5_launch:{arm_id}:{launch_id}" not in art.by_role:
-                break
-            launches.append(_derive_launch(art, arm_id, launch_id, roots))
-            if f"plan117_v5_checkpoint:{arm_id}:after_{launch_id}" not in art.by_role:
-                break
-            checkpoints.append(_derive_checkpoint(art, arm_id, launch_id))
-        if not launches:
-            break
-        arms.append({"arm_id": arm_id, "profile_role": f"profile:{arm_id}", "workspace_role": f"workspace:{arm_id}", "launches": launches, "checkpoints": checkpoints})
+            launch_key = f"{arm_id}:{launch_id}"
+            checkpoint_key = f"{arm_id}:after_{launch_id}"
+            # A missing record affects custody, but must not hide independently captured payloads.
+            if (f"plan117_v5_launch:{launch_key}" in art.by_role or f"plan117_v5_closure:{launch_key}" in art.by_role
+                    or any(f"plan117_v5_relay:{launch_key}:{name}" in art.by_role for name in _RELAY_FILES)):
+                launches.append(_derive_launch(art, arm_id, launch_id, roots))
+            if (f"plan117_v5_checkpoint:{checkpoint_key}" in art.by_role
+                    or any(f"plan117_v5_db:{checkpoint_key}:{role}" in art.by_role for role in ("main", "wal", "shm"))):
+                checkpoints.append(_derive_checkpoint(art, arm_id, launch_id))
+        if launches or checkpoints:
+            arms.append({"arm_id": arm_id, "profile_role": f"profile:{arm_id}", "workspace_role": f"workspace:{arm_id}", "launches": launches, "checkpoints": checkpoints})
     bundle = json.loads((run_dir / "raw-bundle.json").read_text(encoding="utf-8"))
     return {
         "schema": contract.RAW_SCHEMA, "evidence_kind": contract.EVIDENCE_KIND_GATE, "scenario_id": context.scenario_id,
