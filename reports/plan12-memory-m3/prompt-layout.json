@@ -74,7 +74,7 @@
    "tests/unit/context/test_memory_serving.py::test_the_brief_yields_first_cut_on_a_character_boundary_and_memory_is_never_cut",
    "tests/unit/acp/test_memory_commands.py::test_the_brief_comes_at_the_first_response_after_a_week_and_every_turn_is_checkpointed"
   ],
-  "tests_from": "PENDING: the final-head full suite, to be recorded in reports/plan12-memory-m3/verification.json; src and tests at that head equal git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+  "tests_from": "the final-head gates in reports/plan12-memory-m3/verification.json, all run on its code head git:5d427a210348dd28898d5cc7099878ab195b6c19",
   "revert": {
    "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-brief-cb4a29c.log",
    "sha256": "hex:745ef84e4561292a7319339c18c835e12a6291ffe7230d61378133c8b9463090",

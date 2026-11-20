@@ -2,12 +2,12 @@
  "schema": "plan12-memory-m3.qualification.v1",
  "sources": [
   {
-   "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
    "dirty": false,
    "config_id": "m3-cp4-v1",
-   "results_sha256": "hex:f40b9437f67349000af398c45f19a47267b3dc785900719178d5ce5f7a405c34",
-   "log_sha256": "hex:9ade486d2b18ae58255a1bfeeb965ea6b2107e14d1b0091caa8312e113f14f84",
-   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-12-results.json and m3-run-12.log",
+   "results_sha256": "hex:2eb939d78b563090a364dbbf13eb653f334f112d1d20accd8a2143ebb353ae42",
+   "log_sha256": "hex:17b2ec549b4e27beb88f91794ed5a479845799e821152e1dcfc972dc1ef78299",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-13-results.json and m3-run-13.log",
    "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
    "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
    "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)"
@@ -348,7 +348,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 22.1,
+   "seconds": 22.0,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -399,7 +399,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.3,
+   "seconds": 1.2,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -541,7 +541,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.6,
+   "seconds": 61.5,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -888,7 +888,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 41.1,
+   "seconds": 41.3,
    "steps": [
     "0:host:agent_work",
     "1:user:say"
@@ -978,7 +978,7 @@
    ],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.1,
+   "seconds": 1.2,
    "steps": [
     "0:tool:tool_output",
     "1:user:say"
@@ -1041,7 +1041,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.5,
+   "seconds": 61.4,
    "steps": [
     "0:host:agent_work",
     "1:user:say",
@@ -1171,7 +1171,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.6,
+   "seconds": 61.4,
    "steps": [
     "0:user:say",
     "1:host:agent_work",
@@ -1392,7 +1392,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 0.9,
+   "seconds": 1.0,
    "steps": [
     "0:host:untrusted",
     "1:user:say",
@@ -1484,7 +1484,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 21.8,
+   "seconds": 21.9,
    "steps": [
     "0:host:linked_worktree",
     "1:user:say",
@@ -1632,7 +1632,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.4,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -1683,7 +1683,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 22.0,
+   "seconds": 22.1,
    "steps": [
     "0:host:prior_off",
     "1:host:none",
@@ -1736,7 +1736,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1148.7,
+   "seconds": 1147.5,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -3409,7 +3409,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 134.6,
+   "seconds": 134.5,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -3729,7 +3729,7 @@
     "trace is missing coverage for ['memory.strength_raised:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 42.0,
+   "seconds": 41.9,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -3827,7 +3827,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 22.2,
+   "seconds": 22.3,
    "steps": [
     "0:host:none",
     "1:user:say",
@@ -3899,7 +3899,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.1,
+   "seconds": 2.0,
    "steps": [
     "0:user:say",
     "1:host:rebase",
@@ -3983,7 +3983,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 42.7,
+   "seconds": 42.6,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4031,7 +4031,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.3,
+   "seconds": 2.2,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say"
@@ -4061,7 +4061,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 46.0,
+   "seconds": 45.8,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4135,7 +4135,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 46.2,
+   "seconds": 45.8,
    "steps": [
     "0:host:earlier_registration",
     "1:user:say",
@@ -4205,7 +4205,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.5,
+   "seconds": 1.3,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -4231,7 +4231,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 7.2,
+   "seconds": 6.5,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -4258,7 +4258,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.1,
+   "seconds": 1.7,
    "steps": [
     "0:user:say",
     "1:host:none",
@@ -4286,7 +4286,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.4,
+   "seconds": 1.2,
    "steps": [
     "0:user:say",
     "1:user:say"
@@ -4312,7 +4312,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.7,
+   "seconds": 1.5,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4339,7 +4339,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.6,
+   "seconds": 1.4,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4366,7 +4366,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.7,
+   "seconds": 61.6,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4683,7 +4683,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.6,
+   "seconds": 1.5,
    "steps": [
     "0:host:linked_worktree",
     "1:user:say",
@@ -4711,7 +4711,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.7,
+   "seconds": 1.6,
    "steps": [
     "0:user:say",
     "1:host:clone",
@@ -4765,7 +4765,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 61.6,
+   "seconds": 61.5,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -4801,7 +4801,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 22.1,
+   "seconds": 22.0,
    "steps": [
     "0:host:prior_off",
     "1:host:none",
@@ -4841,7 +4841,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1127.2,
+   "seconds": 1130.1,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -6469,10 +6469,10 @@
     "status": "PASS",
     "reasons": [],
     "archived": [
-     "m-d820f5ee82e91111"
+     "m-f256698cb65624d6"
     ],
     "arrival": [
-     "m-5b0037263e3b59a5"
+     "m-bac32cd59d4dabfa"
     ],
     "policy": "oldest live off record archived at the cap (memory_store._archived)"
    },
@@ -6509,7 +6509,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 114.8,
+   "seconds": 114.9,
    "steps": [
     "0:user:say",
     "1:host:overflow",
@@ -6627,7 +6627,7 @@
    ],
    "cost_reasons": [],
    "error": null,
-   "seconds": 1.4,
+   "seconds": 1.2,
    "steps": [
     "0:user:say",
     "1:host:change_file",
@@ -6688,7 +6688,7 @@
     "trace is missing coverage for ['memory.strength_faded:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 2.1,
+   "seconds": 1.8,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -6733,7 +6733,7 @@
     "trace is missing coverage for ['memory.strength_raised:pref-indent']; no layer can pass"
    ],
    "error": null,
-   "seconds": 2.0,
+   "seconds": 1.8,
    "steps": [
     "0:user:say",
     "1:user:say",
@@ -6771,7 +6771,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.3,
+   "seconds": 2.4,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6799,7 +6799,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 2.4,
+   "seconds": 2.5,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6826,7 +6826,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 5.7,
+   "seconds": 5.8,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6854,7 +6854,7 @@
    "retrieval_reasons": [],
    "cost_reasons": [],
    "error": null,
-   "seconds": 6.1,
+   "seconds": 5.9,
    "steps": [
     "0:host:earlier_registration",
     "1:user:confirm",
@@ -6874,6 +6874,23 @@
    "results_sha256": "hex:145c6706cb7e947be99598e244bfda3dc534e06816a04852d748653e14100aaf",
    "log_sha256": "hex:972013c08e9438d0c461641d4bea0b0c6099454a37e749196e328665d237b1a3",
    "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-10-results.json and m3-run-10.log",
+   "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
+   "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
+   "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)",
+   "summary": {
+    "FAIL": 29,
+    "INCONCLUSIVE": 45,
+    "UNRUN": 4
+   },
+   "passed": true
+  },
+  {
+   "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+   "dirty": false,
+   "config_id": "m3-cp4-v1",
+   "results_sha256": "hex:f40b9437f67349000af398c45f19a47267b3dc785900719178d5ce5f7a405c34",
+   "log_sha256": "hex:9ade486d2b18ae58255a1bfeeb965ea6b2107e14d1b0091caa8312e113f14f84",
+   "records": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/m3-run-12-results.json and m3-run-12.log",
    "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3/run-config.json --output <dir>",
    "store": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
    "models": "zero-paid stand-ins (no Gateway upstream: no paid call is possible)",

@@ -2,20 +2,20 @@
  "schema": "plan12-memory-m3.revert-checks.v1",
  "sources": [
   {
-   "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_gaps.py"
   },
   {
-   "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_cp4r2.py"
   }
  ],
  "release": "operator 2026-11-18 Docker release on #490: p1211-cp4-test-redis and p1211-cp4-test-data only",
  "checks": [
   {
-   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-gaps-aa51a7f.log",
-   "sha256": "hex:8df6940846578d015757861784b0b2c35a619b6a40a2a2696d85c08bb8338f3b",
-   "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-gaps-5d427a2.log",
+   "sha256": "hex:0533917dacdb03325d4fc11aa75addd22a45f9cf835bce58c7bb00132f08657f",
+   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
    "dirty": false,
    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_gaps.py",
    "caught": 11,
@@ -25,9 +25,9 @@
    "baseline": "PASS"
   },
   {
-   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-cp4r2-aa51a7f.log",
-   "sha256": "hex:9ad4c497ed1d913a9e3b4c0572447e62b92f25f5a10361fc130346a83e0dfe68",
-   "head": "git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+   "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-cp4r2-5d427a2.log",
+   "sha256": "hex:d3f3bc89c1f5af0da7fd4915bc9d8b391edcc38e1a142a118bbbf12a41d29c16",
+   "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
    "dirty": false,
    "script": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/revert_cp4r2.py",
    "caught": 49,

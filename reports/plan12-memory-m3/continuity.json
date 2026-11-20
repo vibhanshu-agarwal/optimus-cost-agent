@@ -134,7 +134,7 @@
    "tests/unit/context/test_memory_continuity.py::test_a_delivered_reply_is_never_called_unfinished_or_completed_and_the_outcome_stays",
    "tests/unit/acp/test_memory_commands.py::test_a_reply_on_the_planners_refusal_stop_is_checkpointed_as_delivered_and_failed"
   ],
-  "tests_from": "PENDING: the final-head full suite, to be recorded in reports/plan12-memory-m3/verification.json; src and tests at that head equal git:aa51a7fa21bea2e5e9b77950d094399e61ccdd97",
+  "tests_from": "the final-head gates in reports/plan12-memory-m3/verification.json, all run on its code head git:5d427a210348dd28898d5cc7099878ab195b6c19",
   "revert": [
    {
     "log": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-108-m3-cp4/evidence/revert-brief-cb4a29c.log",
