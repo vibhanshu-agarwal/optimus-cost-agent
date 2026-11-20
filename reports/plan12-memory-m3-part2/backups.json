@@ -1,0 +1,286 @@
+{
+  "schema": "plan12-memory-m3-part2.backups.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
+  "sources": [
+    {
+      "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
+      "run_id": "20261120T225403-29588-8b4377",
+      "mode": "active",
+      "reason": "default_selection",
+      "native": "valid",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py",
+      "summary": "152 passed, 1 skipped"
+    },
+    {
+      "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
+      "run_id": "20261120T225328-54120-9b0348",
+      "mode": "passive",
+      "reason": "non_default_selection",
+      "native": "not_enrolled",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_backups.py tests/integration/memory/test_recovery.py",
+      "summary": "8 passed",
+      "release": "operator 2026-11-21 'Release all': p1212-memory-test-redis port 6396, volume p1212-memory-test-data, fault injection; backup folder F:\\optimus-p1212-test on physical disk 2 (store data on disk 1)"
+    }
+  ],
+  "cases": [
+    {
+      "case": "B01",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b01_backups_are_off_until_configured_and_write_nothing"
+      ]
+    },
+    {
+      "case": "B02",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b02_b22_a_separate_disk_target_holds_the_exact_generation_bytes",
+        "tests/integration/memory/test_backups.py::test_the_real_disk_query_marks_the_released_folder_as_a_separate_drive"
+      ]
+    },
+    {
+      "case": "B03",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b03_after_downtime_exactly_one_catch_up_snapshot",
+        "tests/unit/context/test_memory_backups.py::test_status_says_scheduling_pauses_while_no_session_is_open"
+      ]
+    },
+    {
+      "case": "B04",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b04_one_publisher_per_project",
+        "tests/unit/context/test_memory_backups.py::test_f14_a_second_host_waits_and_both_show_the_same_status"
+      ]
+    },
+    {
+      "case": "B05",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b05_b06_same_disk_warns_and_unknown_stays_unknown",
+        "tests/unit/context/test_memory_backups.py::test_f9_the_store_location_is_used_only_when_found_and_the_domain_is_refreshed"
+      ]
+    },
+    {
+      "case": "B06",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b05_b06_same_disk_warns_and_unknown_stays_unknown",
+        "tests/unit/context/test_memory_backups.py::test_c13_a_moved_docker_disk_image_never_counts_the_stale_default"
+      ]
+    },
+    {
+      "case": "B07",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_sync_target_without_consent_refused",
+        "tests/unit/context/test_memory_backups.py::test_b07_b08_a_synced_target_needs_consent_and_only_the_users_command_writes_it",
+        "tests/unit/context/test_memory_backups.py::test_c8_a_sync_root_chosen_exactly_needs_consent"
+      ]
+    },
+    {
+      "case": "B08",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b07_b08_a_synced_target_needs_consent_and_only_the_users_command_writes_it"
+      ],
+      "note": "product meaning of the plan's per-write cloud release: a synced target is written only by the user's own /memory backup now"
+    },
+    {
+      "case": "B09",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_changed_target_identity_refuses_write_and_prune",
+        "tests/unit/context/test_memory_backups.py::test_f5_an_earlier_folder_that_changed_is_never_cleaned_through",
+        "tests/unit/context/test_memory_backups.py::test_c9_a_folder_replaced_while_the_confirmation_is_open_is_refused",
+        "tests/unit/context/test_memory_backups.py::test_b09_a_link_in_the_target_path_is_refused"
+      ],
+      "note": "the symbolic-link case SKIPPED on this host (the account cannot create symbolic links); link refusal is otherwise by the reparse-point check"
+    },
+    {
+      "case": "B10",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b10_targets_overlapping_the_workspace_config_recovery_or_a_repository_are_refused",
+        "tests/unit/context/test_memory_backups.py::test_c12_the_memory_store_data_overlap_is_refused_both_ways",
+        "tests/unit/context/test_memory_backups.py::test_f8_a_git_entry_refuses_even_when_git_itself_fails"
+      ]
+    },
+    {
+      "case": "B11",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b11_a_failed_write_keeps_the_last_good_backup_and_retries_only_transients",
+        "tests/unit/context/test_memory_backups.py::test_f4_a_failure_is_not_retried_every_minute",
+        "tests/unit/context/test_memory_backups.py::test_c11_a_permanent_failure_is_held_until_the_user_acts"
+      ]
+    },
+    {
+      "case": "B12",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one",
+        "tests/unit/context/test_memory_backups.py::test_f1_projects_sharing_a_folder_never_touch_each_others_backups",
+        "tests/unit/context/test_memory_backups.py::test_c2_unknown_staging_folders_are_never_removed"
+      ]
+    },
+    {
+      "case": "B13",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one",
+        "tests/unit/context/test_memory_backups.py::test_f14_verification_catches_bytes_that_did_not_reach_the_disk",
+        "tests/unit/context/test_memory_backups.py::test_c3_a_copy_whose_seal_the_store_does_not_confirm_is_not_counted_and_retires_nothing"
+      ]
+    },
+    {
+      "case": "B14",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b14_withdrawal_publishes_clean_then_retires_older_copies_here_and_in_earlier_targets",
+        "tests/unit/context/test_memory_backups.py::test_b14_an_offline_earlier_target_keeps_cleanup_pending",
+        "tests/unit/context/test_memory_backups.py::test_c4_an_earlier_synced_folder_is_cleaned_only_by_the_users_own_backup",
+        "tests/unit/context/test_memory_backups.py::test_c6_an_unreadable_folder_in_an_earlier_target_keeps_its_obligation",
+        "tests/unit/context/test_memory_backups.py::test_f10_an_unreadable_generation_folder_keeps_cleanup_pending"
+      ]
+    },
+    {
+      "case": "B15",
+      "status": "PASS",
+      "tests": [
+        "tests/integration/memory/test_backups.py::test_withdrawal_publishes_clean_before_retiring",
+        "tests/unit/context/test_memory_backups.py::test_c1_a_withdrawal_during_the_backup_stays_pending_for_the_next"
+      ]
+    },
+    {
+      "case": "B20",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b20_an_encrypted_backup_is_refused_and_writes_nothing"
+      ]
+    },
+    {
+      "case": "B22",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b02_b22_a_separate_disk_target_holds_the_exact_generation_bytes"
+      ]
+    },
+    {
+      "case": "B25",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_interrupted_publication_never_counts_staging",
+        "tests/unit/context/test_memory_backups.py::test_f14_a_crash_while_writing_a_file_leaves_no_generation"
+      ]
+    },
+    {
+      "case": "B28",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b28_disabling_or_moving_keeps_every_copy_listed",
+        "tests/unit/context/test_memory_backups.py::test_f2_returning_to_an_earlier_folder_keeps_its_newest_generation"
+      ]
+    },
+    {
+      "case": "B29",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b29_a_relocated_synced_target_loses_its_consent",
+        "tests/unit/context/test_memory_backups.py::test_f6_f7_placement_and_sync_are_checked_again_before_every_write"
+      ]
+    },
+    {
+      "case": "B30",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b30_backup_commands_send_no_folder_to_the_gateway_and_call_no_model"
+      ]
+    },
+    {
+      "case": "B31",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b31_status_separates_boundaries_and_never_claims_external_erasure"
+      ]
+    }
+  ],
+  "contention": {
+    "status": "UNRUN",
+    "reason": "the frozen workload's import leg (targets.json k2_contention) is built in Task 2; proposed to run once at CP2, pending Codex's disposition"
+  },
+  "revert_checks": {
+    "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
+    "caught": 12,
+    "total": 12,
+    "results": [
+      {
+        "control": "backup target identity revalidation",
+        "test": "tests/unit/context/test_memory_backups.py::test_changed_target_identity_refuses_write_and_prune",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "earlier-target identity before cleanup",
+        "test": "tests/unit/context/test_memory_backups.py::test_f5_an_earlier_folder_that_changed_is_never_cleaned_through",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "project scoping in a shared folder",
+        "test": "tests/unit/context/test_memory_backups.py::test_f1_projects_sharing_a_folder_never_touch_each_others_backups",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "no automatic retry after a failure",
+        "test": "tests/unit/context/test_memory_backups.py::test_f4_a_failure_is_not_retried_every_minute",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "sync/cloud consent",
+        "test": "tests/unit/context/test_memory_backups.py::test_sync_target_without_consent_refused",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "generation seal verification (Gateway)",
+        "test": "tests/integration/memory/test_backups.py::test_corrupted_generation_refuses_restore",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "backup authentication against the Gateway",
+        "test": "tests/unit/context/test_memory_backups.py::test_c3_a_copy_whose_seal_the_store_does_not_confirm_is_not_counted_and_retires_nothing",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "staging ownership",
+        "test": "tests/unit/context/test_memory_backups.py::test_c2_unknown_staging_folders_are_never_removed",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "generation digest check (host)",
+        "test": "tests/integration/memory/test_backups.py::test_corrupted_generation_refuses_restore",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "deletion frontier reconciliation",
+        "test": "tests/integration/memory/test_backups.py::test_restore_applies_newer_deletions",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "staged atomic publication",
+        "test": "tests/unit/context/test_memory_backups.py::test_interrupted_publication_never_counts_staging",
+        "verdict": "CAUGHT"
+      },
+      {
+        "control": "clean-before-retire cleanup",
+        "test": "tests/integration/memory/test_backups.py::test_withdrawal_publishes_clean_before_retiring",
+        "verdict": "CAUGHT"
+      }
+    ]
+  }
+}
