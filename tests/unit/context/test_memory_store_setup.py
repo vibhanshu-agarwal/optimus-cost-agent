@@ -83,6 +83,40 @@ def test_a_keyring_failure_configures_nothing(tmp_path: Path) -> None:
     assert sc.config_literal(sc.memory_store_root(tmp_path)) is None
 
 
+def _unavailable_path(tmp_path: Path, backend: Any) -> None:
+    """With no usable OS keyring, setup configures nothing, and a Gateway reading that keyring for a configured store says the
+    password is missing (plan v5: CI without Secret Service proves the unavailable path)."""
+    import time
+
+    from optimus_gateway import memory_store
+    from optimus_security import memory_store_contract as msc
+
+    with pytest.raises(memory_setup.MemorySetupError, match="nothing was configured"):
+        _run(tmp_path / "unavailable", backend)
+    assert sc.config_literal(sc.memory_store_root(tmp_path / "unavailable")) is None
+    _literal, config, _refusal = sc.read(_run(tmp_path / "configured").parent)
+    assert config is not None
+    service = memory_store.build_memory_store_service(config, keyring_backend=backend, hmac_key=b"k" * 32)
+    assert service.handle(b'{"op":"capabilities"}', deadline=time.monotonic() + 1) == (503, msc.error_body("MEMORY_STORE_CREDENTIAL_MISSING"))
+
+
+def test_the_keyring_librarys_no_backend_configures_nothing(tmp_path: Path) -> None:
+    from keyring.backends import fail
+
+    _unavailable_path(tmp_path, fail.Keyring())
+
+
+def test_a_host_whose_os_keyring_is_unavailable_configures_nothing(tmp_path: Path) -> None:
+    """The real `keyring` module as the host resolves it. Runs where the platform offers no keyring (Linux CI has no Secret
+    Service); never on a host with a real one, where it would write."""
+    import keyring
+    from keyring.backends import fail
+
+    if not isinstance(keyring.get_keyring(), fail.Keyring):
+        pytest.skip(f"this host has an OS keyring ({type(keyring.get_keyring()).__name__}); tests/integration/memory qualifies it")
+    _unavailable_path(tmp_path, keyring)
+
+
 def test_a_rerun_never_replaces_a_working_password(tmp_path: Path) -> None:
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)

@@ -951,7 +951,8 @@ class MemoryStore:
                     break
                 items.append(record)
             cursor = self._seal(body["project"], body["scope"], items[-1]["item"]) if len(ids) > len(items) else None
-            return {"status": "ok", "items": items, "cursor": cursor}
+            # #514: the confirmed stream position this page was answered from, so a turn's record can name it
+            return {"status": "ok", "items": items, "cursor": cursor, "watermark": fold.head}
 
         return self._served(body["project"], page)
 

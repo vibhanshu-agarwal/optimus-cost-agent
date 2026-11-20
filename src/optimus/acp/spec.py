@@ -38,6 +38,7 @@ from optimus.acp.debug_trace import (
     log_auto_route,
     log_context_fault,
     log_late_worker_failure,
+    log_memory_served,
     log_pre_run_refusal,
     log_prompt_refusal,
 )
@@ -2212,7 +2213,7 @@ class AcpDuplexAdapter:
                     # plan's context digest. The brief's turn reuses the served set the brief listed, read once.
                     sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
                     if turn.served_memory is None:
-                        turn.served_memory, block = await self._serve_memory(session)
+                        turn.served_memory, block = await self._serve_memory(session, turn)
                     else:
                         block = memory_serving.render(turn.served_memory, sanitize=sanitize)
                     block = memory_serving.with_brief(block, turn.brief, sanitize=sanitize)
@@ -2755,16 +2756,21 @@ class AcpDuplexAdapter:
         except Exception:  # noqa: BLE001 - informational, like the Auto line
             return
 
-    async def _serve_memory(self, session: AcpSpecSession) -> tuple[Any, str]:
+    async def _serve_memory(self, session: AcpSpecSession, turn: AcpPromptTurn) -> tuple[Any, str]:
         """The project's servable memory for this turn, read now from the store's confirmed view and rendered as untrusted data.
-        An outage or a slow store serves none: memory degrades on its own and never stops the turn."""
+        An outage or a slow store serves none: memory degrades on its own and never stops the turn. The trace records which (#514)."""
         commands = session.memory_commands
         sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
         try:
             served = await asyncio.wait_for(asyncio.to_thread(commands.served),
                                             timeout=MEMORY_SERVE_SECONDS)
-        except Exception:  # noqa: BLE001 - no memory this turn; the turn goes on as it would without a store
+        except TimeoutError:
+            log_memory_served(run_id=turn.run_id, source="turn", outcome="timeout")
             return memory_serving.EMPTY, ""
+        except Exception:  # noqa: BLE001 - no memory this turn; the turn goes on as it would without a store
+            log_memory_served(run_id=turn.run_id, source="turn", outcome="error")
+            return memory_serving.EMPTY, ""
+        log_memory_served(run_id=turn.run_id, source="turn", outcome="served", served=served)
         return served, memory_serving.render(served, sanitize=sanitize)
 
     async def _emit_citation_check(self, turn: AcpPromptTurn, text: str) -> None:
@@ -2796,6 +2802,7 @@ class AcpDuplexAdapter:
         if text is None or turn.turn_control.transport_abandoned():
             return
         turn.served_memory, turn.brief = served[0], text
+        log_memory_served(run_id=turn.run_id, source="brief", outcome="served", served=served[0])
         with contextlib.suppress(Exception):
             await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=text),
                                         require_flushed=True)

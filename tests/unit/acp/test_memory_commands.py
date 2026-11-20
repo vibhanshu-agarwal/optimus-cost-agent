@@ -532,11 +532,11 @@ def test_a_store_that_cannot_answer_serves_no_memory_and_the_turn_goes_on(tmp_pa
                                    memory_extractor_factory=lambda _workspace, **_kwargs: _PurgeSource(store))
         session_id = await new_session(adapter, tmp_path, mode="chat")
         await rpc(adapter, prompt_request(session_id, "/remember Never push to main.", "p-1"))
-        _adapter_items = store.items  # a store that fails every read from now on
-        store.items = lambda *_a, **_k: (_ for _ in ()).throw(OSError("down"))  # type: ignore[method-assign]
+        _adapter_page = store.page  # a store that fails every listing from now on (serving lists through `page`)
+        store.page = lambda *_a, **_k: (_ for _ in ()).throw(OSError("down"))  # type: ignore[method-assign]
         response = await rpc(adapter, prompt_request(session_id, "May I push?", "p-2"))
         assert response["result"]["stopReason"] == "end_turn" and runner.requests[-1].memory_context == ""
-        store.items = _adapter_items  # type: ignore[method-assign]
+        store.page = _adapter_page  # type: ignore[method-assign]
     asyncio.run(scenario())
 
 

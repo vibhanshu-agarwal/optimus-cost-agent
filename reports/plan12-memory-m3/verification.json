@@ -148,22 +148,24 @@
  },
  "linux_ci": {
   "pr": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/504",
-  "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19",
   "checks": [
    {
     "name": "verify",
     "state": "SUCCESS",
-    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/44650769307/job/136004782751"
+    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/44650769307/job/136004782751",
+    "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19"
    },
    {
     "name": "page-fixtures",
     "state": "SUCCESS",
-    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/44638438438/job/135962926236"
+    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/44638438438/job/135962926236",
+    "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19"
    },
    {
     "name": "clean-environment-recheck",
     "state": "SUCCESS",
-    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/44638438704/job/135962927296"
+    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/44638438704/job/135962927296",
+    "head": "git:5d427a210348dd28898d5cc7099878ab195b6c19"
    }
   ]
  },

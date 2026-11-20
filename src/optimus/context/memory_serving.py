@@ -65,6 +65,7 @@ class ServedSet:
     complete: bool = True  # False: the store could not list every item, so the block says memory is partial
     reverify: tuple[tuple[str, int, str], ...] = ()  # (item, version, changed path): not served until the user edits it
     elsewhere: tuple[tuple[str, int, str], ...] = ()  # (item, version, branch): saved for another branch, not served here
+    watermarks: tuple[str, ...] = ()  # #514: the confirmed stream position each listed page was answered from
 
     @property
     def items(self) -> tuple[ServedMemory, ...]:
@@ -79,13 +80,13 @@ EMPTY: Final = ServedSet((), ())
 
 
 def select(served: Iterable[ServedMemory], *, complete: bool = True, reverify: tuple[tuple[str, int, str], ...] = (),
-           elsewhere: tuple[tuple[str, int, str], ...] = ()) -> ServedSet:
+           elsewhere: tuple[tuple[str, int, str], ...] = (), watermarks: tuple[str, ...] = ()) -> ServedSet:
     """Rank and bound what may be served. User items are protected and come first; agent lessons are optional."""
     items = list(served)
     protected = sorted((i for i in items if i.trust == "user-authored"), key=lambda i: (_USER_RANK.get(i.kind, 9), i.item, i.version))
     optional = sorted((i for i in items if i.trust != "user-authored"), key=lambda i: (_AGENT_RANK.get(i.kind, 9), i.item, i.version))
     return ServedSet(tuple(protected[:MAX_PROTECTED]), tuple(optional[:MAX_OPTIONAL]), max(0, len(optional) - MAX_OPTIONAL),
-                     max(0, len(protected) - MAX_PROTECTED), complete, reverify, elsewhere)
+                     max(0, len(protected) - MAX_PROTECTED), complete, reverify, elsewhere, watermarks)
 
 
 def _digest(policy: FilePolicy, relative: str) -> str | None:
@@ -154,8 +155,10 @@ def from_store(store: Any, scope: str, *, root: Path | None = None, branch: str 
     elsewhere: list[tuple[str, int, str]] = []
     policy = FilePolicy(root) if root is not None else None  # read afresh each turn: an ignore file may have changed
     cursor: str | None = None
+    watermarks: list[str] = []
     for _ in range(MAX_PAGES):
-        rows, cursor = store.items(scope, limit=100, cursor=cursor)
+        rows, cursor, watermark = store.page(scope, limit=100, cursor=cursor)
+        watermarks.append(watermark)
         for row in rows:
             event = row.event
             state = ItemState(event.project, event.item, event.version, event.trust, event.status, event.kind, event.title,
@@ -172,8 +175,8 @@ def from_store(store: Any, scope: str, *, root: Path | None = None, branch: str 
                 continue
             found.append(state.served())
         if cursor is None:
-            return select(found, reverify=tuple(reverify), elsewhere=tuple(elsewhere))
-    return select(found, complete=False, reverify=tuple(reverify), elsewhere=tuple(elsewhere))
+            return select(found, reverify=tuple(reverify), elsewhere=tuple(elsewhere), watermarks=tuple(watermarks))
+    return select(found, complete=False, reverify=tuple(reverify), elsewhere=tuple(elsewhere), watermarks=tuple(watermarks))
 
 
 def render(served: ServedSet, *, sanitize: Callable[[str], str] = lambda text: text) -> str:
