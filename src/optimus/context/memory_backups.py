@@ -55,7 +55,7 @@ import shutil
 import sys
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final
@@ -111,6 +111,7 @@ class BackupState:
     cleanup_pending: list[str] = field(default_factory=list)  # withdrawn items older generations at the target may still hold
     unreadable: list[str] = field(default_factory=list)  # folders at the target that may hold withdrawn text but cannot be read
     prior: list[dict[str, Any]] = field(default_factory=list)  # earlier targets: path, identity, synced, owes_cleanup, unreachable
+    deletion_revision: int = 0  # moves with every withdrawal: a cleanup that started before one never clears its obligation
 
     def to_json(self) -> dict[str, Any]:
         return {"version": 3, **self.__dict__}
@@ -125,22 +126,43 @@ class BackupState:
             state = cls(**{name: value for name, value in data.items() if name in names})
         except TypeError:
             raise _corrupt() from None
-        checks = (
-            _optional(state.target, str), isinstance(state.enabled, bool), _optional(state.identity, dict),
-            state.domain in _DOMAINS, isinstance(state.domain_reason, str), _optional(state.synced, str),
-            _optional(state.consent, str), _optional(state.last_success, dict),
-            state.last_attempt_ms is None or (isinstance(state.last_attempt_ms, int) and not isinstance(state.last_attempt_ms, bool)),
-            _optional(state.failure, dict), _optional(state.held, str),
-            isinstance(state.cleanup_pending, list) and all(isinstance(item, str) for item in state.cleanup_pending),
-            isinstance(state.unreadable, list) and all(isinstance(name, str) for name in state.unreadable),
-            isinstance(state.prior, list) and all(isinstance(entry, dict) and isinstance(entry.get("path"), str)
-                                                  and _optional(entry.get("identity"), dict) for entry in state.prior),
-            state.last_success is None or isinstance(state.last_success.get("at_ms"), int),
-            state.failure is None or isinstance(state.failure.get("message"), str),
-        )
-        if not all(checks):
+        if not _valid(state):
             raise _corrupt()
         return state
+
+
+def _int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _fields(record: Any, required: Mapping[str, Callable[[Any], bool]]) -> bool:
+    return isinstance(record, dict) and all(name in record and check(record[name]) for name, check in required.items())
+
+
+_STR = lambda value: isinstance(value, str)  # noqa: E731
+_BOOL = lambda value: isinstance(value, bool)  # noqa: E731
+_SUCCESS: Final = {"name": _STR, "head": _STR, "count": _int, "at_ms": _int}
+_FAILURE: Final = {"code": _STR, "message": _STR, "at_ms": _int, "attempts": _int, "transient": _BOOL}
+_IDENTITY: Final = {"path": _STR, "volume": _int, "folder": _int}
+_PRIOR: Final = {"path": _STR, "owes_cleanup": _BOOL, "unreachable": _BOOL}
+
+
+def _valid(state: BackupState) -> bool:
+    """Every persisted field's type, outer types before anything nested is read (each check short-circuits)."""
+    return bool(
+        _optional(state.target, str) and isinstance(state.enabled, bool)
+        and (state.identity is None or _fields(state.identity, _IDENTITY))
+        and isinstance(state.domain, str) and state.domain in _DOMAINS and isinstance(state.domain_reason, str)
+        and _optional(state.synced, str) and _optional(state.consent, str)
+        and (state.last_success is None or _fields(state.last_success, _SUCCESS))
+        and (state.last_attempt_ms is None or _int(state.last_attempt_ms))
+        and (state.failure is None or _fields(state.failure, _FAILURE)) and _optional(state.held, str)
+        and isinstance(state.cleanup_pending, list) and all(isinstance(item, str) for item in state.cleanup_pending)
+        and isinstance(state.unreadable, list) and all(isinstance(name, str) for name in state.unreadable)
+        and _int(state.deletion_revision)
+        and isinstance(state.prior, list) and all(
+            _fields(entry, _PRIOR) and (entry.get("identity") is None or _fields(entry["identity"], _IDENTITY))
+            and _optional(entry.get("synced"), str) and isinstance(entry.get("held", False), bool) for entry in state.prior))
 
 
 class BackupStateFile:
@@ -313,15 +335,18 @@ def default_store_data() -> Path | None:
     (`local_infra.ensure_memory_store_redis`), so its data is the engine's: on Windows, Docker Desktop's WSL disk image (its
     configured custom location, else the default one); on Linux, the configured `data-root`, else `/var/lib/docker`, but not when
     a rootless engine's root also exists. Anything not found where Docker records it gives None: unknown."""
+    if not _default_engine_selected():
+        return None  # another engine or context may run the store: its storage is not established
     if sys.platform == "win32":
         appdata, local = os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA")
-        settings: dict[str, Any] = {}
-        if appdata:
-            try:
-                loaded = json.loads((Path(appdata) / "Docker" / "settings-store.json").read_text(encoding="utf-8"))
-                settings = loaded if isinstance(loaded, dict) else {}
-            except (OSError, ValueError):
-                settings = {}
+        if not appdata:
+            return None
+        try:
+            settings = json.loads((Path(appdata) / "Docker" / "settings-store.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None  # unreadable settings never fall back to a possibly stale default image
+        if not isinstance(settings, dict) or settings.get("WslEngineEnabled") is False:
+            return None
         custom = next((settings[key] for key in ("CustomWslDistroDir", "customWslDistroDir", "DataFolder", "dataFolder")
                        if isinstance(settings.get(key), str) and settings[key]), None)
         if custom is not None:  # a moved disk image: only its own location counts, never the stale default
@@ -337,6 +362,22 @@ def default_store_data() -> Path | None:
     if (Path.home() / ".local" / "share" / "docker").is_dir():
         return None  # a rootless engine may be the one running the store: not established
     return root if (root / "volumes").is_dir() else None
+
+
+def _default_engine_selected() -> bool:
+    """Whether the Docker client selects the local default engine (Docker Desktop's own on Windows, the system daemon on Linux):
+    no DOCKER_HOST or DOCKER_CONTEXT override and a current context that is the default one. Anything else is not established."""
+    if os.environ.get("DOCKER_HOST") or os.environ.get("DOCKER_CONTEXT"):
+        return False
+    config = Path(os.environ.get("DOCKER_CONFIG") or Path.home() / ".docker") / "config.json"
+    try:
+        current = json.loads(config.read_text(encoding="utf-8")).get("currentContext")
+    except FileNotFoundError:
+        current = None
+    except (OSError, ValueError, AttributeError):
+        return False
+    allowed = {None, "", "default", "desktop-linux"} if sys.platform == "win32" else {None, "", "default"}
+    return current in allowed
 
 
 def failure_domain(target: Path, references: dict[str, Path | None],
@@ -493,6 +534,7 @@ class Backups:
             if item not in state.cleanup_pending:
                 state.cleanup_pending.append(item)
             del state.cleanup_pending[:-10_000]
+            state.deletion_revision += 1
             for prior in state.prior:
                 prior["owes_cleanup"] = True
         self._state.update(change)
@@ -606,17 +648,20 @@ class Backups:
         return chosen, place / name
 
     def _authenticate(self, directory: Path, project: str) -> list[dict[str, Any]]:
-        """The published copy against the Gateway: the same generation read again from the store (same host metadata, at the
-        same head) must give byte-equal entries and the same seal. Returns the entries."""
+        """A generation against the Gateway, before any byte of it is staged: the same generation read again from the store
+        (same host metadata) must be at the same head and deletion-journal count, and then give byte-equal entries, the same
+        deletion frontier and the same seal; the manifest's count must be its entries'. Memory moving on (head or journal) is
+        transient: the generation is refreshed. Returns the entries."""
         manifest, entries = mr.read_generation(directory, project)
         try:
             fresh, final = self._recovery._read_generation(manifest["bind"])
         except mr.RecoveryError as failure:
             raise BackupError(failure.code, failure.message, transient=True) from None
-        if final["head"] != manifest["head"]:
+        if final["head"] != manifest["head"] or final["journal"] != manifest["journal"]:
             raise BackupError("BACKUP_SOURCE_MOVED", "Memory changed while the backup was checked; it will be tried again.",
                               transient=True)
-        if final["seal"] != manifest["seal"] or fresh != entries or final["journal"] != manifest["journal"]:
+        if (final["seal"] != manifest["seal"] or fresh != entries or final["frontier"] != manifest["frontier"]
+                or manifest["count"] != len(entries)):
             raise BackupError("BACKUP_GENERATION_UNAUTHENTIC", "The backup does not match what the memory store sealed; it was not "
                               "counted and no older backup was removed.")
         return entries
@@ -625,6 +670,7 @@ class Backups:
         project = self.project
         pending = list(self._state.load().cleanup_pending)  # before the source: a withdrawal after this point stays pending
         generation, source = self._source(project)  # an export may wait; the target is checked after it
+        entries = self._authenticate(source, project)  # the exact bytes to copy, authenticated before anything is staged
         state = self._state.load()
         target = self._checked_target(state)
         published = target / generation.name
@@ -633,15 +679,14 @@ class Backups:
                 if identity(target) != state.identity or _reparse_in_chain(target) is not None:
                     raise BackupError("BACKUP_TARGET_CHANGED", f"The backup folder {target} changed while the backup started; nothing "
                                       "was written or removed.")
-                fresh_copy = not published.is_dir()
-                if fresh_copy:
-                    self._publish(source, published, self._staging_prefix)
-                try:
-                    entries = self._authenticate(published, project)
-                except BackupError as failure:
-                    if fresh_copy and failure.code == "BACKUP_GENERATION_UNAUTHENTIC":
-                        shutil.rmtree(published, ignore_errors=True)  # never left behind as a restorable-looking generation
-                    raise
+                if published.is_dir():
+                    for name in mr.LAYOUT:  # an earlier run published it: it must be byte for byte the authenticated source
+                        if (published / name).read_bytes() != (source / name).read_bytes():
+                            raise BackupError("BACKUP_GENERATION_UNAUTHENTIC", f"The existing backup {generation.name} differs from "
+                                              "what the memory store sealed; nothing was removed.")
+                else:
+                    self._publish(source, published, self._staging_prefix)  # staged bytes equal the authenticated source
+                mr.read_generation(published, project)
                 live = {shaped["entry"]["item"] for shaped in entries if shaped["entry"].get("statement")}
                 proven = [item for item in pending if item not in live]  # this generation holds no text for these items
                 unreadable = self._retire(target, keep=generation.name, all_older=bool(proven) and proven == pending)
@@ -674,8 +719,8 @@ class Backups:
 
     @staticmethod
     def _publish(source: Path, final: Path, prefix: str) -> None:
-        """Exclusive staging named for this project, every file fsynced and compared byte for byte with the generation it copies,
-        then one atomic rename."""
+        """Exclusive staging named for this project, every file fsynced and compared byte for byte with the authenticated generation
+        it copies, then one atomic rename: what is published is only ever the authenticated bytes."""
         staging = final.parent / f"{prefix}{secrets.token_hex(8)}"
         staging.mkdir()
         try:
@@ -727,6 +772,7 @@ class Backups:
         state = self._state.load()
         if not state.prior:
             return
+        revision = state.deletion_revision  # a withdrawal after this keeps every obligation it set
         outcome: dict[str, dict[str, bool]] = {}
         for prior in state.prior:
             folder = Path(prior["path"])
@@ -754,11 +800,11 @@ class Backups:
                 if result is None:
                     kept.append(prior)
                     continue
-                if not result["holds"]:
+                if not result["holds"] and current.deletion_revision == revision:
                     continue
                 prior["unreachable"], prior["held"] = result["unreachable"], result["held"]
-                if not result["unreachable"] and not result["held"]:  # cleaned: it still owes only for what it could not read
-                    prior["owes_cleanup"] = result["owes"]
+                if not result["unreachable"] and not result["held"] and current.deletion_revision == revision:
+                    prior["owes_cleanup"] = result["owes"]  # cleaned: it still owes only for what it could not read
                 kept.append(prior)
             current.prior = kept
         self._state.update(change)

@@ -914,8 +914,12 @@ def test_c10_malformed_backup_settings_are_corrupt_and_never_break_restore(tmp_p
     host = _Backed(tmp_path, repo, places, _Clock())
     host.remember("Never push to main.")
     host.set_up(places["separate"] / "b")
-    for bad in ({"project": host.store.project, "prior": None}, {"project": host.store.project, "enabled": "yes"},
-                {"project": host.store.project, "last_success": {"at_ms": "soon"}}):
+    project = host.store.project
+    for bad in ({"project": project, "prior": None}, {"project": project, "enabled": "yes"},
+                {"project": project, "last_success": {"at_ms": "soon"}}, {"project": project, "domain": []},
+                {"project": project, "last_success": []}, {"project": project, "failure": []},
+                {"project": project, "last_success": {"at_ms": 1}}, {"project": project, "prior": [{"path": "x"}]},
+                {"project": project, "identity": {"path": "x"}}):
         host.backups._state.path.write_text(json.dumps(bad), encoding="utf-8")
         with pytest.raises(mb.BackupError) as corrupt:
             host.backups.state()
@@ -974,3 +978,183 @@ def test_c13_a_moved_docker_disk_image_never_counts_the_stale_default(tmp_path: 
     moved.parent.mkdir(parents=True)
     moved.write_bytes(b"")
     assert mb.default_store_data() == moved
+
+
+# --- Codex CP1 review 2 findings ----------------------------------------------------------------------------------------
+
+
+def _tamper_source(host: _Backed, change: Any) -> None:
+    name = (host.recovery.state().exported or {})["name"]
+    path = Path(host.recovery.state().destination or "") / name / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    change(manifest)
+    path.write_text(json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True), encoding="utf-8")
+
+
+@pytest.mark.parametrize("field", ["frontier", "count"])
+def test_r1_a_changed_deletion_frontier_or_count_is_never_counted(tmp_path: Path, repo: Path, places: dict[str, Path], field: str) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    (old,) = _published(target)
+    host.remember("Tests run with pytest -q.")
+    host.run("/memory export")
+    clock.now += 40 * DAY
+    if field == "frontier":
+        _tamper_source(host, lambda m: m["frontier"].__setitem__("deletions", m["frontier"]["deletions"] + 3))  # seal unchanged
+    else:
+        _tamper_source(host, lambda m: m.__setitem__("count", m["count"] + 1))
+    with pytest.raises(mb.BackupError) as refused:
+        host.backups.backup()
+    assert refused.value.code == "BACKUP_GENERATION_UNAUTHENTIC"
+    assert _published(target) == [old] and host.backups.state().last_success["name"] == old  # type: ignore[index]
+
+
+def test_r2_a_withdrawal_during_an_earlier_targets_scan_keeps_its_obligation(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    gone = host.remember(CANARY)
+    host.set_up(places["separate"] / "a")
+    host.set_up(places["separate"] / "b")
+    assert not host.backups.state().prior[0]["owes_cleanup"]
+    clock.now += 2 * DAY
+    host.remember("Tests run with pytest -q.")
+    original = mb.Backups._prior_usable
+
+    def scanning(self: mb.Backups, prior: dict[str, Any], folder: Path) -> bool:
+        usable = original(self, prior, folder)
+        self.withdrawn(gone[0])  # the withdrawal lands between the scan and its state update
+        return usable
+    monkeypatch.setattr(mb.Backups, "_prior_usable", scanning)
+    host.backups.backup()
+    monkeypatch.undo()
+    (prior,) = host.backups.state().prior
+    assert prior["owes_cleanup"] and _published(places["separate"] / "a")
+
+
+def test_r4_a_journal_moving_on_is_source_movement_not_a_failure(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+    real = host.recovery._read_generation
+    calls: list[int] = []
+
+    def purge_in_flight(bind: str) -> Any:
+        entries, final = real(bind)
+        calls.append(1)
+        if len(calls) == 1:
+            return entries, final  # the export itself
+        return entries, {**final, "journal": final["journal"] + 1, "seal": "f" * 64}  # a purge's intent journalled, head unchanged
+    monkeypatch.setattr(host.recovery, "_read_generation", purge_in_flight)
+    with pytest.raises(mb.BackupError) as moved:
+        host.backups.backup()
+    assert moved.value.code == "BACKUP_SOURCE_MOVED" and moved.value.transient and host.backups.state().failure is None
+    monkeypatch.undo()
+    assert host.backups.run_if_due() is not None  # the next scheduled check simply takes it
+
+
+def test_r5_only_authenticated_bytes_are_published_and_a_crash_after_publication_is_reconciled(
+        tmp_path: Path, repo: Path, places: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+    order: list[str] = []
+    authenticate, replace = mb.Backups._authenticate, os.replace
+    monkeypatch.setattr(mb.Backups, "_authenticate", lambda self, d, p: order.append("authenticated") or authenticate(self, d, p))
+
+    def renamed(source: Any, destination: Any) -> None:
+        replace(source, destination)
+        if str(target) in str(destination):
+            order.append("published")
+            raise KeyboardInterrupt  # killed right after the rename, before anything is recorded
+    monkeypatch.setattr(os, "replace", renamed)
+    with pytest.raises(KeyboardInterrupt):
+        host.backups.backup()
+    monkeypatch.undo()
+    assert order == ["authenticated", "published"]
+    newest = max(_published(target))
+    assert host.backups.state().last_success["name"] != newest  # type: ignore[index]  # not counted yet
+    generation = host.backups.backup()  # the restart reconciles: the published copy is checked against the source, then counted
+    assert generation.name == newest and host.backups.state().last_success["name"] == newest  # type: ignore[index]
+
+
+def test_r6_docker_storage_counts_only_for_the_default_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCKER_CONFIG", str(tmp_path / "docker-config"))
+    monkeypatch.delenv("DOCKER_HOST", raising=False)
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    assert mb._default_engine_selected()
+    monkeypatch.setenv("DOCKER_HOST", "tcp://elsewhere:2375")
+    assert not mb._default_engine_selected() and mb.default_store_data() is None
+    monkeypatch.delenv("DOCKER_HOST")
+    (tmp_path / "docker-config").mkdir()
+    (tmp_path / "docker-config" / "config.json").write_text(json.dumps({"currentContext": "remote-box"}), encoding="utf-8")
+    assert not mb._default_engine_selected() and mb.default_store_data() is None
+    if sys.platform == "win32":
+        (tmp_path / "docker-config" / "config.json").write_text(json.dumps({"currentContext": "desktop-linux"}), encoding="utf-8")
+        monkeypatch.setenv("APPDATA", str(tmp_path / "no-roaming"))
+        default = tmp_path / "local" / "Docker" / "wsl" / "disk" / "docker_data.vhdx"
+        default.parent.mkdir(parents=True)
+        default.write_bytes(b"")
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+        assert mb.default_store_data() is None  # unreadable Docker Desktop settings: never the default image
+
+
+def test_b18_a_lost_verification_key_refuses_restore_readably(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    from optimus_gateway import memory_store
+
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    (name,) = _published(places["separate"] / "b")
+    fresh = _Backed(tmp_path / "lost", repo, places, _Clock())
+    fresh.service._store._recovery_key = memory_store.recovery_key("a new password after the keyring was lost")  # type: ignore[attr-defined]
+    host.rebind(fresh.service)
+    answer = host.run(f"/memory restore {name}")
+    assert "Not restored" in answer.text and host.items() == {}, answer.text
+
+
+def test_b26_an_interrupted_restore_from_a_backup_publishes_nothing_and_a_restart_reconciles(
+        tmp_path: Path, repo: Path, places: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    host = _Backed(tmp_path, repo, places, _Clock())
+    for n in range(12):
+        host.remember(f"Rule number {n} holds.")
+    host.set_up(places["separate"] / "b")
+    (name,) = _published(places["separate"] / "b")
+    expected = host.items()
+    fresh = _Backed(tmp_path / "lost", repo, places, _Clock())
+    host.rebind(fresh.service)
+    call = host.store.call
+
+    def killed(op: str, **body: Any) -> Any:
+        if op == "restore" and body.get("batch") == 1:
+            raise KeyboardInterrupt  # killed between batches: staged, never published
+        return call(op, **body)
+    monkeypatch.setattr(host.store, "call", killed)
+    with pytest.raises(KeyboardInterrupt):
+        host.run(f"/memory restore {name}")
+    monkeypatch.undo()
+    assert host.items() == {} and host.recovery.recovery_required(fresh=True)  # nothing staged is served
+    update = host.recovery._state.update
+    state_calls: list[int] = []
+
+    def crash_after_publication(change: Any) -> Any:
+        state_calls.append(1)
+        raise KeyboardInterrupt  # the store published; the host died before recording it
+    monkeypatch.setattr(host.recovery._state, "update", crash_after_publication)
+    with pytest.raises(KeyboardInterrupt):
+        host.run(f"/memory restore {name}")
+    monkeypatch.setattr(host.recovery._state, "update", update)
+    assert host.items() == expected  # published whole, exactly once
+    again = host.run(f"/memory restore {name}").text
+    assert "Restored" not in again and host.items() == expected  # a restart's retry finds it done and changes nothing
