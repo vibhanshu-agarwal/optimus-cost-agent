@@ -921,6 +921,89 @@ def test_abort_with_a_positive_signal_is_still_stop(tmp_path, windows_shaped_pat
     assert run.gate().disposition is D.ZERO_ENTRY_REACHABLE_STOP
 
 
+
+@pytest.mark.parametrize("arm", ["a_prime", "r_refusal"])
+@pytest.mark.parametrize("captured_stop", [True, False])
+def test_cp1_review_relay_survives_capture_record_write_failure(tmp_path, windows_shaped_paths, monkeypatch, arm, captured_stop):
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_stop else None))
+    write_document = col._Emitter.document
+
+    def write_with_fault(emitter, kind, role, locator, body, arm_id="", launch_id=""):
+        if (kind, arm_id, launch_id) == ("launch", arm, "reopen"):
+            raise OSError("synthetic custody record write failure")
+        write_document(emitter, kind, role, locator, body, arm_id, launch_id)
+
+    monkeypatch.setattr(col._Emitter, "document", write_with_fault)
+    run.collect()
+    result = run.gate()
+    if captured_stop:
+        assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP, result.reason_codes()
+        assert result.primary.subject == arm
+    else:
+        assert result.disposition in (D.INVALID_CURRENT_CLIENT_GATE, D.INDETERMINATE_CURRENT_CLIENT_GATE)
+
+
+@pytest.mark.parametrize("captured_stop", [True, False])
+def test_cp1_review_database_survives_checkpoint_record_write_failure(tmp_path, windows_shaped_paths, monkeypatch, captured_stop):
+    run = Run(tmp_path, run_options(pre_reopen_binding_arm="a_prime" if captured_stop else None))
+    write_document = col._Emitter.document
+
+    def write_with_fault(emitter, kind, role, locator, body, arm_id="", launch_id=""):
+        if (kind, arm_id, launch_id) == ("checkpoint", "a_prime", "first"):
+            raise OSError("synthetic custody record write failure")
+        write_document(emitter, kind, role, locator, body, arm_id, launch_id)
+
+    monkeypatch.setattr(col._Emitter, "document", write_with_fault)
+    run.collect()
+    result = run.gate()
+    if captured_stop:
+        assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP, result.reason_codes()
+        assert R.REOPEN_PRE_BINDING_NON_NULL in _codes(result)
+    else:
+        assert result.disposition in (D.INVALID_CURRENT_CLIENT_GATE, D.INDETERMINATE_CURRENT_CLIENT_GATE)
+
+
+@pytest.mark.parametrize("captured_stop", [True, False])
+def test_cp1_review_later_arm_survives_missing_earlier_record(tmp_path, windows_shaped_paths, captured_stop):
+    from dataclasses import replace
+
+    arm = "r_refusal"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm if captured_stop else None))
+    captured = run.collect()
+    review_batch = replace(
+        captured,
+        artifacts=tuple(item for item in captured.artifacts if item.role != "plan117_v5_launch:a_prime:first"),
+    )
+    provisional = c.sha256_hex((run.run_dir / "provisional-result.json").read_bytes())
+    raw = col.derive_raw_document(run.context, (review_batch,), provisional_sha256=provisional)
+    result = c.reduce_document(raw, layer="raw")
+    if captured_stop:
+        assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP, result.reason_codes()
+        assert result.primary.subject == arm
+    else:
+        assert result.disposition in (D.INVALID_CURRENT_CLIENT_GATE, D.INDETERMINATE_CURRENT_CLIENT_GATE)
+
+
+@pytest.mark.parametrize("code", ["binding_database_unreadable", "ambiguous_database_location"])
+def test_cp1_review_database_custody_failure_retains_private_scratch(tmp_path, windows_shaped_paths, monkeypatch, code):
+    from dataclasses import replace
+
+    run = Run(tmp_path)
+    actions = run.host.actions()
+
+    def refuse_database(_profile):
+        raise HostError(code)
+
+    monkeypatch.setattr(run.host, "actions", lambda: replace(actions, locate_database=refuse_database))
+    run.collect()
+    raw = run.raw()
+    assert raw["aborted"] == {"reason_code": code, "stage": "launch"}
+    assert raw["arms"][0]["launches"][0]["launch_id"] == "first"
+    assert raw["custody"]["cleanup"]["targets"] == [{"role": "run_root", "removed": False, "absent_after": False}]
+    assert list(run.scratch.iterdir())
+    assert run.gate().disposition is not D.ACCEPTED_CURRENT_CLIENT_GATE
+
+
 # The live seam's probe primitives raise ProbeError (a RuntimeError, not a HostError); its message can carry
 # private paths, so it must never reach a record or the CLI.
 _PRIVATE_TEXT = "operator-private-p117v5"
@@ -1431,6 +1514,41 @@ def test_stop_evidence_is_promotable_and_keeps_its_disposition(tmp_path, windows
     run, roots, staged = _staged(tmp_path, run_options(reopen_load_arm="a_prime"))
     final = _promote(run, roots, _receipt(run, staged))
     assert json.loads((final / "redaction-attestation.json").read_text(encoding="utf-8"))["gate"]["disposition"] == D.ZERO_ENTRY_REACHABLE_STOP.value
+
+
+
+def test_cp1_review_launcher_public_identity_is_path_independent(tmp_path, windows_shaped_paths):
+    from dataclasses import replace
+
+    run = Run(tmp_path)
+    run.collect()
+    staged = col.compute_redaction(run.context, identity_tokens=())
+    assert staged.status == "awaiting_review"
+    raw = staged.raw
+    sanitized = c.parse_sanitized_manifest(json.loads(staged.sanitized_bytes))
+    canonical = col.render_launcher_bytes(Path("ISOLATED_SOURCE"), Path("MODULE_CLOSURE_REPORT"))
+    expected_sha256, expected_bytes = c.sha256_hex(canonical), len(canonical)
+    for private_source, public_source in zip(raw.isolated_sources, sanitized.isolated_sources, strict=True):
+        private_launcher = raw.identity(private_source.launcher_role)
+        public_launcher = sanitized.identity(public_source.launcher_role)
+        assert private_launcher.sha256 == private_source.launcher_sha256
+        assert private_launcher.sha256 != expected_sha256
+        assert private_launcher.sha256.encode() not in staged.sanitized_bytes
+        assert (public_launcher.sha256, public_launcher.size_bytes) == (expected_sha256, expected_bytes)
+        assert public_source.launcher_sha256 == expected_sha256
+    assert c.reduce_gate(sanitized) == staged.gate
+
+    source, *other_sources = raw.isolated_sources
+    mismatched = replace(raw, isolated_sources=(replace(source, launcher_sha256="0" * 64), *other_sources))
+    public, _ = c.derive_sanitized_manifest(mismatched)
+    assert c.reduce_document(public, layer="sanitized").disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+    incomplete = replace(raw, isolated_sources=tuple(other_sources))
+    public, _ = c.derive_sanitized_manifest(incomplete)
+    launcher = next(item for item in public["path_identities"] if item["role"] == source.launcher_role)
+    assert (launcher["sha256"], launcher["size_bytes"]) == (expected_sha256, expected_bytes)
+    assert raw.identity(source.launcher_role).sha256 in c.private_forbidden_strings(incomplete)
+    assert c.reduce_document(public, layer="sanitized").disposition is D.INVALID_CURRENT_CLIENT_GATE
 
 
 def test_redaction_requires_the_provisional_custody_result(tmp_path, windows_shaped_paths):

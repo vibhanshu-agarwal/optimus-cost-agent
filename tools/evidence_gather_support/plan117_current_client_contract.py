@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from enum import IntEnum, StrEnum
 from typing import Any
 
+from tools.evidence_gather_support.plan117_launcher import PUBLIC_LAUNCHER_IDENTITY
+
 SCENARIO_ID = "plan117-current-client-gate-v5"
 EVIDENCE_KIND_GATE = "current-client-gate"
 EVIDENCE_KINDS = (EVIDENCE_KIND_GATE, "acpx-restart", "zed-resume")
@@ -1436,28 +1438,41 @@ def _alias(position: int) -> str:
     return f"path-{position:03d}"
 
 
+def _launcher_roles(raw: Plan117RawManifest) -> set[str]:
+    # An incomplete source list can still have capture-time launcher identities.
+    return ({source.launcher_role for source in raw.isolated_sources}
+            | {identity.role for identity in raw.path_identities if identity.role.startswith("launcher:")})
+
+
 def derive_sanitized_manifest(raw: Plan117RawManifest) -> tuple[dict[str, Any], dict[str, Any]]:
     """Return ``(sanitized_document, private_mapping_document)``; neither touches the filesystem.
 
-    Path identities become role + opaque alias + keyed commitment; the private mapping keeps the
-    canonical path beside its alias/commitment for the private reviewer. Every other field is a
-    path-free derived observation carried verbatim.
+    Path identities become role + opaque alias + keyed commitment. The private mapping keeps the
+    canonical paths, and launcher metadata describes the public template instead of private rendered bytes.
     """
     key = raw.run_key
     ordered = sorted(raw.path_identities, key=lambda item: item.role)
     public = []
     private = []
+    launchers = _launcher_roles(raw)
     for position, identity in enumerate(ordered):
         assert identity.canonical_path is not None
         commitment = commit_path(identity.canonical_path, key)
+        digest, size = (PUBLIC_LAUNCHER_IDENTITY if identity.role in launchers
+                        else (identity.sha256, identity.size_bytes))
         public.append(
-            {"role": identity.role, "alias": _alias(position), "commitment": commitment, "kind": identity.kind, "sha256": identity.sha256, "size_bytes": identity.size_bytes}
+            {"role": identity.role, "alias": _alias(position), "commitment": commitment, "kind": identity.kind, "sha256": digest, "size_bytes": size}
         )
         private.append({"role": identity.role, "alias": _alias(position), "commitment": commitment, "canonical_path": identity.canonical_path})
     document = manifest_to_document(raw)
     document.pop("path_commitment_key_hex")
     document["schema"] = SANITIZED_SCHEMA
     document["path_identities"] = public
+    if any(raw.identity(source.launcher_role).sha256 != source.launcher_sha256 for source in raw.isolated_sources):
+        # A canonical rendering cannot attest to a mismatched private launcher.
+        document["custody_failures"] = sorted(set(raw.custody_failures) | {"launcher_identity_mismatch"})
+    for source in document["isolated_sources"]:
+        source["launcher_sha256"] = PUBLIC_LAUNCHER_IDENTITY[0]
     mapping = {"schema": PRIVATE_MAPPING_SCHEMA, "run_id": raw.run_id, "scheme": PATH_IDENTITY_SCHEME, "entries": private}
     return document, mapping
 
@@ -1609,7 +1624,12 @@ def find_privacy_violations(
 def private_forbidden_strings(raw: Plan117RawManifest) -> tuple[str, ...]:
     """Every private value that must never reach a promotable byte."""
     values = [raw.path_commitment_key_hex]
+    public_launcher_sha256 = PUBLIC_LAUNCHER_IDENTITY[0]
+    values.extend(source.launcher_sha256 for source in raw.isolated_sources if source.launcher_sha256 != public_launcher_sha256)
+    launchers = _launcher_roles(raw)
     for identity in raw.path_identities:
+        if identity.role in launchers and identity.sha256 is not None and identity.sha256 != public_launcher_sha256:
+            values.append(identity.sha256)
         values.extend(item for item in (identity.raw_path, identity.canonical_path) if item)
         if identity.canonical_path:
             # Unkeyed path digests are dictionary-guessable, so they are as private as the path itself.
