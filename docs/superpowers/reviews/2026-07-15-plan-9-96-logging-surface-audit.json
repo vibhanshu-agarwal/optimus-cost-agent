@@ -6841,6 +6841,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_backups:Backups._publish:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 1 backups: copies the exact bytes of a recovery generation the Gateway signed (active items that passed the Gate's scans and the persistence sanitizer; every other item payload-free) into the user-confirmed backup folder through exclusive, fsynced staging and one atomic rename; no diagnostic, prompt or model text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_backups.py::test_b02_b22_a_separate_disk_target_holds_the_exact_generation_bytes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_backups:Scheduler.close:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch (Plan 12.12 Task 1): `threading.Event.set()` stops the backup scheduler's checks; nothing is written to Redis or anywhere else.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_backups.py::test_b03_after_downtime_exactly_one_catch_up_snapshot",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_recovery:Recovery._export:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Plan 12.11 recovery copy (D5, D8): writes one generation of the Gateway-signed export (active items that passed the Gate's scans and the persistence sanitizer; every other item payload-free) into the one user-confirmed, Git-ignored location; no diagnostic, prompt or model text.",

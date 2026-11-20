@@ -621,6 +621,7 @@ class MemoryExtractor:
         self._store, self._settlement, self._bind, self._record = store, settlement, bind, record
         self.worktree = worktree  # the registry's opaque worktree identity, for continuity checkpoints
         self.recovery: Any = None  # the project's recovery copy (`memory_recovery.Recovery`), set by the launch's factory
+        self.backups: Any = None  # the project's configured backups (`memory_backups.Backups`), set by the launch's factory
         self.notices: Any = None  # the project's durable notice backlog (`memory_recovery.NoticeBacklog`), set by the factory
         self._sanitize, self._report, self._keyed = sanitize, report, keyed
         self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
@@ -979,6 +980,7 @@ def extractor_factory(*, config_root: Any, settings: Any, post: Callable[..., An
 
     from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
     from optimus.context.authored_memory import GatewayMemoryStore, gateway_post
+    from optimus.context.memory_backups import Backups, BackupStateFile
     from optimus.context.memory_recovery import NoticeBacklog, Recovery, RegistryRecovery, StateFile
     from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError, project_key
 
@@ -1011,10 +1013,19 @@ def extractor_factory(*, config_root: Any, settings: Any, post: Callable[..., An
         project = registration.project_id
         recovery = Recovery(store, StateFile.shared(Path(config_root), project),
                             registry=registry.snapshot)
-        store.guard, store.written = recovery.recovery_required, recovery.written  # Q3: nothing is written before a restore
+        backups = Backups(recovery, BackupStateFile.shared(Path(config_root), project), workspace=Path(workspace),
+                          config_root=Path(config_root))
+
+        def written(action: str, item: str) -> None:
+            recovery.written(action, item)
+            if action in ("withdraw", "tombstone"):
+                backups.withdrawn(item)  # older backups owe cleanup until a clean one is published (Plan 12.12 Task 1)
+
+        store.guard, store.written = recovery.recovery_required, written  # Q3: nothing is written before a restore
         extractor = MemoryExtractor(store=store, settlement=settlement, sanitize=sanitize, report=report, keyed=keyed,
                                     worktree=worktree_id(registration.worktree))
         extractor.recovery = recovery
+        extractor.backups = backups
         extractor.notices = NoticeBacklog.shared(Path(config_root), project)
         return extractor
 
