@@ -189,7 +189,7 @@ def test_b07_b08_a_synced_target_needs_consent_and_only_the_users_command_writes
     assert "Backed up" in host.run("/memory backup now").text and len(_published(places["separate"] / "b")) == 1
 
 
-def test_b09_a_replaced_target_is_never_written_or_pruned(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+def test_changed_target_identity_refuses_write_and_prune(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
     clock = _Clock()
     host = _Backed(tmp_path, repo, places, clock)
     host.remember("Never push to main.")
@@ -204,6 +204,19 @@ def test_b09_a_replaced_target_is_never_written_or_pruned(tmp_path: Path, repo: 
         host.backups.backup()
     assert changed.value.code == "BACKUP_TARGET_CHANGED" and not any(target.iterdir()) and _published(moved) == [old]
     assert host.backups.state().last_success["name"] == old  # type: ignore[index]
+
+
+def test_sync_target_without_consent_refused(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                            monkeypatch: pytest.MonkeyPatch) -> None:
+    """B07: a synced folder is never configured without consent bound to it."""
+    monkeypatch.setenv("OneDrive", str(places["separate"]))
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.run("/memory export")
+    assessed = host.backups.assess(places["separate"] / "b")
+    with pytest.raises(mb.BackupError) as refused:
+        host.backups.configure(assessed, consent=False)
+    assert refused.value.code == "BACKUP_SYNC_CONSENT" and host.backups.state().target is None
+    assert not (places["separate"] / "b").exists()
 
 
 def test_b09_a_link_in_the_target_path_is_refused(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
@@ -367,7 +380,7 @@ def test_b21_a_corrupted_backup_is_not_restored(tmp_path: Path, repo: Path, plac
     assert damaged.value.code == "RECOVERY_GENERATION_DAMAGED"
 
 
-def test_b25_an_interrupted_publication_is_never_a_generation(tmp_path: Path, repo: Path, places: dict[str, Path],
+def test_interrupted_publication_never_counts_staging(tmp_path: Path, repo: Path, places: dict[str, Path],
                                                               monkeypatch: pytest.MonkeyPatch) -> None:
     clock = _Clock()
     host = _Backed(tmp_path, repo, places, clock)
@@ -383,13 +396,15 @@ def test_b25_an_interrupted_publication_is_never_a_generation(tmp_path: Path, re
             raise KeyboardInterrupt  # the process stops at the atomic rename
         real_replace(source, destination)
     monkeypatch.setattr(os, "replace", crash)
+    monkeypatch.setattr(mb.shutil, "rmtree", lambda *_a, **_k: None)  # killed: no cleanup runs after the crash
     with pytest.raises(KeyboardInterrupt):
         host.backups.backup()
     monkeypatch.undo()
-    assert len(_published(target)) == 1 and not list(target.glob(".staging-*"))
-    (target / ".staging-leftover").mkdir()  # a crash that left staging behind
+    assert len(_published(target)) == 1  # whatever the crash left is not a generation
+    leftovers = list(target.glob(".staging-*"))
+    assert leftovers and all((leftover / "manifest.json").exists() for leftover in leftovers)  # it got as far as the rename
     host.backups.backup()
-    assert len(_published(target)) == 2 and not list(target.glob(".staging-*"))
+    assert len(_published(target)) == 2 and not list(target.glob(".staging-*"))  # the next run removes it
 
 
 def test_b28_disabling_or_moving_keeps_every_copy_listed(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
