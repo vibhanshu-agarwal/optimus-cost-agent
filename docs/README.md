@@ -128,7 +128,6 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
-| [Plan 12.11 v5: memory and continuity (M3)](superpowers/plans/2026-11-16-plan-12-11-memory-and-continuity-implementation_v5.md) | #490; automatic capture with explicit user activation (ADR-044), commands, continuity and same-drive recovery |
 | [Plan 12.12: memory backups and import (M3, second part)](superpowers/plans/2026-11-20-plan-12-12-memory-backups-and-import-implementation.md) | #491; configured plaintext backups, optional-context Agent Memory Repo import and the consented pilot; encryption and rotation stay with #491 |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v5: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v5.md) | #240; durable ACP sessions and Zed resume ([adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md)). v1 to v3 are in `archive/`; v4 is a local frozen predecessor |
