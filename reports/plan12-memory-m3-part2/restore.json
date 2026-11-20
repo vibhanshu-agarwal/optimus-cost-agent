@@ -2,22 +2,22 @@
   "schema": "plan12-memory-m3-part2.restore.v1",
   "plan": "12.12",
   "issue": 491,
-  "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
+  "head": "git:9fe05283be97686ed71aa467df579921c674b97f",
   "sources": [
     {
-      "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
-      "run_id": "20261120T225403-29588-8b4377",
+      "head": "git:9fe05283be97686ed71aa467df579921c674b97f",
+      "run_id": "20261120T231912-53128-78b320",
       "mode": "active",
       "reason": "default_selection",
       "native": "valid",
       "records": "COMPLETE",
       "exit_status": 0,
-      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py",
-      "summary": "152 passed, 1 skipped"
+      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py tests/unit/guardrails/test_tracked_file_scanners.py tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+      "summary": "178 passed, 1 skipped"
     },
     {
-      "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
-      "run_id": "20261120T225328-54120-9b0348",
+      "head": "git:9fe05283be97686ed71aa467df579921c674b97f",
+      "run_id": "20261120T231838-22604-d5dafd",
       "mode": "passive",
       "reason": "non_default_selection",
       "native": "not_enrolled",
@@ -47,9 +47,11 @@
     },
     {
       "case": "B18",
-      "status": "NOT EXERCISED ON THE BACKUP PATH",
-      "tests": [],
-      "note": "a lost verification key: restore from a backup uses Plan 12.11's Gateway restore unchanged, which refuses a generation it cannot authenticate; no test here removes the key"
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b18_a_lost_verification_key_refuses_restore_readably"
+      ],
+      "note": "the store's recovery key replaced (a new password after keyring loss): the backup is refused with a readable message and nothing is restored; the unit stand-in replaces the key in process"
     },
     {
       "case": "B19",
@@ -84,11 +86,11 @@
     },
     {
       "case": "B26",
-      "status": "REUSED",
+      "status": "PASS",
       "tests": [
-        "tests/integration/memory/test_recovery.py::test_an_admission_landing_during_staging_aborts_publication"
+        "tests/unit/context/test_memory_backups.py::test_b26_an_interrupted_restore_from_a_backup_publishes_nothing_and_a_restart_reconciles"
       ],
-      "note": "Plan 12.11 evidence for staged restore interruption; restore from a backup uses the same staging"
+      "note": "covered boundaries: killed between restore batches (nothing served, retry restores) and killed after the store published but before the host recorded it (published whole once; a retry changes nothing). UNRUN boundary: a kill inside the store's single fenced publication transaction, which Redis applies atomically"
     },
     {
       "case": "B27",

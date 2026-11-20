@@ -2,22 +2,22 @@
   "schema": "plan12-memory-m3-part2.erasure-boundaries.v1",
   "plan": "12.12",
   "issue": 491,
-  "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
+  "head": "git:9fe05283be97686ed71aa467df579921c674b97f",
   "sources": [
     {
-      "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
-      "run_id": "20261120T225403-29588-8b4377",
+      "head": "git:9fe05283be97686ed71aa467df579921c674b97f",
+      "run_id": "20261120T231912-53128-78b320",
       "mode": "active",
       "reason": "default_selection",
       "native": "valid",
       "records": "COMPLETE",
       "exit_status": 0,
-      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py",
-      "summary": "152 passed, 1 skipped"
+      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py tests/unit/guardrails/test_tracked_file_scanners.py tests/unit/tools/test_verify_plan996_logging_surfaces.py",
+      "summary": "178 passed, 1 skipped"
     },
     {
-      "head": "git:471f30c2fbba863512e246a2111349d8f213e603",
-      "run_id": "20261120T225328-54120-9b0348",
+      "head": "git:9fe05283be97686ed71aa467df579921c674b97f",
+      "run_id": "20261120T231838-22604-d5dafd",
       "mode": "passive",
       "reason": "non_default_selection",
       "native": "not_enrolled",
