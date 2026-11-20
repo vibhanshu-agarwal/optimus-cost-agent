@@ -582,6 +582,76 @@ def test_redact_refuses_private_roots_inside_the_reviewed_checkout(tmp_path, mon
     assert _out(capsys)[1].strip() == "private_root_inside_checkout"
 
 
+
+@pytest.mark.parametrize("target", ["capture", "staging", "quarantine", "sanitized", "scenario", "receipt"])
+def test_redact_refuses_protected_summary_paths_before_promotion(tmp_path, monkeypatch, capsys, windows_shaped_paths, target):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    pipeline.through_classify()
+    receipt = pipeline.receipt()
+    if target == "receipt":
+        destination = receipt
+    elif target == "scenario":
+        destination = pipeline.scenario
+    else:
+        destination = getattr(pipeline, target) / "summary.json"
+
+    def unexpected_promotion(*args, **kwargs):
+        raise AssertionError("protected destination must be rejected before promotion")
+
+    monkeypatch.setattr(col, "promote_with_receipt", unexpected_promotion)
+    capsys.readouterr()
+    assert pipeline.main(
+        "redact", "--scenario", pipeline.scenario, "--capture-root", pipeline.capture, *pipeline.bind(),
+        "--staging-root", pipeline.staging, "--quarantine-root", pipeline.quarantine, "--sanitized-root", pipeline.sanitized,
+        "--result", destination, "--review-receipt", receipt,
+    ) == 2
+    assert capsys.readouterr().err == "redact_result_path_overlap\n"
+
+
+
+@pytest.mark.parametrize("with_receipt", [False, True], ids=["stage", "promote"])
+def test_redact_protects_checkout_result_destination(tmp_path, monkeypatch, capsys, windows_shaped_paths, with_receipt):
+    pipeline = Pipeline(tmp_path, monkeypatch)
+    pipeline.through_classify()
+    receipt_args = ("--review-receipt", pipeline.receipt()) if with_receipt else ()
+    destination = pipeline.checkout / "existing-review-file.json"
+    existing = b'{"retained":true}'
+    destination.write_bytes(existing)
+
+    def unexpected_redaction(*args, **kwargs):
+        pytest.fail("checkout result destination must be refused before redaction")
+
+    monkeypatch.setattr(col, "stage_redaction", unexpected_redaction)
+    monkeypatch.setattr(col, "promote_with_receipt", unexpected_redaction)
+    capsys.readouterr()
+    assert pipeline.main(
+        "redact", "--scenario", pipeline.scenario, "--capture-root", pipeline.capture, *pipeline.bind(),
+        "--staging-root", pipeline.staging, "--quarantine-root", pipeline.quarantine, "--sanitized-root", pipeline.sanitized,
+        "--result", destination, *receipt_args,
+    ) == 2
+    assert capsys.readouterr().err == "redact_result_path_overlap\n"
+    assert destination.read_bytes() == existing
+
+
+def test_redact_promotion_refusal_reports_stop_when_classification_is_missing(tmp_path, monkeypatch, capsys, windows_shaped_paths):
+    pipeline = Pipeline(tmp_path, monkeypatch, options=host_mod.FakeHostOptions(reopen_load_arm="r_refusal"))
+    pipeline.through_classify()
+    assert pipeline.redact() == 0
+    receipt = pipeline.receipt()
+    (pipeline.capture / RUN_ID / "provisional-result.json").unlink()
+    capsys.readouterr()
+
+    assert pipeline.redact(receipt) == 2
+
+    result = capsys.readouterr()
+    message = json.loads(result.out)
+    assert message["status"] == "refused"
+    assert message["gate"]["disposition"] == c.GateDisposition.ZERO_ENTRY_REACHABLE_STOP.value
+    assert "custody_artifact_failure:provisional_missing" in message["gate"]["reasons"]
+    assert result.err == "redaction_not_eligible\n"
+    assert not (pipeline.sanitized / RUN_ID).exists()
+
+
 def test_receipt_inside_the_sanitized_root_is_refused(tmp_path, monkeypatch, capsys, windows_shaped_paths):
     pipeline = Pipeline(tmp_path, monkeypatch)
     pipeline.through_classify()

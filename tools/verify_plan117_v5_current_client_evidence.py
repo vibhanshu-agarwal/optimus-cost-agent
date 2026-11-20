@@ -100,12 +100,14 @@ def verify(manifest_path: Path, attestation_path: Path, bundle_root: Path, *, ch
     assert manifest_bytes is not None
     failures: list[str] = []
     manifest_doc = _parse(manifest_bytes)
+    recovered = ()
     if manifest_doc is None:
         # Strictly invalid (e.g. an overflowing number) but possibly readable: keep scanning it so a positive signal
         # is still reported. This permissive view never establishes integrity; it is recorded as a failure.
         manifest_doc = _permissive(manifest_bytes)
         if manifest_doc is not None:
             failures.append("manifest_not_strict_json")
+            recovered = contract.scan_json_positive_signals(manifest_bytes)
     attestation_bytes, attestation_error = _read_contained(attestation_path, root)
     if attestation_error is not None:
         failures.append({"escape": "path_escape", "missing": "attestation_missing", "unreadable": "attestation_unreadable"}[attestation_error])
@@ -153,12 +155,12 @@ def verify(manifest_path: Path, attestation_path: Path, bundle_root: Path, *, ch
         except (ValueError, TypeError, KeyError):
             failures.append("trust_input_invalid")  # e.g. a malformed registered scenario; the manifest's STOP is kept
 
-    plain = contract.reduce_document(manifest_doc, layer="sanitized")
+    plain = contract.reduce_document(manifest_doc, layer="sanitized", extra_hits=recovered)
     if attestation is not None and plain.to_json() != dict(attestation.gate):
         failures.append("gate_mismatch")
     failures = sorted(set(failures))
     extra = (contract.GateHit(contract.GateReason.INTEGRITY_INVALID),) if failures else ()
-    gate = contract.reduce_document(manifest_doc, layer="sanitized", extra_hits=extra)
+    gate = contract.reduce_document(manifest_doc, layer="sanitized", extra_hits=(*recovered, *extra))
     return {"integrity": "failed" if failures else "verified", "failures": failures, **gate.to_json()}
 
 

@@ -208,6 +208,37 @@ def test_promotion_rename_refusal(tmp_path, monkeypatch, capsys, windows_shaped_
         assert not final.exists()
 
 
+
+@pytest.mark.parametrize("arm_id", [c.ARM_A_PRIME, "r_refusal"])
+@pytest.mark.parametrize("positive_first", [True, False])
+def test_duplicate_members_keep_positive_reopen_evidence(tmp_path, arm_id, positive_first):
+    arms = [{"arm_id": arm_id, "launches": [{"launch_id": "reopen", "counts": {"session_load": 1}}]}]
+    alternatives = (arms, []) if positive_first else ([], arms)
+    manifest = tmp_path / "manifest.json"
+    members = ",".join(f'"arms":{json.dumps(value)}' for value in alternatives)
+    manifest.write_text("{" + members + "}", encoding="utf-8")
+
+    result = verifier.verify(manifest, tmp_path / "absent.json", tmp_path, checkout_root=tmp_path.parent)
+
+    assert result["disposition"] == D.ZERO_ENTRY_REACHABLE_STOP.value
+    assert result["integrity"] == "failed"
+    assert "manifest_not_strict_json" in result["failures"]
+
+
+
+def test_duplicate_members_preserve_expected_prompted_exemption(tmp_path):
+    arms = [{"arm_id": c.ARM_PROMPTED, "launches": [{"launch_id": "lifecycle_b", "counts": {"session_load": 1}}]}]
+    member = f'"arms":{json.dumps(arms)}'
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(f"{{{member},{member}}}", encoding="utf-8")
+
+    result = verifier.verify(manifest, tmp_path / "absent.json", tmp_path, checkout_root=tmp_path.parent)
+
+    assert result["disposition"] == D.INVALID_CURRENT_CLIENT_GATE.value
+    assert result["integrity"] == "failed"
+    assert "manifest_not_strict_json" in result["failures"]
+
+
 def test_stop_bundle_verifies_integrity_and_reports_stop_without_acceptance(tmp_path, monkeypatch, capsys, windows_shaped_paths):
     bundle = Bundle(tmp_path, monkeypatch, host_mod.FakeHostOptions(reopen_load_arm="r_refusal"))
     code, out, _ = bundle.run(capsys)

@@ -1443,6 +1443,25 @@ def test_redaction_requires_the_provisional_custody_result(tmp_path, windows_sha
     assert excinfo.value.code == "provisional_missing"
 
 
+
+@pytest.mark.parametrize("arm", ["a_prime", "r_refusal"])
+def test_missing_classification_preserves_captured_stop(tmp_path, windows_shaped_paths, arm):
+    run = Run(tmp_path, run_options(reopen_load_arm=arm, cleanup_fails=True))
+    run.collect()
+    (run.run_dir / "provisional-result.json").unlink()
+    roots = _roots(tmp_path)
+
+    staged = col.stage_redaction(run.context, staging_root=roots["staging"], quarantine_root=roots["quarantine"], identity_tokens=())
+
+    assert staged.status == "underivable"
+    assert staged.gate.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+    assert "custody_artifact_failure:provisional_missing" in staged.gate.reason_codes()
+    assert R.SCHEMA_INVALID in _codes(staged.gate)
+    assert R.CLEANUP_UNVERIFIED in _codes(staged.gate)
+    assert list(roots["staging"].iterdir()) == []
+    assert list(roots["sanitized"].iterdir()) == []
+
+
 def test_redaction_refuses_a_tampered_raw_bundle(tmp_path, windows_shaped_paths):
     run = Run(tmp_path)
     run.collect()

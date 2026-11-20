@@ -1194,7 +1194,7 @@ _SOURCE_DOC_KEYS = ("historical_pins", "approved_source_commit", "actual_source_
                     "untracked_digest_sha256", "normal_source_sha256_before", "descriptor_fixture_sha256", "launch_config_sha256", "budget_policy_sha256")
 
 
-def derive_raw_document(context: RunContext, batches: Sequence[CollectionBatch], *, provisional_sha256: str,
+def derive_raw_document(context: RunContext, batches: Sequence[CollectionBatch], *, provisional_sha256: str | None,
                         ingress_failures: Sequence[str] = ()) -> dict[str, Any]:
     if len(batches) != 1 or batches[0].collector_id != COLLECTOR_ID:
         raise HostError("collector_batch_mismatch")
@@ -1531,9 +1531,22 @@ def compute_redaction(context: RunContext, *, identity_tokens: Sequence[str]) ->
     if batches is None:
         raise HostError("bundle_invalid")
     provisional = run_dir / "provisional-result.json"
-    if not provisional.is_file():
-        raise HostError("provisional_missing")
-    raw_document = derive_raw_document(context, batches, provisional_sha256=contract.sha256_hex(provisional.read_bytes()), ingress_failures=ingress)
+    provisional_sha256 = None
+    provisional_failure = "provisional_missing"
+    try:
+        if provisional.is_file():
+            provisional_sha256 = contract.sha256_hex(provisional.read_bytes())
+    except FileNotFoundError:
+        pass
+    except OSError:
+        provisional_failure = "provisional_unreadable"
+    raw_document = derive_raw_document(context, batches, provisional_sha256=provisional_sha256, ingress_failures=ingress)
+    if provisional_sha256 is None:
+        custody_hit = contract.GateHit(contract.GateReason.CUSTODY_ARTIFACT_FAILURE, provisional_failure)
+        gate = contract.reduce_document(raw_document, layer="raw", extra_hits=(custody_hit,))
+        if gate.disposition is not contract.GateDisposition.ZERO_ENTRY_REACHABLE_STOP:
+            raise HostError(provisional_failure)
+        return StagedRedaction("underivable", gate, None, None, None, None, None)
     gate = contract.reduce_document(raw_document, layer="raw")
     try:
         raw = contract.parse_raw_manifest(raw_document)
@@ -1582,12 +1595,22 @@ def _publish_promotion(partial: Path, final: Path) -> None:
             return
 
 
+class PromotionStop(HostError):
+    """A captured STOP from evidence that cannot be promoted."""
+
+    def __init__(self, gate: contract.GateVerificationResult) -> None:
+        super().__init__("redaction_not_eligible")
+        self.gate = gate
+
+
 def promote_with_receipt(context: RunContext, *, staging_root: Path, sanitized_root: Path, receipt_path: Path,
                          identity_tokens: Sequence[str]) -> Path:
     """Phase 2: recompute, require the staged bytes and an accepting bound receipt, then promote atomically."""
     staged = compute_redaction(context, identity_tokens=identity_tokens)
     raw = staged.raw
     if staged.status != "awaiting_review" or raw is None or staged.sanitized_bytes is None or staged.report_bytes is None:
+        if staged.gate.disposition is contract.GateDisposition.ZERO_ENTRY_REACHABLE_STOP:
+            raise PromotionStop(staged.gate)
         raise HostError("redaction_not_eligible")
     for name, payload in ((SANITIZED_NAME, staged.sanitized_bytes), (REPORT_NAME, staged.report_bytes)):
         path = staging_root / context.run_id / name

@@ -885,16 +885,29 @@ def _handle_redact_plan117_v5(args: argparse.Namespace) -> int:
     checkout = PLAN117_V5_CHECKOUT_ROOT.resolve()
     if any(root == checkout or root.is_relative_to(checkout) for root in (context.capture_root, staging, quarantine)):
         raise HostError("private_root_inside_checkout")
-    redaction_mod.reject_cloud_sync_roots((context.capture_root, staging, quarantine, sanitized))
+    protected_roots = (context.capture_root, staging, quarantine, sanitized)
+    # A linked trust file can resolve outside the checkout.
+    protected_files = {
+        (checkout / path).resolve()
+        for path in (plan117_mod.SCENARIO_RELATIVE, plan117_mod.APPROVED_RUNS_RELATIVE, plan117_mod.DESCRIPTOR_FIXTURE_RELATIVE)
+    }
+    receipt = None if args.review_receipt is None else require_absolute_path(Path(args.review_receipt)).resolve()
+    if (result_path in protected_files or result_path == receipt
+            or any(result_path.is_relative_to(root) for root in (*protected_roots, checkout))):
+        raise HostError("redact_result_path_overlap")
+    redaction_mod.reject_cloud_sync_roots(protected_roots)
     tokens = tuple(PLAN117_V5_IDENTITY_TOKENS_FACTORY())
-    if args.review_receipt is None:
+    if receipt is None:
         staged = plan117_mod.stage_redaction(context, staging_root=staging, quarantine_root=quarantine, identity_tokens=tokens)
         summary = {"status": staged.status, "gate": staged.gate.to_json()}
     else:
-        receipt = require_absolute_path(Path(args.review_receipt)).resolve()
         if receipt.is_relative_to(sanitized):
             raise HostError("receipt_inside_promoted_root")
-        plan117_mod.promote_with_receipt(context, staging_root=staging, sanitized_root=sanitized, receipt_path=receipt, identity_tokens=tokens)
+        try:
+            plan117_mod.promote_with_receipt(context, staging_root=staging, sanitized_root=sanitized, receipt_path=receipt, identity_tokens=tokens)
+        except plan117_mod.PromotionStop as exc:
+            print(json.dumps({"run_id": context.run_id, "status": "refused", "gate": exc.gate.to_json()}, separators=(",", ":"), sort_keys=True))
+            raise
         summary = {"status": "promoted"}
     _atomic_write_json(result_path, {"schema": "plan117-v5-redact-result-v1", "complete": True, "run_id": context.run_id, **summary})
     print(json.dumps({"run_id": context.run_id, **summary}, separators=(",", ":"), sort_keys=True))
