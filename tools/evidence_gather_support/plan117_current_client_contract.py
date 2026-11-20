@@ -426,68 +426,97 @@ def compose_result(hits: Iterable[GateHit]) -> GateVerificationResult:
 # --------------------------------------------------------------------------- positive-signal scan (shape tolerant)
 
 
-def scan_positive_signals(document: Any) -> tuple[GateHit, ...]:
-    """Positive empty-reopen signals read from ANY document shape, before strict parsing.
+@dataclass(slots=True)
+class _RepeatedMembers:
+    values: list[Any]
 
-    Total over any JSON shape. Every arm except one unambiguous ``prompted`` arm (unique arm ID, exact unique
-    lifecycle launch IDs only) is scanned as a reopen arm: a non-null binding on any checkpoint other than an exact
-    unique ``after_reopen``; any ``session/load`` wire event, load request ID or non-zero ``session_load`` count on
-    any launch other than an exact unique ``first``. Missing, non-string, duplicated or relabelled IDs lose their
-    exemption, so ambiguity resolves toward STOP (a corrupted-tag STOP can over-report). Known limit: a forgery
-    that relabels a positive arm into an exact, unique prompted shape and deletes the genuine prompted arm is
-    indistinguishable by shape here; it reduces to INVALID (arm set), not STOP.
+
+def _preserve_members(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    members: dict[str, Any] = {}
+    for key, value in pairs:
+        if key not in members:
+            members[key] = value
+        elif isinstance(members[key], _RepeatedMembers):
+            members[key].values.append(value)
+        else:
+            members[key] = _RepeatedMembers([members[key], value])
+    return members
+
+
+def scan_json_positive_signals(payload: bytes) -> tuple[GateHit, ...]:
+    """Read positive signals from a non-strict manifest without discarding repeated members."""
+    try:
+        document = json.loads(payload.decode("utf-8", "replace"), object_pairs_hook=_preserve_members)
+    except (ValueError, RecursionError):
+        return ()
+    return scan_positive_signals(document)
+
+
+def _member_values(document: Any, key: str) -> Sequence[Any]:
+    value = document.get(key) if type(document) is dict else None
+    return value.values if isinstance(value, _RepeatedMembers) else (value,)
+
+
+def _exact_strings(items: Any, key: str) -> list[str | None]:
+    values = []
+    for item in items if type(items) is list else ():
+        value = item.get(key) if type(item) is dict else None
+        values.append(value if type(value) is str else None)
+    return values
+
+
+def _prompted_launches(launches: Any) -> bool:
+    ids = _exact_strings(launches, "launch_id")
+    return bool(ids) and all(value in PROMPTED_LAUNCH_IDS for value in ids) and len(set(ids)) == len(ids)
+
+
+def _scan_reopen_arm(arm: dict[str, Any], subject: str, hits: set[GateHit]) -> None:
+    for checkpoints in _member_values(arm, "checkpoints"):
+        after_reopen_exempt = _exact_strings(checkpoints, "label").count("after_reopen") == 1
+        for checkpoint in checkpoints if type(checkpoints) is list else ():
+            if not any(value is not None for value in _member_values(checkpoint, "session_binding")):
+                continue
+            if not (after_reopen_exempt and checkpoint.get("label") == "after_reopen"):
+                hits.add(GateHit(GateReason.REOPEN_PRE_BINDING_NON_NULL, subject))
+    for launches in _member_values(arm, "launches"):
+        first_exempt = _exact_strings(launches, "launch_id").count("first") == 1
+        for launch in launches if type(launches) is list else ():
+            if type(launch) is not dict or (first_exempt and launch.get("launch_id") == "first"):
+                continue
+            for counts in _member_values(launch, "counts"):
+                if any(value is not None and value != 0 for value in _member_values(counts, "session_load")):
+                    hits.add(GateHit(GateReason.REOPEN_LOAD_OBSERVED, subject))
+            for wire in _member_values(launch, "wire"):
+                for event in wire if type(wire) is list else ():
+                    if "session/load" not in _member_values(event, "method"):
+                        continue
+                    has_id = any(value is not None for value in _member_values(event, "request_id"))
+                    if not has_id or "request" in _member_values(event, "kind"):
+                        hits.add(GateHit(GateReason.REOPEN_LOAD_OBSERVED, subject))
+                    if has_id:
+                        hits.add(GateHit(GateReason.REOPEN_LOAD_ID_OBSERVED, subject))
+
+
+def scan_positive_signals(document: Any) -> tuple[GateHit, ...]:
+    """Scan readable empty-reopen observations before schema validation.
+
+    Repeated observations are scanned within their original arm lists. Only exact,
+    unique IDs grant exemptions for first launches, after-reopen bindings and the
+    prompted arm. Ambiguous IDs can conservatively over-report STOP. An exact
+    replacement of the prompted arm remains indistinguishable by shape.
     """
     hits: set[GateHit] = set()
-    arms = document.get("arms") if type(document) is dict else None
-    if type(arms) is not list:
-        return ()
-    def exact_strings(items: Any, key: str) -> list[str | None]:
-        """The field's value when it is exactly a string, else None; total over any JSON shape (no hashing)."""
-        values = []
-        for item in items if type(items) is list else ():
-            value = item.get(key) if type(item) is dict else None
-            values.append(value if type(value) is str else None)
-        return values
-
-    # An exemption applies only to a field that is exactly the expected string AND unique in its arm. A missing,
-    # non-string, duplicated or relabelled ID never matches an exemption, so it is scanned like any reopen.
-    prompted_count = sum(1 for arm in arms if type(arm) is dict and arm.get("arm_id") == ARM_PROMPTED)
-    for arm in arms:
-        if type(arm) is not dict:
-            continue
-        launch_ids, labels = exact_strings(arm.get("launches"), "launch_id"), exact_strings(arm.get("checkpoints"), "label")
-        if (arm.get("arm_id") == ARM_PROMPTED and prompted_count == 1 and launch_ids
-                and all(value in PROMPTED_LAUNCH_IDS for value in launch_ids)
-                and all(launch_ids.count(value) == 1 for value in launch_ids)):
-            continue  # the genuine prompted arm's lifecycle_b load and lifecycle_a binding are expected
-        first_exempt = launch_ids.count("first") == 1
-        after_reopen_exempt = labels.count("after_reopen") == 1
-        subject = arm.get("arm_id") if type(arm.get("arm_id")) is str and arm.get("arm_id") in ARM_IDS else "unidentified"
-        checkpoints = arm.get("checkpoints")
-        for checkpoint in checkpoints if type(checkpoints) is list else ():
-            if type(checkpoint) is not dict or checkpoint.get("session_binding") is None:
+    for arms in _member_values(document, "arms"):
+        ids = _exact_strings(arms, "arm_id")
+        prompted_count = ids.count(ARM_PROMPTED)
+        for arm, arm_id in zip(arms if type(arms) is list else (), ids, strict=True):
+            if type(arm) is not dict:
                 continue
-            if not (after_reopen_exempt and type(checkpoint.get("label")) is str and checkpoint.get("label") == "after_reopen"):
-                hits.add(GateHit(GateReason.REOPEN_PRE_BINDING_NON_NULL, subject))
-        launches = arm.get("launches")
-        for launch in launches if type(launches) is list else ():
-            if type(launch) is not dict:
+            if arm_id == ARM_PROMPTED and prompted_count == 1 and all(
+                _prompted_launches(launches) for launches in _member_values(arm, "launches")
+            ):
                 continue
-            if first_exempt and type(launch.get("launch_id")) is str and launch.get("launch_id") == "first":
-                continue
-            counts = launch.get("counts")
-            if type(counts) is dict and counts.get("session_load") is not None and counts.get("session_load") != 0:
-                hits.add(GateHit(GateReason.REOPEN_LOAD_OBSERVED, subject))
-            wire = launch.get("wire")
-            for event in wire if type(wire) is list else ():
-                if type(event) is not dict or event.get("method") != "session/load":
-                    continue
-                if event.get("kind") == "request":
-                    hits.add(GateHit(GateReason.REOPEN_LOAD_OBSERVED, subject))
-                if event.get("request_id") is not None:
-                    hits.add(GateHit(GateReason.REOPEN_LOAD_ID_OBSERVED, subject))
-                if event.get("kind") != "request" and event.get("request_id") is None:
-                    hits.add(GateHit(GateReason.REOPEN_LOAD_OBSERVED, subject))
+            _scan_reopen_arm(arm, arm_id if arm_id is not None and arm_id in ARM_IDS else "unidentified", hits)
     return tuple(sorted(hits, key=_hit_sort_key))
 
 
@@ -681,7 +710,7 @@ class _Manifest:
     run_id: str
     approval_id: str
     raw_bundle_sha256: str
-    provisional_classification_sha256: str
+    provisional_classification_sha256: str | None
     aborted: Aborted | None
     custody_failures: tuple[str, ...]
     run_window: RunWindow
@@ -701,6 +730,7 @@ class _Manifest:
 
 @dataclass(frozen=True, slots=True)
 class Plan117RawManifest(_Manifest):
+    provisional_classification_sha256: str
     path_commitment_key_hex: str = ""
 
     @property
@@ -710,7 +740,7 @@ class Plan117RawManifest(_Manifest):
 
 @dataclass(frozen=True, slots=True)
 class Plan117SanitizedManifest(_Manifest):
-    pass
+    provisional_classification_sha256: str
 
 
 _TOP_KEYS = (
@@ -885,7 +915,7 @@ def _parse_path_identity(value: Any, where: str, layer: str) -> PathIdentity:
     return PathIdentity(role=_str(item["role"], f"{where}.role", _ROLE), kind=kind, sha256=sha256, size_bytes=size_bytes, **extra)
 
 
-def _parse_manifest(document: Any, layer: str) -> _Manifest:
+def _parse_manifest(document: Any, layer: str, *, diagnose_unbound: bool = False) -> _Manifest:
     keys = (*_TOP_KEYS, "path_commitment_key_hex") if layer == "raw" else _TOP_KEYS
     top = _obj(document, keys, "$")
     expected_schema = RAW_SCHEMA if layer == "raw" else SANITIZED_SCHEMA
@@ -931,6 +961,8 @@ def _parse_manifest(document: Any, layer: str) -> _Manifest:
         raise ContractError("schema_invalid", "$.isolated_sources")
     if layer == "sanitized":
         _unique((item.alias for item in identities if item.alias is not None), "$.path_identities.alias")
+    provisional = top["provisional_classification_sha256"]
+    unbound = diagnose_unbound and layer == "raw" and provisional is None
     common: dict[str, Any] = {
         "schema": top["schema"],
         "evidence_kind": _enum(top["evidence_kind"], EVIDENCE_KINDS, "$.evidence_kind"),
@@ -939,7 +971,7 @@ def _parse_manifest(document: Any, layer: str) -> _Manifest:
         "run_id": _str(top["run_id"], "$.run_id", _RUN_ID),
         "approval_id": _str(top["approval_id"], "$.approval_id", _TOKEN),
         "raw_bundle_sha256": _str(top["raw_bundle_sha256"], "$.raw_bundle_sha256", _HEX64),
-        "provisional_classification_sha256": _str(top["provisional_classification_sha256"], "$.provisional_classification_sha256", _HEX64),
+        "provisional_classification_sha256": None if unbound else _str(provisional, "$.provisional_classification_sha256", _HEX64),
         "aborted": aborted,
         "custody_failures": custody_failures,
         "run_window": RunWindow(
@@ -973,7 +1005,9 @@ def _parse_manifest(document: Any, layer: str) -> _Manifest:
         ),
     }
     if layer == "raw":
-        manifest: _Manifest = Plan117RawManifest(**common, path_commitment_key_hex=_str(top["path_commitment_key_hex"], "$.path_commitment_key_hex", _HEX64))
+        key = _str(top["path_commitment_key_hex"], "$.path_commitment_key_hex", _HEX64)
+        # An unbound diagnostic can be reduced but cannot become a publishable manifest.
+        manifest: _Manifest = _Manifest(**common) if unbound else Plan117RawManifest(**common, path_commitment_key_hex=key)
     else:
         manifest = Plan117SanitizedManifest(**common)
     _check_role_references(manifest)
@@ -1376,17 +1410,22 @@ def reduce_document(
     descriptors: DescriptorFixture | None = None,
     extra_hits: Iterable[GateHit] = (),
 ) -> GateVerificationResult:
-    """Tolerant entry point: scan for STOP first, then strict-parse, then reduce."""
+    """Scan for STOP first, then reduce all evidence with a valid shape.
+
+    An absent raw classification digest still permits diagnosis and always adds schema invalidity.
+    """
     if layer not in ("raw", "sanitized"):
         raise ValueError("layer")
     signals = scan_positive_signals(document)
     try:
-        manifest = _parse_manifest(document, layer)
+        manifest = _parse_manifest(document, layer, diagnose_unbound=True)
     except (ContractError, TypeError, ValueError, KeyError, AttributeError, IndexError):
         # Untrusted input: any parse failure is schema invalidity, and the already-scanned STOP still wins.
         return compose_result((*signals, GateHit(GateReason.SCHEMA_INVALID), *extra_hits))
     reduced = reduce_gate(manifest, descriptors=descriptors)
     hits = [hit for hit in (reduced.primary, *reduced.secondary) if hit is not None]
+    if manifest.provisional_classification_sha256 is None:
+        hits.append(GateHit(GateReason.SCHEMA_INVALID))
     return compose_result((*hits, *signals, *extra_hits))
 
 

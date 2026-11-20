@@ -38,6 +38,17 @@ def test_valid_raw_document_is_accepted_with_derived_unreachability():
     assert result.derived_reachability == "ZERO_ENTRY_UNREACHABLE"
 
 
+def test_unbound_classification_remains_invalid_without_a_reopen_signal():
+    raw = ev.valid_raw_document()
+    raw["provisional_classification_sha256"] = None
+
+    with pytest.raises(c.ContractError):
+        c.parse_raw_manifest(raw)
+    result = _reduce(raw)
+    assert result.disposition is D.INVALID_CURRENT_CLIENT_GATE
+    assert result.reason_codes() == ("schema_invalid",)
+
+
 def test_only_accepted_carries_the_unreachable_label():
     result = _reduce(ev.mutated(lambda d: ev.checkpoint(d, "a_prime", "after_first").update(session_binding="session-" + "b" * 32)))
     assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP
