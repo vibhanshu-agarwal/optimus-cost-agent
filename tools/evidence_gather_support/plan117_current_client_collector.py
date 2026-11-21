@@ -1281,23 +1281,31 @@ def _derive_checkpoint(art: _Artifacts, arm_id: str, launch_id: str) -> dict[str
     record = art.document(f"plan117_v5_checkpoint:{arm_id}:{label}", "checkpoint", ("arm_id", "label", "copied_monotonic_ns", "presence"))
     presence_known = type(record["presence"]) is dict
     presence = record["presence"] if presence_known else {}
-    files, copies = [], {}
-    with tempfile.TemporaryDirectory(prefix="p117v5-dbcopy-") as scratch:
-        for file_role in ("main", "shm", "wal"):
-            role = f"plan117_v5_db:{arm_id}:{label}:{file_role}"
-            # Presence is derived from what was captured; the record's metadata can be wrong but cannot hide a copy.
-            captured = role in art.by_role
-            if not presence_known or (presence.get(file_role) is True) != captured:
-                art.failures.append("checkpoint_presence_mismatch")
-            payload = art.bytes(role) if captured else None
-            if payload is not None:
-                copies[file_role] = Path(scratch) / f"db.sqlite-{file_role}"
-                copies[file_role].write_bytes(payload)
-            files.append({
-                "file_role": file_role, "presence": "present" if payload is not None else "absent",
-                "path_role": None if payload is None else (f"database:{arm_id}:{label}" if file_role == "main" else f"database:{arm_id}:{label}:{file_role}"),
-                "copy_sha256": _EMPTY if payload is None else contract.sha256_hex(payload)})
-        binding = read_database_binding(copies["main"], copies.get("wal"), copies.get("shm")) if "main" in copies else DatabaseBinding(False, None, None)
+    files, payloads = [], {}
+    for file_role in ("main", "shm", "wal"):
+        role = f"plan117_v5_db:{arm_id}:{label}:{file_role}"
+        # Presence is derived from what was captured; the record's metadata can be wrong but cannot hide a copy.
+        captured = role in art.by_role
+        if not presence_known or (presence.get(file_role) is True) != captured:
+            art.failures.append("checkpoint_presence_mismatch")
+        payload = art.bytes(role) if captured else None
+        if payload is not None:
+            payloads[file_role] = payload
+        files.append({
+            "file_role": file_role, "presence": "present" if payload is not None else "absent",
+            "path_role": None if payload is None else (f"database:{arm_id}:{label}" if file_role == "main" else f"database:{arm_id}:{label}:{file_role}"),
+            "copy_sha256": _EMPTY if payload is None else contract.sha256_hex(payload)})
+
+    binding = DatabaseBinding(False, None, None)
+    if "main" in payloads:
+        try:
+            with tempfile.TemporaryDirectory(prefix="p117v5-dbcopy-") as scratch:
+                copies = {file_role: Path(scratch) / f"db.sqlite-{file_role}" for file_role in payloads}
+                for file_role, payload in payloads.items():
+                    copies[file_role].write_bytes(payload)
+                binding = read_database_binding(copies["main"], copies.get("wal"), copies.get("shm"))
+        except OSError:
+            art.failures.append("checkpoint_copy_unreadable")
     return {"label": label, "copied_monotonic_ns": record["copied_monotonic_ns"], "files": files, "readable": binding.readable,
             "thread_id": binding.thread_id, "session_binding": binding.session_binding, "closed_copy": True}
 
