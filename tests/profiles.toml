@@ -675,6 +675,7 @@ paths = [
   "tests/unit/context/test_memory_import.py",
   "tests/unit/context/test_memory_workspace.py",
   "tests/unit/context/test_memory_recovery.py",
+  "tests/unit/context/test_memory_store_setup.py",
   "tests/unit/guardrails/test_file_policy.py",
   "tests/unit/guardrails/test_local_secret_scan_encoding.py",
   "tests/unit/guardrails/test_runtime_tree.py",

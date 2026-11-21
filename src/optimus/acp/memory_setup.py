@@ -63,16 +63,19 @@ def _store_password(keyring_backend: Any, service: str, credential: str, passwor
     from optimus.context import memory_recovery  # here, not at import: a launch imports this module for its defaults
 
     lock = lock_root / "locks" / _SETUP_LOCK
+    stored = False
     try:
         with memory_recovery._file_lock(lock, wait=_SETUP_LOCK_SECONDS):
             try:
                 keyring_backend.set_password(service, credential, password)
             except Exception as exc:  # noqa: BLE001 - any backend failure stops setup before a file claims a credential exists
                 raise MemorySetupError(f"The OS keyring refused the password ({type(exc).__name__}); nothing was configured.") from None
+            stored = True
     except memory_recovery.RecoveryError:
         raise MemorySetupError("Another memory setup is storing its password; nothing was configured. Run this again in a moment.") from None
     except OSError as exc:
-        raise MemorySetupError(f"The setup lock {lock} could not be used (errno {exc.errno}); nothing was configured.") from None
+        what = "was stored, but releasing the setup lock" if stored else "was not stored: the setup lock"
+        raise MemorySetupError(f"The password {what} {lock} failed (errno {exc.errno}); nothing was configured. Run this again.") from None
 
 
 def shipped_defaults() -> dict[str, Any]:

@@ -4,8 +4,10 @@ Redis and the native keyring are proven in tests/integration/memory."""
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -427,13 +429,16 @@ def test_setting_up_a_root_again_after_its_configuration_moved_keeps_the_moved_p
 
 
 class _InterleavingVault(WinVaultKeyring):
-    """keyring's own WinVault `set_password` and `get_password` over an in-memory vault. Each vault write first waits at
-    `barrier`, so two unserialized setups both read the service's shared slot before either writes (#529)."""
+    """keyring's own WinVault `set_password` and `get_password` over an in-memory vault (#529). Each vault write first waits at
+    `barrier`, so two setups that are not serialized both read the service's shared slot before either writes. `log` records
+    each thread's slot writes; `overlapped` is set when two writers really met at the barrier."""
 
-    def __init__(self, barrier: threading.Barrier) -> None:
+    def __init__(self, barrier: threading.Barrier, log: list[tuple[str, str]]) -> None:
         super().__init__()
         self._targets: dict[str, tuple[str, str]] = {}
         self._barrier = barrier
+        self._log = log
+        self.overlapped = False
 
     def _read_credential(self, target: str) -> DecodingCredential | None:
         found = self._targets.get(target)
@@ -441,35 +446,139 @@ class _InterleavingVault(WinVaultKeyring):
 
     def _set_password(self, target: str, username: str, password: str) -> None:
         try:
-            self._barrier.wait(timeout=1.0)
-        except threading.BrokenBarrierError:  # the other setup is held by the lock: no overlap to arrange
+            self._barrier.wait()
+            self.overlapped = True
+        except threading.BrokenBarrierError:  # the other setup never arrived: it was held by the lock, or it already wrote
             pass
+        self._log.append((threading.current_thread().name, "write"))
         self._targets[target] = (username, password)
 
 
-def test_concurrent_store_setups_on_one_keyring_service_both_keep_their_passwords(tmp_path: Path) -> None:
-    """#529: the Windows backend reads, then rewrites, one slot per service. Two setups for different roots that overlap there
-    must not lose either password."""
-    vault = _InterleavingVault(threading.Barrier(2))
-    lock_root = tmp_path / "runtime"
-    failures: list[BaseException] = []
+def _race(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, locked: bool) -> tuple[_InterleavingVault, list[tuple[str, str]], list[bool]]:
+    """Two store setups for different roots, started together, on one vault and one lock root. Returns the vault, every lock
+    attempt and slot write in order, and whether each root's password still matches its own ACL."""
+    from optimus.context import memory_recovery
+
+    log: list[tuple[str, str]] = []
+    vault = _InterleavingVault(threading.Barrier(2, timeout=2.0), log)
+    real_try = memory_recovery._try_lock
+
+    def logged_try(handle: Any) -> bool:
+        taken = real_try(handle)
+        log.append((threading.current_thread().name, "locked" if taken else "refused"))
+        return taken
+
+    monkeypatch.setattr(memory_recovery, "_try_lock", logged_try)
+    if not locked:
+        monkeypatch.setattr(memory_recovery, "_file_lock", lambda *_args, **_kwargs: contextlib.nullcontext())
+    start, failures = threading.Barrier(2, timeout=10.0), []
 
     def setup(name: str) -> None:
         try:
-            memory_setup.run_store_setup(tmp_path / name, keyring_backend=vault, confirm=lambda _d: True, defaults=_settings(), lock_root=lock_root)
+            start.wait()
+            memory_setup.run_store_setup(tmp_path / name, keyring_backend=vault, confirm=lambda _d: True, defaults=_settings(),
+                                         lock_root=tmp_path / "runtime")
         except BaseException as exc:  # noqa: BLE001 - reported below, in the test's own thread
             failures.append(exc)
 
-    threads = [threading.Thread(target=setup, args=(name,)) for name in ("first", "second")]
+    threads = [threading.Thread(target=setup, args=(name,), name=name) for name in ("first", "second")]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join(timeout=30)
     assert not failures and not any(thread.is_alive() for thread in threads)
+    kept = []
     for name in ("first", "second"):
         path = sc.memory_store_root(tmp_path / name) / sc.CONFIG_NAME
         password = _stored_password(vault, path)
-        assert password and hashlib.sha256(password.encode()).hexdigest() in (path.parent / sc.ACL_NAME).read_text("utf-8"), name
+        kept.append(bool(password) and hashlib.sha256((password or "").encode()).hexdigest() in (path.parent / sc.ACL_NAME).read_text("utf-8"))
+    return vault, log, kept
+
+
+def test_unserialized_store_setups_really_overlap_and_lose_a_password(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The control for the test below: without the lock, the arranged overlap happens and keyring's backend loses one password."""
+    vault, _log, kept = _race(monkeypatch, tmp_path, locked=False)
+    assert vault.overlapped, "the two setups never met at the slot write, so this run proves nothing"
+    assert sorted(kept) == [False, True]
+
+
+def test_concurrent_store_setups_on_one_keyring_service_both_keep_their_passwords(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#529: the Windows backend reads, then rewrites, one slot per service. Two setups that contend for it are serialized by the
+    lock, so neither password is lost."""
+    vault, log, kept = _race(monkeypatch, tmp_path, locked=True)
+    first_write = next(index for index, (_thread, event) in enumerate(log) if event == "write")
+    writer = log[first_write][0]
+    assert any(event == "refused" and thread != writer for thread, event in log[:first_write]), f"no contention arranged: {log}"
+    assert not vault.overlapped and kept == [True, True]
+
+
+_HOLD_LOCK = """
+import sys
+from pathlib import Path
+
+from optimus.context import memory_recovery
+
+with memory_recovery._file_lock(Path(sys.argv[1])):
+    print("held", flush=True)
+    sys.stdin.readline()
+"""
+
+
+def test_another_process_holding_the_lock_keeps_a_setup_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#529 review: the lock holds across processes, not only threads. While a child process holds it, setup stops before its
+    keyring write; once the child lets go, the same setup completes."""
+    import os
+    import subprocess
+    import sys
+
+    monkeypatch.setattr(memory_setup, "_SETUP_LOCK_SECONDS", 0.2)
+    keyring = FakeKeyring()
+    source = Path(memory_setup.__file__).resolve().parents[2]
+    child = subprocess.Popen([sys.executable, "-c", _HOLD_LOCK, str(tmp_path / "locks" / memory_setup._SETUP_LOCK)], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, text=True, env={**os.environ, "PYTHONPATH": str(source)})
+    try:
+        assert child.stdout is not None and child.stdout.readline() == "held\n"
+        with pytest.raises(memory_setup.MemorySetupError, match="Another memory setup"):
+            _run(tmp_path, keyring)
+        assert sc.config_literal(sc.memory_store_root(tmp_path)) is None and not keyring._store
+    finally:
+        child.communicate("\n", timeout=30)
+    assert child.returncode == 0
+    path = _run(tmp_path, keyring)
+    assert _stored_password(keyring, path)
+
+
+def test_a_lock_fault_is_reported_as_itself_not_as_another_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#529 review: only another holder's lock is retried. Any other locking failure stops setup at once with its errno."""
+    import errno
+
+    from optimus.context import memory_recovery
+
+    def fault(*_args: Any) -> None:
+        raise OSError(errno.ENOLCK, "no locks available")
+
+    lock_module = "msvcrt" if sys.platform == "win32" else "fcntl"
+    monkeypatch.setattr(__import__(lock_module), "locking" if lock_module == "msvcrt" else "flock", fault)
+    monkeypatch.setattr(memory_setup, "_SETUP_LOCK_SECONDS", 30.0)  # a retried fault would wait this out
+    keyring = FakeKeyring()
+    with pytest.raises(memory_setup.MemorySetupError, match=f"was not stored.*errno {errno.ENOLCK}"):
+        _run(tmp_path, keyring)
+    assert sc.config_literal(sc.memory_store_root(tmp_path)) is None and not keyring._store
+    assert memory_recovery._CONTENTION_ERRNOS.isdisjoint({errno.ENOLCK})
+
+
+def test_a_failed_unlock_after_the_write_does_not_undo_the_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#529 review: closing the lock file releases the lock, so an unlock failure after a stored password is not a setup failure."""
+    from optimus.context import memory_recovery
+
+    def broken_unlock(_handle: Any) -> None:
+        raise OSError(5, "unlock failed")
+
+    monkeypatch.setattr(memory_recovery, "_unlock", broken_unlock)
+    keyring = FakeKeyring()
+    path = _run(tmp_path, keyring)
+    password = _stored_password(keyring, path)
+    assert password and hashlib.sha256(password.encode()).hexdigest() in (path.parent / sc.ACL_NAME).read_text("utf-8")
 
 
 @pytest.mark.parametrize("store", [True, False])
