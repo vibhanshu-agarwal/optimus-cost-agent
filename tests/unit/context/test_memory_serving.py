@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -138,11 +139,15 @@ RUNNER_ID = "tests/unit/tools/test_runner.py::TestLocalRunner::test_job_object" 
 BUILD_PATH = "docs/sources/agent-localized-edit/tools/build.py"
 
 
-def _persisted(text: str) -> str:
-    """The persistence sanitizer exactly as the session runs it (`ConversationSanitizer`: evidence-redaction-v1)."""
-    from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY, sanitize_for_persistence
+def _conversation(*known: str) -> ms.ExemptingSanitizer:
+    """The session's persistence sanitizer, as the session builds it (evidence-redaction-v1), with these known secrets."""
+    from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs
 
-    return str(sanitize_for_persistence(text, policy=EVIDENCE_REDACTION_POLICY).value)
+    return ConversationSanitizer(ConversationSanitizerInputs(known_secrets=known, path_aliases=())).sanitize
+
+
+def _persisted(text: str) -> str:
+    return _conversation()(text)
 
 
 def _secret() -> str:
@@ -153,9 +158,14 @@ def _secret() -> str:
     return "K" + "".join(ch for ch in base64.b64encode(hashlib.sha256(b"memory-525").digest()).decode() if ch.isalnum())
 
 
+def _prefixed() -> str:
+    return "sk-" + "ant-" + "abcdefghijklmnopqrstuvwx"  # a key prefix the prefix rule masks, spelled apart for the secret scan
+
+
 def _workspace(tmp_path: Path) -> Path:
     workspace = tmp_path / "ws"
-    for name in ("tests/unit/tools/test_runner.py", BUILD_PATH, "build/generated/LocalRunnerOutputCollector.py"):
+    for name in ("tests/unit/tools/test_runner.py", BUILD_PATH, "build/generated/LocalRunnerOutputCollector.py",
+                 f"docs/keys/{_prefixed()}.md"):
         (workspace / name).parent.mkdir(parents=True, exist_ok=True)
         (workspace / name).write_text("x = 1\n", encoding="utf-8")
     (workspace / ".gitignore").write_text("build/\n", encoding="utf-8")
@@ -166,41 +176,74 @@ def _workspace(tmp_path: Path) -> Path:
                                   f"See {BUILD_PATH}: it builds the doc.", f"Both `{RUNNER_ID}` and {BUILD_PATH}."])
 def test_a_note_naming_workspace_files_is_kept_as_written(tmp_path: Path, note: str) -> None:
     assert _persisted(note) != note  # the false refusal: the entropy rule takes each name for a random token
-    assert ms.workspace_sanitizer(_persisted, _workspace(tmp_path))(note) == note
+    assert ms.workspace_sanitizer(_conversation(), _workspace(tmp_path))(note) == note
 
 
 def test_secrets_beside_or_inside_a_workspace_file_name_are_still_masked(tmp_path: Path) -> None:
-    sanitize, secret = ms.workspace_sanitizer(_persisted, _workspace(tmp_path)), _secret()
+    sanitize, secret = ms.workspace_sanitizer(_conversation(), _workspace(tmp_path)), _secret()
     assert _persisted(secret) != secret  # the key alone is masked by the same rule
     beside = sanitize(f"Run {RUNNER_ID} with the key {secret} set.")
-    assert secret not in beside and beside == f"Run {RUNNER_ID} with the key {REDACTION_MASK} set."
-    # a key written as a test name, glued to a name, or behind a character no path holds keeps the whole run judged
-    named = sanitize(f"See tests/unit/tools/test_runner.py::{secret} now.")
-    assert named == f"See tests/unit/tools/test_runner.py::{REDACTION_MASK} now."  # each test name is judged on its own
-    for word in (f"{secret}/tests/unit/tools/test_runner.py", f"x+{BUILD_PATH}", f"{BUILD_PATH}{secret}"):
+    assert beside == f"Run {RUNNER_ID} with the key {REDACTION_MASK} set."
+    # a key written as a test name, glued to a name, or behind a character no path holds leaves the whole token judged
+    for word in (f"tests/unit/tools/test_runner.py::{secret}", f"{secret}/tests/unit/tools/test_runner.py",
+                 f"x+{BUILD_PATH}", f"{BUILD_PATH}{secret}"):
         out = sanitize(f"See {word} now.")
         assert secret not in out and out == _persisted(f"See {word} now.") != f"See {word} now.", word
+
+
+def test_every_other_rule_still_reads_a_workspace_file_name(tmp_path: Path) -> None:
+    """Codex round 114, finding 1: an exact known secret spelled across a test id's names, or inside a path, and a key prefix in
+    a real file's name, are masked as before. Only the entropy rule skips an exempt name."""
+    workspace = _workspace(tmp_path)
+    for known, note in (("TestLocalRunner::test_job_object", f"Run {RUNNER_ID} before committing."),
+                        ("agent-localized-edit", f"Run {BUILD_PATH} first.")):
+        out = ms.workspace_sanitizer(_conversation(known), workspace)(note)
+        assert known not in out and out == _conversation(known)(note) != note, known
+    keyed = f"Read docs/keys/{_prefixed()}.md first."
+    out = ms.workspace_sanitizer(_conversation(), workspace)(keyed)
+    assert _prefixed() not in out and out == _persisted(keyed)
 
 
 @pytest.mark.parametrize("named", ["tests/unit/tools/test_missing_runner.py::TestLocalRunner",  # no such file
                                    "build/generated/LocalRunnerOutputCollector.py",  # ignored by the workspace
                                    f"../ws/{BUILD_PATH}"])  # spelled through the parent
-def test_a_name_that_is_not_a_file_memory_could_pin_is_judged_as_before(tmp_path: Path, named: str) -> None:
+def test_a_name_that_is_not_a_file_the_workspace_admits_is_judged_as_before(tmp_path: Path, named: str) -> None:
     note = f"Run {named} first."
     assert _persisted(note) != note
-    assert ms.workspace_sanitizer(_persisted, _workspace(tmp_path))(note) == _persisted(note)
+    assert ms.workspace_sanitizer(_conversation(), _workspace(tmp_path))(note) == _persisted(note)
 
 
-def test_a_rule_that_takes_the_name_takes_it_as_before_and_no_workspace_changes_nothing(tmp_path: Path) -> None:
-    sanitize = ms.workspace_sanitizer(_persisted, _workspace(tmp_path))
+def test_a_rule_that_takes_the_name_takes_it_as_before(tmp_path: Path) -> None:
+    sanitize = ms.workspace_sanitizer(_conversation(), _workspace(tmp_path))
     assert sanitize(f"password {RUNNER_ID}") == _persisted(f"password {RUNNER_ID}") != f"password {RUNNER_ID}"
-    marked = f"Run {RUNNER_ID} \ue000 first."  # a text already holding the set-aside marks is judged whole
-    assert sanitize(marked) == _persisted(marked)
-    assert ms.workspace_sanitizer(_persisted, None) is _persisted
 
 
-def test_the_set_aside_word_is_the_sanitizers_whole_token() -> None:
-    """The set-aside run must be exactly what the entropy rule reads as one token, or a key could sit beside a name in it."""
+def test_each_distinct_name_is_looked_at_once_and_no_file_is_opened(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex round 114, finding 2: a statement repeating a name costs one gate check, and no file's bytes are read."""
+    from optimus.guardrails.file_policy import FilePolicy
+
+    looked: list[str] = []
+
+    class Counting(FilePolicy):
+        def admitter(self) -> Any:
+            admits = super().admitter()
+            return lambda relative: looked.append(relative) or admits(relative)
+
+        def read(self, *args: Any, **kwargs: Any) -> Any:
+            raise AssertionError("a file was opened")
+
+        def decide(self, *args: Any, **kwargs: Any) -> Any:
+            raise AssertionError("a file was opened")
+
+    monkeypatch.setattr(ms, "FilePolicy", Counting)
+    note = " ".join([f"Run {RUNNER_ID}."] * 100)
+    assert ms.workspace_sanitizer(_conversation(), _workspace(tmp_path))(note) == note
+    assert looked == ["tests/unit/tools/test_runner.py"]
+
+
+def test_the_exempt_word_is_the_sanitizers_whole_token() -> None:
+    """The exempt word must be exactly what the entropy rule reads as one token, or a key could sit beside a name in it."""
     from optimus_security import sanitization
 
     assert ms._SANITIZER_RUN.pattern.split("]")[0] == sanitization._TOKEN_CANDIDATE_RE.pattern.split("]")[0]
+    assert ms._ENTROPY_TOKEN_LENGTHS == (sanitization._ENTROPY_MIN_LEN, sanitization._ENTROPY_MAX_LEN)

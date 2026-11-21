@@ -895,14 +895,15 @@ def test_the_import_commands_parse_only_their_own_forms() -> None:
 
 def test_a_note_naming_a_workspace_file_is_saved_and_served_as_written(tmp_path: Path) -> None:
     """#525: `/remember` and `/memory edit` scan through the session's sanitizer, whose entropy rule took a long test id for a
-    secret; the note was refused whole. A file memory could pin is a file name; without a workspace the note is refused as before."""
-    from tests.unit.context.test_memory_serving import BUILD_PATH, RUNNER_ID, _persisted, _workspace
+    secret, so the note was refused whole. The session's sanitizer is workspace-aware; the bare one refuses the note as before."""
+    from tests.unit.context.test_memory_serving import BUILD_PATH, RUNNER_ID, _conversation, _persisted, _workspace
 
     workspace = _workspace(tmp_path)
     store = _adapter(purge_store(tmp_path)[0])
     note = f"Run {RUNNER_ID} before committing."
     assert "refused" in _run(_commands(store, sanitize=_persisted), f"/remember {note}").text
-    commands = mc.MemoryCommands(store, trusted=True, sanitize=_persisted, scope=SCOPE, workspace=workspace)
+    commands = mc.MemoryCommands(store, trusted=True, sanitize=memory_serving.workspace_sanitizer(_conversation(), workspace),
+                                 scope=SCOPE, workspace=workspace)
     item, version = _remembered(commands, note)
     edited = f"Run {RUNNER_ID} and {BUILD_PATH} before committing."
     answer = _run(commands, f"/memory edit {item}@{version} {edited}")

@@ -25,7 +25,7 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Protocol
 
 from context_engine.memory_contracts import ServedMemory
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
@@ -52,11 +52,11 @@ MAX_FILE_REFS: Final = 8
 MAX_HASHED_BYTES: Final = 4 * 1024 * 1024  # a larger file is not pinned: hashing it at every turn would cost too much
 _PATH_WORD: Final = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")  # a leading dot: `.editorconfig` is a file too
 _REFERENCE: Final = re.compile(r"[A-Za-z0-9._:@/-]{1,128}")  # the contracts' host-reference form
-# The characters the persistence sanitizer's entropy rule reads as one token (`optimus_security.sanitization`): a path is set
-# aside only when its whole run is a file name, so no secret written against it can hide inside the set-aside part.
+# What the persistence sanitizer's entropy rule reads as one token, and the lengths it judges (`optimus_security.sanitization`).
+# A name is exempt only as that whole token, so no key written against it can share the exemption.
 _SANITIZER_RUN: Final = re.compile(r"[A-Za-z0-9._+:/-]+")
-_NAMED_FILE: Final = re.compile(r"(?P<path>[A-Za-z0-9_.][A-Za-z0-9_./-]*)(?P<node>(?:::[A-Za-z_][A-Za-z0-9_]*)*)(?P<tail>[.:]*)")
-_ASIDE, _NODE = "\ue000", "\ue001"  # private-use characters: a text that holds either is sanitized as it is
+_ENTROPY_TOKEN_LENGTHS: Final = (24, 256)
+_NAMED_FILE: Final = re.compile(r"(?P<path>[A-Za-z0-9_.][A-Za-z0-9_./-]*)(?P<node>(?:::[A-Za-z_][A-Za-z0-9_]*)*)[.:]*")
 
 
 @dataclass(frozen=True)
@@ -104,44 +104,34 @@ def _digest(policy: FilePolicy, relative: str) -> str | None:
     return hashlib.sha256(content).hexdigest()[:32]
 
 
-def workspace_sanitizer(sanitize: Callable[[str], str], root: Path | None) -> Callable[[str], str]:
-    """`sanitize`, except that a workspace file the text names (`tests/unit/test_app.py`, or a pytest id such as
-    `tests/unit/test_app.py::TestApp::test_run`) is read as a file name, not as a secret (#525). The entropy rule takes a long
-    path for a random token, so memory refused, or served masked, a note that named one. A path counts only when it is a file
-    memory could pin (`file_refs`: inside the workspace, not a secret, ignored or binary file). Everything else, the test names
-    after `::` included, is sanitized in place as before, with the set-aside name still standing in its sentence."""
-    if root is None:
-        return sanitize
+class ExemptingSanitizer(Protocol):
+    """The session's persistence sanitizer (`ConversationSanitizer.sanitize`). Only its entropy rule skips the whole tokens
+    named in `entropy_exempt`."""
+
+    def __call__(self, text: str, *, entropy_exempt: frozenset[str] = ...) -> str: ...
+
+
+def workspace_sanitizer(sanitize: ExemptingSanitizer, root: Path) -> Callable[[str], str]:
+    """`sanitize`, except that the entropy rule does not take a workspace file's name for a random token (#525). A long path or
+    pytest id (`tests/unit/test_app.py::TestApp::test_run`) was masked, so memory refused a note naming one, or served it masked.
+    A name is exempt only as the sanitizer's whole token, and only when two things hold. Its path must be a file the workspace
+    admits: inside it, not a secret or ignored file, by the policy's gate, which opens nothing. And each test name after `::`
+    must pass the sanitizer on its own. Every other rule, exact known secrets and key prefixes included, still reads the whole
+    text."""
 
     def sanitized(text: str) -> str:
-        if _ASIDE in text or _NODE in text:
-            return sanitize(text)
-        policy: list[FilePolicy] = []  # opened on the first path-shaped word only
-        named: list[str] = []
-
-        def aside(run: re.Match[str]) -> str:
-            word = run.group(0)
-            parts = _NAMED_FILE.fullmatch(word)
-            if parts is None:
-                return word
-            relative = parts["path"].rstrip(".")
-            if "." not in relative and "/" not in relative:
-                return word
-            policy[:] = policy or [FilePolicy(root)]
-            if _digest(policy[0], relative) is None:
-                return word
-            named.append(relative)
-            return (f"{_ASIDE}{len(named) - 1}{_ASIDE}{parts['path'][len(relative):]}"
-                    f"{parts['node'].replace('::', _NODE)}{parts['tail']}")
-
-        held = _SANITIZER_RUN.sub(aside, text)
-        if not named:
-            return sanitize(text)
-        out = sanitize(held)
-        for index, relative in enumerate(named):
-            out = out.replace(f"{_ASIDE}{index}{_ASIDE}", relative)
-        out = out.replace(_NODE, "::")
-        return sanitize(text) if _ASIDE in out else out  # a rule took part of a set-aside name: judged whole, as before
+        admits: list[Callable[[str], bool]] = []  # one gate per text, opened at the first long path-shaped word only
+        exempt: set[str] = set()
+        for word in dict.fromkeys(_SANITIZER_RUN.findall(text)):  # each distinct word is looked at once
+            shortest, longest = _ENTROPY_TOKEN_LENGTHS
+            parts = _NAMED_FILE.fullmatch(word) if shortest <= len(word) <= longest else None
+            if parts is None or ("/" not in parts["path"] and "." not in parts["path"]):
+                continue
+            admits[:] = admits or [FilePolicy(root).admitter()]
+            names = parts["node"].split("::")[1:]
+            if admits[0](parts["path"].rstrip(".")) and all(sanitize(name) == name for name in names):
+                exempt.add(word)
+        return sanitize(text, entropy_exempt=frozenset(exempt)) if exempt else sanitize(text)
 
     return sanitized
 

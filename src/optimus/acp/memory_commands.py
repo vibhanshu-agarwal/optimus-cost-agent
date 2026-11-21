@@ -334,7 +334,6 @@ class MemoryCommands:
                  source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
                  brief: Callable[[memory_serving.ServedSet], str] | None = None, registry_recovery: Any = None,
                  backups: Any = None, imports: Any = None, backlog: Any = None) -> None:
-        sanitize = memory_serving.workspace_sanitizer(sanitize, workspace)  # a workspace file name is not a secret (#525)
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
