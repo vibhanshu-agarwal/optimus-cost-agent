@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import json
 import os
 import re
 import sys
@@ -248,7 +249,7 @@ def test_bounds_refuse_at_the_limit_and_never_truncate(tmp_path: Path, monkeypat
     answer = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {root}").text
     assert "(over 2000 characters (refused whole, never cut))" in answer and "big.md: over 1 MiB" in answer
     assert "999 to import" in answer and "late.md:1: refuse (past the 1,000-entry bound)" not in answer  # beyond the shown list
-    assert "3 refused" in answer  # the long one, and the two past the bound
+    assert "1 refused" in answer and "entries: 2 past the 1,000-entry bound, not read" in answer  # counted once, never parsed
     monkeypatch.setattr(mi, "MAX_TOTAL_BYTES", len(f"- {long.strip()} [project: p-1]\n- [[big]]\n- [[many]]\n- [[late]]\n") + 10)
     total = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {root}").text
     assert "many.md: past the 16 MiB total" in total
@@ -439,3 +440,164 @@ def test_through_the_adapter_each_commit_gets_its_card_and_served_reads_name_the
         assert json.loads(json.dumps(record))  # a plain record
 
     asyncio.run(scenario())
+
+
+def test_a_purged_import_is_never_revived_by_importing_it_again_with_a_mapping(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 1: the entry's own source project is its identity, so a mapping never makes it new."""
+    root = _source(tmp_path / "repo", {"MEMORY.md": "- The deploy window is Tuesday. [project: p-1]\n"})
+    store = _store(tmp_path)
+    commands = _commands(store, tmp_path)
+    _imported(commands, root)
+    (event,) = _items(store)
+    asked = _run(commands, f"/forget {event.item}@1 --purge")
+    assert asked.purge is not None and commands.purge(asked.purge)
+    again = _imported(commands, root, mapped="proj-beta")
+    assert "0 saved, 1 already present" in again.text
+    assert [(e.item, e.status, e.statement) for e in _items(store)] == [(event.item, "purged", "")]
+
+
+def test_wrapped_bullets_are_refused_whole_and_fenced_code_holds_no_entries(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 2: a qualification on the next line is never cut off; code is never an entry."""
+    root = _source(tmp_path / "repo", {"MEMORY.md": (
+        "- Always deploy on Fridays, [project: p-1]\n  except during the freeze.\n"
+        "- Lazy continuation [project: p-1]\nunless told otherwise.\n"
+        "- Kept entry. [project: p-1]\n\n```\n- Not an entry. [project: p-1]\n- [[inside-code]]\n```\n"
+        "- Last entry. [project: p-1]\n## Heading\n")})
+    answer = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {root}").text
+    assert answer.count("(continues on the next line (a wrapped entry is refused whole, never cut))") == 2
+    assert "2 to import" in answer and "Not an entry" not in answer and "inside-code" not in answer
+
+
+def test_status_belongs_to_one_apply_and_a_refused_lease_keeps_the_last_record(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 3: the record is replaced only under the lease, and every line names its apply."""
+    from optimus.context.authored_memory import MemoryStoreRefused
+
+    root = _source(tmp_path / "repo", {"MEMORY.md": "- One. [project: p-1]\n- Two. [project: p-1]\n"})
+    store = _store(tmp_path)
+    commands = _commands(store, tmp_path)
+    _imported(commands, root)
+    before = _run(commands, "/memory import status").text
+
+    class _Held:
+        def __init__(self, inner: Any) -> None:
+            self._inner = inner
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._inner, name)
+
+        def lease(self, **_kwargs: Any) -> Any:
+            raise MemoryStoreRefused("LEASE_HELD")
+
+    held = _commands(_Held(store), tmp_path)
+    assert "another session is writing" in _imported(held, root).text
+    assert _run(commands, "/memory import status").text == before
+    log = (tmp_path / "config" / "memory-import" / f"{PROJECT}.jsonl").read_text(encoding="utf-8").splitlines()
+    head = json.loads(log[0])["apply"]
+    assert all(json.loads(line)["apply"] == head for line in log)
+
+
+class _Renews:
+    """The store refuses the lease's renewal after `ok` renewals: another session took the project over mid-apply."""
+
+    def __init__(self, inner: Any, ok: int) -> None:
+        self._inner, self._ok = inner, ok
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def renew(self, token: int) -> None:
+        from optimus.context.authored_memory import MemoryStoreRefused
+
+        if self._ok == 0:
+            raise MemoryStoreRefused("LEASE_LOST")
+        self._ok -= 1
+        self._inner.renew(token)
+
+
+def test_a_lost_lease_mid_apply_keeps_each_commit_and_its_notice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fable CP2 review 1, finding 4: what was saved is reported and noticed; the rest is remaining, never "nothing changed"."""
+    monkeypatch.setattr(mi, "RENEW_SECONDS", -1.0)  # renew before every entry
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- Entry {n}. [project: p-1]\n" for n in range(5))})
+    store = _store(tmp_path)
+    answer = _imported(_commands(_Renews(store, 2), tmp_path), root)
+    assert answer.text.startswith("Imported: 2 saved") and "write lease could not be kept, so 3 were not tried" in answer.text
+    assert sorted(n.item for n, _label in answer.notices) == sorted(e.item for e in _items(store)) and len(_items(store)) == 2
+    assert "interrupted" in _run(_commands(store, tmp_path), "/memory import status").text
+
+
+class _LostReply:
+    """The append reaches the store, but its reply is lost (`at`, counting from 0): the host cannot tell it committed."""
+
+    def __init__(self, inner: Any, at: int) -> None:
+        self._inner, self._at = inner, at
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def append(self, *args: Any, **kwargs: Any) -> Any:
+        result = self._inner.append(*args, **kwargs)
+        self._at -= 1
+        if self._at < 0:
+            raise MemoryStoreUnavailable("reply lost")
+        return result
+
+
+def test_an_uncertain_commit_found_on_resume_is_confirmed_with_its_notice(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 4: the entry the last apply could not confirm is confirmed from the store, noticed once."""
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- Entry {n}. [project: p-1]\n" for n in range(4))})
+    store = _store(tmp_path)
+    first = _imported(_commands(_LostReply(store, 1), tmp_path), root)
+    assert "1 saved" in first.text and "1 uncertain" in first.text and len(_items(store)) == 2
+    resumed = _imported(_commands(store, tmp_path), root)
+    assert "3 saved, 1 already present" in resumed.text, resumed.text
+    lost = next(e for e in _items(store) if e.statement == "Entry 1.")
+    assert lost.event_id in {n.event_id for n, _label in resumed.notices}
+    status = _run(_commands(store, tmp_path), "/memory import status").text
+    assert "3 confirmed, 1 already present" in status and "0 uncertain" in status
+
+
+def test_links_and_gaps_are_bounded(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 5: a source full of dead links costs bounded work."""
+    import time as clock
+
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- [[dead-{n}]]\n" for n in range(5000)) + "- Real. [project: p-1]\n"})
+    started = clock.perf_counter()
+    source = mi.Reader(root, project=PROJECT, mapped=None, sanitize=lambda v: v, workspace=None).read()
+    assert clock.perf_counter() - started < 5
+    assert len(source.gaps) <= mi.MAX_GAPS + 2
+    assert ("links", "4000 more not followed (the 1,000-link bound)") in source.gaps
+    assert [e.disposition for e in source.entries] == ["import"]
+
+
+def test_an_unreadable_linked_file_refuses_every_entry(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 12: a B1 source that cannot be read fails closed."""
+    root = _source(tmp_path / "repo", {"MEMORY.md": "- Real entry. [project: p-1]\n- [[dump.txt]]\n",
+                                       "dump.txt": "x" * (mi.MAX_FILE_BYTES + 1)})
+    answer = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {root}").text
+    assert "(a linked file could not be read, so copying from it cannot be ruled out (scan))" in answer and "0 to import" in answer
+
+
+def test_apply_waits_until_every_page_was_shown(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 11: every entry is shown in full before anything is confirmed."""
+    long = "word " * 380
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- Entry {n} {long.strip()} [project: p-1]\n" for n in range(60))})
+    store = _store(tmp_path)
+    commands = _commands(store, tmp_path)
+    preview = _run(commands, f"/memory import {root}").text
+    pid = _preview_id(preview)
+    assert "page 1 of 2" in preview and f"Entry 0 {long.strip()}" in preview and "Pages not shown yet: 2" in preview
+    assert "see every page of the preview first" in _run(commands, f"/memory import apply {pid}").text
+    assert "Entry 59" in _run(commands, f"/memory import show {pid} 2").text
+    asked = _run(commands, f"/memory import apply {pid}")
+    assert asked.confirm is not None and "60 saved" in _u(commands.confirmed(asked.confirm)).text
+
+
+def test_a_re_exported_import_claims_no_origin() -> None:
+    """Fable CP2 review 1, finding 10: a recovery copy says `imported` for an imported item, which the import records as no origin."""
+    from optimus.context import memory_recovery as mr
+
+    entry = {"item": "m-0123456789abcdef", "version": 1, "trust": "legacy-import", "status": "active", "statement": "Imported note.",
+             "kind": "fact", "stream_id": "1795250476548-0"}
+    text = mr.memory_md([{"entry": entry}], "gen-1-000000000000").decode("utf-8")
+    assert "origin: imported" in text
+    assert mi._claimed({"origin": "imported"}) == "unavailable"

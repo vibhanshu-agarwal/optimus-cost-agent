@@ -869,7 +869,7 @@ def test_the_host_serves_a_turn_only_the_items_whose_conditions_hold(tmp_path: P
         (request,) = runner.requests
         assert "Never push to main." in request.memory_context
         assert "public API is frozen" not in request.memory_context and "parse_config lives" not in request.memory_context
-        assert "1 of the user's items are not shown: a file they rest on changed" in request.memory_context
+        assert "1 saved items are not shown: a file they rest on changed" in request.memory_context
         # the positive control: on release-1, with config.py as it was, both are served
         from tests.unit.context.test_memory_continuity import _run as git
 
@@ -878,3 +878,16 @@ def test_the_host_serves_a_turn_only_the_items_whose_conditions_hold(tmp_path: P
         await rpc(adapter, prompt_request(session_id, "And on this branch?", "p-5"))
         assert "public API is frozen" in runner.requests[-1].memory_context and "parse_config lives" in runner.requests[-1].memory_context
     asyncio.run(scenario())
+
+
+def test_the_import_commands_parse_only_their_own_forms() -> None:
+    """Plan 12.12 Task 2: the folder is taken as typed (spaces kept), one mapping, apply and show by preview id."""
+    parsed = mc.parse_command("/memory import C:/My Notes/repo --map proj-beta", attachments=False)
+    assert isinstance(parsed, mc.MemoryCommand) and (parsed.verb, parsed.target, parsed.source) == ("import", "C:/My Notes/repo", "proj-beta")
+    assert mc.parse_command("/memory import status", attachments=False) == mc.MemoryCommand("import_status")
+    assert mc.parse_command("/memory import apply imp-0123456789ab", attachments=False) == mc.MemoryCommand("import_apply", preview="imp-0123456789ab")
+    assert mc.parse_command("/memory import show imp-0123456789ab 2", attachments=False) == mc.MemoryCommand(
+        "import_show", preview="imp-0123456789ab", page=2)
+    for malformed in ("/memory import", "/memory import --map x", "/memory import show imp-0123456789ab x"):
+        assert mc.parse_command(malformed, attachments=False) == mc.USAGE, malformed
+    assert mc.parse_command("/memory import /a", attachments=True) == mc.USAGE

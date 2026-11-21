@@ -167,9 +167,10 @@ class Writers:
                 with self._lock:
                     self.failed.append((n, item, version))
         self.finished[n] = time.perf_counter()
+        k2._call(service, {"op": "lease", "project": project, "owner": f"k2-{n}", "action": "release", "token": token})  # frozen text
 
 
-def _verify_generation(place: Path, name: str, initial: dict[str, str], imported_at: list[tuple[str, str]]) -> dict[str, Any]:
+def _verify_generation(place: Path, name: str, initial: dict[str, str], imported_at: list[tuple[str, str | None]]) -> dict[str, Any]:
     """A backup generation's inventory against its own observed head: the initial items with their statements, and exactly the
     import items whose commits are at or before that head."""
     manifest, entries = mr.read_generation(place / name, BI)
@@ -179,7 +180,8 @@ def _verify_generation(place: Path, name: str, initial: dict[str, str], imported
         major, minor = stream_id.split("-")
         return int(major), int(minor)
 
-    expected_imports = {item for item, stream_id in imported_at if order(stream_id) <= order(head)}
+    unplaced = [item for item, stream_id in imported_at if stream_id is None]  # confirmed, yet not in the stream: a loss
+    expected_imports = {item for item, stream_id in imported_at if stream_id is not None and order(stream_id) <= order(head)}
     held = {shaped["entry"]["item"]: shaped["entry"] for shaped in entries}
     missing_initial = [item for item, digest in initial.items()
                        if item not in held or k2._digest(held[item].get("statement", "")) != digest]
@@ -187,10 +189,34 @@ def _verify_generation(place: Path, name: str, initial: dict[str, str], imported
     return {"generation": name, "head": head, "entries": len(entries), "expected": len(initial) + len(expected_imports),
             "initial_missing_or_changed": len(missing_initial), "imports_expected_at_head": len(expected_imports),
             "imports_held": len(imports), "imports_missing": len(expected_imports - imports), "imports_unexpected": len(imports - expected_imports),
-            "verified": not missing_initial and imports == expected_imports and len(entries) == len(initial) + len(expected_imports)}
+            "confirmed_imports_not_in_stream": len(unplaced),
+            "verified": not missing_initial and not unplaced and imports == expected_imports
+            and len(entries) == len(initial) + len(expected_imports)}
+
+
+DEVIATIONS = [
+    "the initial population of p-bi-0 is written in the host's scope `project`, not the K2 scope `s-k2`: the frozen text fixes "
+    "only m3_k2's item and statement generators, and in `s-k2` the host's recovery check reads p-bi-0 as an emptied store once a "
+    "copy exists and refuses every write (found by a reduced-size smoke run before the frozen run)",
+]
 
 
 def run(output: Path) -> dict[str, Any]:
+    """The frozen run; any failure after it starts still writes what was measured, with status ERROR (a miss is retained)."""
+    partial: dict[str, Any] = {"schema": "plan12-memory-m3p2.k2-contention.v1", "status": "ERROR", "deviations": DEVIATIONS}
+    try:
+        return _run(output, partial)
+    except BaseException as failure:
+        import traceback
+
+        partial["error"] = f"{type(failure).__name__}: {failure}"
+        partial["cause"] = traceback.format_exc()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(partial, indent=1, ensure_ascii=True, default=str) + "\n", encoding="utf-8")
+        raise
+
+
+def _run(output: Path, partial: dict[str, Any]) -> dict[str, Any]:
     workload = _workload()
     backup_root = os.environ.get("P1212_BACKUP_TEST_ROOT")
     if not os.environ.get(RELEASE_FLAG) or not backup_root or not Path(backup_root).is_dir():
@@ -270,10 +296,12 @@ def run(output: Path) -> dict[str, Any]:
     barrier = time.perf_counter()
     g1 = threading.Thread(target=backup_leg, args=("generation_1",))
     imp = threading.Thread(target=import_leg)
-    g1.start(), imp.start()
+    g1.start()
+    imp.start()
     imp.join()
     backup_leg("generation_2")
     g1.join()
+    partial["legs"] = legs
     imported_at = _import_positions(provisioned, legs["import"]["notices"])
     place = target
     verified = {}
@@ -295,6 +323,7 @@ def run(output: Path) -> dict[str, Any]:
     identity = k2._identity_check(provisioned, work, writers.projects, expected, "contention")
     bi_check = _bi_check(provisioned, work, initial, imported_at)
     targets = json.loads(Path("reports/plan12-memory-m3/targets.json").read_text(encoding="utf-8"))["k2"]
+    partial.update(writer_identity=identity, bi_identity=bi_check, sample=sample)
     measured = {"ack_p95_ms": k2._summary(inside, 1000).get("p95"), "projection_p95_ms": k2._summary(projected, 1000).get("p95"),
                 "rss_mib": sample.get("used_memory_rss_mib"), "container_ram_mib": sample.get("container_ram_mib"),
                 "disk_kib": sample.get("disk_kib"),
@@ -302,8 +331,10 @@ def run(output: Path) -> dict[str, Any]:
     verdicts = {"ack_p95": measured["ack_p95_ms"] is not None and measured["ack_p95_ms"] <= targets["ack_p95_s"] * 1000,
                 "projection_p95": measured["projection_p95_ms"] is not None
                 and measured["projection_p95_ms"] <= targets["projection_after_ack_p95_ms"],
-                "rss": (measured["rss_mib"] or 0) <= targets["physical_ram_gib"] * 1024,
-                "disk": (measured["disk_kib"] or 0) <= targets["peak_persistence_disk_gib"] * 1024 * 1024,
+                "rss": bool(sample.get("samples")) and measured["rss_mib"] is not None
+                and measured["rss_mib"] <= targets["physical_ram_gib"] * 1024,  # no sample is no evidence: it fails
+                "disk": bool(sample.get("samples")) and measured["disk_kib"] is not None
+                and measured["disk_kib"] <= targets["peak_persistence_disk_gib"] * 1024 * 1024,
                 "loss": measured["acknowledged_write_loss"] == targets["acknowledged_write_loss"]}
     for leg in legs.values():
         for key in ("started", "published", "settled", "verified_at"):
@@ -313,7 +344,8 @@ def run(output: Path) -> dict[str, Any]:
         "schema": "plan12-memory-m3p2.k2-contention.v1",
         "source": "git:" + subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip(),
         "dirty_src": bool(subprocess.run(["git", "status", "--porcelain", "--", "src", "tools"], capture_output=True, text=True).stdout.strip()),
-        "workload": "reports/plan12-memory-m3-part2/targets.json k2_contention, unchanged",
+        "workload": "reports/plan12-memory-m3-part2/targets.json k2_contention, with the deviations listed",
+        "deviations": DEVIATIONS,
         "populate_seconds": populate_seconds,
         "barrier_after_s": round(barrier - window, 1),
         "writer_finished_after_barrier_s": [None if t is None else round(t - barrier, 1) for t in writers.finished],
@@ -331,6 +363,7 @@ def run(output: Path) -> dict[str, Any]:
     confirmed = sum(1 for _item, _event, state in legs["import"]["notices"] if state == "confirmed")
     result["import_confirmed"] = confirmed
     verdicts["import_all_confirmed"] = confirmed == workload["import_leg"]["entries"]
+    verdicts["imports_in_stream"] = all(stream_id is not None for _item, stream_id in imported_at) and len(imported_at) == confirmed
     result["status"] = ("INCOMPLETE" if not overlap else "PASS" if all(verdicts.values()) and all(
         v["verified"] for v in verified.values()) and len(verified) == 2 else "FAIL")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -338,20 +371,18 @@ def run(output: Path) -> dict[str, Any]:
     return result
 
 
-def _import_positions(provisioned: Any, notices: list[tuple[str, str, str]]) -> list[tuple[str, str]]:
-    """Each confirmed import commit's stream position, read from p-bi-0's stream."""
+def _import_positions(provisioned: Any, notices: list[tuple[str, str, str]]) -> list[tuple[str, str | None]]:
+    """Each confirmed import commit and its position in p-bi-0's stream; None for one the stream does not hold (a loss)."""
     from optimus_gateway import memory_store
 
-    wanted = {event_id: item for item, event_id, state in notices if state == "confirmed"}
-    found = []
+    positions: dict[str, str] = {}
     for stream_id, fields in provisioned.connect().xrange(memory_store.MemoryStore._key(BI, "events")):
         event = json.loads(fields[b"e"]).get("event") or {}
-        if event.get("event_id") in wanted:
-            found.append((wanted[event["event_id"]], stream_id.decode() if isinstance(stream_id, bytes) else stream_id))
-    return found
+        positions[str(event.get("event_id"))] = stream_id.decode() if isinstance(stream_id, bytes) else stream_id
+    return [(item, positions.get(event_id)) for item, event_id, state in notices if state == "confirmed"]
 
 
-def _bi_check(provisioned: Any, work: Path, initial: dict[str, str], imported_at: list[tuple[str, str]]) -> dict[str, Any]:
+def _bi_check(provisioned: Any, work: Path, initial: dict[str, str], imported_at: list[tuple[str, str | None]]) -> dict[str, Any]:
     """p-bi-0 after the window, read by a fresh Gateway: every initial item unchanged, every confirmed import present."""
     fresh = k2._service(provisioned, work / "journal-check-bi")
     seen: dict[str, dict[str, Any]] = {}
@@ -367,7 +398,7 @@ def _bi_check(provisioned: Any, work: Path, initial: dict[str, str], imported_at
             if cursor is None:
                 break
     missing = sum(1 for item, digest in initial.items() if item not in seen or k2._digest(seen[item]["statement"]) != digest)
-    missing += sum(1 for item, _at in imported_at if item not in seen or seen[item]["trust"] != "legacy-import")
+    missing += sum(1 for item, at in imported_at if at is None or item not in seen or seen[item]["trust"] != "legacy-import")
     return {"initial": len(initial), "imports_confirmed": len(imported_at), "missing": missing, "listed": len(seen)}
 
 

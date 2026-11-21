@@ -322,7 +322,7 @@ def memory_md(entries: list[dict[str, Any]], name: str) -> bytes:
              "a backup. Restore it into an empty store with `/memory restore " + name + "`.", ""]
     for entry in sorted(active, key=lambda e: e["item"]):
         added = time.strftime("%Y-%m-%d", time.gmtime(int(entry["stream_id"].split("-")[0]) / 1000))
-        origin = "user" if entry["trust"] == "user-authored" else "agent"
+        origin = {"user-authored": "user", "legacy-import": "imported"}.get(entry["trust"], "agent")  # never an invented origin
         statement = " ".join(entry["statement"].split())
         lines.append(f"- {statement} [id: {entry['item']}@{entry['version']}; origin: {origin}; kind: {entry['kind']}; added: {added}]")
     if not active:

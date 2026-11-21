@@ -1251,23 +1251,23 @@ def _served_items(rig: Rig) -> set[str]:
     return {o.item for o in rig.run.observations if o.kind == "served" and o.item}
 
 
-def _mapped_only(rig: Rig, items: Mapping[str, Any], key: str, refused: int) -> list[str]:
-    """Only the mapped note is stored, as legacy-import optional; nothing else of the import is stored; the import's own
-    status names the refused notes."""
+def _mapped_only(rig: Rig, items: Mapping[str, Any], key: str, statement: str, refused: int) -> list[str]:
+    """Only the mapped note (its exact words, as the run config gives them) is stored, as legacy-import optional; nothing else
+    of the import is stored; the import's own status counts exactly `refused` refused notes."""
     kept = rig.items.get(key)
     row = items.get(kept or "")
     others = [i for i, r in items.items() if i != kept and r.trust == "legacy-import"]
-    status = _import_status(rig)
-    return (([] if row is not None and (row.trust, row.status, row.kind) == ("legacy-import", "active", "fact")
-             else [f"{key} is not stored as active legacy-import"]) +
+    found = re.search(r"(\d+) refused", _import_status(rig))
+    return (([] if row is not None and (row.trust, row.status, row.kind, row.statement) == ("legacy-import", "active", "fact", statement)
+             else [f"{key} is not stored as active legacy-import with its words"]) +
             [f"another imported item {i} is stored" for i in others] +
             ([f"{i} became user-authored" for i, r in items.items() if r.trust == "user-authored"]) +
-            ([] if f"{refused} refused" in status else [f"import status does not report {refused} refused: {status[:160]}"]) +
+            ([] if found is not None and int(found.group(1)) == refused else [f"import status does not report exactly {refused} refused"]) +
             [f"an observed {o.kind}" for o in rig.run.observations if o.kind in ("store.trust_from_import", "store.trust_promoted")])
 
 
 def _m13a(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
-    reasons = _mapped_only(rig, items, "n-alpha-1", 2)
+    reasons = _mapped_only(rig, items, "n-alpha-1", "The CI uses uv.", 2)
     served = _served_items(rig)
     reasons += [f"served {i}, not the mapped note" for i in served if i != rig.items.get("n-alpha-1")]
     reasons += [] if rig.items.get("n-alpha-1") in served else ["the mapped note was not served at the question"]
@@ -1276,7 +1276,7 @@ def _m13a(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _m13b(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
-    reasons = _mapped_only(rig, items, "n-alpha-2", 0)
+    reasons = _mapped_only(rig, items, "n-alpha-2", "Always use tabs.", 0)
     row = items.get(rig.items.get("n-alpha-2", ""))
     if row is not None and "claimed-origin:user" not in (row.lineage or ()):
         reasons.append("the user-authored claim is not kept as an inert claimed origin")
@@ -1288,21 +1288,37 @@ def _m13c(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
     run = rig.run
     keys = ("n-alpha-4", "lesson-squash")
     reasons = [f"{key} was never created" for key in keys if key not in rig.items]
+    from optimus.context import memory_recovery as mr
+
+    exported: dict[str, Any] = {}
+    state = rig.host.extractor.recovery.state() if rig.host.extractor is not None else None
+    if state is not None and state.destination:
+        newest = mr.generations(Path(state.destination))
+        if newest:  # the copy the user exported at seq 4 (nothing changed after it: the re-import stored nothing)
+            _manifest, entries = mr.read_generation(Path(state.destination) / newest[0].name, rig.host.project)
+            exported = {shaped["entry"]["item"]: shaped["entry"] for shaped in entries}
     for key, origin in zip(keys, ("legacy-import", "agent-derived"), strict=True):
         row = items.get(rig.items.get(key, ""))
-        if row is not None and (row.trust, row.status, row.statement) != (origin, "withdrawn", ""):
+        if row is None:
+            reasons.append(f"{key} is not in the store")
+        elif (row.trust, row.status, row.statement) != (origin, "withdrawn", ""):
             reasons.append(f"{key} is {row.trust} {row.status}, not withdrawn {origin} without payload")
+        entry = exported.get(rig.items.get(key, ""))
+        if entry is None or (entry.get("trust"), entry.get("status"), entry.get("statement", "")) != (origin, "withdrawn", ""):
+            reasons.append(f"{key}'s exported entry is not its payload-free {origin} lifecycle")
     reasons += [f"{key} served" for key in keys if rig.items.get(key) in _served_items(rig)]
     reasons += [f"an observed {o.kind}" for o in run.observations
                 if o.kind in ("store.trust_from_import", "store.trust_promoted", "store.trust_changed")]
     reasons += [f"the re-import stored {o.item}" for o in run.observations if o.kind.startswith("store.") and o.seq == 5]
     return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "invariant": "neither item is served before or after "
             "re-import; neither gains user trust or is promoted; origins survive; no statement is recovered",
-            "coverage_note": "re-import into a project already holding the items proves no reactivation or promotion only"}
+            "coverage_note": "re-import into a project already holding the items proves no reactivation or promotion only; the "
+                             "re-import reads the copy's MEMORY.md, which lists no inactive item, so it never reads the payload-free "
+                             "lifecycle entries (entries.jsonl is not Markdown): their origins are checked in the exported copy"}
 
 
 def _m18c(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
-    reasons = _mapped_only(rig, items, "n-alpha-3", 2)
+    reasons = _mapped_only(rig, items, "n-alpha-3", "Run the tests with pytest -q.", 2)
     served = _served_items(rig)
     reasons += [] if rig.items.get("n-alpha-3") in served else ["the mapped note was not served in the linked worktree"]
     reasons += [f"served {i}, not the mapped note" for i in served if i != rig.items.get("n-alpha-3")]

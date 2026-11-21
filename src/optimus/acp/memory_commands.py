@@ -74,7 +74,8 @@ USAGE: Final = (
     "`/memory restore <generation>` restores one into an empty store; `/memory restore <generation> --map` restores an earlier "
     "registration's copy into this project, after you confirm.\n"
     "- `/memory import <folder>` previews an Agent Memory Repo's entries as optional imported context (`--map <project>` "
-    "takes one other project's entries); `/memory import apply <preview>` saves them after you confirm; "
+    "takes one other project's entries); `/memory import show <preview> <page>` shows each page; "
+    "`/memory import apply <preview>` saves them after you confirm; "
     "`/memory import status` shows the last import.\n"
     "- `/memory backup` shows backups; `/memory backup configure <folder>` copies the recovery copy there daily (another drive; add `--cloud` for a synced folder), after you confirm; `/memory backup now` takes one now; `/memory backup disable` stops them.\n"
     "A change names the version you saw in `/memory`, for example `m-0123456789abcdef@2`."
@@ -267,7 +268,9 @@ def _import_command(text: str, rest: list[str]) -> MemoryCommand | str:
         return MemoryCommand("import_status")
     if len(rest) == 2 and rest[0] == "apply":
         return MemoryCommand("import_apply", preview=rest[1])
-    if not rest:
+    if len(rest) == 3 and rest[0] == "show" and rest[2].isdigit() and 1 <= int(rest[2]) <= 100:
+        return MemoryCommand("import_show", preview=rest[1], page=int(rest[2]))
+    if not rest or rest[0] in ("apply", "show", "status"):  # a malformed sub-command is never read as a folder
         return USAGE
     folder = text[text.index("import", text.index("/memory")) + len("import"):].strip()
     mapped = None
@@ -858,9 +861,17 @@ class MemoryCommands:
         try:
             if command.verb == "import_status":
                 return MemoryAnswer(importer.status())
+            if command.verb == "import_show":
+                assert command.preview is not None
+                return MemoryAnswer(importer.page(command.preview, command.page))
             if command.verb == "import_apply":
                 assert command.preview is not None
                 held = importer.held(command.preview)
+                if not held.all_shown:
+                    unseen = sorted(set(range(1, held.pages + 1)) - held.shown)
+                    return MemoryAnswer(f"Not yet: see every page of the preview first (not shown: "
+                                        f"{', '.join(map(str, unseen[:20]))}) with `/memory import show {held.id} <page>`. "
+                                        "Nothing was changed.")
                 counts = {"import": 0, "skipped": 0, "refused": 0}
                 for entry in held.source.entries:
                     counts[entry.disposition] += 1
@@ -888,9 +899,9 @@ class MemoryCommands:
             return MemoryAnswer(refused.message)
         text = (f"Imported: {counts['confirmed']} saved, {counts['duplicate']} already present, {counts['skipped']} skipped, "
                 f"{counts['refused']} refused, {counts['uncertain']} uncertain.")
-        if counts.get("remaining"):
-            text += (f" The store stopped answering or accepting writes, so {counts['remaining']} were not tried; "
-                     "`/memory import status` shows where it stopped.")
+        if "stopped" in counts:
+            text += (f" It stopped because {counts['stopped']}, so {counts['remaining']} were not tried; "
+                     "`/memory import status` shows where it stopped. What was saved is kept.")
         return MemoryAnswer(text, tuple(notices))
 
     def _location_question(self, destination: Path, *, moved_from: str | None = None) -> Confirmation:

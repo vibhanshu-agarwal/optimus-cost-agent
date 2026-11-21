@@ -6737,7 +6737,15 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "tools.plan12_memory.m3p2_contention:run:redis_hash_write",
+      "key": "tools.plan12_memory.m3p2_contention:_run:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Plan 12.12 K2 contention measurement on the released test store with synthetic statements; the report holds counts, timings, digests, item and event ids, generation names and the import's own count lines, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3p2_contention:_run:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: the initial population's appends go through the in-process Gateway handler on the released test store with synthetic statements; nothing is logged.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
@@ -6746,6 +6754,14 @@
     },
     {
       "key": "tools.plan12_memory.m3p2_contention:run:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Plan 12.12 K2 contention measurement on the released test store with synthetic statements; the report holds counts, timings, digests, item and event ids, generation names and the import's own count lines, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3p2_contention:_run:text_file_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: the Plan 12.12 K2 contention measurement on the released test store with synthetic statements; the report holds counts, timings, digests, item and event ids, generation names and the import's own count lines, never a statement.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",

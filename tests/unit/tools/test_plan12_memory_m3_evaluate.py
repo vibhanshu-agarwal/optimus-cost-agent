@@ -510,3 +510,34 @@ def test_the_import_cases_have_their_mapped_comparison_and_observable_events() -
     assert set(config["cases"]) == mapped
     assert all(entry["steps"]["0"][0] == "import" for entry in config["cases"].values())
     assert {"import", "linked_session"} <= set(m3.OPS)
+
+
+def test_an_imports_admit_and_a_trust_written_while_importing_are_detected(tmp_path: Path) -> None:
+    """Plan 12.12 Task 2 (Fable CP2 review 1, finding 14): `store.import` for an import's legacy-import admit; any other trust
+    appended while an import applies is `store.trust_from_import`."""
+    rig = _rig(tmp_path)
+    redis = rig.store.observer
+    redis.write("proj", _event(ITEM, 1, trust="legacy-import"))
+    rig.exchanged({"op": "append", "project": "proj"}, 200, {"event_id": "e-a-1", "durable_state": "confirmed"})
+    rig.pending["importing"] = True
+    redis.write("proj", _event(OTHER, 1, trust="user-authored"))
+    rig.exchanged({"op": "append", "project": "proj"}, 200, {"event_id": "e-b-1", "durable_state": "confirmed"})
+    kinds = [(o.kind, o.item) for o in rig.run.observations]
+    assert ("store.import", ITEM) in kinds and ("store.trust_from_import", OTHER) in kinds
+    assert ("store.import", OTHER) not in kinds and ("store.trust_from_import", ITEM) not in kinds
+    assert m3.EVENT_OF["store.import"] == "memory.import.optional" and m3.EVENT_OF["store.trust_from_import"] == "memory.trust_from_import"
+
+
+def test_a_mapped_check_fails_on_the_wrong_note_or_count(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 9: the mapped note must be the one with the configured words, and the refused count exact."""
+    rig = _rig(tmp_path)
+    rig.items["n-alpha-1"] = ITEM
+    importer = SimpleNamespace(status=lambda: "Last import: 1 confirmed, 12 refused; 0 remaining.")
+    rig.host.state = SimpleNamespace(memory_commands=SimpleNamespace(_importer=importer))
+    beta = SimpleNamespace(trust="legacy-import", status="active", kind="fact", statement="The CI uses poetry.")
+    reasons = m3._mapped_only(rig, {ITEM: beta}, "n-alpha-1", "The CI uses uv.", 2)
+    assert "n-alpha-1 is not stored as active legacy-import with its words" in reasons
+    assert "import status does not report exactly 2 refused" in reasons
+    alpha = SimpleNamespace(trust="legacy-import", status="active", kind="fact", statement="The CI uses uv.")
+    importer.status = lambda: "Last import: 1 confirmed, 2 refused; 0 remaining."
+    assert m3._mapped_only(rig, {ITEM: alpha}, "n-alpha-1", "The CI uses uv.", 2) == []

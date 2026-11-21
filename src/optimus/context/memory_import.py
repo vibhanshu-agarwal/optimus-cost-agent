@@ -6,11 +6,19 @@ Markdown). Only Markdown reachable from `MEMORY.md` is read for entries; any oth
 followed. Nothing is executed, fetched, cloned or pushed, and nothing in the source carries authority: the model never sees it.
 
 **Checks.** The root is absolute and reached without links; each file is a regular file inside it, spelled exactly as it resolves
-(no `..`, case or short-name aliases, links or reparse points), strict UTF-8 without NUL, at most 1 MiB, 16 MiB in all; a file
-is read once by its identity, so link cycles end. An entry is refused whole when it is malformed, holds control or bidi
-characters, is over 2,000 characters (never truncated), is past the 1,000th, claims lineage the host cannot resolve, fails the
-secret, injection or B1 source-overlap scan, or belongs to no mapped project. An inactive source entry (`status:` other than
-active) is skipped with no statement kept.
+(no `..`, case or short-name aliases, links or reparse points; a sync service's cloud placeholder is a file, not a link), opened
+without following links and checked to be the file that was inspected, strict UTF-8 without NUL, at most 1 MiB, 16 MiB in all;
+a file is read once by its identity, so link cycles end. At most 1,000 links are followed and 1,000 gaps listed. An entry is
+refused whole when it is malformed (bad metadata, empty, or wrapped onto a following line, so a qualification is never cut),
+holds control or bidi characters, is over 2,000 characters (never truncated), claims lineage the host cannot resolve, fails the
+secret, injection or B1 source-overlap scan, or belongs to no mapped project; entries past the 1,000th are not read, and are
+counted. Bullets inside fenced code are not entries. An inactive source entry (`status:` other than active) is skipped with no
+statement kept.
+
+**B1 sources.** An entry is checked for copied text against every linked non-Markdown file in the folder and every workspace file
+it names. A linked file that cannot be read (too large, past the total, unreadable) refuses every entry: copying from it cannot
+be ruled out. Known limit: text copied from a workspace file the entry does not name is not recognised. On a case-insensitive
+file system that keeps the spelling it is given (macOS), a case alias is read under its alias spelling.
 
 **Authority.** Every import is `legacy-import`, kind `fact`: served only in the optional pool, never protected. Metadata that
 claims user authorship, approval, a type or a constraint is recorded as an inert claimed origin (`claimed-origin:` lineage), never
@@ -20,9 +28,10 @@ Nothing updates, retargets or reactivates an existing item.
 **Preview and apply.** A preview binds the source: each file's path, size and SHA-256, each entry's locator, exact statement,
 disposition and lineage, and the mapping. Apply reads the source again and goes ahead only when that digest is unchanged. Each
 entry is then an ordinary Gate decision and fenced durable append under the project's lease, one by one, not a batch: an
-entry's id derives from the project, the mapped source and its statement, so applying again, or resuming after a crash, writes
-nothing twice and never revives an item withdrawn or purged since. Its progress is a durable log per project (no statements in
-it), which `/memory import status` reads.
+entry's id derives from the project, the entry's own source project and its statement, so applying again, with or without a
+mapping, or resuming after a crash, writes nothing twice and never revives an item withdrawn or purged since. The preview lists
+every entry in full, in pages; apply waits until every page was shown. Its progress is a durable log per project, written only
+under the lease, each line stamped with its apply (no statements in it), which `/memory import status` reads.
 """
 
 from __future__ import annotations
@@ -52,7 +61,9 @@ MAX_TOTAL_BYTES: Final = 16 * 1024 * 1024
 MAX_ENTRIES: Final = 1000
 PREVIEW_SECONDS: Final = 1800.0  # a preview older than this is stale: import the root again
 RENEW_SECONDS: Final = 10.0  # the write lease (30 s) is renewed this often during a long apply
-SHOWN: Final = 200  # entries listed in a preview; the counts cover the rest
+PAGE: Final = 50  # entries per preview page, each in full
+MAX_LINKS: Final = 1000  # links followed; any more are counted, not followed
+MAX_GAPS: Final = 1000  # gaps listed; any more are counted
 TRUST: Final = "legacy-import"
 KIND: Final = "fact"
 CLAIM_PREFIX: Final = "claimed-origin:"
@@ -74,6 +85,7 @@ _REFERENCE: Final = re.compile(r"[A-Za-z0-9._:@/-]{1,128}")
 _WORD: Final = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")
 _PREVIEW_ID: Final = re.compile(r"imp-[0-9a-f]{12}")
 _REPARSE_POINT: Final = 0x400
+_NOT_MARKDOWN: Final = "not a Markdown note (only Markdown is imported)"
 _PLACEHOLDER: Final = "(no active items)"  # what an Optimus recovery copy lists when it holds no active item: not a note
 _ITEM_REFUSALS: Final = frozenset({"VERSION_CONFLICT", "IDEMPOTENCY_CONFLICT"})  # this entry only; any other stops the apply
 
@@ -103,6 +115,7 @@ class Entry:
     statement: str = ""
     lineage: tuple[str, ...] = ()
     claimed: str = "unavailable"  # the origin the source claims: user, agent or unavailable; never trusted
+    project: str = ""  # the entry's own source project: its identity, whatever the mapping
 
     def record(self) -> dict[str, Any]:
         return dataclasses.asdict(self)
@@ -133,10 +146,21 @@ class Preview:
     source: Source
     digest: str
     made: float  # time.monotonic() when made
+    shown: set[int] = dataclasses.field(default_factory=set)  # pages the user was shown
+
+    @property
+    def pages(self) -> int:
+        return max(1, -(-len(self.source.entries) // PAGE))
+
+    @property
+    def all_shown(self) -> bool:
+        return self.shown >= set(range(1, self.pages + 1))
 
 
 def _linked(path: Path) -> Path | None:
-    """The first existing component of `path` that is a link or reparse point."""
+    """The first existing component of `path` that is a link or reparse point (a cloud placeholder is neither)."""
+    from optimus.context.memory_backups import _cloud_placeholder
+
     for candidate in [path, *path.parents]:
         try:
             info = os.lstat(candidate)
@@ -144,7 +168,7 @@ def _linked(path: Path) -> Path | None:
             continue
         except OSError:
             return candidate
-        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & _REPARSE_POINT:
+        if stat.S_ISLNK(info.st_mode) or (getattr(info, "st_file_attributes", 0) & _REPARSE_POINT and not _cloud_placeholder(info)):
             return candidate
     return None
 
@@ -161,7 +185,7 @@ def _target(link: str) -> tuple[str | None, str]:
         return text + ".md", ""
     if name.lower().endswith(".md"):
         return text, ""
-    return None, "not a Markdown note (only Markdown is imported)"
+    return None, _NOT_MARKDOWN
 
 
 def _unsafe(line: str) -> bool:
@@ -183,7 +207,7 @@ def _metadata(text: str) -> tuple[str, dict[str, str] | None]:
 
 
 def _claimed(meta: Mapping[str, str]) -> str:
-    words = {meta[key].strip().lower() for key in ("origin", "trust", "author", "authored-by") if key in meta}
+    words = {meta[key].strip().lower() for key in ("origin", "trust", "author", "authored-by") if key in meta}  # "imported": none
     if words & _USER_WORDS:
         return "user"
     if words & _AGENT_WORDS:
@@ -204,12 +228,16 @@ class Reader:
         self._sanitize, self._workspace = sanitize, workspace
         self._files: list[SourceFile] = []
         self._gaps: list[tuple[str, str]] = []
+        self._gap_set: set[tuple[str, str]] = set()
+        self._more_gaps = 0
         self._entries: list[Entry] = []
         self._extra: list[str] = []  # the text of linked non-Markdown files: B1 sources, never entries
+        self._sources_lost = False  # a linked file could not be read for the B1 check
         self._seen: set[tuple[int, int]] = set()
         self._policy: Any = None
         self._total = 0
         self._count = 0
+        self._links = 0
 
     def read(self) -> Source:
         root = self._root
@@ -224,7 +252,8 @@ class Reader:
         self._real = Path(os.path.realpath(root))
         default = self._default_project()
         queue, queued = [ENTRY_POINT], {ENTRY_POINT}
-        notes: list[tuple[str, str]] = []
+        notes: list[tuple[str, list[str | None]]] = []
+        skipped_links = 0
         while queue:  # first every reachable note and linked file, so each entry is scanned against all of them (B1)
             relative = queue.pop(0)
             text = self._file(relative)
@@ -233,31 +262,51 @@ class Reader:
                     reason = next((why for name, why in self._gaps if name == ENTRY_POINT), "unreadable")
                     raise ImportRefused("IMPORT_ENTRY_POINT", f"{ENTRY_POINT} cannot be imported: {reason}. Nothing was read.")
                 continue
-            notes.append((relative, text))
-            for link in _LINK.findall(text):
-                target, why = _target(link)
-                if target is None:
-                    self._gap(f"[[{link}]]", why)
-                    self._overlap_source(link)
-                elif target not in queued:
-                    queued.add(target)
-                    queue.append(target)
-        for relative, text in notes:
-            for number, line in enumerate(text.split("\n"), start=1):
-                bullet = _BULLET.match(line)
+            lines = _outside_fences(text.split("\n"))
+            notes.append((relative, lines))
+            for line in lines:
+                for link in _LINK.findall(line or ""):
+                    if self._links >= MAX_LINKS:
+                        skipped_links += 1
+                        continue
+                    self._links += 1
+                    target, why = _target(link)
+                    if target is None:
+                        self._gap(f"[[{link}]]", why)
+                        if why == _NOT_MARKDOWN:
+                            self._overlap_source(link)  # a well-formed link to another file: a B1 source
+                    elif target not in queued:
+                        queued.add(target)
+                        queue.append(target)
+        for relative, lines in notes:
+            for number, line in enumerate(lines, start=1):
+                bullet = _BULLET.match(line or "")
                 if bullet is not None and not bullet.group(1).startswith("[["):
-                    self._entry(f"{relative}:{number}", line, bullet.group(1), default)
+                    wrapped = number < len(lines) and _continues(lines[number])
+                    self._entry(f"{relative}:{number}", line or "", bullet.group(1), default, wrapped=wrapped)
+        if skipped_links:
+            self._gap("links", f"{skipped_links} more not followed (the {MAX_LINKS:,}-link bound)", always=True)
+        if self._count > MAX_ENTRIES:
+            self._gap("entries", f"{self._count - MAX_ENTRIES} past the {MAX_ENTRIES:,}-entry bound, not read", always=True)
+        if self._more_gaps:
+            self._gaps.append(("gaps", f"{self._more_gaps} more not listed (the {MAX_GAPS:,}-gap bound)"))
         return Source(str(root), self._project, self._mapped, tuple(self._files), tuple(self._entries), tuple(self._gaps))
 
-    def _gap(self, name: str, why: str) -> None:
-        if (name, why) not in self._gaps:
-            self._gaps.append((name, why))
+    def _gap(self, name: str, why: str, *, always: bool = False) -> None:
+        if (name, why) in self._gap_set:
+            return
+        if len(self._gaps) >= MAX_GAPS and not always:
+            self._more_gaps += 1
+            return
+        self._gap_set.add((name, why))
+        self._gaps.append((name, why))
 
     def _default_project(self) -> str | None:
         """An Optimus recovery generation names its project in its manifest; other sources name it per entry."""
         path = self._root / "manifest.json"
         try:
-            if _linked(path) is not None or os.stat(path).st_size > MAX_FILE_BYTES:
+            info = os.stat(path, follow_symlinks=False)
+            if _linked(path) is not None or not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
                 return None
             manifest = json.loads(path.read_text(encoding="utf-8"))
             project = manifest["metadata"]["project"]
@@ -290,8 +339,12 @@ class Reader:
             return None, "over 1 MiB"
         if self._total + info.st_size > MAX_TOTAL_BYTES:
             return None, "past the 16 MiB total"
-        try:
-            with open(path, "rb") as handle:
+        try:  # opened without following a link, then checked to be the very file inspected above
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0))
+            with os.fdopen(descriptor, "rb") as handle:
+                opened = os.fstat(handle.fileno())
+                if (opened.st_dev, opened.st_ino) != identity or not stat.S_ISREG(opened.st_mode):
+                    return None, "changed while it was read"
                 data = handle.read(MAX_FILE_BYTES + 1)
         except OSError:
             return None, "unreadable"
@@ -322,16 +375,18 @@ class Reader:
         relative = link.strip()
         if not relative or "\\" in relative or ":" in relative or relative.startswith("/") or ".." in relative.split("/"):
             return
-        data, _why = self._open(relative)
+        data, why = self._open(relative)
         if data is not None and b"\0" not in data:
             self._extra.append(data.decode("utf-8", "replace"))
+        elif data is None and why not in ("", "missing", "not a regular file"):
+            self._sources_lost = True  # it exists but cannot be checked: copying from it cannot be ruled out
 
     def _named_files(self, statement: str) -> list[str]:
         """The workspace files a statement names, as the anchor policy lets them be read: B1 sources."""
         from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 
         found: list[str] = []
-        for word in dict.fromkeys(_WORD.findall(statement)):
+        for word in dict.fromkeys(_WORD.findall(statement.replace(chr(92), "/"))):  # `src\\app.py` names `src/app.py`
             relative = word.rstrip(".")
             if self._workspace is None or ("." not in relative and "/" not in relative):
                 continue
@@ -343,13 +398,15 @@ class Reader:
                 found.append(content.decode("utf-8", "replace"))
         return found
 
-    def _entry(self, locator: str, line: str, text: str, default: str | None) -> None:
+    def _entry(self, locator: str, line: str, text: str, default: str | None, *, wrapped: bool = False) -> None:
         def refused(reason: str) -> None:
             self._entries.append(Entry(locator, "refused", reason))
 
         self._count += 1
         if self._count > MAX_ENTRIES:
-            return refused("past the 1,000-entry bound")
+            return None  # counted; listed once as a gap
+        if wrapped:
+            return refused("continues on the next line (a wrapped entry is refused whole, never cut)")
         if _unsafe(line):
             return refused("control or bidi characters")
         words, meta = _metadata(text)
@@ -389,11 +446,39 @@ class Reader:
             return refused("malformed id")
         if "id" in meta:
             lineage.append("import-of:" + meta["id"].strip())
+        if self._sources_lost:
+            return refused("a linked file could not be read, so copying from it cannot be ruled out (scan)")
         sources = self._extra + self._named_files(statement)
         if not scans_pass(title_of(statement), statement, sanitize=self._sanitize, sources=sources):
             return refused("a secret, an instruction to the model, or copied source text (scan)")
-        self._entries.append(Entry(locator, "import", "", statement, tuple(lineage), claimed))
+        self._entries.append(Entry(locator, "import", "", statement, tuple(lineage), claimed, project))
         return None
+
+
+def _outside_fences(lines: list[str]) -> list[str | None]:
+    """The lines, with those inside fenced code (``` or ~~~) and the fences themselves as None: never entries or links."""
+    kept: list[str | None] = []
+    fence: str | None = None
+    for line in lines:
+        mark = line.lstrip()[:3]
+        if fence is None and mark in ("```", "~~~"):
+            fence = mark
+            kept.append(None)
+        elif fence is not None:
+            if mark == fence:
+                fence = None
+            kept.append(None)
+        else:
+            kept.append(line)
+    return kept
+
+
+def _continues(line: str | None) -> bool:
+    """Whether a line after a bullet continues it (Markdown's indented or lazy continuation), rather than starting a new
+    bullet, a heading, a fence or a blank line."""
+    if line is None or not line.strip():
+        return False
+    return _BULLET.match(line) is None and not line.lstrip().startswith("#")
 
 
 # --- the durable progress log -------------------------------------------------------------------------------------------
@@ -407,16 +492,18 @@ class ImportLog:
         self._path = config_root / "memory-import" / f"{project}.jsonl"
 
     def start(self, preview: Preview) -> None:
+        """A new apply's head line, replacing the last apply's record: called only under the project's write lease."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         counts = _counts(preview.source.entries)
+        self._apply = preview.id
         self._write({"apply": preview.id, "digest": preview.digest, "root": preview.source.root, "at_ms": int(time.time() * 1000),
                      "total": len(preview.source.entries), "planned": counts}, mode="w")
 
     def outcome(self, entry: Entry, outcome: str, **fields: Any) -> None:
-        self._write({"locator": entry.locator, "outcome": outcome, **fields})
+        self._write({"apply": self._apply, "locator": entry.locator, "outcome": outcome, **fields})
 
     def settled(self) -> None:
-        self._write({"settled": int(time.time() * 1000)}, fsync=True)
+        self._write({"apply": self._apply, "settled": int(time.time() * 1000)}, fsync=True)
 
     def _write(self, record: dict[str, Any], *, mode: str = "a", fsync: bool = False) -> None:
         with open(self._path, mode, encoding="utf-8", newline="\n") as handle:
@@ -460,6 +547,13 @@ class Importer:
     def _read(self, root: Path, mapped: str | None) -> Source:
         return Reader(root, project=self._store.project, mapped=mapped, sanitize=self._sanitize, workspace=self._workspace).read()
 
+    def page(self, preview_id: str, number: int) -> str:
+        """Page `number` of the preview this session holds, marked shown."""
+        held = self.held(preview_id)
+        if not 1 <= number <= held.pages:
+            raise ImportRefused("IMPORT_PAGE", f"That preview has pages 1 to {held.pages}.")
+        return preview_text(held, project=self._store.project, page=number)
+
     def preview(self, root: Path, mapped: str | None) -> Preview:
         if mapped is not None and (mapped == self._store.project or not _REFERENCE.fullmatch(mapped)):
             raise ImportRefused("IMPORT_MAPPING", "Map one other project by its id (`--map <project>`); this project's own "
@@ -482,8 +576,9 @@ class Importer:
         return held
 
     def key(self, source: Source, entry: Entry) -> str:
-        """The entry's identity in this project: its mapped source and its words, so a repeat or a resume names the same item."""
-        return self._keyed(f"import\0{source.project}\0{source.mapped or source.project}\0{normalized(entry.statement)}")
+        """The entry's identity in this project: its own source project and its words, so a repeat, a resume, or the same
+        entry imported again with another mapping names the same item (Fable CP2 review 1, finding 1)."""
+        return self._keyed(f"import\0{source.project}\0{entry.project}\0{normalized(entry.statement)}")
 
     def apply(self, preview_id: str, digest: str) -> tuple[dict[str, int], list[tuple[MemoryNotice, str]]]:
         """Apply exactly the preview the user confirmed: one-shot (the preview is consumed first), refused if the source now
@@ -496,6 +591,8 @@ class Importer:
             raise ImportRefused("IMPORT_READ_ONLY", "Memory is read-only here: nothing was imported.")
         if digest != preview.digest:
             raise ImportRefused("IMPORT_PREVIEW_CHANGED", "That is not the preview you were shown. Nothing was changed.")
+        if not preview.all_shown:
+            raise ImportRefused("IMPORT_PREVIEW_UNSEEN", "Not every page of that preview was shown. Nothing was changed.")
         source = preview.source
         again = self._read(Path(source.root), source.mapped)
         if again.digest != preview.digest:
@@ -503,34 +600,57 @@ class Importer:
                                 "`/memory import <folder>` again to see what it holds now.")
         counts = {"confirmed": 0, "uncertain": 0, "duplicate": 0, "skipped": 0, "refused": 0, "off": 0}
         notices: list[tuple[MemoryNotice, str]] = []
-        self._log.start(preview)
+
+        def stopped(why: str) -> tuple[dict[str, int], list[tuple[MemoryNotice, str]]]:
+            counts["remaining"] = len(source.entries) - sum(counts.values())
+            counts["stopped"] = why  # type: ignore[assignment]
+            return counts, notices  # what was committed keeps its notice; status says the apply was interrupted
+
         with self._store.lease() as token:
-            renewed = time.monotonic()
+            earlier = self._log.read()  # read under the lease, before this apply replaces it
+            uncertain = {r["locator"] for r in earlier[1:] if r.get("outcome") == "uncertain"
+                         and earlier and r.get("apply") == earlier[0].get("apply") and earlier[0].get("digest") == preview.digest}
+            try:
+                self._log.start(preview)
+            except OSError:
+                return stopped("the progress log could not be written")
             known = self._known()
+            renewed = time.monotonic()  # after the listing, which may take a while
             for entry in source.entries:
-                if entry.disposition != "import":
-                    counts[entry.disposition] += 1
-                    self._log.outcome(entry, entry.disposition)
-                    continue
-                if time.monotonic() - renewed > RENEW_SECONDS:
-                    self._store.renew(token)
-                    renewed = time.monotonic()
-                stop = False
                 try:
-                    outcome, fields, notice = self._one(token, source, entry, known)
+                    if entry.disposition != "import":
+                        counts[entry.disposition] += 1
+                        self._log.outcome(entry, entry.disposition)
+                        continue
+                    if time.monotonic() - renewed > RENEW_SECONDS:
+                        self._store.renew(token)
+                        renewed = time.monotonic()
+                except OSError:
+                    return stopped("the progress log could not be written")
+                except (MemoryStoreUnavailable, MemoryStoreRefused):
+                    return stopped("the project's write lease could not be kept")
+                stop = None
+                try:
+                    outcome, fields, notice = self._one(token, source, entry, known, reconcile=entry.locator in uncertain)
                 except MemoryStoreUnavailable:
-                    outcome, fields, notice, stop = "uncertain", {}, None, True
+                    outcome, fields, notice, stop = "uncertain", {}, None, "the store stopped answering"
                 except MemoryStoreRefused as refused:
                     outcome, fields, notice = "refused", {"code": refused.code}, None
-                    stop = refused.code not in _ITEM_REFUSALS  # the store refuses every write now: the rest stay remaining
+                    if refused.code not in _ITEM_REFUSALS:  # the store refuses every write now: the rest stay remaining
+                        stop = "the store stopped accepting writes"
                 counts[outcome] += 1
-                self._log.outcome(entry, outcome, **fields)
                 if notice is not None:
                     notices.append((notice, title_of(entry.statement)))
+                try:
+                    self._log.outcome(entry, outcome, **fields)
+                except OSError:
+                    return stopped("the progress log could not be written")
                 if stop:
-                    counts["remaining"] = len(source.entries) - sum(counts.values())
-                    return counts, notices  # unsettled: status says it was interrupted
-        self._log.settled()
+                    return stopped(stop)
+            try:
+                self._log.settled()
+            except OSError:
+                return stopped("the progress log could not be written")
         return counts, notices
 
     def _known(self) -> dict[str, str]:
@@ -554,11 +674,9 @@ class Importer:
             if cursor is None:
                 return known
 
-    def _one(self, token: int, source: Source, entry: Entry, known: dict[str, str]
+    def _one(self, token: int, source: Source, entry: Entry, known: dict[str, str], *, reconcile: bool = False
              ) -> tuple[str, dict[str, Any], MemoryNotice | None]:
         words = normalized(entry.statement)
-        if words in known:
-            return "duplicate", {"item": known[words]}, None
         candidate = MemoryCandidate(source.project, self._scope, TRUST, KIND, "assertion", entry.statement, title_of(entry.statement),
                                     evidence=entry.lineage, idempotency_key=self.key(source, entry))
         verdict = HostVerdict(workspace_trusted=self._trusted, scope_valid=True, spans_verified=True, lineage_complete=True,
@@ -566,10 +684,19 @@ class Importer:
         decision = memory_gate.admit(candidate, verdict)
         if decision.outcome != "append" or decision.draft is None or decision.draft.action != "admit":
             return "refused", {"code": decision.reason}, None
+        if words in known and not reconcile:
+            return "duplicate", {"item": known[words]}, None
         taken = self._store.read(decision.draft.item)
         if taken is not None:  # imported before: live (a repeat) or withdrawn or purged since, which stays so
             known[words] = taken.event.item
-            return "duplicate", {"item": taken.event.item, "status": taken.event.status}, None
+            event = taken.event
+            if reconcile and (event.version, event.trust, event.status) == (1, TRUST, "active"):
+                # the last apply sent it without a confirmed reply, and the store holds it now: its notice, from the store
+                notice = MemoryNotice(event.event_id, event.item, 1, "admit", "confirmed", "current")
+                return "confirmed", {"item": event.item, "version": 1, "event_id": event.event_id, "reconciled": True}, notice
+            return "duplicate", {"item": event.item, "status": event.status}, None
+        if words in known:
+            return "duplicate", {"item": known[words]}, None
         result = self._store.append(token, candidate, decision.draft)
         known[words] = result.item
         notice = MemoryNotice.of(result, "admit")
@@ -581,8 +708,8 @@ class Importer:
         if not records or "apply" not in records[0]:
             return "No import has been applied in this project yet."
         head = records[0]
-        outcomes = [r for r in records[1:] if "outcome" in r]
-        settled = any("settled" in r for r in records)
+        outcomes = [r for r in records[1:] if "outcome" in r and r.get("apply") == head["apply"]]
+        settled = any("settled" in r and r.get("apply") == head["apply"] for r in records)
         counts: dict[str, int] = {}
         for record in outcomes:
             counts[record["outcome"]] = counts.get(record["outcome"], 0) + 1
@@ -591,7 +718,10 @@ class Importer:
         words = [f"{counts.get(name, 0)} {label}" for name, label in
                  (("confirmed", "confirmed"), ("duplicate", "already present"), ("skipped", "skipped (inactive at the source)"),
                   ("off", "off"), ("refused", "refused"), ("uncertain", "uncertain (not confirmed on disk)"))]
-        text = f"Last import `{head['apply']}` from {head['root']}, {when}: " + ", ".join(words) + f"; {max(remaining, 0)} remaining."
+        from optimus.acp.memory_notices import escape_text
+
+        text = (f"Last import `{head['apply']}` from {escape_text(str(head['root']), 200)}, {when}: " + ", ".join(words)
+                + f"; {max(remaining, 0)} remaining.")
         if not settled:
             text += (" It was interrupted. Run `/memory import <folder>` and apply again: entries already saved are recognised and "
                      "skipped, never saved twice.")
@@ -600,27 +730,31 @@ class Importer:
         return text
 
 
-def preview_text(preview: Preview, *, project: str) -> str:
-    """What the user is shown before confirming: every file, entry disposition and gap, and the mapping."""
+def preview_text(preview: Preview, *, project: str, page: int = 1) -> str:
+    """One page of what the user is shown before confirming: the counts and mapping, that page's entries in full with their
+    dispositions, and (on the first page) the gaps. The page is marked shown."""
     from optimus.acp.memory_notices import escape_text
 
     source = preview.source
     counts = _counts(source.entries)
     mapping = (f"entries of project `{source.mapped}` are mapped into this project (`{project}`)" if source.mapped
                else f"only entries of this project (`{project}`) are taken; map one other project with `--map <project>`")
-    lines = [f"Import preview `{preview.id}` of {escape_text(source.root, 200)}: {len(source.files)} file(s) read, "
-             f"{counts['import']} to import as optional imported context (never as your own items), {counts['skipped']} skipped, "
-             f"{counts['refused']} refused. Mapping: {mapping}. Nothing is saved until you run `/memory import apply {preview.id}` "
-             "and confirm."]
-    for entry in source.entries[:SHOWN]:
-        shown = escape_text(title_of(entry.statement), 120) if entry.statement else ""
+    lines = [f"Import preview `{preview.id}` of {escape_text(source.root, 200)}, page {page} of {preview.pages}: "
+             f"{len(source.files)} file(s) read, {counts['import']} to import as optional imported context (never as your own "
+             f"items), {counts['skipped']} skipped, {counts['refused']} refused. Mapping: {mapping}. Nothing is saved until you "
+             f"have seen every page and run `/memory import apply {preview.id}` and confirm."]
+    for entry in source.entries[(page - 1) * PAGE:page * PAGE]:
+        shown = escape_text(entry.statement, MAX_STATEMENT_CHARS) if entry.statement else ""
         what = {"import": "import", "skipped": "skip", "refused": "refuse"}[entry.disposition]
         lines.append(f"- {escape_text(entry.locator, 120)}: {what}" + (f" “{shown}”" if shown else "")
                      + (f" ({entry.reason})" if entry.reason else "")
                      + (f" · claims origin {entry.claimed}, kept as imported" if entry.claimed != "unavailable" else ""))
-    if len(source.entries) > SHOWN:
-        lines.append(f"- … {len(source.entries) - SHOWN} more entries (counted above)")
-    if source.gaps:
+    preview.shown.add(page)
+    unseen = sorted(set(range(1, preview.pages + 1)) - preview.shown)
+    if unseen:
+        lines.append(f"Pages not shown yet: {', '.join(map(str, unseen[:20]))}{' …' if len(unseen) > 20 else ''}. See each with "
+                     f"`/memory import show {preview.id} <page>`.")
+    if source.gaps and page == 1:
         lines.append("Not read (coverage gaps): " + "; ".join(f"{escape_text(name, 80)}: {why}" for name, why in source.gaps[:50])
                      + (f"; and {len(source.gaps) - 50} more" if len(source.gaps) > 50 else ""))
     return "\n".join(lines)
