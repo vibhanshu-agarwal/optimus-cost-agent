@@ -26,8 +26,11 @@ _SETTINGS = {"image": "redis@sha256:" + "a" * 64, "container": "test-memory-stor
 
 
 @pytest.fixture
-def credential(tmp_path: Path) -> str:
-    return memory_setup.credential_name(sc.memory_store_root(tmp_path))  # one entry per config root (#526)
+def credential(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Setup names a fresh entry each time (#526); pin it so the isolated service's entry is known and removed."""
+    name = "redis-password:isolated-test"
+    monkeypatch.setattr(memory_setup, "_new_credential_name", lambda: name)
+    return name
 
 
 @pytest.fixture

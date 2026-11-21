@@ -40,9 +40,10 @@ _DEFAULTS = "memory_index_defaults.json"
 _CREDENTIAL_PREFIX = "redis-password"  # the name every config used before #526; such configs keep reading it as written
 
 
-def credential_name(root: Path) -> str:
-    """One keyring entry per config root (#526), so two roots never overwrite or remove each other's password."""
-    return f"{_CREDENTIAL_PREFIX}:{hashlib.sha256(str(root.resolve()).encode('utf-8')).hexdigest()[:32]}"
+def _new_credential_name() -> str:
+    """A fresh keyring entry for every setup (#526): two config roots, or a root set up again after its configuration was moved
+    away, never overwrite or remove each other's password. Readers use the name the configuration records."""
+    return f"{_CREDENTIAL_PREFIX}:{secrets.token_hex(16)}"
 # Exactly what the configured digest covers and what is proved to load offline. A wildcard also fetches files outside the digest.
 _ALLOWED_ARTIFACT_FILES = ("config.json", "model_optimized.onnx", "special_tokens_map.json", "tokenizer.json", "tokenizer_config.json")
 
@@ -122,9 +123,9 @@ def run_setup(
         shutil.rmtree(artifact, ignore_errors=True)  # a rerun clears anything this could not
         raise MemorySetupError(f"The downloaded artifact's digest is {found}, not the configured one; nothing was configured.")
 
-    password = secrets.token_urlsafe(32)
+    password, credential = secrets.token_urlsafe(32), _new_credential_name()
     try:
-        keyring_backend.set_password(KEYRING_SERVICE, credential_name(root), password)
+        keyring_backend.set_password(KEYRING_SERVICE, credential, password)
     except Exception as exc:  # noqa: BLE001 - any backend failure stops setup before a file claims a credential exists
         raise MemorySetupError(f"The OS keyring refused the password ({type(exc).__name__}); nothing was configured.") from None
     acl = acl_text(settings["user"], hashlib.sha256(password.encode("utf-8")).hexdigest()).encode("utf-8")
@@ -139,7 +140,7 @@ def run_setup(
         "host": settings["host"],
         "port": settings["port"],
         "user": settings["user"],
-        "credential_name": credential_name(root),
+        "credential_name": credential,
         "maxmemory_mb": settings["maxmemory_mb"],
         "acl_sha256": hashlib.sha256(acl).hexdigest(),
         "embedding": {key: embedding[key] for key in ("model", "source", "revision", "licence", "dimensions", "max_input_tokens", "artifact_sha256")},
@@ -192,9 +193,9 @@ def run_store_setup(
         raise MemorySetupError("Setup was not confirmed; nothing was changed.")
 
     root.mkdir(parents=True, exist_ok=True)
-    password = secrets.token_urlsafe(32)
+    password, credential = secrets.token_urlsafe(32), _new_credential_name()
     try:
-        keyring_backend.set_password(STORE_KEYRING_SERVICE, credential_name(root), password)
+        keyring_backend.set_password(STORE_KEYRING_SERVICE, credential, password)
     except Exception as exc:  # noqa: BLE001 - any backend failure stops setup before a file claims a credential exists
         raise MemorySetupError(f"The OS keyring refused the password ({type(exc).__name__}); nothing was configured.") from None
     acl = store_acl_text(settings["user"], hashlib.sha256(password.encode("utf-8")).hexdigest()).encode("utf-8")
@@ -208,7 +209,7 @@ def run_store_setup(
         "host": settings["host"],
         "port": settings["port"],
         "user": settings["user"],
-        "credential_name": credential_name(root),
+        "credential_name": credential,
         "maxmemory_mb": settings["maxmemory_mb"],
         "admission_ceiling_mb": settings["admission_ceiling_mb"],
         "acl_sha256": hashlib.sha256(acl).hexdigest(),

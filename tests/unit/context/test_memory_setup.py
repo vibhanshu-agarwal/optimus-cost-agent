@@ -47,6 +47,11 @@ def _run(tmp_path: Path, keyring: Any = None, confirm: Any = lambda _d: True, **
     return memory_setup.run_setup(tmp_path, keyring_backend=keyring or FakeKeyring(), confirm=confirm, download=_download, defaults=settings)
 
 
+def _stored_password(keyring: Any, path: Path) -> str | None:
+    """The password under the keyring entry the written configuration names."""
+    return keyring.get_password(mc.KEYRING_SERVICE, json.loads(path.read_bytes())["credential_name"])
+
+
 def test_setup_writes_only_non_secret_files_and_the_keyring_holds_the_password(tmp_path: Path) -> None:
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
@@ -71,7 +76,7 @@ def test_a_declined_setup_changes_nothing(tmp_path: Path) -> None:
     with pytest.raises(memory_setup.MemorySetupError):
         _run(tmp_path, keyring, confirm=lambda _d: False)
     assert not mc.memory_index_root(tmp_path).exists()
-    assert keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path))) is None
+    assert not keyring._store
 
 
 def test_the_description_names_what_will_happen_before_any_download(tmp_path: Path) -> None:
@@ -141,7 +146,7 @@ def test_a_wrong_artifact_configures_nothing_and_stores_no_password(tmp_path: Pa
     with pytest.raises(memory_setup.MemorySetupError, match="digest"):
         memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=settings)
     assert not (mc.memory_index_root(tmp_path) / mc.CONFIG_NAME).exists()
-    assert keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path))) is None
+    assert not keyring._store
 
 
 def test_a_keyring_failure_configures_nothing(tmp_path: Path) -> None:
@@ -158,14 +163,14 @@ def test_a_keyring_failure_configures_nothing(tmp_path: Path) -> None:
 def test_a_rerun_never_replaces_a_working_password_or_downloads_again(tmp_path: Path) -> None:
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
-    before = path.read_bytes(), keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path)))
+    before = path.read_bytes(), _stored_password(keyring, path)
 
     def no_download(**_kwargs: Any) -> None:
         raise AssertionError("a rerun must not download")
 
     again = memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), download=no_download, defaults=_settings(tmp_path))
     assert again == path
-    assert (path.read_bytes(), keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path)))) == before
+    assert (path.read_bytes(), _stored_password(keyring, path)) == before
 
 
 def test_setup_needs_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -265,7 +270,7 @@ def test_a_launch_expects_what_the_gateway_it_starts_serves_with_an_index(monkey
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
     literal = mc.config_literal(path.parent)
-    password = keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path)))
+    password = _stored_password(keyring, path)
     assert password
     key = b"test-memory-setup-hmac-key-32-by"
     secret, api_key, base_url = "shared-secret-value", "sk-or-test-key", "http://127.0.0.1:9/stub/v1"  # pragma: allowlist secret - synthetic test fixture
