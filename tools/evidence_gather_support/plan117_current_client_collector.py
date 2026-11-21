@@ -484,6 +484,7 @@ class DatabaseBinding:
     readable: bool
     thread_id: str | None
     session_binding: str | None
+    cleanup_failed: bool = False
 
 
 @contextmanager
@@ -502,19 +503,27 @@ def _open_closed_database_copy(
 
 def read_database_binding(main_copy: Path, wal_copy: Path | None = None, shm_copy: Path | None = None) -> DatabaseBinding:
     """Thread identity and binding of the single sidebar_threads row in a closed database copy."""
+    rows = None
+    cleanup_failed = False
     try:
         with _open_closed_database_copy(main_copy, wal_copy, shm_copy) as connection:
             rows = connection.execute("SELECT thread_id, session_id FROM sidebar_threads").fetchall()
-    except sqlite3.Error:
-        return DatabaseBinding(False, None, None)
+    except (OSError, sqlite3.Error) as exc:
+        if rows is None:
+            if isinstance(exc, OSError):
+                raise
+            return DatabaseBinding(False, None, None)
+        # Once read, a positive binding still requires STOP if teardown fails.
+        cleanup_failed = True
     bound = {binding for _thread, binding in rows if binding is not None}
     binding = None
     if bound:
         only = next(iter(bound)) if len(bound) == 1 else None
         binding = only if type(only) is str and _SESSION.fullmatch(only) else UNRECOGNIZED_BINDING
-    if len(rows) != 1 or type(rows[0][0]) is not bytes or not rows[0][0]:
-        return DatabaseBinding(True, None, binding)
-    return DatabaseBinding(True, rows[0][0].hex().upper(), binding)
+    thread_id = None
+    if len(rows) == 1 and type(rows[0][0]) is bytes and rows[0][0]:
+        thread_id = rows[0][0].hex().upper()
+    return DatabaseBinding(True, thread_id, binding, cleanup_failed=cleanup_failed)
 
 
 # --------------------------------------------------------------------------- capture-time path custody and run key
@@ -1306,6 +1315,8 @@ def _derive_checkpoint(art: _Artifacts, arm_id: str, launch_id: str) -> dict[str
                 binding = read_database_binding(copies["main"], copies.get("wal"), copies.get("shm"))
         except OSError:
             art.failures.append("checkpoint_copy_unreadable")
+    if binding.cleanup_failed:
+        art.failures.append("checkpoint_copy_cleanup_failed")
     return {"label": label, "copied_monotonic_ns": record["copied_monotonic_ns"], "files": files, "readable": binding.readable,
             "thread_id": binding.thread_id, "session_binding": binding.session_binding, "closed_copy": True}
 
