@@ -259,6 +259,8 @@ def _existing(path: Path) -> Path | None:
 
 def _windows_physical(disk: int) -> bool:
     """Whether disk number `disk` is a physical disk: not a virtual, file-backed virtual or Storage Spaces disk."""
+    if sys.platform != "win32":
+        return False
     import ctypes
     from ctypes import wintypes
 
@@ -288,6 +290,8 @@ def _windows_physical(disk: int) -> bool:
 
 
 def _disks_windows(path: Path) -> frozenset[str] | None:
+    if sys.platform != "win32":
+        return None
     import ctypes
     from ctypes import wintypes
 
