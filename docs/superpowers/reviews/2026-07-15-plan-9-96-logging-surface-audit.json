@@ -6961,6 +6961,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_import:ImportLog.start:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. The head line (preview id, digest, root, time, planned counts, carried item ids), written whole to a staged file beside the log, fsynced, then swapped in with os.replace.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_an_interrupted_apply_reports_progress_and_resumes_without_duplicates",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:ImportLog.start:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. The head line (preview id, digest, root, time, planned counts, carried item ids), written whole to a staged file beside the log, fsynced, then swapped in with os.replace.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_an_interrupted_apply_reports_progress_and_resumes_without_duplicates",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_import:ImportLog.outcome:text_write",
       "policy": "safe-by-construction",
       "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. One entry's locator, outcome and commit identifiers.",

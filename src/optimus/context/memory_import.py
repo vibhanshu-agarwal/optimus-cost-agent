@@ -558,8 +558,19 @@ class ImportLog:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         counts = _counts(preview.source.entries)
         self._apply = preview.id
-        self._write({"apply": preview.id, "digest": preview.digest, "root": preview.source.root, "at_ms": int(time.time() * 1000),
-                     "total": len(preview.source.entries), "planned": counts, "carried": sorted(carried)}, mode="w")
+        head = {"apply": preview.id, "digest": preview.digest, "root": preview.source.root, "at_ms": int(time.time() * 1000),
+                "total": len(preview.source.entries), "planned": counts, "carried": sorted(carried)}
+        # written whole beside the log, then swapped in: the last apply's record stays until the new head is on disk (Codex CP2
+        # review 3, finding 2), so a crash or a failed write never loses an unresolved dispatch
+        staged = self._path.with_name(f"{self._path.name}.{secrets.token_hex(6)}.tmp")
+        try:
+            with open(staged, "x", encoding="utf-8", newline="\n") as handle:
+                handle.write(json.dumps(head, ensure_ascii=True, sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(staged, self._path)
+        finally:
+            staged.unlink(missing_ok=True)
 
     def reconciled(self, item: str, *, found: bool) -> None:
         """A carried item settled: found in the store (its notice sent from the stored event) or never written."""
@@ -575,8 +586,8 @@ class ImportLog:
     def settled(self) -> None:
         self._write({"apply": self._apply, "settled": int(time.time() * 1000)}, fsync=True)
 
-    def _write(self, record: dict[str, Any], *, mode: str = "a", fsync: bool = False) -> None:
-        with open(self._path, mode, encoding="utf-8", newline="\n") as handle:
+    def _write(self, record: dict[str, Any], *, fsync: bool = False) -> None:
+        with open(self._path, "a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
             handle.flush()
             if fsync:
@@ -759,7 +770,9 @@ class Importer:
                         stop = "the store stopped accepting writes"
                 counts[outcome] += 1
                 if notice is not None:
-                    stop = kept(notice, title_of(entry.statement)) or stop
+                    lost = kept(notice, title_of(entry.statement))
+                    if lost:  # no terminal outcome: the dispatch stays unresolved, so a later apply rebuilds its notice
+                        return stopped(lost)
                 try:
                     self._log.outcome(entry, outcome, **fields)
                 except OSError:

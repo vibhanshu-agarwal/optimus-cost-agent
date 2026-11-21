@@ -881,3 +881,50 @@ def test_a_copy_manifest_of_the_wrong_shape_is_refused_readably(tmp_path: Path, 
     root = _source(tmp_path / "copy", {"MEMORY.md": "- Entry. [project: p-1]\n", "entries.jsonl": "", "manifest.json": manifest})
     answer = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {root}").text
     assert "an Optimus recovery copy that does not pass its checks" in answer and "0 to import" in answer
+
+
+def test_a_notice_the_backlog_could_not_keep_is_rebuilt_by_the_next_apply(tmp_path: Path) -> None:
+    """Codex CP2 review 3, finding 1: a commit whose notice could not be kept is left unresolved, so after the session ends
+    without delivering it, the next apply rebuilds its notice from the store into a working backlog."""
+    from optimus.context import memory_recovery as mr
+
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- Entry {n}. [project: p-1]\n" for n in range(4))})
+    store = _store(tmp_path)
+    failing = mc.MemoryCommands(store, trusted=True, sanitize=lambda v: v, scope=SCOPE, imports=mi.ImportLog(tmp_path / "config", PROJECT),
+                                backlog=_FailingBacklog(1))
+    first = _imported(failing, root)
+    assert "notice backlog could not be written" in first.text and len(_items(store)) == 2
+    unkept = next(e for e in _items(store) if e.statement == "Entry 1.")  # its notice never reached a backlog; the session ends here
+    backlog = mr.NoticeBacklog(tmp_path / "config", PROJECT)
+    working = mc.MemoryCommands(store, trusted=True, sanitize=lambda v: v, scope=SCOPE, imports=mi.ImportLog(tmp_path / "config", PROJECT),
+                                backlog=backlog)
+    assert "1 uncertain" in _run(working, "/memory import status").text
+    resumed = _imported(working, root)
+    assert unkept.event_id in {n.event_id for n, _label in resumed.notices}
+    assert unkept.event_id in {r["event_id"] for r in backlog.pending()} and len(_items(store)) == 4
+
+
+def test_a_failed_head_swap_keeps_the_last_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP2 review 3, finding 2: a new apply's head is written beside the log and swapped in; when the swap fails the last
+    record, with its unresolved dispatch, is still there for the next apply."""
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- Entry {n}. [project: p-1]\n" for n in range(3))})
+    store = _store(tmp_path)
+    log_path = tmp_path / "config" / "memory-import" / f"{PROJECT}.jsonl"
+    dying = _commands(_DiesAfterCommit(store, 0), tmp_path)
+    asked = _run(dying, f"/memory import apply {_preview_id(_run(dying, f'/memory import {root}').text)}")
+    assert asked.confirm is not None
+    with pytest.raises(_Died):
+        dying.confirmed(asked.confirm)
+    before = log_path.read_bytes()
+    unheard = next(e for e in _items(store) if e.statement == "Entry 0.")
+
+    def no_swap(_src: Any, _dst: Any) -> None:
+        raise OSError("the swap failed")
+
+    monkeypatch.setattr(mi.os, "replace", no_swap)
+    failed = _imported(_commands(store, tmp_path), root)
+    assert "progress log could not be written" in failed.text
+    assert log_path.read_bytes() == before and not list(log_path.parent.glob("*.tmp"))
+    monkeypatch.undo()
+    resumed = _imported(_commands(store, tmp_path), root)
+    assert unheard.event_id in {n.event_id for n, _label in resumed.notices} and len(_items(store)) == 3
