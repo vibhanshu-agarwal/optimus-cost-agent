@@ -1578,8 +1578,12 @@ class AcpDuplexAdapter:
                 # server or a torn-down request before its write begins suppresses it (`_SavingsSendOwner`); a write
                 # already begun is authoritative. Success needs a confirmed flush (a suppressed or ambiguous send raises).
                 owner = _SavingsSendOwner(lambda: not gone())
-                submission = ProgressSubmission(control=owner, send_key=owner.key, admission=ProgressAdmission(),  # type: ignore[arg-type]
-                                                admission_class=AdmissionClass.REQUIRED)
+                submission = ProgressSubmission(
+                    control=owner,  # type: ignore[arg-type]
+                    send_key=owner.key,  # type: ignore[arg-type]
+                    admission=ProgressAdmission(),
+                    admission_class=AdmissionClass.REQUIRED,
+                )
                 token = progress_submission.set(submission)
                 try:
                     send = asyncio.create_task(self._outbound.notify("session/update", update, require_flushed=True))

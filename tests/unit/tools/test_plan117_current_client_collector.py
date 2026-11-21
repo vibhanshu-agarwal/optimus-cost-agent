@@ -2123,6 +2123,43 @@ def test_redaction_continues_after_unrelated_checkpoint_copy_error(tmp_path, win
         assert redaction.gate.primary.subject == reopen_arm
 
 
+@pytest.mark.parametrize(
+    ("has_binding", "expected"),
+    [
+        (True, D.ZERO_ENTRY_REACHABLE_STOP),
+        (False, D.INVALID_CURRENT_CLIENT_GATE),
+    ],
+    ids=("stop", "invalid"),
+)
+def test_redaction_preserves_checkpoint_result_after_cleanup_error(tmp_path, windows_shaped_paths, monkeypatch, has_binding, expected):
+    run = Run(tmp_path, run_options(pre_reopen_binding_arm="a_prime" if has_binding else None))
+    run.collect()
+    cleanup = col.tempfile.TemporaryDirectory.cleanup
+    cleanup_failed = False
+
+    def fail_first_database_cleanup(directory):
+        nonlocal cleanup_failed
+        cleanup(directory)
+        if not cleanup_failed and Path(directory.name).name.startswith("p117v5-db-"):
+            cleanup_failed = True
+            raise PermissionError("closed checkpoint scratch cleanup denied")
+
+    monkeypatch.setattr(col.tempfile.TemporaryDirectory, "cleanup", fail_first_database_cleanup)
+    redaction = col.compute_redaction(run.context, identity_tokens=())
+
+    assert cleanup_failed
+    assert redaction.gate.disposition is expected
+    assert R.CUSTODY_ARTIFACT_FAILURE in _codes(redaction.gate)
+    assert redaction.raw is not None
+    assert "checkpoint_copy_cleanup_failed" in redaction.raw.custody_failures
+    first_checkpoint = redaction.raw.arms[0].checkpoints[0]
+    assert first_checkpoint.readable
+    assert (first_checkpoint.session_binding is not None) is has_binding
+    if has_binding:
+        assert redaction.gate.primary.subject == "a_prime"
+        assert redaction.gate.primary.reason is R.REOPEN_PRE_BINDING_NON_NULL
+
+
 @pytest.mark.parametrize("presence", [{"main": False, "wal": False, "shm": False}, {}, {"wal": False}])
 def test_presence_metadata_cannot_hide_a_captured_database_binding(tmp_path, windows_shaped_paths, presence):
     run = Run(tmp_path, run_options(pre_reopen_binding_arm="r_refusal"))
