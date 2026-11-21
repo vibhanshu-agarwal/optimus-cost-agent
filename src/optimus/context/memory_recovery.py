@@ -354,9 +354,13 @@ def checked_generation(manifest_bytes: bytes, body: bytes, entry_point: bytes, n
     metadata = manifest.get("metadata") if isinstance(manifest, dict) else None
     if (not isinstance(manifest, dict) or manifest.get("format") != FORMAT or not isinstance(metadata, dict)
             or metadata.get("format") != FORMAT or (project is not None and metadata.get("project") != project)
-            or tuple(metadata.get("layout", ())) != LAYOUT):
+            or not isinstance(metadata.get("layout"), list) or tuple(metadata["layout"]) != LAYOUT):  # shapes checked first
         raise RecoveryError("RECOVERY_GENERATION_FOREIGN", "That generation is not this project's, or not a format this host reads.")
-    if hashlib.sha256(body).hexdigest() != manifest.get("entries_sha256") or bind_digest(metadata) != manifest.get("bind"):
+    try:
+        bound = bind_digest(metadata)
+    except (TypeError, ValueError):
+        raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's manifest is not in the copy's form; it is not used.") from None
+    if hashlib.sha256(body).hexdigest() != manifest.get("entries_sha256") or bound != manifest.get("bind"):
         raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's files do not match its manifest; it is not used.")
     if not all(isinstance(shaped, dict) and isinstance(shaped.get("entry"), dict) for shaped in entries):
         raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's entries are not in the copy's form; it is not used.")

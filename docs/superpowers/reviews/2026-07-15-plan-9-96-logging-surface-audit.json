@@ -6977,6 +6977,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_import:ImportLog.reconciled:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. One carried item id and whether the store holds it, when an apply settles it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_a_failed_resume_keeps_the_unheard_commit_until_one_reconciles_it",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_import:ImportLog.settled:text_write",
       "policy": "safe-by-construction",
       "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. The closing line: a time only, fsynced.",

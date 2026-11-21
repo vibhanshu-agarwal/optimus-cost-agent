@@ -41,8 +41,9 @@ mapping, or resuming after a crash, writes nothing twice and never revives an it
 every entry in full, in pages; apply waits until every page was shown. Its progress is a durable log per project, written only
 under the lease, each line stamped with its apply (no statements in it), which `/memory import status` reads: each entry is
 logged as dispatched before its append and with its outcome after, and each confirmed commit's notice goes to the project's
-durable notice backlog at once, so a host that dies mid-apply loses no notice, and the next apply reconciles what was dispatched
-without an outcome.
+durable notice backlog at once, so a host that dies mid-apply loses no notice. An item dispatched without a known outcome stays
+unresolved, carried in each later apply's head line until an apply finds it in the store (its notice, from the stored event) or
+finds it absent: a resume that itself fails never loses it.
 """
 
 from __future__ import annotations
@@ -56,7 +57,7 @@ import secrets
 import stat
 import time
 import unicodedata
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -551,13 +552,18 @@ class ImportLog:
     def __init__(self, config_root: Path, project: str) -> None:
         self._path = config_root / "memory-import" / f"{project}.jsonl"
 
-    def start(self, preview: Preview) -> None:
-        """A new apply's head line, replacing the last apply's record: called only under the project's write lease."""
+    def start(self, preview: Preview, carried: Collection[str] = ()) -> None:
+        """A new apply's head line, replacing the last apply's record: called only under the project's write lease. `carried`:
+        the items earlier applies sent without a known outcome, kept here until reconciled (Codex CP2 review 2, finding 1)."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         counts = _counts(preview.source.entries)
         self._apply = preview.id
         self._write({"apply": preview.id, "digest": preview.digest, "root": preview.source.root, "at_ms": int(time.time() * 1000),
-                     "total": len(preview.source.entries), "planned": counts}, mode="w")
+                     "total": len(preview.source.entries), "planned": counts, "carried": sorted(carried)}, mode="w")
+
+    def reconciled(self, item: str, *, found: bool) -> None:
+        """A carried item settled: found in the store (its notice sent from the stored event) or never written."""
+        self._write({"apply": self._apply, "reconciled": item, "found": found})
 
     def dispatch(self, entry: Entry, item: str) -> None:
         """Before an append: an entry whose dispatch has no outcome line was sent with its result unknown."""
@@ -591,15 +597,16 @@ class ImportLog:
 
 
 def _unresolved(records: Sequence[dict[str, Any]]) -> set[str]:
-    """The locators of the logged apply whose append was sent without a known result: an `uncertain` outcome, or a dispatch
-    with no outcome after it (the host stopped in between)."""
+    """The items sent without a known result: carried from earlier applies, or dispatched by the logged apply with no decided
+    outcome after it (an `uncertain` outcome, or none: the host stopped in between), less those this apply reconciled."""
     if not records or "apply" not in records[0]:
         return set()
     apply = records[0]["apply"]
     mine = [r for r in records[1:] if r.get("apply") == apply]
     decided = {r["locator"] for r in mine if "outcome" in r and r["outcome"] != "uncertain"}
-    sent = {r["locator"] for r in mine if "dispatch" in r} | {r["locator"] for r in mine if r.get("outcome") == "uncertain"}
-    return sent - decided
+    sent = {r["dispatch"] for r in mine if "dispatch" in r and r.get("locator") not in decided}
+    reconciled = {r["reconciled"] for r in mine if "reconciled" in r}
+    return (set(records[0].get("carried") or ()) | sent) - reconciled
 
 
 def _notice_record(notice: MemoryNotice) -> dict[str, Any]:
@@ -689,14 +696,42 @@ class Importer:
             counts["stopped"] = why  # type: ignore[assignment]
             return counts, notices  # what was committed keeps its notice; status says the apply was interrupted
 
+        from optimus.context.memory_recovery import RecoveryError
+
+        def kept(notice: MemoryNotice, label: str) -> str | None:
+            """The notice, kept durably at once: a host that dies before answering still shows it later."""
+            notices.append((notice, label))
+            if self._backlog is None or not notice.saved:
+                return None
+            try:
+                self._backlog.add([_notice_record(notice)])
+            except (OSError, RecoveryError):
+                return "the notice backlog could not be written"
+            return None
+
         with self._store.lease() as token:
             earlier = self._log.read()  # read under the lease, before this apply replaces it
-            uncertain = _unresolved(earlier) if earlier and earlier[0].get("digest") == preview.digest else set()
+            carried = _unresolved(earlier)
             try:
-                self._log.start(preview)
+                self._log.start(preview, carried)  # the unresolved items stay recorded until each is settled
             except OSError:
                 return stopped("the progress log could not be written")
-            known = self._known()
+            reconciled: set[str] = set()
+            try:
+                for item in sorted(carried):
+                    stored = self._store.read(item)
+                    event = stored.event if stored is not None else None
+                    if event is not None and (event.version, event.trust, event.status) == (1, TRUST, "active"):
+                        why = kept(MemoryNotice(event.event_id, event.item, 1, "admit", "confirmed", "current"), event.title)
+                        if why:
+                            return stopped(why)
+                        reconciled.add(item)
+                    self._log.reconciled(item, found=event is not None)
+                known = self._known()
+            except OSError:
+                return stopped("the progress log could not be written")
+            except (MemoryStoreUnavailable, MemoryStoreRefused):
+                return stopped("the store stopped answering")
             renewed = time.monotonic()  # after the listing, which may take a while
             for entry in source.entries:
                 try:
@@ -713,7 +748,9 @@ class Importer:
                     return stopped("the project's write lease could not be kept")
                 stop = None
                 try:
-                    outcome, fields, notice = self._one(token, source, entry, known, reconcile=entry.locator in uncertain)
+                    outcome, fields, notice = self._one(token, source, entry, known, reconciled)
+                except OSError:
+                    return stopped("the progress log could not be written")  # before the append: nothing was sent
                 except MemoryStoreUnavailable:
                     outcome, fields, notice, stop = "uncertain", {}, None, "the store stopped answering"
                 except MemoryStoreRefused as refused:
@@ -722,12 +759,7 @@ class Importer:
                         stop = "the store stopped accepting writes"
                 counts[outcome] += 1
                 if notice is not None:
-                    notices.append((notice, title_of(entry.statement)))
-                    if self._backlog is not None and notice.saved:
-                        try:  # kept durably now: a host that dies before answering still shows it later
-                            self._backlog.add([_notice_record(notice)])
-                        except OSError:
-                            return stopped("the notice backlog could not be written")
+                    stop = kept(notice, title_of(entry.statement)) or stop
                 try:
                     self._log.outcome(entry, outcome, **fields)
                 except OSError:
@@ -761,7 +793,7 @@ class Importer:
             if cursor is None:
                 return known
 
-    def _one(self, token: int, source: Source, entry: Entry, known: dict[str, str], *, reconcile: bool = False
+    def _one(self, token: int, source: Source, entry: Entry, known: dict[str, str], reconciled: Collection[str] = ()
              ) -> tuple[str, dict[str, Any], MemoryNotice | None]:
         words = normalized(entry.statement)
         candidate = MemoryCandidate(source.project, self._scope, TRUST, KIND, "assertion", entry.statement, title_of(entry.statement),
@@ -780,17 +812,14 @@ class Importer:
                 if (event.version, event.status, normalized(event.statement)) != (int(version), "active", words):
                     return "refused", {"code": "STALE_SOURCE", "item": item, "status": event.status, "version": event.version}, None
                 return "duplicate", {"item": item}, None
-        if words in known and not reconcile:
+        if decision.draft.item in reconciled:  # an earlier apply's unheard commit, found and noticed at this apply's start
+            return "confirmed", {"item": decision.draft.item, "version": 1, "reconciled": True}, None
+        if words in known:
             return "duplicate", {"item": known[words]}, None
         taken = self._store.read(decision.draft.item)
         if taken is not None:  # imported before: live (a repeat) or withdrawn or purged since, which stays so
             known[words] = taken.event.item
-            event = taken.event
-            if reconcile and (event.version, event.trust, event.status) == (1, TRUST, "active"):
-                # the last apply sent it without a confirmed reply, and the store holds it now: its notice, from the store
-                notice = MemoryNotice(event.event_id, event.item, 1, "admit", "confirmed", "current")
-                return "confirmed", {"item": event.item, "version": 1, "event_id": event.event_id, "reconciled": True}, notice
-            return "duplicate", {"item": event.item, "status": event.status}, None
+            return "duplicate", {"item": taken.event.item, "status": taken.event.status}, None
         if words in known:
             return "duplicate", {"item": known[words]}, None
         self._log.dispatch(entry, decision.draft.item)
@@ -802,20 +831,17 @@ class Importer:
 
     def status(self) -> str:
         records = self._log.read()
-        if records and "apply" in records[0]:
-            mine = [r for r in records[1:] if r.get("apply") == records[0]["apply"]]
-            told = {r["locator"] for r in mine if "outcome" in r}
-            for _locator in {r["locator"] for r in mine if "dispatch" in r} - told:  # sent, then the host stopped before its outcome
-                records.append({"apply": records[0]["apply"], "outcome": "uncertain"})
         if not records or "apply" not in records[0]:
             return "No import has been applied in this project yet."
         head = records[0]
-        outcomes = [r for r in records[1:] if "outcome" in r and r.get("apply") == head["apply"]]
-        settled = any("settled" in r and r.get("apply") == head["apply"] for r in records)
+        mine = [r for r in records[1:] if r.get("apply") == head["apply"]]
+        settled = any("settled" in r for r in mine)
         counts: dict[str, int] = {}
-        for record in outcomes:
-            counts[record["outcome"]] = counts.get(record["outcome"], 0) + 1
-        remaining = head["total"] - len(outcomes)
+        for record in mine:
+            if record.get("outcome") not in (None, "uncertain"):
+                counts[record["outcome"]] = counts.get(record["outcome"], 0) + 1
+        counts["uncertain"] = len(_unresolved(records))  # sent with no known result, this apply's or carried from earlier ones
+        remaining = head["total"] - len({r["locator"] for r in mine if "locator" in r})
         when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(head["at_ms"] / 1000))
         words = [f"{counts.get(name, 0)} {label}" for name, label in
                  (("confirmed", "confirmed"), ("duplicate", "already present"), ("skipped", "skipped (inactive at the source)"),

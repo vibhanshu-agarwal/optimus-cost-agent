@@ -780,3 +780,104 @@ def test_a_format_2_copy_written_before_imports_named_their_origin_still_verifie
     (copy / "MEMORY.md").write_bytes(current.replace(b"origin: imported", b"origin: user"))
     with pytest.raises(mr.RecoveryError):
         mr.read_generation(copy, PROJECT)
+
+
+class _StoreDown:
+    """Every read and listing fails: the store stopped answering while a resume began."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def read(self, *_args: Any, **_kwargs: Any) -> Any:
+        raise MemoryStoreUnavailable("down")
+
+    def items(self, *_args: Any, **_kwargs: Any) -> Any:
+        raise MemoryStoreUnavailable("down")
+
+
+def test_a_failed_resume_keeps_the_unheard_commit_until_one_reconciles_it(tmp_path: Path) -> None:
+    """Codex CP2 review 2, finding 1: the item sent when the host died stays recorded through a resume that fails before it can
+    look, and the next resume confirms it with its notice."""
+    from optimus.context import memory_recovery as mr
+
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- Entry {n}. [project: p-1]\n" for n in range(4))})
+    store = _store(tmp_path)
+    backlog = mr.NoticeBacklog(tmp_path / "config", PROJECT)
+
+    def commands_on(target: Any) -> mc.MemoryCommands:
+        return mc.MemoryCommands(target, trusted=True, sanitize=lambda v: v, scope=SCOPE, imports=mi.ImportLog(tmp_path / "config", PROJECT),
+                                 backlog=backlog)
+
+    dying = commands_on(_DiesAfterCommit(store, 1))
+    asked = _run(dying, f"/memory import apply {_preview_id(_run(dying, f'/memory import {root}').text)}")
+    assert asked.confirm is not None
+    with pytest.raises(_Died):
+        dying.confirmed(asked.confirm)
+    unheard = next(e for e in _items(store) if e.statement == "Entry 1.")
+    failed = _imported(commands_on(_StoreDown(store)), root)
+    assert "the store stopped answering" in failed.text and not failed.notices
+    assert "1 uncertain" in _run(commands_on(store), "/memory import status").text
+    resumed = _imported(commands_on(store), root)
+    assert unheard.event_id in {n.event_id for n, _label in resumed.notices}
+    assert "3 saved, 1 already present" in resumed.text and len(_items(store)) == 4
+    assert unheard.event_id in {r["event_id"] for r in backlog.pending()}
+    assert "0 uncertain" in _run(commands_on(store), "/memory import status").text
+
+
+class _FailingLog(mi.ImportLog):
+    """The progress log stops accepting dispatch lines after `ok` of them."""
+
+    def __init__(self, config_root: Path, project: str, ok: int) -> None:
+        super().__init__(config_root, project)
+        self._ok = ok
+
+    def dispatch(self, entry: mi.Entry, item: str) -> None:
+        if self._ok == 0:
+            raise OSError("disk full")
+        self._ok -= 1
+        super().dispatch(entry, item)
+
+
+class _FailingBacklog:
+    """The notice backlog's lock times out after `ok` additions."""
+
+    def __init__(self, ok: int) -> None:
+        self._ok, self.kept = ok, []
+
+    def add(self, records: list[dict[str, Any]]) -> None:
+        from optimus.context import memory_recovery as mr
+
+        if self._ok == 0:
+            raise mr.RecoveryError("RECOVERY_STATE_BUSY", "busy")
+        self._ok -= 1
+        self.kept += records
+
+
+def test_log_and_backlog_failures_stop_the_apply_and_keep_what_was_committed(tmp_path: Path) -> None:
+    """Codex CP2 review 2, finding 2: a dispatch line that cannot be written stops before the append; a backlog that cannot be
+    written stops after it; either way the answer reports every commit and carries its notice."""
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- Entry {n}. [project: p-1]\n" for n in range(5))})
+    store = _store(tmp_path)
+    logged = mc.MemoryCommands(store, trusted=True, sanitize=lambda v: v, scope=SCOPE, imports=_FailingLog(tmp_path / "config", PROJECT, 2))
+    answer = _imported(logged, root)
+    assert answer.text.startswith("Imported: 2 saved") and "progress log could not be written, so 3 were not tried" in answer.text
+    assert len(answer.notices) == 2 and len(_items(store)) == 2
+    other = _store(tmp_path / "second")
+    backlog = _FailingBacklog(1)
+    noticed = mc.MemoryCommands(other, trusted=True, sanitize=lambda v: v, scope=SCOPE, imports=mi.ImportLog(tmp_path / "config2", PROJECT),
+                                backlog=backlog)
+    answer = _imported(noticed, root)
+    assert answer.text.startswith("Imported: 2 saved") and "notice backlog could not be written, so 3 were not tried" in answer.text
+    assert len(answer.notices) == 2 and len(backlog.kept) == 1 and len(_items(other)) == 2
+
+
+@pytest.mark.parametrize("layout", ["null", "7", '"MEMORY.md"'])
+def test_a_copy_manifest_of_the_wrong_shape_is_refused_readably(tmp_path: Path, layout: str) -> None:
+    """Codex CP2 review 2, finding 3: malformed copy metadata is a readable refusal of every entry, never a command failure."""
+    manifest = '{"format": "optimus-agent-memory-repo/2", "metadata": {"format": "optimus-agent-memory-repo/2", "layout": ' + layout + "}}"
+    root = _source(tmp_path / "copy", {"MEMORY.md": "- Entry. [project: p-1]\n", "entries.jsonl": "", "manifest.json": manifest})
+    answer = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {root}").text
+    assert "an Optimus recovery copy that does not pass its checks" in answer and "0 to import" in answer
