@@ -671,6 +671,7 @@ paths = [
   "tests/unit/agent/test_workspace_context.py",
   "tests/unit/evidence/test_private_files.py",
   "tests/unit/guardrails/test_ci_parity.py",
+  "tests/unit/context/test_memory_backups.py",
   "tests/unit/context/test_memory_workspace.py",
   "tests/unit/context/test_memory_recovery.py",
   "tests/unit/guardrails/test_file_policy.py",

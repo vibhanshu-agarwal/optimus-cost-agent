@@ -1,0 +1,103 @@
+{
+  "schema": "plan12-memory-m3-part2.restore.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+  "sources": [
+    {
+      "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+      "run_id": "20261120T233832-58536-47c952",
+      "mode": "active",
+      "reason": "default_selection",
+      "native": "valid",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py tests/unit/guardrails/test_tracked_file_scanners.py tests/unit/tools/test_verify_plan996_logging_surfaces.py tests/unit/tools/test_probe_p11_zed_session_load.py",
+      "summary": "339 passed, 1 skipped"
+    },
+    {
+      "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+      "run_id": "20261120T233759-30688-e6a1a4",
+      "mode": "passive",
+      "reason": "non_default_selection",
+      "native": "not_enrolled",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_backups.py tests/integration/memory/test_recovery.py",
+      "summary": "8 passed",
+      "release": "operator 2026-11-21 'Release all': p1212-memory-test-redis port 6396, volume p1212-memory-test-data, fault injection; backup folder F:\\optimus-p1212-test on physical disk 2 (store data on disk 1)"
+    }
+  ],
+  "cases": [
+    {
+      "case": "B16",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b16_b23_restore_from_a_backup_into_an_empty_store_only",
+        "tests/integration/memory/test_backups.py::test_restore_applies_newer_deletions"
+      ]
+    },
+    {
+      "case": "B17",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b17_with_backups_off_a_lost_store_has_only_the_recovery_copy"
+      ],
+      "note": "expected loss shown before it happens"
+    },
+    {
+      "case": "B18",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b18_a_lost_verification_key_refuses_restore_from_the_backup_readably"
+      ],
+      "note": "unit fault injection: the store's recovery key replaced in process (a new password after keyring loss); the recovery copy is removed so the confirmation selects the backup folder; readable refusal, nothing restored"
+    },
+    {
+      "case": "B19",
+      "status": "REUSED",
+      "tests": [
+        "tests/unit/context/test_memory_recovery.py::test_a_lost_or_damaged_deletion_journal_publishes_nothing"
+      ],
+      "note": "Plan 12.11 evidence: restore from a backup reaches the same Gateway restore and journal checks"
+    },
+    {
+      "case": "B21",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b21_a_corrupted_backup_is_not_restored",
+        "tests/integration/memory/test_backups.py::test_corrupted_generation_refuses_restore"
+      ],
+      "note": "the live test proves both the host's digest check and, with only the seal changed, the Gateway's seal check"
+    },
+    {
+      "case": "B23",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b16_b23_restore_from_a_backup_into_an_empty_store_only"
+      ]
+    },
+    {
+      "case": "B24",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b24_an_earlier_registrations_backup_restores_only_through_a_confirmed_mapping"
+      ]
+    },
+    {
+      "case": "B26",
+      "status": "PASS (unit fault injection)",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b26_an_interrupted_restore_from_a_backup_publishes_nothing_and_a_restart_reconciles"
+      ],
+      "note": "the recovery copy is removed so the backup folder is selected; interruptions are raised inside the restore and each restart is a new set of host objects over the same config: between batches nothing is served and the next host restores; after the store published but before the host recorded it, the next host finds it published whole once and a retry changes nothing. UNRUN: a real process kill, and a kill inside the store's single fenced publication transaction"
+    },
+    {
+      "case": "B27",
+      "status": "PASS",
+      "tests": [
+        "tests/integration/memory/test_backups.py::test_restore_applies_newer_deletions"
+      ]
+    }
+  ]
+}

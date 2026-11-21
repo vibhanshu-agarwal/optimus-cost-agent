@@ -1,0 +1,96 @@
+{
+  "schema": "plan12-memory-m3-part2.manifest.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "plan_file": "docs/superpowers/plans/2026-11-20-plan-12-12-memory-backups-and-import-implementation.md",
+  "plan_sha256": "hex:e9bf660e87549884f77d296244e5371f48356f80ff5f15350c94bd7abaa17723",
+  "approval": "Operator, Claude chat 2026-11-20: \"Yes, 12.12\" (number), then \"Approve hash + D1-D4\" for the plan at the hash above with D1-D4 as recommended. Recorded on #491 (comment 7047394603). It released no live operation.",
+  "filed": "PR #519, merge commit git:0cbac66136008a8776954ab54dbdd17ae3bb57de; plan bytes on main equal the approved hash",
+  "authorship": "Codex CLI authored the plan (round 109, gpt-6.1-sol high, read-only, session 01a1fa1d-37ec-7c62-b136-229181f0a80f); Claude reviewed it twice; reviews posted verbatim on #491",
+  "inputs": {
+    "discovery_v12_sha256": "hex:33670c6b84aceccd629437c14f03609ba4293d70cde95b242dd93a2b0ad4fb14",
+    "design_v4_sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9",
+    "plan_12_11_v5_sha256": "hex:db61651d4301077a218260a7539ab5576ad04df53f7c54de3b8dfb73c47e9c06",
+    "plan_12_11_v5_file": "docs/superpowers/plans/archive/2026-11-16-plan-12-11-memory-and-continuity-implementation_v5.md (archived by PR #518 after this plan's authoring; the plan cites its pre-archive path)",
+    "lifecycle_fixture_sha256": "hex:a62b6a97d27f10ce0dc750ef8c7a95fa0ca59c7c1cd6b5dbcbe9149d921d514a",
+    "provenance_only": "discovery v12 and the review kit live outside the repository; no test or command reads them"
+  },
+  "task0_inventory": {
+    "observed_on": "2026-11-21",
+    "source_head": "git:0cbac66136008a8776954ab54dbdd17ae3bb57de",
+    "branch": "agent/claude/p491-task0, cut from main",
+    "main_drift_since_authoring": "PR #518 (Plan 12.11 closure, archive of v5) and PR #519 (this plan's filing); no memory source changed",
+    "overlap": "open PR #520 changes tools/evidence_gather_support/plan117_current_client_collector.py and tests/unit/tools/test_plan117_current_client_collector.py; open PR #474 (CI recovery, never merge) changes two workflows and test_planning_progress_ordering.py. Neither touches memory files.",
+    "python": "CPython 3.14.4; repository venv synced with --frozen --extra dev --extra memory",
+    "uv": "0.11.29",
+    "zed": "1.29.2 (2de9e435a5d98657f35c260b5f4dd0979df659e6)",
+    "acpx": "0.12.0",
+    "docker": "engine 29.9.3, Docker Desktop not running at inventory; no container created",
+    "docker_data_disk": "C:\\Users\\pc\\AppData\\Local\\Docker\\wsl\\disk\\docker_data.vhdx on volume C:, physical disk 1",
+    "wsl": "Ubuntu-24.04 (WSL 2), stopped at inventory",
+    "physical_disks": [
+      {
+        "disk": 0,
+        "model": "ST500DM002-1BD142",
+        "media": "HDD",
+        "bus": "SATA",
+        "volumes": [
+          "D:"
+        ]
+      },
+      {
+        "disk": 1,
+        "model": "CT1000P510SSD8",
+        "media": "SSD",
+        "bus": "NVMe",
+        "volumes": [
+          "C:"
+        ],
+        "holds": "Docker data (the memory store volume), the per-user root, the OneDrive folder"
+      },
+      {
+        "disk": 2,
+        "model": "GIGABYTE G3NVME512G",
+        "media": "SSD",
+        "bus": "NVMe",
+        "volumes": [
+          "F:"
+        ]
+      },
+      {
+        "disk": 3,
+        "model": "WD My Passport 0837",
+        "media": "HDD",
+        "bus": "USB",
+        "volumes": [
+          "E:"
+        ],
+        "note": "removable; may be offline"
+      }
+    ],
+    "sync_roots_seen": [
+      "C:\\Users\\pc\\OneDrive (OneDrive environment variable)"
+    ],
+    "eligible_routes": "one: the shipped role list names only the Anthropic route marked verified in src/optimus_model_policy/defaults.yaml; every other route is verified: false",
+    "d4_consequence": "no second eligible route at inventory, so actual second-model proof stays UNRUN under #491 unless configuration changes before Task 3",
+    "pilot_sources_named_by_oc2": [
+      "this project's Claude Code memory folder",
+      "C:\\Users\\pc\\.codex\\memories (mixed projects)",
+      "public formats: Agent Memory Repo, JetBrains Junie guidelines"
+    ],
+    "pilot_sources_read": "operator approved reading both OC-2 sources on 2026-11-21 (\"Both sources\"). Snapshot at 2026-11-20T20:37:33Z kept privately in the review kit (389 files; SHA256SUMS hex:acd3fdfe6862e3c24e7984b90f7975ad2873b3d91fc911a0fce6b0768d9f8d0c). Draft selection: 26 pilot items (16 Claude notes, 10 Codex notes, 4 expected stale) plus 5 other-project negative controls; list confirmed by the operator the same day (decisions.json D3_binding). No personal text enters the repository.",
+    "paid_calls": 0,
+    "live_operations": "none",
+    "backup_target": "operator selected F: (physical disk 2, NVMe) on 2026-11-21 (\"F: second NVMe\"); test root needs its own release",
+    "cloud_target": "none selected; OneDrive exists on C: (same physical disk as the store) and would need D2 consent plus a per-write release",
+    "environments": "Windows: this worktree's .venv (CPython 3.14.4, uv sync --frozen --extra dev --extra memory). Linux: WSL Ubuntu-24.04 with its own environment for path and permission checks; created at Task 1, never shared with the Windows venv.",
+    "proposed_test_resources": {
+      "redis_container": "p1212-memory-test-redis",
+      "redis_volume": "p1212-memory-test-data",
+      "redis_port": 6396,
+      "backup_test_root": "a released directory on the selected separate disk, for example F:\\optimus-p1212-test",
+      "keyring": "the isolated test service only (requires_os_keyring_write); no non-test keyring change",
+      "status": "proposed; each needs its own operator release"
+    }
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "schema": "plan12-memory-m3-part2.copy-inventory.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+  "sources": [
+    {
+      "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+      "run_id": "20261120T233832-58536-47c952",
+      "mode": "active",
+      "reason": "default_selection",
+      "native": "valid",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py tests/unit/guardrails/test_tracked_file_scanners.py tests/unit/tools/test_verify_plan996_logging_surfaces.py tests/unit/tools/test_probe_p11_zed_session_load.py",
+      "summary": "339 passed, 1 skipped"
+    },
+    {
+      "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+      "run_id": "20261120T233759-30688-e6a1a4",
+      "mode": "passive",
+      "reason": "non_default_selection",
+      "native": "not_enrolled",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_backups.py tests/integration/memory/test_recovery.py",
+      "summary": "8 passed",
+      "release": "operator 2026-11-21 'Release all': p1212-memory-test-redis port 6396, volume p1212-memory-test-data, fault injection; backup folder F:\\optimus-p1212-test on physical disk 2 (store data on disk 1)"
+    }
+  ],
+  "copies": [
+    {
+      "copy": "memory store (Redis, AOF and RDB on its Docker volume)",
+      "managed_by": "Plan 12.11",
+      "plaintext": true
+    },
+    {
+      "copy": "recovery copy (.optimus/memory-recovery in the confirmed worktree)",
+      "managed_by": "Plan 12.11",
+      "plaintext": true
+    },
+    {
+      "copy": "configured backup folder: this project's gen-* generations",
+      "managed_by": "memory_backups",
+      "plaintext": true,
+      "evidence": [
+        "tests/unit/context/test_memory_backups.py::test_b02_b22_a_separate_disk_target_holds_the_exact_generation_bytes"
+      ]
+    },
+    {
+      "copy": "earlier backup folders, each with its identity and sync status, until no generation of this project is left",
+      "managed_by": "memory_backups",
+      "plaintext": true,
+      "evidence": [
+        "tests/unit/context/test_memory_backups.py::test_b28_disabling_or_moving_keeps_every_copy_listed",
+        "tests/unit/context/test_memory_backups.py::test_b14_an_offline_earlier_target_keeps_cleanup_pending"
+      ]
+    },
+    {
+      "copy": "this project's staging folders (.staging-<project tag>-*) left by an interrupted attempt; never a generation",
+      "managed_by": "memory_backups",
+      "plaintext": true,
+      "evidence": [
+        "tests/unit/context/test_memory_backups.py::test_interrupted_publication_never_counts_staging"
+      ]
+    },
+    {
+      "copy": "other projects' generations and unknown folders in a shared backup folder",
+      "managed_by": "never touched",
+      "evidence": [
+        "tests/unit/context/test_memory_backups.py::test_f1_projects_sharing_a_folder_never_touch_each_others_backups",
+        "tests/unit/context/test_memory_backups.py::test_c2_unknown_staging_folders_are_never_removed"
+      ]
+    },
+    {
+      "copy": "sync-service history, recycle bins, copies made elsewhere",
+      "managed_by": "outside Optimus's reach; reported, never claimed erased"
+    }
+  ],
+  "encryption": "unavailable (#491 later plan); every copy above is plaintext"
+}

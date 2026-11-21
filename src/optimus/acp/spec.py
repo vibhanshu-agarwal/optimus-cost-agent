@@ -127,6 +127,7 @@ from optimus.agent.planning_loop import (
 from optimus.context import memory_serving
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
+from optimus.context.memory_backups import Scheduler as BackupScheduler
 from optimus.context.memory_continuity import Continuity, Settled
 from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
 from optimus.context.memory_recovery import Scheduler as RecoveryScheduler
@@ -477,6 +478,7 @@ class AcpSpecSession:
     memory_commands: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: None leaves memory read-only
     continuity: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: checkpoints, predecessor and brief
     recovery_scheduler: Any = field(default=None, repr=False, compare=False)  # Plan 12.11 Task 4: the recovery copy's exports
+    backup_scheduler: Any = field(default=None, repr=False, compare=False)  # Plan 12.12 Task 1: the configured backups
     # Plan 12.11 Task 4: extraction's changes not yet shown, as host cards at the next turn (never an off record's)
     memory_pending: collections.deque[Any] = field(default_factory=lambda: collections.deque(maxlen=64), repr=False, compare=False)
     memory_backlog: Any = field(default=None, repr=False, compare=False)  # the project's durable notice backlog (NoticeBacklog)
@@ -573,6 +575,8 @@ class InMemoryAcpSpecSessionStore:
         if session.memory_extractor is not None:
             # Off the event loop: queued jobs release their turns at once; a running one finishes on its own.
             threading.Thread(target=session.memory_extractor.close, kwargs={"timeout": 5.0}, name="memory-extract-close", daemon=True).start()
+        if session.backup_scheduler is not None:
+            session.backup_scheduler.close()  # stops the checks; a backup already running finishes on its own thread
         if session.recovery_scheduler is not None:  # a last export at clean shutdown, best effort, off the loop
             threading.Thread(target=session.recovery_scheduler.close, name="memory-recovery-close", daemon=True).start()
         return True
@@ -1908,10 +1912,14 @@ class AcpDuplexAdapter:
                     session.memory_commands = MemoryCommands(
                         extractor.store, trusted=True, keyed=extractor.keyed, source=extractor.source,
                         source_digest=extractor.source_digest, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize,
-                        brief=session.continuity.welcome, recovery=recovery, workspace=Path(cwd))
+                        brief=session.continuity.welcome, recovery=recovery, workspace=Path(cwd),
+                        backups=getattr(extractor, "backups", None))
                     if recovery is not None:
                         session.recovery_scheduler = RecoveryScheduler(recovery)
                         session.recovery_scheduler.start()
+                    if getattr(extractor, "backups", None) is not None:
+                        session.backup_scheduler = BackupScheduler(extractor.backups)
+                        session.backup_scheduler.start()
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
             completed = True

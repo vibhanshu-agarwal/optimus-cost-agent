@@ -1,0 +1,761 @@
+{
+  "schema": "plan12-memory-m3-part2.backups.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+  "sources": [
+    {
+      "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+      "run_id": "20261120T233832-58536-47c952",
+      "mode": "active",
+      "reason": "default_selection",
+      "native": "valid",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py tests/unit/guardrails/test_tracked_file_scanners.py tests/unit/tools/test_verify_plan996_logging_surfaces.py tests/unit/tools/test_probe_p11_zed_session_load.py",
+      "summary": "339 passed, 1 skipped"
+    },
+    {
+      "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+      "run_id": "20261120T233759-30688-e6a1a4",
+      "mode": "passive",
+      "reason": "non_default_selection",
+      "native": "not_enrolled",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_backups.py tests/integration/memory/test_recovery.py",
+      "summary": "8 passed",
+      "release": "operator 2026-11-21 'Release all': p1212-memory-test-redis port 6396, volume p1212-memory-test-data, fault injection; backup folder F:\\optimus-p1212-test on physical disk 2 (store data on disk 1)"
+    }
+  ],
+  "cases": [
+    {
+      "case": "B01",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b01_backups_are_off_until_configured_and_write_nothing"
+      ]
+    },
+    {
+      "case": "B02",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b02_b22_a_separate_disk_target_holds_the_exact_generation_bytes",
+        "tests/integration/memory/test_backups.py::test_drive_independence_stays_unknown_until_the_store_is_bound"
+      ]
+    },
+    {
+      "case": "B03",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b03_after_downtime_exactly_one_catch_up_snapshot",
+        "tests/unit/context/test_memory_backups.py::test_status_says_scheduling_pauses_while_no_session_is_open"
+      ]
+    },
+    {
+      "case": "B04",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b04_one_publisher_per_project",
+        "tests/unit/context/test_memory_backups.py::test_f14_a_second_host_waits_and_both_show_the_same_status"
+      ]
+    },
+    {
+      "case": "B05",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_product_default_reports_drive_independence_unknown",
+        "tests/unit/context/test_memory_backups.py::test_b05_b06_same_disk_warns_and_unknown_stays_unknown",
+        "tests/unit/context/test_memory_backups.py::test_f9_the_store_location_is_used_only_when_found_and_the_domain_is_refreshed"
+      ]
+    },
+    {
+      "case": "B06",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b05_b06_same_disk_warns_and_unknown_stays_unknown",
+        "tests/unit/context/test_memory_backups.py::test_c13_a_moved_docker_disk_image_never_counts_the_stale_default",
+        "tests/unit/context/test_memory_backups.py::test_r6_docker_storage_counts_only_for_the_default_engine"
+      ]
+    },
+    {
+      "case": "B07",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_sync_target_without_consent_refused",
+        "tests/unit/context/test_memory_backups.py::test_b07_b08_a_synced_target_needs_consent_and_only_the_users_command_writes_it",
+        "tests/unit/context/test_memory_backups.py::test_c8_a_sync_root_chosen_exactly_needs_consent"
+      ]
+    },
+    {
+      "case": "B08",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b07_b08_a_synced_target_needs_consent_and_only_the_users_command_writes_it"
+      ],
+      "note": "product meaning of the plan's per-write cloud release: a synced target is written only by the user's own /memory backup now"
+    },
+    {
+      "case": "B09",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_changed_target_identity_refuses_write_and_prune",
+        "tests/unit/context/test_memory_backups.py::test_f5_an_earlier_folder_that_changed_is_never_cleaned_through",
+        "tests/unit/context/test_memory_backups.py::test_c9_a_folder_replaced_while_the_confirmation_is_open_is_refused",
+        "tests/unit/context/test_memory_backups.py::test_b09_a_link_in_the_target_path_is_refused"
+      ],
+      "note": "the symbolic-link case SKIPPED on this host (the account cannot create symbolic links); link refusal is otherwise by the reparse-point check"
+    },
+    {
+      "case": "B10",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b10_targets_overlapping_the_workspace_config_recovery_or_a_repository_are_refused",
+        "tests/unit/context/test_memory_backups.py::test_c12_the_memory_store_data_overlap_is_refused_both_ways",
+        "tests/unit/context/test_memory_backups.py::test_f8_a_git_entry_refuses_even_when_git_itself_fails"
+      ]
+    },
+    {
+      "case": "B11",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b11_a_failed_write_keeps_the_last_good_backup_and_retries_only_transients",
+        "tests/unit/context/test_memory_backups.py::test_f4_a_failure_is_not_retried_every_minute",
+        "tests/unit/context/test_memory_backups.py::test_c11_a_permanent_failure_is_held_until_the_user_acts"
+      ]
+    },
+    {
+      "case": "B12",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one",
+        "tests/unit/context/test_memory_backups.py::test_f1_projects_sharing_a_folder_never_touch_each_others_backups",
+        "tests/unit/context/test_memory_backups.py::test_c2_unknown_staging_folders_are_never_removed"
+      ]
+    },
+    {
+      "case": "B13",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_r7_only_the_captured_authenticated_bytes_are_published",
+        "tests/unit/context/test_memory_backups.py::test_r1_a_changed_deletion_frontier_or_count_is_never_counted",
+        "tests/unit/context/test_memory_backups.py::test_r5_only_authenticated_bytes_are_published_and_a_crash_after_publication_is_reconciled",
+        "tests/unit/context/test_memory_backups.py::test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one",
+        "tests/unit/context/test_memory_backups.py::test_f14_verification_catches_bytes_that_did_not_reach_the_disk",
+        "tests/unit/context/test_memory_backups.py::test_c3_a_copy_whose_seal_the_store_does_not_confirm_is_not_counted_and_retires_nothing"
+      ]
+    },
+    {
+      "case": "B14",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_r2_a_withdrawal_during_an_earlier_targets_scan_keeps_its_obligation",
+        "tests/unit/context/test_memory_backups.py::test_b14_withdrawal_publishes_clean_then_retires_older_copies_here_and_in_earlier_targets",
+        "tests/unit/context/test_memory_backups.py::test_b14_an_offline_earlier_target_keeps_cleanup_pending",
+        "tests/unit/context/test_memory_backups.py::test_c4_an_earlier_synced_folder_is_cleaned_only_by_the_users_own_backup",
+        "tests/unit/context/test_memory_backups.py::test_c6_an_unreadable_folder_in_an_earlier_target_keeps_its_obligation",
+        "tests/unit/context/test_memory_backups.py::test_f10_an_unreadable_generation_folder_keeps_cleanup_pending"
+      ]
+    },
+    {
+      "case": "B15",
+      "status": "PASS",
+      "tests": [
+        "tests/integration/memory/test_backups.py::test_withdrawal_publishes_clean_before_retiring",
+        "tests/unit/context/test_memory_backups.py::test_c1_a_withdrawal_during_the_backup_stays_pending_for_the_next"
+      ]
+    },
+    {
+      "case": "B20",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b20_an_encrypted_backup_is_refused_and_writes_nothing"
+      ]
+    },
+    {
+      "case": "B22",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b02_b22_a_separate_disk_target_holds_the_exact_generation_bytes"
+      ]
+    },
+    {
+      "case": "B25",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_interrupted_publication_never_counts_staging",
+        "tests/unit/context/test_memory_backups.py::test_f14_a_crash_while_writing_a_file_leaves_no_generation",
+        "tests/unit/context/test_memory_backups.py::test_r5_only_authenticated_bytes_are_published_and_a_crash_after_publication_is_reconciled"
+      ]
+    },
+    {
+      "case": "B28",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b28_disabling_or_moving_keeps_every_copy_listed",
+        "tests/unit/context/test_memory_backups.py::test_f2_returning_to_an_earlier_folder_keeps_its_newest_generation"
+      ]
+    },
+    {
+      "case": "B29",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b29_a_relocated_synced_target_loses_its_consent",
+        "tests/unit/context/test_memory_backups.py::test_f6_f7_placement_and_sync_are_checked_again_before_every_write"
+      ]
+    },
+    {
+      "case": "B30",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b30_backup_commands_send_no_folder_to_the_gateway_and_call_no_model"
+      ]
+    },
+    {
+      "case": "B31",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_backups.py::test_b31_status_separates_boundaries_and_never_claims_external_erasure"
+      ]
+    }
+  ],
+  "drive_independence": "reported unknown automatically until the memory store's storage is bound to the active engine and resource (Codex CP1 review 3 ruling); a known shared disk is still reported as the same drive; runtime-overlap refusals use Docker's likely data location separately",
+  "contention": {
+    "status": "UNRUN",
+    "reason": "the frozen workload's import leg (targets.json k2_contention) is built in Task 2; proposed to run once at CP2, pending Codex's disposition"
+  },
+  "revert_checks": {
+    "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+    "rule": "CAUGHT only when the baseline and the restored code pass the named test cleanly (at least one pass, no skip or error) and the mutant fails that named test itself, with no collection or setup error",
+    "caught": 15,
+    "total": 15,
+    "results": [
+      {
+        "control": "backup target identity revalidation",
+        "test": "tests/unit/context/test_memory_backups.py::test_changed_target_identity_refuses_write_and_prune",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:f94d5733c278b828ea2aa5f6eb413737c9649d58caa46a08b3c2d9360d69157a",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234346-57752-167648",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:003eea757ce09abbcf471a81ca5fe72f206f91f4fe69296a400756fb7e9e0188"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234353-36124-54f0ff",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:ebb1ea9d2df02f92e01789ca1f4c5178e977ddb41b25cfc4ff24f6a3e3283fb1"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234358-3652-25f61c",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:99a93d643be523465bb763245f69d9ff5856967d062c8003e106c5780c7d21d3"
+        }
+      },
+      {
+        "control": "earlier-target identity before cleanup",
+        "test": "tests/unit/context/test_memory_backups.py::test_f5_an_earlier_folder_that_changed_is_never_cleaned_through",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:8da2190f4d1342e91ee8022961bc828bcd8c5ddc00cb01e150713db5e0fff332",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234407-60328-77b0cb",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:d30f3a555f4567208983f126e4df164eb6d3f9d57a7dc61d97abb84a7fc65767"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234412-44392-d38b67",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:94740a5ac9de3b1c29f48e1c20ae8606d0efee43d69cd976b3cf9a39289cc2e8"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234418-59304-6eaab8",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:561b96b52ab75c6faf9e6285e5419bd89eb816f5fd35d800e3cd79dab3c11a0b"
+        }
+      },
+      {
+        "control": "project scoping in a shared folder",
+        "test": "tests/unit/context/test_memory_backups.py::test_f1_projects_sharing_a_folder_never_touch_each_others_backups",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:7a8bdee7aff3c6900b273e42911aa67562ab55ea4dfce769dfa0d11f5f83d931",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234424-14692-6b2829",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:5eae6d10aca41e09da74ec7da3d3c6d8ffe8fe9299f710d866607d0e8895fbe1"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234430-64444-e4f2f2",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:fc19b089f44032aaeda3b8211a3d4ab7b7f6a0cacdaddbea64639607fa01bc49"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234436-16568-f24243",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:bc1e699f2cc81a7c5a54f1b2e4fac179e695fcffc464c45b2e235a07f6515ff3"
+        }
+      },
+      {
+        "control": "no automatic retry after a failure",
+        "test": "tests/unit/context/test_memory_backups.py::test_f4_a_failure_is_not_retried_every_minute",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:3dfc71e51b412071105f003c7107bcc21892bf40fbf7eea70fc9e0b6517b8cdd",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234442-53832-59ac2c",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:160257a5207b35b84f64d797a9a10908a0d099ce08af916c4214b45539e00c62"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234447-11464-0c5bb5",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:fd93beeb786dbc682b063e8623ae63c24addf5f0db5a8e4569ffe1dfa8377693"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234452-62660-b67c79",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:f27014afd8c99674c87698cdd337a235bd6f7824c7b2b046d2fd4a63393c5353"
+        }
+      },
+      {
+        "control": "sync/cloud consent",
+        "test": "tests/unit/context/test_memory_backups.py::test_sync_target_without_consent_refused",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:fb37439dbba436702363379f2e498ca9ce3e027c6d484ac6b39b09002d9f624a",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234457-40952-24f370",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:e968ef7571e3284f737fdfcbb43d27fb6fb6f0d6a13dd0b672d8f7178f20d9ce"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234502-40260-ce3e15",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:222fa8f969c2fbc6532b3c20c853a0597265e6c8636b967399bf14a280366bcd"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234507-18400-854420",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:ac35aa32a28f964f360ce2eee3899cdc55b4f327fe3c7715841eb596eee5c3c6"
+        }
+      },
+      {
+        "control": "generation seal verification (Gateway)",
+        "test": "tests/integration/memory/test_backups.py::test_corrupted_generation_refuses_restore",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:6b4408a6f34a4a72c25d445bc6a3e1b1cc278b9a7db90a6fdd4fc83ce2efb519",
+        "mutant_sha256": "hex:080b6a692b707a51a179a3881060de5b4f83c01ae81bb157a955188cdea319a2",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234512-19664-fc6769",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:3727f1aa1d451333f393f83e2b93543260e7bb8e26156f7ded0373e48d0558b4"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234522-65680-f91991",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:6f25d41e1a0636adced1967f39edf401f41974fc10284cb13b2dbf5ebb8e325c"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234533-35536-e42538",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:dc4f53c18dc0c320e689a01e1bc32af605d21a4f859d1ef6c7f1b91735ecf3e8"
+        }
+      },
+      {
+        "control": "backup authentication against the Gateway",
+        "test": "tests/unit/context/test_memory_backups.py::test_c3_a_copy_whose_seal_the_store_does_not_confirm_is_not_counted_and_retires_nothing",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:e3f194f8764f63c7bcb376bf0248a677fce921d5706a2f680ec385125c05d683",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234543-17068-bb2643",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:c74c96a950041a584e7b914026681c0cc3dfe7dffbe9c48168a38bb525fc590c"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234548-19788-1b67f4",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:1c90ecd29f38481c3344b66f25b953be872d999cee4591a02bc7b6bcbb23b5e7"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234554-5732-21e95f",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:1bdfd993db1a5a60ebd4a9f1c44c2dcc30106e0aae5dcd8f582168d2a8452f9a"
+        }
+      },
+      {
+        "control": "staging ownership",
+        "test": "tests/unit/context/test_memory_backups.py::test_c2_unknown_staging_folders_are_never_removed",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:c7c4b5dfe8b2085004eb8beae3f3117b9a04c6bb997b18fc496e50866d88362f",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234559-64656-5723c1",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:9e383872ba6a8bfcfbcecb010cffb2753857da1f7fa762a8ac52c841842a333d"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234603-53832-6237c2",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:05f84b4e249817310a567643faab4facce3b0e9c86e3760986c2a365df0a9481"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234609-58452-041b1c",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:b21c0a0c1318c0c6fb4ea0dcebdd4f229d8476b48195bddbe976c9e79577c1bb"
+        }
+      },
+      {
+        "control": "generation digest check (host)",
+        "test": "tests/integration/memory/test_backups.py::test_corrupted_generation_refuses_restore",
+        "file": "src/optimus/context/memory_recovery.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:49197e290b063bc8d54ca60f6d1b40b24055bd0f052d2c1cf34089c4028f67ea",
+        "mutant_sha256": "hex:6715be815ae6f776faed92464735c06f28a4782099044c8b9671ba7db9e54e1c",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234614-47444-5cc67e",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:47ad93aba52db28c18f6a13af8b8bb6c4685e0d4bffa89f045fb1c0764546b1a"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234624-49772-4800fe",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:c2d4402addb1d7ee60a310ad05a2280fa7e38080fa63b5d41b9ca49574ef3f89"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234635-55852-3aff17",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:fc997635cdc9024ec1e1f17d4ca04d4e27b29cea7ba5a41ca9d534b558b01200"
+        }
+      },
+      {
+        "control": "deletion frontier reconciliation",
+        "test": "tests/integration/memory/test_backups.py::test_restore_applies_newer_deletions",
+        "file": "src/optimus/context/memory_recovery.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:49197e290b063bc8d54ca60f6d1b40b24055bd0f052d2c1cf34089c4028f67ea",
+        "mutant_sha256": "hex:df574a651c41dce86c910efd130b4bd594181310a90a7168c91bf3dc7ae36b3b",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234646-5740-2770a0",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:06df51f0955546011241d1f5c466c1883eddf995672143398745f96975fa9d8f"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234657-53448-ba3067",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:7332c6d7dc68699fc4133bc5c92f4b042cc0057c7d995bdb233f5bdd26da02cb"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234709-18824-65539f",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:872841a1043ee95de237da9cfe19cece4bb0b740f144d747ba2ac4619ec722b4"
+        }
+      },
+      {
+        "control": "staged atomic publication",
+        "test": "tests/unit/context/test_memory_backups.py::test_interrupted_publication_never_counts_staging",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:5ea4f453a2525d0025ab7fa98b700df3cbc49cc5fc000fc40d8613c364f8faa2",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234720-45048-308f25",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:c5e1421c24dbf9c21dd0d87a5309793884caacdc332d58d34837daf4780d99db"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234725-59064-def4c2",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:53264daa2a40e2c4d4a8c870d0c006e15e4e101ad5e204d841c395e5fef072b9"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234730-20096-dcbfe5",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:708f5e155abc9b834e8cd3e92bc27e0424b6160da26c89a38bd1de0008548d9b"
+        }
+      },
+      {
+        "control": "clean-before-retire cleanup",
+        "test": "tests/integration/memory/test_backups.py::test_withdrawal_publishes_clean_before_retiring",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:27aadbc82680004ee10fb5de7772be2613d0712d792f6b32980dc7771001de26",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234736-59576-bfdb7d",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:7587b856098a070758f3232dcbcc60dee5ff3bb1d48e2e79e36b56bde2913402"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234747-47048-b555f4",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:c98bf2e838a43bdeb3ad100bc3b7aacacf59e1cde50f6d4783dae2668756b971"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234757-61672-48d7e7",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:7b95f0cc229933a6196a0bb592db9d8c9a8b72d93cd5825356fb57c2d5fa5c06"
+        }
+      },
+      {
+        "control": "authenticated frontier and count",
+        "test": "tests/unit/context/test_memory_backups.py::test_r1_a_changed_deletion_frontier_or_count_is_never_counted",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:cbc3c7cfcdf6ca664f0128e62f0660b8b6c1f7263466470b74534539d64a7153",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234808-25000-fd1a9c",
+          "counts": {
+            "passed": 2
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:2279af75ce818432d51c5b66a289ecf6afab4857770ba11730017a5cf9491298"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234814-45224-55cab4",
+          "counts": {
+            "failed": 1,
+            "passed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:67a18295ba0c61df549d83536cc6508e48f5034a405f704c62bcdffbc7554ebb"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234822-45952-a014e7",
+          "counts": {
+            "passed": 2
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:c0b94ce5788e06f204f95117ed45949dbac62ccee5ffcc5926a3ceb51848454e"
+        }
+      },
+      {
+        "control": "prior cleanup bound to the deletion revision",
+        "test": "tests/unit/context/test_memory_backups.py::test_r2_a_withdrawal_during_an_earlier_targets_scan_keeps_its_obligation",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:b8af88fe2f76c7c6a4f83ab6a6066c3a3f348d258be7e27c7fb835584cabfb1f",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234829-63660-57827f",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:ea1eb50d092cffbe3f57f9cc0684aeedc35a7a6ce16097d918cf56c67be58def"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234835-63008-c9f72f",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:725548ddae4a90419f3f2b3ee9f550a32eb43feb2f71ae19c38a1d0102311950"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234842-22172-7175e2",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:a38cd0376d6a78d597aefacb86992ff87317779d0ca209d78774eb422caf31bc"
+        }
+      },
+      {
+        "control": "published bytes come from the authenticated capture",
+        "test": "tests/unit/context/test_memory_backups.py::test_r7_only_the_captured_authenticated_bytes_are_published",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3bbec5f68e14d337cc6d77bcf1c001ace9ea328d8e39af11a884c21767eebe04",
+        "mutant_sha256": "hex:86d6afa36338e89197d4bf57a4f040c2671014b7a0bc809431de62087ad4a605",
+        "baseline": {
+          "exit": 0,
+          "run_id": "20261120T234849-35740-63b177",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:1d6ed7c3d03e3626e5f7584e9603ebfb4b5441be61ac96e451f2c557a02d32e8"
+        },
+        "mutant": {
+          "exit": 1,
+          "run_id": "20261120T234854-65468-c81da0",
+          "counts": {
+            "failed": 1
+          },
+          "named_test_failed": true,
+          "log_sha256": "hex:d7c554959213670abe14c8524ae88a021f2c49be708c83c11a0fe28e584c6c7b"
+        },
+        "restored": {
+          "exit": 0,
+          "run_id": "20261120T234901-55248-4b3c00",
+          "counts": {
+            "passed": 1
+          },
+          "named_test_failed": false,
+          "log_sha256": "hex:2b03c86adc7ea2500423d1b80417b330e02c60c822c070f6b73521e4f11e87b2"
+        }
+      }
+    ]
+  }
+}
