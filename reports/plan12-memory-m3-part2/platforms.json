@@ -178,6 +178,95 @@
     },
     "cleanup": "both acpx sessions closed and no agent process left; the launch approval revoked; the store password removed from the keyring; the test store and volume removed; F:\\optimus-p1212-test\\acpx removed; the stub stopped"
   },
-  "windows": "UNRUN: its own released check follows",
-  "linux_wsl": "UNRUN: its own released check follows"
+  "windows": {
+    "probe": "optimus-handoff/p1212-cp3-paths/test_platform_paths.py, the repository's own helpers and fixtures on the real file system",
+    "probe_sha256": "hex:6c41ed5c9438c3a22b54d6dcc6f93da5935b011ec6742075be42ed20d182952b",
+    "probe_cases": {
+      "P1": "a directory link in the target path is refused (a junction on Windows, needing no privilege; a symlink on Linux)",
+      "P2": "a target swapped for a directory link after configuration: nothing written or pruned through it, the last backup kept",
+      "P3": "a real write denial (an ACL deny on Windows, mode 0500 for an unprivileged user on Linux) fails readably and keeps the last good backup, one attempt",
+      "P4": "a 276-character target with spaces and non-ASCII letters: backs up on Linux; on Windows without long-path support a readable refusal naming the cause",
+      "P5": "an import source with spaces: entries import; a directory link inside it is never followed",
+      "P6": "Linux: Topics/CI.md and topics/ci.md are two files, each read as itself",
+      "P7": "Linux: an unreadable linked file is a readable refusal for an unprivileged user"
+    },
+    "frozen": "tests/unit/context/test_memory_backups.py, test_memory_recovery.py, test_memory_import.py",
+    "code_head": "git:ff299c7",
+    "environment": "Windows 11 Pro 10.0.26300, this worktree's .venv (CPython 3.14.4); temp folders on F: (NTFS, physical disk 2, separate from the store's disk); LongPathsEnabled 0; this account cannot create symbolic links",
+    "probe_result": "5 passed, 2 skipped in 5.99s",
+    "frozen_result": "150 passed, 1 skipped in 137.46s (0:02:17)",
+    "skips": [
+      "P6, P7: Linux only",
+      "test_b09 (symlink): this account cannot create symbolic links; P1 and P2 cover it with junctions"
+    ],
+    "logs": {
+      "probe-ff299c7.log": "hex:3a05fd53b67130a85bd503c10ffcca5ef563df68c6729f7f76bcbd8ce697f7b3",
+      "frozen-ff299c7.log": "hex:e1bdce64bc27a99597900db2e3fd84edcc62d1c91054ddedced7d7b56ec3a2e0",
+      "probe-1.log": "hex:1b70d3ed57cdc3fa5f438cbafcb02793d5f6433543021d8a7aa7802d9f0b1387",
+      "probe-2.log": "hex:396acd43201a753388a263327c7858c7b4db2e8fc75d9ea357c52edbafb80607",
+      "frozen-1.log": "hex:9b2ed985ea107e68d58ef7d4bc09f38ea73fbccd7061c51b5927c2efe410618f"
+    },
+    "earlier_runs": "probe-1 (before the fix: P4 failed with a raw FileNotFoundError, the finding below); probe-2 and frozen-1 on the fix before it was committed. The result above is the committed head"
+  },
+  "linux_wsl": {
+    "probe": "optimus-handoff/p1212-cp3-paths/test_platform_paths.py, the repository's own helpers and fixtures on the real file system",
+    "probe_sha256": "hex:6c41ed5c9438c3a22b54d6dcc6f93da5935b011ec6742075be42ed20d182952b",
+    "probe_cases": {
+      "P1": "a directory link in the target path is refused (a junction on Windows, needing no privilege; a symlink on Linux)",
+      "P2": "a target swapped for a directory link after configuration: nothing written or pruned through it, the last backup kept",
+      "P3": "a real write denial (an ACL deny on Windows, mode 0500 for an unprivileged user on Linux) fails readably and keeps the last good backup, one attempt",
+      "P4": "a 276-character target with spaces and non-ASCII letters: backs up on Linux; on Windows without long-path support a readable refusal naming the cause",
+      "P5": "an import source with spaces: entries import; a directory link inside it is never followed",
+      "P6": "Linux: Topics/CI.md and topics/ci.md are two files, each read as itself",
+      "P7": "Linux: an unreadable linked file is a readable refusal for an unprivileged user"
+    },
+    "frozen": "tests/unit/context/test_memory_backups.py, test_memory_recovery.py, test_memory_import.py",
+    "code_head": "git:ff299c7 (the clone's post-run status is clean)",
+    "environment": "WSL 2 Ubuntu-24.04, kernel 6.18.58.1-microsoft-standard-WSL2, ext4; its own clone under /opt and its own uv venv (CPython 3.14.6), never the Windows venv",
+    "root": {
+      "probe_result": "2 failed, 5 passed in 1.17s",
+      "frozen_result": "149 passed, 2 skipped in 16.08s",
+      "note": "P3 and P7 fail as root by design: root ignores permission bits, so a denial cannot be observed as root"
+    },
+    "unprivileged": {
+      "user": "nobody (setpriv), owning the throwaway clone",
+      "probe_result": "2 passed, 5 deselected in 2.36s",
+      "cases": "P3, P7"
+    },
+    "skips": [
+      "test_c12 Docker Desktop settings: Windows only",
+      "test_a_case_alias_is_refused_on_windows: Windows only"
+    ],
+    "logs": {
+      "r9/setup.log": "hex:4dd440b00fc422670ec892adaaa3439348d0af91967bb0acb06877bf56894dd6",
+      "r9/probe-root.log": "hex:171a23f232b12ffb0544bb1928421da4a148ce994375cd2979814b8b6735d7d3",
+      "r9/frozen-root.log": "hex:d26a4b7a1b1cf90a1e9155049760b999808bfeefa67754afe1432a7674f98a4a",
+      "r9/probe-nobody.log": "hex:cf7a5eb162eef1a7ce31244d33ffb9380e97f045e4be3428f385a074fc9f4b6c",
+      "r9/post-status.txt": "hex:5095090d35c98d5c528d8faeab811edb5ed322e7342ca735c52634536fdebb5b"
+    },
+    "attempts_kept": {
+      "r1": "Attempt r1 (2026-11-21): never started. Git Bash rewrote the /mnt/c script path to C:/Program Files/Git/mnt/c/... before wsl.exe ran it (exit 127, no folder created), and the script's tail had been broken by an edit. r2 reruns with MSYS_NO_PATHCONV=1 and the rewritten script.",
+      "r2": "Attempt r2: setup failed before any test. The worktree's .git file names a Windows path (D:/...) Linux git cannot follow; r3 clones from the main checkout at /mnt/d, which shares the commits.",
+      "r3": "Attempt r3: ran. Root: frozen 149 passed, 2 skipped (Windows-only); probe 5 passed, P3 and P7 failed because root ignores permission bits (expected root limit). The nobody run could not start: uv's interpreter lives under /root (mode 700). r4 installs uv's interpreter under /opt.",
+      "r4": "Attempt r4: root results as r3 (frozen 149 passed; probe 5 passed, P3/P7 fail as root by design). The nobody run started but tests.conftest could not write its run record under the clone's tmp/ (owned by root). r5 gives nobody that one folder.",
+      "r5": "Attempt r5: root frozen 148 passed, 1 failed (test_b04: a test timing race, root-caused and fixed in the test by ff299c7); probe as root as before. The nobody run could not write the shared /tmp/optimus-test-runs registry (created by root). r6 gives nobody its own TMPDIR.",
+      "r6": "Attempt r6 (at ff299c7): root frozen 149 passed, 2 skipped; probe as root 5 passed (P3/P7 root limit). The nobody run stopped at Git's safe.directory check (the clone is owned by root). r7 passes safe.directory for that run only, through GIT_CONFIG_* environment variables.",
+      "r7": "Attempt r7: as r6; the nobody run still stopped at Git's safe.directory check: Git does not honor safe.directory given through GIT_CONFIG_* (command-line config). r8 uses a throwaway GIT_CONFIG_GLOBAL file in the nobody folder.",
+      "r8": "Attempt r8: as r6; Git still refused (dubious ownership) with a GIT_CONFIG_GLOBAL file: the test harness clears GIT_* configuration. Also found: since r5 a misplaced comment had cut off the chmod of the basetemp folder (harmless: default modes were already readable). r9 gives the throwaway clone to nobody."
+    }
+  },
+  "path_findings": [
+    {
+      "what": "a backup target, recovery location or recovery copy the OS refuses to create or write (here a Windows path past 260 characters without long-path support) escaped as a raw OSError, so the turn failed instead of answering",
+      "where": "Backups.configure, Recovery.confirm and Recovery.export",
+      "found_by": "Windows probe P4",
+      "disposition": "fixed in 3146591 with two tests through the user's commands; both fail on the old code (revert check)"
+    },
+    {
+      "what": "test_b04 could pass a lock its helper thread had already released: the helper held it at most 5 s while the test waits up to 2 s twice",
+      "where": "tests/unit/context/test_memory_backups.py (test only; the product refused correctly)",
+      "found_by": "Linux run r5",
+      "disposition": "fixed in ff299c7: the helper holds until released and the test checks it took the lock"
+    }
+  ]
 }
