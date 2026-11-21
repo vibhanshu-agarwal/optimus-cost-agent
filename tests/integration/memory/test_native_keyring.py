@@ -46,7 +46,7 @@ def isolated_service(monkeypatch: pytest.MonkeyPatch, credential: str) -> Iterat
 
 
 def _setup(tmp_path: Path) -> Path:
-    return memory_setup.run_store_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, defaults=_SETTINGS)
+    return memory_setup.run_store_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring, confirm=lambda _d: True, defaults=_SETTINGS)
 
 
 def test_the_real_keyring_holds_the_password_and_no_file_does(isolated_service: str, credential: str, tmp_path: Path) -> None:
@@ -62,7 +62,7 @@ def test_the_real_keyring_holds_the_password_and_no_file_does(isolated_service: 
 def test_a_rerun_keeps_the_real_keyrings_password(isolated_service: str, credential: str, tmp_path: Path) -> None:
     _setup(tmp_path)
     before = keyring.get_password(isolated_service, credential)
-    memory_setup.run_store_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), defaults=_SETTINGS)
+    memory_setup.run_store_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), defaults=_SETTINGS)
     assert keyring.get_password(isolated_service, credential) == before
 
 

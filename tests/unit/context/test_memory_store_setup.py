@@ -6,10 +6,12 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
+from keyring.backends.Windows import DecodingCredential, WinVaultKeyring
 
 from optimus.acp import local_infra, memory_setup
 from optimus.acp.local_gateway_secrets import CredentialLayer, CredentialProvenance, ProviderCredentialResolution, ProviderSecrets
@@ -28,7 +30,8 @@ def _settings(**overrides: Any) -> dict[str, Any]:
 
 
 def _run(tmp_path: Path, keyring: Any = None, confirm: Any = lambda _d: True, **overrides: Any) -> Path:
-    return memory_setup.run_store_setup(tmp_path, keyring_backend=keyring or FakeKeyring(), confirm=confirm, defaults=_settings(**overrides))
+    return memory_setup.run_store_setup(tmp_path, keyring_backend=keyring or FakeKeyring(), confirm=confirm, defaults=_settings(**overrides),
+                                        lock_root=tmp_path)
 
 
 def _stored_password(keyring: Any, path: Path) -> str | None:
@@ -421,3 +424,81 @@ def test_setting_up_a_root_again_after_its_configuration_moved_keeps_the_moved_p
     moved = sc.memory_store_root(tmp_path / "new") / sc.CONFIG_NAME
     password = _stored_password(keyring, moved)
     assert password and hashlib.sha256(password.encode()).hexdigest() in (moved.parent / sc.ACL_NAME).read_text("utf-8")
+
+
+class _InterleavingVault(WinVaultKeyring):
+    """keyring's own WinVault `set_password` and `get_password` over an in-memory vault. Each vault write first waits at
+    `barrier`, so two unserialized setups both read the service's shared slot before either writes (#529)."""
+
+    def __init__(self, barrier: threading.Barrier) -> None:
+        super().__init__()
+        self._targets: dict[str, tuple[str, str]] = {}
+        self._barrier = barrier
+
+    def _read_credential(self, target: str) -> DecodingCredential | None:
+        found = self._targets.get(target)
+        return DecodingCredential(UserName=found[0], CredentialBlob=found[1].encode("utf-16")) if found else None
+
+    def _set_password(self, target: str, username: str, password: str) -> None:
+        try:
+            self._barrier.wait(timeout=1.0)
+        except threading.BrokenBarrierError:  # the other setup is held by the lock: no overlap to arrange
+            pass
+        self._targets[target] = (username, password)
+
+
+def test_concurrent_store_setups_on_one_keyring_service_both_keep_their_passwords(tmp_path: Path) -> None:
+    """#529: the Windows backend reads, then rewrites, one slot per service. Two setups for different roots that overlap there
+    must not lose either password."""
+    vault = _InterleavingVault(threading.Barrier(2))
+    lock_root = tmp_path / "runtime"
+    failures: list[BaseException] = []
+
+    def setup(name: str) -> None:
+        try:
+            memory_setup.run_store_setup(tmp_path / name, keyring_backend=vault, confirm=lambda _d: True, defaults=_settings(), lock_root=lock_root)
+        except BaseException as exc:  # noqa: BLE001 - reported below, in the test's own thread
+            failures.append(exc)
+
+    threads = [threading.Thread(target=setup, args=(name,)) for name in ("first", "second")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+    assert not failures and not any(thread.is_alive() for thread in threads)
+    for name in ("first", "second"):
+        path = sc.memory_store_root(tmp_path / name) / sc.CONFIG_NAME
+        password = _stored_password(vault, path)
+        assert password and hashlib.sha256(password.encode()).hexdigest() in (path.parent / sc.ACL_NAME).read_text("utf-8"), name
+
+
+@pytest.mark.parametrize("store", [True, False])
+def test_memory_setup_from_the_terminal_locks_in_the_per_user_runtime_root(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, store: bool) -> None:
+    """#529: every config root's setup must take one lock, so the command passes the per-user runtime root, never the config root."""
+    from types import SimpleNamespace
+
+    from optimus.acp import launch_approval_cli
+    from optimus.acp.trusted_paths import TrustedOperatorRoots
+
+    roots = TrustedOperatorRoots(default_config_root=tmp_path / "roaming", approval_runtime_root=tmp_path / "runtime")
+    paths = SimpleNamespace(config_root=tmp_path / "config")
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(launch_approval_cli, "_require_tty", lambda: None)
+    monkeypatch.setattr(launch_approval_cli, "_prepare_candidate_context", lambda _workspace: (None, paths))
+    monkeypatch.setattr(launch_approval_cli, "resolve_trusted_operator_roots", lambda **_kwargs: roots)
+    record = lambda config_root, **kwargs: (seen.update(config_root=config_root, **kwargs), tmp_path / "configured")[1]  # noqa: E731
+    monkeypatch.setattr(memory_setup, "run_store_setup" if store else "run_setup", record)
+    assert launch_approval_cli._cmd_memory_setup(tmp_path, store=store) == 0
+    assert seen["config_root"] == paths.config_root and seen["lock_root"] == roots.approval_runtime_root
+
+
+def test_a_setup_that_cannot_take_the_lock_configures_nothing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """#529: while another setup holds the lock, this one stops before its keyring write and writes no configuration."""
+    from optimus.context import memory_recovery
+
+    keyring = FakeKeyring()
+    monkeypatch.setattr(memory_setup, "_SETUP_LOCK_SECONDS", 0.05)
+    with memory_recovery._file_lock(tmp_path / "locks" / memory_setup._SETUP_LOCK):
+        with pytest.raises(memory_setup.MemorySetupError, match="Another memory setup"):
+            _run(tmp_path, keyring)
+    assert sc.config_literal(sc.memory_store_root(tmp_path)) is None and not keyring._store
