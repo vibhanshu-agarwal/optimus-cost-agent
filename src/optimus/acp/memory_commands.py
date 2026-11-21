@@ -53,7 +53,7 @@ DESCRIPTIONS: Final = {
     "forget": ("Withdraw a memory item (history is kept); --purge deletes its text", "<id>@<version> [--purge]"),
     "memory": ("List memory, or view, edit, switch on or forget one item; export or restore the recovery copy",
                "[view <id> | edit <id>@<version> <statement> | switch-on <id>@<version> | forget <id>@<version> | page <n> | "
-               "export | restore [<generation>]]"),
+               "export | restore [<generation>] | backup [configure <folder> [--cloud] | now | disable]]"),
     "welcome": ("Show the welcome-back brief for this project", ""),
 }
 PAGE_ITEMS: Final = 20
@@ -72,6 +72,7 @@ USAGE: Final = (
     "- `/memory export` saves the recovery copy now (the first time, you confirm where); `/memory restore` lists the copies and "
     "`/memory restore <generation>` restores one into an empty store; `/memory restore <generation> --map` restores an earlier "
     "registration's copy into this project, after you confirm.\n"
+    "- `/memory backup` shows backups; `/memory backup configure <folder>` copies the recovery copy there daily (another drive; add `--cloud` for a synced folder), after you confirm; `/memory backup now` takes one now; `/memory backup disable` stops them.\n"
     "A change names the version you saw in `/memory`, for example `m-0123456789abcdef@2`."
 )
 NEEDS_VERSION: Final = "Name the version you mean, as `/memory` shows it: for example `{verb} {item}@2`. Nothing was changed."
@@ -96,13 +97,16 @@ class MemoryCommand:
     generation: str | None = None
     branch: str | None = None  # remember: the one branch the item applies on
     mapped: bool = False  # restore: an earlier registration's copy, mapped into this project once the user confirms
+    target: str | None = None  # backup configure: the folder, exactly as typed
+    cloud: bool = False  # backup configure: the user declares the folder synced
+    encrypted: bool = False  # backup configure: an encrypted backup was asked for (unavailable)
 
 
 @dataclass(frozen=True)
 class Confirmation:
     """A recovery action waiting for the user's one-shot confirmation, bound to what it was shown and a host nonce."""
 
-    kind: str  # "location" (where copies go, and sync consent when it is synced) or "restore" (one generation)
+    kind: str  # "location" (where copies go, and sync consent), "restore" (one generation) or "backup" (a backup folder)
     title: str
     text: str
     meta: dict[str, Any]
@@ -194,6 +198,8 @@ def parse_command(text: str, *, attachments: bool) -> MemoryCommand | str | None
         return MemoryCommand("list")
     if rest == ["export"]:
         return MemoryCommand("export")
+    if rest[0] == "backup":
+        return _backup_command(text, rest[1:])
     if rest[0] == "restore" and len(rest) <= 3:
         if len(rest) == 1:
             return MemoryCommand("restore")
@@ -219,6 +225,31 @@ def parse_command(text: str, *, attachments: bool) -> MemoryCommand | str | None
         said = _statement_after(text, text.index(rest[1], text.index("edit", lead)) + len(rest[1]))
         return USAGE if said is None else _versioned("edit", "/memory edit", rest[1], statement=said[0], start=said[1])
     return USAGE
+
+
+def _backup_command(text: str, rest: list[str]) -> MemoryCommand | str:
+    """`/memory backup`, `... now`, `... disable`, or `... configure <folder> [--cloud] [--encrypted]` (the folder as typed,
+    spaces kept)."""
+    if not rest:
+        return MemoryCommand("backup_status")
+    if rest in (["now"], ["disable"]):
+        return MemoryCommand(f"backup_{rest[0]}")
+    if rest[0] != "configure" or len(rest) < 2:
+        return USAGE
+    flags = set()
+    words = list(rest[1:])
+    while words and words[-1] in ("--cloud", "--encrypted"):
+        flags.add(words.pop())
+    if not words:
+        return USAGE
+    head = text.index("configure", text.index("backup")) + len("configure")
+    folder = text[head:].strip()
+    while folder.endswith(("--cloud", "--encrypted")):
+        folder = folder.removesuffix("--cloud").removesuffix("--encrypted").strip()
+    folder = folder.strip()
+    if not folder or "\n" in folder:
+        return USAGE
+    return MemoryCommand("backup_configure", target=folder, cloud="--cloud" in flags, encrypted="--encrypted" in flags)
 
 
 def _state(stored: Any) -> ItemState | None:
@@ -271,7 +302,8 @@ class MemoryCommands:
     def __init__(self, store: Any, *, trusted: bool, sanitize: Callable[[str], str], keyed: Callable[[str], str] = digest,
                  scope: str = "project", source: Callable[[str], str | None] = lambda _block: None,
                  source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
-                 brief: Callable[[memory_serving.ServedSet], str] | None = None, registry_recovery: Any = None) -> None:
+                 brief: Callable[[memory_serving.ServedSet], str] | None = None, registry_recovery: Any = None,
+                 backups: Any = None) -> None:
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
@@ -280,6 +312,7 @@ class MemoryCommands:
         self._workspace = workspace  # the session's trusted worktree, where a first recovery location goes
         self._brief = brief
         self._registry_recovery = registry_recovery  # set when the project registry is lost: only its repair is available
+        self._backups = backups  # the project's `memory_backups.Backups`, or None
 
     @property
     def project(self) -> str:
@@ -336,6 +369,8 @@ class MemoryCommands:
                                     else "No welcome-back brief is available for this project yet.")
             if command.verb in ("export", "restore"):
                 return self._recovery_command(command)
+            if command.verb.startswith("backup"):
+                return self._backup_command(command)
             if not self._trusted:
                 return MemoryAnswer(READ_ONLY)
             if command.verb == "remember":
@@ -609,7 +644,8 @@ class MemoryCommands:
         if self._recovery is not None and self._recovery.recovery_required():
             recovery = ("**Recovery required:** the memory store holds nothing for this project although it held memory before. "
                         "Nothing is served or saved until you restore it: `/memory restore` lists the copies.\n" + recovery)
-        return f"\n\n{recovery}\nItems never expire through inactivity. `/memory view <id>` shows one item's history."
+        backups = f"\n{self._backups.status_line()}" if self._backups is not None else ""
+        return f"\n\n{recovery}{backups}\nItems never expire through inactivity. `/memory view <id>` shows one item's history."
 
     def _view(self, item: str, before: int | None) -> str:
         stored = self._store.read(item)
@@ -657,38 +693,125 @@ class MemoryCommands:
             if place is None or (not state.destination and not place.is_dir()):
                 return MemoryAnswer("No recovery location is set up for this project, so there is nothing to restore.")
             found = mr.generations(place)
+            backup_place: Path | None = None
+            backup_all: list[mr.Generation] = []
+            backup_note = ""
+            if self._backups is not None:
+                from optimus.context import memory_backups as mb
+
+                try:  # damaged backup settings never take the recovery copy's restore down with them
+                    backup_place = self._backups.place()
+                    backup_all = self._backups.generations(mapping=True) if backup_place else []
+                except mb.BackupError as failure:
+                    backup_place, backup_note = None, f" (Backups unavailable: {failure.message})"
+            backed = [g for g in backup_all if g.name not in {f.name for f in found}]
             if command.generation is None:
+                if backed:
+                    found = found + backed
                 if not found:
-                    return MemoryAnswer(f"No recovery copies are in {place}.")
+                    return MemoryAnswer(f"No recovery copies are in {place}.{backup_note}")
                 lines = [f"Recovery copies in {place} (newest first). Restore one with `/memory restore <generation>`; "
                          "nothing chooses for you when they differ:"]
                 lines += [f"- `{g.name}`: {g.count} items, head {g.head}, {g.deletions} withdrawn or deleted, saved "
                           f"{time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime(g.created_ms / 1000))}"
+                          + (f" · backup in {backup_place}" if g in backed else "")
                           + ("" if g.project == self.project else f" · written for project `{g.project}`: `/memory restore {g.name} "
                              "--map` maps it to this project") for g in found[:10]]
-                return MemoryAnswer("\n".join(lines))
+                return MemoryAnswer("\n".join(lines) + backup_note)
             chosen = next((g for g in found if g.name == command.generation), None)
+            from_backup = None
+            twin = next((g for g in backup_all if g.name == command.generation), None)
+            if chosen is not None and twin is not None and backup_place is not None and not command.mapped:
+                try:  # the recovery copy's own files are damaged: the backup of the same generation is offered instead
+                    recovery.read_generation(chosen.name)
+                except mr.RecoveryError:
+                    chosen, from_backup = twin, backup_place
+            if chosen is None and backup_place is not None:
+                chosen = next((g for g in backed if g.name == command.generation), None)
+                from_backup = backup_place if chosen is not None else None
             if chosen is None:
                 return MemoryAnswer(f"There is no recovery copy `{command.generation}` in {place}.")
             if command.mapped:
-                source = recovery.mapping_source(chosen.name, place)
+                mapped_place = from_backup if from_backup is not None else place
+                source = recovery.mapping_source(chosen.name, mapped_place)  # the same registry-key and ambiguity checks
                 text = (f"Map project `{source}` to this project (`{self.project}`) and restore `{chosen.name}` ({chosen.count} "
                         f"items, {chosen.deletions} withdrawn or deleted) into its memory store? `{source}` was an earlier "
                         "registration of this workspace. Only an empty store is restored into; deletions recorded since, in "
                         "either project, still apply.")
                 return MemoryAnswer("", confirm=Confirmation("restore", f"Map {source} and restore {chosen.name}?", text,
                                                              {"project": self.project, "generation": chosen.name, "seal": chosen.seal,
-                                                              "source": source, "place": str(place)}, secrets.token_hex(16)))
+                                                              "source": source, "place": str(mapped_place)}, secrets.token_hex(16)))
             if chosen.project != self.project:
                 return MemoryAnswer(f"`{chosen.name}` was written for project `{chosen.project}`. To restore it into this project, "
                                     f"map it: `/memory restore {chosen.name} --map`. Nothing was changed.")
             text = (f"Restore `{chosen.name}` ({chosen.count} items, head {chosen.head}, {chosen.deletions} withdrawn or deleted) into "
-                    "this project's memory store? Only an empty store is restored into; deletions recorded since still apply.")
-            return MemoryAnswer("", confirm=Confirmation("restore", f"Restore memory from {chosen.name}?", text,
-                                                         {"project": self.project, "generation": chosen.name, "seal": chosen.seal},
+                    "this project's memory store? Only an empty store is restored into; deletions recorded since still apply."
+                    + (f" It is read from the backup in {from_backup}." if from_backup is not None else ""))
+            meta = {"project": self.project, "generation": chosen.name, "seal": chosen.seal}
+            if from_backup is not None:
+                meta["backup"] = str(from_backup)
+            return MemoryAnswer("", confirm=Confirmation("restore", f"Restore memory from {chosen.name}?", text, meta,
                                                          secrets.token_hex(16)))
         except mr.RecoveryError as failure:
             return MemoryAnswer(failure.message)
+
+    def _backup_command(self, command: MemoryCommand) -> MemoryAnswer:
+        """`/memory backup ...`: host-only file actions on the recovery copy's generations; no model call, no Gateway path."""
+        from optimus.context import memory_backups as mb
+        from optimus.context import memory_recovery as mr
+
+        backups = self._backups
+        if backups is None or not self._trusted:
+            return MemoryAnswer("Backups are not available here: this workspace is not registered and trusted.")
+        try:
+            if command.verb == "backup_status":
+                return MemoryAnswer(backups.status_line())
+            if command.verb == "backup_disable":
+                backups.disable()
+                return MemoryAnswer("Backups are off for this project. Existing backups are kept and still listed. "
+                                    + backups.status_line())
+            if command.verb == "backup_now":
+                generation = backups.backup(explicit=True)  # the user's own write: also releases held synced cleanup
+                return MemoryAnswer(f"Backed up `{generation.name}`: {generation.count} items. {backups.status_line()}")
+            if command.encrypted:
+                return MemoryAnswer(f"Not set up: {mb.ENCRYPTION_UNAVAILABLE} Nothing was written.")
+            assert command.target is not None
+            assessed = backups.assess(Path(command.target), declared_sync=command.cloud)
+        except mb.BackupError as failure:
+            return MemoryAnswer(failure.message)
+        except mr.RecoveryError as failure:
+            return MemoryAnswer(failure.message)
+        domain = {"separate": f"It is on a separate physical disk ({assessed['reason']}).",
+                  "same": f"WARNING: it is on the same physical disk as the memory store or the recovery copy ({assessed['reason']}), "
+                          "so it does not protect against losing that drive.",
+                  "unknown": f"Whether it is on a separate drive is unknown ({assessed['reason']})."}[assessed["domain"]]
+        text = (f"Back up this project's memory to {assessed['target']} once a day while Optimus runs, keeping 30 days? {domain} "
+                f"{mb.ENCRYPTION_UNAVAILABLE} Copies of later-withdrawn items are removed after a clean backup, where Optimus can reach "
+                "them.")
+        if assessed["synced"]:
+            text += (f" This folder is synced ({assessed['synced']}): the sync service may keep copies, including of later-withdrawn "
+                     "items, that Optimus cannot erase. Confirming also consents to that; each backup there is taken only by "
+                     "`/memory backup now`.")
+        return MemoryAnswer("", confirm=Confirmation("backup", "Set up memory backups?", text,
+                                                     {"project": self.project, **assessed}, secrets.token_hex(16)))
+
+    def _backup_confirmed(self, confirmation: Confirmation) -> MemoryAnswer:
+        from optimus.context import memory_backups as mb
+        from optimus.context import memory_recovery as mr
+
+        if self._backups is None:
+            return MemoryAnswer("Backups are not available for this session.")
+        assessed = {name: confirmation.meta[name] for name in ("target", "synced", "domain", "reason", "anchor")}
+        try:
+            self._backups.configure(assessed, consent=bool(assessed["synced"]))
+            if assessed["synced"]:
+                return MemoryAnswer(f"Backups now go to {assessed['target']}. Take each one with `/memory backup now`.")
+            generation = self._backups.backup()
+        except mb.BackupError as failure:
+            return MemoryAnswer(failure.message)
+        except mr.RecoveryError as failure:
+            return MemoryAnswer(failure.message)
+        return MemoryAnswer(f"Backups now go to {assessed['target']}. Backed up `{generation.name}`: {generation.count} items.")
 
     def _location_question(self, destination: Path, *, moved_from: str | None = None) -> Confirmation:
         from optimus.context import memory_recovery as mr
@@ -745,6 +868,8 @@ class MemoryCommands:
         recovery = self._recovery
         if recovery is None:
             return MemoryAnswer("The recovery copy is not available for this session.")
+        if confirmation.kind == "backup":
+            return self._backup_confirmed(confirmation)
         try:
             if confirmation.kind == "location":
                 recovery.confirm(Path(confirmation.meta["destination"]), sync_consent=bool(confirmation.meta["synced"]))
@@ -752,7 +877,8 @@ class MemoryCommands:
                 return MemoryAnswer(f"Recovery copies now go to {confirmation.meta['destination']}. Saved `{generation.name}`: "
                                     f"{generation.count} items.")
             source = confirmation.meta.get("source")
-            directory = Path(confirmation.meta["place"]) / confirmation.meta["generation"] if source else None
+            directory = (Path(confirmation.meta["place"]) / confirmation.meta["generation"] if source else
+                         Path(confirmation.meta["backup"]) / confirmation.meta["generation"] if confirmation.meta.get("backup") else None)
             reply = recovery.restore(confirmation.meta["generation"], seal=confirmation.meta["seal"], source=source,
                                      directory=directory, workspace=self._workspace)  # exactly what was confirmed
             # In the order the restore did them: the mapping was confirmed, the pins were validated, the deletions applied.

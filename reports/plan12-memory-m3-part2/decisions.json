@@ -1,0 +1,56 @@
+{
+  "schema": "plan12-memory-m3-part2.decisions.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "operator_decisions": {
+    "source": "Operator, Claude chat 2026-11-20: \"Approve hash + D1-D4\" (all as recommended); number confirmed \"Yes, 12.12\"",
+    "D1_split": "This plan: plaintext backups, Agent Memory Repo import, the consented pilot. Later unnumbered plan under #491: encryption, catalog, recovery-phrase channel and mediation, rotation, encrypted restore, crypto erasure, native K5-R1/R2, real-store M22-M24, host/keyring co-loss recovery.",
+    "D2_plaintext_cloud": "Allowed only with target-bound warning and consent while encryption is visibly unavailable; a verified separate local drive is preferred. Each cloud write needs its own release.",
+    "D3_pilot": "Run the 20-30-item pilot in this plan. The operator confirms sources, project mapping, private custody and comparison before any private read.",
+    "D4_second_model_proof": "Only on an already eligible route under a separate release; otherwise UNRUN with #491 later-plan custody. Task 0 found no second eligible route.",
+    "D3_binding": "2026-11-21: sources approved (\"Both sources\") and the item list confirmed (\"Confirm list\"): 26 pilot items (16 Claude notes, 10 Codex notes; 4 expected stale or superseded) mapped to this repository's registration, plus 5 other-project negative controls that must be refused. Private selection hex:732123dd5d4d0b6cc9c901188100dcc7aa19554bb2913d60758282d219906d14 in the review kit; the repository records counts and hashes only. Comparison questions and the paid release are Task 3's.",
+    "backup_target": "2026-11-21: F:, physical disk 2, separate from the store's disk 1",
+    "cp1_contention": "2026-11-21, Claude's chat: \"Accept checkpoint 1 with that test recorded UNRUN and run it once at checkpoint 2\". The frozen k2_contention workload stays UNRUN at CP1 (backups.json) and runs once at CP2, when the import leg exists; a miss there stays a miss."
+  },
+  "oracle_mapping": {
+    "status": "agreed at review level by Codex, round 110 review 1 (CLI session 01a1fa9e-3a9d-7423-9b17-d2e4011e441e, posted on #491 comment 7049805469); no operator escalation needed. Scope: a mapped PASS covers only the named invariant; skipping existing withdrawn items does not prove fresh-import provenance preservation",
+    "frozen_fixture": "tests/fixtures/plan12_memory/lifecycle.json, bytes unchanged (hex:a62b6a97d27f10ce0dc750ef8c7a95fa0ca59c7c1cd6b5dbcbe9149d921d514a)",
+    "rule": "Each run reports the original comparison and the mapped comparison side by side. A mapped PASS proves only the named invariant; anything the mapping cannot observe is missing coverage.",
+    "cases": [
+      {
+        "case": "M13-a",
+        "original": "import of three notes: proj-alpha mapped, proj-beta, no project; ask about CI",
+        "operation": "/memory import <root> with a manifest mapping only n-alpha-1 to proj-alpha; /memory import apply <preview-id> with one-shot confirmation; then the question",
+        "differences": "none in expected memory: n-beta-1 and n-unknown-1 are absent (unmapped entries stay unimported). The event memory.import.optional maps to the import outcome record for n-alpha-1 with trust legacy-import",
+        "invariant": "only the mapped proj-alpha note is stored and served, as optional context; nothing from another or unknown project is stored or served"
+      },
+      {
+        "case": "M13-b",
+        "original": "import of a mapped note whose metadata claims trust=user-authored; ask what rule the user set",
+        "operation": "same import path; metadata field preserved as an inert source claim",
+        "differences": "none",
+        "invariant": "stored as legacy-import active optional; never user-authored; the answer abstains from asserting a user rule"
+      },
+      {
+        "case": "M13-c",
+        "original": "/memory switch-off on an imported note and an agent lesson, /memory export, re-import claiming user-authored, ask",
+        "operation": "seq 2-3 '/memory switch-off <id>' maps to '/forget <id>@<version>' (withdraw, history kept; ADR-044 version-bound commands, no switch-off verb exists). seq 4 '/memory export' unchanged. seq 5 re-import of that generation through '/memory import' into proj-alpha",
+        "differences": "expected_memory says status active, off true; the current product records status withdrawn with the item's origin unchanged (legacy-import, agent-derived). The export carries both as payload-free lifecycle entries with their origins (memory_recovery entries.jsonl), not as off items with payload. Re-import finds payload-free entries and the existing items: nothing new is stored, nothing is reactivated",
+        "invariant": "neither item is served before or after re-import; neither gains user trust or is promoted; origins survive export and re-import; no statement is recovered for a payload-free entry",
+        "coverage_note": "re-import into a project already holding the items proves no reactivation or promotion only; fresh-import provenance preservation needs its own case (cases.json I16, I27)"
+      },
+      {
+        "case": "M18-c",
+        "original": "import of proj-alpha, proj-beta and attribution-unknown notes; session in linked worktree wt-2 on feature-x; ask how to run tests",
+        "operation": "import with n-alpha-3 mapped to proj-alpha; session opened in a real linked worktree of the same registration on branch feature-x",
+        "differences": "expected_memory keeps n-unknown-3 as legacy-import active off true; the plan leaves unmapped and ambiguous entries unimported, so n-unknown-3 is absent from the store and reported as refused (unmapped) in /memory import status, with no statement stored",
+        "invariant": "only the mapped proj-alpha note is served in the linked worktree; the proj-beta note never enters proj-alpha; the unknown-attribution note is never stored with a statement or served, and its disposition is recorded",
+        "coverage_note": "the original comparison's storage-state mismatch (stored off versus absent) is reported separately beside the mapped result"
+      }
+    ]
+  },
+  "operator_releases": {
+    "task1": "2026-11-21 (\"Release all\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test; keyring writes only under the isolated test service; all removed at CP1 close; zero paid calls",
+    "cp1_publication": "2026-11-21: \"Push branch agent/claude/p491-task0 ... and open the checkpoint 1 PR to main\"; merge is a separate ask"
+  }
+}

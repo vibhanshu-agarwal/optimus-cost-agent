@@ -1,0 +1,63 @@
+{
+  "schema": "plan12-memory-m3-part2.erasure-boundaries.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+  "sources": [
+    {
+      "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+      "run_id": "20261120T233832-58536-47c952",
+      "mode": "active",
+      "reason": "default_selection",
+      "native": "valid",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "tests/unit/context/test_memory_backups.py tests/unit/context/test_memory_recovery.py tests/unit/acp/test_memory_commands.py tests/unit/guardrails/test_tracked_file_scanners.py tests/unit/tools/test_verify_plan996_logging_surfaces.py tests/unit/tools/test_probe_p11_zed_session_load.py",
+      "summary": "339 passed, 1 skipped"
+    },
+    {
+      "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+      "run_id": "20261120T233759-30688-e6a1a4",
+      "mode": "passive",
+      "reason": "non_default_selection",
+      "native": "not_enrolled",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_backups.py tests/integration/memory/test_recovery.py",
+      "summary": "8 passed",
+      "release": "operator 2026-11-21 'Release all': p1212-memory-test-redis port 6396, volume p1212-memory-test-data, fault injection; backup folder F:\\optimus-p1212-test on physical disk 2 (store data on disk 1)"
+    }
+  ],
+  "boundaries": [
+    {
+      "boundary": "logical exclusion",
+      "claim": "a withdrawn or purged item is excluded from serving at once, by Plan 12.11's lifecycle"
+    },
+    {
+      "boundary": "backup folder",
+      "claim": "a generation provably without the item's text is authenticated and published, then this project's older generations are removed; items withdrawn during the backup stay pending; unreadable gen-* folders keep it pending",
+      "evidence": [
+        "tests/unit/context/test_memory_backups.py::test_c1_a_withdrawal_during_the_backup_stays_pending_for_the_next",
+        "tests/unit/context/test_memory_backups.py::test_f10_an_unreadable_generation_folder_keeps_cleanup_pending",
+        "tests/integration/memory/test_backups.py::test_withdrawal_publishes_clean_before_retiring"
+      ]
+    },
+    {
+      "boundary": "earlier backup folders",
+      "claim": "cleaned through their recorded identity and placement, under their lock; offline, changed or unplaced ones stay pending and listed; synced ones only on the user's own /memory backup now",
+      "evidence": [
+        "tests/unit/context/test_memory_backups.py::test_b14_an_offline_earlier_target_keeps_cleanup_pending",
+        "tests/unit/context/test_memory_backups.py::test_c4_an_earlier_synced_folder_is_cleaned_only_by_the_users_own_backup",
+        "tests/unit/context/test_memory_backups.py::test_c5_an_earlier_folder_now_inside_a_repository_is_not_cleaned"
+      ]
+    },
+    {
+      "boundary": "external",
+      "claim": "sync history, recycle bins and copies made elsewhere may survive; the status says so and never reports overall erasure",
+      "evidence": [
+        "tests/unit/context/test_memory_backups.py::test_b31_status_separates_boundaries_and_never_claims_external_erasure"
+      ]
+    }
+  ],
+  "crypto_erasure_states": "UNRUN here: pending, completed-within-declared-boundary, completed-attested and unbounded/unavailable belong to #491's later plan"
+}

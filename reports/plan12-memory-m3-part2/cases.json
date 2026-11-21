@@ -1,0 +1,395 @@
+{
+  "schema": "plan12-memory-m3-part2.cases.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "frozen_on": "2026-11-21",
+  "frozen_before": "Task 1",
+  "rule": "Synthetic acceptance cases, frozen before implementation. Expected outcomes, including expected losses and refusals, do not change after a result; a change needs a recorded successor disposition. Synthetic data only; no private content.",
+  "backup_cases": [
+    {
+      "id": "B01",
+      "case": "backups never configured",
+      "expected": "no file written anywhere; status says off"
+    },
+    {
+      "id": "B02",
+      "case": "configured on a separate physical disk; 24 h elapse",
+      "expected": "one verified generation; last success recorded; failure domain 'separate physical disk' with evidence"
+    },
+    {
+      "id": "B03",
+      "case": "host closed for 3 days, then reopened",
+      "expected": "status shows paused then overdue; exactly one catch-up snapshot"
+    },
+    {
+      "id": "B04",
+      "case": "two hosts of one project (linked worktrees) due at once",
+      "expected": "one publisher; one generation; both show the same status"
+    },
+    {
+      "id": "B05",
+      "case": "target on the store's own physical disk",
+      "expected": "K5 same-drive warning; no drive-loss credit"
+    },
+    {
+      "id": "B06",
+      "case": "target whose physical independence cannot be established",
+      "expected": "domain reported unknown, never separate"
+    },
+    {
+      "id": "B07",
+      "case": "target inside a known or declared sync root without consent",
+      "expected": "refused; nothing written"
+    },
+    {
+      "id": "B08",
+      "case": "consented cloud target, write not released",
+      "expected": "snapshot held as due, with the reason; nothing written"
+    },
+    {
+      "id": "B09",
+      "case": "target swapped for a symlink, junction, reparse point or a different mount after configuration",
+      "expected": "write and prune refused; nothing deleted through the changed path"
+    },
+    {
+      "id": "B10",
+      "case": "target overlaps a workspace, runtime or config root, or holds tracked content",
+      "expected": "refused at configuration"
+    },
+    {
+      "id": "B11",
+      "case": "write fails (permission or full disk)",
+      "expected": "last good generation and last-success time unchanged; at most 3 transient attempts; failure shown"
+    },
+    {
+      "id": "B12",
+      "case": "generations older than 30 days with a new verified generation",
+      "expected": "old managed generations pruned; foreign directories untouched"
+    },
+    {
+      "id": "B13",
+      "case": "replacement generation fails verification",
+      "expected": "no prune; the last usable generation kept"
+    },
+    {
+      "id": "B14",
+      "case": "item withdrawn after older generations hold it",
+      "expected": "clean generation published, then older ones retired; offline target leaves cleanup pending and says so"
+    },
+    {
+      "id": "B15",
+      "case": "withdrawal or purge during a snapshot",
+      "expected": "the published generation and the deletion frontier agree; no withdrawn text served after restore"
+    },
+    {
+      "id": "B16",
+      "case": "store volume lost, backups on",
+      "expected": "restore from the newest verified backup into an empty store, with deletions applied"
+    },
+    {
+      "id": "B17",
+      "case": "store volume lost, backups off",
+      "expected": "expected loss: only the same-drive recovery copy, if any; status had shown the risk"
+    },
+    {
+      "id": "B18",
+      "case": "verification key (ACL password) lost",
+      "expected": "expected loss: authenticated restore refused, readably; plaintext may be imported as optional context only"
+    },
+    {
+      "id": "B19",
+      "case": "deletion journal lost or shortened",
+      "expected": "unknown deletion continuity refuses serving; never silently restores withdrawn items"
+    },
+    {
+      "id": "B20",
+      "case": "encrypted backup requested",
+      "expected": "refused with the 'Encryption unavailable' text; nothing written"
+    },
+    {
+      "id": "B21",
+      "case": "corrupted generation bytes",
+      "expected": "verification refuses restore"
+    },
+    {
+      "id": "B22",
+      "case": "a published backup compared with the exact generation it copies",
+      "expected": "byte-identical MEMORY.md, entries.jsonl and manifest.json; no normalizing or rewriting of signed bytes; bookkeeping kept outside them"
+    },
+    {
+      "id": "B23",
+      "case": "restore into a non-empty store",
+      "expected": "refused; nothing merged"
+    },
+    {
+      "id": "B24",
+      "case": "restore of another registration's generation",
+      "expected": "only under a confirmed controlled registry mapping; otherwise refused"
+    },
+    {
+      "id": "B25",
+      "case": "publication interrupted (kill before, during and after the atomic publish)",
+      "expected": "staging is never served or counted as a generation; the last good generation and status stay correct; next run cleans staging"
+    },
+    {
+      "id": "B26",
+      "case": "restore interrupted at each staging step and around the atomic publication",
+      "expected": "before publication: staging stays unserved and the store stays empty or recovery-required; after publication: the complete authenticated, deletion-reconciled generation may be present and served; restart reconciles the outcome with no partial publication and no duplication"
+    },
+    {
+      "id": "B27",
+      "case": "restore of a snapshot older than later deletions",
+      "expected": "deletions newer than the snapshot are reconciled from the freshest established journal before serving"
+    },
+    {
+      "id": "B28",
+      "case": "backups disabled, or the target moved, after generations exist",
+      "expected": "copy inventory still lists prior targets and generations; cleanup obligations for prior, offline or unwritable targets stay pending and visible"
+    },
+    {
+      "id": "B29",
+      "case": "consented cloud or sync target relocated",
+      "expected": "consent invalidated; writes refused until re-consented"
+    },
+    {
+      "id": "B30",
+      "case": "/memory backup configure, status, now and disable",
+      "expected": "bound host actions with confirmation where required; zero inference; no raw target path crosses the Gateway"
+    },
+    {
+      "id": "B31",
+      "case": "status after local cleanup of a synced or external copy",
+      "expected": "store, recovery, backup and external boundaries reported separately; no claim of cloud-history, recycle-bin or overall erasure"
+    }
+  ],
+  "import_cases": [
+    {
+      "id": "I01",
+      "case": "valid MEMORY.md with linked topic files",
+      "expected": "preview lists each entry, mapping and disposition; nothing committed before apply"
+    },
+    {
+      "id": "I02",
+      "case": "apply with the exact preview digest after one-shot confirmation",
+      "expected": "per-item durable commits as legacy-import optional; status counts confirmed"
+    },
+    {
+      "id": "I03",
+      "case": "apply requested by model text, tool output, quoted or attached text",
+      "expected": "no mutation"
+    },
+    {
+      "id": "I04",
+      "case": "source file changed between preview and apply",
+      "expected": "apply refused; a new preview needed"
+    },
+    {
+      "id": "I05",
+      "case": "stale preview, wrong session or project, replay, cancellation",
+      "expected": "no mutation"
+    },
+    {
+      "id": "I06",
+      "case": "traversal, outside-root link, alias, unsafe ancestry",
+      "expected": "entry refused; listed as a coverage gap"
+    },
+    {
+      "id": "I07",
+      "case": "binary or unsupported encoding, control or bidi characters",
+      "expected": "file or entry refused; listed"
+    },
+    {
+      "id": "I08",
+      "case": "file over 1 MiB, total over 16 MiB, over 1000 entries, statement over 2000 chars",
+      "expected": "refused at the bound; over-limit statement refused whole"
+    },
+    {
+      "id": "I09",
+      "case": "link cycle",
+      "expected": "terminates by resolved file identity"
+    },
+    {
+      "id": "I10",
+      "case": "entry carrying a secret or an injected instruction",
+      "expected": "refused or off without statement; nothing executed or followed"
+    },
+    {
+      "id": "I11",
+      "case": "metadata claims user authorship, approval or a constraint",
+      "expected": "legacy-import optional or refused; never user-authored or protected"
+    },
+    {
+      "id": "I12",
+      "case": "entry conflicting with an existing user item",
+      "expected": "user item unchanged; conflict kept restrictive"
+    },
+    {
+      "id": "I13",
+      "case": "unmapped, ambiguous or other-project entry",
+      "expected": "not imported; reported refused with reason"
+    },
+    {
+      "id": "I14",
+      "case": "same import applied twice",
+      "expected": "no duplicates; second apply commits nothing new"
+    },
+    {
+      "id": "I15",
+      "case": "crash mid-apply, then resume",
+      "expected": "confirmed and uncertain items reported; resume never duplicates or retargets"
+    },
+    {
+      "id": "I16",
+      "case": "re-import of this project's own export",
+      "expected": "active entries dedupe; payload-free entries stay payload-free and inactive; origins kept, never promoted"
+    },
+    {
+      "id": "I17",
+      "case": "export from an older format without a source-origin field",
+      "expected": "origin recorded unavailable; nothing invented"
+    },
+    {
+      "id": "I18",
+      "case": "imported item later withdrawn or purged",
+      "expected": "Excluded from serving and from backup statement payloads; payload-free lifecycle/deletion records remain. Clean publication precedes retirement of affected older managed copies; unavailable cleanup remains pending."
+    },
+    {
+      "id": "I19",
+      "case": "entry text overlapping raw source content (B1 source-overlap)",
+      "expected": "refused or off without statement, as the Gate does for candidates"
+    },
+    {
+      "id": "I20",
+      "case": "malformed entry (bad metadata syntax, empty statement, broken link target)",
+      "expected": "entry refused; listed with reason; other entries unaffected"
+    },
+    {
+      "id": "I21",
+      "case": "metadata forging a type (decision, constraint, approval) or a kind change",
+      "expected": "type not honoured; legacy-import optional fact or refused"
+    },
+    {
+      "id": "I22",
+      "case": "entry with stale anchors (file or symbol no longer matches)",
+      "expected": "restrictive state (reverify or off), never served as current"
+    },
+    {
+      "id": "I23",
+      "case": "entry with missing or broken lineage",
+      "expected": "off without statement payload or refused"
+    },
+    {
+      "id": "I24",
+      "case": "one invalid entry in a manifest",
+      "expected": "whole manifest validated before the first commit; dispositions shown; nothing committed for refused entries"
+    },
+    {
+      "id": "I25",
+      "case": "applied import",
+      "expected": "durable notices bound to actual commits; served-read records attribute served imported items, through the production import path"
+    },
+    {
+      "id": "I26",
+      "case": "authenticated restore of a generation versus import of the same generation",
+      "expected": "restore keeps authenticated lifecycle and provenance; import downgrades user claims to optional legacy-import"
+    },
+    {
+      "id": "I27",
+      "case": "round trip of off, withdrawn, purged and superseded source entries",
+      "expected": "each stays inactive; payload-free stays payload-free; superseded never becomes current"
+    },
+    {
+      "id": "I28",
+      "case": "import into a separate clone or fork registration versus a linked worktree",
+      "expected": "linked worktree shares the registration's imports; a clone or fork is a different registration and sees none"
+    }
+  ],
+  "frozen_lifecycle_cases": [
+    "M13-a",
+    "M13-b",
+    "M13-c",
+    "M18-c"
+  ],
+  "lifecycle_mapping": "decisions.json oracle_mapping (Claude/Codex agreement required before Task 2 runs)",
+  "unrun_here": {
+    "owner": "#491, later unnumbered plan (D1)",
+    "items": [
+      "M22",
+      "M23",
+      "M24",
+      "K5-R1",
+      "K5-R2",
+      "per-item encryption",
+      "wrapped-key catalog",
+      "recovery-phrase channel and mediation",
+      "rotation and the four erasure states",
+      "encrypted restore",
+      "host/keyring co-loss authenticated recovery",
+      "P1 cryptography qualification"
+    ]
+  },
+  "pilot": {
+    "status": "bound only after the operator confirms sources, mapping, custody and comparison (D3)",
+    "items": "20-30",
+    "negative_controls": "items from other or unknown projects in the mixed Codex store must not enter the Optimus registration"
+  },
+  "revert_checks": {
+    "rule": "Each control is reverted alone; the named test must fail on the revert and pass on the restored code. Tests may be reused; names below are the planned targets in the plan's files table.",
+    "task1": [
+      {
+        "control": "backup target identity revalidation",
+        "test": "tests/unit/context/test_memory_backups.py::test_changed_target_identity_refuses_write_and_prune"
+      },
+      {
+        "control": "sync/cloud consent",
+        "test": "tests/unit/context/test_memory_backups.py::test_sync_target_without_consent_refused"
+      },
+      {
+        "control": "generation seal verification",
+        "test": "tests/integration/memory/test_backups.py::test_corrupted_generation_refuses_restore"
+      },
+      {
+        "control": "deletion frontier reconciliation",
+        "test": "tests/integration/memory/test_backups.py::test_restore_applies_newer_deletions"
+      },
+      {
+        "control": "staged atomic publication",
+        "test": "tests/unit/context/test_memory_backups.py::test_interrupted_publication_never_counts_staging"
+      },
+      {
+        "control": "clean-before-retire cleanup",
+        "test": "tests/integration/memory/test_backups.py::test_withdrawal_publishes_clean_before_retiring"
+      }
+    ],
+    "task2": [
+      {
+        "control": "origin ceiling (legacy-import only)",
+        "test": "tests/unit/context/test_memory_import.py::test_metadata_cannot_assert_user_authority"
+      },
+      {
+        "control": "explicit project mapping",
+        "test": "tests/unit/context/test_memory_import.py::test_unmapped_and_other_project_entries_refused"
+      },
+      {
+        "control": "preview/source binding",
+        "test": "tests/unit/context/test_memory_import.py::test_changed_source_refuses_apply"
+      },
+      {
+        "control": "restrictive-state preservation",
+        "test": "tests/unit/context/test_memory_import.py::test_inactive_source_states_stay_inactive"
+      },
+      {
+        "control": "idempotent resume",
+        "test": "tests/integration/memory/test_import.py::test_resume_never_duplicates"
+      },
+      {
+        "control": "secret/injection/B1 scans",
+        "test": "tests/unit/context/test_memory_import.py::test_scans_refuse_secret_injection_and_overlap"
+      },
+      {
+        "control": "notice binding to commits",
+        "test": "tests/integration/memory/test_import.py::test_notices_bind_to_actual_commits"
+      }
+    ]
+  }
+}

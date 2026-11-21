@@ -254,7 +254,10 @@ def sync_root(path: Path) -> str | None:
     resolved = os.path.normcase(str(path.resolve()))
     for name in ("OneDrive", "OneDriveCommercial", "OneDriveConsumer"):
         root = os.environ.get(name)
-        if root and resolved.startswith(os.path.normcase(str(Path(root).resolve())) + os.sep):
+        if not root:
+            continue
+        base = os.path.normcase(str(Path(root).resolve()))
+        if resolved == base or resolved.startswith(base + os.sep):  # the sync root itself, or anything in it
             return name
     parts = [part.casefold() for part in Path(resolved).parts]
     return next((marker for marker in _SYNC_MARKERS for part in parts if part == marker or part.startswith(marker + " -")), None)
