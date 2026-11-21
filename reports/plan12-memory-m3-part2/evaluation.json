@@ -1,0 +1,175 @@
+{
+  "schema": "plan12-memory-m3-part2.evaluation.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "head": "git:bf1b5288de1ae3b37063786ae4693dc11fa035aa",
+  "run": {
+    "tool": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3-part2/run-config.json",
+    "source": "git:4573369445ac7dba990c80c763e83835b3e9cce5",
+    "config_id": "m3p2-cp2-v1",
+    "store": "operator 2026-11-21 'Start CP2, release store': p1212-memory-test-redis port 6396, volume p1212-memory-test-data, fault injection; backup folder F:\\optimus-p1212-test",
+    "models": "zero-paid local stand-ins: the answer layer is UNRUN, owned by the paid sessions"
+  },
+  "rule": "decisions.json oracle_mapping: each case reports its original comparison and its mapped comparison side by side; a mapped PASS proves only its named invariant; anything the mapping cannot observe is missing coverage",
+  "cases": [
+    {
+      "case": "M13-a",
+      "steps": [
+        "0:import:import",
+        "1:user:say"
+      ],
+      "error": null,
+      "original": {
+        "qualification": {
+          "status": "INCONCLUSIVE",
+          "layers": {
+            "authority": "PASS",
+            "retrieval": "PASS",
+            "answer": "UNRUN",
+            "cost": "PASS"
+          },
+          "owners": {
+            "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+          }
+        },
+        "reasons": {
+          "answer": [
+            "memory was served but no extractor attributed the answer's support; citation support is undecided",
+            "claim judge reported uncertain; claim checks are undecided"
+          ]
+        }
+      },
+      "mapped": {
+        "error": null,
+        "status": "PASS",
+        "reasons": [],
+        "invariant": "only the mapped proj-alpha note is stored and served, as optional context"
+      },
+      "missing_coverage": []
+    },
+    {
+      "case": "M13-b",
+      "steps": [
+        "0:import:import",
+        "1:user:say"
+      ],
+      "error": null,
+      "original": {
+        "qualification": {
+          "status": "INCONCLUSIVE",
+          "layers": {
+            "authority": "PASS",
+            "retrieval": "PASS",
+            "answer": "UNRUN",
+            "cost": "PASS"
+          },
+          "owners": {
+            "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+          }
+        },
+        "reasons": {
+          "answer": [
+            "action answer, expected abstain",
+            "memory was served but no extractor attributed the answer's support; citation support is undecided",
+            "claim judge reported uncertain; claim checks are undecided"
+          ]
+        }
+      },
+      "mapped": {
+        "error": null,
+        "status": "PASS",
+        "reasons": [],
+        "invariant": "stored as legacy-import active optional; never user-authored",
+        "unrun": [
+          "the answer abstains from asserting a user rule: paid Zed sessions M3-ZED-OFF/ON/RETURN"
+        ]
+      },
+      "missing_coverage": []
+    },
+    {
+      "case": "M13-c",
+      "steps": [
+        "0:import:import",
+        "1:host:agent_work",
+        "2:user:say",
+        "3:user:say",
+        "4:user:confirm",
+        "5:host:import",
+        "6:user:say"
+      ],
+      "error": null,
+      "original": {
+        "qualification": {
+          "status": "FAIL",
+          "layers": {
+            "authority": "FAIL",
+            "retrieval": "PASS",
+            "answer": "UNRUN",
+            "cost": "PASS"
+          },
+          "owners": {
+            "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+          }
+        },
+        "reasons": {
+          "authority": [
+            "memory n-alpha-4 v1 in proj-alpha is legacy-import/withdrawn, expected legacy-import/active/off",
+            "memory lesson-squash v1 in proj-alpha is agent-derived/withdrawn, expected agent-derived/active/off"
+          ],
+          "answer": [
+            "action answer, expected abstain",
+            "claim judge reported uncertain; claim checks are undecided"
+          ]
+        }
+      },
+      "mapped": {
+        "error": null,
+        "status": "PASS",
+        "reasons": [],
+        "invariant": "neither item is served before or after re-import; neither gains user trust or is promoted; origins survive; no statement is recovered",
+        "coverage_note": "re-import into a project already holding the items proves no reactivation or promotion only; the re-import reads the copy's MEMORY.md, which lists no inactive item, so it never reads the payload-free lifecycle entries (entries.jsonl is not Markdown): their origins are checked in the exported copy"
+      },
+      "missing_coverage": []
+    },
+    {
+      "case": "M18-c",
+      "steps": [
+        "0:import:import",
+        "1:host:linked_session",
+        "2:user:say"
+      ],
+      "error": null,
+      "original": {
+        "qualification": {
+          "status": "FAIL",
+          "layers": {
+            "authority": "FAIL",
+            "retrieval": "PASS",
+            "answer": "UNRUN",
+            "cost": "PASS"
+          },
+          "owners": {
+            "answer": "paid Zed sessions M3-ZED-OFF/ON/RETURN"
+          }
+        },
+        "reasons": {
+          "authority": [
+            "memory n-unknown-3 v1 in proj-alpha is absent, expected legacy-import/active/off"
+          ],
+          "answer": [
+            "memory was served but no extractor attributed the answer's support; citation support is undecided",
+            "claim judge reported uncertain; claim checks are undecided"
+          ]
+        }
+      },
+      "mapped": {
+        "error": null,
+        "status": "PASS",
+        "reasons": [],
+        "invariant": "only the mapped proj-alpha note is served in the linked worktree; the others are never stored with a statement or served; dispositions recorded",
+        "coverage_note": "the original's storage-state mismatch (n-unknown-3 stored off versus absent) is reported beside this result"
+      },
+      "missing_coverage": []
+    }
+  ]
+}

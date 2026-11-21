@@ -52,6 +52,19 @@
   "operator_releases": {
     "task1": "2026-11-21 (\"Release all\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test; keyring writes only under the isolated test service; all removed at CP1 close; zero paid calls",
     "cp1_publication": "2026-11-21: \"Push branch agent/claude/p491-task0 ... and open the checkpoint 1 PR to main\"; merge is a separate ask",
-    "task2": "2026-11-21 (\"Start CP2, release store\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test for the contention backup leg; keyring writes only under the isolated test service; all removed at CP2 close; zero paid calls"
-  }
+    "task2": "2026-11-21 (\"Start CP2, release store\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test for the contention backup leg; keyring writes only under the isolated test service; all removed at CP2 close; zero paid calls",
+    "cp2_contention_rerun": "2026-11-21 (\"Yes, run it once\", #491 comment 7061791613): one more frozen K2 contention run on the final CP2 head, within the CP2 store release, after Codex acceptance; the first run (f3e839f) and every attempt are kept"
+  },
+  "k2_contention_deviations": [
+    {
+      "deviation": "the initial population of p-bi-0 is written in the host's scope `project`, not the K2 scope `s-k2`; m3_k2's item and statement generators are unchanged",
+      "why": "in `s-k2` the host's recovery check (memory_recovery.Recovery.recovery_required lists scope `project`) reads p-bi-0 as an emptied store once a copy exists and refuses every write; found by a reduced-size smoke run before the frozen run",
+      "rulings": [
+        "Fable 5.2 CP2 review 1, finding 8: within the frozen text, not a re-target",
+        "Codex CP2 review 1 (round 112): consistent with the frozen initial-population generator requirements; retain the recorded rationale"
+      ],
+      "also": "Codex CP2 review 1: the overlap condition is met by generation 2 verified before the earliest writer finished; equal generation heads give no mid-import snapshot evidence"
+    }
+  ],
+  "cp2_contention_disposition": "Codex CP2 review 5 (round 112, #491 comment 7062026678): CP2 is reviewed with contention FAIL carried to CP3, not as all gates passed. The export's head-stability defect (memory_recovery.Recovery._read_generation under a sustained write stream) is a Claude-owned blocker fixed inside Plan 12.12 before CP3's final acceptance gates: a consistent generation (entries, seal, deletion frontier, deletion protections intact), a concurrent-write regression, and a separately released frozen contention run. Both runs are kept. Codex's import-code ACCEPT (review 4, bf1b528) stands; checkpoint closure and publication are the operator's"
 }
