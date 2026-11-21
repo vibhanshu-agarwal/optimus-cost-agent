@@ -407,18 +407,34 @@ def _initialize_facts(event: dict[str, Any], message: dict[str, Any]) -> dict[st
             "has_resume": "resume" in capabilities or "resume" in session_caps}
 
 
-def derive_wire(relay_dir: Path) -> DerivedWire:
-    """Ordered wire events from one relay capture. An integrity failure is reported, never a reason to skip parsing."""
+def _relay_capture_valid(relay_dir: Path) -> bool:
     from tools.plan117_custody_relay import CustodyContractError, verify_relay_capture
 
     try:
         verify_relay_capture(relay_dir)
-        relay_valid = True
     except (CustodyContractError, OSError, ValueError, TypeError):
-        relay_valid = False
+        return False
+    return True
+
+
+def derive_wire(relay_dir: Path) -> DerivedWire:
+    """Ordered wire events from one relay capture, including captures that fail verification."""
+    relay_valid = _relay_capture_valid(relay_dir)
+    payloads = {}
+    for name in _RELAY_FILES:
+        path = relay_dir / name
+        try:
+            if path.is_file():
+                payloads[name] = path.read_bytes()
+        except OSError:
+            relay_valid = False
+    return _derive_wire_payloads(payloads, relay_valid=relay_valid)
+
+
+def _derive_wire_payloads(payloads: dict[str, bytes], *, relay_valid: bool) -> DerivedWire:
     chunk_ends: dict[str, list[tuple[int, int]]] = {"zed_to_agent": [], "agent_to_zed": []}
     try:
-        for line in (relay_dir / "relay-index.ndjson").read_bytes().splitlines():
+        for line in payloads.get("relay-index.ndjson", b"").splitlines():
             record = contract.strict_json_loads(line) if line else {}
             if type(record) is not dict:
                 raise ValueError
@@ -429,8 +445,7 @@ def derive_wire(relay_dir: Path) -> DerivedWire:
     ordered: list[tuple[int, int, str, RelayMessage]] = []
     undecodable = False
     for direction, name in (("zed_to_agent", "zed-to-agent.bin"), ("agent_to_zed", "agent-to-zed.bin")):
-        path = relay_dir / name
-        messages, bad = parse_ndjson_messages(path.read_bytes() if path.is_file() else b"")
+        messages, bad = parse_ndjson_messages(payloads.get(name, b""))
         undecodable = undecodable or bad
         for message in messages:
             # Ordered by the global relay sequence of the chunk that carried the message's final byte.
@@ -458,7 +473,7 @@ def derive_wire(relay_dir: Path) -> DerivedWire:
     summary: dict[str, Any] = {}
     if relay_valid:
         try:
-            decoded = contract.strict_json_loads((relay_dir / "relay-summary.json").read_bytes())
+            decoded = contract.strict_json_loads(payloads.get("relay-summary.json", b""))
             if type(decoded) is not dict:
                 raise ValueError
             summary = decoded
@@ -1003,17 +1018,36 @@ def _collect_launch(emit: _Emitter, actions: HostActions, fixture: contract.Desc
         arm_id, launch_id, kind, source_root, launcher, report, profile, run_root / "arms" / arm_id / "workspace",
         relay_dir, fixture, approval, f"sess_{secrets.token_hex(12)}", interpreter,
     )
+    base = f"artifacts/plan117/arms/{arm_id}/{launch_id}"
     try:
         result = actions.launch(request)
-    except HostError:
-        raise
+        if not result.tree_stopped:
+            raise HostError("zed_tree_unconfirmed")
     except (Exception, KeyboardInterrupt) as exc:
+        if isinstance(exc, HostError) and exc.code != "zed_tree_unconfirmed":
+            raise
+
+        # Keep the private root and capture any readable relay prefix for STOP diagnosis.
+        emit.checkpoint_pending = True
+        try:
+            for name in _RELAY_FILES:
+                path = relay_dir / name
+                try:
+                    if path.is_file():
+                        with path.open("rb") as stream:
+                            payload = stream.read(os.fstat(stream.fileno()).st_size)
+                        emit.artifact(f"plan117_v5_relay:{arm_id}:{launch_id}:{name}", f"{base}/relay/{name}", payload, "application/octet-stream")
+                except (OSError, HostError):
+                    continue
+        except (Exception, KeyboardInterrupt) as capture_error:
+            # A secondary capture failure cannot authorize approval recovery.
+            raise HostError("zed_tree_unconfirmed") from capture_error
+        if isinstance(exc, HostError):
+            raise
         raise HostError("zed_tree_unconfirmed") from exc
-    if not result.tree_stopped:
-        raise HostError("zed_tree_unconfirmed")
+
     # The private profile may be the only copy until the checkpoint is recorded.
     emit.checkpoint_pending = True
-    base = f"artifacts/plan117/arms/{arm_id}/{launch_id}"
     for name in _RELAY_FILES:
         path = relay_dir / name
         emit.artifact(f"plan117_v5_relay:{arm_id}:{launch_id}:{name}", f"{base}/relay/{name}", path.read_bytes() if path.is_file() else b"", "application/octet-stream")
@@ -1245,12 +1279,21 @@ def _derive_launch(art: _Artifacts, arm_id: str, launch_id: str, roots: dict[Any
     _verify_launch_argv(art, record, arm_id, launch_id, roots)
     if (record["arm_id"], record["launch_id"]) != (arm_id, launch_id):
         art.failures.append("launch_record_mismatch")
-    with tempfile.TemporaryDirectory(prefix="p117v5-relay-") as scratch:
-        for name in _RELAY_FILES:
-            payload = art.bytes(f"plan117_v5_relay:{arm_id}:{launch_id}:{name}")
-            if payload:
-                (Path(scratch) / name).write_bytes(payload)
-        wire = derive_wire(Path(scratch))
+    payloads = {
+        name: payload for name in _RELAY_FILES
+        if (payload := art.bytes(f"plan117_v5_relay:{arm_id}:{launch_id}:{name}")) is not None
+    }
+    try:
+        with tempfile.TemporaryDirectory(prefix="p117v5-relay-") as scratch:
+            for name, payload in payloads.items():
+                if payload:
+                    (Path(scratch) / name).write_bytes(payload)
+            relay_valid = _relay_capture_valid(Path(scratch))
+    except OSError:
+        art.failures.append("relay_scratch_io_failed")
+        relay_valid = False
+    # Verify through the relay checker, then derive STOP inputs from the retained bytes.
+    wire = _derive_wire_payloads(payloads, relay_valid=relay_valid)
     if not wire.relay_valid:
         art.failures.append("relay_capture_invalid")
     closure = None
