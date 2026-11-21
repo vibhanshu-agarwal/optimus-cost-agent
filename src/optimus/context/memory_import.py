@@ -315,7 +315,7 @@ class Reader:
         except UnicodeDecodeError:
             self._gap(relative, "not UTF-8")
             return None
-        return text.removeprefix("﻿").replace("\r\n", "\n")
+        return text.removeprefix("\ufeff").replace("\r\n", "\n")
 
     def _overlap_source(self, link: str) -> None:
         """A linked non-Markdown file is never imported, but an entry copying it is source text (B1)."""

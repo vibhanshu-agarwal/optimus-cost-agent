@@ -279,6 +279,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/context/memory_backups.py",
     "src/optimus/context/memory_continuity.py",
     "src/optimus/context/memory_extraction.py",
+    "src/optimus/context/memory_import.py",
     "src/optimus/context/memory_recovery.py",
     "src/optimus/context/memory_serving.py",
     "src/optimus/context/memory_session.py",

@@ -6697,6 +6697,62 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m3p2_contention:Writers.client:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: the K2 writers' appends go through the in-process Gateway handler (`m3_k2._call`) on the released test store with synthetic statements; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3p2_contention:import_source:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the frozen synthetic import source (seeded lowercase words, `random.Random(1212)`) into the run's own scratch folder; no workspace or memory content.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3p2_contention:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Plan 12.12 K2 contention measurement on the released test store with synthetic statements; the report holds counts, timings, digests, item and event ids, generation names and the import's own count lines, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3p2_contention:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints the status, overlap, measured values and per-target verdicts (numbers and booleans); no statement or secret.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3p2_contention:run:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Plan 12.12 K2 contention measurement on the released test store with synthetic statements; the report holds counts, timings, digests, item and event ids, generation names and the import's own count lines, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3p2_contention:run:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: the initial population's appends go through the in-process Gateway handler on the released test store with synthetic statements; nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m3p2_contention:run:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the Plan 12.12 K2 contention measurement on the released test store with synthetic statements; the report holds counts, timings, digests, item and event ids, generation names and the import's own count lines, never a statement.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3p2_contention.py::test_the_import_leg_is_the_frozen_seeded_source_and_reads_whole",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.authored_memory:GatewayMemoryStore.call:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: serializes one closed memory-route request (an operation and its validated fields, the Gate's draft for an append) for the host's own Gateway; nothing is logged.",

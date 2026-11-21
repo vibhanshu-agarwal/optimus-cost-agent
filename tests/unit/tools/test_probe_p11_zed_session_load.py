@@ -4227,7 +4227,13 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     backups_committed = b"from optimus.context.memory_backups import" in probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/spec.py")
     if not backups_committed:
         expected -= {backups_path}
+    # Plan 12.12 Task 2: the import, keyed on HEAD's extraction factory importing its progress log.
+    import_path = "src/optimus/context/memory_import.py"
+    import_committed = b"from optimus.context.memory_import import" in probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/context/memory_extraction.py")
+    if not import_committed:
+        expected -= {import_path}
     assert (backups_path in closure) is backups_committed
+    assert (import_path in closure) is import_committed
     assert (extraction_paths <= closure) is extraction_committed
     assert (continuity_paths <= closure) is continuity_committed
     assert (admission_path in closure) is admission_committed
@@ -4273,7 +4279,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         8 if capture_committed else 0
     ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
         5 if memory_session_committed else 0
-    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed
+    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
