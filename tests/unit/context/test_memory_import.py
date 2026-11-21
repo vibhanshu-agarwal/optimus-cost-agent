@@ -301,19 +301,20 @@ def test_a_stale_anchor_is_held_for_re_verification(tmp_path: Path) -> None:
 
 
 def test_an_import_never_changes_a_user_item(tmp_path: Path) -> None:
-    """I12: an entry naming an existing item, or repeating its words, leaves it as it is."""
+    """I12: an entry naming an existing item with other words is refused, one repeating its words adds nothing; the user item
+    is never targeted (Codex CP2 review 1, finding 1)."""
     store = _store(tmp_path)
     commands = _commands(store, tmp_path)
     answer = _run(commands, "/remember Use tabs for indentation.")
     ((notice, _label),) = answer.notices
     root = _source(tmp_path / "repo", {"MEMORY.md": (
         f"- Use spaces for indentation. [project: p-1; id: {notice.item}@1]\n- use tabs   for indentation. [project: p-1]\n")})
-    _imported(commands, root)
+    answer = _imported(commands, root)
+    assert "0 saved, 1 already present" in answer.text and "1 refused" in answer.text  # naming the item with other words: stale
     events = _items(store)
     user = next(e for e in events if e.item == notice.item)
     assert (user.trust, user.version, user.statement) == ("user-authored", 1, "Use tabs for indentation.")
-    assert [e.statement for e in events if e.trust == "legacy-import"] == ["Use spaces for indentation."]
-    assert "import-of:" + f"{notice.item}@1" in next(e for e in events if e.trust == "legacy-import").lineage  # a claim, never a target
+    assert [e for e in events if e.trust == "legacy-import"] == []
 
 
 def test_repeat_replay_wrong_session_stale_and_unconfirmed_change_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -365,24 +366,6 @@ def test_an_interrupted_apply_reports_progress_and_resumes_without_duplicates(tm
     assert "2 confirmed" in status and "1 uncertain" in status and "3 remaining" in status and "interrupted" in status
     resumed = _imported(_commands(store, tmp_path), root)
     assert "4 saved, 2 already present" in resumed.text and len(_items(store)) == 6
-
-
-def test_a_reimported_export_keeps_claimed_origins_and_adds_nothing(tmp_path: Path) -> None:
-    """I16, I17: an Optimus recovery generation's entry point is an Agent Memory Repo; its active entries dedupe against the
-    items it came from, origins are kept as claims, and an entry without an origin field records none."""
-    store = _store(tmp_path)
-    commands = _commands(store, tmp_path)
-    mine = _run(commands, "/remember Use tabs for indentation.").notices[0][0]
-    root = _source(tmp_path / "gen", {
-        "manifest.json": '{"metadata": {"project": "p-1"}}',
-        "MEMORY.md": (f"# Project memory\n\n- Use tabs for indentation. [id: {mine.item}@1; origin: user; kind: fact; added: 2026-11-20]\n"
-                      "- Older format entry. [kind: fact]\n\n## Index\n\n- [[manifest.json]]: the generation\n"
-                      "- [[entries.jsonl]]: every item's latest event\n")})
-    answer = _imported(commands, root)
-    assert "1 saved, 1 already present" in answer.text
-    imported = next(e for e in _items(store) if e.trust == "legacy-import")
-    assert (imported.statement, [r for r in imported.lineage if r.startswith(mi.CLAIM_PREFIX)]) == (
-        "Older format entry.", ["claimed-origin:unavailable"])
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows case-insensitive alias")
@@ -601,3 +584,199 @@ def test_a_re_exported_import_claims_no_origin() -> None:
     text = mr.memory_md([{"entry": entry}], "gen-1-000000000000").decode("utf-8")
     assert "origin: imported" in text
     assert mi._claimed({"origin": "imported"}) == "unavailable"
+
+
+def _git_repo(path: Path) -> Path:
+    from tests.unit.context.test_memory_recovery import _git
+
+    path.mkdir(parents=True)
+    _git(path, "init", "-q")
+    (path / "README.md").write_text("x", encoding="utf-8")
+    _git(path, "add", "README.md")
+    _git(path, "commit", "-q", "-m", "first")
+    return path
+
+
+def _exporting(tmp_path: Path, repo: Path, project: str = PROJECT, service: Any = None) -> tuple[Any, Any, mc.MemoryCommands]:
+    """A host whose project has a recovery copy in `repo`: its store client, `Recovery` and commands (import included)."""
+    from optimus.context import memory_recovery as mr
+    from tests.unit.context.test_memory_recovery import _snapshot
+
+    service = service or purge_store(tmp_path / "store")[0]
+    store = GatewayMemoryStore(object(), project=project, owner="host-1",  # type: ignore[arg-type]
+                               post=lambda *_a, **_k: (lambda body: service.handle(body, deadline=__import__("time").monotonic() + 5)))
+    recovery = mr.Recovery(store, mr.StateFile(tmp_path / f"config-{project}", project), registry=lambda: _snapshot({"git:x": project}))
+    store.guard, store.written = recovery.recovery_required, recovery.written
+    commands = mc.MemoryCommands(store, trusted=True, sanitize=lambda v: v, scope=SCOPE, recovery=recovery, workspace=repo,
+                                 imports=mi.ImportLog(tmp_path / f"config-{project}", project))
+    return store, recovery, commands
+
+
+def _export(recovery: Any, repo: Path) -> Path:
+    from optimus.context import memory_recovery as mr
+
+    if recovery.state().destination is None:
+        recovery.confirm(mr.location(repo), sync_consent=False)
+    generation = recovery.export()
+    return mr.location(repo) / generation.name
+
+
+def test_an_old_copy_never_revives_a_purged_or_edited_item(tmp_path: Path) -> None:
+    """Codex CP2 review 1, finding 1: an entry naming an item this store holds imports only if the store still holds that very
+    version with the same words; a purged or edited item is never brought back from an older copy."""
+    repo = _git_repo(tmp_path / "repo")
+    store, recovery, commands = _exporting(tmp_path, repo)
+    first = _run(commands, "/remember Release on Thursdays.").notices[0][0]
+    second = _run(commands, "/remember Tag every release.").notices[0][0]
+    old = _export(recovery, repo)
+    asked = _run(commands, f"/forget {first.item}@1 --purge")
+    assert asked.purge is not None and commands.purge(asked.purge)
+    assert _run(commands, f"/memory edit {second.item}@1 Tag every release with its version.").notices
+    answer = _imported(commands, old)
+    assert "0 saved" in answer.text and "2 refused" in answer.text, answer.text
+    rows = {e.item: (e.version, e.status, e.statement) for e in _items(store)}
+    assert rows[first.item] == (1, "purged", "") or rows[first.item][1] == "purged"
+    assert rows[second.item] == (2, "active", "Tag every release with its version.")
+    assert not [e for e in _items(store) if e.trust == "legacy-import"]
+
+
+def test_a_reimported_export_keeps_claimed_origins_and_adds_nothing(tmp_path: Path) -> None:
+    """I16, I17: an Optimus copy's active entries dedupe against the items it came from; origins are claims only (an imported
+    item's copy says `imported`, recorded as no origin); an entry with no origin field records none."""
+    repo = _git_repo(tmp_path / "repo")
+    store, recovery, commands = _exporting(tmp_path, repo)
+    _run(commands, "/remember Use tabs for indentation.")
+    _imported(commands, _source(tmp_path / "notes", {"MEMORY.md": "- Releases are tagged vX.Y. [project: p-1]\n"}))
+    copy = _export(recovery, repo)
+    preview = _run(commands, f"/memory import {copy}").text
+    assert "claims origin user, kept as imported" in preview and preview.count("claims origin") == 1
+    assert "0 saved, 2 already present" in _imported(commands, copy).text
+    assert len(_items(store)) == 2
+    older = _source(tmp_path / "older", {"MEMORY.md": "- Older format entry. [project: p-1; kind: fact]\n"})
+    _imported(commands, older)
+    imported = next(e for e in _items(store) if e.statement == "Older format entry.")
+    assert [r for r in imported.lineage if r.startswith(mi.CLAIM_PREFIX)] == ["claimed-origin:unavailable"]
+
+
+def test_a_copys_own_entries_are_not_source_text_and_an_altered_copy_refuses_every_entry(tmp_path: Path) -> None:
+    """Codex CP2 review 1, finding 2: a checked copy's entries.jsonl holds its notes' own words, so it is no B1 source; a copy that
+    fails the host's checks refuses every entry, since what its notes rest on cannot be established."""
+    repo = _git_repo(tmp_path / "repo")
+    service = purge_store(tmp_path / "store")[0]
+    _store_a, recovery, commands = _exporting(tmp_path, repo, "p-1", service)
+    note = "The service is deployed in the primary region on Tuesdays after the weekly change review."
+    _run(commands, f"/remember {note}")
+    copy = _export(recovery, repo)
+    store_b, _recovery_b, commands_b = _exporting(tmp_path, repo, "p-2", service)
+    assert "1 saved" in _imported(commands_b, copy, mapped="p-1").text
+    assert [e.statement for e in _items(store_b)] == [note]
+    import shutil
+
+    altered = tmp_path / "altered" / copy.name
+    shutil.copytree(copy, altered)
+    (altered / "entries.jsonl").write_bytes((altered / "entries.jsonl").read_bytes().replace(b"Tuesdays", b"Mondays!"))
+    preview = _run(commands_b, f"/memory import {altered} --map p-1").text
+    assert "an Optimus recovery copy that does not pass its checks" in preview and "0 to import" in preview, preview[300:1200]
+
+
+def test_a_copy_brings_its_pins_and_branch_into_a_fresh_registration(tmp_path: Path) -> None:
+    """Codex CP2 review 1, finding 3: a note's file pin and branch, kept in the copy's entries, come with it; a changed file holds
+    it for re-verification and another branch keeps it out."""
+    repo = _git_repo(tmp_path / "repo")
+    (repo / "config.py").write_text("RETRIES = 3\n", encoding="utf-8")
+    service = purge_store(tmp_path / "store")[0]
+    _store_a, recovery, commands = _exporting(tmp_path, repo, "p-1", service)
+    _run(commands, "/remember Retries are set in config.py and are three.")
+    _run(commands, "/remember --branch feature-x Only merge after review.")
+    copy = _export(recovery, repo)
+    (repo / "config.py").write_text("RETRIES = 5\n", encoding="utf-8")
+    store_b, _recovery_b, commands_b = _exporting(tmp_path, repo, "p-2", service)
+    assert "2 saved" in _imported(commands_b, copy, mapped="p-1").text
+    served = memory_serving.from_store(store_b, SCOPE, root=repo, branch="main")
+    assert not served.optional
+    assert [path for _i, _v, path in served.reverify] == ["config.py"] and [b for _i, _v, b in served.elsewhere] == ["feature-x"]
+
+
+class _Died(BaseException):
+    """The host process is gone: nothing after this runs in it."""
+
+
+class _DiesAfterCommit:
+    """The append reaches the store, then the host dies before it hears the reply (`at`, counting from 0)."""
+
+    def __init__(self, inner: Any, at: int) -> None:
+        self._inner, self._at = inner, at
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def append(self, *args: Any, **kwargs: Any) -> Any:
+        result = self._inner.append(*args, **kwargs)
+        self._at -= 1
+        if self._at < 0:
+            raise _Died()
+        return result
+
+
+def test_a_host_that_dies_mid_apply_loses_no_notice_and_the_next_apply_reconciles(tmp_path: Path) -> None:
+    """Codex CP2 review 1, finding 4: each confirmed commit's notice is in the durable backlog at once; the entry sent when the
+    host died is uncertain, then confirmed with its notice by the next apply; nothing is saved twice."""
+    from optimus.context import memory_recovery as mr
+
+    root = _source(tmp_path / "repo", {"MEMORY.md": "".join(f"- Entry {n}. [project: p-1]\n" for n in range(5))})
+    store = _store(tmp_path)
+    backlog = mr.NoticeBacklog(tmp_path / "config", PROJECT)
+
+    def commands_on(target: Any) -> mc.MemoryCommands:
+        return mc.MemoryCommands(target, trusted=True, sanitize=lambda v: v, scope=SCOPE, imports=mi.ImportLog(tmp_path / "config", PROJECT),
+                                 backlog=backlog)
+
+    dying = commands_on(_DiesAfterCommit(store, 2))
+    preview = _run(dying, f"/memory import {root}")
+    asked = _run(dying, f"/memory import apply {_preview_id(preview.text)}")
+    assert asked.confirm is not None
+    with pytest.raises(_Died):
+        dying.confirmed(asked.confirm)
+    assert len(_items(store)) == 3 and len(backlog.pending()) == 2  # the two answered commits; the third was sent unheard
+    status = _run(commands_on(store), "/memory import status").text
+    assert "2 confirmed" in status and "1 uncertain" in status and "interrupted" in status
+    resumed = _imported(commands_on(store), root)
+    assert "3 saved, 2 already present" in resumed.text, resumed.text
+    third = next(e for e in _items(store) if e.statement == "Entry 2.")
+    assert third.event_id in {n.event_id for n, _label in resumed.notices}
+    assert len(_items(store)) == 5 and len(backlog.pending()) == 5
+
+
+def test_a_copys_manifest_is_read_bounded_and_identity_checked(tmp_path: Path) -> None:
+    """Codex CP2 review 1, finding 7: the manifest goes through the same bounded, no-follow opening as every file."""
+    big = _source(tmp_path / "big", {"MEMORY.md": "- Entry. [project: p-1]\n", "manifest.json": "{" + " " * mi.MAX_FILE_BYTES + "}"})
+    answer = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {big}").text
+    assert "manifest.json: over 1 MiB" in answer and "1 to import" in answer
+    claimed = _source(tmp_path / "claimed", {"MEMORY.md": "- Entry. [project: p-1]\n",
+                                             "manifest.json": '{"format": "optimus-agent-memory-repo/2"}'})
+    answer = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {claimed}").text
+    assert "an Optimus recovery copy whose files cannot be read" in answer and "0 to import" in answer
+    linked = _source(tmp_path / "linked", {"MEMORY.md": "- Entry. [project: p-1]\n"})
+    (linked / "elsewhere").mkdir()
+    if _link_dir(tmp_path / "big", linked / "manifest.json"):
+        answer = _run(_commands(_store(tmp_path), tmp_path), f"/memory import {linked}").text
+        assert "manifest.json: reached through a link or reparse point" in answer
+
+
+def test_a_format_2_copy_written_before_imports_named_their_origin_still_verifies(tmp_path: Path) -> None:
+    """Codex CP2 review 1, finding 9: format 2 wrote `origin: agent` for an imported item before Plan 12.12; those signed bytes
+    still verify as written, and no other rendering does."""
+    from optimus.context import memory_recovery as mr
+
+    repo = _git_repo(tmp_path / "repo")
+    _store_a, recovery, commands = _exporting(tmp_path, repo)
+    _imported(commands, _source(tmp_path / "notes", {"MEMORY.md": "- Releases are tagged vX.Y. [project: p-1]\n"}))
+    copy = _export(recovery, repo)
+    current = (copy / "MEMORY.md").read_bytes()
+    assert b"origin: imported" in current
+    (copy / "MEMORY.md").write_bytes(current.replace(b"origin: imported", b"origin: agent"))  # as the baseline wrote it
+    manifest, entries = mr.read_generation(copy, PROJECT)
+    assert len(entries) == 1
+    (copy / "MEMORY.md").write_bytes(current.replace(b"origin: imported", b"origin: user"))
+    with pytest.raises(mr.RecoveryError):
+        mr.read_generation(copy, PROJECT)

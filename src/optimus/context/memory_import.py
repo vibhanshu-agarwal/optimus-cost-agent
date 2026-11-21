@@ -15,6 +15,14 @@ secret, injection or B1 source-overlap scan, or belongs to no mapped project; en
 counted. Bullets inside fenced code are not entries. An inactive source entry (`status:` other than active) is skipped with no
 statement kept.
 
+**Optimus recovery copies.** A folder whose `manifest.json` names the Optimus copy format is read as one: its manifest, entries and
+entry point must pass the host's generation checks (`memory_recovery.checked_generation`), within the same bounds, or every
+entry is refused, since what they rest on cannot be established. A bullet's `id` must be in the copy's entries at that version;
+its restrictive dependencies there (`file:` pins and a `branch:`) come with it, bound into the preview. The copy's own entries
+and manifest are memory records, not source text for the B1 check. At apply, an entry naming an item this project's store holds
+is refused unless the store still holds that very version with the same words: an old copy never revives an item deleted,
+withdrawn or edited since.
+
 **B1 sources.** An entry is checked for copied text against every linked non-Markdown file in the folder and every workspace file
 it names. A linked file that cannot be read (too large, past the total, unreadable) refuses every entry: copying from it cannot
 be ruled out. Known limit: text copied from a workspace file the entry does not name is not recognised. On a case-insensitive
@@ -31,7 +39,10 @@ entry is then an ordinary Gate decision and fenced durable append under the proj
 entry's id derives from the project, the entry's own source project and its statement, so applying again, with or without a
 mapping, or resuming after a crash, writes nothing twice and never revives an item withdrawn or purged since. The preview lists
 every entry in full, in pages; apply waits until every page was shown. Its progress is a durable log per project, written only
-under the lease, each line stamped with its apply (no statements in it), which `/memory import status` reads.
+under the lease, each line stamped with its apply (no statements in it), which `/memory import status` reads: each entry is
+logged as dispatched before its append and with its outcome after, and each confirmed commit's notice goes to the project's
+durable notice backlog at once, so a host that dies mid-apply loses no notice, and the next apply reconciles what was dispatched
+without an outcome.
 """
 
 from __future__ import annotations
@@ -233,6 +244,11 @@ class Reader:
         self._entries: list[Entry] = []
         self._extra: list[str] = []  # the text of linked non-Markdown files: B1 sources, never entries
         self._sources_lost = False  # a linked file could not be read for the B1 check
+        self._read_bytes: dict[str, bytes] = {}
+        self._records: set[str] = set()  # an Optimus copy's own entries and manifest: memory records, not B1 sources
+        self._generation: dict[str, dict[str, Any]] | None = None  # item -> its entry in a checked Optimus copy
+        self._generation_refused: str | None = None
+        self._default: str | None = None
         self._seen: set[tuple[int, int]] = set()
         self._policy: Any = None
         self._total = 0
@@ -250,7 +266,8 @@ class Reader:
         if not root.is_dir():
             raise ImportRefused("IMPORT_ROOT_MISSING", f"{root} is not a folder. Nothing was read.")
         self._real = Path(os.path.realpath(root))
-        default = self._default_project()
+        self._copy()
+        default = self._default
         queue, queued = [ENTRY_POINT], {ENTRY_POINT}
         notes: list[tuple[str, list[str | None]]] = []
         skipped_links = 0
@@ -301,20 +318,50 @@ class Reader:
         self._gap_set.add((name, why))
         self._gaps.append((name, why))
 
-    def _default_project(self) -> str | None:
-        """An Optimus recovery generation names its project in its manifest; other sources name it per entry."""
-        path = self._root / "manifest.json"
+    def _copy(self) -> None:
+        """Whether the folder is an Optimus recovery copy (its manifest names the copy format), read through the same bounded,
+        identity-checked opening as every file and bound into the preview. A copy that fails the host's generation checks
+        refuses every entry; a checked one names its project and holds each item's restrictive dependencies."""
+        from optimus.context import memory_recovery as mr
+
+        if not os.path.lexists(self._root / "manifest.json"):
+            return
+        manifest, why = self._open("manifest.json")
+        if manifest is None:
+            self._gap("manifest.json", why or "unreadable")
+            return
+        self._record("manifest.json", manifest)
         try:
-            info = os.stat(path, follow_symlinks=False)
-            if _linked(path) is not None or not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
-                return None
-            manifest = json.loads(path.read_text(encoding="utf-8"))
-            project = manifest["metadata"]["project"]
-        except (OSError, ValueError, KeyError, TypeError):
-            return None
-        return project if isinstance(project, str) and _REFERENCE.fullmatch(project) else None
+            claimed = json.loads(manifest.decode("utf-8")).get("format")
+        except (UnicodeDecodeError, ValueError, AttributeError):
+            return
+        if claimed != mr.FORMAT:
+            return
+        files = {name: self._open(name) for name in ("entries.jsonl", ENTRY_POINT)}
+        missing = [f"{name}: {why or 'unreadable'}" for name, (data, why) in files.items() if data is None]
+        if missing:
+            self._generation_refused = "an Optimus recovery copy whose files cannot be read (" + "; ".join(missing) + ")"
+            return
+        body, entry_point = files["entries.jsonl"][0], files[ENTRY_POINT][0]
+        assert body is not None and entry_point is not None
+        self._record("entries.jsonl", body)
+        try:
+            checked, entries = mr.checked_generation(manifest, body, entry_point, self._real.name, None)
+        except mr.RecoveryError as failure:
+            self._generation_refused = f"an Optimus recovery copy that does not pass its checks ({failure.message})"
+            return
+        project = checked["metadata"].get("project")
+        self._default = project if isinstance(project, str) and _REFERENCE.fullmatch(project) else None
+        self._generation = {shaped["entry"]["item"]: shaped["entry"] for shaped in entries if isinstance(shaped["entry"].get("item"), str)}
+        self._records |= {"manifest.json", "entries.jsonl"}
+
+    def _record(self, relative: str, data: bytes) -> None:
+        if all(f.path != relative for f in self._files):
+            self._files.append(SourceFile(relative, len(data), hashlib.sha256(data).hexdigest()))
 
     def _open(self, relative: str) -> tuple[bytes | None, str]:
+        if relative in self._read_bytes:  # read once; the same bytes for every later use
+            return self._read_bytes[relative], ""
         path = self._root / relative
         if _linked(path) is not None:  # the root and its ancestors were checked first, so any link is inside the folder
             return None, "reached through a link or reparse point"
@@ -351,6 +398,7 @@ class Reader:
         if len(data) > MAX_FILE_BYTES:
             return None, "over 1 MiB"
         self._total += len(data)
+        self._read_bytes[relative] = data
         return data, ""
 
     def _file(self, relative: str) -> str | None:
@@ -359,7 +407,7 @@ class Reader:
             if why:
                 self._gap(relative, why)
             return None
-        self._files.append(SourceFile(relative, len(data), hashlib.sha256(data).hexdigest()))
+        self._record(relative, data)
         if b"\0" in data:
             self._gap(relative, "binary")
             return None
@@ -375,6 +423,8 @@ class Reader:
         relative = link.strip()
         if not relative or "\\" in relative or ":" in relative or relative.startswith("/") or ".." in relative.split("/"):
             return
+        if relative in self._records:
+            return  # a checked Optimus copy's own entries or manifest: the notes' own record, not raw source
         data, why = self._open(relative)
         if data is not None and b"\0" not in data:
             self._extra.append(data.decode("utf-8", "replace"))
@@ -420,6 +470,8 @@ class Reader:
             return None
         if len(statement) > MAX_STATEMENT_CHARS:
             return refused(f"over {MAX_STATEMENT_CHARS} characters (refused whole, never cut)")
+        if self._generation_refused is not None:
+            return refused(self._generation_refused + ", so what its notes rest on cannot be established")
         status = meta.get("status", "active").strip().lower()
         if status != "active":
             self._entries.append(Entry(locator, "skipped", f"inactive at the source ({status[:40]})"))
@@ -446,6 +498,14 @@ class Reader:
             return refused("malformed id")
         if "id" in meta:
             lineage.append("import-of:" + meta["id"].strip())
+        if self._generation is not None and "id" in meta:
+            item, _, version = meta["id"].strip().partition("@")
+            recorded = self._generation.get(item)
+            if recorded is None or str(recorded.get("version")) != version:
+                return refused("its id is not in the copy's entries at that version")
+            restrictive = [ref for ref in recorded.get("lineage") or () if isinstance(ref, str)
+                           and ref.startswith((memory_serving.FILE_PREFIX, memory_serving.BRANCH_PREFIX)) and _REFERENCE.fullmatch(ref)]
+            lineage = restrictive + [ref for ref in lineage if ref not in restrictive]  # its pins and branch come with it
         if self._sources_lost:
             return refused("a linked file could not be read, so copying from it cannot be ruled out (scan)")
         sources = self._extra + self._named_files(statement)
@@ -499,6 +559,10 @@ class ImportLog:
         self._write({"apply": preview.id, "digest": preview.digest, "root": preview.source.root, "at_ms": int(time.time() * 1000),
                      "total": len(preview.source.entries), "planned": counts}, mode="w")
 
+    def dispatch(self, entry: Entry, item: str) -> None:
+        """Before an append: an entry whose dispatch has no outcome line was sent with its result unknown."""
+        self._write({"apply": self._apply, "locator": entry.locator, "dispatch": item})
+
     def outcome(self, entry: Entry, outcome: str, **fields: Any) -> None:
         self._write({"apply": self._apply, "locator": entry.locator, "outcome": outcome, **fields})
 
@@ -526,6 +590,24 @@ class ImportLog:
         return records
 
 
+def _unresolved(records: Sequence[dict[str, Any]]) -> set[str]:
+    """The locators of the logged apply whose append was sent without a known result: an `uncertain` outcome, or a dispatch
+    with no outcome after it (the host stopped in between)."""
+    if not records or "apply" not in records[0]:
+        return set()
+    apply = records[0]["apply"]
+    mine = [r for r in records[1:] if r.get("apply") == apply]
+    decided = {r["locator"] for r in mine if "outcome" in r and r["outcome"] != "uncertain"}
+    sent = {r["locator"] for r in mine if "dispatch" in r} | {r["locator"] for r in mine if r.get("outcome") == "uncertain"}
+    return sent - decided
+
+
+def _notice_record(notice: MemoryNotice) -> dict[str, Any]:
+    """The notice backlog's record (`optimus.acp.spec._notice_record`)."""
+    return {"event_id": notice.event_id, "item": notice.item, "version": notice.version, "action": notice.action,
+            "durable_state": notice.durable_state, "projection_state": notice.projection_state}
+
+
 def _counts(entries: Sequence[Entry]) -> dict[str, int]:
     found = {"import": 0, "skipped": 0, "refused": 0}
     for entry in entries:
@@ -539,8 +621,9 @@ class Importer:
     """One session's imports into its project's store. The newest preview is held in this session's RAM only."""
 
     def __init__(self, store: Any, log: ImportLog, *, keyed: Callable[[str], str], sanitize: Callable[[str], str],
-                 workspace: Path | None, scope: str = "project", trusted: bool = True) -> None:
+                 workspace: Path | None, scope: str = "project", trusted: bool = True, backlog: Any = None) -> None:
         self._store, self._log, self._keyed, self._sanitize = store, log, keyed, sanitize
+        self._backlog = backlog  # the project's durable notice backlog (`memory_recovery.NoticeBacklog`), or None
         self._workspace, self._scope, self._trusted = workspace, scope, trusted
         self._preview: Preview | None = None
 
@@ -608,8 +691,7 @@ class Importer:
 
         with self._store.lease() as token:
             earlier = self._log.read()  # read under the lease, before this apply replaces it
-            uncertain = {r["locator"] for r in earlier[1:] if r.get("outcome") == "uncertain"
-                         and earlier and r.get("apply") == earlier[0].get("apply") and earlier[0].get("digest") == preview.digest}
+            uncertain = _unresolved(earlier) if earlier and earlier[0].get("digest") == preview.digest else set()
             try:
                 self._log.start(preview)
             except OSError:
@@ -641,6 +723,11 @@ class Importer:
                 counts[outcome] += 1
                 if notice is not None:
                     notices.append((notice, title_of(entry.statement)))
+                    if self._backlog is not None and notice.saved:
+                        try:  # kept durably now: a host that dies before answering still shows it later
+                            self._backlog.add([_notice_record(notice)])
+                        except OSError:
+                            return stopped("the notice backlog could not be written")
                 try:
                     self._log.outcome(entry, outcome, **fields)
                 except OSError:
@@ -684,6 +771,15 @@ class Importer:
         decision = memory_gate.admit(candidate, verdict)
         if decision.outcome != "append" or decision.draft is None or decision.draft.action != "admit":
             return "refused", {"code": decision.reason}, None
+        named = next((ref[len("import-of:"):] for ref in entry.lineage if ref.startswith("import-of:")), None)
+        if named is not None:  # an entry from a copy naming an item: never older than the store's own state of it
+            item, _, version = named.partition("@")
+            current = self._store.read(item)
+            if current is not None:
+                event = current.event
+                if (event.version, event.status, normalized(event.statement)) != (int(version), "active", words):
+                    return "refused", {"code": "STALE_SOURCE", "item": item, "status": event.status, "version": event.version}, None
+                return "duplicate", {"item": item}, None
         if words in known and not reconcile:
             return "duplicate", {"item": known[words]}, None
         taken = self._store.read(decision.draft.item)
@@ -697,6 +793,7 @@ class Importer:
             return "duplicate", {"item": event.item, "status": event.status}, None
         if words in known:
             return "duplicate", {"item": known[words]}, None
+        self._log.dispatch(entry, decision.draft.item)
         result = self._store.append(token, candidate, decision.draft)
         known[words] = result.item
         notice = MemoryNotice.of(result, "admit")
@@ -705,6 +802,11 @@ class Importer:
 
     def status(self) -> str:
         records = self._log.read()
+        if records and "apply" in records[0]:
+            mine = [r for r in records[1:] if r.get("apply") == records[0]["apply"]]
+            told = {r["locator"] for r in mine if "outcome" in r}
+            for _locator in {r["locator"] for r in mine if "dispatch" in r} - told:  # sent, then the host stopped before its outcome
+                records.append({"apply": records[0]["apply"], "outcome": "uncertain"})
         if not records or "apply" not in records[0]:
             return "No import has been applied in this project yet."
         head = records[0]

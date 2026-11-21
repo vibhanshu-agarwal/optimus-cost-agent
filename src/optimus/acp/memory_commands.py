@@ -333,7 +333,7 @@ class MemoryCommands:
                  scope: str = "project", source: Callable[[str], str | None] = lambda _block: None,
                  source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
                  brief: Callable[[memory_serving.ServedSet], str] | None = None, registry_recovery: Any = None,
-                 backups: Any = None, imports: Any = None) -> None:
+                 backups: Any = None, imports: Any = None, backlog: Any = None) -> None:
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
@@ -348,7 +348,7 @@ class MemoryCommands:
             from optimus.context.memory_import import Importer
 
             self._importer = Importer(store, imports, keyed=keyed, sanitize=sanitize, workspace=workspace, scope=scope,
-                                      trusted=trusted)
+                                      trusted=trusted, backlog=backlog)
 
     @property
     def project(self) -> str:

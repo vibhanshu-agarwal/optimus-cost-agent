@@ -6969,6 +6969,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_import:ImportLog.dispatch:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. One entry's locator and the item id it is about to append, before the append.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_a_host_that_dies_mid_apply_loses_no_notice_and_the_next_apply_reconciles",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_import:ImportLog.settled:text_write",
       "policy": "safe-by-construction",
       "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. The closing line: a time only, fsynced.",

@@ -312,17 +312,18 @@ def bind_digest(metadata: dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(metadata, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")).hexdigest()
 
 
-def memory_md(entries: list[dict[str, Any]], name: str) -> bytes:
+def memory_md(entries: list[dict[str, Any]], name: str, *, imported: str = "imported") -> bytes:
     """The generation's Agent Memory Repo entry point, derived only from its signed entries: one bullet per active item, on one
     line, with `[key: value; ...]` metadata (`added` is the store's transaction date), and an index of the generation's files.
-    Withdrawn, deleted and off items appear only as counts."""
+    Withdrawn, deleted and off items appear only as counts. An imported item's origin is `imported`; format 2 before Plan 12.12
+    wrote `agent` for it (`imported="agent"`), which `entry_points` still accepts."""
     active = [shaped["entry"] for shaped in entries if shaped["entry"]["status"] == "active" and shaped["entry"]["trust"] != "off"]
     other = len(entries) - len(active)
     lines = ["# Project memory", "", f"Optimus recovery copy `{name}`: this project's active memory items. Same-drive plaintext, not "
              "a backup. Restore it into an empty store with `/memory restore " + name + "`.", ""]
     for entry in sorted(active, key=lambda e: e["item"]):
         added = time.strftime("%Y-%m-%d", time.gmtime(int(entry["stream_id"].split("-")[0]) / 1000))
-        origin = {"user-authored": "user", "legacy-import": "imported"}.get(entry["trust"], "agent")  # never an invented origin
+        origin = {"user-authored": "user", "legacy-import": imported}.get(entry["trust"], "agent")
         statement = " ".join(entry["statement"].split())
         lines.append(f"- {statement} [id: {entry['item']}@{entry['version']}; origin: {origin}; kind: {entry['kind']}; added: {added}]")
     if not active:
@@ -331,6 +332,41 @@ def memory_md(entries: list[dict[str, Any]], name: str) -> bytes:
               f"- [[entries.jsonl]]: every item's latest event as the store signed it; {other} withdrawn, deleted or off item(s) "
               "carry no text"]
     return ("\n".join(lines) + "\n").encode("utf-8")
+
+
+def entry_points(entries: list[dict[str, Any]], name: str) -> tuple[bytes, bytes]:
+    """The entry points a format-2 generation of these entries may hold: the current one, and the one format 2 wrote before
+    Plan 12.12 named imported items (`origin: agent`). Existing signed copies are verified as written, never rewritten (Codex
+    CP2 review 1, finding 9)."""
+    return memory_md(entries, name), memory_md(entries, name, imported="agent")
+
+
+def checked_generation(manifest_bytes: bytes, body: bytes, entry_point: bytes, name: str,
+                       project: str | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """A generation's manifest and entries from its three files' bytes, checked by the host: its format and layout, its project
+    (when given), its entries' digest and metadata binding, and an entry point that is exactly one its entries give. The seal
+    over the entries and the metadata is the Gateway's check."""
+    try:
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+        entries = [json.loads(line) for line in body.splitlines() if line.strip()]
+    except (UnicodeDecodeError, ValueError):
+        raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's files cannot be read; it is not used.") from None
+    metadata = manifest.get("metadata") if isinstance(manifest, dict) else None
+    if (not isinstance(manifest, dict) or manifest.get("format") != FORMAT or not isinstance(metadata, dict)
+            or metadata.get("format") != FORMAT or (project is not None and metadata.get("project") != project)
+            or tuple(metadata.get("layout", ())) != LAYOUT):
+        raise RecoveryError("RECOVERY_GENERATION_FOREIGN", "That generation is not this project's, or not a format this host reads.")
+    if hashlib.sha256(body).hexdigest() != manifest.get("entries_sha256") or bind_digest(metadata) != manifest.get("bind"):
+        raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's files do not match its manifest; it is not used.")
+    if not all(isinstance(shaped, dict) and isinstance(shaped.get("entry"), dict) for shaped in entries):
+        raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's entries are not in the copy's form; it is not used.")
+    try:
+        points = entry_points(entries, name)
+    except (KeyError, TypeError, ValueError, AttributeError):
+        raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's entries are not in the copy's form; it is not used.") from None
+    if entry_point not in points:
+        raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's MEMORY.md does not match its entries; it is not used.")
+    return manifest, entries
 
 
 @dataclass(frozen=True)
@@ -366,21 +402,12 @@ def read_generation(directory: Path, project: str | None) -> tuple[dict[str, Any
     """A generation's manifest and entries, checked by the host: its format and layout, its project, its entries' digest, and an
     entry point that is exactly the one its entries give. The seal over the entries and the metadata is the Gateway's check."""
     try:
-        manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+        manifest_bytes = (directory / "manifest.json").read_bytes()
         body = (directory / "entries.jsonl").read_bytes()
         entry_point = (directory / "MEMORY.md").read_bytes()
-    except (OSError, ValueError):
+    except OSError:
         raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation is missing a file or cannot be read; it is not used.") from None
-    metadata = manifest.get("metadata") if isinstance(manifest, dict) else None
-    if (manifest.get("format") != FORMAT or not isinstance(metadata, dict) or metadata.get("format") != FORMAT
-            or (project is not None and metadata.get("project") != project) or tuple(metadata.get("layout", ())) != LAYOUT):
-        raise RecoveryError("RECOVERY_GENERATION_FOREIGN", "That generation is not this project's, or not a format this host reads.")
-    if hashlib.sha256(body).hexdigest() != manifest.get("entries_sha256") or bind_digest(metadata) != manifest.get("bind"):
-        raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's files do not match its manifest; it is not used.")
-    entries = [json.loads(line) for line in body.splitlines() if line.strip()]
-    if entry_point != memory_md(entries, directory.name):
-        raise RecoveryError("RECOVERY_GENERATION_DAMAGED", "That generation's MEMORY.md does not match its entries; it is not used.")
-    return manifest, entries
+    return checked_generation(manifest_bytes, body, entry_point, directory.name, project)
 
 
 class Recovery:

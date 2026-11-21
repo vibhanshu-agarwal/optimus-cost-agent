@@ -872,14 +872,18 @@ async def _op_import(rig: Rig, run: Run, seq: int, text: str, entries: Sequence[
         (folder / "MEMORY.md").write_bytes(("# Notes\n\n" + "\n".join(lines) + "\n").encode("utf-8"))
     command = f"/memory import {folder}" + (f" --map {mapped}" if mapped else "")
     await rig.host.say(command, f"p-{seq}-preview")
-    preview = re.search(r"imp-[0-9a-f]{12}", run.answers[-1] if run.answers else "")
+    preview = re.search(r"(imp-[0-9a-f]{12})` of .*?, page 1 of ([0-9]+): ", run.answers[-1] if run.answers else "")
     if preview is None:
         raise RuntimeError(f"no import preview: {(run.answers or [''])[-1][:200]}")
+    for page in range(2, int(preview.group(2)) + 1):
+        await rig.host.say(f"/memory import show {preview.group(1)} {page}", f"p-{seq}-show-{page}")
     rig.pending["importing"] = True
     try:
-        await rig.host.say_confirming(f"/memory import apply {preview.group(0)}", f"p-{seq}", "allow")
+        await rig.host.say_confirming(f"/memory import apply {preview.group(1)}", f"p-{seq}", "allow")
     finally:
         rig.pending.pop("importing", None)
+    # the apply's own report and the settled status, kept for the mapped checks (Codex CP2 review 1, finding 6)
+    rig.pending.setdefault("imports", {})[seq] = {"answer": run.answers[-1] if run.answers else "", "status": _import_status(rig)}
     rig.finish_input()
 
 
@@ -1310,6 +1314,10 @@ def _m13c(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
     reasons += [f"an observed {o.kind}" for o in run.observations
                 if o.kind in ("store.trust_from_import", "store.trust_promoted", "store.trust_changed")]
     reasons += [f"the re-import stored {o.item}" for o in run.observations if o.kind.startswith("store.") and o.seq == 5]
+    reimport = rig.pending.get("imports", {}).get(5)
+    if reimport is None or not reimport["answer"].startswith("Imported:") or "were not tried" in reimport["answer"] \
+            or "interrupted" in reimport["status"]:
+        reasons.append("the re-import did not complete: " + (reimport["answer"][:160] if reimport else "never applied"))
     return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "invariant": "neither item is served before or after "
             "re-import; neither gains user trust or is promoted; origins survive; no statement is recovered",
             "coverage_note": "re-import into a project already holding the items proves no reactivation or promotion only; the "

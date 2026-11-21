@@ -541,3 +541,14 @@ def test_a_mapped_check_fails_on_the_wrong_note_or_count(tmp_path: Path) -> None
     alpha = SimpleNamespace(trust="legacy-import", status="active", kind="fact", statement="The CI uses uv.")
     importer.status = lambda: "Last import: 1 confirmed, 2 refused; 0 remaining."
     assert m3._mapped_only(rig, {ITEM: alpha}, "n-alpha-1", "The CI uses uv.", 2) == []
+
+
+def test_m13c_fails_when_the_re_import_was_refused() -> None:
+    """Codex CP2 review 1, finding 6: withdrawn rows and an earlier export do not pass M13-c unless the re-import itself completed."""
+    rig = SimpleNamespace(items={"n-alpha-4": ITEM, "lesson-squash": OTHER}, run=m3.Run(), host=SimpleNamespace(extractor=None, project="p"),
+                          pending={"imports": {5: {"answer": "The folder changed since the preview, so nothing was imported.", "status": ""}}})
+    rows = {ITEM: SimpleNamespace(trust="legacy-import", status="withdrawn", statement=""),
+            OTHER: SimpleNamespace(trust="agent-derived", status="withdrawn", statement="")}
+    verdict = m3._m13c(rig, rows)  # type: ignore[arg-type]
+    assert verdict["status"] == "FAIL"
+    assert any(reason.startswith("the re-import did not complete: The folder changed") for reason in verdict["reasons"])

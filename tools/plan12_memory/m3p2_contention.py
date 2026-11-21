@@ -69,6 +69,24 @@ def import_source(root: Path, project: str) -> list[str]:
     return statements
 
 
+def prepare_import(commands: mc.MemoryCommands, source: Path) -> Any:
+    """The user's own sequence through the production commands: the preview, every page of it, then apply, which asks for the
+    one-shot confirmation (returned, not yet answered)."""
+    import re
+
+    preview = commands.run(mc.MemoryCommand("import", target=str(source)), block="command:1")
+    found = re.search(r"Import preview `(imp-[0-9a-f]{12})` of .*?, page 1 of ([0-9]+): ", preview.text)
+    if found is None:
+        raise RuntimeError(f"no import preview: {preview.text[:300]}")
+    preview_id, pages = found.group(1), int(found.group(2))
+    for page in range(2, pages + 1):
+        commands.run(mc.MemoryCommand("import_show", preview=preview_id, page=page), block=f"command:show-{page}")
+    asked = commands.run(mc.MemoryCommand("import_apply", preview=preview_id), block="command:2")
+    if asked.confirm is None:
+        raise RuntimeError(f"apply did not ask for confirmation: {asked.text[:300]}")
+    return asked
+
+
 def _git_repo(path: Path) -> Path:
     path.mkdir(parents=True)
     env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t",
@@ -250,10 +268,7 @@ def _run(output: Path, partial: dict[str, Any]) -> dict[str, Any]:
     backups.configure(backups.assess(target), consent=False)
     source = work / "import-src"
     import_source(source, BI)
-    preview = commands.run(mc.MemoryCommand("import", target=str(source)), block="command:1")
-    preview_id = preview.text.split("`", 2)[1]
-    asked = commands.run(mc.MemoryCommand("import_apply", preview=preview_id), block="command:2")
-    assert asked.confirm is not None, asked.text
+    asked = prepare_import(commands, source)
 
     sample: dict[str, Any] = {}
     stop = threading.Event()
@@ -263,21 +278,17 @@ def _run(output: Path, partial: dict[str, Any]) -> dict[str, Any]:
     legs: dict[str, Any] = {}
 
     def backup_leg(name: str) -> None:
+        """One production backup per generation (its own transient retries inside, Codex CP2 review 1, finding 8); a terminal
+        failure is kept as the leg's result, never retried here."""
         started = time.perf_counter()
-        attempts, errors = 0, []
-        while True:
-            attempts += 1
-            try:
-                generation = backups.backup(explicit=True)
-                break
-            except mb.BackupError as failure:  # memory moving on (the import, here) is retried, as the scheduler would
-                errors.append(failure.code)
-                if attempts >= 30:
-                    legs[name] = {"error": errors}
-                    return
-                time.sleep(1.0)
-        legs[name] = {"generation": generation.name, "attempts": attempts, "errors": errors, "started": started,
-                      "published": time.perf_counter(), "seconds": round(time.perf_counter() - started, 1)}
+        try:
+            generation = backups.backup(explicit=True)
+        except mb.BackupError as failure:
+            legs[name] = {"error": failure.code, "message": failure.message, "transient": failure.transient, "started": started,
+                          "seconds": round(time.perf_counter() - started, 1)}
+            return
+        legs[name] = {"generation": generation.name, "started": started, "published": time.perf_counter(),
+                      "seconds": round(time.perf_counter() - started, 1)}
 
     def import_leg() -> None:
         started = time.perf_counter()
