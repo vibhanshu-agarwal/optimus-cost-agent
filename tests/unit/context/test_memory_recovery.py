@@ -4,6 +4,7 @@ tests/integration/memory/test_recovery.py."""
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import subprocess
@@ -167,6 +168,36 @@ def test_only_the_newest_generations_are_kept(tmp_path: Path, repo: Path) -> Non
         host.remember(f"Rule number {n} holds.")
         host.run("/memory export")
     assert len(mr.generations(mr.location(repo))) == mr.KEEP_GENERATIONS
+
+
+def test_a_location_or_copy_the_os_cannot_write_is_a_readable_answer(tmp_path: Path, repo: Path,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """CP3 platform probe P4: a recovery location the OS refuses to create, and a copy it refuses to write (a full or read-only
+    drive), answer readably through `/memory export`, never a failed turn; the failure is recorded and nothing is published."""
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    place = mr.location(repo)
+    real_mkdir = Path.mkdir
+
+    def refusing(self: Path, *args: Any, **kwargs: Any) -> None:
+        if str(self).startswith(str(place)):
+            raise PermissionError(errno.EACCES, "Access is denied")
+        real_mkdir(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "mkdir", refusing)
+    answer = host.run("/memory export")
+    assert "could not be created (Access is denied). Nothing was changed." in answer.text, answer.text
+    assert host.recovery.state().destination is None
+    monkeypatch.setattr(Path, "mkdir", real_mkdir)
+    assert "Saved" in host.run("/memory export").text
+    host.remember("Tests run with pytest -q.")
+
+    def full(_path: Path, _data: bytes) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(mr, "_write", full)
+    answer = host.run("/memory export")
+    assert f"could not be written to {place} (No space left on device). The last copy is kept." in answer.text, answer.text
+    assert host.recovery.state().failure == "RECOVERY_WRITE_FAILED"
+    assert len(mr.generations(place)) == 1 and not list(place.glob(".staging-*"))
 
 
 def test_a_synced_location_needs_consent_bound_to_it(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:

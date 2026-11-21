@@ -67,6 +67,14 @@ _SYNC_MARKERS: Final = ("onedrive", "dropbox", "google drive", "googledrive", "m
                         "pcloud", "nextcloud", "owncloud", "sync.com", "mega")
 
 
+def os_reason(failure: OSError, path: Path) -> str:
+    """The OS's reason, plus the likely cause when Windows refuses a path past its classic 260-character limit."""
+    reason = failure.strerror or str(failure)
+    if sys.platform == "win32" and len(str(path)) >= 260:
+        reason += "; the path is longer than Windows allows unless long paths are enabled"
+    return reason
+
+
 class RecoveryError(Exception):
     """A stable `code` and a sentence for the user. Nothing was written when one is raised before publication."""
 
@@ -475,7 +483,11 @@ class Recovery:
         """Record the location the user confirmed (and their sync consent for it), creating it now: from then on a missing
         location means it was removed, and it is never silently made again. A different earlier location is kept in the
         inventory until no managed copy is left in it."""
-        destination.mkdir(parents=True, exist_ok=True)
+        try:
+            destination.mkdir(parents=True, exist_ok=True)
+        except OSError as failure:
+            raise RecoveryError("RECOVERY_LOCATION_UNWRITABLE", f"{destination} could not be created ({os_reason(failure, destination)})."
+                                " Nothing was changed.") from None
         canonical = str(destination.resolve())
 
         def change(state: RecoveryState) -> None:
@@ -508,6 +520,10 @@ class Recovery:
                 code = failure.code
                 self._state.update(lambda s: setattr(s, "failure", code))
                 raise
+            except OSError as failure:  # nothing was published: the staging folder is removed before this is raised
+                self._state.update(lambda s: setattr(s, "failure", "RECOVERY_WRITE_FAILED"))
+                raise RecoveryError("RECOVERY_WRITE_FAILED", f"The recovery copy could not be written to {destination} "
+                                    f"({os_reason(failure, destination)}). The last copy is kept.") from None
             self._clean_prior()
             return generation
 

@@ -533,7 +533,11 @@ class Backups:
         self._placement(target)
         if mr.sync_root(target) and not assessed["synced"]:
             raise changed  # it became synced after the user was shown it: the disclosure no longer holds
-        target.mkdir(parents=True, exist_ok=True)
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as failure:
+            raise BackupError("BACKUP_TARGET_UNWRITABLE", f"{target} could not be created ({mr.os_reason(failure, target)}). Choose "
+                              "another folder. Nothing was changed.") from None
         if _reparse_in_chain(target) is not None or str(target.resolve()) != assessed["target"]:
             raise changed
         found = identity(target)

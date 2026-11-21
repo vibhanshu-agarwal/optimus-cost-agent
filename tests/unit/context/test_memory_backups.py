@@ -282,6 +282,26 @@ def test_b11_a_failed_write_keeps_the_last_good_backup_and_retries_only_transien
     assert not list((places["separate"] / "b").glob(".staging-*"))
 
 
+def test_b11_b30_a_target_the_os_cannot_create_is_a_readable_answer(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """CP3 platform probe P4: a target the OS refuses to create (on Windows a path past 260 characters without long-path support;
+    also a denied parent or a read-only drive) answers readably through the confirmed set-up, never a failed turn; nothing is set up."""
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    target = places["separate"] / "b"
+    real_mkdir = Path.mkdir
+
+    def refusing(self: Path, *args: Any, **kwargs: Any) -> None:
+        if str(self).startswith(str(target)):
+            raise FileNotFoundError(errno.ENOENT, "The system cannot find the path specified")
+        real_mkdir(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "mkdir", refusing)
+    answer = host.run(f"/memory backup configure {target}")
+    assert "could not be created (The system cannot find the path specified" in answer.text, answer.text
+    assert "Nothing was changed." in answer.text and host.backups.state().target is None and not target.exists()
+
+
 def test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one(tmp_path: Path, repo: Path,
                                                                                           places: dict[str, Path],
                                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
