@@ -1046,8 +1046,8 @@ def test_r4_a_journal_moving_on_is_source_movement_not_a_failure(tmp_path: Path,
     real = host.recovery._read_generation
     calls: list[int] = []
 
-    def purge_in_flight(bind: str) -> Any:
-        entries, final = real(bind)
+    def purge_in_flight(bind: str, **kwargs: Any) -> Any:
+        entries, final = real(bind, **kwargs)
         calls.append(1)
         if len(calls) == 1:
             return entries, final  # the export itself
@@ -1211,3 +1211,31 @@ def test_product_default_reports_drive_independence_unknown(tmp_path: Path, repo
                          config_root=tmp_path / "config", disk_of=_disks(places, repo))  # the launch's store reference
     assessed = product.assess(places["separate"] / "b")  # a different disk from the recovery copy's
     assert assessed["domain"] == "unknown" and "memory store" in assessed["reason"]  # never "separate" without the store bound
+
+
+def test_a_backup_is_taken_and_authenticated_while_writes_keep_landing(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    """Plan 12.12 CP3 (the CP2 contention miss): with another host writing after every store request, the export is still one
+    generation and the backup authenticates it at its own head, so one production backup succeeds and verifies."""
+    host = _Backed(tmp_path, repo, places, _Clock())
+    for n in range(mr.PAGE + 20):
+        host.remember(f"Rule number {n} for this project.")
+    host.set_up(places["separate"] / "b")
+    host.remember("One more rule, so the copy must be exported again.")
+    other = _Host(tmp_path, repo, host.server)
+    call = host.store.call
+    written: list[int] = []
+
+    def busy(op: str, **fields: Any) -> dict[str, Any]:
+        reply = call(op, **fields)
+        if op == "export":
+            written.append(1)
+            other.remember(f"Written during the backup, number {len(written)}.")
+        return reply
+
+    host.store.call = busy  # type: ignore[method-assign]
+    generation = host.backups.backup(explicit=True)
+    assert len(written) >= 4  # the export's pages and the authenticating re-read, each followed by a write
+    published = places["separate"] / "b" / generation.name
+    manifest, entries = mr.read_generation(published, host.store.project)
+    assert manifest["head"] == generation.head and len(entries) == generation.count
+    assert host.backups.state().failure is None and host.backups.state().last_success["name"] == generation.name

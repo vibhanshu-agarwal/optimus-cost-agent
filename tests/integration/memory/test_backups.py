@@ -140,3 +140,38 @@ def test_corrupted_generation_refuses_restore(provisioned: Provisioned, tmp_path
     manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True), encoding="utf-8")
     answer = _go(commands, f"/memory restore {generation.name}")
     assert "Restored" not in answer.text and _stream(provisioned, project) == [], answer.text  # the Gateway's seal check
+
+
+def test_a_backup_succeeds_while_another_writer_commits_continuously(provisioned: Provisioned, tmp_path: Path, backup_root: Path) -> None:
+    """Plan 12.12 CP3, the CP2 contention miss on the real store: a second host commits into the same project throughout one
+    production backup of more than one export page; the backup publishes one generation at its own head, authenticated by the
+    Gateway, and it verifies."""
+    repo, project = _workspace(tmp_path), _project()
+    store, recovery, backups, commands = _host(provisioned, tmp_path, project, repo)
+    for n in range(mr.PAGE + 50):
+        _go(commands, f"/remember Rule number {n} holds.")
+    _go(commands, "/memory export")
+    _go(commands, f"/memory backup configure {backup_root}")
+    _go(commands, "/remember One more rule, so the copy is exported again.")
+    writer = mc.MemoryCommands(host(_service(provisioned, tmp_path / "journal-writer"), project, owner="host-2"), trusted=True,
+                               sanitize=lambda v: v)
+    stop = threading.Event()
+    wrote: list[int] = []
+
+    def write() -> None:
+        while not stop.is_set():
+            answer = _go(writer, f"/remember Written during the backup, number {len(wrote)}.")
+            if answer.notices and answer.notices[0][0].saved:
+                wrote.append(1)
+
+    thread = threading.Thread(target=write)
+    thread.start()
+    try:
+        generation = backups.backup(explicit=True)  # one production backup, as the contention run takes it
+    finally:
+        stop.set()
+        thread.join()
+    assert len(wrote) >= 5, "the writer kept committing while the backup ran"
+    manifest, entries = mr.read_generation(backup_root / generation.name, project)
+    assert manifest["head"] == generation.head and len(entries) == generation.count >= mr.PAGE + 51
+    assert backups.state().failure is None

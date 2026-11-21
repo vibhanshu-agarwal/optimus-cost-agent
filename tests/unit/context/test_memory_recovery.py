@@ -813,3 +813,70 @@ def test_a_mapping_is_checked_again_when_it_is_confirmed(tmp_path: Path, repo: P
     other.run("/memory export")
     assert "more than one earlier project claims this one" in new.commands.confirmed(question.confirm).text
     assert new.items() == {}
+
+
+class _WritesBetweenPages:
+    """Another host of the project writes after every export page the store answers (a sustained import or extraction)."""
+
+    def __init__(self, host: _Host, other: _Host, *, forget: str | None = None) -> None:
+        self.host, self.other, self.forget, self.pages = host, other, forget, 0
+        self._call = host.store.call
+
+    def __call__(self, op: str, **fields: Any) -> dict[str, Any]:
+        reply = self._call(op, **fields)
+        if op == "export":
+            self.pages += 1
+            if self.forget is not None and self.pages == 1:
+                self.other.run(f"/forget {self.forget}@1")  # a deletion lands while the copy is read
+            else:
+                self.other.remember(f"Written while the copy was read, number {self.pages}.")
+        return reply
+
+
+def test_an_export_stays_one_generation_while_writes_land_between_its_pages(tmp_path: Path, repo: Path) -> None:
+    """Plan 12.12 CP3 (Codex CP2 review 5): the Gateway fixes the generation at its first page's head, so writes between pages
+    never break it; the copy is that head's, sealed, and restores."""
+    host = _Host(tmp_path, repo)
+    for n in range(mr.PAGE + 30):
+        host.remember(f"Rule number {n} for this project.")
+    host.run("/memory export")  # the location, confirmed, and a first copy
+    other = _Host(tmp_path, repo, host.server)
+    writes = _WritesBetweenPages(host, other)
+    host.store.call = writes  # type: ignore[method-assign]
+    generation = host.recovery.export()
+    assert writes.pages >= 2 and generation.count == mr.PAGE + 30  # the first page's head: none of the later writes
+    manifest, entries = mr.read_generation(mr.location(repo) / generation.name, host.store.project)
+    assert manifest["head"] == generation.head and len(entries) == mr.PAGE + 30
+    assert not any("Written while the copy was read" in json.dumps(entry) for entry in entries)
+
+
+def test_a_deletion_landing_while_an_export_is_read_is_never_completed_into_a_copy(tmp_path: Path, repo: Path) -> None:
+    """A withdrawal between pages makes the Gateway refuse the last page (`RECOVERY_DELETION_RACED`); the host reads again, and
+    the copy it completes holds no text of the withdrawn item."""
+    host = _Host(tmp_path, repo)
+    canary = host.remember(CANARY)
+    for n in range(mr.PAGE + 10):
+        host.remember(f"Rule number {n} for this project.")
+    host.run("/memory export")
+    other = _Host(tmp_path, repo, host.server)
+    writes = _WritesBetweenPages(host, other, forget=canary[0])
+    host.store.call = writes  # type: ignore[method-assign]
+    generation = host.recovery.export()
+    body = (mr.location(repo) / generation.name / "entries.jsonl").read_bytes()
+    assert b"zebra-quartz" not in body and canary[0].encode() in body  # its payload-free lifecycle only
+
+
+def test_the_gateway_refuses_a_pinned_head_it_no_longer_holds(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read naming a head the Gateway neither holds nor is at is refused, never answered from a newer head."""
+    from optimus_gateway import memory_store
+
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    head = host.recovery.state().exported["head"]
+    host.remember("Tests run with pytest -q.")
+    monkeypatch.setattr(memory_store, "_PINNED_SECONDS", -1.0)  # every kept generation has lapsed
+    bind = json.loads((mr.location(repo) / host.recovery.state().exported["name"] / "manifest.json").read_text(encoding="utf-8"))["bind"]
+    with pytest.raises(mr.RecoveryError) as moved:
+        host.recovery._read_generation(bind, pin=head)
+    assert moved.value.code == "RECOVERY_SOURCE_MOVED"

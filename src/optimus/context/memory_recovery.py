@@ -556,20 +556,34 @@ class Recovery:
         self._state.update(change)
         return Generation(name, final["head"], len(entries), final["frontier"]["deletions"], created, final["seal"])
 
-    def _read_generation(self, bind: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Every page at one head. Pages read across a write do not seal together, so the read starts again (bounded)."""
+    def _read_generation(self, bind: str, *, pin: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Every page of one generation at one head: the Gateway fixes it at the first page's head (or at `pin`, a copy's own
+        head when a backup authenticates it) and serves every later page from it, so writes landing meanwhile never break it
+        (Plan 12.12 CP3). A deletion landing meanwhile makes the Gateway refuse the last page: the read starts again (bounded).
+        With `pin`, a head the Gateway no longer holds is `RECOVERY_SOURCE_MOVED`."""
+        from optimus.context.authored_memory import MemoryStoreRefused
+
         for _attempt in range(EXPORT_TRIES):
             entries: list[dict[str, Any]] = []
             heads: set[str] = set()
             cursor: str | None = None
-            while True:
-                reply = self._store.call("export", project=self._store.project, limit=PAGE, bind=bind,
-                                         **({"cursor": cursor} if cursor else {}))
-                entries += reply["entries"]
-                heads.add(reply["head"])
-                cursor = reply["cursor"]
-                if cursor is None:
-                    break
+            at = pin
+            try:
+                while True:
+                    reply = self._store.call("export", project=self._store.project, limit=PAGE, bind=bind,
+                                             **({"pin": at} if at else {}), **({"cursor": cursor} if cursor else {}))
+                    entries += reply["entries"]
+                    heads.add(reply["head"])
+                    at = reply["head"]
+                    cursor = reply["cursor"]
+                    if cursor is None:
+                        break
+            except MemoryStoreRefused as refused:
+                if refused.code == "RECOVERY_EXPORT_MOVED" and pin is not None:
+                    raise RecoveryError("RECOVERY_SOURCE_MOVED", "Memory moved on from that copy; it will be read again.") from None
+                if refused.code in ("RECOVERY_EXPORT_MOVED", "RECOVERY_DELETION_RACED"):
+                    continue  # a deletion landed, or the pinned generation lapsed: read it again
+                raise
             if len(heads) == 1:
                 return entries, reply
         raise RecoveryError("RECOVERY_BUSY", "Memory kept changing while the copy was read; it will be tried again.")

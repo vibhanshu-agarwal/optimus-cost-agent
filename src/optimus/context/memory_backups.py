@@ -698,7 +698,7 @@ class Backups:
         is transient: the generation is refreshed. Returns the entries."""
         manifest, entries = _manifest_and_entries(captured, name, project)
         try:
-            fresh, final = self._recovery._read_generation(manifest["bind"])
+            fresh, final = self._recovery._read_generation(manifest["bind"], pin=manifest["head"])  # at the copy's own head
         except mr.RecoveryError as failure:
             raise BackupError(failure.code, failure.message, transient=True) from None
         if final["head"] != manifest["head"] or final["journal"] != manifest["journal"]:
