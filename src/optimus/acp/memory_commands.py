@@ -334,6 +334,7 @@ class MemoryCommands:
                  source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
                  brief: Callable[[memory_serving.ServedSet], str] | None = None, registry_recovery: Any = None,
                  backups: Any = None, imports: Any = None, backlog: Any = None) -> None:
+        sanitize = memory_serving.workspace_sanitizer(sanitize, workspace)  # a workspace file name is not a secret (#525)
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
@@ -357,6 +358,11 @@ class MemoryCommands:
     @property
     def store(self) -> Any:
         return self._store
+
+    @property
+    def sanitize(self) -> Callable[[str], str]:
+        """The sanitizer statements are saved under, so serving shows them as they were saved."""
+        return self._sanitize
 
     def served(self) -> memory_serving.ServedSet:
         """What a turn is served now: the project's servable items whose conditions hold in this workspace on its current

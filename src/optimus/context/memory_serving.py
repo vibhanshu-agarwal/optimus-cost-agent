@@ -52,6 +52,11 @@ MAX_FILE_REFS: Final = 8
 MAX_HASHED_BYTES: Final = 4 * 1024 * 1024  # a larger file is not pinned: hashing it at every turn would cost too much
 _PATH_WORD: Final = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")  # a leading dot: `.editorconfig` is a file too
 _REFERENCE: Final = re.compile(r"[A-Za-z0-9._:@/-]{1,128}")  # the contracts' host-reference form
+# The characters the persistence sanitizer's entropy rule reads as one token (`optimus_security.sanitization`): a path is set
+# aside only when its whole run is a file name, so no secret written against it can hide inside the set-aside part.
+_SANITIZER_RUN: Final = re.compile(r"[A-Za-z0-9._+:/-]+")
+_NAMED_FILE: Final = re.compile(r"(?P<path>[A-Za-z0-9_.][A-Za-z0-9_./-]*)(?P<node>(?:::[A-Za-z_][A-Za-z0-9_]*)*)(?P<tail>[.:]*)")
+_ASIDE, _NODE = "\ue000", "\ue001"  # private-use characters: a text that holds either is sanitized as it is
 
 
 @dataclass(frozen=True)
@@ -97,6 +102,48 @@ def _digest(policy: FilePolicy, relative: str) -> str | None:
     if not decision.allowed or content is None:
         return None
     return hashlib.sha256(content).hexdigest()[:32]
+
+
+def workspace_sanitizer(sanitize: Callable[[str], str], root: Path | None) -> Callable[[str], str]:
+    """`sanitize`, except that a workspace file the text names (`tests/unit/test_app.py`, or a pytest id such as
+    `tests/unit/test_app.py::TestApp::test_run`) is read as a file name, not as a secret (#525). The entropy rule takes a long
+    path for a random token, so memory refused, or served masked, a note that named one. A path counts only when it is a file
+    memory could pin (`file_refs`: inside the workspace, not a secret, ignored or binary file). Everything else, the test names
+    after `::` included, is sanitized in place as before, with the set-aside name still standing in its sentence."""
+    if root is None:
+        return sanitize
+
+    def sanitized(text: str) -> str:
+        if _ASIDE in text or _NODE in text:
+            return sanitize(text)
+        policy: list[FilePolicy] = []  # opened on the first path-shaped word only
+        named: list[str] = []
+
+        def aside(run: re.Match[str]) -> str:
+            word = run.group(0)
+            parts = _NAMED_FILE.fullmatch(word)
+            if parts is None:
+                return word
+            relative = parts["path"].rstrip(".")
+            if "." not in relative and "/" not in relative:
+                return word
+            policy[:] = policy or [FilePolicy(root)]
+            if _digest(policy[0], relative) is None:
+                return word
+            named.append(relative)
+            return (f"{_ASIDE}{len(named) - 1}{_ASIDE}{parts['path'][len(relative):]}"
+                    f"{parts['node'].replace('::', _NODE)}{parts['tail']}")
+
+        held = _SANITIZER_RUN.sub(aside, text)
+        if not named:
+            return sanitize(text)
+        out = sanitize(held)
+        for index, relative in enumerate(named):
+            out = out.replace(f"{_ASIDE}{index}{_ASIDE}", relative)
+        out = out.replace(_NODE, "::")
+        return sanitize(text) if _ASIDE in out else out  # a rule took part of a set-aside name: judged whole, as before
+
+    return sanitized
 
 
 def file_refs(statement: str, root: Path | None) -> tuple[str, ...]:

@@ -175,3 +175,13 @@ def test_a_watermark_of_another_shape_is_never_written(tmp_path: Path) -> None:
                       served=memory_serving.select([], watermarks=("Never push to main.",)))
     (record,) = _records(log)
     assert record["watermarks"] == ["unrecognized"]
+
+
+def test_a_turn_is_served_memory_through_the_sanitizer_it_was_saved_under() -> None:
+    """#525: served statements go through the commands' workspace-aware sanitizer, so a saved file name is not masked when served."""
+    served = memory_serving.select([_item(1, statement="Run the plain checks first.")])
+    session = SimpleNamespace(memory_commands=SimpleNamespace(served=lambda: served,
+                                                              sanitize=lambda text: text.replace("plain", "saved")))
+    turn = SimpleNamespace(run_id="session-0123456789abcdef0123456789abcdef:4")
+    _served, block = asyncio.run(AcpDuplexAdapter._serve_memory(SimpleNamespace(), session, turn))  # type: ignore[arg-type]
+    assert "Run the saved checks first." in block

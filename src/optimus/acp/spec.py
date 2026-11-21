@@ -2224,7 +2224,7 @@ class AcpDuplexAdapter:
                 if session.memory_commands is not None:
                     # Plan 12.11 Task 4: served memory, then the brief this turn showed, go after the cache prefix and bind the
                     # plan's context digest. The brief's turn reuses the served set the brief listed, read once.
-                    sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
+                    sanitize = session.memory_commands.sanitize
                     if turn.served_memory is None:
                         turn.served_memory, block = await self._serve_memory(session, turn)
                     else:
@@ -2773,7 +2773,7 @@ class AcpDuplexAdapter:
         """The project's servable memory for this turn, read now from the store's confirmed view and rendered as untrusted data.
         An outage or a slow store serves none: memory degrades on its own and never stops the turn. The trace records which (#514)."""
         commands = session.memory_commands
-        sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
+        sanitize = commands.sanitize
         try:
             served = await asyncio.wait_for(asyncio.to_thread(commands.served),
                                             timeout=MEMORY_SERVE_SECONDS)
