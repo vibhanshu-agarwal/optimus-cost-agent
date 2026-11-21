@@ -161,13 +161,14 @@ class ConversationSanitizer:
     def inputs(self) -> ConversationSanitizerInputs:
         return self._inputs
 
-    def sanitize(self, text: str) -> str:
+    def sanitize(self, text: str, *, entropy_exempt: frozenset[str] = frozenset()) -> str:
         result = sanitize_for_persistence(
             text,
             known_secrets=self._inputs.known_secrets,
             known_pii=self._inputs.known_pii,
             path_aliases=self._inputs.path_aliases,
             policy=EVIDENCE_REDACTION_POLICY,
+            entropy_exempt=entropy_exempt,
         )
         value = result.value
         if not isinstance(value, str):

@@ -358,6 +358,11 @@ class MemoryCommands:
     def store(self) -> Any:
         return self._store
 
+    @property
+    def sanitize(self) -> Callable[[str], str]:
+        """The sanitizer statements are saved under, so serving shows them as they were saved."""
+        return self._sanitize
+
     def served(self) -> memory_serving.ServedSet:
         """What a turn is served now: the project's servable items whose conditions hold in this workspace on its current
         branch. A store error raises."""

@@ -217,12 +217,16 @@ def sanitize_for_persistence(
     known_pii: Sequence[str] = (),
     path_aliases: Sequence[PathAliasRule] = (),
     policy: SanitizationPolicy = COMPATIBILITY_SANITIZATION_POLICY,
+    entropy_exempt: frozenset[str] = frozenset(),
 ) -> SanitizationResult:
     """Sanitize a value for safe persistence/export.
 
     Applies the active policy's rule set. Default policy is compatibility-only.
 
     Never reads ambient environment. Known secrets/PII are passed explicitly.
+
+    `entropy_exempt`: whole tokens the caller has shown are not secrets (memory: a workspace file's name, #525). Only the
+    entropy rule skips them, and only while every earlier rule has left them as they were; all other rules apply as usual.
     """
     counter = _RuleCounter()
     sorted_secrets = sorted((s for s in known_secrets if s), key=len, reverse=True)
@@ -235,6 +239,7 @@ def sanitize_for_persistence(
         path_aliases=normalized_aliases,
         policy=policy,
         counter=counter,
+        entropy_exempt=entropy_exempt,
     )
     return SanitizationResult(value=sanitized, rule_counts=dict(counter.counts))
 
@@ -271,6 +276,7 @@ def _sanitize_recursive(
     path_aliases: list[PathAliasRule],
     policy: SanitizationPolicy,
     counter: _RuleCounter,
+    entropy_exempt: frozenset[str] = frozenset(),
 ) -> object:
     """Recursively sanitize a value."""
     if isinstance(value, str):
@@ -281,6 +287,7 @@ def _sanitize_recursive(
             path_aliases=path_aliases,
             policy=policy,
             counter=counter,
+            entropy_exempt=entropy_exempt,
         )
 
     if isinstance(value, dict):
@@ -304,6 +311,7 @@ def _sanitize_recursive(
                     path_aliases=path_aliases,
                     policy=policy,
                     counter=counter,
+                    entropy_exempt=entropy_exempt,
                 )
         return result
 
@@ -316,6 +324,7 @@ def _sanitize_recursive(
                 path_aliases=path_aliases,
                 policy=policy,
                 counter=counter,
+                entropy_exempt=entropy_exempt,
             )
             for item in value
         ]
@@ -357,6 +366,7 @@ def _sanitize_text(
     path_aliases: list[PathAliasRule],
     policy: SanitizationPolicy,
     counter: _RuleCounter,
+    entropy_exempt: frozenset[str] = frozenset(),
 ) -> str:
     """Sanitize a free-text string under the active policy."""
     result = text
@@ -417,7 +427,7 @@ def _sanitize_text(
     if policy.enable_entropy_detection:
         # Recompute protected spans after prefix edits so indices stay aligned.
         protected = _protected_spans(result) if policy.enable_contextual_preservation else ()
-        result = _apply_entropy_redaction(result, protected=protected, counter=counter)
+        result = _apply_entropy_redaction(result, protected=protected, counter=counter, exempt=entropy_exempt)
 
     return result
 
@@ -496,11 +506,12 @@ def _apply_entropy_redaction(
     *,
     protected: Sequence[tuple[int, int]],
     counter: _RuleCounter,
+    exempt: frozenset[str] = frozenset(),
 ) -> str:
     matches: list[tuple[int, int]] = []
     for match in _TOKEN_CANDIDATE_RE.finditer(text):
         token = match.group(0)
-        if not _is_entropy_candidate(token):
+        if token in exempt or not _is_entropy_candidate(token):
             continue
         if _span_protected(match.start(), match.end(), protected):
             continue

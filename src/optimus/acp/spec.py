@@ -1915,7 +1915,8 @@ class AcpDuplexAdapter:
                     recovery = getattr(extractor, "recovery", None)
                     session.memory_commands = MemoryCommands(
                         extractor.store, trusted=True, keyed=extractor.keyed, source=extractor.source,
-                        source_digest=extractor.source_digest, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize,
+                        source_digest=extractor.source_digest,
+                        sanitize=memory_serving.workspace_sanitizer(ConversationSanitizer(self._sanitizer_inputs).sanitize, Path(cwd)),
                         brief=session.continuity.welcome, recovery=recovery, workspace=Path(cwd),
                         backups=getattr(extractor, "backups", None), imports=getattr(extractor, "imports", None),
                         backlog=session.memory_backlog)
@@ -2224,12 +2225,11 @@ class AcpDuplexAdapter:
                 if session.memory_commands is not None:
                     # Plan 12.11 Task 4: served memory, then the brief this turn showed, go after the cache prefix and bind the
                     # plan's context digest. The brief's turn reuses the served set the brief listed, read once.
-                    sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
                     if turn.served_memory is None:
                         turn.served_memory, block = await self._serve_memory(session, turn)
                     else:
-                        block = memory_serving.render(turn.served_memory, sanitize=sanitize)
-                    block = memory_serving.with_brief(block, turn.brief, sanitize=sanitize)
+                        block = await self._render_served(session, turn.served_memory)
+                    block = memory_serving.with_brief(block, turn.brief, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize)
                     if block:
                         planning_fields["memory_context"] = block
                         planning_fields["context_digest"] = memory_serving.bind_digest(admitted.digest, block)
@@ -2773,10 +2773,13 @@ class AcpDuplexAdapter:
         """The project's servable memory for this turn, read now from the store's confirmed view and rendered as untrusted data.
         An outage or a slow store serves none: memory degrades on its own and never stops the turn. The trace records which (#514)."""
         commands = session.memory_commands
-        sanitize = ConversationSanitizer(self._sanitizer_inputs).sanitize
+
+        def read() -> tuple[Any, str]:  # rendering looks at workspace files (#525), so it runs here, under the same bound
+            served = commands.served()
+            return served, memory_serving.render(served, sanitize=commands.sanitize)
+
         try:
-            served = await asyncio.wait_for(asyncio.to_thread(commands.served),
-                                            timeout=MEMORY_SERVE_SECONDS)
+            served, block = await asyncio.wait_for(asyncio.to_thread(read), timeout=MEMORY_SERVE_SECONDS)
         except TimeoutError:
             log_memory_served(run_id=turn.run_id, source="turn", outcome="timeout")
             return memory_serving.EMPTY, ""
@@ -2784,7 +2787,17 @@ class AcpDuplexAdapter:
             log_memory_served(run_id=turn.run_id, source="turn", outcome="error")
             return memory_serving.EMPTY, ""
         log_memory_served(run_id=turn.run_id, source="turn", outcome="served", served=served)
-        return served, memory_serving.render(served, sanitize=sanitize)
+        return served, block
+
+    async def _render_served(self, session: AcpSpecSession, served: Any) -> str:
+        """The served set a brief listed, rendered as `_serve_memory` renders one: on a thread, under the same bound. Past the
+        bound, or on a failure, it is rendered by the session sanitizer alone, which looks at no file, so a long file name is
+        then masked as it was before #525."""
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(memory_serving.render, served, sanitize=session.memory_commands.sanitize),
+                                          timeout=MEMORY_SERVE_SECONDS)
+        except Exception:  # noqa: BLE001 - the items are still served, without the workspace's file names
+            return memory_serving.render(served, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize)
 
     async def _emit_citation_check(self, turn: AcpPromptTurn, text: str) -> None:
         """A host card when the answer cites memory it was not served, or an old version: such citations are unsupported. It
