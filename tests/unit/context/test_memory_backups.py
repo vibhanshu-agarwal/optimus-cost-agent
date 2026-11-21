@@ -145,10 +145,10 @@ def test_b04_one_publisher_per_project(tmp_path: Path, repo: Path, places: dict[
     def other_host() -> None:
         with mr._file_lock(lock):
             held.set()
-            release.wait(5)
+            release.wait(60)  # held until the test releases it: two 2 s lock waits must never outlast it (WSL CP3 run r5)
     thread = threading.Thread(target=other_host)
     thread.start()
-    held.wait(5)
+    assert held.wait(5)
     try:
         assert host.backups.run_if_due() is None  # the other publisher holds it
         with pytest.raises(mb.BackupError) as busy:
