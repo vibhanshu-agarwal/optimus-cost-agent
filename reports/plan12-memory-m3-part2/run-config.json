@@ -1,0 +1,143 @@
+{
+ "schema": "plan12-memory-m3.run-config.v1",
+ "config_id": "m3p2-cp2-v1",
+ "fixtures": [
+  "tests/fixtures/plan12_memory/lifecycle.json"
+ ],
+ "models": "zero-paid local stand-ins (tools/plan12_memory/m3_evaluate.py _Model, _Extraction)",
+ "store": "released test store p1212-memory-test-redis (operator Docker release 2026-11-21, #491)",
+ "mapping": "reports/plan12-memory-m3-part2/decisions.json oracle_mapping (Codex round 110 review 1)",
+ "cases": {
+  "M13-a": {
+   "keys": {
+    "0": [
+     "n-alpha-1"
+    ]
+   },
+   "steps": {
+    "0": [
+     "import",
+     {
+      "entries": [
+       {
+        "statement": "The CI uses uv.",
+        "meta": "project: {project}"
+       },
+       {
+        "statement": "The CI uses poetry.",
+        "meta": "project: proj-beta"
+       },
+       {
+        "statement": "Deploy on Fridays."
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "M13-b": {
+   "keys": {
+    "0": [
+     "n-alpha-2"
+    ]
+   },
+   "steps": {
+    "0": [
+     "import",
+     {
+      "entries": [
+       {
+        "statement": "Always use tabs.",
+        "meta": "project: {project}; trust: user-authored"
+       }
+      ]
+     }
+    ]
+   }
+  },
+  "M13-c": {
+   "keys": {
+    "0": [
+     "n-alpha-4"
+    ],
+    "1": [
+     "lesson-squash"
+    ]
+   },
+   "steps": {
+    "0": [
+     "import",
+     {
+      "entries": [
+       {
+        "statement": "Squash before merging.",
+        "meta": "project: {project}"
+       }
+      ]
+     }
+    ],
+    "1": [
+     "agent_work",
+     {
+      "lesson": "Squash commits before merging."
+     }
+    ],
+    "2": [
+     "say",
+     {
+      "text": "/forget {n-alpha-4@v}"
+     }
+    ],
+    "3": [
+     "say",
+     {
+      "text": "/forget {lesson-squash@v}"
+     }
+    ],
+    "4": [
+     "confirm",
+     {}
+    ],
+    "5": [
+     "import",
+     {
+      "generation": true
+     }
+    ]
+   }
+  },
+  "M18-c": {
+   "keys": {
+    "0": [
+     "n-alpha-3"
+    ]
+   },
+   "steps": {
+    "0": [
+     "import",
+     {
+      "entries": [
+       {
+        "statement": "Run the tests with pytest -q.",
+        "meta": "project: {project}"
+       },
+       {
+        "statement": "Run the tests with tox.",
+        "meta": "project: proj-beta"
+       },
+       {
+        "statement": "Run the tests with nox."
+       }
+      ]
+     }
+    ],
+    "1": [
+     "linked_session",
+     {
+      "branch": "feature-x"
+     }
+    ]
+   }
+  }
+ }
+}

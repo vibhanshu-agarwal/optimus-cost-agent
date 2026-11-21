@@ -81,6 +81,10 @@ class GatewayMemoryStore:
             with contextlib.suppress(MemoryStoreUnavailable, MemoryStoreRefused):  # an expired lease ends by itself
                 self.call("lease", project=self.project, owner=self._owner, action="release", token=token)
 
+    def renew(self, token: int) -> None:
+        """Keep this job's lease for another `LEASE_TTL_MS` (a long import); a lost lease is refused, never retaken."""
+        self.call("lease", project=self.project, owner=self._owner, action="renew", ttl_ms=LEASE_TTL_MS, token=token)
+
     def append(self, token: int, candidate: MemoryCandidate, draft: EventDraft) -> MemoryCommitResult:
         key = digest(f"{candidate.idempotency_key}\0{draft.item}\0{draft.expected_version}")
         event = {"event_id": f"e-{key[:24]}", "item": draft.item, "version": draft.expected_version + 1, "action": draft.action,

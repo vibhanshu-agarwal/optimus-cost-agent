@@ -194,7 +194,7 @@ def render(served: ServedSet, *, sanitize: Callable[[str], str] = lambda text: t
     if served.omitted_optional:
         lines.append(f"({served.omitted_optional} optional agent lessons were left out)")
     if served.reverify:
-        lines.append(f"({len(served.reverify)} of the user's items are not shown: a file they rest on changed, so they need "
+        lines.append(f"({len(served.reverify)} saved items are not shown: a file they rest on changed, so they need "
                      "re-verification; do not rely on what they said)")
     if not served.complete:
         lines.append("(the memory store could not list every item; this list may be partial)")

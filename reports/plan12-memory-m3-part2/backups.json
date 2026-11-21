@@ -221,8 +221,272 @@
   ],
   "drive_independence": "reported unknown automatically until the memory store's storage is bound to the active engine and resource (Codex CP1 review 3 ruling); a known shared disk is still reported as the same drive; runtime-overlap refusals use Docker's likely data location separately",
   "contention": {
-    "status": "UNRUN",
-    "reason": "the frozen workload's import leg (targets.json k2_contention) is built in Task 2; proposed to run once at CP2, pending Codex's disposition"
+    "status": "FAIL",
+    "head": "git:bf1b5288de1ae3b37063786ae4693dc11fa035aa",
+    "workload": "targets.json k2_contention",
+    "rule": "a miss is retained, never re-targeted; backup and import durations are observations only",
+    "runs": [
+      {
+        "source": "git:f3e839f3e09d7c304f55a957ddfcd81c74f962ad",
+        "dirty_src": false,
+        "status": "PASS",
+        "overlap": "ESTABLISHED",
+        "populate_seconds": 102.3,
+        "barrier_after_s": 33.0,
+        "writer_finished_after_barrier_s": [
+          69.6,
+          69.4,
+          69.1,
+          69.6
+        ],
+        "interval_s": 69.6,
+        "measured": {
+          "ack_p95_ms": 32.07,
+          "projection_p95_ms": 15.29,
+          "rss_mib": 43.7,
+          "container_ram_mib": 31.7,
+          "disk_kib": 24916,
+          "acknowledged_write_loss": 0
+        },
+        "targets": {
+          "ack_p95_s": 1.5,
+          "projection_after_ack_p95_ms": 250,
+          "physical_ram_gib": 1,
+          "peak_persistence_disk_gib": 4,
+          "acknowledged_write_loss": 0
+        },
+        "verdicts": {
+          "ack_p95": true,
+          "projection_p95": true,
+          "rss": true,
+          "disk": true,
+          "loss": true,
+          "import_all_confirmed": true
+        },
+        "import_confirmed": 1000,
+        "writers_unconfirmed": 0,
+        "refusals": {},
+        "writer_identity": {
+          "items_expected": 10000,
+          "live_items": 10000,
+          "missing": 0,
+          "wrong": 0,
+          "unexpected": 0
+        },
+        "bi_identity": {
+          "initial": 10000,
+          "imports_confirmed": 1000,
+          "missing": 0,
+          "listed": 11000
+        },
+        "ack_ms_whole_run": {
+          "count": 20000,
+          "p50": 17.32,
+          "p95": 28.73,
+          "max": 1573.57
+        },
+        "ack_ms_interval": {
+          "count": 11964,
+          "p50": 19.59,
+          "p95": 32.07,
+          "max": 1573.57
+        },
+        "projection_ms_interval": {
+          "count": 237,
+          "p50": 8.51,
+          "p95": 15.29,
+          "max": 225.47
+        },
+        "generations": {
+          "generation_1": {
+            "generation": "gen-1795250476548-606f613a9560",
+            "head": "1795250477010-0",
+            "entries": 11000,
+            "expected": 11000,
+            "initial_missing_or_changed": 0,
+            "imports_expected_at_head": 1000,
+            "imports_held": 1000,
+            "imports_missing": 0,
+            "imports_unexpected": 0,
+            "verified": true
+          },
+          "generation_2": {
+            "generation": "gen-1795250481060-55a9a2c2ce25",
+            "head": "1795250477010-0",
+            "entries": 11000,
+            "expected": 11000,
+            "initial_missing_or_changed": 0,
+            "imports_expected_at_head": 1000,
+            "imports_held": 1000,
+            "imports_missing": 0,
+            "imports_unexpected": 0,
+            "verified": true
+          }
+        },
+        "sample": {
+          "container_ram_mib": 31.7,
+          "used_memory_rss_mib": 43.7,
+          "disk_kib": 24916,
+          "aof_last_cow_mib": 0.0,
+          "rdb_last_cow_mib": 0.0,
+          "samples": 29
+        },
+        "observations_only": "backup and import durations: no threshold exists",
+        "legs": {
+          "import": {
+            "answer": "Imported: 1000 saved, 0 already present, 0 skipped, 0 refused, 0 uncertain.",
+            "started": 0.0,
+            "settled": 47.83,
+            "seconds": 47.8
+          },
+          "generation_1": {
+            "generation": "gen-1795250476548-606f613a9560",
+            "attempts": 2,
+            "errors": [
+              "RECOVERY_BUSY"
+            ],
+            "started": 0.0,
+            "published": 51.56,
+            "seconds": 51.6,
+            "verified_at": 54.87
+          },
+          "generation_2": {
+            "generation": "gen-1795250481060-55a9a2c2ce25",
+            "attempts": 1,
+            "errors": [],
+            "started": 47.84,
+            "published": 54.52,
+            "seconds": 6.7,
+            "verified_at": 55.01
+          }
+        }
+      },
+      {
+        "source": "git:bf1b5288de1ae3b37063786ae4693dc11fa035aa",
+        "dirty_src": false,
+        "status": "FAIL",
+        "overlap": "ESTABLISHED",
+        "deviations": [
+          "the initial population of p-bi-0 is written in the host's scope `project`, not the K2 scope `s-k2`: the frozen text fixes only m3_k2's item and statement generators, and in `s-k2` the host's recovery check reads p-bi-0 as an emptied store once a copy exists and refuses every write (found by a reduced-size smoke run before the frozen run)"
+        ],
+        "populate_seconds": 83.9,
+        "barrier_after_s": 30.2,
+        "writer_finished_after_barrier_s": [
+          61.3,
+          61.2,
+          61.3,
+          61.2
+        ],
+        "interval_s": 61.3,
+        "measured": {
+          "ack_p95_ms": 26.83,
+          "projection_p95_ms": 13.26,
+          "rss_mib": 41.9,
+          "container_ram_mib": 30.8,
+          "disk_kib": 24748,
+          "acknowledged_write_loss": 0
+        },
+        "targets": {
+          "ack_p95_s": 1.5,
+          "projection_after_ack_p95_ms": 250,
+          "physical_ram_gib": 1,
+          "peak_persistence_disk_gib": 4,
+          "acknowledged_write_loss": 0
+        },
+        "verdicts": {
+          "ack_p95": true,
+          "projection_p95": true,
+          "rss": true,
+          "disk": true,
+          "loss": true,
+          "import_all_confirmed": true,
+          "imports_in_stream": true
+        },
+        "import_confirmed": 1000,
+        "writers_unconfirmed": 0,
+        "refusals": {},
+        "writer_identity": {
+          "items_expected": 10000,
+          "live_items": 10000,
+          "missing": 0,
+          "wrong": 0,
+          "unexpected": 0
+        },
+        "bi_identity": {
+          "initial": 10000,
+          "imports_confirmed": 1000,
+          "missing": 0,
+          "listed": 11000
+        },
+        "ack_ms_whole_run": {
+          "count": 20000,
+          "p50": 15.93,
+          "p95": 24.87,
+          "max": 1381.65
+        },
+        "ack_ms_interval": {
+          "count": 11994,
+          "p50": 17.71,
+          "p95": 26.83,
+          "max": 1381.65
+        },
+        "projection_ms_interval": {
+          "count": 237,
+          "p50": 7.68,
+          "p95": 13.26,
+          "max": 18.35
+        },
+        "generations": {
+          "generation_2": {
+            "generation": "gen-1795260786972-7372742da125",
+            "head": "1795260786670-0",
+            "entries": 11000,
+            "expected": 11000,
+            "initial_missing_or_changed": 0,
+            "imports_expected_at_head": 1000,
+            "imports_held": 1000,
+            "imports_missing": 0,
+            "imports_unexpected": 0,
+            "confirmed_imports_not_in_stream": 0,
+            "verified": true
+          }
+        },
+        "sample": {
+          "container_ram_mib": 30.8,
+          "used_memory_rss_mib": 41.9,
+          "disk_kib": 24748,
+          "aof_last_cow_mib": 0.0,
+          "rdb_last_cow_mib": 0.0,
+          "samples": 26
+        },
+        "observations_only": "backup and import durations: no threshold exists",
+        "legs": {
+          "generation_1": {
+            "error": "RECOVERY_BUSY",
+            "message": "Memory kept changing while the copy was read; it will be tried again.",
+            "transient": true,
+            "started": 0.0,
+            "seconds": 25.8
+          },
+          "import": {
+            "answer": "Imported: 1000 saved, 0 already present, 0 skipped, 0 refused, 0 uncertain.",
+            "started": 0.0,
+            "settled": 42.04,
+            "seconds": 42.0
+          },
+          "generation_2": {
+            "generation": "gen-1795260786972-7372742da125",
+            "started": 42.04,
+            "published": 44.89,
+            "seconds": 2.8,
+            "verified_at": 45.17
+          }
+        }
+      }
+    ],
+    "disposition": "Codex CP1 review: run once at CP2 (operator disposition); the driver changed after the first run (Fable and Codex CP2 reviews), and the operator released one more run on the final head ('Yes, run it once', #491 comment 7061791613); both results are kept",
+    "finding": "final head: every K2 target passed (ack p95 26.83 ms, projection p95 13.26 ms, RSS 41.9 MiB, disk 24,748 KiB, loss 0, overlap ESTABLISHED, 1,000 imports confirmed, generation 2 verified at its own head), but generation 1, started at the barrier beside the import with one production backup (Codex CP2 review 1, finding 8), failed RECOVERY_BUSY after 25.8 s: the Plan 12.11 export (Recovery._read_generation) needs every page of one read to report the same head and retries a bounded number of times; while the import commits into the same project (about 24 a second), a multi-page read of 11,000 items saw no single head in this run's attempts, so the retries were exhausted. In the first run generation 1 published at the post-import head; when each of its attempts began was not recorded. After such a transient failure is recorded, the scheduler does not retry automatically for at least 24 hours (memory_backups.Backups.run_if_due: DUE_AFTER_MS), so the backup can stay that much older; `/memory backup now` takes one at once. Retained as a miss, never re-targeted; host note: another session's test run and the Codex desktop app were running, which qualifies the measurement conditions",
+    "carried_to": "CP3, inside Plan 12.12 (Codex CP2 review 5 ruling): a Claude-owned blocker under #491. The repair must produce a consistent generation (entries, seal and deletion frontier, with deletion protections intact); accepting mixed heads, more retries or waiting for the import does not qualify. It needs a concurrent-write regression and a separately released frozen contention run; the 'run it once' release is consumed"
   },
   "revert_checks": {
     "head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",

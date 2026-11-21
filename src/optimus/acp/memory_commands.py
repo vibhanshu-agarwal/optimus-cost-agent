@@ -53,7 +53,8 @@ DESCRIPTIONS: Final = {
     "forget": ("Withdraw a memory item (history is kept); --purge deletes its text", "<id>@<version> [--purge]"),
     "memory": ("List memory, or view, edit, switch on or forget one item; export or restore the recovery copy",
                "[view <id> | edit <id>@<version> <statement> | switch-on <id>@<version> | forget <id>@<version> | page <n> | "
-               "export | restore [<generation>] | backup [configure <folder> [--cloud] | now | disable]]"),
+               "export | restore [<generation>] | backup [configure <folder> [--cloud] | now | disable] | "
+               "import <folder> [--map <project>] | import apply <preview> | import status]"),
     "welcome": ("Show the welcome-back brief for this project", ""),
 }
 PAGE_ITEMS: Final = 20
@@ -72,6 +73,10 @@ USAGE: Final = (
     "- `/memory export` saves the recovery copy now (the first time, you confirm where); `/memory restore` lists the copies and "
     "`/memory restore <generation>` restores one into an empty store; `/memory restore <generation> --map` restores an earlier "
     "registration's copy into this project, after you confirm.\n"
+    "- `/memory import <folder>` previews an Agent Memory Repo's entries as optional imported context (`--map <project>` "
+    "takes one other project's entries); `/memory import show <preview> <page>` shows each page; "
+    "`/memory import apply <preview>` saves them after you confirm; "
+    "`/memory import status` shows the last import.\n"
     "- `/memory backup` shows backups; `/memory backup configure <folder>` copies the recovery copy there daily (another drive; add `--cloud` for a synced folder), after you confirm; `/memory backup now` takes one now; `/memory backup disable` stops them.\n"
     "A change names the version you saw in `/memory`, for example `m-0123456789abcdef@2`."
 )
@@ -100,13 +105,16 @@ class MemoryCommand:
     target: str | None = None  # backup configure: the folder, exactly as typed
     cloud: bool = False  # backup configure: the user declares the folder synced
     encrypted: bool = False  # backup configure: an encrypted backup was asked for (unavailable)
+    preview: str | None = None  # import apply: the preview id
+    source: str | None = None  # import: the one other project whose entries are mapped into this one
 
 
 @dataclass(frozen=True)
 class Confirmation:
     """A recovery action waiting for the user's one-shot confirmation, bound to what it was shown and a host nonce."""
 
-    kind: str  # "location" (where copies go, and sync consent), "restore" (one generation) or "backup" (a backup folder)
+    kind: str  # "location" (where copies go, and sync consent), "restore" (one generation), "backup" (a backup folder) or
+    # "import" (one preview, bound to its digest)
     title: str
     text: str
     meta: dict[str, Any]
@@ -200,6 +208,8 @@ def parse_command(text: str, *, attachments: bool) -> MemoryCommand | str | None
         return MemoryCommand("export")
     if rest[0] == "backup":
         return _backup_command(text, rest[1:])
+    if rest[0] == "import":
+        return _import_command(text, rest[1:])
     if rest[0] == "restore" and len(rest) <= 3:
         if len(rest) == 1:
             return MemoryCommand("restore")
@@ -250,6 +260,26 @@ def _backup_command(text: str, rest: list[str]) -> MemoryCommand | str:
     if not folder or "\n" in folder:
         return USAGE
     return MemoryCommand("backup_configure", target=folder, cloud="--cloud" in flags, encrypted="--encrypted" in flags)
+
+
+def _import_command(text: str, rest: list[str]) -> MemoryCommand | str:
+    """`/memory import status`, `... apply <preview>`, or `... <absolute folder> [--map <project>]` (the folder as typed)."""
+    if rest == ["status"]:
+        return MemoryCommand("import_status")
+    if len(rest) == 2 and rest[0] == "apply":
+        return MemoryCommand("import_apply", preview=rest[1])
+    if len(rest) == 3 and rest[0] == "show" and rest[2].isdigit() and 1 <= int(rest[2]) <= 100:
+        return MemoryCommand("import_show", preview=rest[1], page=int(rest[2]))
+    if not rest or rest[0] in ("apply", "show", "status"):  # a malformed sub-command is never read as a folder
+        return USAGE
+    folder = text[text.index("import", text.index("/memory")) + len("import"):].strip()
+    mapped = None
+    if len(rest) >= 3 and rest[-2] == "--map":
+        mapped = rest[-1]
+        folder = folder[: folder.rindex("--map")].strip()
+    if not folder or "\n" in folder or "--map" in folder.split():
+        return USAGE
+    return MemoryCommand("import", target=folder, source=mapped)
 
 
 def _state(stored: Any) -> ItemState | None:
@@ -303,7 +333,7 @@ class MemoryCommands:
                  scope: str = "project", source: Callable[[str], str | None] = lambda _block: None,
                  source_digest: Callable[[str], str] | None = None, recovery: Any = None, workspace: Path | None = None,
                  brief: Callable[[memory_serving.ServedSet], str] | None = None, registry_recovery: Any = None,
-                 backups: Any = None) -> None:
+                 backups: Any = None, imports: Any = None, backlog: Any = None) -> None:
         self._store, self._trusted, self._sanitize, self._keyed = store, trusted, sanitize, keyed
         self._scope = scope
         self._source = source
@@ -313,6 +343,12 @@ class MemoryCommands:
         self._brief = brief
         self._registry_recovery = registry_recovery  # set when the project registry is lost: only its repair is available
         self._backups = backups  # the project's `memory_backups.Backups`, or None
+        self._importer: Any = None
+        if imports is not None and store is not None:  # the project's `memory_import.ImportLog`
+            from optimus.context.memory_import import Importer
+
+            self._importer = Importer(store, imports, keyed=keyed, sanitize=sanitize, workspace=workspace, scope=scope,
+                                      trusted=trusted, backlog=backlog)
 
     @property
     def project(self) -> str:
@@ -371,6 +407,8 @@ class MemoryCommands:
                 return self._recovery_command(command)
             if command.verb.startswith("backup"):
                 return self._backup_command(command)
+            if command.verb.startswith("import"):
+                return self._import_command(command)
             if not self._trusted:
                 return MemoryAnswer(READ_ONLY)
             if command.verb == "remember":
@@ -813,6 +851,59 @@ class MemoryCommands:
             return MemoryAnswer(failure.message)
         return MemoryAnswer(f"Backups now go to {assessed['target']}. Backed up `{generation.name}`: {generation.count} items.")
 
+    def _import_command(self, command: MemoryCommand) -> MemoryAnswer:
+        """`/memory import ...`: the host reads the folder as data (no model, no execution); only a confirmed apply writes."""
+        from optimus.context import memory_import as mi
+
+        importer = self._importer
+        if importer is None or not self._trusted:
+            return MemoryAnswer("Import is not available here: this workspace is not registered and trusted.")
+        try:
+            if command.verb == "import_status":
+                return MemoryAnswer(importer.status())
+            if command.verb == "import_show":
+                assert command.preview is not None
+                return MemoryAnswer(importer.page(command.preview, command.page))
+            if command.verb == "import_apply":
+                assert command.preview is not None
+                held = importer.held(command.preview)
+                if not held.all_shown:
+                    unseen = sorted(set(range(1, held.pages + 1)) - held.shown)
+                    return MemoryAnswer(f"Not yet: see every page of the preview first (not shown: "
+                                        f"{', '.join(map(str, unseen[:20]))}) with `/memory import show {held.id} <page>`. "
+                                        "Nothing was changed.")
+                counts = {"import": 0, "skipped": 0, "refused": 0}
+                for entry in held.source.entries:
+                    counts[entry.disposition] += 1
+                text = (f"Import {counts['import']} entries from {escape_text(held.source.root, 200)} into this project's memory as "
+                        f"optional imported context (preview `{held.id}`)? They are never saved as your own items. "
+                        f"{counts['skipped']} skipped and {counts['refused']} refused entries are not saved. Each entry is saved "
+                        "on its own; a repeat saves nothing twice.")
+                return MemoryAnswer("", confirm=Confirmation("import", "Import memory entries?", text,
+                                                             {"project": self.project, "preview": held.id, "digest": held.digest},
+                                                             secrets.token_hex(16)))
+            assert command.target is not None
+            preview = importer.preview(Path(command.target), command.source)
+            return MemoryAnswer(mi.preview_text(preview, project=self.project))
+        except mi.ImportRefused as refused:
+            return MemoryAnswer(refused.message)
+
+    def _import_confirmed(self, confirmation: Confirmation) -> MemoryAnswer:
+        from optimus.context import memory_import as mi
+
+        if self._importer is None or confirmation.meta.get("project") != self.project:
+            return MemoryAnswer("That import was prepared for another project or session. Nothing was changed.")
+        try:
+            counts, notices = self._importer.apply(confirmation.meta["preview"], confirmation.meta["digest"])
+        except mi.ImportRefused as refused:
+            return MemoryAnswer(refused.message)
+        text = (f"Imported: {counts['confirmed']} saved, {counts['duplicate']} already present, {counts['skipped']} skipped, "
+                f"{counts['refused']} refused, {counts['uncertain']} uncertain.")
+        if "stopped" in counts:
+            text += (f" It stopped because {counts['stopped']}, so {counts['remaining']} were not tried; "
+                     "`/memory import status` shows where it stopped. What was saved is kept.")
+        return MemoryAnswer(text, tuple(notices))
+
     def _location_question(self, destination: Path, *, moved_from: str | None = None) -> Confirmation:
         from optimus.context import memory_recovery as mr
 
@@ -865,6 +956,13 @@ class MemoryCommands:
                 return MemoryAnswer(failure.message)
             except (MemoryStoreUnavailable, MemoryStoreRefused):
                 return MemoryAnswer(UNAVAILABLE)
+        if confirmation.kind == "import":
+            try:
+                return self._import_confirmed(confirmation)
+            except MemoryStoreUnavailable:
+                return MemoryAnswer(UNAVAILABLE)
+            except MemoryStoreRefused as refused:
+                return MemoryAnswer(_refused(refused.code))
         recovery = self._recovery
         if recovery is None:
             return MemoryAnswer("The recovery copy is not available for this session.")

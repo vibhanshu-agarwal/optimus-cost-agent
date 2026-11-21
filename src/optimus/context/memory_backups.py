@@ -144,7 +144,7 @@ def _manifest_and_entries(captured: dict[str, bytes], name: str, project: str) -
             or metadata.get("project") != project or tuple(metadata.get("layout", ())) != mr.LAYOUT):
         raise BackupError("RECOVERY_GENERATION_FOREIGN", "That generation is not this project's, or not a format this host reads.")
     if (hashlib.sha256(captured["entries.jsonl"]).hexdigest() != manifest.get("entries_sha256")
-            or mr.bind_digest(metadata) != manifest.get("bind") or captured["MEMORY.md"] != mr.memory_md(entries, name)):
+            or mr.bind_digest(metadata) != manifest.get("bind") or captured["MEMORY.md"] not in mr.entry_points(entries, name)):
         raise damaged
     return manifest, entries
 

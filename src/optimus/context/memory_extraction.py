@@ -622,6 +622,7 @@ class MemoryExtractor:
         self.worktree = worktree  # the registry's opaque worktree identity, for continuity checkpoints
         self.recovery: Any = None  # the project's recovery copy (`memory_recovery.Recovery`), set by the launch's factory
         self.backups: Any = None  # the project's configured backups (`memory_backups.Backups`), set by the launch's factory
+        self.imports: Any = None  # the project's import progress log (`memory_import.ImportLog`), set by the launch's factory
         self.notices: Any = None  # the project's durable notice backlog (`memory_recovery.NoticeBacklog`), set by the factory
         self._sanitize, self._report, self._keyed = sanitize, report, keyed
         self._jobs: queue.Queue[Any] = queue.Queue(maxsize=depth)
@@ -981,6 +982,7 @@ def extractor_factory(*, config_root: Any, settings: Any, post: Callable[..., An
     from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
     from optimus.context.authored_memory import GatewayMemoryStore, gateway_post
     from optimus.context.memory_backups import Backups, BackupStateFile
+    from optimus.context.memory_import import ImportLog
     from optimus.context.memory_recovery import NoticeBacklog, Recovery, RegistryRecovery, StateFile
     from optimus.context.project_registry import ProjectRegistry, ProjectRegistryError, project_key
 
@@ -1028,6 +1030,7 @@ def extractor_factory(*, config_root: Any, settings: Any, post: Callable[..., An
                                     worktree=worktree_id(registration.worktree))
         extractor.recovery = recovery
         extractor.backups = backups
+        extractor.imports = ImportLog(Path(config_root), project)
         extractor.notices = NoticeBacklog.shared(Path(config_root), project)
         return extractor
 

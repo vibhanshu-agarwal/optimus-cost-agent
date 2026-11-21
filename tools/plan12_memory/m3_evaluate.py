@@ -112,6 +112,8 @@ EVENT_OF: Mapping[str, str] = {
     "restore.rejected": "restore.mapping_rejected",
     "restore.held": "restore.held_unserved",
     "prompt.from_summary": "memory.extracted_from_summary",
+    "store.import": "memory.import.optional",  # an import's admit, as legacy-import (Plan 12.12 Task 2)
+    "store.trust_from_import": "memory.trust_from_import",  # any other trust appended while an import applies
 }
 # Names this harness can observe: when one is absent, the run observed its absence. Any other needed name is missing coverage.
 OBSERVABLE = frozenset(EVENT_OF.values())
@@ -498,6 +500,10 @@ class Rig:
                 self.run.add(kind, item, version, project)
                 continue
             self.run.add("store.off.conflict" if status == "conflicted" else f"store.{action}", item, version, project)
+            if action == "admit" and event.get("trust") == "legacy-import":
+                self.run.add("store.import", item, version, project)
+            if self.pending.get("importing") and event.get("trust") not in ("legacy-import", "off"):
+                self.run.add("store.trust_from_import", item, version, project)
             if action not in ("admit", "update"):
                 continue
             statement = str(payload.get("statement", ""))
@@ -848,6 +854,47 @@ async def _op_delete_then_lose(rig: Rig, run: Run, seq: int, text: str, key: str
     rig.finish_input()
 
 
+async def _op_import(rig: Rig, run: Run, seq: int, text: str, entries: Sequence[Mapping[str, str]] = (), mapped: str = "",
+                     generation: bool = False, **_: Any) -> None:
+    """The input's note store is imported (Plan 12.12 Task 2): an Agent Memory Repo whose `MEMORY.md` holds one bullet per note,
+    `{project}` standing for this project's id; or, with `generation`, this project's newest recovery copy as it was exported.
+    The user runs `/memory import <folder>`, then `/memory import apply <preview>`, and confirms."""
+    from optimus.context import memory_recovery as mr
+
+    if generation:
+        state = rig.host.extractor.recovery.state()
+        folder = Path(state.destination) / mr.generations(Path(state.destination))[0].name
+    else:
+        folder = rig.root / f"import-{seq}"
+        folder.mkdir()
+        lines = [f"- {e['statement']}" + (f" [{e['meta'].replace('{project}', rig.host.project or '')}]" if e.get("meta") else "")
+                 for e in entries]
+        (folder / "MEMORY.md").write_bytes(("# Notes\n\n" + "\n".join(lines) + "\n").encode("utf-8"))
+    command = f"/memory import {folder}" + (f" --map {mapped}" if mapped else "")
+    await rig.host.say(command, f"p-{seq}-preview")
+    preview = re.search(r"(imp-[0-9a-f]{12})` of .*?, page 1 of ([0-9]+): ", run.answers[-1] if run.answers else "")
+    if preview is None:
+        raise RuntimeError(f"no import preview: {(run.answers or [''])[-1][:200]}")
+    for page in range(2, int(preview.group(2)) + 1):
+        await rig.host.say(f"/memory import show {preview.group(1)} {page}", f"p-{seq}-show-{page}")
+    rig.pending["importing"] = True
+    try:
+        await rig.host.say_confirming(f"/memory import apply {preview.group(1)}", f"p-{seq}", "allow")
+    finally:
+        rig.pending.pop("importing", None)
+    # the apply's own report and the settled status, kept for the mapped checks (Codex CP2 review 1, finding 6)
+    rig.pending.setdefault("imports", {})[seq] = {"answer": run.answers[-1] if run.answers else "", "status": _import_status(rig)}
+    rig.finish_input()
+
+
+async def _op_linked_session(rig: Rig, run: Run, seq: int, text: str, branch: str = "feature-x", **_: Any) -> None:
+    """A new session in a linked worktree of the same repository (it shares the git common directory), on `branch`."""
+    linked = rig.root / "wt-2"
+    _git(rig.workspace, "worktree", "add", "-q", "-b", branch, str(linked))
+    rig.host = Host(rig, linked, rig.config)
+    await rig.host.open()
+
+
 OPS: Mapping[str, Callable[..., Any]] = {name[4:]: value for name, value in globals().items() if name.startswith("_op_")}
 
 
@@ -1068,6 +1115,9 @@ def run_case(store: Store, base: Path, case: GoldenCase, entry: Mapping[str, Any
               "qualification": qualification_view(case, verdict, unrun, trace),
               "outcomes": run.outcomes, "extraction_calls": run.calls,
               "trace": json.loads(trace.model_dump_json(by_alias=True)), "verdict": json.loads(verdict.model_dump_json())}
+    mapped = MAPPED.get(case.case_id)
+    if mapped is not None:
+        result["mapped"] = {"error": error, **(mapped(rig, items) if error is None else {"status": "FAIL", "reasons": [error]})}
     check = EFFECTIVE.get(case.case_id)
     if check is not None:
         control = entry.get("control")
@@ -1195,6 +1245,106 @@ def _m10_sanitized(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
             "policy": "redaction before extraction, then automatic off capture with metadata only"}
 
 
+def _import_status(rig: Rig) -> str:
+    commands = getattr(rig.host.state, "memory_commands", None)
+    importer = getattr(commands, "_importer", None)
+    return importer.status() if importer is not None else ""
+
+
+def _served_items(rig: Rig) -> set[str]:
+    return {o.item for o in rig.run.observations if o.kind == "served" and o.item}
+
+
+def _mapped_only(rig: Rig, items: Mapping[str, Any], key: str, statement: str, refused: int) -> list[str]:
+    """Only the mapped note (its exact words, as the run config gives them) is stored, as legacy-import optional; nothing else
+    of the import is stored; the import's own status counts exactly `refused` refused notes."""
+    kept = rig.items.get(key)
+    row = items.get(kept or "")
+    others = [i for i, r in items.items() if i != kept and r.trust == "legacy-import"]
+    found = re.search(r"(\d+) refused", _import_status(rig))
+    return (([] if row is not None and (row.trust, row.status, row.kind, row.statement) == ("legacy-import", "active", "fact", statement)
+             else [f"{key} is not stored as active legacy-import with its words"]) +
+            [f"another imported item {i} is stored" for i in others] +
+            ([f"{i} became user-authored" for i, r in items.items() if r.trust == "user-authored"]) +
+            ([] if found is not None and int(found.group(1)) == refused else [f"import status does not report exactly {refused} refused"]) +
+            [f"an observed {o.kind}" for o in rig.run.observations if o.kind in ("store.trust_from_import", "store.trust_promoted")])
+
+
+def _m13a(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
+    reasons = _mapped_only(rig, items, "n-alpha-1", "The CI uses uv.", 2)
+    served = _served_items(rig)
+    reasons += [f"served {i}, not the mapped note" for i in served if i != rig.items.get("n-alpha-1")]
+    reasons += [] if rig.items.get("n-alpha-1") in served else ["the mapped note was not served at the question"]
+    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons,
+            "invariant": "only the mapped proj-alpha note is stored and served, as optional context"}
+
+
+def _m13b(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
+    reasons = _mapped_only(rig, items, "n-alpha-2", "Always use tabs.", 0)
+    row = items.get(rig.items.get("n-alpha-2", ""))
+    if row is not None and "claimed-origin:user" not in (row.lineage or ()):
+        reasons.append("the user-authored claim is not kept as an inert claimed origin")
+    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "invariant": "stored as legacy-import active optional; "
+            "never user-authored", "unrun": ["the answer abstains from asserting a user rule: " + PAID]}
+
+
+def _m13c(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
+    run = rig.run
+    keys = ("n-alpha-4", "lesson-squash")
+    reasons = [f"{key} was never created" for key in keys if key not in rig.items]
+    from optimus.context import memory_recovery as mr
+
+    exported: dict[str, Any] = {}
+    state = rig.host.extractor.recovery.state() if rig.host.extractor is not None else None
+    if state is not None and state.destination:
+        newest = mr.generations(Path(state.destination))
+        if newest:  # the copy the user exported at seq 4 (nothing changed after it: the re-import stored nothing)
+            _manifest, entries = mr.read_generation(Path(state.destination) / newest[0].name, rig.host.project)
+            exported = {shaped["entry"]["item"]: shaped["entry"] for shaped in entries}
+    for key, origin in zip(keys, ("legacy-import", "agent-derived"), strict=True):
+        row = items.get(rig.items.get(key, ""))
+        if row is None:
+            reasons.append(f"{key} is not in the store")
+        elif (row.trust, row.status, row.statement) != (origin, "withdrawn", ""):
+            reasons.append(f"{key} is {row.trust} {row.status}, not withdrawn {origin} without payload")
+        entry = exported.get(rig.items.get(key, ""))
+        if entry is None or (entry.get("trust"), entry.get("status"), entry.get("statement", "")) != (origin, "withdrawn", ""):
+            reasons.append(f"{key}'s exported entry is not its payload-free {origin} lifecycle")
+    reasons += [f"{key} served" for key in keys if rig.items.get(key) in _served_items(rig)]
+    reasons += [f"an observed {o.kind}" for o in run.observations
+                if o.kind in ("store.trust_from_import", "store.trust_promoted", "store.trust_changed")]
+    reasons += [f"the re-import stored {o.item}" for o in run.observations if o.kind.startswith("store.") and o.seq == 5]
+    reimport = rig.pending.get("imports", {}).get(5)
+    if reimport is None or not reimport["answer"].startswith("Imported:") or "were not tried" in reimport["answer"] \
+            or "interrupted" in reimport["status"]:
+        reasons.append("the re-import did not complete: " + (reimport["answer"][:160] if reimport else "never applied"))
+    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "invariant": "neither item is served before or after "
+            "re-import; neither gains user trust or is promoted; origins survive; no statement is recovered",
+            "coverage_note": "re-import into a project already holding the items proves no reactivation or promotion only; the "
+                             "re-import reads the copy's MEMORY.md, which lists no inactive item, so it never reads the payload-free "
+                             "lifecycle entries (entries.jsonl is not Markdown): their origins are checked in the exported copy"}
+
+
+def _m18c(rig: Rig, items: Mapping[str, Any]) -> dict[str, Any]:
+    reasons = _mapped_only(rig, items, "n-alpha-3", "Run the tests with pytest -q.", 2)
+    served = _served_items(rig)
+    reasons += [] if rig.items.get("n-alpha-3") in served else ["the mapped note was not served in the linked worktree"]
+    reasons += [f"served {i}, not the mapped note" for i in served if i != rig.items.get("n-alpha-3")]
+    linked = rig.host.workspace.name == "wt-2" and rig.host.project == next(
+        (o.project for o in rig.run.observations if o.kind == "store.import"), None)
+    reasons += [] if linked else ["the question did not run in a linked worktree of the importing registration"]
+    return {"status": "FAIL" if reasons else "PASS", "reasons": reasons, "invariant": "only the mapped proj-alpha note is "
+            "served in the linked worktree; the others are never stored with a statement or served; dispositions recorded",
+            "coverage_note": "the original's storage-state mismatch (n-unknown-3 stored off versus absent) is reported beside "
+                             "this result"}
+
+
+# Plan 12.12 Task 2: each case's mapped comparison under the agreed translation table (decisions.json oracle_mapping). A mapped
+# PASS proves only its named invariant; the original comparison is kept beside it, unchanged.
+MAPPED: Mapping[str, Callable[[Rig, Mapping[str, Any]], dict[str, Any]]] = {"M13-a": _m13a, "M13-b": _m13b, "M13-c": _m13c,
+                                                                           "M18-c": _m18c}
+
+
 EFFECTIVE: Mapping[str, Callable[[Rig, Mapping[str, Any]], dict[str, Any]]] = {
     "M09-a-D10": _m09_skip, "M15-a-D10": _m15_overflow, "M10-a": _m10_sanitized}
 
@@ -1258,7 +1408,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                               config_id=config["config_id"])
             results.append(result)
             print(case_id, result["qualification"]["status"], result["qualification"]["layers"],
-                  (result.get("effective") or {}).get("status", ""), result["error"] or "", flush=True)
+                  (result.get("effective") or {}).get("status", ""), (result.get("mapped") or {}).get("status", ""),
+                  result["error"] or "", flush=True)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     args.output.mkdir(parents=True, exist_ok=True)

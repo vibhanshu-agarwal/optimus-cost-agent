@@ -497,3 +497,58 @@ def test_an_anchor_read_is_bounded_inside_the_policy(tmp_path: Path, monkeypatch
     (workspace / "small.py").write_text("x = 1\n", encoding="utf-8")
     assert memory_serving.file_refs("See big.py and small.py.", workspace) == (memory_serving.file_refs("small.py", workspace)[0],)
     assert limits and set(limits) == {8}  # every anchor read is bounded, never read whole and measured after
+
+
+def test_the_import_cases_have_their_mapped_comparison_and_observable_events() -> None:
+    """Plan 12.12 Task 2: every case of the agreed translation table has its mapped check, every import event a case names has a
+    detector, and the run config drives each through the import operation."""
+    decisions = json.loads(Path("reports/plan12-memory-m3-part2/decisions.json").read_text(encoding="utf-8"))
+    mapped = {row["case"] for row in decisions["oracle_mapping"]["cases"]}
+    assert set(m3.MAPPED) == mapped == {"M13-a", "M13-b", "M13-c", "M18-c"}
+    assert {"memory.import.optional", "memory.trust_from_import"} <= m3.OBSERVABLE
+    config = json.loads(Path("reports/plan12-memory-m3-part2/run-config.json").read_text(encoding="utf-8"))
+    assert set(config["cases"]) == mapped
+    assert all(entry["steps"]["0"][0] == "import" for entry in config["cases"].values())
+    assert {"import", "linked_session"} <= set(m3.OPS)
+
+
+def test_an_imports_admit_and_a_trust_written_while_importing_are_detected(tmp_path: Path) -> None:
+    """Plan 12.12 Task 2 (Fable CP2 review 1, finding 14): `store.import` for an import's legacy-import admit; any other trust
+    appended while an import applies is `store.trust_from_import`."""
+    rig = _rig(tmp_path)
+    redis = rig.store.observer
+    redis.write("proj", _event(ITEM, 1, trust="legacy-import"))
+    rig.exchanged({"op": "append", "project": "proj"}, 200, {"event_id": "e-a-1", "durable_state": "confirmed"})
+    rig.pending["importing"] = True
+    redis.write("proj", _event(OTHER, 1, trust="user-authored"))
+    rig.exchanged({"op": "append", "project": "proj"}, 200, {"event_id": "e-b-1", "durable_state": "confirmed"})
+    kinds = [(o.kind, o.item) for o in rig.run.observations]
+    assert ("store.import", ITEM) in kinds and ("store.trust_from_import", OTHER) in kinds
+    assert ("store.import", OTHER) not in kinds and ("store.trust_from_import", ITEM) not in kinds
+    assert m3.EVENT_OF["store.import"] == "memory.import.optional" and m3.EVENT_OF["store.trust_from_import"] == "memory.trust_from_import"
+
+
+def test_a_mapped_check_fails_on_the_wrong_note_or_count(tmp_path: Path) -> None:
+    """Fable CP2 review 1, finding 9: the mapped note must be the one with the configured words, and the refused count exact."""
+    rig = _rig(tmp_path)
+    rig.items["n-alpha-1"] = ITEM
+    importer = SimpleNamespace(status=lambda: "Last import: 1 confirmed, 12 refused; 0 remaining.")
+    rig.host.state = SimpleNamespace(memory_commands=SimpleNamespace(_importer=importer))
+    beta = SimpleNamespace(trust="legacy-import", status="active", kind="fact", statement="The CI uses poetry.")
+    reasons = m3._mapped_only(rig, {ITEM: beta}, "n-alpha-1", "The CI uses uv.", 2)
+    assert "n-alpha-1 is not stored as active legacy-import with its words" in reasons
+    assert "import status does not report exactly 2 refused" in reasons
+    alpha = SimpleNamespace(trust="legacy-import", status="active", kind="fact", statement="The CI uses uv.")
+    importer.status = lambda: "Last import: 1 confirmed, 2 refused; 0 remaining."
+    assert m3._mapped_only(rig, {ITEM: alpha}, "n-alpha-1", "The CI uses uv.", 2) == []
+
+
+def test_m13c_fails_when_the_re_import_was_refused() -> None:
+    """Codex CP2 review 1, finding 6: withdrawn rows and an earlier export do not pass M13-c unless the re-import itself completed."""
+    rig = SimpleNamespace(items={"n-alpha-4": ITEM, "lesson-squash": OTHER}, run=m3.Run(), host=SimpleNamespace(extractor=None, project="p"),
+                          pending={"imports": {5: {"answer": "The folder changed since the preview, so nothing was imported.", "status": ""}}})
+    rows = {ITEM: SimpleNamespace(trust="legacy-import", status="withdrawn", statement=""),
+            OTHER: SimpleNamespace(trust="agent-derived", status="withdrawn", statement="")}
+    verdict = m3._m13c(rig, rows)  # type: ignore[arg-type]
+    assert verdict["status"] == "FAIL"
+    assert any(reason.startswith("the re-import did not complete: The folder changed") for reason in verdict["reasons"])

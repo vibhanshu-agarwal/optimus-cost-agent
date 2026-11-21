@@ -1,0 +1,325 @@
+{
+  "schema": "plan12-memory-m3-part2.revert-checks.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "head": "git:4573369445ac7dba990c80c763e83835b3e9cce5",
+  "rule": "CAUGHT only when the baseline and the restored code pass the named test cleanly (at least one pass, no skip or error) and the mutant fails that named test itself, with no collection or setup error",
+  "frozen": "cases.json revert_checks.task2",
+  "caught": 7,
+  "total": 7,
+  "results": [
+    {
+      "control": "origin ceiling (legacy-import only)",
+      "test": "tests/unit/context/test_memory_import.py::test_metadata_cannot_assert_user_authority",
+      "file": "src/optimus/context/memory_import.py",
+      "verdict": "CAUGHT",
+      "source_sha256": "hex:727ea33e7df87d0a3f424b94b4a2d7620ba3c57e2dc4e02c200aef844836e4e2",
+      "mutant_sha256": "hex:b55c12fc503f3d98b3a8bfd997fa5803b9d839312750387696ea3c6c8350a70c",
+      "baseline": {
+        "exit": 0,
+        "run_id": "20261121T111731-63692-1d9b0a",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:936e201ac7a8187f7a81c934daf68de47d9b1b18f3f2c379d87ae97a92627174"
+      },
+      "mutant": {
+        "exit": 1,
+        "run_id": "20261121T111735-61428-adfccd",
+        "counts": {
+          "failed": 1
+        },
+        "named_test_failed": true,
+        "log_sha256": "hex:14630e76f0bdbb46a01210e9b32439a1ac7affe51aa6d04ff53d77b8625be6ea"
+      },
+      "restored": {
+        "exit": 0,
+        "run_id": "20261121T111739-5740-db616f",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:e511fb8ff3a585f7e22eac93a4f7282aec9091ca1f07a15a0e5a57fb2d06f456"
+      }
+    },
+    {
+      "control": "explicit project mapping",
+      "test": "tests/unit/context/test_memory_import.py::test_unmapped_and_other_project_entries_refused",
+      "file": "src/optimus/context/memory_import.py",
+      "verdict": "CAUGHT",
+      "source_sha256": "hex:727ea33e7df87d0a3f424b94b4a2d7620ba3c57e2dc4e02c200aef844836e4e2",
+      "mutant_sha256": "hex:80353f0c73da24d873a2ed385d6a2cba57c70575ff5c11f9c9c664d3198d5587",
+      "baseline": {
+        "exit": 0,
+        "run_id": "20261121T111749-54980-189f66",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:652ee49e35b365106864900a34f91d1c16dd978e30ae7102cc606ed0f89e7fd6"
+      },
+      "mutant": {
+        "exit": 1,
+        "run_id": "20261121T111753-65256-920060",
+        "counts": {
+          "failed": 1
+        },
+        "named_test_failed": true,
+        "log_sha256": "hex:b14c9f1c22da2f49e2df036bacfe68d3d500b5d34642ef61b1327ee78e144613"
+      },
+      "restored": {
+        "exit": 0,
+        "run_id": "20261121T111758-46752-9a844b",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:d25f83affca04a1382e311e0cfe325a516dd8285af4e9378dad79a83d557f95d"
+      }
+    },
+    {
+      "control": "preview/source binding",
+      "test": "tests/unit/context/test_memory_import.py::test_changed_source_refuses_apply",
+      "file": "src/optimus/context/memory_import.py",
+      "verdict": "CAUGHT",
+      "source_sha256": "hex:727ea33e7df87d0a3f424b94b4a2d7620ba3c57e2dc4e02c200aef844836e4e2",
+      "mutant_sha256": "hex:920112b31845833c3e04483bc65a2035fb010b7a3434fc81303e228f44e467a2",
+      "baseline": {
+        "exit": 0,
+        "run_id": "20261121T111801-43716-173bdb",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:d1f1a5a6844409a4e3166ddba3ddb97ec43d3da1f1160c283ab114aebb0f54d3"
+      },
+      "mutant": {
+        "exit": 1,
+        "run_id": "20261121T111805-59732-b68bfe",
+        "counts": {
+          "skipped": 0,
+          "failed": 1
+        },
+        "named_test_failed": true,
+        "log_sha256": "hex:8793d9e0655629f207bee17fd625864291f0731c3599c469f1782df5abbc8d1b"
+      },
+      "restored": {
+        "exit": 0,
+        "run_id": "20261121T111810-47920-3b5f88",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:728dd668f08b6fd177c24eabf0bb052c91669d4fd459f98f62ea88d7882d3fc5"
+      }
+    },
+    {
+      "control": "restrictive-state preservation",
+      "test": "tests/unit/context/test_memory_import.py::test_inactive_source_states_stay_inactive",
+      "file": "src/optimus/context/memory_import.py",
+      "verdict": "CAUGHT",
+      "source_sha256": "hex:727ea33e7df87d0a3f424b94b4a2d7620ba3c57e2dc4e02c200aef844836e4e2",
+      "mutant_sha256": "hex:368792048c09049dac434fca932880fc1f657c193bb27f0ce5e09c47d72f7831",
+      "baseline": {
+        "exit": 0,
+        "run_id": "20261121T111813-55444-b8ac75",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:f28c3681fb97cd53196c4e0fe03aeb7539b34b37e36bb589df9cc90d775ec9be"
+      },
+      "mutant": {
+        "exit": 1,
+        "run_id": "20261121T111817-41396-56c55c",
+        "counts": {
+          "skipped": 0,
+          "failed": 1
+        },
+        "named_test_failed": true,
+        "log_sha256": "hex:3794dd4390c31a443baf49f13770ae5e4e9b0f1c396c0df23968c94c52a85b09"
+      },
+      "restored": {
+        "exit": 0,
+        "run_id": "20261121T111821-19940-a92a75",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:f7d5e831e8cc8da5c64a6db83ee7bf9eef20d5ba9d3fedd6e9a6bfd874ba2f21"
+      }
+    },
+    {
+      "control": "idempotent resume",
+      "test": "tests/integration/memory/test_import.py::test_resume_never_duplicates",
+      "file": "src/optimus/context/memory_import.py",
+      "verdict": "CAUGHT",
+      "source_sha256": "hex:727ea33e7df87d0a3f424b94b4a2d7620ba3c57e2dc4e02c200aef844836e4e2",
+      "mutant_sha256": "hex:9d4aeb33af57457b91b15b815d38d2f03f4e13dc575d431e28d757cb0d270acd",
+      "baseline": {
+        "exit": 0,
+        "run_id": "20261121T111825-56368-7c8ab8",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:f5ea3e8e53653534150e4a1ffebd052c6272a448936bdce48013a95a69639a9b"
+      },
+      "mutant": {
+        "exit": 1,
+        "run_id": "20261121T111832-20936-d5dd4c",
+        "counts": {
+          "skipped": 0,
+          "failed": 1
+        },
+        "named_test_failed": true,
+        "log_sha256": "hex:ce33da69a1bf67f92d9f5d4fc4604766a16922c89c22b79b06099817688964ae"
+      },
+      "restored": {
+        "exit": 0,
+        "run_id": "20261121T111840-47404-129524",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:afa9eda761d8545fa4b1f760cb7326a572875749fe16bb07e8811c1562ddc085"
+      }
+    },
+    {
+      "control": "secret/injection/B1 scans",
+      "test": "tests/unit/context/test_memory_import.py::test_scans_refuse_secret_injection_and_overlap",
+      "file": "src/optimus/context/memory_import.py",
+      "verdict": "CAUGHT",
+      "source_sha256": "hex:727ea33e7df87d0a3f424b94b4a2d7620ba3c57e2dc4e02c200aef844836e4e2",
+      "mutant_sha256": "hex:05788e14fc416d0213903acfaa8c43145415f7dc69fbbdd54c232589ccb1b010",
+      "baseline": {
+        "exit": 0,
+        "run_id": "20261121T111846-43316-f53551",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:cc20912e588ea605c470193c7ceb253cdb89e91acb3f185d3c8563926e6b2e06"
+      },
+      "mutant": {
+        "exit": 1,
+        "run_id": "20261121T111850-21908-850d48",
+        "counts": {
+          "skipped": 0,
+          "failed": 1
+        },
+        "named_test_failed": true,
+        "log_sha256": "hex:62c76eac005d290554ab2882ce159264ded0b32ca80eaec693a40d915409eaae"
+      },
+      "restored": {
+        "exit": 0,
+        "run_id": "20261121T111854-19316-fca50d",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:a49524daf120ad18d6ad95be624261dc408a8cd6ab850f5acd427cf134fcb8be"
+      }
+    },
+    {
+      "control": "notice binding to commits",
+      "test": "tests/integration/memory/test_import.py::test_notices_bind_to_actual_commits",
+      "file": "src/optimus/context/memory_import.py",
+      "verdict": "CAUGHT",
+      "source_sha256": "hex:727ea33e7df87d0a3f424b94b4a2d7620ba3c57e2dc4e02c200aef844836e4e2",
+      "mutant_sha256": "hex:9c1cab4b28eb7523bb3c2b9937e04b0d2beebfd61ee96b262f96533b8a8e1432",
+      "baseline": {
+        "exit": 0,
+        "run_id": "20261121T111858-39136-613a9d",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:3288bc20a1249edb192243e4741405e57a95e540d1f416fa2f197968285d6b32"
+      },
+      "mutant": {
+        "exit": 1,
+        "run_id": "20261121T111905-19104-2d0c76",
+        "counts": {
+          "failed": 1
+        },
+        "named_test_failed": true,
+        "log_sha256": "hex:a1ea38e136fd122b80dbe70d1c027f14fb1675279a9c04e9f90859818a9969cd"
+      },
+      "restored": {
+        "exit": 0,
+        "run_id": "20261121T111911-65756-7582a9",
+        "counts": {
+          "passed": 1
+        },
+        "named_test_failed": false,
+        "log_sha256": "hex:b063029586611552148f6f3a2d83da27bcac0d22721aab8fd9677c9e4caf87ba"
+      }
+    }
+  ],
+  "attempts": [
+    {
+      "file": "revert-task2-draft.json",
+      "head": "git:a15b333225c3ea5564d5b5ca36d78fe23d6ef7f7",
+      "dirty_src": true,
+      "caught": 6,
+      "total": 7,
+      "invalid": [
+        "idempotent resume: mutation anchor not found exactly once"
+      ]
+    },
+    {
+      "file": "revert-task2-r1.json",
+      "head": "git:2ca030647d863bcee2fa7113eaf3dfcbbd21406b",
+      "dirty_src": false,
+      "caught": 7,
+      "total": 7,
+      "invalid": []
+    },
+    {
+      "file": "revert-task2-r2.json",
+      "head": "git:983f55f33a7bce2ea59c60e01ea86b610e09d71a",
+      "dirty_src": false,
+      "caught": 7,
+      "total": 7,
+      "invalid": []
+    },
+    {
+      "file": "revert-task2-r3.json",
+      "head": "git:1806cb092f19280f1d66e6925639fca556b4d6d7",
+      "dirty_src": false,
+      "caught": 6,
+      "total": 7,
+      "invalid": [
+        "idempotent resume: mutation anchor not found exactly once"
+      ]
+    },
+    {
+      "file": "revert-task2-r4.json",
+      "head": "git:1806cb092f19280f1d66e6925639fca556b4d6d7",
+      "dirty_src": false,
+      "caught": 6,
+      "total": 7,
+      "invalid": [
+        "idempotent resume: mutation anchor not found exactly once"
+      ]
+    },
+    {
+      "file": "revert-task2-r5.json",
+      "head": "git:1806cb092f19280f1d66e6925639fca556b4d6d7",
+      "dirty_src": false,
+      "caught": 7,
+      "total": 7,
+      "invalid": []
+    },
+    {
+      "file": "revert-task2-r6.json",
+      "head": "git:4573369445ac7dba990c80c763e83835b3e9cce5",
+      "dirty_src": false,
+      "caught": 7,
+      "total": 7,
+      "invalid": []
+    }
+  ]
+}

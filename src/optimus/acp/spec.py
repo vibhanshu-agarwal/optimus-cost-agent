@@ -1917,7 +1917,8 @@ class AcpDuplexAdapter:
                         extractor.store, trusted=True, keyed=extractor.keyed, source=extractor.source,
                         source_digest=extractor.source_digest, sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize,
                         brief=session.continuity.welcome, recovery=recovery, workspace=Path(cwd),
-                        backups=getattr(extractor, "backups", None))
+                        backups=getattr(extractor, "backups", None), imports=getattr(extractor, "imports", None),
+                        backlog=session.memory_backlog)
                     if recovery is not None:
                         session.recovery_scheduler = RecoveryScheduler(recovery)
                         session.recovery_scheduler.start()

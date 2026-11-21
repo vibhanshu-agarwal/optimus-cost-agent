@@ -1,0 +1,388 @@
+{
+  "schema": "plan12-memory-m3-part2.import-k1.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "head": "git:bf1b5288de1ae3b37063786ae4693dc11fa035aa",
+  "evidence_rule": "each source names its own head; every head named has exactly this head's src and tools",
+  "sources": [
+    {
+      "head": "git:bf1b5288de1ae3b37063786ae4693dc11fa035aa",
+      "run_id": "20261121T112014-10008-9703c6",
+      "mode": "passive",
+      "reason": "overridden_addopts",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "tests/unit/context, tests/unit/acp/test_memory_commands.py, tests/unit/acp/test_memory_served_record.py, the evaluator and driver unit tests, and the probe, logging-surface, profile, tracked-file and walker inventories",
+      "summary": "980 passed, 2 skipped"
+    },
+    {
+      "head": "git:4573369445ac7dba990c80c763e83835b3e9cce5",
+      "run_id": "20261121T110754-64260-ebbd6a",
+      "mode": "passive",
+      "reason": "overridden_addopts",
+      "records": "COMPLETE",
+      "exit_status": 0,
+      "selection": "-m requires_plan12_memory_redis tests/integration/memory/test_import.py tests/integration/memory/test_user_authority.py tests/integration/memory/test_backups.py tests/integration/memory/test_recovery.py",
+      "summary": "19 passed",
+      "release": "operator 2026-11-21 'Start CP2, release store': p1212-memory-test-redis port 6396, volume p1212-memory-test-data, fault injection; backup folder F:\\optimus-p1212-test"
+    }
+  ],
+  "bounds": "targets.json import: 1 MiB per file, 16 MiB total, 1,000 entries, 2,000-character statements refused whole; plus 1,000 links followed and 1,000 gaps listed (Fable CP2 review 1, finding 5)",
+  "cases": [
+    {
+      "case": "I01",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_preview_lists_each_entry_mapping_and_disposition_and_saves_nothing",
+        "tests/unit/context/test_memory_import.py::test_apply_waits_until_every_page_was_shown"
+      ]
+    },
+    {
+      "case": "I02",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_apply_saves_each_entry_as_optional_imported_context",
+        "tests/unit/context/test_memory_import.py::test_through_the_adapter_each_commit_gets_its_card_and_served_reads_name_the_imports[allow]"
+      ]
+    },
+    {
+      "case": "I03",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_repeat_replay_wrong_session_stale_and_unconfirmed_change_nothing",
+        "tests/unit/context/test_memory_import.py::test_through_the_adapter_each_commit_gets_its_card_and_served_reads_name_the_imports[allow]",
+        "tests/unit/acp/test_memory_commands.py::test_the_import_commands_parse_only_their_own_forms"
+      ],
+      "note": "commands are parsed only from the user's own prompt text (attached text is refused); the adapter test shows the import called no model and applied only on its own confirmation"
+    },
+    {
+      "case": "I04",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_changed_source_refuses_apply"
+      ]
+    },
+    {
+      "case": "I05",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_repeat_replay_wrong_session_stale_and_unconfirmed_change_nothing",
+        "tests/unit/context/test_memory_import.py::test_through_the_adapter_each_commit_gets_its_card_and_served_reads_name_the_imports[cancel]"
+      ]
+    },
+    {
+      "case": "I06",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_traversal_outside_links_and_aliases_are_coverage_gaps",
+        "tests/unit/context/test_memory_import.py::test_a_linked_root_is_refused",
+        "tests/unit/context/test_memory_import.py::test_a_case_alias_is_refused_on_windows"
+      ],
+      "note": "links and the linked root are exercised with Windows junctions where symbolic links need a privilege; known limit: on a case-insensitive file system that keeps the spelling it is given (macOS), a case alias is read under its alias spelling"
+    },
+    {
+      "case": "I07",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_binary_encodings_controls_and_bidi_are_refused"
+      ]
+    },
+    {
+      "case": "I08",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_bounds_refuse_at_the_limit_and_never_truncate",
+        "tests/unit/context/test_memory_import.py::test_links_and_gaps_are_bounded"
+      ]
+    },
+    {
+      "case": "I09",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_a_link_cycle_ends_by_file_identity"
+      ]
+    },
+    {
+      "case": "I10",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_scans_refuse_secret_injection_and_overlap"
+      ]
+    },
+    {
+      "case": "I11",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_metadata_cannot_assert_user_authority"
+      ],
+      "note": "also M13-b, evaluation.json"
+    },
+    {
+      "case": "I12",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_an_import_never_changes_a_user_item"
+      ],
+      "note": "no import ever targets, updates or retargets an existing item; a conflict in meaning between an imported note and a user item is not detected mechanically, and user items stay protected and served first"
+    },
+    {
+      "case": "I13",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_unmapped_and_other_project_entries_refused"
+      ],
+      "note": "also M13-a, evaluation.json"
+    },
+    {
+      "case": "I14",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_repeat_replay_wrong_session_stale_and_unconfirmed_change_nothing",
+        "tests/integration/memory/test_import.py::test_resume_never_duplicates"
+      ]
+    },
+    {
+      "case": "I15",
+      "status": "PASS (store lost mid-apply, a lost reply, a lost lease, an in-process host death, failed resumes and writes)",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_an_interrupted_apply_reports_progress_and_resumes_without_duplicates",
+        "tests/unit/context/test_memory_import.py::test_an_uncertain_commit_found_on_resume_is_confirmed_with_its_notice",
+        "tests/unit/context/test_memory_import.py::test_a_lost_lease_mid_apply_keeps_each_commit_and_its_notice",
+        "tests/integration/memory/test_import.py::test_resume_never_duplicates",
+        "tests/unit/context/test_memory_import.py::test_a_host_that_dies_mid_apply_loses_no_notice_and_the_next_apply_reconciles",
+        "tests/unit/context/test_memory_import.py::test_a_failed_resume_keeps_the_unheard_commit_until_one_reconciles_it",
+        "tests/unit/context/test_memory_import.py::test_a_notice_the_backlog_could_not_keep_is_rebuilt_by_the_next_apply",
+        "tests/unit/context/test_memory_import.py::test_a_failed_head_swap_keeps_the_last_record",
+        "tests/unit/context/test_memory_import.py::test_log_and_backlog_failures_stop_the_apply_and_keep_what_was_committed"
+      ],
+      "note": "UNRUN: a real host process kill mid-apply (as CP1's B18/B26)"
+    },
+    {
+      "case": "I16",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_a_reimported_export_keeps_claimed_origins_and_adds_nothing",
+        "tests/unit/context/test_memory_import.py::test_an_old_copy_never_revives_a_purged_or_edited_item"
+      ],
+      "note": "also round-trip.json"
+    },
+    {
+      "case": "I17",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_a_reimported_export_keeps_claimed_origins_and_adds_nothing",
+        "tests/unit/context/test_memory_import.py::test_a_re_exported_import_claims_no_origin",
+        "tests/unit/context/test_memory_import.py::test_a_format_2_copy_written_before_imports_named_their_origin_still_verifies"
+      ]
+    },
+    {
+      "case": "I18",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_inactive_source_states_stay_inactive",
+        "tests/unit/context/test_memory_import.py::test_a_purged_import_is_never_revived_by_importing_it_again_with_a_mapping",
+        "tests/integration/memory/test_import.py::test_a_withdrawn_import_leaves_the_next_copy_payload_free",
+        "tests/integration/memory/test_backups.py::test_withdrawal_publishes_clean_before_retiring"
+      ],
+      "note": "clean publication before retirement and pending cleanup are the CP1 backups' mechanism, which an imported item's withdrawal reaches through the same store hook"
+    },
+    {
+      "case": "I19",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_scans_refuse_secret_injection_and_overlap",
+        "tests/unit/context/test_memory_import.py::test_an_unreadable_linked_file_refuses_every_entry",
+        "tests/unit/context/test_memory_import.py::test_a_copys_own_entries_are_not_source_text_and_an_altered_copy_refuses_every_entry"
+      ],
+      "note": "B1 sources: linked non-Markdown files in the folder and workspace files the entry names; known limit: copying from a workspace file the entry does not name is not recognised"
+    },
+    {
+      "case": "I20",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_malformed_entries_are_refused_and_others_unaffected",
+        "tests/unit/context/test_memory_import.py::test_wrapped_bullets_are_refused_whole_and_fenced_code_holds_no_entries",
+        "tests/unit/context/test_memory_import.py::test_a_copy_manifest_of_the_wrong_shape_is_refused_readably",
+        "tests/unit/context/test_memory_import.py::test_a_copys_manifest_is_read_bounded_and_identity_checked"
+      ]
+    },
+    {
+      "case": "I21",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_metadata_cannot_assert_user_authority"
+      ]
+    },
+    {
+      "case": "I22",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_a_stale_anchor_is_held_for_re_verification",
+        "tests/unit/context/test_memory_import.py::test_a_copy_brings_its_pins_and_branch_into_a_fresh_registration"
+      ]
+    },
+    {
+      "case": "I23",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_lineage_claims_are_refused"
+      ]
+    },
+    {
+      "case": "I24",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_malformed_entries_are_refused_and_others_unaffected",
+        "tests/unit/context/test_memory_import.py::test_changed_source_refuses_apply"
+      ]
+    },
+    {
+      "case": "I25",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_through_the_adapter_each_commit_gets_its_card_and_served_reads_name_the_imports[allow]",
+        "tests/integration/memory/test_import.py::test_notices_bind_to_actual_commits"
+      ]
+    },
+    {
+      "case": "I26",
+      "status": "PASS",
+      "tests": [
+        "tests/integration/memory/test_import.py::test_restore_keeps_authority_and_import_downgrades_it"
+      ],
+      "note": "also round-trip.json"
+    },
+    {
+      "case": "I27",
+      "status": "PASS",
+      "tests": [
+        "tests/unit/context/test_memory_import.py::test_inactive_source_states_stay_inactive"
+      ],
+      "note": "also M13-c, evaluation.json; round-trip.json"
+    },
+    {
+      "case": "I28",
+      "status": "PASS",
+      "tests": [
+        "tests/integration/memory/test_import.py::test_a_linked_worktree_shares_imports_and_a_clone_does_not"
+      ],
+      "note": "also M18-c, evaluation.json"
+    }
+  ],
+  "attempts": {
+    "rule": "every unit, live and revert attempt of this checkpoint, with the head its run record names and its outcome; a run marked `worktree` ran against uncommitted changes later committed as the named commit",
+    "unit": [
+      {
+        "log": "unit-2",
+        "head": "git:f3e839f",
+        "worktree": "committed as 2ca0306",
+        "summary": "1 failed, 3027 passed, 31 skipped",
+        "failed": "test_verify_plan996_logging_surfaces (a manifest key renamed in the same change, fixed before the commit)"
+      },
+      {
+        "log": "unit-3",
+        "head": "git:2ca0306",
+        "worktree": "committed as 983f55f",
+        "summary": "973 passed, 2 skipped"
+      },
+      {
+        "log": "unit-4",
+        "head": "git:1806cb0",
+        "summary": "978 passed, 2 skipped"
+      },
+      {
+        "log": "unit-5",
+        "head": "git:4573369",
+        "summary": "1 failed, 979 passed, 2 skipped",
+        "failed": "test_tracked_file_scanners walker inventory (the new test's glob(*.tmp) unlisted; listed in bf1b528)"
+      },
+      {
+        "log": "unit-6",
+        "head": "git:bf1b528",
+        "summary": "980 passed, 2 skipped"
+      }
+    ],
+    "live": [
+      {
+        "log": "live-3",
+        "head": "git:2ca0306",
+        "worktree": "committed as 983f55f",
+        "summary": "19 passed"
+      },
+      {
+        "log": "live-4",
+        "head": "git:1806cb0",
+        "summary": "19 passed"
+      },
+      {
+        "log": "live-5",
+        "head": "git:4573369",
+        "summary": "19 passed"
+      }
+    ],
+    "revert": [
+      {
+        "file": "revert-task2-draft.json",
+        "head": "git:a15b333225c3ea5564d5b5ca36d78fe23d6ef7f7",
+        "dirty_src": true,
+        "caught": 6,
+        "total": 7,
+        "invalid": [
+          "idempotent resume: mutation anchor not found exactly once"
+        ]
+      },
+      {
+        "file": "revert-task2-r1.json",
+        "head": "git:2ca030647d863bcee2fa7113eaf3dfcbbd21406b",
+        "dirty_src": false,
+        "caught": 7,
+        "total": 7,
+        "invalid": []
+      },
+      {
+        "file": "revert-task2-r2.json",
+        "head": "git:983f55f33a7bce2ea59c60e01ea86b610e09d71a",
+        "dirty_src": false,
+        "caught": 7,
+        "total": 7,
+        "invalid": []
+      },
+      {
+        "file": "revert-task2-r3.json",
+        "head": "git:1806cb092f19280f1d66e6925639fca556b4d6d7",
+        "dirty_src": false,
+        "caught": 6,
+        "total": 7,
+        "invalid": [
+          "idempotent resume: mutation anchor not found exactly once"
+        ]
+      },
+      {
+        "file": "revert-task2-r4.json",
+        "head": "git:1806cb092f19280f1d66e6925639fca556b4d6d7",
+        "dirty_src": false,
+        "caught": 6,
+        "total": 7,
+        "invalid": [
+          "idempotent resume: mutation anchor not found exactly once"
+        ]
+      },
+      {
+        "file": "revert-task2-r5.json",
+        "head": "git:1806cb092f19280f1d66e6925639fca556b4d6d7",
+        "dirty_src": false,
+        "caught": 7,
+        "total": 7,
+        "invalid": []
+      },
+      {
+        "file": "revert-task2-r6.json",
+        "head": "git:4573369445ac7dba990c80c763e83835b3e9cce5",
+        "dirty_src": false,
+        "caught": 7,
+        "total": 7,
+        "invalid": []
+      }
+    ]
+  }
+}
