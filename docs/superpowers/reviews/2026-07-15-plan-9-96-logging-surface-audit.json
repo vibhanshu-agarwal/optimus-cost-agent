@@ -6769,6 +6769,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m3_evaluate:_op_linked_session:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m3_evaluate.py::test_a_commit_counts_only_for_its_own_project_s_confirmed_event_in_order",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m3_evaluate:_op_earlier_registration:file_open",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: `Host.open()` opens an ACP session on the qualification workspace (session/new); no file is opened and nothing is logged.",
@@ -6846,6 +6854,70 @@
       "rationale": "Plan 12.12 Task 1 backups: copies the exact bytes of a recovery generation the Gateway signed (active items that passed the Gate's scans and the persistence sanitizer; every other item payload-free) into the user-confirmed backup folder through exclusive, fsynced staging and one atomic rename; no diagnostic, prompt or model text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/context/test_memory_backups.py::test_b02_b22_a_separate_disk_target_holds_the_exact_generation_bytes",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:ImportLog._write:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts), json.dumps with ensure_ascii=True into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_inactive_source_states_stay_inactive",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:ImportLog._write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. json.dumps with ensure_ascii=True.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_inactive_source_states_stay_inactive",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:ImportLog._write:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_inactive_source_states_stay_inactive",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:ImportLog.start:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. The first line: preview id, digest, root, time, planned counts.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_an_interrupted_apply_reports_progress_and_resumes_without_duplicates",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:ImportLog.outcome:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. One entry's locator, outcome and commit identifiers.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_an_interrupted_apply_reports_progress_and_resumes_without_duplicates",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:ImportLog.settled:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2 import progress log: one JSON line per entry outcome (preview id and digest, the root path, root-relative locators, outcome names, store item ids, versions and event ids, counts) into the host's private config; never an entry's statement, metadata, diagnostic, prompt or model text. The closing line: a time only, fsynced.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_apply_saves_each_entry_as_optional_imported_context",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:Reader._open:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2: opens one import source note read-only (\"rb\"), bounded to 1 MiB plus one byte, after link, alias, regular-file and identity checks; nothing is written or retained beyond the preview in session RAM.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_bounds_refuse_at_the_limit_and_never_truncate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_import:Source.digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Plan 12.12 Task 2: the preview digest, a SHA-256 over a canonical json.dumps (ensure_ascii=True) of the source's files, entries and mapping; only the hex digest leaves the function, never the serialized text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_import.py::test_changed_source_refuses_apply",
       "evidence_tier": "unit"
     },
     {

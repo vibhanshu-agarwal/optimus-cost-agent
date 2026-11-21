@@ -51,6 +51,7 @@
   },
   "operator_releases": {
     "task1": "2026-11-21 (\"Release all\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test; keyring writes only under the isolated test service; all removed at CP1 close; zero paid calls",
-    "cp1_publication": "2026-11-21: \"Push branch agent/claude/p491-task0 ... and open the checkpoint 1 PR to main\"; merge is a separate ask"
+    "cp1_publication": "2026-11-21: \"Push branch agent/claude/p491-task0 ... and open the checkpoint 1 PR to main\"; merge is a separate ask",
+    "task2": "2026-11-21 (\"Start CP2, release store\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test for the contention backup leg; keyring writes only under the isolated test service; all removed at CP2 close; zero paid calls"
   }
 }

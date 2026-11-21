@@ -497,3 +497,16 @@ def test_an_anchor_read_is_bounded_inside_the_policy(tmp_path: Path, monkeypatch
     (workspace / "small.py").write_text("x = 1\n", encoding="utf-8")
     assert memory_serving.file_refs("See big.py and small.py.", workspace) == (memory_serving.file_refs("small.py", workspace)[0],)
     assert limits and set(limits) == {8}  # every anchor read is bounded, never read whole and measured after
+
+
+def test_the_import_cases_have_their_mapped_comparison_and_observable_events() -> None:
+    """Plan 12.12 Task 2: every case of the agreed translation table has its mapped check, every import event a case names has a
+    detector, and the run config drives each through the import operation."""
+    decisions = json.loads(Path("reports/plan12-memory-m3-part2/decisions.json").read_text(encoding="utf-8"))
+    mapped = {row["case"] for row in decisions["oracle_mapping"]["cases"]}
+    assert set(m3.MAPPED) == mapped == {"M13-a", "M13-b", "M13-c", "M18-c"}
+    assert {"memory.import.optional", "memory.trust_from_import"} <= m3.OBSERVABLE
+    config = json.loads(Path("reports/plan12-memory-m3-part2/run-config.json").read_text(encoding="utf-8"))
+    assert set(config["cases"]) == mapped
+    assert all(entry["steps"]["0"][0] == "import" for entry in config["cases"].values())
+    assert {"import", "linked_session"} <= set(m3.OPS)
