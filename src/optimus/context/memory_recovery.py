@@ -64,7 +64,11 @@ BATCH: Final = 10
 STATE_LOCK_SECONDS: Final = 10.0
 EXPORT_LOCK_SECONDS: Final = 120.0  # another host's export of the same project finishes first
 EXPORT_TRIES: Final = 3
-_CONTENTION_ERRNOS: Final = frozenset({errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK})  # another holder, nothing else
+# What each platform's non-blocking lock raises when another holder has it, and nothing else: msvcrt.locking reports a held
+# range as EACCES (EDEADLOCK once LK_LOCK gives up), flock(LOCK_NB) as EWOULDBLOCK. On POSIX, EACCES is a refusal such as a
+# security policy denying the lock, so it is a fault there, not a holder (#529 review 2).
+_CONTENTION_ERRNOS: Final = (frozenset({errno.EACCES, errno.EDEADLK}) if sys.platform == "win32"
+                             else frozenset({errno.EAGAIN, errno.EWOULDBLOCK}))
 _SYNC_MARKERS: Final = ("onedrive", "dropbox", "google drive", "googledrive", "my drive", "icloud drive", "iclouddrive", "box sync",
                         "pcloud", "nextcloud", "owncloud", "sync.com", "mega")
 
@@ -113,13 +117,20 @@ def _unlock(handle: Any) -> None:
 
 @contextlib.contextmanager
 def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS, code: str = "RECOVERY_STATE_BUSY",
-               message: str = "The recovery state is held by another process; try again shortly.") -> Iterator[None]:
+               message: str = "The recovery state is held by another process; try again shortly.",
+               fault_code: str = "RECOVERY_LOCK_FAILED") -> Iterator[None]:
     """An OS-held lock on a file shared by every process on this machine (Codex CP3 review 1, finding 2): it ends only when its
-    owner releases it, closes the file or dies, never by age. The file itself is left in place."""
+    owner releases it, closes the file or dies, never by age. The file itself is left in place. Another holder past `wait` is
+    `code`; a lock the OS refuses for any other reason is `fault_code` with its errno, at once (#529 review 2)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+b") as handle:
         deadline = time.monotonic() + wait
-        while not _try_lock(handle):
+        while True:
+            try:
+                if _try_lock(handle):
+                    break
+            except OSError as exc:
+                raise RecoveryError(fault_code, f"The lock file {path.name} could not be taken (errno {exc.errno}); nothing was changed.") from None
             if time.monotonic() > deadline:
                 raise RecoveryError(code, message)
             time.sleep(0.02)

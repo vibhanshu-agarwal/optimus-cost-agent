@@ -7,7 +7,6 @@ import base64
 import contextlib
 import hashlib
 import json
-import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -24,6 +23,7 @@ from optimus_security import launch_manifest as lm
 from optimus_security import memory_index_config as mc
 from optimus_security import memory_store_config as sc
 from tests.unit.acp.conftest import FakeKeyring
+from tests.unit.context.test_memory_recovery import LOCK_FAULTS, fault_platform_lock
 
 
 def _settings(**overrides: Any) -> dict[str, Any]:
@@ -537,34 +537,35 @@ def test_another_process_holding_the_lock_keeps_a_setup_out(monkeypatch: pytest.
     child = subprocess.Popen([sys.executable, "-c", _HOLD_LOCK, str(tmp_path / "locks" / memory_setup._SETUP_LOCK)], stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, text=True, env={**os.environ, "PYTHONPATH": str(source)})
     try:
-        assert child.stdout is not None and child.stdout.readline() == "held\n"
+        assert child.stdout is not None and child.stdin is not None
+        ready: list[str] = []
+        reader = threading.Thread(target=lambda: ready.append(child.stdout.readline()), daemon=True)  # type: ignore[union-attr]
+        reader.start()
+        reader.join(30)  # bounded: a child that never takes the lock fails the test instead of hanging it
+        assert ready == ["held\n"], ready
         with pytest.raises(memory_setup.MemorySetupError, match="Another memory setup"):
             _run(tmp_path, keyring)
         assert sc.config_literal(sc.memory_store_root(tmp_path)) is None and not keyring._store
+        child.stdin.write("\n")
+        child.stdin.flush()
+        assert child.wait(timeout=30) == 0
     finally:
-        child.communicate("\n", timeout=30)
-    assert child.returncode == 0
+        if child.poll() is None:
+            child.kill()
+        child.communicate()
     path = _run(tmp_path, keyring)
     assert _stored_password(keyring, path)
 
 
-def test_a_lock_fault_is_reported_as_itself_not_as_another_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("number", LOCK_FAULTS)
+def test_a_lock_fault_is_reported_as_itself_not_as_another_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, number: int) -> None:
     """#529 review: only another holder's lock is retried. Any other locking failure stops setup at once with its errno."""
-    import errno
-
-    from optimus.context import memory_recovery
-
-    def fault(*_args: Any) -> None:
-        raise OSError(errno.ENOLCK, "no locks available")
-
-    lock_module = "msvcrt" if sys.platform == "win32" else "fcntl"
-    monkeypatch.setattr(__import__(lock_module), "locking" if lock_module == "msvcrt" else "flock", fault)
+    fault_platform_lock(monkeypatch, number)
     monkeypatch.setattr(memory_setup, "_SETUP_LOCK_SECONDS", 30.0)  # a retried fault would wait this out
     keyring = FakeKeyring()
-    with pytest.raises(memory_setup.MemorySetupError, match=f"was not stored.*errno {errno.ENOLCK}"):
+    with pytest.raises(memory_setup.MemorySetupError, match=rf"was not stored: The lock file memory-setup\.lock could not be taken \(errno {number}\)"):
         _run(tmp_path, keyring)
     assert sc.config_literal(sc.memory_store_root(tmp_path)) is None and not keyring._store
-    assert memory_recovery._CONTENTION_ERRNOS.isdisjoint({errno.ENOLCK})
 
 
 def test_a_failed_unlock_after_the_write_does_not_undo_the_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

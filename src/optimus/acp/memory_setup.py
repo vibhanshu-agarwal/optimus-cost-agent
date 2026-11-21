@@ -65,13 +65,15 @@ def _store_password(keyring_backend: Any, service: str, credential: str, passwor
     lock = lock_root / "locks" / _SETUP_LOCK
     stored = False
     try:
-        with memory_recovery._file_lock(lock, wait=_SETUP_LOCK_SECONDS):
+        with memory_recovery._file_lock(lock, wait=_SETUP_LOCK_SECONDS, code="MEMORY_SETUP_BUSY", fault_code="MEMORY_SETUP_LOCK_FAILED"):
             try:
                 keyring_backend.set_password(service, credential, password)
             except Exception as exc:  # noqa: BLE001 - any backend failure stops setup before a file claims a credential exists
                 raise MemorySetupError(f"The OS keyring refused the password ({type(exc).__name__}); nothing was configured.") from None
             stored = True
-    except memory_recovery.RecoveryError:
+    except memory_recovery.RecoveryError as refused:
+        if refused.code == "MEMORY_SETUP_LOCK_FAILED":
+            raise MemorySetupError(f"The password was not stored: {refused.message} Nothing was configured.") from None
         raise MemorySetupError("Another memory setup is storing its password; nothing was configured. Run this again in a moment.") from None
     except OSError as exc:
         what = "was stored, but releasing the setup lock" if stored else "was not stored: the setup lock"
