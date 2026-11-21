@@ -4,6 +4,7 @@ Redis and the native keyring are proven in tests/integration/memory."""
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -63,7 +64,7 @@ def test_a_declined_store_setup_changes_nothing(tmp_path: Path) -> None:
     with pytest.raises(memory_setup.MemorySetupError):
         _run(tmp_path, keyring, confirm=lambda _d: False)
     assert not sc.memory_store_root(tmp_path).exists()
-    assert keyring.get_password(sc.KEYRING_SERVICE, "redis-password") is None
+    assert keyring.get_password(sc.KEYRING_SERVICE, memory_setup.credential_name(sc.memory_store_root(tmp_path))) is None
 
 
 def test_the_description_names_the_resource_and_the_single_copy_risk(tmp_path: Path) -> None:
@@ -120,9 +121,9 @@ def test_a_host_whose_os_keyring_is_unavailable_configures_nothing(tmp_path: Pat
 def test_a_rerun_never_replaces_a_working_password(tmp_path: Path) -> None:
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
-    before = (path.read_bytes(), keyring.get_password(sc.KEYRING_SERVICE, "redis-password"))
+    before = (path.read_bytes(), keyring.get_password(sc.KEYRING_SERVICE, memory_setup.credential_name(sc.memory_store_root(tmp_path))))
     assert _run(tmp_path, keyring, confirm=lambda _d: pytest.fail("a configured store asks nothing")) == path
-    assert (path.read_bytes(), keyring.get_password(sc.KEYRING_SERVICE, "redis-password")) == before
+    assert (path.read_bytes(), keyring.get_password(sc.KEYRING_SERVICE, memory_setup.credential_name(sc.memory_store_root(tmp_path)))) == before
 
 
 def test_store_setup_leaves_the_index_untouched_and_index_setup_leaves_the_store(tmp_path: Path) -> None:
@@ -278,7 +279,7 @@ def test_a_launch_expects_what_the_gateway_it_starts_serves_with_a_store(monkeyp
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
     literal = sc.config_literal(path.parent)
-    password = keyring.get_password(sc.KEYRING_SERVICE, "redis-password")
+    password = keyring.get_password(sc.KEYRING_SERVICE, memory_setup.credential_name(sc.memory_store_root(tmp_path)))
     assert password
     key = b"test-memory-store-hmac-key-32-by"
     secret, api_key, base_url = "shared-secret-value", "sk-or-test-key", "http://127.0.0.1:9/stub/v1"  # pragma: allowlist secret - synthetic test fixture
@@ -366,3 +367,33 @@ def test_a_gateway_given_an_unsigned_store_root_refuses_to_start(monkeypatch: py
     argv =["--bind-host", "127.0.0.1", "--port", "8765", "--manifest", manifest, "--memory-store-root", str(path.parent)]
     assert gateway_main.main(argv) == 2
     assert "MANIFEST_MEMORY_STORE_MISMATCH" in capsys.readouterr().err
+
+
+def test_each_config_root_keeps_its_own_password(tmp_path: Path) -> None:
+    """#526: two config roots on one machine must not share one keyring entry, and removing one leaves the other."""
+    keyring = FakeKeyring()
+    configs = [sc.read(_run(tmp_path / name, keyring).parent)[1] for name in ("first", "second")]
+    assert configs[0] is not None and configs[1] is not None
+    first, second = configs
+    assert first.credential_name != second.credential_name
+    for name, config in (("first", first), ("second", second)):  # each root's password still matches its own ACL
+        password = keyring.get_password(sc.KEYRING_SERVICE, config.credential_name)
+        assert password and hashlib.sha256(password.encode()).hexdigest() in (sc.memory_store_root(tmp_path / name) / sc.ACL_NAME).read_text("utf-8")
+    kept = keyring.get_password(sc.KEYRING_SERVICE, second.credential_name)
+    keyring.delete_password(sc.KEYRING_SERVICE, first.credential_name)
+    assert keyring.get_password(sc.KEYRING_SERVICE, second.credential_name) == kept
+
+
+def test_a_config_with_the_legacy_shared_name_keeps_its_password(tmp_path: Path) -> None:
+    """A store set up before #526 names `redis-password`; it is read as written and a rerun migrates nothing."""
+    keyring = FakeKeyring()
+    path = _run(tmp_path, keyring)
+    document = json.loads(path.read_bytes())
+    keyring.set_password(sc.KEYRING_SERVICE, "redis-password", keyring.get_password(sc.KEYRING_SERVICE, document["credential_name"]) or "")
+    keyring.delete_password(sc.KEYRING_SERVICE, document["credential_name"])
+    path.write_text(json.dumps({**document, "credential_name": "redis-password"}, indent=2, sort_keys=True), encoding="utf-8")
+    before = path.read_bytes(), dict(keyring._store)
+    assert _run(tmp_path, keyring, confirm=lambda _d: pytest.fail("a configured store asks nothing")) == path
+    _literal, config, _refusal = sc.read(path.parent)
+    assert config is not None and config.credential_name == "redis-password"
+    assert (path.read_bytes(), keyring._store) == before and keyring.get_password(sc.KEYRING_SERVICE, "redis-password")

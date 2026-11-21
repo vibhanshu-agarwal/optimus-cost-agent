@@ -71,7 +71,7 @@ def test_a_declined_setup_changes_nothing(tmp_path: Path) -> None:
     with pytest.raises(memory_setup.MemorySetupError):
         _run(tmp_path, keyring, confirm=lambda _d: False)
     assert not mc.memory_index_root(tmp_path).exists()
-    assert keyring.get_password(mc.KEYRING_SERVICE, "redis-password") is None
+    assert keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path))) is None
 
 
 def test_the_description_names_what_will_happen_before_any_download(tmp_path: Path) -> None:
@@ -141,7 +141,7 @@ def test_a_wrong_artifact_configures_nothing_and_stores_no_password(tmp_path: Pa
     with pytest.raises(memory_setup.MemorySetupError, match="digest"):
         memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=settings)
     assert not (mc.memory_index_root(tmp_path) / mc.CONFIG_NAME).exists()
-    assert keyring.get_password(mc.KEYRING_SERVICE, "redis-password") is None
+    assert keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path))) is None
 
 
 def test_a_keyring_failure_configures_nothing(tmp_path: Path) -> None:
@@ -158,14 +158,14 @@ def test_a_keyring_failure_configures_nothing(tmp_path: Path) -> None:
 def test_a_rerun_never_replaces_a_working_password_or_downloads_again(tmp_path: Path) -> None:
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
-    before = path.read_bytes(), keyring.get_password(mc.KEYRING_SERVICE, "redis-password")
+    before = path.read_bytes(), keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path)))
 
     def no_download(**_kwargs: Any) -> None:
         raise AssertionError("a rerun must not download")
 
     again = memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), download=no_download, defaults=_settings(tmp_path))
     assert again == path
-    assert (path.read_bytes(), keyring.get_password(mc.KEYRING_SERVICE, "redis-password")) == before
+    assert (path.read_bytes(), keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path)))) == before
 
 
 def test_setup_needs_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -265,7 +265,7 @@ def test_a_launch_expects_what_the_gateway_it_starts_serves_with_an_index(monkey
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
     literal = mc.config_literal(path.parent)
-    password = keyring.get_password(mc.KEYRING_SERVICE, "redis-password")
+    password = keyring.get_password(mc.KEYRING_SERVICE, memory_setup.credential_name(mc.memory_index_root(tmp_path)))
     assert password
     key = b"test-memory-setup-hmac-key-32-by"
     secret, api_key, base_url = "shared-secret-value", "sk-or-test-key", "http://127.0.0.1:9/stub/v1"  # pragma: allowlist secret - synthetic test fixture
@@ -362,3 +362,12 @@ def test_a_full_index_refuses_writes_and_keeps_answering_searches() -> None:
     assert args[args.index("--maxmemory-policy") + 1] == "noeviction"
     assert args[args.index("--search-on-oom") + 1] == "IGNORE"
 
+
+
+def test_each_config_root_names_its_own_index_password(tmp_path: Path) -> None:
+    """#526: the index, like the store, keeps one keyring entry per config root."""
+    keyring = FakeKeyring()
+    for name in ("first", "second"):
+        (tmp_path / name).mkdir()
+    names = [mc.read(_run(tmp_path / name, keyring).parent)[1].credential_name for name in ("first", "second")]  # type: ignore[union-attr]
+    assert names[0] != names[1] and all(keyring.get_password(mc.KEYRING_SERVICE, name) for name in names)

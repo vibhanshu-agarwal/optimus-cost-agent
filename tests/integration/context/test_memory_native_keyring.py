@@ -22,16 +22,20 @@ from optimus_security import memory_index_contract as mic
 pytestmark = [pytest.mark.requires_os_keyring_write]
 
 _SERVICE = "optimus-p1210-test"
-_CREDENTIAL = "redis-password"
 
 
 @pytest.fixture
-def isolated_service(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+def credential(tmp_path: Path) -> str:
+    return memory_setup.credential_name(mc.memory_index_root(tmp_path))  # one entry per config root (#526)
+
+
+@pytest.fixture
+def isolated_service(monkeypatch: pytest.MonkeyPatch, credential: str) -> Iterator[str]:
     monkeypatch.setattr(memory_setup, "KEYRING_SERVICE", _SERVICE)
     monkeypatch.setattr(memory_index, "KEYRING_SERVICE", _SERVICE)
     yield _SERVICE
     try:
-        keyring.delete_password(_SERVICE, _CREDENTIAL)
+        keyring.delete_password(_SERVICE, credential)
     except PasswordDeleteError:
         pass
 
@@ -49,29 +53,29 @@ def _settings(tmp_path: Path) -> dict[str, Any]:
                                                    "max_input_tokens": 16, "artifact_directory": "model", "artifact_sha256": mc.artifact_digest(probe)}}
 
 
-def test_the_real_keyring_holds_the_password_and_no_file_does(isolated_service: str, tmp_path: Path) -> None:
-    assert keyring.get_password(isolated_service, _CREDENTIAL) is None
+def test_the_real_keyring_holds_the_password_and_no_file_does(isolated_service: str, credential: str, tmp_path: Path) -> None:
+    assert keyring.get_password(isolated_service, credential) is None
     path = memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=_settings(tmp_path))
-    password = keyring.get_password(isolated_service, _CREDENTIAL)
+    password = keyring.get_password(isolated_service, credential)
     assert password and len(password) >= 32
     for file in path.parent.rglob("*"):
         if file.is_file():
             assert password.encode() not in file.read_bytes(), file
 
 
-def test_a_rerun_keeps_the_real_keyrings_password(isolated_service: str, tmp_path: Path) -> None:
+def test_a_rerun_keeps_the_real_keyrings_password(isolated_service: str, credential: str, tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=settings)
-    before = keyring.get_password(isolated_service, _CREDENTIAL)
+    before = keyring.get_password(isolated_service, credential)
     memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), download=_download, defaults=settings)
-    assert keyring.get_password(isolated_service, _CREDENTIAL) == before
+    assert keyring.get_password(isolated_service, credential) == before
 
 
-def test_the_gateway_reports_an_absent_real_credential_with_a_stable_code(isolated_service: str, tmp_path: Path) -> None:
+def test_the_gateway_reports_an_absent_real_credential_with_a_stable_code(isolated_service: str, credential: str, tmp_path: Path) -> None:
     path = memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=_settings(tmp_path))
     _literal, config, _refusal = mc.read(path.parent)
     assert config is not None
-    keyring.delete_password(isolated_service, _CREDENTIAL)
+    keyring.delete_password(isolated_service, credential)
     service = memory_index.build_index_service(config, keyring_backend=keyring, hmac_key=b"k" * 32)
     body = b'{"op":"coverage","scope":"' + b"ab" * 32 + b'"}'
     assert service.handle(body, deadline=time.monotonic() + 1) == (503, mic.error_body("INDEX_CREDENTIAL_MISSING"))
