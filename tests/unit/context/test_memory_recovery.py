@@ -859,3 +859,25 @@ def test_a_lock_fault_stops_an_export_with_its_errno(monkeypatch: pytest.MonkeyP
         host.recovery.export()
     assert refused.value.code == "RECOVERY_LOCK_FAILED" and f"errno {number}" in refused.value.message
     assert not mr.generations(destination)
+
+
+def test_a_state_lock_fault_after_publication_claims_nothing_about_what_was_written(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                                                                     repo: Path) -> None:
+    """#529 review 3: an export takes the state lock only after it has published, so a fault there must not say nothing changed."""
+    host = _Host(tmp_path, repo)
+    host.remember(CANARY)
+    destination = mr.location(repo)
+    host.recovery.confirm(destination, sync_consent=False)
+    state_lock, real_try = host.recovery._state.path.name + ".lock", mr._try_lock
+
+    def refuse_the_state_lock(handle: Any) -> bool:
+        if Path(handle.name).name == state_lock:
+            raise OSError(errno.ENOLCK, os.strerror(errno.ENOLCK))
+        return real_try(handle)
+
+    monkeypatch.setattr(mr, "_try_lock", refuse_the_state_lock)
+    with pytest.raises(mr.RecoveryError) as refused:
+        host.recovery.export()
+    assert refused.value.code == "RECOVERY_LOCK_FAILED" and f"errno {errno.ENOLCK}" in refused.value.message
+    assert "nothing" not in refused.value.message.lower()
+    assert mr.generations(destination)  # published before the state lock was refused

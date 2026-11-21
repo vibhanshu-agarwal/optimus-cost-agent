@@ -121,7 +121,8 @@ def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS, code: str = "REC
                fault_code: str = "RECOVERY_LOCK_FAILED") -> Iterator[None]:
     """An OS-held lock on a file shared by every process on this machine (Codex CP3 review 1, finding 2): it ends only when its
     owner releases it, closes the file or dies, never by age. The file itself is left in place. Another holder past `wait` is
-    `code`; a lock the OS refuses for any other reason is `fault_code` with its errno, at once (#529 review 2)."""
+    `code`; a lock the OS refuses for any other reason is `fault_code` with its errno, at once (#529 review 2). Its message claims
+    nothing about earlier work: a caller can hold this lock after writing, so only the caller can say what was left."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+b") as handle:
         deadline = time.monotonic() + wait
@@ -130,7 +131,7 @@ def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS, code: str = "REC
                 if _try_lock(handle):
                     break
             except OSError as exc:
-                raise RecoveryError(fault_code, f"The lock file {path.name} could not be taken (errno {exc.errno}); nothing was changed.") from None
+                raise RecoveryError(fault_code, f"The lock file {path.name} could not be taken (errno {exc.errno}).") from None
             if time.monotonic() > deadline:
                 raise RecoveryError(code, message)
             time.sleep(0.02)
