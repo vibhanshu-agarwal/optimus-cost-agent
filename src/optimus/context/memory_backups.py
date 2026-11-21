@@ -895,9 +895,14 @@ class Backups:
         elif state.target:
             lines.append("no backup taken yet")
         if state.enabled and self.due(state):
-            overdue = (f" (overdue since {time.strftime('%Y-%m-%d', time.gmtime((state.last_success['at_ms'] + DUE_AFTER_MS) / 1000))})"
-                       if state.last_success else "")
-            lines.append(f"a backup is due{overdue}; backups are taken while a session of this project is open and pause while none is")
+            deadline = state.last_success["at_ms"] + DUE_AFTER_MS if state.last_success else None
+            if deadline is not None and self._clock() >= deadline:
+                why = f" (overdue since {time.strftime('%Y-%m-%d', time.gmtime(deadline / 1000))})"
+            elif state.cleanup_pending:
+                why = " now, to finish cleanup"  # due early: never an overdue date still in the future (real-Zed CP3 finding)
+            else:
+                why = ""
+            lines.append(f"a backup is due{why}; backups are taken while a session of this project is open and pause while none is")
         if state.held:
             lines.append(f"held: {state.held}")
         if state.failure:
@@ -905,7 +910,7 @@ class Backups:
                      else "not retried until `/memory backup now` or a new configuration")
             lines.append(f"last attempt failed: {state.failure['message']} ({retry})")
         if state.cleanup_pending:
-            lines.append(f"withdrawn; backup cleanup pending for {len(state.cleanup_pending)} item(s)")
+            lines.append(f"backup cleanup pending for {len(state.cleanup_pending)} withdrawn item(s)")
         if state.unreadable:
             lines.append("unreadable folders in the backup folder may hold withdrawn text: " + ", ".join(state.unreadable))
         for prior in state.prior:

@@ -69,8 +69,10 @@ def citation(notice: MemoryNotice) -> str:
     return f"[memory:{notice.item}@{notice.version}]"
 
 
-def card(session_id: str, notice: MemoryNotice, label: str) -> dict[str, Any]:
-    title = f"{headline(notice)}: {escape_label(label)}" if label else headline(notice)
+def card(session_id: str, notice: MemoryNotice, label: str, *, imported: bool = False) -> dict[str, Any]:
+    """A commit's card. `imported`: an import's commit, headed "Imported", never the word the user's own items use."""
+    head = "Imported" if imported and notice.saved and notice.action == "admit" else headline(notice)
+    title = f"{head}: {escape_label(label)}" if label else head
     summary = f"{citation(notice)} \u00b7 {notice.durable_state}, {notice.projection_state}"
     return build_tool_call_notification(session_id=session_id, tool_call_id=f"{CARD_PREFIX}{notice.event_id}", title=title,
                                         summary=summary, kind="other", status="completed" if notice.saved else "failed")

@@ -1472,7 +1472,7 @@ class AcpDuplexAdapter:
                     if confirmed is None:
                         return None
                     answer = confirmed
-            updates = [memory_notices.card(session_id, notice, label) for notice, label in answer.notices]
+            updates = [memory_notices.card(session_id, notice, label, imported=answer.imported) for notice, label in answer.notices]
             updates.append(build_agent_message_chunk_notification(session_id=session_id, text=answer.text))
             backlog = None if session is None else session.memory_backlog
             shown = [_notice_record(notice) for notice, _label in answer.notices]

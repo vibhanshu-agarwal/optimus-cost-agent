@@ -88,6 +88,7 @@ EVENT_OF: Mapping[str, str] = {
     "store.body": "memory.body_persisted",  # a saved statement holds a workspace file's text
     "card.Remembered": "memory.notice.remembered",
     "card.Updated": "memory.notice.remembered",
+    "card.Imported": "memory.notice.remembered",  # an import's commit card (Plan 12.12 CP3 wording)
     "card.unconfirmed": "memory.notice.unconfirmed",
     "card.backlogged": "memory.notice.backlogged",  # a card that could not be sent, which the project's durable backlog kept
     "answer.unconfirmed": "memory.notice.unconfirmed",  # a user command's own unconfirmed reply, with no model call (review 5)

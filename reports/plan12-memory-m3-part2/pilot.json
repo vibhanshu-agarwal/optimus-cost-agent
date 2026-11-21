@@ -1,0 +1,718 @@
+{
+  "schema": "plan12-memory-m3-part2.pilot.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "release": "operator 2026-11-21 'Release the pilot' (#491 comment 7063802209): the D3 import of the 26 confirmed notes and 5 negative controls on the released test store, zero paid calls; the store was removed afterwards",
+  "custody": "the sources, the selection, the pilot folder and every statement stay in the private review kit (sandbox-review-kit/p1212-pilot); this report holds counts, ids, hashes and outcome codes only",
+  "source": "git:e02de5af64672e7aafc1b5b2770a910652dee530",
+  "selection_sha256": "hex:732123dd5d4d0b6cc9c901188100dcc7aa19554bb2913d60758282d219906d14",
+  "pilot_folder_sha256": "hex:f5c1681cec70a72f4bd3ef5b53bdf4647353d99a3e341b2a30a8e13870eeb434",
+  "path": "production: a shallow clone of this repository as the workspace, the launch's extractor factory and project registry, the ACP adapter, /memory import with every preview page shown, apply and the one-shot confirmation answered as the user would",
+  "conversion": "each note one bullet in its own words: a Claude note's frontmatter description, a Codex MEMORY.md line, verbatim; [project: <this registration> | <the note's own heading, for a negative control>; source: claude-memory | codex-memories]",
+  "counts": {
+    "selected": 31,
+    "pilot": 26,
+    "negative_controls": 5,
+    "imported": 24,
+    "negatives_imported": 0,
+    "pilot_imported": 24,
+    "trust_other_than_legacy_import": 0,
+    "seen_in_linked_worktree": 24,
+    "listed_in_separate_clone": 0,
+    "served_in_separate_clone": 0
+  },
+  "registrations": {
+    "linked_worktree_shares_the_registration": true,
+    "separate_clone_is_another_registration": true,
+    "ids": "kept in the private kit (pilot-public.json); not needed here"
+  },
+  "serving_in_linked_worktree": {
+    "optional_served": 3,
+    "optional_left_out": 21,
+    "protected_served": 0,
+    "reverify": 0,
+    "rule": "a turn serves at most memory_serving.MAX_OPTIONAL optional items; the rest are counted as left out"
+  },
+  "model_requests": 0,
+  "seconds_preview_to_settled": 0.66,
+  "apply_answer": "Imported: 24 saved, 0 already present, 0 skipped, 7 refused, 0 uncertain. ",
+  "items": [
+    {
+      "id": "C01",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C02",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C03",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C04",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C05",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C06",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C07",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C08",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C09",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C10",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C11",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C12",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C13",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C14",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C15",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "C16",
+      "role": "pilot",
+      "expect": "stale-or-superseded",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "X01",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "refused",
+      "reason": "a secret, an instruction to the model, or copied source text (scan)",
+      "seen_in_linked_worktree": false,
+      "stored": null
+    },
+    {
+      "id": "X02",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "X03",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "refused",
+      "reason": "a secret, an instruction to the model, or copied source text (scan)",
+      "seen_in_linked_worktree": false,
+      "stored": null
+    },
+    {
+      "id": "X04",
+      "role": "pilot",
+      "expect": "stale-candidate",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "X05",
+      "role": "pilot",
+      "expect": "stale-candidate",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "X06",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "X07",
+      "role": "pilot",
+      "expect": "stale-candidate",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "X08",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "X09",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "X10",
+      "role": "pilot",
+      "expect": "current",
+      "disposition": "import",
+      "reason": "",
+      "seen_in_linked_worktree": true,
+      "stored": {
+        "trust": "legacy-import",
+        "kind": "fact",
+        "status": "active"
+      }
+    },
+    {
+      "id": "N01",
+      "role": "negative-control",
+      "expect": "refused, never imported",
+      "disposition": "refused",
+      "reason": "another project's entry",
+      "seen_in_linked_worktree": false,
+      "stored": null
+    },
+    {
+      "id": "N02",
+      "role": "negative-control",
+      "expect": "refused, never imported",
+      "disposition": "refused",
+      "reason": "another project's entry",
+      "seen_in_linked_worktree": false,
+      "stored": null
+    },
+    {
+      "id": "N03",
+      "role": "negative-control",
+      "expect": "refused, never imported",
+      "disposition": "refused",
+      "reason": "another project's entry",
+      "seen_in_linked_worktree": false,
+      "stored": null
+    },
+    {
+      "id": "N04",
+      "role": "negative-control",
+      "expect": "refused, never imported",
+      "disposition": "refused",
+      "reason": "another project's entry",
+      "seen_in_linked_worktree": false,
+      "stored": null
+    },
+    {
+      "id": "N05",
+      "role": "negative-control",
+      "expect": "refused, never imported",
+      "disposition": "refused",
+      "reason": "another project's entry",
+      "seen_in_linked_worktree": false,
+      "stored": null
+    }
+  ],
+  "findings": [
+    {
+      "what": "2 of the 26 pilot notes (X01, X03) were refused by the scan",
+      "cause": "the persistence sanitizer's entropy rule (optimus_security.sanitization EVIDENCE_REDACTION_POLICY, rule entropy_redaction) masks long repository test paths and pytest node ids as possible secrets; scans_pass refuses any statement it changes. The same rule applies to /remember and extraction",
+      "disposition": "recorded as a measured false refusal (2/26); secret detection is not loosened in this plan"
+    },
+    {
+      "what": "all 5 negative controls refused as another project's entries; nothing from another project entered this registration"
+    },
+    {
+      "what": "a turn serves at most 3 optional items (memory_serving.MAX_OPTIONAL); in the linked worktree 3 of the 24 were served and 21 counted as left out; all 24 are listed in that registration"
+    }
+  ],
+  "comparison": {
+    "release": "operator 2026-11-21 'Zero-paid only' (#491 comment 7064477381); the test store was removed afterwards",
+    "source": "git:e02de5af64672e7aafc1b5b2770a910652dee530",
+    "questions": 26,
+    "questions_sha256": "hex:b163267cebc1c34757037ec39f131dabc2ac79edc1c4b4d9f88127b563af7760",
+    "cutoff": "2026-11-20T20:37:33Z",
+    "selection_sha256": "hex:732123dd5d4d0b6cc9c901188100dcc7aa19554bb2913d60758282d219906d14",
+    "method": "one frozen question per pilot note (held privately with its target), asked as one real turn each through the ACP adapter after a fresh production import; the memory block each model request carried is read for served lines. For the MEMORY.md workflow, each note is checked against the entry points a session loads",
+    "retrieval": {
+      "optimus_target_served": 3,
+      "of": 26,
+      "optimus_served_per_turn": [
+        3
+      ],
+      "memory_md_words_in_entry_point": 10,
+      "memory_md_one_linked_read_away": 16,
+      "why": "serving is not query-aware: a turn serves at most 3 optional items, ranked by kind and item id, the same 3 whatever is asked; the MEMORY.md workflow loads every Codex note's words and an index linking every Claude note",
+      "owner": "memory roadmap M2 (the model recalls memory itself); outside Plan 12.12, which this measurement informs"
+    },
+    "lifecycle": {
+      "expected_stale_or_superseded": 4,
+      "served_as_current_by_optimus": 0,
+      "note": "an imported note carries no lifecycle unless its source marks one (status:), so a stale note is served like a current one when it is served",
+      "earlier_run_served_as_current": 2,
+      "why_it_varies": "which 3 items are served depends on their ids, which differ per registration"
+    },
+    "latency": {
+      "optimus_turn_seconds": {
+        "median": 0.115,
+        "max": 0.265
+      }
+    },
+    "cost_proxy": {
+      "optimus_memory_block_tokens": 224,
+      "optimus_memory_block_bytes": {
+        "median": 895.0,
+        "max": 895
+      },
+      "memory_md_entry_point_tokens": {
+        "claude": 4531,
+        "codex": 33084
+      },
+      "memory_md_entry_point_bytes": {
+        "claude": 18124,
+        "codex": 132335
+      },
+      "note": "token estimates by optimus.context.memory_extraction.estimate_tokens; no model was paid"
+    },
+    "correctness": "UNRUN: zero-paid stand-in model (operator: zero-paid only)",
+    "model_requests": 26,
+    "rows": [
+      {
+        "id": "C01",
+        "expect": "current",
+        "imported": true,
+        "served": true,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C02",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C03",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C04",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C05",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C06",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C07",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C08",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C09",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C10",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C11",
+        "expect": "current",
+        "imported": true,
+        "served": true,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C12",
+        "expect": "current",
+        "imported": true,
+        "served": true,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C13",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C14",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C15",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "C16",
+        "expect": "stale-or-superseded",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": false,
+        "one_read_away": true
+      },
+      {
+        "id": "X01",
+        "expect": "current",
+        "imported": false,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X02",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X03",
+        "expect": "current",
+        "imported": false,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X04",
+        "expect": "stale-candidate",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X05",
+        "expect": "stale-candidate",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X06",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X07",
+        "expect": "stale-candidate",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X08",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X09",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      },
+      {
+        "id": "X10",
+        "expect": "current",
+        "imported": true,
+        "served": false,
+        "words_in_entry_point": true,
+        "one_read_away": false
+      }
+    ],
+    "attempts": [
+      {
+        "run": "compare-1",
+        "outcome": "completed; counted any citation-shaped text in the block (one note quotes a citation), 4 per turn instead of 3"
+      },
+      {
+        "run": "compare-2",
+        "outcome": "completed; counts served lines only; this result"
+      }
+    ]
+  },
+  "attempts": [
+    {
+      "run": "run-1",
+      "outcome": "ERROR before any import: a hardlinked local clone failed across drives"
+    },
+    {
+      "run": "run-2",
+      "outcome": "ERROR before any import: a pytest-only test double was used outside pytest"
+    },
+    {
+      "run": "run-3",
+      "outcome": "completed; its report miscounted refused entries (matched by statement) and visibility (counted served slots)"
+    },
+    {
+      "run": "run-4",
+      "outcome": "completed on a fresh store; this report"
+    }
+  ]
+}

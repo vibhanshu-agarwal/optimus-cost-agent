@@ -145,6 +145,7 @@ class MemoryAnswer:
     notices: tuple[tuple[MemoryNotice, str], ...] = ()  # each confirmed or uncertain change and its label
     purge: PurgeRequest | None = None  # ask the user before anything is destroyed
     confirm: Confirmation | None = None  # ask the user before a recovery location is set or a generation restored
+    imported: bool = False  # the notices are an import's commits: their cards say "Imported"
 
 
 def _one_line(statement: str) -> bool:
@@ -902,7 +903,7 @@ class MemoryCommands:
         if "stopped" in counts:
             text += (f" It stopped because {counts['stopped']}, so {counts['remaining']} were not tried; "
                      "`/memory import status` shows where it stopped. What was saved is kept.")
-        return MemoryAnswer(text, tuple(notices))
+        return MemoryAnswer(text, tuple(notices), imported=True)
 
     def _location_question(self, destination: Path, *, moved_from: str | None = None) -> Confirmation:
         from optimus.context import memory_recovery as mr

@@ -1239,3 +1239,14 @@ def test_a_backup_is_taken_and_authenticated_while_writes_keep_landing(tmp_path:
     manifest, entries = mr.read_generation(published, host.store.project)
     assert manifest["head"] == generation.head and len(entries) == generation.count
     assert host.backups.state().failure is None and host.backups.state().last_success["name"] == generation.name
+
+
+def test_a_backup_due_for_cleanup_says_so_and_never_names_a_future_overdue_date(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    """Plan 12.12 CP3, seen in real Zed: right after a withdrawal the backup is due to finish cleanup, not overdue since tomorrow."""
+    host = _Backed(tmp_path, repo, places, _Clock())
+    item, _version = host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    host.run(f"/forget {item}@1")
+    status = host.backups.status_line()
+    assert "a backup is due now, to finish cleanup" in status and "overdue since" not in status
+    assert "backup cleanup pending for 1 withdrawn item(s)" in status and "withdrawn;" not in status

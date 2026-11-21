@@ -1,0 +1,162 @@
+{
+  "schema": "plan12-memory-m3-part2.zed-ui.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "release": "operator 2026-11-21 'Release the Zed session': one zero-paid real-Zed session; the test store, F:\\optimus-p1212-test, keyring writes for this proof's config only, its own Zed agent entry; all removed afterwards",
+  "code_head": "git:e02de5a (the agent ran editable from this worktree)",
+  "client": "Zed (operator-typed prompts, Chat mode); computer use at click tier for panel set-up and screenshots",
+  "agent": "optimus-agent from this worktree's venv; own Gateway port 18778 (nothing listened on 8765); own config root",
+  "upstream": "local stub http://127.0.0.1:18795/api/v1 only (never forwards); provider key a dummy",
+  "paid_calls": 0,
+  "paid_calls_basis": "the stub received 4 requests in all (2 pre-launch health checks, one refused route check, the one Hello prompt); the Gateway log and ACP debug trace name no provider host; the Gateway logged only its own port; Zed's own agent thread, opened first by mistake, was never sent anything",
+  "stub_requests": 4,
+  "steps": [
+    {
+      "n": 1,
+      "prompt": "Hello [p1212:H1]",
+      "observed": "the gate: the stub served case H1; the reply 'Hello. (Synthetic stub reply, no model.)'",
+      "pass": true
+    },
+    {
+      "n": 2,
+      "prompt": "/remember Never push to main.",
+      "observed": "Remembered card; [memory:m-9c6d555ac740f574@1]",
+      "pass": true
+    },
+    {
+      "n": 3,
+      "prompt": "/memory export",
+      "observed": "'Set up the memory recovery copy?' card confirmed; Saved gen-1795275887640-e07aa351f9a5: 1 items",
+      "pass": true
+    },
+    {
+      "n": 4,
+      "prompt": "/memory backup",
+      "observed": "Backups: off (not configured)",
+      "pass": true
+    },
+    {
+      "n": 5,
+      "prompt": "/memory backup configure F:\\optimus-p1212-test\\zed",
+      "observed": "'Set up memory backups?' card confirmed; Backed up gen-1795275887640-e07aa351f9a5",
+      "pass": true
+    },
+    {
+      "n": 6,
+      "prompt": "/memory backup",
+      "observed": "on, to F:\\optimus-p1212-test\\zed; drive independence unknown; last backup; Encryption unavailable; These copies are plaintext",
+      "pass": true
+    },
+    {
+      "n": 7,
+      "prompt": "/forget m-9c6d555ac740f574@1",
+      "observed": "Forgotten card; [memory:m-9c6d555ac740f574@2]",
+      "pass": true
+    },
+    {
+      "n": 8,
+      "prompt": "/memory backup",
+      "observed": "backup cleanup pending for 1 item(s) (with the two wording defects below)",
+      "pass": true
+    },
+    {
+      "n": 9,
+      "prompt": "/memory backup now",
+      "observed": "Backed up gen-1795276102792-7ef1a36d66c1; the older backup holding the forgotten text removed (checked on disk)",
+      "pass": true
+    },
+    {
+      "n": 10,
+      "prompt": "/memory backup now (folder moved away)",
+      "observed": "readable failure: the folder is not available; the last backup is kept; nothing was written",
+      "pass": true
+    },
+    {
+      "n": 11,
+      "prompt": "/memory backup",
+      "observed": "the folder is not available now; last attempt failed; not retried until /memory backup now or a new configuration",
+      "pass": true
+    },
+    {
+      "n": 12,
+      "prompt": "/memory import <proof folder>",
+      "observed": "preview imp-0974a5da2ad4, page 1 of 1: 2 files read (the linked topic note followed), 2 to import as optional imported context, 2 refused (another project's entry; a wrapped entry, refused whole)",
+      "pass": true
+    },
+    {
+      "n": 13,
+      "prompt": "/memory import apply imp-0974a5da2ad4 (Cancel)",
+      "observed": "'Import memory entries?' card cancelled; Not confirmed, so nothing was changed",
+      "pass": true
+    },
+    {
+      "n": 14,
+      "prompt": "/memory import apply imp-0974a5da2ad4 (Go ahead)",
+      "observed": "two cards; Imported: 2 saved, 0 already present, 0 skipped, 2 refused, 0 uncertain",
+      "pass": true
+    },
+    {
+      "n": 15,
+      "prompt": "/memory import status",
+      "observed": "2 confirmed, 0 already present, 0 skipped, 0 off, 2 refused, 0 uncertain; 0 remaining",
+      "pass": true
+    },
+    {
+      "n": 16,
+      "prompt": "/memory import apply imp-0974a5da2ad4 (replay)",
+      "observed": "This session holds no import preview imp-0974a5da2ad4 ... Nothing was changed",
+      "pass": true
+    },
+    {
+      "n": 17,
+      "prompt": "/memory",
+      "observed": "two items 'imported \u00b7 active'; the rule 'yours \u00b7 forgotten (history kept) \u00b7 (no text kept)'; recovery and backup status",
+      "pass": true
+    }
+  ],
+  "screenshots": {
+    "mcp-computer-use-blob-1795275607821-s7nmvi.jpg": "hex:6868b78bdfa5dc04a1fe22774a5e6448b53ac9e68d8503f703a0b6d2c55223ab",
+    "mcp-computer-use-blob-1795275676289-m6xeip.jpg": "hex:935f2e785941cbe0195d5be5b3b5b7a5a8d26163276e1e267a1c16d240e7fd72",
+    "mcp-computer-use-blob-1795276039698-xvchrv.jpg": "hex:f771838f06418e7b6f13841dd6b63e52c9719560be5f6b40f6542488bbb4c1dc",
+    "mcp-computer-use-blob-1795276043964-ly20gy.jpg": "hex:0110c7a36b792afa6d2ee6a4ecac493a65ba666fc4e134e6144cc3d5eb004144",
+    "mcp-computer-use-blob-1795276113493-11kura.jpg": "hex:22abda067c32401213e7b5cd3a08f4ec834e268393908d0afe1bffcf85dfcf7e",
+    "mcp-computer-use-blob-1795276113494-gvstnm.jpg": "hex:029f250953f9f60537814c2cc9dbda9d7502ebf26a3d9eb69037f398dfb7c660",
+    "mcp-computer-use-blob-1795276290593-63kq82.jpg": "hex:e931a464bf3a3bd2da05271cef4844e0ae6c8fa4e32eef26d1f45868b6e373ed",
+    "mcp-computer-use-blob-1795276359856-grktlu.jpg": "hex:25d7181e189a6e0e0caf5e28ca877e514d2ae7cf7eacbe928ab92512ccd888e0",
+    "mcp-computer-use-blob-1795276396244-xwie8v.jpg": "hex:58950f7b28e9b9aae1e2b687315f952da4b49f9bf71942b4a5b766424643ab78",
+    "mcp-computer-use-blob-1795276448935-4m7ira.jpg": "hex:c35f91ce37533ebb426faacd806e0fc4184b71b05a651720cc03ee502dad2788",
+    "mcp-computer-use-blob-1795276488745-vesbt0.jpg": "hex:5d3738a8f39743201ead67627397ce71764c3ecb00752734c484949d2ed6fe1f"
+  },
+  "logs": {
+    "debug-acp.ndjson": "hex:1a41b39cdd96b228f0086167d0acc4a48b076bfb1ed7ed3c5a2e603770bde88e",
+    "launch-audit.ndjson": "hex:660f555ef4ffaee17da2a88f5a279d503e064b594be4b659c5a1aad474adbb09",
+    "local-gateway.log": "hex:3665901de0667c7e040c5d406365b7f5611a585b105ab0480d3d2802635fc391"
+  },
+  "findings": [
+    {
+      "what": "a backup due only because cleanup is owed shows 'overdue since <tomorrow>'",
+      "where": "memory_backups.Backups.status_line: the overdue date is the 24 h deadline even when due() is true for pending cleanup",
+      "disposition": "fixed in CP3 with a test"
+    },
+    {
+      "what": "a stray 'withdrawn;' fragment before 'backup cleanup pending for N item(s)'",
+      "where": "Backups.status_line",
+      "disposition": "fixed in CP3 with a test"
+    },
+    {
+      "what": "an import's commit cards say 'Remembered:', the word /remember uses for the user's own items",
+      "where": "optimus.acp.memory_notices card headline for an admit",
+      "disposition": "fixed in CP3 with a test"
+    },
+    {
+      "what": "memory-setup keeps every config root's store password under one keyring name (optimus-gateway-memory-store / redis-password), so two config roots overwrite each other's password and removing one breaks the other",
+      "where": "optimus.acp.memory_setup._CREDENTIAL_NAME (Plan 12.11)",
+      "observed": "this proof's set-up overwrote, and its cleanup removed, that one slot; no product memory store is configured on this machine (searched the profile and the main checkout's drive), so only earlier test proofs had used it",
+      "disposition": "filed for its own decision; outside Plan 12.12's import and backup scope"
+    }
+  ],
+  "unrun": [
+    "the 24-hour overdue state in real time (unit-tested); a synced (cloud) folder (D2 needs its own release)"
+  ],
+  "cleanup": "both keyring entries removed (store password by cleanup.py; the launch approval revoked by the operator in a terminal, since revocation needs a TTY); Zed settings restored byte for byte from the backup; test store and volume removed; F:\\optimus-p1212-test\\zed removed; the stub stopped"
+}

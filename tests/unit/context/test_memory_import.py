@@ -414,6 +414,8 @@ def test_through_the_adapter_each_commit_gets_its_card_and_served_reads_name_the
         cards = {u["toolCallId"] for u in _updates(outbound) if u.get("sessionUpdate") == "tool_call" and u["toolCallId"].startswith(
             "memory/e-")}
         assert cards == {f"memory/{e.event_id}" for e in events} and len(events) == 2
+        titles = [u["title"] for u in _updates(outbound) if u.get("sessionUpdate") == "tool_call" and u["toolCallId"].startswith("memory/e-")]
+        assert titles and all(title.startswith("Imported: ") for title in titles), titles  # never the word the user's own items use
         await rpc(adapter, prompt_request(session_id, "How are releases tagged?", "p-3"))
         assert "Releases are tagged vX.Y." in repr(runner.requests[-1]) and runner.requests[-1] is not None
         assert len(runner.requests) == 1, "the import itself called no model"
