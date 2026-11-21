@@ -1,0 +1,183 @@
+{
+  "schema": "plan12-memory-m3-part2.platforms.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "acpx": {
+    "release": "operator 2026-11-21 'Release acpx check': one zero-paid acpx protocol check; the test store p1212-memory-test-redis (127.0.0.1:6396), F:\\optimus-p1212-test\\acpx, keyring writes for this check's config only; all removed afterwards",
+    "code_head": "git:1366f7b (the agent ran editable from this worktree)",
+    "client": "acpx 0.12.0 (an independent ACP client), --format json, named sessions, --approve-all or --deny-all per step",
+    "agent": "optimus-agent from this worktree's venv; own Gateway port 18779; own config root",
+    "upstream": "local stub http://127.0.0.1:18796/api/v1 only (never forwards); provider key a dummy",
+    "paid_calls": 0,
+    "paid_calls_basis": "the stub recorded 5 requests, all from the gate prompt (step 01); no memory command made a model call; the Gateway log names only its own port; no log names a provider host",
+    "steps": [
+      {
+        "step": "00-new",
+        "prompt": "sessions new --name p1212",
+        "observed": "the session record names this check's launcher; acpx labels it 'codex' (its default name only)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:1e737fd5475a6103e8eb7f8c7117e24f2663040c424b26859079dce586311b8a"
+      },
+      {
+        "step": "01-hello",
+        "prompt": "Hello [p1212:H1] (Agent mode, --deny-all)",
+        "observed": "the gate: all 5 model requests reached the local stub (1 classifier route refused by it, 4 planning steps); planning stopped on the stub's non-directive reply; the Continue request was denied",
+        "acpx_exit": 5,
+        "pass": true,
+        "transcript": "hex:3136386d3aaeb631cb8f80ead8a7e0ddaf2d397eca26e3c59febb6854e01557e"
+      },
+      {
+        "step": "02-mode",
+        "prompt": "set-mode chat",
+        "observed": "session/set_mode accepted; acpx re-applies the mode on each new ACP session",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:a10cac9fbfad3e533025667bfb76c203f3fc1e1864f9a4a84d3001673de2ec76"
+      },
+      {
+        "step": "03-remember",
+        "prompt": "/remember Never push to main.",
+        "observed": "a 'Remembered' card; [memory:m-85ab98b260ae75b1@1]",
+        "acpx_exit": 5,
+        "pass": true,
+        "transcript": "hex:4a7b06f67314d9d0e458a6a6e5aadc75a31a382beb11a69469f248b7c9373148"
+      },
+      {
+        "step": "04-export",
+        "prompt": "/memory export (--approve-all)",
+        "observed": "session/request_permission 'Set up the memory recovery copy?': exactly two options, Go ahead (allow_once) and Cancel (reject_once); acpx chose Go ahead; Saved gen-1795278291281-2e9e68f682c4",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:48be88e223e8ad677e47a35266d32e32b6c18c755d9f49fd90ff677c516ece48"
+      },
+      {
+        "step": "05-backup-configure",
+        "prompt": "/memory backup configure F:\\optimus-p1212-test\\acpx (--approve-all)",
+        "observed": "'Set up memory backups?' with the same two options; Backed up gen-1795278291281-2e9e68f682c4 (seen on disk)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:a80f2da9fad5b32900558ba49d5b7c1d3e6aeeca32879c8593c8b53e46c28d9f"
+      },
+      {
+        "step": "06-forget",
+        "prompt": "/forget m-85ab98b260ae75b1@1",
+        "observed": "a 'Forgotten' card; [memory:m-85ab98b260ae75b1@2]",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:f4d1545d6322d1238b23591d60290af6ea5a2a3373ccb1e41cd2c109a31f1007"
+      },
+      {
+        "step": "07-backup-status",
+        "prompt": "/memory backup",
+        "observed": "'a backup is due now, to finish cleanup' and 'backup cleanup pending for 1 withdrawn item(s)' (the 1366f7b wording); plaintext and Encryption unavailable stated",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:fcfed4c2f7807e83c82bae3206b1f6e6e5b37ee6484a6c87c84159a0cef1ad67"
+      },
+      {
+        "step": "08-backup-now",
+        "prompt": "/memory backup now",
+        "observed": "Backed up gen-1795278308922-fd15d71a2493; the older backup holding the forgotten text removed (only the new generation left on disk)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:b332b392d82aa6741caff793cc0e98ae2a8d4b7f065291ca3e38e9e1994f3a24"
+      },
+      {
+        "step": "09-import-preview",
+        "prompt": "/memory import <proof folder>",
+        "observed": "preview imp-0a9de923adc1, page 1 of 1: 2 files read (the linked note followed), 2 to import as optional imported context, 2 refused (another project's entry; a wrapped entry, refused whole)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:83ae3680e4607ed1081b9fe50cf7fc6522822924a74ac93daa807451056197dd"
+      },
+      {
+        "step": "10-apply-cancel",
+        "prompt": "/memory import apply imp-0a9de923adc1 (--deny-all)",
+        "observed": "'Import memory entries?'; acpx chose Cancel; Not confirmed, so nothing was changed",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:73e5549983aaf18b8da598a8ca315929319ffe15967d0163371248f1a41eaa4a"
+      },
+      {
+        "step": "11-apply-go",
+        "prompt": "/memory import apply imp-0a9de923adc1 (--approve-all)",
+        "observed": "a new one-shot option id; Go ahead; two 'Imported:' cards; 2 saved, 0 already present, 0 skipped, 2 refused, 0 uncertain",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:1c4f6a6f567ac7d835e75949c96f5dffffcf5091b50cf11ac0706b4c111ee9ce"
+      },
+      {
+        "step": "12-import-status",
+        "prompt": "/memory import status",
+        "observed": "2 confirmed, 2 refused, 0 remaining",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:ba4f52ef39d3f5e26b4b272f80afbbee762bf03d9f8c7807bddddb4572dc0ebd"
+      },
+      {
+        "step": "13-apply-replay",
+        "prompt": "/memory import apply imp-0a9de923adc1",
+        "observed": "refused: this session holds no such preview; nothing changed",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:b23d95286e244f969ea6b814bab4b1ab3b7de7741df6ccb628971f3cd29c8dd6"
+      },
+      {
+        "step": "14-memory",
+        "prompt": "/memory",
+        "observed": "the forgotten rule (no text kept) and the two items 'imported \u00b7 active'; recovery and backup status",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:378bce660c4aaa6f3313c1c5dea01c1cfb98354185cafeb232368e46a5b25eb0"
+      },
+      {
+        "step": "15-preview-again",
+        "prompt": "/memory import <proof folder>",
+        "observed": "a second preview imp-00295f04df5d in session p1212",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:f3f97da7e9576d9fdf80b0062bfe903809eba2b51a3c05db52133520598f627b"
+      },
+      {
+        "step": "16-new-b",
+        "prompt": "sessions new --name p1212b",
+        "observed": "a second acpx session (a fresh agent process and ACP session)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:9947a103173bdf8b607fb146faa578e2392d8907c856a8b9b1025592b8c1f2ad"
+      },
+      {
+        "step": "17-apply-from-b",
+        "prompt": "/memory import apply imp-00295f04df5d from p1212b (--approve-all)",
+        "observed": "refused: a preview belongs to the session that made it, whatever the client approves; nothing changed",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:446306d372426b780c1d9faf3aa5c91cd03d126d5ee3605d8ece0c9869b776ab"
+      },
+      {
+        "step": "18-status-a",
+        "prompt": "/memory import status (p1212)",
+        "observed": "unchanged: still the one import, 2 confirmed",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:fd2fd393d83395149eab8c6e6645739094f5e42b6ae10cf933e5b087ee681906"
+      }
+    ],
+    "protocol": {
+      "confirmations": "every memory confirmation is a host-generated session/request_permission with a host-only tool-call id, exactly two options (allow_once Go ahead, reject_once Cancel) and never an 'always' option; acpx's selected answer was honored both ways; each request carries a fresh one-shot option id",
+      "cards": "memory cards are session/update tool_call items with ids under memory/ and status completed",
+      "sessions": "Optimus advertises no session/load; acpx 0.12.0 therefore opens a new ACP session whenever it restarts the agent (steps 01-03 saw three), and one queue owner keeps the agent and its session alive across later calls (--ttl 900). Memory itself is durable across sessions; an import preview is held by its own session only (step 17)"
+    },
+    "exit_codes": "acpx exit 5 is its PERMISSION_DENIED: in step 01 the Continue request --deny-all refused; step 03 ran on the agent step 01's queue owner kept and reports the same code with no permission request in its transcript (acpx client state, not an Optimus answer; its turn ended end_turn). Every other step exited 0",
+    "findings": [],
+    "logs": {
+      "debug-acp.ndjson": "hex:3f13c1cca93caa5b7d7af0d4f248ec1bf6fa66d19d5a9564e61baf3059716d18",
+      "launch-audit.ndjson": "hex:33185e313e3c353b1eb8b91fc7386f2e3f3669e8fbdcf452341c2f5ef0a349f7",
+      "local-gateway.log": "hex:c8fa75380d6b7dad974280f5ee486da48859e6b7ea23a9c1def0b5ed03ee72b7"
+    },
+    "cleanup": "both acpx sessions closed and no agent process left; the launch approval revoked; the store password removed from the keyring; the test store and volume removed; F:\\optimus-p1212-test\\acpx removed; the stub stopped"
+  },
+  "windows": "UNRUN: its own released check follows",
+  "linux_wsl": "UNRUN: its own released check follows"
+}
