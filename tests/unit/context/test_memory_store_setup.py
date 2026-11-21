@@ -389,7 +389,7 @@ def test_each_config_root_keeps_its_own_password(tmp_path: Path) -> None:
     assert keyring.get_password(sc.KEYRING_SERVICE, first.credential_name) is None
 
 
-def test_a_config_with_the_legacy_shared_name_keeps_its_password(tmp_path: Path) -> None:
+def test_a_config_with_the_legacy_shared_name_keeps_its_password(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A store set up before #526 names `redis-password`; it is read as written and a rerun migrates nothing."""
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
@@ -402,13 +402,13 @@ def test_a_config_with_the_legacy_shared_name_keeps_its_password(tmp_path: Path)
     _literal, config, _refusal = sc.read(path.parent)
     assert config is not None and config.credential_name == "redis-password"
     assert (path.read_bytes(), keyring._store) == before and keyring.get_password(sc.KEYRING_SERVICE, "redis-password")
-    import time
-
     from optimus_gateway import memory_store
-    from optimus_security import memory_store_contract as msc
 
-    service = memory_store.build_memory_store_service(config, keyring_backend=keyring, hmac_key=b"k" * 32)  # the Gateway's own reader
-    assert service.handle(b'{"op":"capabilities"}', deadline=time.monotonic() + 1) != (503, msc.error_body("MEMORY_STORE_CREDENTIAL_MISSING"))
+    endpoints: list[Any] = []
+    real_connect = memory_store.connect  # builds a client; nothing connects until a request
+    monkeypatch.setattr(memory_store, "connect", lambda endpoint: (endpoints.append(endpoint), real_connect(endpoint))[1])
+    memory_store.build_memory_store_service(config, keyring_backend=keyring, hmac_key=b"k" * 32)  # the Gateway's own reader
+    assert endpoints and {endpoint.password for endpoint in endpoints} == {keyring.get_password(sc.KEYRING_SERVICE, "redis-password")}
 
 
 def test_setting_up_a_root_again_after_its_configuration_moved_keeps_the_moved_password(tmp_path: Path) -> None:

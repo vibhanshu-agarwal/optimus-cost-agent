@@ -26,8 +26,8 @@ _SERVICE = "optimus-p1210-test"
 
 @pytest.fixture
 def credential(monkeypatch: pytest.MonkeyPatch) -> str:
-    """Setup names a fresh entry each time (#526); pin it so the isolated service's entry is known and removed."""
-    name = "redis-password:isolated-test"
+    """Setup names a fresh entry each time (#526); pin this test's own one so the isolated service's entry is known and removed."""
+    name = memory_setup._new_credential_name()
     monkeypatch.setattr(memory_setup, "_new_credential_name", lambda: name)
     return name
 
