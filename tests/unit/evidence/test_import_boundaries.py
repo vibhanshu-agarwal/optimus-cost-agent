@@ -16,6 +16,7 @@ FORBIDDEN_EVIDENCE_IMPORT_ROOTS = frozenset({"optimus", "optimus_gateway", "tool
 ALLOWED_RUNTIME_IMPORT_ROOTS = frozenset(
     {
         "evidence_handoff",
+        "optimus_file_lock",  # the stdlib-only cross-process file lock (#532)
         "optimus_security",
         "psycopg",
         "mcp",

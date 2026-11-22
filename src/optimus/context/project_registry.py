@@ -12,11 +12,9 @@ action. The project ID is grouping only; it never changes a workspace's trust id
 
 from __future__ import annotations
 
-import errno
 import json
 import os
 import sys
-import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -25,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from optimus.acp.trusted_paths import GitContextDisposition, WorkspaceIdentity
+from optimus_file_lock import FileLock, LockBusy, LockFault
 
 REGISTRY_VERSION = 1
 REGISTRY_FILE_NAME = "project-registry.json"
@@ -32,7 +31,6 @@ MARKER_FILE_NAME = "project-registry.initialized"
 _LOCK_FILE_NAME = "project-registry.lock"
 _LOCK_WAIT_SECONDS = 5.0
 _LOCK_POLL_SECONDS = 0.05
-_CONTENTION_ERRNOS = frozenset({errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK})
 
 
 class ProjectRegistryError(Exception):
@@ -137,41 +135,19 @@ class ProjectRegistry:
 
     @contextmanager
     def _lock(self) -> Iterator[None]:
+        lock = FileLock(self._root / "locks" / _LOCK_FILE_NAME)  # optimus_file_lock (#532)
         try:
-            lock_dir = self._root / "locks"
-            lock_dir.mkdir(parents=True, exist_ok=True)
-            handle = open(lock_dir / _LOCK_FILE_NAME, "w")  # noqa: SIM115
-        except OSError as exc:
-            raise ProjectRegistryError("LOCK_FAILED", f"cannot open the registry lock file (errno {exc.errno})") from None
+            lock.acquire(wait=self._lock_wait_seconds, poll=_LOCK_POLL_SECONDS)
+        except LockBusy:
+            raise ProjectRegistryError("LOCK_CONTENTION", "another process holds the registry") from None
+        except LockFault as exc:
+            if exc.stage == "open":
+                raise ProjectRegistryError("LOCK_FAILED", f"cannot open the registry lock file (errno {exc.errno})") from None
+            raise ProjectRegistryError("LOCK_FAILED", f"cannot lock the registry (errno {exc.errno})") from None
         try:
-            deadline = time.monotonic() + self._lock_wait_seconds
-            while True:
-                try:
-                    if sys.platform == "win32":
-                        import msvcrt
-
-                        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-                    else:
-                        import fcntl
-
-                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except OSError as exc:
-                    if exc.errno not in _CONTENTION_ERRNOS:
-                        raise ProjectRegistryError("LOCK_FAILED", f"cannot lock the registry (errno {exc.errno})") from None
-                    if time.monotonic() >= deadline:
-                        raise ProjectRegistryError("LOCK_CONTENTION", "another process holds the registry") from None
-                    time.sleep(_LOCK_POLL_SECONDS)
             yield
         finally:
-            if sys.platform == "win32":
-                import msvcrt
-
-                try:
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-                except OSError:
-                    pass
-            handle.close()
+            lock.release()
 
 
 def project_key(identity: WorkspaceIdentity) -> str:

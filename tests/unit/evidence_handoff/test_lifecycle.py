@@ -443,3 +443,79 @@ def test_runtime_source_has_neither_wslc_backend_nor_wslc_backend_id() -> None:
                 if "wslc" in line.lower():
                     hits.append(f"{rel}:{line_no}: {line.strip()}")
     assert hits == []
+
+
+
+# --- #532: the lifecycle lock is optimus_file_lock's, bounded on every platform ------------------------------------------
+
+
+def _disabled_manager(tmp_path: Path):
+    from evidence_handoff_runtime.config import FeatureConfig
+    from evidence_handoff_runtime.lifecycle import LifecycleManager
+
+    return LifecycleManager(FeatureConfig.from_mapping({}), _bootstrap(tmp_path), process_runner=_RecordingRunner())
+
+
+def _free_from_another_thread(lock) -> bool:
+    """Another thread can take the lock at once: the same thread re-entering an RLock would hide a leaked acquisition."""
+    taken: list[bool] = []
+
+    def take() -> None:
+        got = lock.acquire(timeout=5)
+        taken.append(got)
+        if got:
+            lock.release()
+
+    worker = threading.Thread(target=take)
+    worker.start()
+    worker.join(10)
+    return taken == [True]
+
+
+def test_a_lifecycle_lock_held_elsewhere_is_busy_and_frees_the_thread_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import optimus_file_lock
+    from evidence_handoff_runtime import lifecycle
+
+    monkeypatch.setattr(lifecycle, "_LOCK_SECONDS", 0.1)
+    manager = _disabled_manager(tmp_path)
+    with optimus_file_lock.held(tmp_path / "lifecycle.lock", wait=0):  # another command's process
+        started = time.monotonic()
+        with pytest.raises(lifecycle.LifecycleError) as busy:
+            manager.status()
+        assert time.monotonic() - started < 5.0
+    assert busy.value.code == "LIFECYCLE_LOCK_BUSY"
+    assert _free_from_another_thread(manager._thread_lock)
+    done: list[object] = []
+    worker = threading.Thread(target=lambda: done.append(manager.status()))  # recovered, from another thread
+    worker.start()
+    worker.join(30)
+    assert len(done) == 1
+
+
+def test_a_lifecycle_lock_the_os_refuses_is_its_own_fault_and_frees_the_thread_lock(tmp_path: Path) -> None:
+    from evidence_handoff_runtime.lifecycle import LifecycleError
+
+    (tmp_path / "lifecycle.lock").mkdir()  # a folder where the lock file belongs
+    manager = _disabled_manager(tmp_path)
+    with pytest.raises(LifecycleError) as fault:
+        manager.status()
+    assert fault.value.code == "LIFECYCLE_LOCK_FAILED"
+    assert _free_from_another_thread(manager._thread_lock)
+
+
+def test_leaving_frees_the_thread_lock_even_when_the_lock_file_will_not_close(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import errno
+
+    import optimus_file_lock
+
+    real_release = optimus_file_lock.FileLock.release
+
+    def release_then_fail_to_close(self: optimus_file_lock.FileLock) -> None:
+        real_release(self)
+        raise OSError(errno.EIO, "close failed")
+
+    monkeypatch.setattr(optimus_file_lock.FileLock, "release", release_then_fail_to_close)
+    manager = _disabled_manager(tmp_path)
+    with pytest.raises(OSError, match="close failed"):
+        manager.status()
+    assert _free_from_another_thread(manager._thread_lock)

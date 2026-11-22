@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from evidence_handoff_runtime.backends import (
     StoreBackend,
@@ -27,6 +27,7 @@ from evidence_handoff_runtime.config import (
 )
 from evidence_handoff_runtime.inputs import RuntimeInputSupplier
 from evidence_handoff_runtime.process import ProcessRunner, SubprocessRunner
+from optimus_file_lock import FileLock, LockBusy, LockFault
 
 if TYPE_CHECKING:
     from evidence_handoff_runtime.signing_key_custody import SigningKeyBackend
@@ -507,62 +508,48 @@ class LifecycleManager:
         )
 
 
+_LOCK_SECONDS = 10.0
+
+
 class _LifecycleLock:
-    """Thread lock plus optional exclusive lock file for cross-process serialization."""
+    """Thread lock plus optional exclusive lock file for cross-process serialization, through optimus_file_lock (#532).
+
+    The file lock waits up to _LOCK_SECONDS on every platform: before, POSIX waited forever and Windows gave up after
+    about 10 s with a raw OSError. It bounds only the file lock, not the thread lock taken first nor the whole operation.
+    A start holds this lock while it polls for readiness for up to _READY_TIMEOUT_SECONDS, so a competing command can be
+    told LIFECYCLE_LOCK_BUSY while a healthy start is still running. A file lock that cannot be taken releases the thread
+    lock again, and leaving always releases it, even when giving the file back fails.
+    """
 
     def __init__(self, thread_lock: threading.RLock, lock_path: Path | None) -> None:
         self._thread_lock = thread_lock
         self._lock_path = lock_path
-        self._fh: BinaryIO | None = None
+        self._file: FileLock | None = None
 
     def __enter__(self) -> _LifecycleLock:
         self._thread_lock.acquire()
-        if self._lock_path is not None:
-            self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-            self._fh = open(self._lock_path, "a+b")
-            self._lock_file(self._fh)
+        try:
+            if self._lock_path is not None:
+                lock = FileLock(self._lock_path)
+                try:
+                    lock.acquire(wait=_LOCK_SECONDS)
+                except LockBusy:
+                    raise LifecycleError("LIFECYCLE_LOCK_BUSY") from None
+                except LockFault:
+                    raise LifecycleError("LIFECYCLE_LOCK_FAILED") from None
+                self._file = lock
+        except BaseException:
+            self._thread_lock.release()
+            raise
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        if self._fh is not None:
-            try:
-                self._unlock_file(self._fh)
-            finally:
-                self._fh.close()
-                self._fh = None
-        self._thread_lock.release()
-
-    @staticmethod
-    def _lock_file(handle: BinaryIO) -> None:
-        import sys
-
-        if sys.platform == "win32":
-            import msvcrt
-
-            handle.seek(0)
-            if handle.read(1) == b"":
-                handle.write(b"\0")
-                handle.flush()
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-
-    @staticmethod
-    def _unlock_file(handle: BinaryIO) -> None:
-        import sys
-
-        if sys.platform == "win32":
-            import msvcrt
-
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        try:
+            if self._file is not None:
+                lock, self._file = self._file, None
+                lock.release()
+        finally:
+            self._thread_lock.release()
 
 
 __all__ = [

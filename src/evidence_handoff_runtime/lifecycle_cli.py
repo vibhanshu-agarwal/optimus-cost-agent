@@ -9,7 +9,7 @@ from pathlib import Path
 
 from evidence_handoff_runtime.backends import registered_backend_ids
 from evidence_handoff_runtime.config import FeatureConfig, LifecycleBootstrapContext
-from evidence_handoff_runtime.lifecycle import LifecycleManager
+from evidence_handoff_runtime.lifecycle import LifecycleError, LifecycleManager
 from optimus_security.sanitization import PathAliasRule
 
 _IMPLEMENTED_BACKENDS = tuple(sorted(registered_backend_ids()))
@@ -55,6 +55,10 @@ def _read_admin_password(path: Path) -> str:
     return password
 
 
+# The lifecycle lock's two outcomes (#532): another command holds it, or the OS refused it. Bounded, value-free, nonzero.
+_LOCK_CODES = frozenset({"LIFECYCLE_LOCK_BUSY", "LIFECYCLE_LOCK_FAILED"})
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     admin_password = _read_admin_password(args.admin_password_file)
@@ -86,39 +90,45 @@ def main(argv: list[str] | None = None) -> int:
         store_admin_password=admin_password,
     )
     manager = LifecycleManager(config, bootstrap)
-    if args.command == "start":
-        status = manager.start()
-    elif args.command == "stop":
-        status = manager.stop()
-    elif args.command == "status":
-        status = manager.status()
-    else:
-        health = manager.health()
+    try:
+        if args.command == "start":
+            status = manager.start()
+        elif args.command == "stop":
+            status = manager.stop()
+        elif args.command == "status":
+            status = manager.status()
+        else:
+            health = manager.health()
+            print(
+                json.dumps(
+                    {
+                        "ready": health.ready,
+                        "postgres_version": health.postgres_version,
+                        "ledger_instance_id": health.ledger_instance_id,
+                    },
+                    sort_keys=True,
+                )
+            )
+            return 0 if health.ready else 1
         print(
             json.dumps(
                 {
-                    "ready": health.ready,
-                    "postgres_version": health.postgres_version,
-                    "ledger_instance_id": health.ledger_instance_id,
+                    "availability": None if status.availability is None else str(status.availability),
+                    "running": status.running,
+                    "active_route": status.active_route,
+                    "summary_code": status.summary_code,
+                    "ledger_instance_id": status.ledger_instance_id,
+                    "backend_id": status.backend_id,
                 },
                 sort_keys=True,
             )
         )
-        return 0 if health.ready else 1
-    print(
-        json.dumps(
-            {
-                "availability": None if status.availability is None else str(status.availability),
-                "running": status.running,
-                "active_route": status.active_route,
-                "summary_code": status.summary_code,
-                "ledger_instance_id": status.ledger_instance_id,
-                "backend_id": status.backend_id,
-            },
-            sort_keys=True,
-        )
-    )
-    return 0 if status.summary_code in {"store_ready", "feature_disabled_operator_relay", "store_stopped"} else 1
+        return 0 if status.summary_code in {"store_ready", "feature_disabled_operator_relay", "store_stopped"} else 1
+    except LifecycleError as exc:
+        if exc.code not in _LOCK_CODES:
+            raise
+        print(json.dumps({"error": exc.code}, sort_keys=True), file=sys.stderr)  # the lock only; no path, no detail
+        return 2
 
 
 if __name__ == "__main__":

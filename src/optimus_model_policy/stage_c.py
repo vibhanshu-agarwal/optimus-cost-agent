@@ -32,7 +32,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sys
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -42,6 +41,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import IO, Any, Final
 
+from optimus_file_lock import FileLock, LockBusy, LockFault
 from optimus_model_policy.binding import ATTEMPT_NOT_SENT, ATTEMPT_REJECTED, UPSTREAM_ATTEMPT_TIMEOUT_SECONDS, BindingError
 
 __all__ = [
@@ -327,33 +327,21 @@ def _decimal(text: Any) -> Decimal:
 
 
 class _Lock:
-    """An exclusive, non-blocking lock on ``<ledger>.lock``, held for the guard's life."""
+    """An exclusive, non-blocking lock on ``<ledger>.lock``, held for the guard's life, through optimus_file_lock (#532).
+    Only another holder is STAGE_C_LEDGER_LOCKED; a lock the OS refuses for any other reason, opening its file included, is
+    STAGE_C_LEDGER_LOCK_FAILED with its errno, so a fault never says another Gateway holds the ledger."""
 
     def __init__(self, path: Path) -> None:
-        self._handle = path.open("a+b")
+        self._lock = FileLock(path)
         try:
-            if sys.platform == "win32":
-                import msvcrt
-
-                self._handle.seek(0)
-                msvcrt.locking(self._handle.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-
-                fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError as exc:
-            self._handle.close()
+            self._lock.acquire(wait=0.0)
+        except LockBusy as exc:
             raise StageCLedgerError("STAGE_C_LEDGER_LOCKED", "another Gateway holds this ledger") from exc
+        except LockFault as exc:
+            raise StageCLedgerError("STAGE_C_LEDGER_LOCK_FAILED", f"the ledger's lock could not be taken (errno {exc.errno})") from exc
 
     def release(self) -> None:
-        try:
-            if sys.platform == "win32":
-                import msvcrt
-
-                self._handle.seek(0)
-                msvcrt.locking(self._handle.fileno(), msvcrt.LK_UNLCK, 1)
-        finally:
-            self._handle.close()
+        self._lock.release()
 
 
 class StageCGuard:
@@ -608,7 +596,9 @@ def stage_c_ledger_status(path: Path, envelope: StageCEnvelope) -> LedgerStatus:
     try:
         _Lock(path.with_name(path.name + ".lock")).release()
         lock_free = True
-    except StageCLedgerError:
+    except StageCLedgerError as exc:
+        if exc.code != "STAGE_C_LEDGER_LOCKED":  # a fault is not another Gateway holding it (#532): say what it is
+            raise
         lock_free = False
     r = StageCGuard._replay_ledger(path, envelope)
     outstanding = r.outstanding.reserve_usd if r.outstanding is not None else Decimal(0)

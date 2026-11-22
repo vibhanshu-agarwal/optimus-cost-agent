@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from keyring.backends.Windows import DecodingCredential, WinVaultKeyring
 
+import optimus_file_lock
 from optimus.acp import local_infra, memory_setup
 from optimus.acp.local_gateway_secrets import CredentialLayer, CredentialProvenance, ProviderCredentialResolution, ProviderSecrets
 from optimus_gateway import __main__ as gateway_main
@@ -461,14 +462,17 @@ def _race(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, locked: bool) -> t
 
     log: list[tuple[str, str]] = []
     vault = _InterleavingVault(threading.Barrier(2, timeout=2.0), log)
-    real_try = memory_recovery._try_lock
+    real_lock = optimus_file_lock._lock
 
-    def logged_try(handle: Any) -> bool:
-        taken = real_try(handle)
-        log.append((threading.current_thread().name, "locked" if taken else "refused"))
-        return taken
+    def logged_lock(handle: Any) -> None:  # the one OS lock call, since #532 in optimus_file_lock
+        try:
+            real_lock(handle)
+        except OSError:
+            log.append((threading.current_thread().name, "refused"))
+            raise
+        log.append((threading.current_thread().name, "locked"))
 
-    monkeypatch.setattr(memory_recovery, "_try_lock", logged_try)
+    monkeypatch.setattr(optimus_file_lock, "_lock", logged_lock)
     if not locked:
         monkeypatch.setattr(memory_recovery, "_file_lock", lambda *_args, **_kwargs: contextlib.nullcontext())
     start, failures = threading.Barrier(2, timeout=10.0), []
@@ -569,12 +573,11 @@ def test_a_lock_fault_is_reported_as_itself_not_as_another_setup(monkeypatch: py
 
 def test_a_failed_unlock_after_the_write_does_not_undo_the_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """#529 review: closing the lock file releases the lock, so an unlock failure after a stored password is not a setup failure."""
-    from optimus.context import memory_recovery
 
     def broken_unlock(_handle: Any) -> None:
         raise OSError(5, "unlock failed")
 
-    monkeypatch.setattr(memory_recovery, "_unlock", broken_unlock)
+    monkeypatch.setattr(optimus_file_lock, "_unlock", broken_unlock)
     keyring = FakeKeyring()
     path = _run(tmp_path, keyring)
     password = _stored_password(keyring, path)

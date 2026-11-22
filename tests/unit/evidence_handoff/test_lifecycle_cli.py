@@ -34,7 +34,7 @@ def test_status_reads_password_file_and_keeps_secret_out_of_argv(tmp_path: Path,
     from evidence_handoff_runtime import lifecycle_cli
 
     roots = _roots(tmp_path)
-    password = "cli-admin-password-canary-value"
+    password = "cli-admin-password-canary-value"  # pragma: allowlist secret - synthetic CLI password canary
     password_file = tmp_path / "admin.password"
     password_file.write_text(password + "\n", encoding="utf-8")
 
@@ -148,3 +148,25 @@ def test_parser_accepts_only_implemented_docker_backend_id(tmp_path: Path) -> No
             _required_status_argv(tmp_path, password_file, "--backend-id", "native-windows")
         )
     assert raised_unknown.value.code != 0
+
+
+
+def test_a_lifecycle_lock_held_elsewhere_is_a_bounded_error_and_exit_2(tmp_path: Path, capsys, monkeypatch) -> None:
+    """#532: the CLI reports the lock's two outcomes as a value-free code on stderr with a nonzero exit."""
+    import optimus_file_lock
+    from evidence_handoff_runtime import lifecycle, lifecycle_cli
+
+    monkeypatch.setattr(lifecycle, "_LOCK_SECONDS", 0.1)
+    roots = _roots(tmp_path)
+    password_file = tmp_path / "admin.password"
+    password_file.write_text("cli-admin-password-canary-value\n", encoding="utf-8")
+    lock = tmp_path / "lifecycle.lock"
+    argv = ["status", "--control-root", str(roots["control"]), "--lock-path", str(lock), "--capture-root", str(roots["capture"]),
+            "--staging-root", str(roots["staging"]), "--quarantine-root", str(roots["quarantine"]), "--forbidden-root",
+            str(roots["forbidden"]), "--admin-password-file", str(password_file)]
+    with optimus_file_lock.held(lock, wait=0):
+        code = lifecycle_cli.main(argv)
+    captured = capsys.readouterr()
+    assert code == 2 and captured.out == ""
+    assert json.loads(captured.err) == {"error": "LIFECYCLE_LOCK_BUSY"}
+    assert "cli-admin-password-canary-value" not in captured.err

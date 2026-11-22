@@ -444,3 +444,26 @@ def test_the_gateway_copy_aimed_at_the_real_config_root_is_refused_and_creates_n
     assert run_context_guard.denials() > before, "the guard refused the write"
     assert (accounting / "gateway-diagnostics").exists() == existed
     assert any("write failures" in r for r in reports)
+
+
+
+def test_a_line_whose_lock_is_held_elsewhere_is_a_counted_failure_and_the_next_is_written(tmp_path, monkeypatch):
+    """#532: the directory lock waits a bounded time on every platform; a line it could not lock is a write failure, and
+    the writer goes on to the next line."""
+    import optimus_file_lock
+
+    monkeypatch.setattr(ds, "_LOCK_SECONDS", 0.1)
+    root = tmp_path / "copy"
+    root.mkdir()
+    sink = _sink(root)
+    deadline = time.monotonic() + 30
+    with optimus_file_lock.held(root / ds.LOCK_NAME, wait=0):  # another Gateway mid-line
+        sink.write(_line(1))
+        while sink.status().write_failures < 1:
+            assert time.monotonic() < deadline, "the held lock was never counted"
+            time.sleep(0.005)
+    sink.write(_line(2))
+    assert sink.close()
+    status = sink.status()
+    assert (status.write_failures, status.written) == (1, 1)
+    assert [r["seq"] for records in _records(root).values() for r in records] == [2]

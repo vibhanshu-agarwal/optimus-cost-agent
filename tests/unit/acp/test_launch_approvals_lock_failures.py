@@ -16,7 +16,7 @@ from typing import IO, Any
 
 import pytest
 
-from optimus.acp import launch_approvals
+import optimus_file_lock
 from optimus.acp.launch_approvals import ApprovalError, KeyringApprovalStore
 from tests.unit.acp.test_launch_approvals import FakeKeyring, _sample_approval_record
 
@@ -28,8 +28,9 @@ _CONTENTION_ERRNO = errno.EACCES if sys.platform == "win32" else errno.EWOULDBLO
 
 @pytest.fixture
 def opened_files(monkeypatch: pytest.MonkeyPatch) -> list[IO[Any]]:
-    """Every file the approvals module opens. Holding a reference means only an explicit close()
-    closes it, so a dropped handle cannot pass for a closed one through garbage collection."""
+    """Every file the approvals lock opens: since #532 the lock is optimus_file_lock's, so that is where it opens its
+    file. Holding a reference means only an explicit close() closes it, so a dropped handle cannot pass for a closed one
+    through garbage collection."""
     opened: list[IO[Any]] = []
 
     def _recording_open(*args: Any, **kwargs: Any) -> IO[Any]:
@@ -37,7 +38,7 @@ def opened_files(monkeypatch: pytest.MonkeyPatch) -> list[IO[Any]]:
         opened.append(handle)
         return handle
 
-    monkeypatch.setattr(launch_approvals, "open", _recording_open, raising=False)
+    monkeypatch.setattr(optimus_file_lock, "open", _recording_open, raising=False)
     return opened
 
 
@@ -129,3 +130,36 @@ def test_a_failed_unlock_keeps_the_consumed_result_and_still_closes_the_lock_fil
         _store(tmp_path, keyring).consume_one_shot(handle, record.security_snapshot_digest)
     assert again.value.code == "ONE_SHOT_NOT_FOUND"
     _assert_only_closed_lock_files(opened_files, tmp_path, expected=3)
+
+
+# --- #532: the lock is optimus_file_lock's; these are the approvals store's own mappings of it -----------------------
+
+
+def test_a_lock_folder_that_cannot_be_made_is_lock_failed_and_names_the_open(tmp_path: Path) -> None:
+    (tmp_path / "locks").write_text("a file where the lock folder belongs", encoding="utf-8")
+    keyring = FakeKeyring()
+    record = _sample_approval_record(mode="one-shot", hmac_key=_HMAC_KEY)
+    with pytest.raises(ApprovalError) as refused:
+        _store(tmp_path, keyring).write_one_shot(record, _NONCE)
+    assert refused.value.code == "LOCK_FAILED" and "cannot open the approval lock file (errno " in str(refused.value)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="EACCES is another holder on Windows")
+def test_on_posix_an_eacces_lock_is_a_fault_not_contention(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import fcntl
+
+    keyring = FakeKeyring()
+    record = _sample_approval_record(mode="one-shot", hmac_key=_HMAC_KEY)
+    calls: list[int] = []
+    real = fcntl.flock
+
+    def denied(fd: int, mode: int, *args: Any) -> Any:
+        if mode == fcntl.LOCK_EX | fcntl.LOCK_NB:
+            calls.append(fd)
+            raise OSError(errno.EACCES, "denied by policy")
+        return real(fd, mode, *args)
+
+    monkeypatch.setattr(fcntl, "flock", denied)
+    with pytest.raises(ApprovalError) as refused:
+        _store(tmp_path, keyring).write_one_shot(record, _NONCE)
+    assert refused.value.code == "LOCK_FAILED" and len(calls) == 1
