@@ -321,5 +321,263 @@
       "total": 7,
       "invalid": []
     }
-  ]
+  ],
+  "cp3": {
+    "head": "git:e7bae98d19e8e1112046fa01d6223b4c0648d356",
+    "dirty": false,
+    "at": "2026-11-22T10:43:16Z",
+    "rule": "CAUGHT only when the baseline and the restored code pass the named test cleanly (at least one pass, no skip or error) and the mutant fails that named test itself, with no collection or setup error",
+    "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/revert_cp3.py (logs beside it)",
+    "caught": 19,
+    "total": 19,
+    "results": [
+      {
+        "control": "export pin: every page at the first page's head (e02de5a)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_an_export_stays_one_generation_while_writes_land_between_its_pages",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
+        "mutant_sha256": "hex:ac6b208ca5eb13be70f61477f54930040c01d507767413675b26543384fd16a4",
+        "logs": {
+          "baseline": "hex:83bb0b111d44567f6561bc1e48d864ea3744deeb6349c536f08911952e7bb61b",
+          "mutant": "hex:b978caeb3b5882ddb558c9a2ab8247df3168a6b63dbe26c2da2defe1bea5b389",
+          "restored": "hex:481f3854b289ac3a30090c3469b2f50ba9a1461411db7b0bc77b23c0ca340098"
+        }
+      },
+      {
+        "control": "a pinned head no longer held is refused (e02de5a)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_the_gateway_refuses_a_pinned_head_it_no_longer_holds",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
+        "mutant_sha256": "hex:8e388892007909e8fa3dd87c999d9efa6600636fcd4ae3abda0ce51dc8cea624",
+        "logs": {
+          "baseline": "hex:7e42253ca73d0f8f2f81f4f63e6d78d8b631e7ca09a7bda0acd10e0a37b3de2a",
+          "mutant": "hex:cf0b176e97168e16509525084123f687cfa83970b85a12396ca481c6d096acc7",
+          "restored": "hex:ba54883b0709441503a75b875e321caf459ebeaaa2b15138edd083fc8a6c3c09"
+        }
+      },
+      {
+        "control": "deletion guard: withdrawn or purged text never completes a copy (e02de5a)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_a_deletion_landing_while_an_export_is_read_is_never_completed_into_a_copy",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
+        "mutant_sha256": "hex:cc6891b442bdebe15f61b41056673f029c16484f32ca8c8c5a0e9e019814200b",
+        "logs": {
+          "baseline": "hex:db0f38291b7d39c9e9b11f7050678985d28d7ccf82b3fe66bd6029c8afcd5a75",
+          "mutant": "hex:c245aaa4e08bab6837dc05dcd2ad8cc7fe9cc2de35db4ddfddcea4d18b74741d",
+          "restored": "hex:f81f8369ad2a2136123157b82608f761c158e22bfc977a8845dba4a6e4cbf904"
+        }
+      },
+      {
+        "control": "deletion guard on every page, not only the last (Fable finding 2)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_an_item_deleted_after_the_pin_is_never_served_again_from_that_generation",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
+        "mutant_sha256": "hex:2ca12ea37122f4d999e4a41d6a770036d4e02d9bd6ef9f2c17a6c2c7bd4f9d6b",
+        "logs": {
+          "baseline": "hex:abd2af88f78ab0ecef24598945f7e5c4705f5ad4d475c9da846f7033f8f816f6",
+          "mutant": "hex:12d776ec72f229e6496fc3ebe24e6a984b85a2b0daf9bdb761c41585eac25b3c",
+          "restored": "hex:530433a31a807653801efa2ac4e9cd4dc0d0c11ae882f3bfd4f717b94874fdc3"
+        }
+      },
+      {
+        "control": "deletion-journal clause alone (Fable finding 6)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_a_purge_of_an_item_the_generation_never_held_still_refuses_its_last_page",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
+        "mutant_sha256": "hex:cbe5c649869fec8b2d4fe98b22e848b48fa6142f4e8c9310451f1eb8fcd19de2",
+        "logs": {
+          "baseline": "hex:cadf14fb5a28d4913a36367c31092bdec73ae70a066d1d30848716f5061c5762",
+          "mutant": "hex:f38cb7a102e488efc1cd9de6b6f0668debb1ef0a216fefcf67ffc0211affe8e3",
+          "restored": "hex:b18a8db76246d54547344476cf41f989ba91217ae3f54b684074be985d138640"
+        }
+      },
+      {
+        "control": "a withdrawal or purge drops this Gateway's kept generations (Fable finding 2)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_an_item_deleted_after_the_pin_is_never_served_again_from_that_generation",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
+        "mutant_sha256": "hex:32b086811186d9deeb0ada0608702b7d02d4fda09702f719510dbca06d613ecf",
+        "logs": {
+          "baseline": "hex:434ebd7d52763eb884d28cfa89bc5f5e563fcf91b7e2b96c538378b0d008038a",
+          "mutant": "hex:ec133ad9729eed910259d44708fbd1b5cdf0bf3f8c0fa9ab1da58ed8cea71f04",
+          "restored": "hex:a92aa92d66e7beb4f81bfd78ed0368cf05f21a026c8716871991cfaffffbfa07"
+        }
+      },
+      {
+        "control": "a kept generation serves only its own bind (Fable finding 6)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_a_pin_serves_only_its_own_bind_and_only_while_it_is_kept",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
+        "mutant_sha256": "hex:2f8c5b69dab17a7dec0adc322e6d50d3cde7c80ab0cffcc6c6db41d4e6c73958",
+        "logs": {
+          "baseline": "hex:d698b10166c2076d0666228f4831dfb8d313f50fc766119781bcc95a092558ce",
+          "mutant": "hex:3610105b3311c33a180f7c254b10665b77d90c1a844eccb42023f71948917e60",
+          "restored": "hex:620ad29f316e388cdf9e42a4d4696ddd5a3b26dcaf2a5da4117ffc4d95507829"
+        }
+      },
+      {
+        "control": "kept generations are bounded (_PINNED_MAX; Fable finding 6)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_a_pin_serves_only_its_own_bind_and_only_while_it_is_kept",
+        "file": "src/optimus_gateway/memory_store.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
+        "mutant_sha256": "hex:aba3a384111c2afd86ca69c7f0474153a1e5b36f2855b61532b36ccbcdbef5ca",
+        "logs": {
+          "baseline": "hex:dffd189a6f40ddd0cc7df31426b13873a3b21d1221144baa629dbbc36ac4e933",
+          "mutant": "hex:379edf19c3259d8c46a9bf501df59088d0f00836266c5d9fce2868feca52f64b",
+          "restored": "hex:ac2e45d6117ef3423a5bf5f2c61cdab86f11b399e1df1193ec307c0069da8282"
+        }
+      },
+      {
+        "control": "a backup authenticates at the copy's own head (e02de5a)",
+        "test": "tests/unit/context/test_memory_backups.py::test_a_backup_is_taken_and_authenticated_while_writes_keep_landing",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:414d09e6b66265f5b49c20a988fd6e35d2a297b8b2479c87cef88a7966324bed",
+        "mutant_sha256": "hex:b0506fec4057929520a4f4d844292e829084745e22303c73a45f9046e3b63401",
+        "logs": {
+          "baseline": "hex:8082da6c1926cef3d3c12d8dba7c79c6fc253f8621552c9949d0945ab859da4a",
+          "mutant": "hex:a5cca0237d73223852834be6f8ff381ebe110b58158a05a10af0bb3fc9c930ce",
+          "restored": "hex:654f0da22fa2eb489a67332db82822f7865b05f62bd21d3d935fa54f856030ec"
+        }
+      },
+      {
+        "control": "memory moving on is read again, not a failure (Fable finding 3)",
+        "test": "tests/unit/context/test_memory_backups.py::test_memory_moving_on_from_a_clean_copy_is_read_again_never_a_recorded_failure",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:414d09e6b66265f5b49c20a988fd6e35d2a297b8b2479c87cef88a7966324bed",
+        "mutant_sha256": "hex:2219a018fd49cfa6142c1a1f470716565a307f54dde28076bd49b3e575ef4103",
+        "logs": {
+          "baseline": "hex:f9e5764170a53752166777c40bb5c25f7e4ebe30e2b899ec03db8f27fade325d",
+          "mutant": "hex:7a964d5217dafa6443085a9b307ca4a7ac494f61adb553245625906338660335",
+          "restored": "hex:211f3bac880e19a4cae8497eab62d1cbd614878b11044208c7178c25f7d731cd"
+        }
+      },
+      {
+        "control": "the retry exports the copy again (Fable finding 3)",
+        "test": "tests/unit/context/test_memory_backups.py::test_memory_moving_on_from_a_clean_copy_is_read_again_never_a_recorded_failure",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:414d09e6b66265f5b49c20a988fd6e35d2a297b8b2479c87cef88a7966324bed",
+        "mutant_sha256": "hex:32c5604cce073d08a8eafb11ef1718038f2ae1abc20d870b5e68d985a021a6a6",
+        "logs": {
+          "baseline": "hex:9ba0ff2aebd114a897d4e7e4af4da8d615e720c4b8d76b1c94cc18dbe34340a7",
+          "mutant": "hex:95bb68feb02fc1e6de987a7407cc722280b463e1312438673195ee11d6af5d0e",
+          "restored": "hex:a9c445d830c6623c8dd2e25dc86fc418a3aaab15242a849934dfc58eb46bc6fa"
+        }
+      },
+      {
+        "control": "a target missing while written is a write failure (Fable finding 1)",
+        "test": "tests/unit/context/test_memory_backups.py::test_b11_a_target_reported_missing_while_written_is_a_recorded_write_failure",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:414d09e6b66265f5b49c20a988fd6e35d2a297b8b2479c87cef88a7966324bed",
+        "mutant_sha256": "hex:a5aa5d5407839d7205a7789f63d5eedd79e1852ccf88868465e194ca94b7dc9f",
+        "logs": {
+          "baseline": "hex:d424fb9ba9a7cb60badd9bcba8f120373e0fce3bb631f54521ce4f4e8de473e1",
+          "mutant": "hex:01f56256f3159b06e81aab3731d04f25d4fdc1331625ba164d34bcd07e9c8eb4",
+          "restored": "hex:88c77d428acca3e6697a75983824284c0c58f066f236427036cedcb603f82b24"
+        }
+      },
+      {
+        "control": "a backup target the OS cannot create is answered (3146591)",
+        "test": "tests/unit/context/test_memory_backups.py::test_b11_b30_a_target_the_os_cannot_create_is_a_readable_answer",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:414d09e6b66265f5b49c20a988fd6e35d2a297b8b2479c87cef88a7966324bed",
+        "mutant_sha256": "hex:08b7ce2806b55d4e6effd5c6fc42a49f52c3d9ca88a8ae808ee399579ede4be6",
+        "logs": {
+          "baseline": "hex:fbcc745fb5a92bf438f4d76ffd4be8e4e3153d62799869abec1a18f343e4ae15",
+          "mutant": "hex:2a74f93895838a87a60fe03842db58252865510cd2d335952af6b9dffc0b07a3",
+          "restored": "hex:543a388fa7ca9d2f6e78d42a45875715ce3b45b9b3b0dfbee0b61b3d7ee28865"
+        }
+      },
+      {
+        "control": "a recovery location the OS cannot create is answered (3146591)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_a_location_or_copy_the_os_cannot_write_is_a_readable_answer",
+        "file": "src/optimus/context/memory_recovery.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:378cff2b98c55eba603837a26ac0e9196075c00e982a2010556f36b0df4737f7",
+        "mutant_sha256": "hex:0c47d63b1fbd8bf3c290207ad60a41f92d3f3cdfe4f96f12f7ed783ba83d1547",
+        "logs": {
+          "baseline": "hex:34c8ac6744243cf39643dfdb12bf0b3491df172f2fecc4ddb7810a61ee192d53",
+          "mutant": "hex:5db37ff3b8f7aa032b80727f30e05c2a3209f962973a15c8be558fe66b8b5712",
+          "restored": "hex:db704d300954833753aa9e65e5d36f6eec5717551344fdb93db3ba5f868c36d8"
+        }
+      },
+      {
+        "control": "an identical published generation is reused, not rewritten (Fable finding 3 follow-on)",
+        "test": "tests/unit/context/test_memory_backups.py::test_r4_a_journal_moving_on_is_source_movement_not_a_failure",
+        "file": "src/optimus/context/memory_recovery.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:378cff2b98c55eba603837a26ac0e9196075c00e982a2010556f36b0df4737f7",
+        "mutant_sha256": "hex:b8b328ffad9c92eabb9269f04ed20211d173a69f855df4a03b6865bcae04a42e",
+        "logs": {
+          "baseline": "hex:39e1533bec30306309cf4a713d817d56d9bc0448582a5c39caabd2ee18c1b855",
+          "mutant": "hex:8c4862200bb8d53f1effbb18bc6ac944e9edb862ffcaa2feec28abd41739f785",
+          "restored": "hex:72be63410528871d5befceccc04bb9fe89731c034e751ec2b4483a0800caa039"
+        }
+      },
+      {
+        "control": "a recovery copy the OS cannot write is answered (3146591)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_a_location_or_copy_the_os_cannot_write_is_a_readable_answer",
+        "file": "src/optimus/context/memory_recovery.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:378cff2b98c55eba603837a26ac0e9196075c00e982a2010556f36b0df4737f7",
+        "mutant_sha256": "hex:daf6d3f4f86fefe05b3450fc51da58e191ab157c87e919bce1673695c146ae8e",
+        "logs": {
+          "baseline": "hex:730f32316f198da8dd2f28353f80defd37bcfbadf3235011e940ece952b8f66f",
+          "mutant": "hex:c504d4186591fb2801e6e2fd89a5d0d281f54764198864e300eba91626693356",
+          "restored": "hex:00266b8d6696fbdb1e76335dd529a726aff8776d43500ca637569df7465b00dc"
+        }
+      },
+      {
+        "control": "no future overdue date (1366f7b)",
+        "test": "tests/unit/context/test_memory_backups.py::test_a_backup_due_for_cleanup_says_so_and_never_names_a_future_overdue_date",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:414d09e6b66265f5b49c20a988fd6e35d2a297b8b2479c87cef88a7966324bed",
+        "mutant_sha256": "hex:a931c546a7fa8802037d32d6b595180c354ec5c0ad5da7971757e0d4fb6e449b",
+        "logs": {
+          "baseline": "hex:584608de965fdb40c23ad22a13940f8f735a9bb394fa18f2e6e2b9d7bf3d0d24",
+          "mutant": "hex:a8d71895762260f5d9763e4938918218065b7b2e1549addb414942abf667e6e1",
+          "restored": "hex:1099fde5174d2905681b8d47ca03c0a66c81f8f20039f3e537fd09091d1e1b02"
+        }
+      },
+      {
+        "control": "no stray 'withdrawn;' (1366f7b)",
+        "test": "tests/unit/context/test_memory_backups.py::test_a_backup_due_for_cleanup_says_so_and_never_names_a_future_overdue_date",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:414d09e6b66265f5b49c20a988fd6e35d2a297b8b2479c87cef88a7966324bed",
+        "mutant_sha256": "hex:6f5c3a330aebb58d3457bf96fdf1de6db92eba2d02733604382d686e70ec67af",
+        "logs": {
+          "baseline": "hex:6a8d27cfb8e971c62c599fe8a8429a3b32bf2bc47d838d5114dbfa633dd53919",
+          "mutant": "hex:0cda7df55fa1a31ee2d2dea71f72433f48d4c5dcb7277c9a3ec58d44ec79721b",
+          "restored": "hex:56e8f374856212d9597f47b63b47ec0f7a614811c9c6a26a9a8d3ab70f8eb603"
+        }
+      },
+      {
+        "control": "an import's cards say Imported (1366f7b)",
+        "test": "tests/unit/context/test_memory_import.py::test_through_the_adapter_each_commit_gets_its_card_and_served_reads_name_the_imports",
+        "file": "src/optimus/acp/memory_notices.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:bbcd64a80048914cbb3c0d4dc1bc3a258b0bc732783d27e5ee1539703bb6c996",
+        "mutant_sha256": "hex:a5dc33294c519b4c617b5b67e92662175007cd54702817e7bb076ff884608463",
+        "logs": {
+          "baseline": "hex:325522c16e4b6c88a22e10c593686a7ff1ee8c8d051e6ea3f1e27b501000776f",
+          "mutant": "hex:2b733153eb77ae341e3e6ee2d1eb8dda3e516dd5ab34758401c9d32a0ebde35c",
+          "restored": "hex:c1b10a27dcf70f47fd774e6dc26a4fe3e5cb9cfbeb8f821d800e9df064132b29"
+        }
+      }
+    ]
+  }
 }

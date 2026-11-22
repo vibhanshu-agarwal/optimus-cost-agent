@@ -8,8 +8,8 @@
   "agent": "optimus-agent from this worktree's venv; own Gateway port 18778 (nothing listened on 8765); own config root",
   "upstream": "local stub http://127.0.0.1:18795/api/v1 only (never forwards); provider key a dummy",
   "paid_calls": 0,
-  "paid_calls_basis": "the stub received 4 requests in all (2 pre-launch health checks, one refused route check, the one Hello prompt); the Gateway log and ACP debug trace name no provider host; the Gateway logged only its own port; Zed's own agent thread, opened first by mistake, was never sent anything",
-  "stub_requests": 4,
+  "paid_calls_basis": "the stub received 3 requests in all (1 pre-launch probe, one refused route check, the one Hello prompt); the Gateway log and ACP debug trace name no provider host; the Gateway logged only its own port; Zed's own agent thread, opened first by mistake, was never sent anything (Fable CP3 review 1: the count was 4, the start record included)",
+  "stub_requests": 3,
   "steps": [
     {
       "n": 1,
@@ -130,7 +130,8 @@
   "logs": {
     "debug-acp.ndjson": "hex:1a41b39cdd96b228f0086167d0acc4a48b076bfb1ed7ed3c5a2e603770bde88e",
     "launch-audit.ndjson": "hex:660f555ef4ffaee17da2a88f5a279d503e064b594be4b659c5a1aad474adbb09",
-    "local-gateway.log": "hex:3665901de0667c7e040c5d406365b7f5611a585b105ab0480d3d2802635fc391"
+    "local-gateway.log": "hex:3665901de0667c7e040c5d406365b7f5611a585b105ab0480d3d2802635fc391",
+    "stub/stub-requests.ndjson": "hex:c78c2d28f4b442fc6c8e3d814551dd33346b310c746c5e2e35601dc4fe78f305"
   },
   "findings": [
     {

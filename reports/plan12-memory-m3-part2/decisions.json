@@ -10,7 +10,9 @@
     "D4_second_model_proof": "Only on an already eligible route under a separate release; otherwise UNRUN with #491 later-plan custody. Task 0 found no second eligible route.",
     "D3_binding": "2026-11-21: sources approved (\"Both sources\") and the item list confirmed (\"Confirm list\"): 26 pilot items (16 Claude notes, 10 Codex notes; 4 expected stale or superseded) mapped to this repository's registration, plus 5 other-project negative controls that must be refused. Private selection hex:732123dd5d4d0b6cc9c901188100dcc7aa19554bb2913d60758282d219906d14 in the review kit; the repository records counts and hashes only. Comparison questions and the paid release are Task 3's.",
     "backup_target": "2026-11-21: F:, physical disk 2, separate from the store's disk 1",
-    "cp1_contention": "2026-11-21, Claude's chat: \"Accept checkpoint 1 with that test recorded UNRUN and run it once at checkpoint 2\". The frozen k2_contention workload stays UNRUN at CP1 (backups.json) and runs once at CP2, when the import leg exists; a miss there stays a miss."
+    "cp1_contention": "2026-11-21, Claude's chat: \"Accept checkpoint 1 with that test recorded UNRUN and run it once at checkpoint 2\". The frozen k2_contention workload stays UNRUN at CP1 (backups.json) and runs once at CP2, when the import leg exists; a miss there stays a miss.",
+    "cp3_start": "2026-11-21 (\"Start CP3\"): start checkpoint 3 with the CP2-carried export fix first",
+    "cp3_reviews": "2026-11-22 (\"Merge main and start the CP3 reviews\"): merge origin/main into the CP3 branch, then Fable 5.2, then Codex"
   },
   "oracle_mapping": {
     "status": "agreed at review level by Codex, round 110 review 1 (CLI session 01a1fa9e-3a9d-7423-9b17-d2e4011e441e, posted on #491 comment 7049805469); no operator escalation needed. Scope: a mapped PASS covers only the named invariant; skipping existing withdrawn items does not prove fresh-import provenance preservation",
@@ -53,7 +55,13 @@
     "task1": "2026-11-21 (\"Release all\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test; keyring writes only under the isolated test service; all removed at CP1 close; zero paid calls",
     "cp1_publication": "2026-11-21: \"Push branch agent/claude/p491-task0 ... and open the checkpoint 1 PR to main\"; merge is a separate ask",
     "task2": "2026-11-21 (\"Start CP2, release store\"): Docker Desktop; test memory Redis p1212-memory-test-redis on port 6396 with volume p1212-memory-test-data, with fault injection (kill, stop, restart, volume removal); test backup folder F:\\optimus-p1212-test for the contention backup leg; keyring writes only under the isolated test service; all removed at CP2 close; zero paid calls",
-    "cp2_contention_rerun": "2026-11-21 (\"Yes, run it once\", #491 comment 7061791613): one more frozen K2 contention run on the final CP2 head, within the CP2 store release, after Codex acceptance; the first run (f3e839f) and every attempt are kept"
+    "cp2_contention_rerun": "2026-11-21 (\"Yes, run it once\", #491 comment 7061791613): one more frozen K2 contention run on the final CP2 head, within the CP2 store release, after Codex acceptance; the first run (f3e839f) and every attempt are kept",
+    "cp3_store_and_contention": "2026-11-21 (\"Release both\"): the test store p1212-memory-test-redis (port 6396, volume p1212-memory-test-data) for the export-fix real-store regression, and one frozen K2 contention run (run 3); removed afterwards; zero paid",
+    "cp3_pilot": "2026-11-21 (\"Release the pilot\"): the consented pilot import of the 26 chosen notes and 5 negative controls into the test store, from the private kit copy; removed afterwards; zero paid",
+    "cp3_comparison": "2026-11-21 (\"Zero-paid only\"): the pilot's comparison with the MEMORY.md workflow, zero paid (no model graded answers); answer correctness UNRUN",
+    "cp3_zed": "2026-11-21 (\"Release the Zed session\"): one zero-paid real-Zed session: the test store, F:\\optimus-p1212-test, keyring writes for that proof's config only, its own Zed agent entry; all removed afterwards",
+    "cp3_acpx": "2026-11-21 (\"Release acpx check\"): one zero-paid acpx protocol check: the test store, F:\\optimus-p1212-test\\acpx, keyring writes for that check's config only; all removed afterwards",
+    "cp3_paths": "2026-11-21 (\"Release both\"): the Windows path checks under F:\\optimus-p1212-test and the Linux/WSL checks in their own clone and environment under /opt in WSL Ubuntu-24.04; no store, keyring or paid call; all removed afterwards"
   },
   "k2_contention_deviations": [
     {

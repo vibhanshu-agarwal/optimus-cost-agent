@@ -174,7 +174,8 @@
     "logs": {
       "debug-acp.ndjson": "hex:3f13c1cca93caa5b7d7af0d4f248ec1bf6fa66d19d5a9564e61baf3059716d18",
       "launch-audit.ndjson": "hex:33185e313e3c353b1eb8b91fc7386f2e3f3669e8fbdcf452341c2f5ef0a349f7",
-      "local-gateway.log": "hex:c8fa75380d6b7dad974280f5ee486da48859e6b7ea23a9c1def0b5ed03ee72b7"
+      "local-gateway.log": "hex:c8fa75380d6b7dad974280f5ee486da48859e6b7ea23a9c1def0b5ed03ee72b7",
+      "stub/stub-requests.ndjson": "hex:32e5b74305c092eeac1eba42d18495b7da141cd3c81df931f646c7632ea14ab9"
     },
     "cleanup": "both acpx sessions closed and no agent process left; the launch approval revoked; the store password removed from the keyring; the test store and volume removed; F:\\optimus-p1212-test\\acpx removed; the stub stopped"
   },
@@ -261,6 +262,12 @@
       "where": "Backups.configure, Recovery.confirm and Recovery.export",
       "found_by": "Windows probe P4",
       "disposition": "fixed in 3146591 with two tests through the user's commands; both fail on the old code (revert check)"
+    },
+    {
+      "what": "the same long-path class while a backup is written: a target folder that fits but whose files do not (or a folder removed mid-write) raised FileNotFoundError, answered as 'the source moved' and never recorded as a failure",
+      "where": "Backups._backup",
+      "found_by": "Fable CP3 review 1, finding 1 (a 235-character target)",
+      "disposition": "fixed in e7bae98: every OS error after the capture is the target's, BACKUP_WRITE_FAILED, recorded; a test through /memory backup now fails on the old code (revert check)"
     },
     {
       "what": "test_b04 could pass a lock its helper thread had already released: the helper held it at most 5 s while the test waits up to 2 s twice",
