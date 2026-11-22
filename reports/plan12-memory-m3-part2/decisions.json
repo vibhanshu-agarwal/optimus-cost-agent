@@ -61,7 +61,8 @@
     "cp3_comparison": "2026-11-21 (\"Zero-paid only\"): the pilot's comparison with the MEMORY.md workflow, zero paid (no model graded answers); answer correctness UNRUN",
     "cp3_zed": "2026-11-21 (\"Release the Zed session\"): one zero-paid real-Zed session: the test store, F:\\optimus-p1212-test, keyring writes for that proof's config only, its own Zed agent entry; all removed afterwards",
     "cp3_acpx": "2026-11-21 (\"Release acpx check\"): one zero-paid acpx protocol check: the test store, F:\\optimus-p1212-test\\acpx, keyring writes for that check's config only; all removed afterwards",
-    "cp3_paths": "2026-11-21 (\"Release both\"): the Windows path checks under F:\\optimus-p1212-test and the Linux/WSL checks in their own clone and environment under /opt in WSL Ubuntu-24.04; no store, keyring or paid call; all removed afterwards"
+    "cp3_paths": "2026-11-21 (\"Release both\"): the Windows path checks under F:\\optimus-p1212-test and the Linux/WSL checks in their own clone and environment under /opt in WSL Ubuntu-24.04; no store, keyring or paid call; all removed afterwards",
+    "cp3_refresh": "2026-11-22 (\"Release the store\"): the focused final-head refresh Codex CP3 review 7 ruled (B), at the clean CI head git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e: p1212-memory-test-redis on port 6396, volume p1212-memory-test-data, the backup test folder F:\\optimus-p1212-test and the existing restart/volume-loss fault injection; zero paid calls; the container and volume were removed afterwards"
   },
   "k2_contention_deviations": [
     {

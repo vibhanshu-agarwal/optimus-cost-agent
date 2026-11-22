@@ -171,5 +171,85 @@
       },
       "missing_coverage": []
     }
-  ]
+  ],
+  "final_head_refresh": {
+    "ruling": "Codex CP3 review 7, ruling B: the Redis-backed tier and the evaluator at the clean CI head before merge; the earlier results stay attributed to their own heads",
+    "release": "decisions.json operator_releases.cp3_refresh",
+    "head": "git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e",
+    "dirty": 0,
+    "integration": {
+      "command": "python -m pytest -p no:cacheprovider --no-cov -q -m requires_plan12_memory_redis tests/integration/memory/test_backups.py tests/integration/memory/test_recovery.py tests/integration/memory/test_import.py tests/integration/memory/test_user_authority.py",
+      "log": {
+        "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/integration.log",
+        "sha256": "hex:c8f4ef3859a749a152435db5874b89a66807d931e41f162b20a74f2d310dbd04"
+      },
+      "exit": 0,
+      "result": "20 passed in 78.14s (0:01:18)",
+      "run_context": "mode=passive reason=non_default_selection run=20261122T170509-63304-f0def0 native=not_enrolled parent=UNKNOWN guard=not_installed records=COMPLETE phases=60 exit=0"
+    },
+    "evaluation": {
+      "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3-part2/run-config.json --output <kit>/evidence/refresh/evaluation-refresh.json",
+      "log": {
+        "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/m3-evaluate.log",
+        "sha256": "hex:67679f3ca4be19eb605be0cc5839247b16307c13a851729fdb2e7e82eeee5a35"
+      },
+      "results": {
+        "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/evaluation-refresh.json/results.json",
+        "sha256": "hex:e49dcc24e87fec3c744ef9cf925ec8851317348b6328e76c1e830b37365e791e"
+      },
+      "exit": 0,
+      "config_id": "m3p2-cp2-v1",
+      "cases": [
+        {
+          "case": "M13-a",
+          "error": null,
+          "original": "INCONCLUSIVE",
+          "original_layers": {
+            "authority": "PASS",
+            "retrieval": "PASS",
+            "answer": "UNRUN",
+            "cost": "PASS"
+          },
+          "mapped": "PASS"
+        },
+        {
+          "case": "M13-b",
+          "error": null,
+          "original": "INCONCLUSIVE",
+          "original_layers": {
+            "authority": "PASS",
+            "retrieval": "PASS",
+            "answer": "UNRUN",
+            "cost": "PASS"
+          },
+          "mapped": "PASS"
+        },
+        {
+          "case": "M13-c",
+          "error": null,
+          "original": "FAIL",
+          "original_layers": {
+            "authority": "FAIL",
+            "retrieval": "PASS",
+            "answer": "UNRUN",
+            "cost": "PASS"
+          },
+          "mapped": "PASS"
+        },
+        {
+          "case": "M18-c",
+          "error": null,
+          "original": "FAIL",
+          "original_layers": {
+            "authority": "FAIL",
+            "retrieval": "PASS",
+            "answer": "UNRUN",
+            "cost": "PASS"
+          },
+          "mapped": "PASS"
+        }
+      ],
+      "rule": "original and mapped comparisons kept separately; a mapped PASS proves only its named invariant; the answer layer is UNRUN"
+    }
+  }
 }
