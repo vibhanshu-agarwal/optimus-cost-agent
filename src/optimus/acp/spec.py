@@ -2092,7 +2092,7 @@ class AcpDuplexAdapter:
             finally:
                 self._reopen_reservations.pop(session_id, None)
                 self._reopen_cancelled.discard(session_id)
-            admission = conversation.prepare_admission(task)
+            admission = conversation.prepare_admission(task, entropy_exempt=names)
             if self._closed or state._closed or not admission.admitted:
                 state.restore_suspended()
                 if not admission.admitted:
