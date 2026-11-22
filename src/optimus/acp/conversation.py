@@ -154,20 +154,37 @@ def build_conversation_sanitizer_inputs(
 
 
 class ConversationSanitizer:
-    def __init__(self, inputs: ConversationSanitizerInputs) -> None:
+    """The session's persistence sanitizer. `sanitize` never looks at a file. With a `workspace`, `workspace_names` finds the
+    workspace file names a text holds (off the event loop), which `sanitize` then keeps from the entropy rule (#525, #530)."""
+
+    def __init__(self, inputs: ConversationSanitizerInputs, *, workspace: Path | None = None) -> None:
         self._inputs = inputs
+        self._workspace = workspace
 
     @property
     def inputs(self) -> ConversationSanitizerInputs:
         return self._inputs
 
-    def sanitize(self, text: str) -> str:
+    def workspace_names(self, text: str) -> frozenset[str]:
+        """The workspace file names `text` holds that the entropy rule must not mask. Looks at the workspace: off the loop."""
+        if self._workspace is None:
+            return frozenset()
+        from optimus.context import memory_serving
+
+        return memory_serving.workspace_names(text, self._workspace, self.sanitize)
+
+    def sanitize_in_workspace(self, text: str) -> str:
+        """`sanitize`, keeping the workspace file names `text` holds. Looks at the workspace: off the loop."""
+        return self.sanitize(text, entropy_exempt=self.workspace_names(text))
+
+    def sanitize(self, text: str, *, entropy_exempt: frozenset[str] = frozenset()) -> str:
         result = sanitize_for_persistence(
             text,
             known_secrets=self._inputs.known_secrets,
             known_pii=self._inputs.known_pii,
             path_aliases=self._inputs.path_aliases,
             policy=EVIDENCE_REDACTION_POLICY,
+            entropy_exempt=entropy_exempt,
         )
         value = result.value
         if not isinstance(value, str):
@@ -307,8 +324,9 @@ class ConversationState:
     def sanitize_text(self, text: str) -> str:
         return self._sanitizer.sanitize(text)
 
-    def prepare_admission(self, raw_user_prompt: str) -> AdmissionDecision:
-        sanitized = self._sanitizer.sanitize(raw_user_prompt)
+    def prepare_admission(self, raw_user_prompt: str, *, entropy_exempt: frozenset[str] = frozenset()) -> AdmissionDecision:
+        """`entropy_exempt`: the prompt's workspace file names, found off the loop (`ConversationSanitizer.workspace_names`)."""
+        sanitized = self._sanitizer.sanitize(raw_user_prompt, entropy_exempt=entropy_exempt)
         if self._disposition is not ConversationDisposition.OPEN:
             return AdmissionDecision(
                 admitted=False,

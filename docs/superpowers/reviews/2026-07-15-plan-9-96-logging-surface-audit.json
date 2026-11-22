@@ -2297,6 +2297,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.evidence_gather_support.plan117_current_client_collector:_collect_launch:file_open",
+      "policy": "protocol-only",
+      "rationale": "Reads a bounded prefix of registered relay files after unconfirmed Zed shutdown. Raw bytes stay in the private run evidence so the STOP decision can use an observed reopen.",
+      "sanitizer": "Private run custody, registered relay filenames and a read capped at the observed file size. Diagnostics use a fixed abort code.",
+      "test_node": "tests/unit/tools/test_plan117_current_client_collector.py::test_unconfirmed_reopen_holds_approval_recovery_when_capture_fails",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.evidence_gather_support.plan117_current_client_collector:_read_scoped_launch_audit:file_open",
       "policy": "protocol-only",
       "rationale": "Reads the private audit stream at the recorded offset. Only the single matching scoped authorization event supplies evidence.",

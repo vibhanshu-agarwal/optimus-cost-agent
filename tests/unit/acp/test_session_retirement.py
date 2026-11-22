@@ -73,9 +73,9 @@ async def test_cap_refusal_allocates_no_session_or_permission(tmp_path, monkeypa
     allocations = []
     original = adapter._new_conversation
 
-    def conversation():
+    def conversation(workspace=None):
         allocations.append('conversation')
-        return original()
+        return original(workspace)
 
     monkeypatch.setattr(adapter, '_new_conversation', conversation)
     response = await adapter.handle_client_request(new_request(tmp_path, [
@@ -172,7 +172,7 @@ async def test_every_session_new_failure_retires_both_distinct_states(tmp_path, 
 
         monkeypatch.setattr(runtime.disposition, 'attach_runtime_resolver', attach)
     if failure_point == 'conversation':
-        def conversation():
+        def conversation(workspace=None):
             raise failure
         monkeypatch.setattr(adapter, '_new_conversation', conversation)
     servers = [{'type': 'http', 'name': 'tools', 'url': 'https://mcp.example.com/a', 'headers': []}]

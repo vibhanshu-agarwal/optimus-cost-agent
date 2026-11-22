@@ -211,13 +211,14 @@ class BackupStateFile:
 
     def update(self, change: Callable[[BackupState], None]) -> BackupState:
         try:
-            with self._lock, mr._file_lock(self.path.with_name(self.path.name + ".lock")):
+            with self._lock, mr._file_lock(self.path.with_name(self.path.name + ".lock"), fault_code="BACKUP_LOCK_FAILED"):
                 state = self.load()
                 change(state)
                 mr._durable_json(self.path, state.to_json())
                 return state
-        except mr.RecoveryError as busy:
-            raise BackupError("BACKUP_BUSY", busy.message, transient=True) from None
+        except mr.RecoveryError as refused:  # a fault keeps its own code: only another holder is busy (#529 review 2)
+            code = refused.code if refused.code == "BACKUP_LOCK_FAILED" else "BACKUP_BUSY"
+            raise BackupError(code, refused.message, transient=True) from None
 
 
 # --- the target's identity and disks ------------------------------------------------------------------------------------
@@ -613,7 +614,7 @@ class Backups:
         `explicit` is the user's own `/memory backup now`: it also releases cleanup held in earlier synced targets."""
         lock = self._state.path.with_name(self._state.path.name + ".publish.lock")
         try:
-            with self._lock, mr._file_lock(lock, wait=LOCK_SECONDS, code="BACKUP_BUSY",
+            with self._lock, mr._file_lock(lock, wait=LOCK_SECONDS, code="BACKUP_BUSY", fault_code="BACKUP_LOCK_FAILED",
                                            message="Another session is taking this project's backup; try again shortly."):
                 attempts = 0
                 while True:

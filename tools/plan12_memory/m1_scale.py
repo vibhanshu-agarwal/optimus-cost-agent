@@ -488,7 +488,7 @@ def _provision(config: dict[str, Any], repository: Path, work: Path, *, prepare:
     settings_file = shipped_defaults()
     defaults = {**settings_file, "container": container, "volume": volume, "port": config["port"], "maxmemory_mb": config["maxmemory_mb"]}
     keyring = _Keyring()
-    run_setup(config_root, keyring_backend=keyring, confirm=lambda _d: True, download=copy_artifact, defaults=defaults)
+    run_setup(config_root, lock_root=config_root, keyring_backend=keyring, confirm=lambda _d: True, download=copy_artifact, defaults=defaults)
     root = memory_index_root(config_root)
     _literal, memory, _refusal = read(root)
     assert memory is not None

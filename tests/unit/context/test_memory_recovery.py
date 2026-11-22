@@ -911,3 +911,70 @@ def test_the_gateway_refuses_a_pinned_head_it_no_longer_holds(tmp_path: Path, re
     with pytest.raises(mr.RecoveryError) as moved:
         host.recovery._read_generation(bind, pin=head)
     assert moved.value.code == "RECOVERY_SOURCE_MOVED"
+
+
+# --- a lock the OS refuses for a reason other than another holder (#529 review 2) ---------------------------------------------
+
+LOCK_FAULTS = [errno.ENOLCK] + ([] if sys.platform == "win32" else [errno.EACCES])  # EACCES is a holder only on Windows
+
+
+def fault_platform_lock(monkeypatch: pytest.MonkeyPatch, number: int) -> None:
+    """Make the platform's own lock call fail with `number`, as the OS would, below every lock helper."""
+    def refuse(*_args: Any) -> None:
+        raise OSError(number, os.strerror(number))
+
+    if sys.platform == "win32":
+        import msvcrt
+
+        monkeypatch.setattr(msvcrt, "locking", refuse)
+    else:
+        import fcntl
+
+        monkeypatch.setattr(fcntl, "flock", refuse)
+
+
+@pytest.mark.parametrize("number", LOCK_FAULTS)
+def test_a_lock_fault_is_its_own_refusal_at_once_never_a_busy_wait(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, number: int) -> None:
+    import time
+
+    fault_platform_lock(monkeypatch, number)
+    started = time.monotonic()
+    with pytest.raises(mr.RecoveryError) as refused, mr._file_lock(tmp_path / "x.lock", wait=30.0, fault_code="SOME_LOCK_FAILED"):
+        pytest.fail("the lock was not taken")
+    assert refused.value.code == "SOME_LOCK_FAILED" and f"errno {number}" in refused.value.message
+    assert time.monotonic() - started < 5.0  # a retried fault would have waited out the 30 s
+
+
+@pytest.mark.parametrize("number", LOCK_FAULTS)
+def test_a_lock_fault_stops_an_export_with_its_errno(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, repo: Path, number: int) -> None:
+    host = _Host(tmp_path, repo)
+    host.remember(CANARY)
+    destination = mr.location(repo)
+    host.recovery.confirm(destination, sync_consent=False)
+    fault_platform_lock(monkeypatch, number)
+    with pytest.raises(mr.RecoveryError) as refused:
+        host.recovery.export()
+    assert refused.value.code == "RECOVERY_LOCK_FAILED" and f"errno {number}" in refused.value.message
+    assert not mr.generations(destination)
+
+
+def test_a_state_lock_fault_after_publication_claims_nothing_about_what_was_written(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                                                                     repo: Path) -> None:
+    """#529 review 3: an export takes the state lock only after it has published, so a fault there must not say nothing changed."""
+    host = _Host(tmp_path, repo)
+    host.remember(CANARY)
+    destination = mr.location(repo)
+    host.recovery.confirm(destination, sync_consent=False)
+    state_lock, real_try = host.recovery._state.path.name + ".lock", mr._try_lock
+
+    def refuse_the_state_lock(handle: Any) -> bool:
+        if Path(handle.name).name == state_lock:
+            raise OSError(errno.ENOLCK, os.strerror(errno.ENOLCK))
+        return real_try(handle)
+
+    monkeypatch.setattr(mr, "_try_lock", refuse_the_state_lock)
+    with pytest.raises(mr.RecoveryError) as refused:
+        host.recovery.export()
+    assert refused.value.code == "RECOVERY_LOCK_FAILED" and f"errno {errno.ENOLCK}" in refused.value.message
+    assert "nothing" not in refused.value.message.lower()
+    assert mr.generations(destination)  # published before the state lock was refused

@@ -65,7 +65,7 @@ class Provisioned:
 
 def setup_config(tmp: Path, **changes: Any) -> tuple[Path, MemoryStoreConfig, str]:
     keyring = FakeKeyring()
-    run_store_setup(tmp, keyring_backend=keyring, confirm=lambda _description: True, defaults={**settings(), **changes})
+    run_store_setup(tmp, lock_root=tmp, keyring_backend=keyring, confirm=lambda _description: True, defaults={**settings(), **changes})
     root = memory_store_root(tmp)
     _literal, config, _refusal = read(root)
     assert config is not None

@@ -49,9 +49,15 @@ _ORIGIN: Final = {"user-authored": "the user's", "agent-derived": "agent lesson"
 BRANCH_PREFIX: Final = "branch:"
 FILE_PREFIX: Final = "file:"
 MAX_FILE_REFS: Final = 8
+MAX_NAME_CHECKS: Final = 64  # gate checks per text: a long reply naming many files costs no more than this
 MAX_HASHED_BYTES: Final = 4 * 1024 * 1024  # a larger file is not pinned: hashing it at every turn would cost too much
 _PATH_WORD: Final = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")  # a leading dot: `.editorconfig` is a file too
 _REFERENCE: Final = re.compile(r"[A-Za-z0-9._:@/-]{1,128}")  # the contracts' host-reference form
+# What the persistence sanitizer's entropy rule reads as one token, and the lengths it judges (`optimus_security.sanitization`).
+# A name is exempt only as that whole token, so no key written against it can share the exemption.
+_SANITIZER_RUN: Final = re.compile(r"[A-Za-z0-9._+:/-]+")
+_ENTROPY_TOKEN_LENGTHS: Final = (24, 256)
+_NAMED_FILE: Final = re.compile(r"(?P<path>[A-Za-z0-9_.][A-Za-z0-9_./-]*)(?P<node>(?:::[A-Za-z_][A-Za-z0-9_]*)*)[.:]*")
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,31 @@ def _digest(policy: FilePolicy, relative: str) -> str | None:
     if not decision.allowed or content is None:
         return None
     return hashlib.sha256(content).hexdigest()[:32]
+
+
+def workspace_names(text: str, root: Path, sanitize: Callable[[str], str]) -> frozenset[str]:
+    """The workspace file names in `text` that the entropy rule must not mask (#525): a long path or pytest id
+    (`tests/unit/test_app.py::TestApp::test_run`) reads to it as a random token. A word counts only as the sanitizer's whole
+    token, only when its path is a file the workspace admits (inside it, not a secret or ignored file: the policy's gate, which
+    opens no file) and each test name after `::` passes `sanitize` alone. Every other rule still reads the whole text. The gate
+    may read ignore files, so call this off the event loop. At most MAX_NAME_CHECKS distinct words reach the gate; later ones
+    are judged as before (#530)."""
+    admits: list[Callable[[str], bool]] = []  # one gate per text, opened at the first long path-shaped word only
+    exempt: set[str] = set()
+    checked = 0
+    for word in dict.fromkeys(_SANITIZER_RUN.findall(text)):  # each distinct word is looked at once
+        shortest, longest = _ENTROPY_TOKEN_LENGTHS
+        parts = _NAMED_FILE.fullmatch(word) if shortest <= len(word) <= longest else None
+        if parts is None or ("/" not in parts["path"] and "." not in parts["path"]):
+            continue
+        if checked == MAX_NAME_CHECKS:
+            break
+        checked += 1
+        admits[:] = admits or [FilePolicy(root).admitter()]
+        names = parts["node"].split("::")[1:]
+        if admits[0](parts["path"].rstrip(".")) and all(sanitize(name) == name for name in names):
+            exempt.add(word)
+    return frozenset(exempt)
 
 
 def file_refs(statement: str, root: Path | None) -> tuple[str, ...]:
