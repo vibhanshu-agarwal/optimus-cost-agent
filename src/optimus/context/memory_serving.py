@@ -25,7 +25,7 @@ import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, Final
 
 from context_engine.memory_contracts import ServedMemory
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
@@ -49,6 +49,7 @@ _ORIGIN: Final = {"user-authored": "the user's", "agent-derived": "agent lesson"
 BRANCH_PREFIX: Final = "branch:"
 FILE_PREFIX: Final = "file:"
 MAX_FILE_REFS: Final = 8
+MAX_NAME_CHECKS: Final = 64  # gate checks per text: a long reply naming many files costs no more than this
 MAX_HASHED_BYTES: Final = 4 * 1024 * 1024  # a larger file is not pinned: hashing it at every turn would cost too much
 _PATH_WORD: Final = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_./-]*")  # a leading dot: `.editorconfig` is a file too
 _REFERENCE: Final = re.compile(r"[A-Za-z0-9._:@/-]{1,128}")  # the contracts' host-reference form
@@ -104,36 +105,29 @@ def _digest(policy: FilePolicy, relative: str) -> str | None:
     return hashlib.sha256(content).hexdigest()[:32]
 
 
-class ExemptingSanitizer(Protocol):
-    """The session's persistence sanitizer (`ConversationSanitizer.sanitize`). Only its entropy rule skips the whole tokens
-    named in `entropy_exempt`."""
-
-    def __call__(self, text: str, *, entropy_exempt: frozenset[str] = ...) -> str: ...
-
-
-def workspace_sanitizer(sanitize: ExemptingSanitizer, root: Path) -> Callable[[str], str]:
-    """`sanitize`, except that the entropy rule does not take a workspace file's name for a random token (#525). A long path or
-    pytest id (`tests/unit/test_app.py::TestApp::test_run`) was masked, so memory refused a note naming one, or served it masked.
-    A name is exempt only as the sanitizer's whole token, and only when two things hold. Its path must be a file the workspace
-    admits: inside it, not a secret or ignored file, by the policy's gate, which opens nothing. And each test name after `::`
-    must pass the sanitizer on its own. Every other rule, exact known secrets and key prefixes included, still reads the whole
-    text."""
-
-    def sanitized(text: str) -> str:
-        admits: list[Callable[[str], bool]] = []  # one gate per text, opened at the first long path-shaped word only
-        exempt: set[str] = set()
-        for word in dict.fromkeys(_SANITIZER_RUN.findall(text)):  # each distinct word is looked at once
-            shortest, longest = _ENTROPY_TOKEN_LENGTHS
-            parts = _NAMED_FILE.fullmatch(word) if shortest <= len(word) <= longest else None
-            if parts is None or ("/" not in parts["path"] and "." not in parts["path"]):
-                continue
-            admits[:] = admits or [FilePolicy(root).admitter()]
-            names = parts["node"].split("::")[1:]
-            if admits[0](parts["path"].rstrip(".")) and all(sanitize(name) == name for name in names):
-                exempt.add(word)
-        return sanitize(text, entropy_exempt=frozenset(exempt)) if exempt else sanitize(text)
-
-    return sanitized
+def workspace_names(text: str, root: Path, sanitize: Callable[[str], str]) -> frozenset[str]:
+    """The workspace file names in `text` that the entropy rule must not mask (#525): a long path or pytest id
+    (`tests/unit/test_app.py::TestApp::test_run`) reads to it as a random token. A word counts only as the sanitizer's whole
+    token, only when its path is a file the workspace admits (inside it, not a secret or ignored file: the policy's gate, which
+    opens no file) and each test name after `::` passes `sanitize` alone. Every other rule still reads the whole text. The gate
+    may read ignore files, so call this off the event loop. At most MAX_NAME_CHECKS distinct words reach the gate; later ones
+    are judged as before (#530)."""
+    admits: list[Callable[[str], bool]] = []  # one gate per text, opened at the first long path-shaped word only
+    exempt: set[str] = set()
+    checked = 0
+    for word in dict.fromkeys(_SANITIZER_RUN.findall(text)):  # each distinct word is looked at once
+        shortest, longest = _ENTROPY_TOKEN_LENGTHS
+        parts = _NAMED_FILE.fullmatch(word) if shortest <= len(word) <= longest else None
+        if parts is None or ("/" not in parts["path"] and "." not in parts["path"]):
+            continue
+        if checked == MAX_NAME_CHECKS:
+            break
+        checked += 1
+        admits[:] = admits or [FilePolicy(root).admitter()]
+        names = parts["node"].split("::")[1:]
+        if admits[0](parts["path"].rstrip(".")) and all(sanitize(name) == name for name in names):
+            exempt.add(word)
+    return frozenset(exempt)
 
 
 def file_refs(statement: str, root: Path | None) -> tuple[str, ...]:
