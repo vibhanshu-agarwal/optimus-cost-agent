@@ -275,6 +275,13 @@ def commit_path(canonical_path: str, run_key: bytes) -> str:
     return hmac.new(run_key, PATH_COMMITMENT_DOMAIN + path_identity_bytes(canonical_path), hashlib.sha256).hexdigest()
 
 
+def commit_private_mapping(mapping_bytes: bytes, run_key: bytes) -> str:
+    """Bind canonical private mapping bytes for the receipt's mapping_sha256 field."""
+    if type(run_key) is not bytes or len(run_key) != 32:
+        raise ContractError("run_key_invalid")
+    return hmac.digest(run_key, b"plan-11-7-v5:mapping:v1\x00" + mapping_bytes, "sha256").hex()
+
+
 # --------------------------------------------------------------------------- gate dispositions and reasons
 
 
@@ -1623,7 +1630,9 @@ def find_privacy_violations(
 
 def private_forbidden_strings(raw: Plan117RawManifest) -> tuple[str, ...]:
     """Every private value that must never reach a promotable byte."""
-    values = [raw.path_commitment_key_hex]
+    _, mapping = derive_sanitized_manifest(raw)
+    # The legacy unkeyed mapping digest can confirm guesses about the private paths.
+    values = [raw.path_commitment_key_hex, sha256_hex(canonical_json_bytes(mapping))]
     public_launcher_sha256 = PUBLIC_LAUNCHER_IDENTITY[0]
     values.extend(source.launcher_sha256 for source in raw.isolated_sources if source.launcher_sha256 != public_launcher_sha256)
     launchers = _launcher_roles(raw)
