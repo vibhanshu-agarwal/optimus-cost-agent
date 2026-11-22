@@ -12,8 +12,15 @@
   },
   "observed": [
     {
-      "claim": "memory is durable across ACP sessions: acpx opened a new ACP session whenever it restarted the agent (steps 01-03 saw three); the rule remembered in the third was then exported, backed up, forgotten and listed in later calls",
-      "evidence": "platforms.json acpx steps 01-08 and 14 (transcript hashes there); platforms.json acpx protocol.sessions"
+      "claim": "same-session command continuity through an independent client: after acpx's agent restarts (steps 01-03 opened three ACP sessions, before anything was remembered), steps 03-15 and 18 ran in one ACP session, where the rule was remembered, exported, backed up, forgotten and listed (Codex CP3 review 4: this is not restart durability)",
+      "evidence": "platforms.json acpx steps 01-18 (transcript hashes there); platforms.json acpx protocol.sessions"
+    },
+    {
+      "claim": "a fresh host and session of the project carry on from the same store after a restart: an undelivered card is replayed once and nothing is written again (unit tier, the store's in-memory stand-in); restart durability on the real store was proven by Plan 12.11 (checkpoints survive a killed store process; a fresh host continues)",
+      "evidence": [
+        "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
+        "reports/plan12-memory-m3/continuity.json (Plan 12.11, real store; tests/integration/memory/test_continuity.py)"
+      ]
     },
     {
       "claim": "an import preview belongs to its own session: a second acpx session could not apply the first session's preview, even with every request approved",

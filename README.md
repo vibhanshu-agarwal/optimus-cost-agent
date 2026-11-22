@@ -233,9 +233,9 @@ the first response opens with a welcome-back brief from the previous session's c
 apply now, memory changed since, and the commits since. `/welcome` shows the brief at any time. While a session is
 open, a changed project's memory is copied periodically, in plaintext, under `.optimus/memory-recovery/` (`/memory
 export` copies it at once), and `/memory restore` brings that copy back into an empty store, applying every purge
-since. That copy is on the same drive, so it is not a backup. `/memory backup configure <folder> [--cloud]` copies it
-once a day, while a session is open, to another drive (or, after a plaintext warning, a synced folder) once you confirm;
-`/memory backup now` takes one at once, `/memory backup disable` stops them, and `/memory backup` and `/memory` show the
+since. That copy is on the same drive, so it is not a backup. `/memory backup configure <folder>` copies it once a day,
+while a session is open, to another drive once you confirm. A synced folder (`--cloud`, after a plaintext warning) is
+never written on a schedule: each copy there is taken by `/memory backup now`. `/memory backup now` takes one at once, `/memory backup disable` stops them, and `/memory backup` and `/memory` show the
 last backup, anything overdue, paused or failed, and cleanup still owed for withdrawn items. `/memory restore` lists the
 backup generations too. Backups are plaintext: Zed says "Encryption unavailable" until #491's later plan delivers
 encryption, the recovery phrase, key rotation and encrypted restore. `/memory import <folder> [--map <project>]` previews
