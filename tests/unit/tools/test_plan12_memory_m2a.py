@@ -5,6 +5,7 @@ The real-index check needs the released Redis and is not run here.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -12,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from optimus.agent import planning_loop as pl
+from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 from tools.plan12_memory import m2a_evaluate as ev
 
 REPOSITORY = Path(__file__).resolve().parents[3]
@@ -160,3 +162,83 @@ def test_no_schedule_reads_a_range_twice(frozen: ev.Frozen) -> None:
         ]
         spans = sorted((path, start, start + size) for path, start, size in ranges)
         assert all(not (a[0] == b[0] and b[1] < a[2]) for a, b in zip(spans, spans[1:], strict=False)), item["id"]
+
+
+def _records(resolved: dict, work: Path) -> tuple[str, list[str]]:
+    """The final request's evidence as the real serializers write it, and the separate records."""
+    whole = {path: (work / path).read_bytes() for path in {read["path"] for round_ in resolved["rounds"] for read in round_["reads"]}}
+    records = []
+    for number, round_ in enumerate(resolved["rounds"]):
+        for read in round_["reads"]:
+            start, end = read["start_byte"], read["start_byte"] + read["range_bytes"]
+            sha = hashlib.sha256(whole[read["path"]]).hexdigest()
+            records.append(
+                pl._serialize_planning_observation(
+                    pl.PlanningObservation(
+                        path=read["path"],
+                        start_byte=start,
+                        end_byte=end,
+                        source_sha256=sha,
+                        observation_text="o" * round_["observation_text_bytes"],
+                    )
+                )
+            )
+            if number == len(resolved["rounds"]) - 1:
+                text = whole[read["path"]][start:end].decode("utf-8")
+                records.append(
+                    pl._serialize_planning_read_evidence(
+                        pl.PlanningReadEvidence(
+                            path=read["path"], start_byte=start, end_byte=end, source_sha256=sha, line_endings="lf", range_text=text
+                        )
+                    )
+                )
+    return "".join(records), records
+
+
+def test_the_evidence_check_needs_every_record_whole_and_counts_alone_are_not_enough(frozen: ev.Frozen, tmp_path: Path) -> None:
+    resolved = ev.resolve(_schedule(frozen, "S12"))  # two rounds of three and four reads
+    ev.write_workspace(resolved, tmp_path)
+    final, records = _records(resolved, tmp_path)
+    assert ev.check_evidence(final, resolved, tmp_path) == []
+    read_block = next(record for record in records if record.startswith("READ_BLOCK"))
+    end = read_block.rindex("\nEND_READ_BLOCK")
+    corruptions = {
+        "truncated payload": final.replace(read_block, read_block[: end - 1] + read_block[end:], 1),
+        "wrong range": final.replace("bytes=0:1800", "bytes=0:1799", 1),
+        "duplicate replaces another": final.replace(records[1], records[0], 1),
+        "stale hash": final.replace(
+            hashlib.sha256((tmp_path / resolved["rounds"][0]["reads"][0]["path"]).read_bytes()).hexdigest(), "0" * 64, 1
+        ),
+    }
+    for name, text in corruptions.items():
+        assert text != final and text.count("OBS_RECORD path=") == final.count("OBS_RECORD path="), name
+        assert ev.check_evidence(text, resolved, tmp_path), name
+
+
+def test_an_equal_completion_count_with_fewer_budget_stops_is_chosen() -> None:
+    def rows(done: dict[str, bool], budget: set[str]) -> dict[str, dict]:
+        return {sid: {"completed": ok, "stop": None, "budget_stop": sid in budget, "weakened": False} for sid, ok in done.items()}
+
+    results = {
+        "4/12": rows({"a": True, "b": False}, {"b"}),
+        "6/10": rows({"a": True, "b": False}, set()),
+        "2/14": rows({"a": True, "b": False}, {"b"}),
+        "8/8": rows({"a": True, "b": False}, {"b"}),
+    }
+    choice = ev.choose_partition(results)
+    assert choice["chosen"] == "6/10"  # same completions as 4/12, one budget stop fewer (b stops for another reason)
+    assert choice["rejected"]["2/14"].startswith("ranks below 6/10")
+    tied = {label: rows({"a": True}, set()) for label in ("4/12", "6/10", "2/14", "8/8")}
+    assert ev.choose_partition(tied)["chosen"] is None  # a full tie keeps the baseline, nearest to itself
+
+
+def test_files_added_after_indexing_keep_the_frozen_ignore_rules(frozen: ev.Frozen, tmp_path: Path) -> None:
+    files = next(item["files"] for item in frozen.cases["ambiguity"]["workspaces"] if item["family"] == "A-F2")
+    later = {entry["path"] for entry in files if entry.get("metadata") == "none" and "denied" not in entry}
+    ev.materialize(files, tmp_path, skip=later)
+    ignore = (tmp_path / ".gitignore").read_bytes()
+    ev.after_indexing(files, tmp_path, later)
+    assert (tmp_path / ".gitignore").read_bytes() == ignore and (tmp_path / "tools/utils.py").is_file()
+    policy = FilePolicy(tmp_path)
+    assert not policy.decide("secrets/utils.py", purpose=FilePurpose.AUTOMATIC).allowed
+    assert policy.decide("tools/utils.py", purpose=FilePurpose.AUTOMATIC).allowed

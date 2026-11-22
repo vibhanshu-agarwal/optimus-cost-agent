@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import threading
@@ -27,6 +28,7 @@ from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
 from optimus.agent.workspace_context import WorkspaceReferenceStatus, assemble_workspace_context_for_prompt
 from optimus.gateway.models import GatewayResponse, GatewayUsage
+from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.runtime.modes import ExecutionMode
 
@@ -162,14 +164,53 @@ def _span(text: str, start: str, end: str) -> int:
     return 0 if first < 0 or last < 0 else len(text[first : last + len(end)].encode("utf-8"))
 
 
-def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: Path) -> dict[str, Any]:
-    """One schedule through the real runner and planning loop with only the two limits substituted."""
+_OBS_RECORD = re.compile(r"OBS_RECORD path=(\S+) bytes=(\d+):(\d+) sha256=([0-9a-f]{64})\n(.*?)\nEND_OBS_RECORD\n", re.DOTALL)
+_READ_BLOCK = re.compile(r"READ_BLOCK path=(\S+) bytes=(\d+):(\d+) sha256=([0-9a-f]{64}) eol=(\w+)\n(.*?)\nEND_READ_BLOCK\n", re.DOTALL)
+BUDGET_STOPS = frozenset({"PLANNING_OBSERVATION_BUDGET_EXHAUSTED", "PLANNING_READ_BUDGET_EXHAUSTED"})
+
+
+def write_workspace(resolved: Mapping[str, Any], work: Path) -> list[str]:
+    """The schedule's files: plain LF text long enough for every range."""
     work.mkdir(parents=True, exist_ok=True)
     paths = sorted({read["path"] for round_ in resolved["rounds"] for read in round_["reads"]})
     for path in paths:
         target = work / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(b"x = 1\n" * (_FILE_BYTES // 6))
+    return paths
+
+
+def check_evidence(final: str, resolved: Mapping[str, Any], work: Path) -> list[str]:
+    """Problems with the final request's evidence, empty when it carries exactly the expected records: every round's observation and the
+    last round's reads, each with its path, range, the file's current sha256 and its whole payload. Duplicates and substitutions count."""
+    whole = {path: (work / path).read_bytes() for path in {read["path"] for round_ in resolved["rounds"] for read in round_["reads"]}}
+    digest_of = {path: hashlib.sha256(data).hexdigest() for path, data in whole.items()}
+
+    def span(read: Mapping[str, Any]) -> tuple[str, int, int, str]:
+        start = read["start_byte"]
+        return read["path"], start, start + read["range_bytes"], digest_of[read["path"]]
+
+    expected_observations = sorted(
+        (*span(read), "o" * round_["observation_text_bytes"]) for round_ in resolved["rounds"] for read in round_["reads"]
+    )
+    expected_reads = sorted(
+        (*span(read), "lf", whole[read["path"]][read["start_byte"] : read["start_byte"] + read["range_bytes"]].decode("utf-8"))
+        for read in resolved["rounds"][-1]["reads"]
+    )
+    found_observations = sorted((path, int(a), int(b), sha, text) for path, a, b, sha, text in _OBS_RECORD.findall(final))
+    found_reads = sorted((path, int(a), int(b), sha, eol, text) for path, a, b, sha, eol, text in _READ_BLOCK.findall(final))
+    problems = []
+    if found_observations != expected_observations:
+        problems.append(f"observation records differ ({len(found_observations)} found, {len(expected_observations)} expected)")
+    if found_reads != expected_reads:
+        problems.append(f"read blocks differ ({len(found_reads)} found, {len(expected_reads)} expected)")
+    return problems
+
+
+def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: Path) -> dict[str, Any]:
+    """One schedule through the real runner and planning loop with only the two limits substituted. Route fitting is not part of this
+    runner (no ContextPacker): completion here is demand-only, and route fitting stays UNRUN until Task 3."""
+    paths = write_workspace(resolved, work)
     replies = [
         "OBSERVE: "
         + "o" * round_["observation_text_bytes"]
@@ -199,26 +240,25 @@ def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: 
         )
         result = runner.run(request)
     final = gateway.inputs[-1] if gateway.inputs else ""
-    expected_observations = sum(len(round_["reads"]) for round_ in resolved["rounds"])
-    expected_reads = len(resolved["rounds"][-1]["reads"])
-    evidence_complete = (
-        len(gateway.inputs) == len(resolved["rounds"]) + 1
-        and final.count("OBS_RECORD path=") == expected_observations
-        and final.count("READ_BLOCK path=") == expected_reads
-    )
+    problems = check_evidence(final, resolved, work)
+    if len(gateway.inputs) != len(resolved["rounds"]) + 1:
+        problems.append(f"{len(gateway.inputs)} requests, {len(resolved['rounds']) + 1} expected")
     feedback = {text: code for code, text in pl.PLANNING_PARSE_FEEDBACK.items()}
     parse_failures = sorted({code for text, code in feedback.items() for sent in gateway.inputs if text in sent})
     planned = result.status is AgentRunStatus.AWAITING_APPROVAL and result.stop_reason is None
     return {
         "id": resolved["id"],
         "partition": f"{partition[0]}/{partition[1]}",
-        "completed": planned and evidence_complete and not parse_failures,
+        "completed": planned and not problems and not parse_failures,
         "planned": planned,
-        "evidence_complete": evidence_complete,
+        "evidence_complete": not problems,
+        "evidence_problems": problems,
         "stop": result.stop_reason,
         "parse_failures": parse_failures,
+        "budget_stop": result.stop_reason in BUDGET_STOPS or "OBSERVATION_TOO_LARGE" in parse_failures,
         "requests": len(gateway.inputs),
         "weakened": False,
+        "route_fit": "UNRUN",
         "cost_usd": "0",
         "measured": {
             "observations": _span(final, "OBS_RECORD path=", "END_OBS_RECORD\n"),
@@ -228,34 +268,36 @@ def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: 
 
 
 def choose_partition(results: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> dict[str, Any]:
-    """Plan v3 #245 selection: no weakened checks, no loss on baseline-success schedules, more completions than the baseline; ties go to
-    fewer budget stops, then the partition nearest 4/12. None when no replacement qualifies."""
+    """Plan v3 #245 selection on train/development: drop partitions that weaken a check or lose a baseline-success schedule, then order the
+    baseline and the rest by most completions, fewer budget stops, then nearness to 4/12. None when the baseline comes first. The strict
+    held-out improvement is qualification's own gate, not this one (Codex CP1 review 1, finding 3)."""
+
+    def stops(rows: Mapping[str, Mapping[str, Any]]) -> int:
+        return sum(1 for row in rows.values() if row.get("budget_stop", row["stop"] in BUDGET_STOPS))
+
     baseline = results[BASELINE]
     successes = sorted(sid for sid, row in baseline.items() if row["completed"])
-    base_done = len(successes)
     rejected: dict[str, str] = {}
     ranked: list[tuple[int, int, int, str]] = []
     for label, rows in results.items():
-        if label == BASELINE:
-            continue
         weakened = sorted(sid for sid, row in rows.items() if row.get("weakened"))
         lost = [sid for sid in successes if not rows[sid]["completed"]]
-        done = sum(1 for row in rows.values() if row["completed"])
         if weakened:
             rejected[label] = "weakens checks: " + ", ".join(weakened)
         elif lost:
             rejected[label] = "loses baseline-success schedules: " + ", ".join(lost)
-        elif done <= base_done:
-            rejected[label] = f"no completion gain over {BASELINE} ({done} vs {base_done})"
         else:
-            stops = sum(1 for row in rows.values() if row["stop"] is not None)
-            ranked.append((-done, stops, abs(int(label.split("/")[0]) - 4), label))
+            ranked.append((-sum(1 for row in rows.values() if row["completed"]), stops(rows), abs(int(label.split("/")[0]) - 4), label))
     ranked.sort()
+    for _done, _stops, _distance, label in ranked[1:]:
+        if label != BASELINE:
+            rejected[label] = f"ranks below {ranked[0][3]} on completions, then budget stops, then nearness to {BASELINE}"
+    chosen = ranked[0][3] if ranked and ranked[0][3] != BASELINE else None
     return {
-        "chosen": ranked[0][3] if ranked else None,
-        "baseline_completed": base_done,
+        "chosen": chosen,
+        "baseline_completed": len(successes),
         "rejected": rejected,
-        "qualifying": [{"partition": item[3], "completed": -item[0], "budget_stops": item[1]} for item in ranked],
+        "eligible": [{"partition": item[3], "completed": -item[0], "budget_stops": item[1]} for item in ranked],
     }
 
 
@@ -399,7 +441,10 @@ def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str
             split: {
                 "completed": sum(1 for row in rows.values() if row["split"] == split and row["completed"]),
                 "of": sum(1 for row in rows.values() if row["split"] == split),
-                "budget_stops": sum(1 for row in rows.values() if row["split"] == split and row["stop"] is not None),
+                "budget_stops": sum(1 for row in rows.values() if row["split"] == split and row["budget_stop"]),
+                "other_stops": sum(
+                    1 for row in rows.values() if row["split"] == split and row["stop"] is not None and not row["budget_stop"]
+                ),
                 "parse_failures": sum(1 for row in rows.values() if row["split"] == split and row["parse_failures"]),
             }
             for split in splits
@@ -410,12 +455,27 @@ def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str
     return {
         "ambiguity": {"rows": ambiguity, "scores": score_ambiguity(ambiguity)},
         "split": {
+            "completion_scope": "demand-only: a plan, no parse failure, and exactly the expected evidence records (path, range, file sha256, "
+            "whole payload). Route fitting (ContextPacker.fit) is UNRUN here and is checked in Task 3; contract-qualified completion needs it.",
             "boundaries": resolved_lengths,
             "runs": runs,
             "summary": summary,
             "choice": choose_partition(runs) if phase == "calibration" else None,
         },
     }
+
+
+def after_indexing(files: Sequence[Mapping[str, Any]], tree: Path, later: Iterable[str]) -> None:
+    """After publication: files never indexed appear, and stale files now differ from their records. Files are written directly, so the
+    family's frozen ignore file is left as it was (Codex CP1 review 1, finding 5)."""
+    added = set(later)
+    for entry in files:
+        target = tree / entry["path"]
+        if entry["path"] in added:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(_content(entry))
+        elif entry.get("metadata") == "stale":
+            target.write_bytes(_content(entry) + b"# edited after indexing\n")
 
 
 def index_check(frozen: Frozen, config: Mapping[str, Any], repository: Path) -> dict[str, Any]:
@@ -432,6 +492,7 @@ def index_check(frozen: Frozen, config: Mapping[str, Any], repository: Path) -> 
         shutil.rmtree(m1_scale.long_path(work), onexc=m1_scale._clear_read_only)
     root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)
     families: list[dict[str, Any]] = []
+    workspace_split = {case["family"]: case["split"] for case in frozen.cases["ambiguity"]["cases"]}
     try:
         embedder = m1_scale._TimedEmbedder(
             FastembedEmbedder(
@@ -453,11 +514,8 @@ def index_check(frozen: Frozen, config: Mapping[str, Any], repository: Path) -> 
                 tree, settings, embedder, project=f"m2a-{workspace['family'].lower()}", parser_version="m2a-index-check"
             )
             outcome = m1_scale._required(index.worker().run(threading.Event()))
-            for entry in files:  # after publication: new files never indexed, edited files now differ from their records
-                if entry["path"] in later:
-                    materialize([entry], tree)
-                elif entry.get("metadata") == "stale":
-                    (tree / entry["path"]).write_bytes(_content(entry) + b"# edited after indexing\n")
+            after_indexing(files, tree, later)
+            policy = FilePolicy(tree)
             current = index.storage.call("coverage")["current"]
             catalogue = {item.path: item for item in read_catalogue(index.storage, current["epoch"])}
             map_files = [MapFile(item.path, imports_of(item.description)) for item in catalogue.values()]
@@ -475,35 +533,43 @@ def index_check(frozen: Frozen, config: Mapping[str, Any], repository: Path) -> 
                         "query", mode="path", epoch=current["epoch"], path_id=path_id(entry["path"]), k=20, kinds=["symbol", "section"]
                     )
                     labels = sorted({item.get("symbol") or item.get("label") or "" for item in reply["records"]} - {""})
+                decision = policy.decide(entry["path"], purpose=FilePurpose.AUTOMATIC)
+                denied = "denied" in entry
                 rows.append(
                     {
                         "path": entry["path"],
-                        "frozen": "denied" if "denied" in entry else entry.get("metadata"),
+                        "frozen": "denied" if denied else entry.get("metadata"),
                         "observed": state,
+                        "policy_allowed": decision.allowed,
+                        "policy_reason": decision.reason,
                         "imports": list(imports_of(record.description)) if record else [],
                         "labels": labels,
-                        "matches": ("denied" in entry and record is None) or ("denied" not in entry and state == entry.get("metadata")),
+                        # a denied file must be refused by the real policy and absent from the index; anything else must show its frozen state
+                        "matches": (record is None and not decision.allowed)
+                        if denied
+                        else (decision.allowed and state == entry.get("metadata")),
                     }
                 )
-            resolved_paths = sorted(
-                {
-                    path
-                    for case in frozen.cases["ambiguity"]["cases"]
-                    if case["family"] == workspace["family"]
-                    for path in (entry["path"] for entry in files)
-                    if path in case["task"]
-                }
-            )
-            families.append(
-                {
-                    "family": workspace["family"],
-                    "files_written": outcome.files_written,
-                    "records": outcome.records_written,
-                    "coverage": outcome.coverage,
-                    "candidates": rows,
-                    "neighbours_of_resolved_task_paths": {path: neighbours(map_files, [path]) for path in resolved_paths},
-                }
-            )
+            family = {
+                "family": workspace["family"],
+                "split": workspace_split[workspace["family"]],
+                "files_written": outcome.files_written,
+                "records": outcome.records_written,
+                "coverage": outcome.coverage,
+                "candidates": rows,
+            }
+            if family["split"] != "held_out":  # task text is read only for train/development before qualification (CP1 finding 6)
+                resolved_paths = sorted(
+                    {
+                        path
+                        for case in frozen.cases["ambiguity"]["cases"]
+                        if case["family"] == workspace["family"]
+                        for path in (entry["path"] for entry in files)
+                        if path in case["task"]
+                    }
+                )
+                family["neighbours_of_resolved_task_paths"] = {path: neighbours(map_files, [path]) for path in resolved_paths}
+            families.append(family)
         redis_facts = m1_scale._redis_facts(client, config["container"])
     finally:
         client.close()
@@ -522,7 +588,9 @@ def index_check(frozen: Frozen, config: Mapping[str, Any], repository: Path) -> 
             "revision": f"git:{memory.embedding.revision}",
             "artifact_sha256": f"hex:{memory.embedding.artifact_sha256}",
         },
-        "later_files": "files marked none were written after publication; files marked stale were edited after it; denied files are never indexed",
+        "later_files": "files marked none were written after publication, leaving the frozen ignore file unchanged; files marked stale were "
+        "edited after it; denied files must be refused by the real FilePolicy and absent from the index",
+        "task_text": "read only for train/development families (neighbours of resolved task paths); held-out families report metadata states only",
     }
 
 

@@ -1,18 +1,23 @@
 {
- "schema": "plan12-memory-m2a.cases.v2",
+ "schema": "plan12-memory-m2a.cases.v3",
  "frozen_on": "2026-11-23",
  "frozen_before": "Task 1 and any feature code",
  "plan": "12.13",
  "issue": 545,
  "rule": "Synthetic acceptance cases, frozen before implementation. Expected outcomes, including expected losses and refusals, do not change after a result; a change needs a recorded successor disposition reviewed at a checkpoint. Synthetic data only; no private content. Held-out cases are consumed once, at qualification (Task 3).",
  "successor_of": {
-  "schema": "plan12-memory-m2a.cases.v1",
-  "sha256": "hex:8cab175f2d32583cfeeeefb46895abae8b253c097cdd66e839a5d637123a74b5",
-  "commit": "git:24a6c27358ff46bdbb7c5e7c2e1620e4c6e5cfe4",
-  "change": "split schedules only: a later round's read of a path starts where that path's previous range ended; every other field unchanged",
-  "reason": "Task 1 calibration: v1 S01, S06 (train/development) and S08, S23 (held-out, not run) repeated their round-1 request set in round 2, so the loop stopped them as PLANNING_REPEATED_READ_REQUEST before their intended demand was measured; the rule applies to every schedule alike, independent of outcomes",
-  "results_kept": "reports/plan12-memory-m2a/calibration-v1.json (invalid for selection)",
-  "disposition": "for Codex review at CP1"
+  "schema": "plan12-memory-m2a.cases.v2",
+  "sha256": "hex:7b0d3e136e2646d7d8c2ead3f364003c9fb54c8b0854d6183c5ae46ef85eb47c",
+  "commit": "git:ca9bfec",
+  "change": "explanation case E12's expected text only: 130 entries at 40 per page make 4 pages, so '/why 4' is valid and '/why 5' is past the end",
+  "reason": "Codex CP1 review 1 (round 117), finding 4: v2's E12 oracle was impossible",
+  "earlier": {
+   "schema": "plan12-memory-m2a.cases.v1",
+   "sha256": "hex:8cab175f2d32583cfeeeefb46895abae8b253c097cdd66e839a5d637123a74b5",
+   "commit": "git:24a6c27",
+   "change_to_v2": "split schedules: a later round's read of a path starts where that path's previous range ended (Task 1 finding; Codex accepted the repair in CP1 review 1)"
+  },
+  "disposition": "for Codex review at CP1 attempt 2"
  },
  "splits": {
   "train": "calibration and debugging",
@@ -2027,7 +2032,7 @@
     "family": "EX-F4",
     "split": "held_out",
     "setup": "a turn with 130 considered candidates",
-    "expected": "deterministic pages within the frozen bounds; every entry on exactly one page; '/why 4' past the end and '/why 0' refused readably with the valid range; zero calls"
+    "expected": "deterministic pages within the frozen bounds; every entry on exactly one page; '/why 4' is the last valid page (130 entries at 40 per page is 4 pages); '/why 5' past the end and '/why 0' refused readably with the valid range; zero calls"
    }
   ],
   "privacy_sentinels": {
