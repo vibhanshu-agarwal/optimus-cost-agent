@@ -519,7 +519,7 @@ def index_check(frozen: Frozen, config: Mapping[str, Any], repository: Path) -> 
         "release": {"container": memory.container, "image": memory.image, "port": memory.port},
         "embedding": {
             "model": memory.embedding.model,
-            "revision": memory.embedding.revision,
+            "revision": f"git:{memory.embedding.revision}",
             "artifact_sha256": f"hex:{memory.embedding.artifact_sha256}",
         },
         "later_files": "files marked none were written after publication; files marked stale were edited after it; denied files are never indexed",
