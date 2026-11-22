@@ -323,19 +323,27 @@
     }
   ],
   "cp3": {
-    "head": "git:1447429451be20ab9554088a37fe432d06d66b9a",
+    "head": "git:b73edc6de3fdd5c9d3065ed84457b93ce1b1663f",
     "dirty": false,
-    "at": "2026-11-22T11:17:05Z",
+    "at": "2026-11-22T11:45:11Z",
     "rule": "CAUGHT only when the baseline and the restored code pass the named test cleanly (at least one pass, no skip or error) and the mutant fails that named test itself, with no collection or setup error",
-    "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/revert_cp3.py (logs in revert-cp3-r2/)",
-    "caught": 26,
-    "total": 26,
-    "earlier_run": {
-      "head": "git:e7bae98d19e8e1112046fa01d6223b4c0648d356",
-      "caught": 19,
-      "total": 19,
-      "logs": "revert-cp3-r1/ (before Codex CP3 review 1's fixes)"
-    },
+    "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/revert_cp3.py (logs in revert-cp3-r3/)",
+    "caught": 30,
+    "total": 30,
+    "earlier_runs": [
+      {
+        "head": "git:e7bae98d19e8e1112046fa01d6223b4c0648d356",
+        "caught": 19,
+        "total": 19,
+        "logs": "revert-cp3-r1/ (before Codex CP3 review 1's fixes)"
+      },
+      {
+        "head": "git:1447429451be20ab9554088a37fe432d06d66b9a",
+        "caught": 26,
+        "total": 26,
+        "logs": "revert-cp3-r2/ (before Codex CP3 review 2's fixes)"
+      }
+    ],
     "results": [
       {
         "control": "export pin: every page at the first page's head (e02de5a)",
@@ -345,9 +353,9 @@
         "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
         "mutant_sha256": "hex:ac6b208ca5eb13be70f61477f54930040c01d507767413675b26543384fd16a4",
         "logs": {
-          "baseline": "hex:b8513fe499ecd08e78e448a8bf2f5a5a9738ab22b957e8775203ab406be304c5",
-          "mutant": "hex:461e4c3e42a87b20f3b316c8f05226a39b977f8dae3a1bbaaa7bc96d1b998c88",
-          "restored": "hex:d199453933c076febd0c34c62e41b23037e2510765991ec226e4db444683afae"
+          "baseline": "hex:fae5c20a9b6963f7b22618cf6faba8071a94fc449dc22590b3f5636df9e24037",
+          "mutant": "hex:e9d3a383d1ba6bb280ffe30b05f0c12f98379fc500441d16afac2a2eed95bcd6",
+          "restored": "hex:1fb244c12472458fcd35dac2474ab4b9c919367dea0da63ba2884345f61c08c3"
         }
       },
       {
@@ -358,9 +366,9 @@
         "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
         "mutant_sha256": "hex:8e388892007909e8fa3dd87c999d9efa6600636fcd4ae3abda0ce51dc8cea624",
         "logs": {
-          "baseline": "hex:f1bb24553e67afddb9bfcf5f5cad27d2ce2381a92ac9114181046174bae14f45",
-          "mutant": "hex:a9190c27848c6150f4632a5ad2385ee1b3e8b5454b2827873b5f357c27235cb9",
-          "restored": "hex:ffc18c3bad3faadd2c65f4957511162a47ab0c4e5821ae219eae780fb3673b00"
+          "baseline": "hex:0d333558eb7740e50262476409076ba3a30c6fbe9b972a821ffb5721fc44f78c",
+          "mutant": "hex:d565c5498b660e9c8ff5ed98234db6b1718abbd6bd71b06b330c8536f9b311d3",
+          "restored": "hex:237ee627ae1fd2ef30d113a637b60345c88c7b923296e11198c22913e2f6a624"
         }
       },
       {
@@ -371,9 +379,9 @@
         "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
         "mutant_sha256": "hex:cc6891b442bdebe15f61b41056673f029c16484f32ca8c8c5a0e9e019814200b",
         "logs": {
-          "baseline": "hex:10d8f75e9f1b2e586605bde1a81a4f169ff8b35eb660a9f5aa82308d4f18b908",
-          "mutant": "hex:e4cafb4f97e8b1c2f15929c64d78a20224de4f81aa78d7930a9a463067f318ed",
-          "restored": "hex:3384e5685f7b7576c71f24fb3f76f39b91d1010eb8dda90eedc678068e086e46"
+          "baseline": "hex:d689b711f85abab56ad80147d9f6b3314dcadc00eceb534cac1a8d825e62e756",
+          "mutant": "hex:06c5d4a4350546359774d969c75da2da6a4baf4473fb2a7dae717a7a3c874613",
+          "restored": "hex:87b9162b5729552162d6910f859b81153c66af3dfef86b62fcc7c1b7070ff381"
         }
       },
       {
@@ -384,9 +392,9 @@
         "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
         "mutant_sha256": "hex:2ca12ea37122f4d999e4a41d6a770036d4e02d9bd6ef9f2c17a6c2c7bd4f9d6b",
         "logs": {
-          "baseline": "hex:f8dee6717397aa3ec58210f2098061043e2fcda364fb7f7b88889f6f5109fe4d",
-          "mutant": "hex:b261a04aa1b380d1768fded13a3b4ce3ea269184b40010f21b25b1ea6c49b303",
-          "restored": "hex:f45ba39176e28e5337b45b6c9a2818f6a64367498e5cdf14e2760dcb1c22b3b8"
+          "baseline": "hex:47a3f8172c30ed2526e6e8d14c7aedaf6cafa71de5ae7d282a9953a8541af694",
+          "mutant": "hex:b70ccd0c4eb6058956f2a905939d4214f06628d7d5a3a5528e46b677228f30d6",
+          "restored": "hex:d0c42238b0ff40409efee2b99dd67dba3e9dffb03cc225e5d712e5f8ea9a9e06"
         }
       },
       {
@@ -397,9 +405,9 @@
         "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
         "mutant_sha256": "hex:cbe5c649869fec8b2d4fe98b22e848b48fa6142f4e8c9310451f1eb8fcd19de2",
         "logs": {
-          "baseline": "hex:707aec6576ef923eab4a9cc5487334f3ceb2450567c9476750393243a38e3c5b",
-          "mutant": "hex:bfd578073fd661de4f5308dbad0324e087cc055a60995faca2e9c831c73d3ab1",
-          "restored": "hex:20b64692c29edc9bf396398f3045a20eb47631169d87faf7059c626ff7202b86"
+          "baseline": "hex:ac96235d0043e9f31d471928bac20799af18fb0c00ecd54b5b00ca6468e2f8b0",
+          "mutant": "hex:84016a117f82eab5cfdba5aa3e0cd7b6e561081e70f90d095f4e959d5abb78b6",
+          "restored": "hex:d8e3ef89cdba4d95bb59bc01d230b816d4aefd7a58676a5ac273e13dfd274bf9"
         }
       },
       {
@@ -410,9 +418,9 @@
         "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
         "mutant_sha256": "hex:32b086811186d9deeb0ada0608702b7d02d4fda09702f719510dbca06d613ecf",
         "logs": {
-          "baseline": "hex:c7fd82c9783c7e94a56f8939c1cce08ed59cfd2db6d5b95745a769eaa57487a8",
-          "mutant": "hex:2fb444e6e7440892fbaac08cddcc43e557f339fd9afcbf334143515094fddc72",
-          "restored": "hex:d1dab18208e66f8f12b1cae365f829ff836d8ecbb0a92792f96281107bcd9c21"
+          "baseline": "hex:eaf9a585cf78cb783963ebaec6583b682ab93fc6ecb316eb12aef68cb0e93988",
+          "mutant": "hex:f7cf0aef818a6095f925484df54229f7e32316437ee2b84c18bab5842a08d985",
+          "restored": "hex:5f50ad715af70a4581dc96332d6356bd75e7b3dd2262b468e206c6dd444ca01e"
         }
       },
       {
@@ -423,9 +431,9 @@
         "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
         "mutant_sha256": "hex:2f8c5b69dab17a7dec0adc322e6d50d3cde7c80ab0cffcc6c6db41d4e6c73958",
         "logs": {
-          "baseline": "hex:872d459f199d86d030226938628655d5dd06e93eb0a179db57b6103444b10e35",
-          "mutant": "hex:c3e025935d9f52923c4e15c31f0219543f394d79e9a74ccaad061e825d1d4c6c",
-          "restored": "hex:90262908ea25891b4f4ca95dd83c3719a031ce79cbc7a9175bddc7aedfd163ed"
+          "baseline": "hex:74a93161721e67be4d4dedc14c8ee6d74f17c6b93583ff7d503a891f70469cf8",
+          "mutant": "hex:aff3829fd5a78636cdd3b877de8d23873474399a18db49ff694799ce5d695554",
+          "restored": "hex:dc0c053465606d3c6f219d1b6dc703c40174f9e540cbf65b12ed30a273c92384"
         }
       },
       {
@@ -436,9 +444,9 @@
         "source_sha256": "hex:da535ca3c608a3c71c3957f719356b0afbf7981ec2951e1726a2c143da4a1493",
         "mutant_sha256": "hex:aba3a384111c2afd86ca69c7f0474153a1e5b36f2855b61532b36ccbcdbef5ca",
         "logs": {
-          "baseline": "hex:7e7f7d8e413e887ca12d3bdbf0c2ce6e91acfc3a840f964352bb43bef8dcde57",
-          "mutant": "hex:4b4074f65d8ae186fa44fa80efc6075cb921de7e7b1f6efbb06975ba4d7663d0",
-          "restored": "hex:4290b10b7e6f15711709d4d87444b6a92ad43fce74303a2403e43008e6c0e767"
+          "baseline": "hex:de6557db25e546b2954fb515e0a29ce05cfc5effe0bca09a43383e7b7b5aa46b",
+          "mutant": "hex:1512a84b38c73a71b86fd9483ffd6d8f3e3200f48cedd2d840c8f5a7d32e7bea",
+          "restored": "hex:75938eda1c9e121f41faf867379eeaed13a0e23735be03a0f67b081c46ec44e0"
         }
       },
       {
@@ -446,12 +454,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_a_backup_is_taken_and_authenticated_while_writes_keep_landing",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:5e76fb211880c5f501dfb7abb213bd70814c972ad52c200baa72c8cb9ea37a82",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:03811692252572a7e3b2390026b67d37542c8c291265cd6c969e3db6a8106bbe",
         "logs": {
-          "baseline": "hex:1a52daeaa03ad374714adcd34222e9f125034c330efb09617e005689a065b91a",
-          "mutant": "hex:49ed11eb4aa1f043c9f4d821a9f200da428a3c10cd7aa6c3702b4a55b251758d",
-          "restored": "hex:7f7eacd22d1ab40d88d9d4c3f3cb6a53ce4bc44bfbebaba1148fda2c81570382"
+          "baseline": "hex:a84fb654a7a5d83164e53fef3ac651349e2c856b998a4b92f304384acd86c7f3",
+          "mutant": "hex:14da664994d548b479e18430702a5800a641a053a4b8eb29a52bbdb540d6c586",
+          "restored": "hex:9dba4dd327bdffec4315e36df05af5dea649e7933361176087143b56210c6c77"
         }
       },
       {
@@ -459,12 +467,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_memory_moving_on_from_a_clean_copy_is_read_again_never_a_recorded_failure",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:39824423318569cffc5da94c35cc9981a9646920f6715cdbd82a358125f27146",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:ef3eafb87ddddad8861f711fb83201d2a5fd0505856ffb29c2b255402e901b78",
         "logs": {
-          "baseline": "hex:663e0c711fcc531da4fd42137dd8765ebc838aae1376569740fdabaee6f1ec11",
-          "mutant": "hex:00aac129d1cb6f1cfb82d179d2c13783f3e9e1aad45a39ecd2f50d73d6d52b56",
-          "restored": "hex:cda38560b2ce9d42ab598fec6e3f6db13619db18a795f8334944b25d798e2c90"
+          "baseline": "hex:36364d8796e8eb046ee730b56a81fc3e5aca96e517b5414fb657d93bb913b370",
+          "mutant": "hex:07625d8c3e254eff8d47c1d341a156ab2daed153ab93e4413dce7d3f3abecd02",
+          "restored": "hex:d98d6dfbdd95b3d6cb9f90f4b94a287826ebf1bde87eab932c5b14d96ea944c4"
         }
       },
       {
@@ -472,12 +480,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_memory_moving_on_from_a_clean_copy_is_read_again_never_a_recorded_failure",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:614ee450cf320164ea58a3a453c69456673811222af90e772fcdbf26c68b61ee",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:ae1eba4c6c9a5b0c18b95ce08aa9f5a525e150d8b13b945b41eb46bde9b9e5ca",
         "logs": {
-          "baseline": "hex:411607579eecb58690bd6ec885fe36129a70e8d6e5c5ea72844f866c784b4616",
-          "mutant": "hex:00b327f54c1739727e6deab76544e5ec127807280b8c7ff3212361dcc46f187d",
-          "restored": "hex:c23c6ce2f738b507abf3d3e47115a3d5c478ae0a5f37ea2df5cd9a7515c6f4ba"
+          "baseline": "hex:ef05ced76b14616df746165b7695ee570110f3a7f2682f4cf104a4e07de188a5",
+          "mutant": "hex:581152364c7cf8a6a0e790fc0f0bc3ee4e405bca520c9595ec6c5caed05c0b25",
+          "restored": "hex:abc85323f3c221b9746e734f98a4880878f0a71608f9b21afbfd3552587b067d"
         }
       },
       {
@@ -485,12 +493,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_b11_a_target_reported_missing_while_written_is_a_recorded_write_failure",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:66ca3b7d10d6711faae5decd71e73525d65403a9a7eb3199e6eb512b8e83ec08",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:406c174bd0e7183d58367e7dece5c6d69587bc26b30c89f4423809a4af3e483d",
         "logs": {
-          "baseline": "hex:b93fd372ac5ac64ccd8038ccfcbe0622db3b05bdc9fc6bba28a61e6ee675f9ce",
-          "mutant": "hex:ebe69bf415cfe5d08ff200e8b00e72472c0eb454e17d86dd4b7d547b87d38f57",
-          "restored": "hex:ebd5af8a3443b129ee6231989c6cd57f5654d2ce40bc652ff0505eee9c79f942"
+          "baseline": "hex:0f6536cfeeb1d54140000417854e7f5d4f2bf4c2b528043a137cebb290b7e8e0",
+          "mutant": "hex:a8a29d60605a3d5a1f9ee858b316e74a062476c12f9c1e85672ea44c1c0d6667",
+          "restored": "hex:d218c721a931456f2f16b8169634aef32e036cb20df498dc9f3b3778ca846b8c"
         }
       },
       {
@@ -498,12 +506,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_b11_b30_a_target_the_os_cannot_create_is_a_readable_answer",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:2db4c7c614233ea50cbb805033c9aaf1f253991bc9a78e5f39c05479cc7bf6df",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:946c9047bd7bcc5ae7586a67ea3b3226a46c05204f83fdc032a2d117c79fb12f",
         "logs": {
-          "baseline": "hex:60798c3e1f4f642ce372603e16e0610e290ec0389031131717b010aada6680bd",
-          "mutant": "hex:c7f59f77247a86d1d8e89dd886fc129513908619f728426f87d19ddf8fe48fe0",
-          "restored": "hex:e80ddbc2a63d15421da11e5779fe8ae77696d2e7bf4c945d41e1c039427f89c2"
+          "baseline": "hex:84b6b192928cfa606cd651dd7d824d0e28d21b0a49105e11558d3001e73137ff",
+          "mutant": "hex:d1808148299c514ad6b653c35cbf3e8e7a234db35d72dca4d2d1588c8c52717b",
+          "restored": "hex:b568ffa1aee9328c4b68f4bd5fd574e6a9dab99d572d89cb4801bd528c06f25f"
         }
       },
       {
@@ -511,12 +519,12 @@
         "test": "tests/unit/context/test_memory_recovery.py::test_a_location_or_copy_the_os_cannot_write_is_a_readable_answer",
         "file": "src/optimus/context/memory_recovery.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:71cffddd07d4e0662d401462202dd474d6f08fb10b86edf02e4ef82e7d56481b",
-        "mutant_sha256": "hex:465115a700db3dd6b6c33882391bb79a3648d89d5aca8e0fc004e2d0e2397304",
+        "source_sha256": "hex:4e85a2bf8bd7311972a9e2113675c959f57824ec8ee5bd6e16a89cb6ade441da",
+        "mutant_sha256": "hex:bfdb39b5988756393a8df9f0d57dd2d6e90b39373cae031b27c61c91245a2df1",
         "logs": {
-          "baseline": "hex:f77978f848d2a0d6f2ac00a7a580994b4a55a4c3a7cd27de56056f26f08684fd",
-          "mutant": "hex:ef47a53d51dd47a2501ccb295baebcd4a3b2894464993ef3ff495d3a558d5144",
-          "restored": "hex:cb69b3c7a3ac49b6e9577268127809494257e522d04adb30e33f029722be2388"
+          "baseline": "hex:cc31550dfe13179d372785152cf93d9efc356514adeb75722ae5db1b33dd1919",
+          "mutant": "hex:4f28295aa1e3495fc07bbd39bd245b62250b59769fb19c95609da22adf22a408",
+          "restored": "hex:cecf4056fe736767c10c197aa1fefea14c28ef71e0b75bbd550cdff44a4a2960"
         }
       },
       {
@@ -524,12 +532,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_r4_a_journal_moving_on_is_source_movement_not_a_failure",
         "file": "src/optimus/context/memory_recovery.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:71cffddd07d4e0662d401462202dd474d6f08fb10b86edf02e4ef82e7d56481b",
-        "mutant_sha256": "hex:248686aa7e0c73e2a5f985c007fd3d7c0e8a1b78f5bd3b7141cebec64ccf018a",
+        "source_sha256": "hex:4e85a2bf8bd7311972a9e2113675c959f57824ec8ee5bd6e16a89cb6ade441da",
+        "mutant_sha256": "hex:dfe4690759a1c81c6b71f8d29974305ef7223e8a7d1a96de5e10335bb7af2d36",
         "logs": {
-          "baseline": "hex:54a0836f7a832499c7b3edf9bfa81b9696c77e07f99782debe975dbd19713019",
-          "mutant": "hex:bdb566865b0d169f7280498d2d5b8481f3066e991b3a0c14d2a15b4649fd5710",
-          "restored": "hex:65dcc3b1fcede98cb25c4c32d43030f0a29e58cdfdd190dadbd99690ce5a3d46"
+          "baseline": "hex:1dbd8456f5cfb55d86c1a3dd02bd9a1b280190dc48ddc5e9f59987b035842b89",
+          "mutant": "hex:b7693943925bd0cc1378f1e1ea23e87d2dd837a60eaebda45da8def4d46ccfd1",
+          "restored": "hex:761144af2e7ea816152d4bc978cb1bae4aed64cb84b09af1adf25bb23348719f"
         }
       },
       {
@@ -537,12 +545,12 @@
         "test": "tests/unit/context/test_memory_recovery.py::test_a_same_name_generation_is_reused_only_when_every_file_is_what_the_export_would_write",
         "file": "src/optimus/context/memory_recovery.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:71cffddd07d4e0662d401462202dd474d6f08fb10b86edf02e4ef82e7d56481b",
-        "mutant_sha256": "hex:96580ec789bf4cb801a698b01ca2b5011e85e0be73b9215d95a4ba42a156652b",
+        "source_sha256": "hex:4e85a2bf8bd7311972a9e2113675c959f57824ec8ee5bd6e16a89cb6ade441da",
+        "mutant_sha256": "hex:7b4e7c821c1e94a7ebafb4373bfbb8cdd99e71ad198f90bf321166ae3a8b97ff",
         "logs": {
-          "baseline": "hex:be27c232e47ada99761b07ff2bd7398c5be4bfbcc9214e078df9ce0b0bbd504b",
-          "mutant": "hex:572542e7c87b2d06bcdbfa160b88de4e2e253674ebf4837782172137011a5102",
-          "restored": "hex:0e50e7d2221c003b67d2b10ccb2c340dad7a5403c0f5a0bf6e651e0d36843eb5"
+          "baseline": "hex:1f35ce73d1d6d44260f0f59b8e51529cb3235cde56c75e8950954a57ebcd99a1",
+          "mutant": "hex:6a6882083c1a0999eb16b36fce56980e4a5bd8b91144b9b7766cde059c4afb95",
+          "restored": "hex:ec73ac1a4630dd68bb6a9bcca3c2b5803db0e98ad962b1b55fbbe28ccf1d7dea"
         }
       },
       {
@@ -550,12 +558,12 @@
         "test": "tests/unit/context/test_memory_recovery.py::test_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer",
         "file": "src/optimus/context/memory_recovery.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:71cffddd07d4e0662d401462202dd474d6f08fb10b86edf02e4ef82e7d56481b",
-        "mutant_sha256": "hex:2d513b648ac16ee1e105664960bf5f72aad42197cfe39b80aecdf3ad32300b01",
+        "source_sha256": "hex:4e85a2bf8bd7311972a9e2113675c959f57824ec8ee5bd6e16a89cb6ade441da",
+        "mutant_sha256": "hex:a610251fe03dfc773714e5b7cc57f04482783d4ebdee6c5f7f02878a8bf97da6",
         "logs": {
-          "baseline": "hex:b276ba35b500879f6c2ce762d795131de724056bfd34482cf77ed34f0e1d9a7f",
-          "mutant": "hex:ed8d627b82290a0d425000465f8120fe4e1cacf9dbaef756a323cf4f81ce3dcc",
-          "restored": "hex:3d765c4ebb9a0e234ca053939ef8e5d89d82119ca6533469fec19132d2f0cf6b"
+          "baseline": "hex:a8d3c9d88219ae0de65ee24e51db06dc7e06dd97b55495f58f5a7e0d726577db",
+          "mutant": "hex:542295dac19e5ea974e07de76911222b660c14509ca8cc7b3ea328cb204d0ae9",
+          "restored": "hex:0149cd7ea3b28777835a52d10ee40cf45b6bb570d89ddbee2850567ff43d5a4c"
         }
       },
       {
@@ -563,12 +571,12 @@
         "test": "tests/unit/context/test_memory_recovery.py::test_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer",
         "file": "src/optimus/context/memory_recovery.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:71cffddd07d4e0662d401462202dd474d6f08fb10b86edf02e4ef82e7d56481b",
-        "mutant_sha256": "hex:5068d235c1f4ba4eed53693104fef17a897d4c38d086fa5bff86ecd519d8282d",
+        "source_sha256": "hex:4e85a2bf8bd7311972a9e2113675c959f57824ec8ee5bd6e16a89cb6ade441da",
+        "mutant_sha256": "hex:e52c4584e2949f82b5baa27d3a617bb24b111024a01f3dbd124fa657e94d4c94",
         "logs": {
-          "baseline": "hex:0ccf4e3468dea5ff9bfa58f0411407020890ea1c756db7758a7240c7f7e4688b",
-          "mutant": "hex:e245420e0c7f8b4a9aff984134861e02e47f3d51d77058bbc9a397878d24e4c7",
-          "restored": "hex:24150aa5cad75fb2ba202f25977ec578a82bc20d101b8b685e3f6ae7dee257d4"
+          "baseline": "hex:7b24ece424b0c099c19b0a4f00ff3cfa079a4bb0b1e65c9f5f5385918177c8e0",
+          "mutant": "hex:4e53198d7aefd888607610cdee15de9bbf0c43a955cce27d4989005ea1ebf59a",
+          "restored": "hex:d31ae471c644dbe2fb5a2149bd4376938e73ceb73759a623723426adbff59932"
         }
       },
       {
@@ -576,12 +584,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_b11_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:051e8955ca43216dbd154a75599cbf2fec705430f9caa96d2d72f409db01b2d6",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:3b8bccdd488a2e29155c82531808288a8f166b9acafda3db460290571ff0ae9b",
         "logs": {
-          "baseline": "hex:7c1c8bc97bee248662215bd8160413f38ff086cbd0c569568cb50014ee235b14",
-          "mutant": "hex:01c73af29cb2f68813712050db44280746dc3788ba751a9fc30381df95b8dd5d",
-          "restored": "hex:336c9883c96858abf480133332b5501e1389e6fa436b9f35d91d8838c9974321"
+          "baseline": "hex:15ab81a14a873ad8ca1257e37f3eb7e2af8328f12e69a43292bc035e6d340395",
+          "mutant": "hex:470c56e60fb7d5aa1188de67a08ad8842ae3f55fc927a31085448af6dcded63e",
+          "restored": "hex:ff7f239b9a40d3484ba80edfd80cd2d02ef238d185fd80bef835bc994063f064"
         }
       },
       {
@@ -589,12 +597,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_b11_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:68e71a90355ce0727f7df3f0fe27a0c4f38527ecd5e6633421e2340fdfa91ee2",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:361173b5a8804e682e403bfb3cdb15086f3d9c8f1473acbde43d29cfbfbbecde",
         "logs": {
-          "baseline": "hex:72c802a7468919bcb471af04ccecfdc9b06fe074c5996e8aa2ba72ba04f7970b",
-          "mutant": "hex:b212cda7bd237d537dcccc54ec5a2361770a91c78ace7a5341ff941bbb363e63",
-          "restored": "hex:0d4a550c1b47c69723fa9e91ca81313c077aba5e73139e2e7ba7afc6da23abcc"
+          "baseline": "hex:efec9f2d8e317b653fddfb11b4dbf5613d06c66d2cf44a1647450f39c2967241",
+          "mutant": "hex:b00524c55189c150be8cbddb8cdbe97132b37e46914017ffd336342d08b66889",
+          "restored": "hex:b7db8c434f24f6a01d65ba136f5ee457ea449f176b1b3a3a35ab44811e983d57"
         }
       },
       {
@@ -605,9 +613,9 @@
         "source_sha256": "hex:ec8b3ab369d82dfdf3e1c6c5ec0256b5cfad9007487026677d0972c855e3e406",
         "mutant_sha256": "hex:4bfe961f02ba9beed21b2d69b3cec5afb84e0047dac8fecd62fa8027cc6377fd",
         "logs": {
-          "baseline": "hex:60fdd83e24d5bff398954e5117e90a727dce47967291412500cbf1db32cba43b",
-          "mutant": "hex:bfc3ff998903f37a3a2393db90ae8cbb7933af4261a5a803951aece028e1c6c9",
-          "restored": "hex:b86f4f10588d05ac62cb9fe6dab3878b706c19c16605841ccd08ee86faca499a"
+          "baseline": "hex:1a2c69ca890142f6675a921afdea9045a7f83a69ccd7361d2041e1120a8e312f",
+          "mutant": "hex:8204c72bec0b6f15bf0de2c5d63c1d2c34fd3ad9ece146e3ad781b16e322f99e",
+          "restored": "hex:020b830fcb8669ba70da6b6c0430e53352b06ada82b8b134f8c244c59706b7f9"
         }
       },
       {
@@ -615,12 +623,12 @@
         "test": "tests/unit/acp/test_memory_commands.py::test_an_undelivered_import_notice_is_replayed_as_imported",
         "file": "src/optimus/acp/spec.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:55c6be93b609f28eee3092153351f7924551d5530c92060f2becc43a97ab8bb6",
-        "mutant_sha256": "hex:a96a39d02e99740b132d225a504165d9ba51b5efd5790b53e94c920ceb0f5903",
+        "source_sha256": "hex:3372421c530b0e2436d8d2fd91ca93907ee0c7e8055b504cb5e89938d51a16b9",
+        "mutant_sha256": "hex:7cbb69089af85158dfb0eeadcd802427a9a3a297efec5d42d27b12fc68111d74",
         "logs": {
-          "baseline": "hex:491b7b37ae2d5584f085a621cc8882c0a60f799378d57712c4dd2e29b72cd452",
-          "mutant": "hex:69464aecbfbe8fc4c3ba59e85cd1f0a0dc7602e65975a7662b9cf814ad49b2e3",
-          "restored": "hex:d8bb622af3dd31692658df0b592e5de2279dd5d3e2b67abf8e22ed59a1288632"
+          "baseline": "hex:d521fccf4fbb2ac915962f0c5f45a7a0a722a1c1316872e85e1a3227d73810e5",
+          "mutant": "hex:e299086ca30fade33848df7694f3ba35c86c2ab90e253068286ac7fad3bd7944",
+          "restored": "hex:2878712c766d06f39581b597b09df0e4af54bb3b3e5ab5358cc638d0dd78cb7d"
         }
       },
       {
@@ -628,12 +636,64 @@
         "test": "tests/unit/context/test_memory_recovery.py::test_a_location_or_copy_the_os_cannot_write_is_a_readable_answer",
         "file": "src/optimus/context/memory_recovery.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:71cffddd07d4e0662d401462202dd474d6f08fb10b86edf02e4ef82e7d56481b",
-        "mutant_sha256": "hex:e917128332808afeb44944f300e2d042a0c956aeefe9edb42bb045772a1c435d",
+        "source_sha256": "hex:4e85a2bf8bd7311972a9e2113675c959f57824ec8ee5bd6e16a89cb6ade441da",
+        "mutant_sha256": "hex:91379f8544b8b3d0f9e6ad2c9bb8cc30fd061952fff087931b6fd9e6f29d981e",
         "logs": {
-          "baseline": "hex:8d9642094d03cdefe33d9f07550a62bed59e89e273e03d2483e21a78c49cf99c",
-          "mutant": "hex:ec2d0ef4caf92338d3275cf1038a0247124f81ae132edc208a89ee11203b004a",
-          "restored": "hex:b82b5eac2ef2837b85d74c04f82f3545dc2487063b9d7e116c8b0e4ef3722c03"
+          "baseline": "hex:3c2f2131330a12cde7fb4eb8cf5a71313a5b1409f28e91e506011cd7c389fbdb",
+          "mutant": "hex:1aff9e04eb91681db952611a36ca607a3a380782ccecfd651a0270f017c6d80a",
+          "restored": "hex:75579c15bb53b0ea55bf1f3f7648cb1c87c5dbee770ff1d4fd2c218550781c50"
+        }
+      },
+      {
+        "control": "the recovery state's lock file the folder refuses is answered (Codex review 2, finding 1)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_a_lock_file_the_config_folder_refuses_is_a_readable_answer",
+        "file": "src/optimus/context/memory_recovery.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:4e85a2bf8bd7311972a9e2113675c959f57824ec8ee5bd6e16a89cb6ade441da",
+        "mutant_sha256": "hex:d8b5d0b4fbb0630ab93f2c1f9b2a1bf64c54f51b02f68a819601e206e1c29ef9",
+        "logs": {
+          "baseline": "hex:ffabc80a136758507e527e446027cb9e6a1dbe2f1a0edf1f86cad63d89f5fadc",
+          "mutant": "hex:d7c7bf220199b0aaeae523773fdfebe03ae519a5c8d0016c3bf48487cf728d22",
+          "restored": "hex:24b32d1382bdadb7779f04e27f90bbadf751de8e615307775d9345d8adf6c2e6"
+        }
+      },
+      {
+        "control": "the export's lock file the folder refuses is answered (Codex review 2, finding 1)",
+        "test": "tests/unit/context/test_memory_recovery.py::test_a_lock_file_the_config_folder_refuses_is_a_readable_answer",
+        "file": "src/optimus/context/memory_recovery.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:4e85a2bf8bd7311972a9e2113675c959f57824ec8ee5bd6e16a89cb6ade441da",
+        "mutant_sha256": "hex:0d78864db563b4914bde7eefcd88ced2b4d39ed4292b4ccd1ac947dc28222282",
+        "logs": {
+          "baseline": "hex:8000b1dabd9ef04626b8b06aa66e8f93390f1fca5764b020e1bc47b754b9e163",
+          "mutant": "hex:85f9e938b627d306a9d82e359dc0b342a72c77a62c348141e35b51c88aad64bc",
+          "restored": "hex:3a077ac6f09da04da33bdfe4e40189fa5b39317febd6085027a7eb21d2ea915a"
+        }
+      },
+      {
+        "control": "the backup publisher's lock file the folder refuses is answered (Codex review 2, finding 1)",
+        "test": "tests/unit/context/test_memory_backups.py::test_b11_a_publisher_lock_the_config_folder_refuses_is_a_readable_answer",
+        "file": "src/optimus/context/memory_backups.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:32a7e27ba1d7ff85cc84c12c661533131d584a178bb90d87761d80222cbf62f8",
+        "logs": {
+          "baseline": "hex:1fe50d8081210f8c331b02d2e04a47dc4803cb128b13275c27460d53ef0ac225",
+          "mutant": "hex:4a022a820b9cbdd85ab05e7c40adec4b639339342f05ff68ea165ab4b41bf58e",
+          "restored": "hex:28512833ad0e6a8cdcec57b76886b7c7b365a34d64aaf3ba286b3448e68c3aee"
+        }
+      },
+      {
+        "control": "backlog records are replayed one by one (Codex review 2, finding 2)",
+        "test": "tests/unit/acp/test_memory_commands.py::test_a_malformed_backlog_record_never_hides_the_valid_notices",
+        "file": "src/optimus/acp/spec.py",
+        "verdict": "CAUGHT",
+        "source_sha256": "hex:3372421c530b0e2436d8d2fd91ca93907ee0c7e8055b504cb5e89938d51a16b9",
+        "mutant_sha256": "hex:55c6be93b609f28eee3092153351f7924551d5530c92060f2becc43a97ab8bb6",
+        "logs": {
+          "baseline": "hex:54cc76e379a129f4a1e8abaec0c4e841629d652feff72d9a429e8b38a572098b",
+          "mutant": "hex:084e793b587cd7a0a423e549df3f64c86b523e01fdb77032e288bf68edb812d0",
+          "restored": "hex:23ea0fc166e723b4ebfdd2eec36766b0be56c857355b3c4f2b1f3a7d4b26bac3"
         }
       },
       {
@@ -641,12 +701,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_a_backup_due_for_cleanup_says_so_and_never_names_a_future_overdue_date",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:fed98f102ffd8fc7ab133427ae81158d18c0e5e64cf4adbb58da67e1297f92ea",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:9cd710556faef9cb9a2cc16f7df2de11d93d22c517a9cfc9d46de59857f2efac",
         "logs": {
-          "baseline": "hex:bd7043122c8708560cf60a315b17d01ca92962f6798ad9b1b6b9f821945cf88c",
-          "mutant": "hex:87a78c48dd52ebb2689832f93c335ce69d20bd3c1349a7857b03549385f3db36",
-          "restored": "hex:550a8ec9f6b38db0528589bd183754a2b50f06638affc04d6072b41de772bbd4"
+          "baseline": "hex:25a3cec92e4c7049d16692a440c56359812bf30c42ffd541a9596df48ff3e7af",
+          "mutant": "hex:c27ec5eceb4c098c7244eaad9b7970d1fffece84a4e01d9e6d075540a9c1eaa9",
+          "restored": "hex:0d9b39597a3daac7201e791543c5a0e58fdbe2847cef4d71b438a10625a2c116"
         }
       },
       {
@@ -654,12 +714,12 @@
         "test": "tests/unit/context/test_memory_backups.py::test_a_backup_due_for_cleanup_says_so_and_never_names_a_future_overdue_date",
         "file": "src/optimus/context/memory_backups.py",
         "verdict": "CAUGHT",
-        "source_sha256": "hex:78ebe2618bb44c97d2157f20048b022a7884bc60744fc72695d16eacadff963b",
-        "mutant_sha256": "hex:fc64c6da571d7674e8bfbf458112716e686a577aabaeb84e11ebde15afe7e337",
+        "source_sha256": "hex:d8f65afe3d74c35c08c7f0c22486c7d8d96b57897f15dc6801a2f741f0e88c05",
+        "mutant_sha256": "hex:46ac86769d961a269677e0d9c2dea042726758dcb1351c77561b06dcbe530b33",
         "logs": {
-          "baseline": "hex:a79618b98f89e709e850c9284042df297a22400d23471be26b76c77e0de11c85",
-          "mutant": "hex:c063c2b1e09fc9687d94e291601fd0933cd1fa5ea4480f07af1cc79d1cb35481",
-          "restored": "hex:7714738198324bbf39d93eeb333760231494c35319579b431859171a320d4fe6"
+          "baseline": "hex:00fb655110b2865a1ce510deccadec14965759d48acbe16a417f8889fd78be73",
+          "mutant": "hex:27b9530132d19482c370cacc7d63e424574356291dc60c2d8a7574acbcb0616e",
+          "restored": "hex:d0c560d012c0fc4a52cf5c686ad07f8933db0ade9d7922f89724baa42aa6fd79"
         }
       },
       {
@@ -670,9 +730,9 @@
         "source_sha256": "hex:bbcd64a80048914cbb3c0d4dc1bc3a258b0bc732783d27e5ee1539703bb6c996",
         "mutant_sha256": "hex:a5dc33294c519b4c617b5b67e92662175007cd54702817e7bb076ff884608463",
         "logs": {
-          "baseline": "hex:b54f18e50751e471c99a2c052c712580477bca384242b04f339de182225c8b4d",
-          "mutant": "hex:8d5828e886ed5e01fba051d7a835b7486326b5182bb5b6bba5b8d6e1af50e422",
-          "restored": "hex:79ed78a3e9741684a5f3a60f393c5865acd9c6f347bfbda5edb4aade919db108"
+          "baseline": "hex:1a17b2207d54ba30c14500eb1030b45abe7932b91cf9b30ffdca584b8473b5e5",
+          "mutant": "hex:9cc0876fce615086bb0ae169d3a41e0de2688329d50621066078a0c770d51c4d",
+          "restored": "hex:fe35d76b640a214d7749b9b51ae613bcbad839637fa7109cf04e7eabd2f2ca18"
         }
       }
     ]
