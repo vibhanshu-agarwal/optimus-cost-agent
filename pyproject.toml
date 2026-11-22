@@ -108,6 +108,14 @@ optimus_model_policy = ["defaults.yaml", "savings_references.yaml", "test_profil
 line-length = 140
 target-version = "py314"
 
+[tool.ruff.format]
+exclude = [
+  "src/optimus/acp/settlement.py",
+  "src/optimus/acp/lifecycle.py",
+  "src/optimus/acp/outbound_writer.py",
+  "tests/unit/optimus_gateway/wire_baseline_scenarios.py",
+]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
 ignore = ["E501"]
