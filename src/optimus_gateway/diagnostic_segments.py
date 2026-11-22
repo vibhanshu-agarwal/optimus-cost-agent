@@ -25,7 +25,6 @@ import contextlib
 import json
 import queue
 import re
-import sys
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -33,6 +32,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from optimus_file_lock import held
 from optimus_security.failure_facts import final_sanitize
 
 SEGMENT_BYTES = 64 * 1024 * 1024
@@ -44,6 +44,7 @@ MAX_RECORD_BYTES = 64 * 1024  # agent-selected: a larger record is refused, neve
 EVENTS = frozenset({"model_request", "model_attempt", "reply_undeliverable"})
 _NAME = re.compile(r"gateway-diagnostics-(\d{8})-(\d{6})\.log")
 LOCK_NAME = "gateway-diagnostics.lock"
+_LOCK_SECONDS = 10.0  # one line's lock, on every platform (#532)
 
 
 @dataclass(frozen=True)
@@ -68,25 +69,11 @@ def _utc_now() -> datetime:
 
 @contextlib.contextmanager
 def _directory_lock(path: Path) -> Iterator[None]:
-    """Exclusive across processes for the duration of one line. On Windows the lock is retried for about 10 s before
-    it raises, which the writer counts as a write failure."""
-    with open(path, "a+b") as handle:
-        handle.seek(0)
-        if sys.platform == "win32":
-            import msvcrt
-
-            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-            try:
-                yield
-            finally:
-                handle.seek(0)
-                with contextlib.suppress(OSError):
-                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            yield  # closing the handle releases it
+    """Exclusive across processes for the duration of one line, through optimus_file_lock (#532). It waits up to
+    _LOCK_SECONDS on every platform: before, Windows gave up after about 10 s and POSIX waited forever. A lock not taken
+    in time, or refused, is an OSError, which the writer counts as a write failure; nothing is written without it."""
+    with held(path, wait=_LOCK_SECONDS):
+        yield
 
 
 class DiagnosticSegments:

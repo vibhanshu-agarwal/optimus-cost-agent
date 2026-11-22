@@ -208,7 +208,7 @@ ESTABLISHING_ROOT_MODULES = (
 )
 _LOWERCASE_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _LOWERCASE_HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
-_IN_REPO_MODULE_PREFIXES = ("optimus.", "optimus_security.", "tools.")
+_IN_REPO_MODULE_PREFIXES = ("optimus.", "optimus_security.", "optimus_file_lock.", "tools.")
 ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/acp/session_retention.py",
     "pyproject.toml",
@@ -390,6 +390,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/usage/savings_report.py",
     "src/optimus/usage/turn_settlement.py",
     "src/optimus_security/__init__.py",
+    "src/optimus_file_lock/__init__.py",
     "src/optimus_security/accounting_config.py",
     "src/optimus_security/durable_outbox.py",
     "src/optimus_security/failure_facts.py",
@@ -500,6 +501,8 @@ def _candidate_module_paths(module: str) -> tuple[str, ...]:
         return ("src/optimus/__init__.py",)
     if module == "optimus_security":
         return ("src/optimus_security/__init__.py",)
+    if module == "optimus_file_lock":  # the stdlib-only cross-process file lock (#532)
+        return ("src/optimus_file_lock/__init__.py",)
     if module.startswith(("optimus.", "optimus_security.")):
         base = "src/" + module.replace(".", "/")
         return (f"{base}/__init__.py", f"{base}.py")
@@ -532,7 +535,7 @@ def _resolve_relative_module(current_module: str, level: int, module: str | None
 
 
 def _is_in_repo_module(module: str) -> bool:
-    return module in {"optimus", "optimus_security"} or module.startswith(_IN_REPO_MODULE_PREFIXES)
+    return module in {"optimus", "optimus_security", "optimus_file_lock"} or module.startswith(_IN_REPO_MODULE_PREFIXES)
 
 
 def _resolve_imported_module(

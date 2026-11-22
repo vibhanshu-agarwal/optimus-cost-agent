@@ -490,7 +490,7 @@ def test_the_repository_groups_cover_the_real_src_packages_exactly() -> None:
     config = gate.load_groups(REPO_ROOT / "tools" / "product-coverage-groups.json")
     gate.validate_inventory(config, gate.discover_packages(gate.tracked_sources(REPO_ROOT)), gate.configured_sources(REPO_ROOT / "pyproject.toml"))
     required = {row.name: (row.packages, row.floor, row.enforced) for row in (*config.groups, *config.package_floors)}
-    assert required["optimus"] == (("optimus", "optimus_gateway", "optimus_security", "optimus_model_policy"), 80.0, True)
+    assert required["optimus"] == (("optimus", "optimus_gateway", "optimus_security", "optimus_file_lock", "optimus_model_policy"), 80.0, True)
     assert required["context_engine"] == (("context_engine",), 80.0, True)
     assert required["optimus_model_policy"] == (("optimus_model_policy",), 80.0, True)
     assert required["evidence_handoff"][2] is False and config.aggregate.enforced is False

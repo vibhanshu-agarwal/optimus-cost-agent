@@ -37,7 +37,6 @@ the next opportunity in any session, so a restart loses no notice and a resend r
 from __future__ import annotations
 
 import contextlib
-import errno
 import hashlib
 import json
 import os
@@ -52,6 +51,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from optimus.context.memory_workspace import _git
+from optimus_file_lock import FileLock, LockBusy, LockFault
 
 FORMAT: Final = "optimus-agent-memory-repo/2"
 LAYOUT: Final = ("MEMORY.md", "entries.jsonl", "manifest.json")
@@ -64,11 +64,6 @@ BATCH: Final = 10
 STATE_LOCK_SECONDS: Final = 10.0
 EXPORT_LOCK_SECONDS: Final = 120.0  # another host's export of the same project finishes first
 EXPORT_TRIES: Final = 3
-# What each platform's non-blocking lock raises when another holder has it, and nothing else: msvcrt.locking reports a held
-# range as EACCES (EDEADLOCK once LK_LOCK gives up), flock(LOCK_NB) as EWOULDBLOCK. On POSIX, EACCES is a refusal such as a
-# security policy denying the lock, so it is a fault there, not a holder (#529 review 2).
-_CONTENTION_ERRNOS: Final = (frozenset({errno.EACCES, errno.EDEADLK}) if sys.platform == "win32"
-                             else frozenset({errno.EAGAIN, errno.EWOULDBLOCK}))
 _SYNC_MARKERS: Final = ("onedrive", "dropbox", "google drive", "googledrive", "my drive", "icloud drive", "iclouddrive", "box sync",
                         "pcloud", "nextcloud", "owncloud", "sync.com", "mega")
 
@@ -90,64 +85,30 @@ class RecoveryError(Exception):
         self.message = message
 
 
-def _try_lock(handle: Any) -> bool:
-    """Take the OS lock on the file's first byte without waiting. The OS releases it when its owner's handle closes or the
-    owner dies, so a live owner is never taken over, however long it holds it (Codex CP3 review 3). Only another holder's lock
-    means "not yet": any other failure is raised, so a caller never waits out a fault and reports it as busy (#529 review)."""
-    try:
-        if sys.platform == "win32":
-            import msvcrt
-
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError as exc:
-        if exc.errno in _CONTENTION_ERRNOS:
-            return False
-        raise
-    return True
-
-
-def _unlock(handle: Any) -> None:
-    if sys.platform == "win32":
-        import msvcrt
-
-        handle.seek(0)
-        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-    else:
-        import fcntl
-
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-
-
 @contextlib.contextmanager
 def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS, code: str = "RECOVERY_STATE_BUSY",
                message: str = "The recovery state is held by another process; try again shortly.",
                fault_code: str = "RECOVERY_LOCK_FAILED") -> Iterator[None]:
-    """An OS-held lock on a file shared by every process on this machine (Codex CP3 review 1, finding 2): it ends only when its
-    owner releases it, closes the file or dies, never by age. The file itself is left in place. Another holder past `wait` is
-    `code`; a lock the OS refuses for any other reason is `fault_code` with its errno, at once (#529 review 2). Its message claims
-    nothing about earlier work: a caller can hold this lock after writing, so only the caller can say what was left."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "a+b") as handle:
-        deadline = time.monotonic() + wait
-        while True:
-            try:
-                if _try_lock(handle):
-                    break
-            except OSError as exc:
-                raise RecoveryError(fault_code, f"The lock file {path.name} could not be taken (errno {exc.errno}).") from None
-            if time.monotonic() > deadline:
-                raise RecoveryError(code, message)
-            time.sleep(0.02)
-        try:
-            yield
-        finally:
-            with contextlib.suppress(OSError):  # closing the handle releases the lock anyway: a failed unlock never replaces the outcome
-                _unlock(handle)
+    """An OS-held lock on a file shared by every process on this machine (Codex CP3 review 1, finding 2), through
+    optimus_file_lock (#532): it ends only when its owner releases it, closes the file or dies, never by age, and the file
+    is left in place. Another holder past `wait` is `code`; a lock call the OS refuses for any other reason is `fault_code`
+    with its errno, at once (#529 review 2). Its message claims nothing about earlier work: a caller can hold this lock after
+    writing, so only the caller can say what was left. Creating the lock's folder or opening its file is the caller's own
+    filesystem step, so that failure stays the OSError it always was: a backup still reads a vanished or unwritable target
+    from its errno, retrying the transient ones (#532 review)."""
+    lock = FileLock(path)
+    try:
+        lock.acquire(wait=wait)
+    except LockBusy:
+        raise RecoveryError(code, message) from None
+    except LockFault as fault:
+        if fault.stage == "open" and isinstance(fault.__cause__, OSError):
+            raise fault.__cause__ from None
+        raise RecoveryError(fault_code, f"The lock file {path.name} could not be taken (errno {fault.errno}).") from None
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 def _durable_json(path: Path, value: Any) -> None:

@@ -14,6 +14,7 @@ from typing import Any
 
 import pytest
 
+import optimus_file_lock
 from optimus.acp import memory_commands as mc
 from optimus.context import memory_recovery as mr
 from optimus.context.authored_memory import GatewayMemoryStore, MemoryStoreRefused
@@ -965,16 +966,27 @@ def test_a_state_lock_fault_after_publication_claims_nothing_about_what_was_writ
     host.remember(CANARY)
     destination = mr.location(repo)
     host.recovery.confirm(destination, sync_consent=False)
-    state_lock, real_try = host.recovery._state.path.name + ".lock", mr._try_lock
+    state_lock, real_lock = host.recovery._state.path.name + ".lock", optimus_file_lock._lock
 
-    def refuse_the_state_lock(handle: Any) -> bool:
+    def refuse_the_state_lock(handle: Any) -> None:  # the one OS lock call, since #532 in optimus_file_lock
         if Path(handle.name).name == state_lock:
             raise OSError(errno.ENOLCK, os.strerror(errno.ENOLCK))
-        return real_try(handle)
+        real_lock(handle)
 
-    monkeypatch.setattr(mr, "_try_lock", refuse_the_state_lock)
+    monkeypatch.setattr(optimus_file_lock, "_lock", refuse_the_state_lock)
     with pytest.raises(mr.RecoveryError) as refused:
         host.recovery.export()
     assert refused.value.code == "RECOVERY_LOCK_FAILED" and f"errno {errno.ENOLCK}" in refused.value.message
     assert "nothing" not in refused.value.message.lower()
     assert mr.generations(destination)  # published before the state lock was refused
+
+
+def test_a_lock_file_that_cannot_be_opened_stays_the_callers_own_filesystem_error(tmp_path: Path) -> None:
+    """#532: opening the lock's file is the caller's filesystem step, so it is the OSError it always was, never a lock
+    fault code: a backup keeps reading a vanished or unwritable target from its errno."""
+    import optimus_file_lock
+
+    (tmp_path / "x.lock").mkdir()
+    with pytest.raises(OSError) as failed, mr._file_lock(tmp_path / "x.lock", wait=30.0, fault_code="SOME_LOCK_FAILED"):
+        pytest.fail("the lock was not taken")
+    assert not isinstance(failed.value, (mr.RecoveryError, optimus_file_lock.LockFault)) and failed.value.errno is not None

@@ -568,13 +568,33 @@ def test_a_ledger_held_by_a_running_gateway_is_refused(monkeypatch, tmp_path, ca
     assert _approval_keys(keyring) == {}
 
 
-def test_an_unreadable_ledger_is_refused(monkeypatch, tmp_path, capsys) -> None:
+def test_a_ledger_lock_that_cannot_be_taken_is_its_own_refusal(monkeypatch, tmp_path, capsys) -> None:
+    """#532: the lock probe cannot open a directory, a real filesystem error. It is a lock fault, never a running
+    Gateway holding the ledger, and never an unreadable ledger."""
     keyring = FakeKeyring()
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     ledger = _write_ledger(workspace)
-    ledger.with_name(ledger.name + ".lock").mkdir()  # the lock probe cannot open a directory: a real filesystem error
+    ledger.with_name(ledger.name + ".lock").mkdir()
 
+    outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
+
+    err = capsys.readouterr().err
+    assert outcome == 2 and "STAGE_C_LEDGER_LOCK_FAILED" in err and "STAGE_C_LEDGER_LOCKED" not in err
+    assert _approval_keys(keyring) == {}
+
+
+def test_an_unreadable_ledger_is_refused(monkeypatch, tmp_path, capsys) -> None:
+    """A ledger whose bytes cannot be read stays STAGE_C_LEDGER_UNREADABLE (#532 keeps it apart from a lock fault)."""
+    keyring = FakeKeyring()
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_ledger(workspace)
+
+    def unreadable(*_args, **_kwargs):
+        raise PermissionError(13, "the ledger cannot be read")
+
+    monkeypatch.setattr(stage_c.StageCGuard, "_replay_ledger", staticmethod(unreadable))
     outcome, _, _ = _ceremony(monkeypatch, tmp_path, keyring)
 
     assert outcome == 2 and "STAGE_C_LEDGER_UNREADABLE" in capsys.readouterr().err
