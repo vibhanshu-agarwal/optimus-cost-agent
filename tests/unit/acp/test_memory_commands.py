@@ -435,6 +435,26 @@ def test_a_cancelled_purge_question_deletes_nothing(tmp_path: Path) -> None:
     asyncio.run(scenario())
 
 
+
+def test_a_cancel_while_the_names_are_found_runs_no_memory_command(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex round 116: a cancel sent while the prompt finds its workspace names (#530) is honoured before the command runs."""
+    from tests.unit.acp.test_context_engine_admission import _held_finder
+
+    async def scenario() -> None:
+        store = _adapter(purge_store(tmp_path)[0])
+        adapter, _outbound, runner = _acp(tmp_path, _PurgeSource(store))
+        session_id = await new_session(adapter, tmp_path, mode="chat")
+        entered, release = _held_finder(monkeypatch)
+        task = asyncio.create_task(rpc(adapter, prompt_request(session_id, "/remember Never push to main.", "p-1")))
+        assert await asyncio.to_thread(entered.wait, 5)
+        await adapter.handle_client_notification({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session_id}})
+        release.set()
+        response = await asyncio.wait_for(task, timeout=5)
+        assert response["result"]["stopReason"] == "cancelled"
+        assert _events_any(store) == []
+        assert runner.requests == []
+    asyncio.run(scenario())
+
 def test_memory_view_keeps_history_through_withdrawal_and_respects_purge(tmp_path: Path) -> None:
     """Q4: `/memory view` pages an item's versions newest first; a withdrawal keeps the earlier text, a purge removes it all."""
     store = _adapter(purge_store(tmp_path)[0])

@@ -923,6 +923,55 @@ async def test_finding_a_prompts_names_never_holds_up_another_session(tmp_path, 
     assert {request.task for request in runner.requests} == {"a slow prompt", "a quick prompt"}
 
 
+
+def _held_finder(monkeypatch):
+    """The prompt's name finder held on its thread until released; `entered` is set once it is running."""
+    import threading
+
+    from optimus.context import memory_serving
+
+    entered, release = threading.Event(), threading.Event()
+
+    def held(text, root, sanitize):
+        entered.set()
+        release.wait(5)
+        return frozenset()
+
+    monkeypatch.setattr(memory_serving, "workspace_names", held)
+    return entered, release
+
+
+async def test_a_cancel_while_the_names_are_found_cancels_the_prompt_before_any_model_call(tmp_path, monkeypatch):
+    """Codex round 116: no turn holds a cancel during the wait, so it is kept and honoured once the turn is registered."""
+    from optimus.acp.lifecycle import DirectiveKind
+
+    class GateRunner(Runner):
+        """Asks the turn's gate for a model call, as the real runner does before any provider request."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.model_calls: list[bool] = []
+
+        def run(self, request, **kwargs):
+            self.model_calls.append(kwargs["operation_control"].try_start(DirectiveKind.GATEWAY, "model-1").granted)
+            return super().run(request, **kwargs)
+
+    entered, release = _held_finder(monkeypatch)
+    runner = GateRunner()
+    adapter, outbound, _ = make_adapter(tmp_path, None, runner)
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    held = asyncio.create_task(rpc(adapter, prompt_request(session_id, "a prompt", "c1")))
+    assert await asyncio.to_thread(entered.wait, 5)
+    await adapter.handle_client_notification({"jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session_id}})
+    release.set()
+    response = await asyncio.wait_for(held, timeout=5)
+    assert response["result"]["stopReason"] == "cancelled"
+    assert session_of(adapter, session_id).conversation.records == {}  # nothing committed
+    assert adapter._finding_names == {}  # noqa: SLF001 - nothing is kept for a later prompt
+    later = await asyncio.wait_for(rpc(adapter, prompt_request(session_id, "another prompt", "c2")), timeout=5)
+    assert later["result"]["stopReason"] == "end_turn"
+    assert runner.model_calls == [False, True]  # the cancelled prompt's model call never starts; the next one's does
+
 def test_extraction_scans_a_block_naming_a_workspace_file_as_written(tmp_path):
     """The extractor's scan uses the session's sanitizer for its workspace (spec.py), so a block that now keeps a name passes."""
     import json

@@ -896,6 +896,8 @@ class AcpDuplexAdapter:
         self._usage_reports = usage_reports
         self._report_cancels: dict[str, asyncio.Event] = {}  # a report in progress, by session: it holds the prompt slot
         self._report_sends: set[asyncio.Task[Any]] = set()  # torn-down reports' sends, held until they complete
+        # #530: prompts still finding their workspace file names, by session; a cancel meanwhile is kept for each (Codex 116).
+        self._finding_names: dict[str, set[asyncio.Event]] = {}
         if mcp_idle_seconds is not None and (type(mcp_idle_seconds) is not int or not 1 <= mcp_idle_seconds <= 2592000):
             raise ValueError("invalid MCP idle seconds")
         self._mcp_idle_seconds = mcp_idle_seconds
@@ -1424,7 +1426,7 @@ class AcpDuplexAdapter:
         )
 
     async def _handle_savings(self, request: dict[str, Any], session_id: str, command: SavingsCommand | str,
-                              ownership_slot: ResponseOwnershipSlot | None) -> ResponseEnvelope:
+                              ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
         """Plan 12.9 `/savings`: answered locally, before admission or classification. It enters no conversation,
         creates no accounting epoch, calls no model or tool and changes no mode or strategy (`_answer_locally`)."""
         reports = self._usage_reports
@@ -1442,10 +1444,11 @@ class AcpDuplexAdapter:
             text = build_agent_message_chunk_notification(session_id=session_id, text=answer.text)
             return [text], lambda: reports.delivered(session_id, answer)
 
-        return await self._answer_locally(request, session_id, compute, ownership_slot, "the usage report could not be delivered")
+        return await self._answer_locally(request, session_id, compute, ownership_slot, "the usage report could not be delivered",
+                                          cancelled=cancelled)
 
     async def _handle_memory_command(self, request: dict[str, Any], session_id: str, command: MemoryCommand | str,
-                                     ownership_slot: ResponseOwnershipSlot | None) -> ResponseEnvelope:
+                                     ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
         """Plan 12.11 v4 D10: a memory command, answered locally like `/savings` and calling no model. A change's notice is a
         host card (`memory/<event_id>`) followed by the answer text; a purge first asks the user's one-shot confirmation."""
         session = self._sessions.get(session_id)
@@ -1487,7 +1490,8 @@ class AcpDuplexAdapter:
 
             return updates, delivered
 
-        return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered")
+        return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered",
+                                          cancelled=cancelled)
 
     async def _ask_once(self, params: dict[str, Any], option: str, wait: _LocalWait) -> bool | None:
         """One host-generated `session/request_permission`: True only for its own response choosing `option`; False for cancel,
@@ -1550,12 +1554,14 @@ class AcpDuplexAdapter:
 
     async def _answer_locally(self, request: dict[str, Any], session_id: str,
                               compute: Callable[[_LocalWait], Awaitable[_LocalAnswer | None]],
-                              ownership_slot: ResponseOwnershipSlot | None, undelivered: str) -> ResponseEnvelope:
+                              ownership_slot: ResponseOwnershipSlot | None, undelivered: str, *,
+                              cancelled: bool = False) -> ResponseEnvelope:
         """A command answered by the host itself, before admission or classification: `/savings` and the memory commands. It
         enters no conversation, creates no accounting epoch and calls no model or tool. It holds the session's prompt slot
         while it runs; a cancel, a retired session or the server's close ends the wait and nothing late is sent. The request's
         own session lease (`handle_client_request`) keeps the session while it runs. `compute` returns the updates to send and
-        what to record once they are delivered, or None when cancelled."""
+        what to record once they are delivered, or None when cancelled. `cancelled`: a cancel came while the prompt was still
+        finding its names, so nothing is computed."""
         cancel = self._report_cancels[session_id] = asyncio.Event()
 
         abandoned = False  # the request task itself was cancelled (server teardown)
@@ -1569,7 +1575,7 @@ class AcpDuplexAdapter:
             return await self._until_cancelled(work, cancel, limit)
 
         try:
-            computed = await compute(wait)
+            computed = None if cancelled else await compute(wait)
             if computed is None:
                 return self._non_turn(success_response(request.get("id"), {"stopReason": "cancelled"}), ownership_slot)
             updates, delivered = computed
@@ -1686,6 +1692,8 @@ class AcpDuplexAdapter:
         report = self._report_cancels.get(session_id)
         if report is not None:
             report.set()
+        for heard in self._finding_names.get(session_id, ()):
+            heard.set()
         turn = self._active_turns.get(session_id)
         if turn is None:
             return
@@ -1963,9 +1971,22 @@ class AcpDuplexAdapter:
             )
         # The prompt's workspace file names, found on a thread because the gate may read ignore files (#530, Codex round 115).
         # It is the handler's only wait, and it comes before every check below, so they judge the session as it is after it.
+        # No turn, report or renewal holds a cancel during the wait, so one sent meanwhile is kept and honoured below where it
+        # would have landed had it come just after (Codex round 116).
         known = self._sessions.get(session_id)
-        finder = None if known is None else ConversationSanitizer(self._sanitizer_inputs, workspace=Path(known.cwd))
-        names = frozenset() if finder is None else await asyncio.to_thread(finder.workspace_names, _text_from_content_blocks(prompt))
+        names: frozenset[str] = frozenset()
+        heard = asyncio.Event()
+        if known is not None:
+            finder = ConversationSanitizer(self._sanitizer_inputs, workspace=Path(known.cwd))
+            waiting = self._finding_names.setdefault(session_id, set())
+            waiting.add(heard)
+            try:
+                names = await asyncio.to_thread(finder.workspace_names, _text_from_content_blocks(prompt))
+            finally:
+                waiting.discard(heard)
+                if not waiting and self._finding_names.get(session_id) is waiting:
+                    del self._finding_names[session_id]
+        cancelled = heard.is_set()
         session = self._sessions.get(session_id)
         if session is None:
             self._pre_run_refused(request, session_id, "unknown_session")
@@ -1995,13 +2016,13 @@ class AcpDuplexAdapter:
             command = parse_savings_command(task, attachments=any(
                 not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
             if command is not None:
-                return await self._handle_savings(request, session_id, command, ownership_slot)
+                return await self._handle_savings(request, session_id, command, ownership_slot, cancelled=cancelled)
         if self._memory_extractor_factory is not None:
             # Plan 12.11 Task 4: the user's own memory commands, before admission, classification or any model call.
             memory_command = parse_memory_command(task, attachments=any(
                 not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
             if memory_command is not None:
-                return await self._handle_memory_command(request, session_id, memory_command, ownership_slot)
+                return await self._handle_memory_command(request, session_id, memory_command, ownership_slot, cancelled=cancelled)
 
         idle = self._idle_mcp.get(session_id)
         if self._closed or (idle is not None and idle.phase == "MCP_CLOSING"):
@@ -2049,6 +2070,9 @@ class AcpDuplexAdapter:
             reservation = asyncio.create_task(runtime.disposition.reopen_suspended(state, request_permission),
                                                name="optimus-mcp-renewal")
             self._reopen_reservations[session_id] = reservation
+            if cancelled:  # as the cancel handler does; the renewal never asks
+                self._reopen_cancelled.add(session_id)
+                reservation.cancel()
             try:
                 try:
                     outcome = await reservation
@@ -2103,6 +2127,8 @@ class AcpDuplexAdapter:
         if ownership_slot is not None:
             ownership_slot.bind_turn(turn_control)
         self._active_turns[session_id] = turn
+        if cancelled:  # as the cancel handler does: the gate closes before any model call
+            turn_control.request_session_cancel()
         run_id = turn.run_id
         # region agent log
         acp_debug_log(

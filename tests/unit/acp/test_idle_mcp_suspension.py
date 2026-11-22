@@ -144,6 +144,26 @@ async def test_refused_or_cancelled_renewal_allocates_nothing_and_cleans_future(
     assert channel._futures == {} and adapter._reopen_reservations == {}
 
 
+async def test_a_cancel_while_the_names_are_found_never_asks_for_the_renewal(composed, monkeypatch):
+    """Codex round 116 (#530): a cancel sent while the prompt finds its workspace names cancels the renewal before it asks."""
+    from tests.unit.acp.test_context_engine_admission import _held_finder
+
+    adapter, session, _, _, runner = composed
+    state = session.client_mcp_state
+    suspend(state)
+    wire = PermissionWire()
+    adapter._outbound = channel = NdjsonOutboundChannel(wire)
+    entered, release = _held_finder(monkeypatch)
+    task = asyncio.create_task(prompt(adapter, session))
+    assert await asyncio.to_thread(entered.wait, 5)
+    await adapter.handle_client_notification({"method": "session/cancel", "params": {"sessionId": session.session_id}})
+    release.set()
+    response = await asyncio.wait_for(task, 5)
+    assert response.response["result"] == {"stopReason": "cancelled"}
+    assert wire.requests.empty()  # never asked
+    assert state.suspended and not runner.requests
+    assert channel._futures == {} and adapter._reopen_reservations == {} and adapter._reopen_cancelled == set()
+
 async def test_setter_during_renewal_preserves_admitted_mode_and_chat_has_no_mcp(composed):
     adapter, session, _, _, runner = composed
     suspend(session.client_mcp_state)
