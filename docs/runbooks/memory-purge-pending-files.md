@@ -1,5 +1,9 @@
 # Memory purge held pending by the data directory
 
+A purge's cleanup in configured backups (Plan 12.12) is separate from this: `/memory backup` shows "backup cleanup pending"
+for withdrawn items, and the next verified backup retires the older generations that may hold their text (a target that is
+offline keeps it pending until it is reachable again).
+
 A memory purge completes only when the memory store's data directory holds nothing but Redis's current snapshot and AOF
 set. When anything else is there, the Gateway leaves the purge `pending` and its `purge_status` reply says why:
 

@@ -153,7 +153,7 @@
       "what": "memory-setup keeps every config root's store password under one keyring name (optimus-gateway-memory-store / redis-password), so two config roots overwrite each other's password and removing one breaks the other",
       "where": "optimus.acp.memory_setup._CREDENTIAL_NAME (Plan 12.11)",
       "observed": "this proof's set-up overwrote, and its cleanup removed, that one slot; no product memory store is configured on this machine (searched the profile and the main checkout's drive), so only earlier test proofs had used it",
-      "disposition": "filed for its own decision; outside Plan 12.12's import and backup scope"
+      "disposition": "filed as #526 and fixed by PR #527 (7b8f901), closed 2026-11-21; outside Plan 12.12's import and backup scope"
     }
   ],
   "unrun": [

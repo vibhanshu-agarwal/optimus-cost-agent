@@ -474,7 +474,7 @@
       },
       "note": "token estimates by optimus.context.memory_extraction.estimate_tokens; no model was paid"
     },
-    "correctness": "UNRUN: zero-paid stand-in model (operator: zero-paid only)",
+    "correctness": "UNRUN: zero-paid stand-in model (operator: zero-paid only); answer-level correctness stays with #491's later plan",
     "model_requests": 26,
     "rows": [
       {

@@ -51,10 +51,11 @@ COMMANDS: Final = ("remember", "forget", "memory", "welcome")
 DESCRIPTIONS: Final = {
     "remember": ("Save a rule or fact to this project's memory", "[--branch <name>] <statement>"),
     "forget": ("Withdraw a memory item (history is kept); --purge deletes its text", "<id>@<version> [--purge]"),
-    "memory": ("List memory, or view, edit, switch on or forget one item; export or restore the recovery copy",
+    "memory": ("List memory, or view, edit, switch on or forget one item; export, restore or back up the recovery copy; "
+               "import an Agent Memory Repo",
                "[view <id> | edit <id>@<version> <statement> | switch-on <id>@<version> | forget <id>@<version> | page <n> | "
                "export | restore [<generation>] | backup [configure <folder> [--cloud] | now | disable] | "
-               "import <folder> [--map <project>] | import apply <preview> | import status]"),
+               "import <folder> [--map <project>] | import show <preview> <page> | import apply <preview> | import status]"),
     "welcome": ("Show the welcome-back brief for this project", ""),
 }
 PAGE_ITEMS: Final = 20

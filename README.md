@@ -219,7 +219,7 @@ is not a realized saving or the result of turning Auto off. The report makes no 
 context. References come from the packaged `optimus_model_policy/savings_references.yaml`, or from a launch-approved
 `accounting/savings-references.yaml` that replaces it whole.
 
-Project memory (Plan 12.11, M3; [ADR-042](docs/decisions/ADR-042-memory-store-topology-commit-and-recovery.md), [ADR-045](docs/decisions/ADR-045-completes-adr-042-deletion-journal-and-recovery-copy.md),
+Project memory (Plans 12.11 and 12.12, M3; [ADR-042](docs/decisions/ADR-042-memory-store-topology-commit-and-recovery.md), [ADR-045](docs/decisions/ADR-045-completes-adr-042-deletion-journal-and-recovery-copy.md),
 [ADR-044](docs/decisions/ADR-044-explicit-user-actions-for-user-memory.md)) keeps what the user asks it to remember
 across sessions, on a dedicated Redis behind the Gateway that `optimus-trust memory-setup --store` sets up once in a
 terminal. Only the user's explicit commands change user memory: `/remember [--branch <ref>] <statement>`, and, by
@@ -233,7 +233,16 @@ the first response opens with a welcome-back brief from the previous session's c
 apply now, memory changed since, and the commits since. `/welcome` shows the brief at any time. While a session is
 open, a changed project's memory is copied periodically, in plaintext, under `.optimus/memory-recovery/` (`/memory
 export` copies it at once), and `/memory restore` brings that copy back into an empty store, applying every purge
-since. That copy is on the same drive, so it is not a backup. With memory off, none
+since. That copy is on the same drive, so it is not a backup. `/memory backup configure <folder> [--cloud]` copies it
+once a day, while a session is open, to another drive (or, after a plaintext warning, a synced folder) once you confirm;
+`/memory backup now` takes one at once, `/memory backup disable` stops them, and `/memory backup` and `/memory` show the
+last backup, anything overdue, paused or failed, and cleanup still owed for withdrawn items. `/memory restore` lists the
+backup generations too. Backups are plaintext: Zed says "Encryption unavailable" until #491's later plan delivers
+encryption, the recovery phrase, key rotation and encrypted restore. `/memory import <folder> [--map <project>]` previews
+an Agent Memory Repo (`MEMORY.md` and the notes it links), `/memory import show <preview> <page>` pages it,
+`/memory import apply <preview>` saves it after you confirm, and `/memory import status` reports the last import.
+Imported entries are optional context, never your own items, and their cards say "Imported"; a turn serves at most
+three optional items, chosen without regard to the question (query-aware recall is roadmap M2). With memory off, none
 of these commands are offered.
 
 ### Phase 1 Retry, Fitness Gates, Golden Tasks, and Release Gate
@@ -906,7 +915,9 @@ exact text is required for replay correctness. The exception does not extend to 
 index's Redis (vector/structural index structures), which holds only signatures, summaries
 and relative paths, never raw source code. The M3 memory store (ADR-042, ADR-045) is different: it holds
 the statements users asked it to remember and agent lessons, in plaintext, and so does its
-recovery copy under `.optimus/memory-recovery/` (same-drive, ignored by Git).
+recovery copy under `.optimus/memory-recovery/` (same-drive, ignored by Git). So do configured backups, in the folder the
+user names (possibly a synced cloud folder, whose history Optimus cannot erase), and imported Agent Memory Repo statements
+(Plan 12.12).
 
 ### Operator runbook (live verification)
 
@@ -1093,8 +1104,8 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained; Plans 12.10 and 12.11's memory (M1, M3) not yet covered: see ADR-037 to ADR-045 |
-| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 and 12.11's memory (M1, M3) not yet covered: see ADR-037 to ADR-045 |
+| [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained; Plans 12.10 to 12.12's memory (M1, M3 including backups and import) not yet covered: see ADR-037 to ADR-045 and Plan 12.12 |
+| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 to 12.12's memory (M1, M3 including backups and import) not yet covered: see ADR-037 to ADR-045 and Plan 12.12 |
 | [docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf) | Testing approach; real Postgres report tier and Plan 12.9's qualified evidence, preserving failed Windows and separately successful Linux PR/main gates |
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |

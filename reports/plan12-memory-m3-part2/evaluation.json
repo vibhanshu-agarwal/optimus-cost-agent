@@ -8,7 +8,7 @@
     "source": "git:4573369445ac7dba990c80c763e83835b3e9cce5",
     "config_id": "m3p2-cp2-v1",
     "store": "operator 2026-11-21 'Start CP2, release store': p1212-memory-test-redis port 6396, volume p1212-memory-test-data, fault injection; backup folder F:\\optimus-p1212-test",
-    "models": "zero-paid local stand-ins: the answer layer is UNRUN, owned by the paid sessions"
+    "models": "zero-paid local stand-ins: the answer layer is UNRUN; Plan 12.12 released zero-paid sessions only (decisions.json operator_releases), so answer-level correctness stays with #491's later plan"
   },
   "rule": "decisions.json oracle_mapping: each case reports its original comparison and its mapped comparison side by side; a mapped PASS proves only its named invariant; anything the mapping cannot observe is missing coverage",
   "cases": [
@@ -81,7 +81,7 @@
         "reasons": [],
         "invariant": "stored as legacy-import active optional; never user-authored",
         "unrun": [
-          "the answer abstains from asserting a user rule: paid Zed sessions M3-ZED-OFF/ON/RETURN"
+          "the answer abstains from asserting a user rule: UNRUN (zero-paid only); #491's later plan"
         ]
       },
       "missing_coverage": []
