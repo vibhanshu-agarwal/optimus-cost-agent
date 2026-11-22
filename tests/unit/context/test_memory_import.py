@@ -414,6 +414,8 @@ def test_through_the_adapter_each_commit_gets_its_card_and_served_reads_name_the
         cards = {u["toolCallId"] for u in _updates(outbound) if u.get("sessionUpdate") == "tool_call" and u["toolCallId"].startswith(
             "memory/e-")}
         assert cards == {f"memory/{e.event_id}" for e in events} and len(events) == 2
+        titles = [u["title"] for u in _updates(outbound) if u.get("sessionUpdate") == "tool_call" and u["toolCallId"].startswith("memory/e-")]
+        assert titles and all(title.startswith("Imported: ") for title in titles), titles  # never the word the user's own items use
         await rpc(adapter, prompt_request(session_id, "How are releases tagged?", "p-3"))
         assert "Releases are tagged vX.Y." in repr(runner.requests[-1]) and runner.requests[-1] is not None
         assert len(runner.requests) == 1, "the import itself called no model"
@@ -745,6 +747,7 @@ def test_a_host_that_dies_mid_apply_loses_no_notice_and_the_next_apply_reconcile
     third = next(e for e in _items(store) if e.statement == "Entry 2.")
     assert third.event_id in {n.event_id for n, _label in resumed.notices}
     assert len(_items(store)) == 5 and len(backlog.pending()) == 5
+    assert all(record.get("imported") is True for record in backlog.pending())  # replayed cards say "Imported" (Codex CP3 review 1)
 
 
 def test_a_copys_manifest_is_read_bounded_and_identity_checked(tmp_path: Path) -> None:

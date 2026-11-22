@@ -145,7 +145,7 @@ def test_b04_one_publisher_per_project(tmp_path: Path, repo: Path, places: dict[
     def other_host() -> None:
         with mr._file_lock(lock):
             held.set()
-            release.wait()
+            release.wait()  # held until the test releases it: the two 2 s lock waits never outlast it
     thread = threading.Thread(target=other_host)
     thread.start()
     try:
@@ -280,6 +280,124 @@ def test_b11_a_failed_write_keeps_the_last_good_backup_and_retries_only_transien
     assert state.failure is not None and state.failure["attempts"] == attempts and len(calls) == attempts
     assert "last attempt failed" in host.backups.status_line() and len(_published(places["separate"] / "b")) == 1
     assert not list((places["separate"] / "b").glob(".staging-*"))
+
+
+def test_b11_b30_a_target_the_os_cannot_create_is_a_readable_answer(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """CP3 platform probe P4: a target the OS refuses to create (on Windows a path past 260 characters without long-path support;
+    also a denied parent or a read-only drive) answers readably through the confirmed set-up, never a failed turn; nothing is set up."""
+    host = _Backed(tmp_path, repo, places, _Clock())
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    target = places["separate"] / "b"
+    real_mkdir = Path.mkdir
+
+    def refusing(self: Path, *args: Any, **kwargs: Any) -> None:
+        if str(self).startswith(str(target)):
+            raise FileNotFoundError(errno.ENOENT, "The system cannot find the path specified")
+        real_mkdir(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "mkdir", refusing)
+    answer = host.run(f"/memory backup configure {target}")
+    assert "could not be created (The system cannot find the path specified" in answer.text, answer.text
+    assert "Nothing was changed." in answer.text and host.backups.state().target is None and not target.exists()
+
+
+def test_b11_a_target_reported_missing_while_written_is_a_recorded_write_failure(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fable CP3 review 1, finding 1: a FileNotFoundError while the target is written (a Windows path the folder fit but its files
+    do not, or the folder removed mid-write) is the target's failure, never "the source moved": it is answered and recorded."""
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    good = host.backups.state().last_success
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+
+    def missing(_captured: dict[str, bytes], final: Path, _prefix: str) -> None:
+        raise FileNotFoundError(errno.ENOENT, "The system cannot find the path specified", str(final / "entries.jsonl"))
+    monkeypatch.setattr(mb.Backups, "_publish", staticmethod(missing))
+    answer = host.run("/memory backup now")
+    assert f"could not be written to {target} (The system cannot find the path specified" in answer.text, answer.text
+    state = host.backups.state()
+    assert state.failure is not None and state.failure["code"] == "BACKUP_WRITE_FAILED" and state.last_success == good
+    assert "last attempt failed" in host.backups.status_line() and len(_published(target)) == 1
+
+
+def test_memory_moving_on_from_a_clean_copy_is_read_again_never_a_recorded_failure(tmp_path: Path, repo: Path,
+                                                                                    places: dict[str, Path],
+                                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fable CP3 review 1, finding 3: this host's copy is clean, but memory moved on through another config root and the kept
+    generation lapsed. The backup exports the copy again and succeeds; nothing is recorded as a failed attempt."""
+    from optimus_gateway import memory_store
+
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    _Host(tmp_path, repo, host.server, config="other-config").remember("Written through another config root.")
+    monkeypatch.setattr(memory_store, "_PINNED_SECONDS", -1.0)  # the copy's own generation is no longer kept anywhere
+    clock.now += 2 * DAY
+    generation = host.backups.backup()
+    state = host.backups.state()
+    assert generation.count == 2 and state.failure is None and state.last_success["name"] == generation.name  # type: ignore[index]
+
+
+def test_b11_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer(tmp_path: Path, repo: Path,
+                                                                                         places: dict[str, Path],
+                                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 1, finding 2, the backup's side: the write fails and recording the failure fails too (the backup
+    settings share the full disk); `/memory backup now` still answers with the write failure, and says the record is missing."""
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    host.remember("Tests run with pytest -q.")  # a new generation to publish
+    clock.now += 2 * DAY
+    settings = host.backups._state.path
+    real = mr._durable_json
+    filled: list[int] = []  # the disk fills while the backup is written: every later settings write is refused too
+
+    def full(path: Path, value: Any) -> None:
+        if path == settings and filled:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        real(path, value)
+
+    def no_space(_captured: dict[str, bytes], _final: Path, _prefix: str) -> None:
+        filled.append(1)
+        raise OSError(errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(mr, "_durable_json", full)
+    monkeypatch.setattr(mb.Backups, "_publish", staticmethod(no_space))
+    answer = host.run("/memory backup now")
+    assert "could not be written to" in answer.text and "It could not be recorded either: The backup settings could not be " \
+        "saved (No space left on device)" in answer.text, answer.text
+
+
+def test_b11_a_publisher_lock_the_config_folder_refuses_is_a_readable_answer(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 2, finding 1: the backup's publisher lock file cannot be opened (the config folder is read-only):
+    `/memory backup now` answers readably and nothing is written."""
+    import builtins
+
+    import optimus_file_lock
+
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+    publisher = host.backups._state.path.name + ".publish.lock"
+
+    def opening(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if Path(path).name == publisher:
+            raise PermissionError(errno.EACCES, "Access is denied", str(path))
+        return builtins.open(path, *args, **kwargs)
+    monkeypatch.setattr(optimus_file_lock, "open", opening, raising=False)
+    answer = host.run("/memory backup now")
+    assert "The backup's lock file could not be opened (Access is denied); nothing was written." in answer.text, answer.text
+    assert len(_published(places["separate"] / "b")) == 1
 
 
 def test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one(tmp_path: Path, repo: Path,
@@ -1046,11 +1164,11 @@ def test_r4_a_journal_moving_on_is_source_movement_not_a_failure(tmp_path: Path,
     real = host.recovery._read_generation
     calls: list[int] = []
 
-    def purge_in_flight(bind: str) -> Any:
-        entries, final = real(bind)
+    def purge_in_flight(bind: str, **kwargs: Any) -> Any:
+        entries, final = real(bind, **kwargs)
         calls.append(1)
-        if len(calls) == 1:
-            return entries, final  # the export itself
+        if "pin" not in kwargs:
+            return entries, final  # an export: each retry exports again (Fable CP3 review 1, finding 3)
         return entries, {**final, "journal": final["journal"] + 1, "seal": "f" * 64}  # a purge's intent journalled, head unchanged
     monkeypatch.setattr(host.recovery, "_read_generation", purge_in_flight)
     with pytest.raises(mb.BackupError) as moved:
@@ -1211,6 +1329,45 @@ def test_product_default_reports_drive_independence_unknown(tmp_path: Path, repo
                          config_root=tmp_path / "config", disk_of=_disks(places, repo))  # the launch's store reference
     assessed = product.assess(places["separate"] / "b")  # a different disk from the recovery copy's
     assert assessed["domain"] == "unknown" and "memory store" in assessed["reason"]  # never "separate" without the store bound
+
+
+def test_a_backup_is_taken_and_authenticated_while_writes_keep_landing(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    """Plan 12.12 CP3 (the CP2 contention miss): with another host writing after every store request, the export is still one
+    generation and the backup authenticates it at its own head, so one production backup succeeds and verifies."""
+    host = _Backed(tmp_path, repo, places, _Clock())
+    for n in range(mr.PAGE + 20):
+        host.remember(f"Rule number {n} for this project.")
+    host.set_up(places["separate"] / "b")
+    host.remember("One more rule, so the copy must be exported again.")
+    other = _Host(tmp_path, repo, host.server)
+    call = host.store.call
+    written: list[int] = []
+
+    def busy(op: str, **fields: Any) -> dict[str, Any]:
+        reply = call(op, **fields)
+        if op == "export":
+            written.append(1)
+            other.remember(f"Written during the backup, number {len(written)}.")
+        return reply
+
+    host.store.call = busy  # type: ignore[method-assign]
+    generation = host.backups.backup(explicit=True)
+    assert len(written) >= 4  # the export's pages and the authenticating re-read, each followed by a write
+    published = places["separate"] / "b" / generation.name
+    manifest, entries = mr.read_generation(published, host.store.project)
+    assert manifest["head"] == generation.head and len(entries) == generation.count
+    assert host.backups.state().failure is None and host.backups.state().last_success["name"] == generation.name
+
+
+def test_a_backup_due_for_cleanup_says_so_and_never_names_a_future_overdue_date(tmp_path: Path, repo: Path, places: dict[str, Path]) -> None:
+    """Plan 12.12 CP3, seen in real Zed: right after a withdrawal the backup is due to finish cleanup, not overdue since tomorrow."""
+    host = _Backed(tmp_path, repo, places, _Clock())
+    item, _version = host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    host.run(f"/forget {item}@1")
+    status = host.backups.status_line()
+    assert "a backup is due now, to finish cleanup" in status and "overdue since" not in status
+    assert "backup cleanup pending for 1 withdrawn item(s)" in status and "withdrawn;" not in status
 
 
 @pytest.mark.parametrize("number", LOCK_FAULTS)

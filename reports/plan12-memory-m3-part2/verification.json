@@ -1,0 +1,348 @@
+{
+ "schema": "plan12-memory-m3-part2.verification.v1",
+ "plan": "12.12",
+ "issue": 491,
+ "full_suite_head": "git:036ab630615fe30116bf84b55342e155c1c09b8c",
+ "full_suite_head_meaning": "the only head the full suite and coverage results below are attributed to",
+ "after_full_suite_head": {
+  "rule": "no src/ file changed between the full-suite head and the CI head (asserted by this file's builder)",
+  "docs_delta": {
+   "head": "git:303db0e256355d96781ff52f081a26de6b00838a",
+   "files": [
+    "README.md",
+    "docs/runbooks/memory-purge-pending-files.md",
+    "reports/plan12-memory-m3-part2/continuity.json"
+   ],
+   "review": "Codex CP3 review 4 (REJECT, three wording findings) fixed here; review 5 ACCEPT on 036ab63..303db0e"
+  },
+  "merge_of_main": {
+   "head": "git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e",
+   "files": [
+    "tests/conftest.py",
+    "tests/support/keyring_isolation.py",
+    "tests/unit/test_keyring_isolation.py",
+    "tests/unit/tools/test_plan117_current_client_collector.py",
+    "tests/unit/tools/test_run_context_xdist.py",
+    "tests/unit/tools/test_run_context_xdist_probes.py",
+    "tools/evidence_gather_support/plan117_current_client_collector.py",
+    "tools/evidence_gather_support/plan117_current_client_contract.py"
+   ],
+   "what": "a clean merge of origin/main: PRs #539 and #541 (test keyring isolation); no hook runs on a clean merge commit",
+   "targeted": {
+    "log": {
+     "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/merge-targeted.log",
+     "sha256": "hex:9f885ac8226ddf92b12f46549b2fbbe794fb4e584b7c6ca9c2790e83ae78c0f9"
+    },
+    "summary": {
+     "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/merge-targeted.txt",
+     "sha256": "hex:5ec467ffbc07ba99c8175b2575215c76e950813ebe9796b48d4e8e5a1ebd5cdd"
+    },
+    "pytest": "2052 passed, 5 skipped in 1241.48s (0:20:41)",
+    "exits": {
+     "pytest": "0",
+     "ruff": "0"
+    },
+    "ruff": "All checks passed!",
+    "set": "the keyring isolation, memory, gateway, command, evaluator, inventory and docs tests, then Ruff",
+    "earlier_attempt": {
+     "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/merge-targeted-attempt1-stopped.log",
+     "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "disposition": "stopped: its -k memory filter deselected the inventory and docs tests; rerun with explicit files. Kept"
+    }
+   }
+  },
+  "reports_only_after_ci_head": [
+   "reports/plan12-memory-m3-part2/decisions.json",
+   "reports/plan12-memory-m3-part2/evaluation.json",
+   "reports/plan12-memory-m3-part2/qualification.json",
+   "reports/plan12-memory-m3-part2/verification.json"
+  ]
+ },
+ "windows_full_suite": {
+  "log": {
+   "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/full-suite-1.log",
+   "sha256": "hex:ee16c3482c0f5ca4055e5c9710cec5f18436d961876123e453214648d24cd55d"
+  },
+  "receipts": {
+   "started": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/full-suite-started.txt",
+    "sha256": "hex:eabfd15441a54f1f87959891cf9bf12462ae85dcc6cc7ee8a25864ec1135c446"
+   },
+   "finished": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/full-suite-finished.txt",
+    "sha256": "hex:4f5c3e86a0969c56ed91ade2e05f89b86c499901a93a481c46a1d191e6401836"
+   },
+   "exit": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/full-suite-exit.txt",
+    "sha256": "hex:ded21ea1fc517cfad3ea6306887ce053bbf40a7d267b24477e32ce03e39543c7"
+   },
+   "head": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/full-suite-head.txt",
+    "sha256": "hex:4478fa53b7b4372bf373edbd0f8c0782a28e037205cb44a5acdb53db043f1522"
+   },
+   "pre-status": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/full-suite-pre-status.txt",
+    "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   },
+   "post-status": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/full-suite-post-status.txt",
+    "sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+   }
+  },
+  "head": "git:036ab630615fe30116bf84b55342e155c1c09b8c",
+  "dirty": 0,
+  "head_after": "git:036ab630615fe30116bf84b55342e155c1c09b8c",
+  "dirty_after": 0,
+  "start": "2026-11-22T12:19:07.6487858Z",
+  "end": "2026-11-22T14:49:33.4957741Z",
+  "launched_from": "PowerShell (a Git Bash launch fails six ci_parity tests)",
+  "command": "python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json",
+  "exit": 0,
+  "result": "14068 passed, 75 skipped, 404 deselected, 2 warnings in 8981.75s (2:29:41)",
+  "skips_deselections_warnings": "kept as reported: 14068 passed, 75 skipped, 404 deselected, 2 warnings in 8981.75s (2:29:41)",
+  "failed": [],
+  "coverage_export": {
+   "coverage_json": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/coverage.json",
+    "sha256": "hex:9bce88341f4882f9a4ccf8d4619f4bbadf291fb0e5e7005f45e10d37d529130f"
+   },
+   "report": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/product-coverage-report.json",
+    "sha256": "hex:eaf6f8c49ad7a388db52f317aca6a3dd7eb5a711a93f6174bf61244a5fc011c1"
+   },
+   "report_run": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/product-coverage-report.run.json",
+    "sha256": "hex:c35fc230276e43f405127d35b1b39fbef4287a11441a1677339e69160bb73609"
+   }
+  },
+  "coverage": [
+   {
+    "name": "optimus",
+    "percent": 89.15912884816957,
+    "compared": "89",
+    "floor": 80.0,
+    "enforced": true,
+    "passed": true
+   },
+   {
+    "name": "context_engine",
+    "percent": 90.96853289742542,
+    "compared": "91",
+    "floor": 80.0,
+    "enforced": true,
+    "passed": true
+   },
+   {
+    "name": "evidence_handoff",
+    "percent": 68.78041797881477,
+    "compared": "69",
+    "floor": 80.0,
+    "enforced": false,
+    "passed": false
+   },
+   {
+    "name": "optimus_model_policy",
+    "percent": 95.70288520564763,
+    "compared": "96",
+    "floor": 80.0,
+    "enforced": true,
+    "passed": true
+   },
+   {
+    "name": "aggregate",
+    "percent": 86.89603123820774,
+    "compared": "87",
+    "floor": 80.0,
+    "enforced": false,
+    "passed": true
+   }
+  ],
+  "run_context": {
+   "run_id": "20261122T121912-53280-9437ce",
+   "files": [
+    {
+     "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/run-context-20261122T121912-53280-9437ce/nodes.jsonl",
+     "sha256": "hex:0779b5467e38bd11bd0cf531278d550099478e0d35df3708d2acb098f6937fa5"
+    },
+    {
+     "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/run-context-20261122T121912-53280-9437ce/phases.jsonl",
+     "sha256": "hex:669ea2113241c447cce3317657122931336b66ba3bd7c70c87e550f930beab1c"
+    },
+    {
+     "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/run-context-20261122T121912-53280-9437ce/run.json",
+     "sha256": "hex:c1dacd655d2ee6f305dcf6e18db59b6fc8511f5b400a9b44ba4f22a415b7e477"
+    },
+    {
+     "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/run-context-20261122T121912-53280-9437ce/samples.jsonl",
+     "sha256": "hex:b96ca8465491a315f086e36eddefe8806567e38900a510a82368d3de1ccee98c"
+    }
+   ]
+  }
+ },
+ "coverage_validity": {
+  "result": "full-run validity NOT established (exit 3)",
+  "output": {
+   "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/validity.txt",
+   "sha256": "hex:e43a2a696959cb589e07ff25d009eb82ae4616b0e9e7badbcab707d36fbbb941"
+  },
+  "binding": {
+   "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/validity-binding.txt",
+   "sha256": "hex:f543e9aa4424a883de8620f2ef53ada9ca35699787d3ef004d4a15acc790345d"
+  },
+  "diagnostic": "problem: reports/plan12-memory-m3-part2/continuity.json changed at 2026-11-22 15:08:53.197446+00:00, after the run started, so the run may have measured other bytes",
+  "command": "python -m tools.testing.coverage_products validate --coverage-json <coverage.json> --gate-report <product-coverage-report.json>",
+  "explanation": "validate ran after the suite had ended, after Codex review 4's fix had rewritten continuity.json and the checkout had been moved back to 036ab63 for the run; the newer file time it reports comes from those two steps, not from a change during the run",
+  "disposition": "manual acceptance with an explicit validity exception (Codex CP3 review 6, disposition A, under the operator-requested ruling): no rerun. The clean pre- and post-run head and status support attributing the results to 036ab63; they do not prove the files were unchanged throughout the run. This is not a PASS",
+  "review": {
+   "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/codex-review-6.md",
+   "sha256": "hex:49938543396fc17307055bf5088b1baf8e23e50dc084c6caca535cf2dad0123b"
+  }
+ },
+ "ruff": {
+  "output": {
+   "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/final-suite/ruff.txt",
+   "sha256": "hex:e0af5e08a7ef46da5421b01a4ef0562a8b8873ea00d36522b4c928b565eef4dd"
+  },
+  "head": "git:036ab630615fe30116bf84b55342e155c1c09b8c",
+  "last_line": "All checks passed!"
+ },
+ "revert_checks": {
+  "report": "reports/plan12-memory-m3-part2/revert-checks.json",
+  "key": "cp3",
+  "head": "git:b73edc6de3fdd5c9d3065ed84457b93ce1b1663f",
+  "dirty": false,
+  "caught": 30,
+  "total": 30,
+  "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/revert_cp3.py (logs in revert-cp3-r3/)",
+  "own_src_changes_after_its_head": [
+   "src/optimus/acp/memory_commands.py"
+  ]
+ },
+ "final_head_refresh": {
+  "ruling": "Codex CP3 review 7, ruling B: the Redis-backed tier and the evaluator at the clean CI head before merge; the earlier results stay attributed to their own heads",
+  "release": "decisions.json operator_releases.cp3_refresh",
+  "head": "git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e",
+  "dirty": 0,
+  "head_after": "git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e",
+  "dirty_after": 0,
+  "start": "2026-11-22T17:05:04.4189272Z",
+  "end": "2026-11-22T17:08:40.6307498Z",
+  "environment": "python=3.14.4 docker=29.9.3",
+  "runner": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/run-refresh.ps1",
+  "summary": {
+   "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/summary.txt",
+   "sha256": "hex:7813419e44c749d617b8a440dc026882118d05aa9c91da0cfce048ad26c0999c"
+  },
+  "integration": {
+   "command": "python -m pytest -p no:cacheprovider --no-cov -q -m requires_plan12_memory_redis tests/integration/memory/test_backups.py tests/integration/memory/test_recovery.py tests/integration/memory/test_import.py tests/integration/memory/test_user_authority.py",
+   "log": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/integration.log",
+    "sha256": "hex:c8f4ef3859a749a152435db5874b89a66807d931e41f162b20a74f2d310dbd04"
+   },
+   "exit": 0,
+   "result": "20 passed in 78.14s (0:01:18)",
+   "run_context": "mode=passive reason=non_default_selection run=20261122T170509-63304-f0def0 native=not_enrolled parent=UNKNOWN guard=not_installed records=COMPLETE phases=60 exit=0"
+  },
+  "evaluation": {
+   "command": "python -m tools.plan12_memory.m3_evaluate --config reports/plan12-memory-m3-part2/run-config.json --output <kit>/evidence/refresh/evaluation-refresh.json",
+   "log": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/m3-evaluate.log",
+    "sha256": "hex:67679f3ca4be19eb605be0cc5839247b16307c13a851729fdb2e7e82eeee5a35"
+   },
+   "results": {
+    "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/evaluation-refresh.json/results.json",
+    "sha256": "hex:e49dcc24e87fec3c744ef9cf925ec8851317348b6328e76c1e830b37365e791e"
+   },
+   "exit": 0,
+   "config_id": "m3p2-cp2-v1",
+   "cases": [
+    {
+     "case": "M13-a",
+     "error": null,
+     "original": "INCONCLUSIVE",
+     "original_layers": {
+      "authority": "PASS",
+      "retrieval": "PASS",
+      "answer": "UNRUN",
+      "cost": "PASS"
+     },
+     "mapped": "PASS"
+    },
+    {
+     "case": "M13-b",
+     "error": null,
+     "original": "INCONCLUSIVE",
+     "original_layers": {
+      "authority": "PASS",
+      "retrieval": "PASS",
+      "answer": "UNRUN",
+      "cost": "PASS"
+     },
+     "mapped": "PASS"
+    },
+    {
+     "case": "M13-c",
+     "error": null,
+     "original": "FAIL",
+     "original_layers": {
+      "authority": "FAIL",
+      "retrieval": "PASS",
+      "answer": "UNRUN",
+      "cost": "PASS"
+     },
+     "mapped": "PASS"
+    },
+    {
+     "case": "M18-c",
+     "error": null,
+     "original": "FAIL",
+     "original_layers": {
+      "authority": "FAIL",
+      "retrieval": "PASS",
+      "answer": "UNRUN",
+      "cost": "PASS"
+     },
+     "mapped": "PASS"
+    }
+   ],
+   "rule": "original and mapped comparisons kept separately; a mapped PASS proves only its named invariant; the answer layer is UNRUN"
+  },
+  "cleanup": {
+   "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/cleanup.txt",
+   "sha256": "hex:e3a7127088bfc98d695e49dd8b8f6624b39e7c32f8a9bb43228cc2e7dfa0a01d"
+  },
+  "docker_after_run": {
+   "path": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-113-p491-cp3/evidence/refresh/docker-after.txt",
+   "sha256": "hex:7ffd73509dbd20b1e44ff402ba722d117acea46b0555c01f138a0089fe46fe35"
+  }
+ },
+ "linux_ci": {
+  "pr": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/542",
+  "checks": [
+   {
+    "name": "verify",
+    "state": "SUCCESS",
+    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/45039149074/job/137259462754",
+    "head": "git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e"
+   },
+   {
+    "name": "page-fixtures",
+    "state": "SUCCESS",
+    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/45039149092/job/137259462561",
+    "head": "git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e"
+   },
+   {
+    "name": "clean-environment-recheck",
+    "state": "SUCCESS",
+    "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/45039149129/job/137259462915",
+    "head": "git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e"
+   }
+  ]
+ },
+ "hooks": "every code commit passed every commit hook (ruff, bandit, mypy, ast-grep, config-trust, secret scan) except optimus-pytest-coverage, skipped by design: the one full run above replaces it. The merge commit is a clean merge, so no hook ran on it; its targeted set is above",
+ "not_covered": [
+  "WSL/POSIX: no full run; Linux CI runs its checks on the CI head",
+  "full-run coverage validity: not established (above), accepted as an exception",
+  "the Redis-store integration tier is deselected from the full suite; its focused set ran at the CI head (final_head_refresh); the other Redis-backed integration files and report runners keep their own heads"
+ ]
+}

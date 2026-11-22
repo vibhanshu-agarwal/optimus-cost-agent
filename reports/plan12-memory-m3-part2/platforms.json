@@ -1,0 +1,279 @@
+{
+  "schema": "plan12-memory-m3-part2.platforms.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "acpx": {
+    "release": "operator 2026-11-21 'Release acpx check': one zero-paid acpx protocol check; the test store p1212-memory-test-redis (127.0.0.1:6396), F:\\optimus-p1212-test\\acpx, keyring writes for this check's config only; all removed afterwards",
+    "code_head": "git:1366f7b (the agent ran editable from this worktree)",
+    "client": "acpx 0.12.0 (an independent ACP client), --format json, named sessions, --approve-all or --deny-all per step",
+    "agent": "optimus-agent from this worktree's venv; own Gateway port 18779; own config root",
+    "upstream": "local stub http://127.0.0.1:18796/api/v1 only (never forwards); provider key a dummy",
+    "paid_calls": 0,
+    "paid_calls_basis": "the stub recorded 5 requests, all from the gate prompt (step 01); no memory command made a model call; the Gateway log names only its own port; no log names a provider host",
+    "steps": [
+      {
+        "step": "00-new",
+        "prompt": "sessions new --name p1212",
+        "observed": "the session record names this check's launcher; acpx labels it 'codex' (its default name only)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:1e737fd5475a6103e8eb7f8c7117e24f2663040c424b26859079dce586311b8a"
+      },
+      {
+        "step": "01-hello",
+        "prompt": "Hello [p1212:H1] (Agent mode, --deny-all)",
+        "observed": "the gate: all 5 model requests reached the local stub (1 classifier route refused by it, 4 planning steps); planning stopped on the stub's non-directive reply; the Continue request was denied",
+        "acpx_exit": 5,
+        "pass": true,
+        "transcript": "hex:3136386d3aaeb631cb8f80ead8a7e0ddaf2d397eca26e3c59febb6854e01557e"
+      },
+      {
+        "step": "02-mode",
+        "prompt": "set-mode chat",
+        "observed": "session/set_mode accepted; acpx re-applies the mode on each new ACP session",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:a10cac9fbfad3e533025667bfb76c203f3fc1e1864f9a4a84d3001673de2ec76"
+      },
+      {
+        "step": "03-remember",
+        "prompt": "/remember Never push to main.",
+        "observed": "a 'Remembered' card; [memory:m-85ab98b260ae75b1@1]",
+        "acpx_exit": 5,
+        "pass": true,
+        "transcript": "hex:4a7b06f67314d9d0e458a6a6e5aadc75a31a382beb11a69469f248b7c9373148"
+      },
+      {
+        "step": "04-export",
+        "prompt": "/memory export (--approve-all)",
+        "observed": "session/request_permission 'Set up the memory recovery copy?': exactly two options, Go ahead (allow_once) and Cancel (reject_once); acpx chose Go ahead; Saved gen-1795278291281-2e9e68f682c4",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:48be88e223e8ad677e47a35266d32e32b6c18c755d9f49fd90ff677c516ece48"
+      },
+      {
+        "step": "05-backup-configure",
+        "prompt": "/memory backup configure F:\\optimus-p1212-test\\acpx (--approve-all)",
+        "observed": "'Set up memory backups?' with the same two options; Backed up gen-1795278291281-2e9e68f682c4 (seen on disk)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:a80f2da9fad5b32900558ba49d5b7c1d3e6aeeca32879c8593c8b53e46c28d9f"
+      },
+      {
+        "step": "06-forget",
+        "prompt": "/forget m-85ab98b260ae75b1@1",
+        "observed": "a 'Forgotten' card; [memory:m-85ab98b260ae75b1@2]",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:f4d1545d6322d1238b23591d60290af6ea5a2a3373ccb1e41cd2c109a31f1007"
+      },
+      {
+        "step": "07-backup-status",
+        "prompt": "/memory backup",
+        "observed": "'a backup is due now, to finish cleanup' and 'backup cleanup pending for 1 withdrawn item(s)' (the 1366f7b wording); plaintext and Encryption unavailable stated",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:fcfed4c2f7807e83c82bae3206b1f6e6e5b37ee6484a6c87c84159a0cef1ad67"
+      },
+      {
+        "step": "08-backup-now",
+        "prompt": "/memory backup now",
+        "observed": "Backed up gen-1795278308922-fd15d71a2493; the older backup holding the forgotten text removed (only the new generation left on disk)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:b332b392d82aa6741caff793cc0e98ae2a8d4b7f065291ca3e38e9e1994f3a24"
+      },
+      {
+        "step": "09-import-preview",
+        "prompt": "/memory import <proof folder>",
+        "observed": "preview imp-0a9de923adc1, page 1 of 1: 2 files read (the linked note followed), 2 to import as optional imported context, 2 refused (another project's entry; a wrapped entry, refused whole)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:83ae3680e4607ed1081b9fe50cf7fc6522822924a74ac93daa807451056197dd"
+      },
+      {
+        "step": "10-apply-cancel",
+        "prompt": "/memory import apply imp-0a9de923adc1 (--deny-all)",
+        "observed": "'Import memory entries?'; acpx chose Cancel; Not confirmed, so nothing was changed",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:73e5549983aaf18b8da598a8ca315929319ffe15967d0163371248f1a41eaa4a"
+      },
+      {
+        "step": "11-apply-go",
+        "prompt": "/memory import apply imp-0a9de923adc1 (--approve-all)",
+        "observed": "a new one-shot option id; Go ahead; two 'Imported:' cards; 2 saved, 0 already present, 0 skipped, 2 refused, 0 uncertain",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:1c4f6a6f567ac7d835e75949c96f5dffffcf5091b50cf11ac0706b4c111ee9ce"
+      },
+      {
+        "step": "12-import-status",
+        "prompt": "/memory import status",
+        "observed": "2 confirmed, 2 refused, 0 remaining",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:ba4f52ef39d3f5e26b4b272f80afbbee762bf03d9f8c7807bddddb4572dc0ebd"
+      },
+      {
+        "step": "13-apply-replay",
+        "prompt": "/memory import apply imp-0a9de923adc1",
+        "observed": "refused: this session holds no such preview; nothing changed",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:b23d95286e244f969ea6b814bab4b1ab3b7de7741df6ccb628971f3cd29c8dd6"
+      },
+      {
+        "step": "14-memory",
+        "prompt": "/memory",
+        "observed": "the forgotten rule (no text kept) and the two items 'imported \u00b7 active'; recovery and backup status",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:378bce660c4aaa6f3313c1c5dea01c1cfb98354185cafeb232368e46a5b25eb0"
+      },
+      {
+        "step": "15-preview-again",
+        "prompt": "/memory import <proof folder>",
+        "observed": "a second preview imp-00295f04df5d in session p1212",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:f3f97da7e9576d9fdf80b0062bfe903809eba2b51a3c05db52133520598f627b"
+      },
+      {
+        "step": "16-new-b",
+        "prompt": "sessions new --name p1212b",
+        "observed": "a second acpx session (a fresh agent process and ACP session)",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:9947a103173bdf8b607fb146faa578e2392d8907c856a8b9b1025592b8c1f2ad"
+      },
+      {
+        "step": "17-apply-from-b",
+        "prompt": "/memory import apply imp-00295f04df5d from p1212b (--approve-all)",
+        "observed": "refused: a preview belongs to the session that made it, whatever the client approves; nothing changed",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:446306d372426b780c1d9faf3aa5c91cd03d126d5ee3605d8ece0c9869b776ab"
+      },
+      {
+        "step": "18-status-a",
+        "prompt": "/memory import status (p1212)",
+        "observed": "unchanged: still the one import, 2 confirmed",
+        "acpx_exit": 0,
+        "pass": true,
+        "transcript": "hex:fd2fd393d83395149eab8c6e6645739094f5e42b6ae10cf933e5b087ee681906"
+      }
+    ],
+    "protocol": {
+      "confirmations": "every memory confirmation is a host-generated session/request_permission with a host-only tool-call id, exactly two options (allow_once Go ahead, reject_once Cancel) and never an 'always' option; acpx's selected answer was honored both ways; each request carries a fresh one-shot option id",
+      "cards": "memory cards are session/update tool_call items with ids under memory/ and status completed",
+      "sessions": "Optimus advertises no session/load; acpx 0.12.0 therefore opens a new ACP session whenever it restarts the agent (steps 01-03 saw three), and one queue owner keeps the agent and its session alive across later calls (--ttl 900). Memory itself is durable across sessions; an import preview is held by its own session only (step 17)"
+    },
+    "exit_codes": "acpx exit 5 is its PERMISSION_DENIED: in step 01 the Continue request --deny-all refused; step 03 ran on the agent step 01's queue owner kept and reports the same code with no permission request in its transcript (acpx client state, not an Optimus answer; its turn ended end_turn). Every other step exited 0",
+    "findings": [],
+    "logs": {
+      "debug-acp.ndjson": "hex:3f13c1cca93caa5b7d7af0d4f248ec1bf6fa66d19d5a9564e61baf3059716d18",
+      "launch-audit.ndjson": "hex:33185e313e3c353b1eb8b91fc7386f2e3f3669e8fbdcf452341c2f5ef0a349f7",
+      "local-gateway.log": "hex:c8fa75380d6b7dad974280f5ee486da48859e6b7ea23a9c1def0b5ed03ee72b7",
+      "stub/stub-requests.ndjson": "hex:32e5b74305c092eeac1eba42d18495b7da141cd3c81df931f646c7632ea14ab9"
+    },
+    "cleanup": "both acpx sessions closed and no agent process left; the launch approval revoked; the store password removed from the keyring; the test store and volume removed; F:\\optimus-p1212-test\\acpx removed; the stub stopped"
+  },
+  "windows": {
+    "probe": "optimus-handoff/p1212-cp3-paths/test_platform_paths.py, the repository's own helpers and fixtures on the real file system",
+    "probe_sha256": "hex:6c41ed5c9438c3a22b54d6dcc6f93da5935b011ec6742075be42ed20d182952b",
+    "probe_cases": {
+      "P1": "a directory link in the target path is refused (a junction on Windows, needing no privilege; a symlink on Linux)",
+      "P2": "a target swapped for a directory link after configuration: nothing written or pruned through it, the last backup kept",
+      "P3": "a real write denial (an ACL deny on Windows, mode 0500 for an unprivileged user on Linux) fails readably and keeps the last good backup, one attempt",
+      "P4": "a 276-character target with spaces and non-ASCII letters: backs up on Linux; on Windows without long-path support a readable refusal naming the cause",
+      "P5": "an import source with spaces: entries import; a directory link inside it is never followed",
+      "P6": "Linux: Topics/CI.md and topics/ci.md are two files, each read as itself",
+      "P7": "Linux: an unreadable linked file is a readable refusal for an unprivileged user"
+    },
+    "frozen": "tests/unit/context/test_memory_backups.py, test_memory_recovery.py, test_memory_import.py",
+    "code_head": "git:ff299c7",
+    "environment": "Windows 11 Pro 10.0.26300, this worktree's .venv (CPython 3.14.4); temp folders on F: (NTFS, physical disk 2, separate from the store's disk); LongPathsEnabled 0; this account cannot create symbolic links",
+    "probe_result": "5 passed, 2 skipped in 5.99s",
+    "frozen_result": "150 passed, 1 skipped in 137.46s (0:02:17)",
+    "skips": [
+      "P6, P7: Linux only",
+      "test_b09 (symlink): this account cannot create symbolic links; P1 and P2 cover it with junctions"
+    ],
+    "logs": {
+      "probe-ff299c7.log": "hex:3a05fd53b67130a85bd503c10ffcca5ef563df68c6729f7f76bcbd8ce697f7b3",
+      "frozen-ff299c7.log": "hex:e1bdce64bc27a99597900db2e3fd84edcc62d1c91054ddedced7d7b56ec3a2e0",
+      "probe-1.log": "hex:1b70d3ed57cdc3fa5f438cbafcb02793d5f6433543021d8a7aa7802d9f0b1387",
+      "probe-2.log": "hex:396acd43201a753388a263327c7858c7b4db2e8fc75d9ea357c52edbafb80607",
+      "frozen-1.log": "hex:9b2ed985ea107e68d58ef7d4bc09f38ea73fbccd7061c51b5927c2efe410618f"
+    },
+    "earlier_runs": "probe-1 (before the fix: P4 failed with a raw FileNotFoundError, the finding below); probe-2 and frozen-1 on the fix before it was committed. The result above is the committed head"
+  },
+  "linux_wsl": {
+    "probe": "optimus-handoff/p1212-cp3-paths/test_platform_paths.py, the repository's own helpers and fixtures on the real file system",
+    "probe_sha256": "hex:6c41ed5c9438c3a22b54d6dcc6f93da5935b011ec6742075be42ed20d182952b",
+    "probe_cases": {
+      "P1": "a directory link in the target path is refused (a junction on Windows, needing no privilege; a symlink on Linux)",
+      "P2": "a target swapped for a directory link after configuration: nothing written or pruned through it, the last backup kept",
+      "P3": "a real write denial (an ACL deny on Windows, mode 0500 for an unprivileged user on Linux) fails readably and keeps the last good backup, one attempt",
+      "P4": "a 276-character target with spaces and non-ASCII letters: backs up on Linux; on Windows without long-path support a readable refusal naming the cause",
+      "P5": "an import source with spaces: entries import; a directory link inside it is never followed",
+      "P6": "Linux: Topics/CI.md and topics/ci.md are two files, each read as itself",
+      "P7": "Linux: an unreadable linked file is a readable refusal for an unprivileged user"
+    },
+    "frozen": "tests/unit/context/test_memory_backups.py, test_memory_recovery.py, test_memory_import.py",
+    "code_head": "git:ff299c7 (the clone's post-run status is clean)",
+    "environment": "WSL 2 Ubuntu-24.04, kernel 6.18.58.1-microsoft-standard-WSL2, ext4; its own clone under /opt and its own uv venv (CPython 3.14.6), never the Windows venv",
+    "root": {
+      "probe_result": "2 failed, 5 passed in 1.17s",
+      "frozen_result": "149 passed, 2 skipped in 16.08s",
+      "note": "P3 and P7 fail as root by design: root ignores permission bits, so a denial cannot be observed as root"
+    },
+    "unprivileged": {
+      "user": "nobody (setpriv), owning the throwaway clone",
+      "probe_result": "2 passed, 5 deselected in 2.36s",
+      "cases": "P3, P7"
+    },
+    "skips": [
+      "test_c12 Docker Desktop settings: Windows only",
+      "test_a_case_alias_is_refused_on_windows: Windows only"
+    ],
+    "logs": {
+      "r9/setup.log": "hex:4dd440b00fc422670ec892adaaa3439348d0af91967bb0acb06877bf56894dd6",
+      "r9/probe-root.log": "hex:171a23f232b12ffb0544bb1928421da4a148ce994375cd2979814b8b6735d7d3",
+      "r9/frozen-root.log": "hex:d26a4b7a1b1cf90a1e9155049760b999808bfeefa67754afe1432a7674f98a4a",
+      "r9/probe-nobody.log": "hex:cf7a5eb162eef1a7ce31244d33ffb9380e97f045e4be3428f385a074fc9f4b6c",
+      "r9/post-status.txt": "hex:5095090d35c98d5c528d8faeab811edb5ed322e7342ca735c52634536fdebb5b"
+    },
+    "attempts_kept": {
+      "r1": "Attempt r1 (2026-11-21): never started. Git Bash rewrote the /mnt/c script path to C:/Program Files/Git/mnt/c/... before wsl.exe ran it (exit 127, no folder created), and the script's tail had been broken by an edit. r2 reruns with MSYS_NO_PATHCONV=1 and the rewritten script.",
+      "r2": "Attempt r2: setup failed before any test. The worktree's .git file names a Windows path (D:/...) Linux git cannot follow; r3 clones from the main checkout at /mnt/d, which shares the commits.",
+      "r3": "Attempt r3: ran. Root: frozen 149 passed, 2 skipped (Windows-only); probe 5 passed, P3 and P7 failed because root ignores permission bits (expected root limit). The nobody run could not start: uv's interpreter lives under /root (mode 700). r4 installs uv's interpreter under /opt.",
+      "r4": "Attempt r4: root results as r3 (frozen 149 passed; probe 5 passed, P3/P7 fail as root by design). The nobody run started but tests.conftest could not write its run record under the clone's tmp/ (owned by root). r5 gives nobody that one folder.",
+      "r5": "Attempt r5: root frozen 148 passed, 1 failed (test_b04: a test timing race, root-caused and fixed in the test by ff299c7); probe as root as before. The nobody run could not write the shared /tmp/optimus-test-runs registry (created by root). r6 gives nobody its own TMPDIR.",
+      "r6": "Attempt r6 (at ff299c7): root frozen 149 passed, 2 skipped; probe as root 5 passed (P3/P7 root limit). The nobody run stopped at Git's safe.directory check (the clone is owned by root). r7 passes safe.directory for that run only, through GIT_CONFIG_* environment variables.",
+      "r7": "Attempt r7: as r6; the nobody run still stopped at Git's safe.directory check: Git does not honor safe.directory given through GIT_CONFIG_* (command-line config). r8 uses a throwaway GIT_CONFIG_GLOBAL file in the nobody folder.",
+      "r8": "Attempt r8: as r6; Git still refused (dubious ownership) with a GIT_CONFIG_GLOBAL file: the test harness clears GIT_* configuration. Also found: since r5 a misplaced comment had cut off the chmod of the basetemp folder (harmless: default modes were already readable). r9 gives the throwaway clone to nobody."
+    }
+  },
+  "path_findings": [
+    {
+      "what": "a backup target, recovery location or recovery copy the OS refuses to create or write (here a Windows path past 260 characters without long-path support) escaped as a raw OSError, so the turn failed instead of answering",
+      "where": "Backups.configure, Recovery.confirm and Recovery.export",
+      "found_by": "Windows probe P4",
+      "disposition": "fixed in 3146591 with two tests through the user's commands; both fail on the old code (revert check)"
+    },
+    {
+      "what": "the same long-path class while a backup is written: a target folder that fits but whose files do not (or a folder removed mid-write) raised FileNotFoundError, answered as 'the source moved' and never recorded as a failure",
+      "where": "Backups._backup",
+      "found_by": "Fable CP3 review 1, finding 1 (a 235-character target)",
+      "disposition": "fixed in e7bae98: every OS error after the capture is the target's, BACKUP_WRITE_FAILED, recorded; a test through /memory backup now fails on the old code (revert check)"
+    },
+    {
+      "what": "test_b04 could pass a lock its helper thread had already released: the helper held it at most 5 s while the test waits up to 2 s twice",
+      "where": "tests/unit/context/test_memory_backups.py (test only; the product refused correctly)",
+      "found_by": "Linux run r5",
+      "disposition": "fixed in ff299c7: the helper holds until released and the test checks it took the lock"
+    }
+  ]
+}

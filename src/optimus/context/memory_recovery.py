@@ -68,6 +68,15 @@ _SYNC_MARKERS: Final = ("onedrive", "dropbox", "google drive", "googledrive", "m
                         "pcloud", "nextcloud", "owncloud", "sync.com", "mega")
 
 
+def os_reason(failure: OSError, path: Path) -> str:
+    """The OS's reason, plus the likely cause when Windows refuses a long path: the path that failed (else `path`) reaches the
+    248 characters a folder may have without long-path support."""
+    reason = failure.strerror or str(failure)
+    if sys.platform == "win32" and len(failure.filename if isinstance(failure.filename, str) else str(path)) >= 248:
+        reason += "; the path is longer than Windows allows unless long paths are enabled"
+    return reason
+
+
 class RecoveryError(Exception):
     """A stable `code` and a sentence for the user. Nothing was written when one is raised before publication."""
 
@@ -103,14 +112,43 @@ def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS, code: str = "REC
         lock.release()
 
 
+@contextlib.contextmanager
+def _opened_lock(path: Path, unopened: Callable[[OSError], Exception], **kwargs: Any) -> Iterator[None]:
+    """`_file_lock`, for a lock file in Optimus's own config folder: when that file cannot be created or opened (a read-only or
+    full disk), `unopened(failure)` is raised instead of the raw OSError (Codex CP3 review 2, finding 1). Errors raised inside
+    the locked block pass through untouched, and contention and lock faults keep their own codes."""
+    held = _file_lock(path, **kwargs)
+    try:
+        held.__enter__()
+    except OSError as failure:
+        raise unopened(failure) from None
+    try:
+        yield
+    except BaseException:
+        if not held.__exit__(*sys.exc_info()):
+            raise
+    else:
+        held.__exit__(None, None, None)
+
+
+def _state_unopened(path: Path) -> Callable[[OSError], Exception]:
+    return lambda failure: RecoveryError("RECOVERY_STATE_UNWRITABLE", f"The recovery state's lock file could not be opened "
+                                         f"({os_reason(failure, path)}); the earlier state is kept.")
+
+
 def _durable_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    with open(temporary, "wb") as handle:
-        handle.write(json.dumps(value, sort_keys=True, ensure_ascii=True).encode("ascii"))
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    try:
+        with open(temporary, "wb") as handle:
+            handle.write(json.dumps(value, sort_keys=True, ensure_ascii=True).encode("ascii"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            temporary.unlink()  # a write the disk refused leaves no partial file behind
+        raise
 
 
 @dataclass
@@ -171,10 +209,15 @@ class StateFile:
         return state
 
     def update(self, change: Callable[[RecoveryState], None]) -> RecoveryState:
-        with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
+        lock = self.path.with_name(self.path.name + ".lock")
+        with self._lock, _opened_lock(lock, _state_unopened(lock)):
             state = self.load()
             change(state)
-            _durable_json(self.path, state.to_json())
+            try:
+                _durable_json(self.path, state.to_json())
+            except OSError as failure:  # a full or read-only disk: an answer, never a raw error (Codex CP3 review 1, finding 2)
+                raise RecoveryError("RECOVERY_STATE_UNWRITABLE", f"The recovery state could not be saved "
+                                    f"({os_reason(failure, self.path)}); the earlier state is kept.") from None
             return state
 
 
@@ -210,7 +253,7 @@ class NoticeBacklog:
             return
         with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
             current = self._load()
-            known = {record["event_id"] for record in current}
+            known = {record.get("event_id") for record in current}  # a malformed record never blocks the rest
             current += [record for record in records if record["event_id"] not in known]
             _durable_json(self.path, current)  # kept until acknowledged, however many (Codex CP3 review 2, finding 4)
 
@@ -219,7 +262,7 @@ class NoticeBacklog:
             return
         with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
             current = self._load()
-            kept = [record for record in current if record["event_id"] not in set(event_ids)]
+            kept = [record for record in current if record.get("event_id") not in set(event_ids)]
             if kept != current:
                 _durable_json(self.path, kept)
 
@@ -381,6 +424,13 @@ def generations(destination: Path) -> list[Generation]:
     return sorted(found, key=lambda g: (g.created_ms, g.name), reverse=True)
 
 
+def _read_or_none(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
 def read_generation(directory: Path, project: str | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """A generation's manifest and entries, checked by the host: its format and layout, its project, its entries' digest, and an
     entry point that is exactly the one its entries give. The seal over the entries and the metadata is the Gateway's check."""
@@ -454,7 +504,11 @@ class Recovery:
         """Record the location the user confirmed (and their sync consent for it), creating it now: from then on a missing
         location means it was removed, and it is never silently made again. A different earlier location is kept in the
         inventory until no managed copy is left in it."""
-        destination.mkdir(parents=True, exist_ok=True)
+        try:
+            destination.mkdir(parents=True, exist_ok=True)
+        except OSError as failure:
+            raise RecoveryError("RECOVERY_LOCATION_UNWRITABLE", f"{destination} could not be created ({os_reason(failure, destination)})."
+                                " Nothing was changed.") from None
         canonical = str(destination.resolve())
 
         def change(state: RecoveryState) -> None:
@@ -470,7 +524,7 @@ class Recovery:
     def export(self) -> Generation:
         """Write one generation now, or raise why not; nothing is published when anything fails."""
         export_lock = self._state.path.with_name(self._state.path.name + ".export.lock")
-        with self._lock, _file_lock(export_lock, wait=EXPORT_LOCK_SECONDS):  # Codex CP3 review 2, finding 2
+        with self._lock, _opened_lock(export_lock, _state_unopened(export_lock), wait=EXPORT_LOCK_SECONDS):  # Codex CP3 review 2, finding 2
             state = self._state.load()
             if state.destination is None:
                 raise RecoveryError("RECOVERY_NOT_SET_UP", "No recovery location is set up for this project: `/memory export` sets one up.")
@@ -484,11 +538,23 @@ class Recovery:
             try:
                 generation = self._export(state, destination)
             except RecoveryError as failure:
-                code = failure.code
-                self._state.update(lambda s: setattr(s, "failure", code))
-                raise
+                raise self._recorded(failure) from None
+            except OSError as failure:  # not recorded as exported; one renamed into place first is retired like any older copy
+                raise self._recorded(RecoveryError("RECOVERY_WRITE_FAILED", f"The recovery copy could not be written to {destination} "
+                                                   f"({os_reason(failure, destination)}). The last copy is kept.")) from None
             self._clean_prior()
             return generation
+
+    def _recorded(self, failure: RecoveryError) -> RecoveryError:
+        """`failure`, recorded as the last export's. When even that record cannot be saved (often the same full disk), the
+        answer is still this failure's, and says the record is missing too."""
+        if failure.code == "RECOVERY_STATE_UNWRITABLE":
+            return failure  # the state file itself is what the disk refused: recording it there would only fail again
+        try:
+            self._state.update(lambda s: setattr(s, "failure", failure.code))
+        except RecoveryError as unsaved:
+            return RecoveryError(failure.code, f"{failure.message} It could not be recorded either: {unsaved.message}")
+        return failure
 
     def _export(self, state: RecoveryState, destination: Path) -> Generation:
         check_git_exclusion(destination, self._git)
@@ -509,17 +575,27 @@ class Recovery:
             manifest = {"format": FORMAT, "metadata": metadata, "bind": bind, "bind_mac": final["bind_mac"], "head": final["head"],
                         "frontier": final["frontier"], "journal": final["journal"], "seal": final["seal"], "count": len(entries),
                         "entries_sha256": hashlib.sha256(body).hexdigest()}
-            staging = destination / f".staging-{secrets.token_hex(8)}"
-            staging.mkdir()
-            try:
-                _write(staging / "entries.jsonl", body)
-                _write(staging / "MEMORY.md", memory_md(entries, name))
-                _write(staging / "manifest.json", json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True).encode("ascii"))
-                _fsync_dir(staging)
-                os.replace(staging, destination / name)  # one atomic rename on the same volume publishes the whole generation
-            except BaseException:
-                shutil.rmtree(staging, ignore_errors=True)
-                raise
+            manifest_bytes = json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True).encode("ascii")
+            entry_point = memory_md(entries, name)
+            published = destination / name
+            if published.is_dir():  # the same name: an export repeated in the same millisecond, or a rename whose record was lost
+                held = [_read_or_none(published / file) for file in ("entries.jsonl", "MEMORY.md", "manifest.json")]
+                if held != [body, entry_point, manifest_bytes]:  # every file, not the manifest alone (Codex CP3 review 1, finding 1)
+                    raise RecoveryError("RECOVERY_GENERATION_DAMAGED", f"A recovery copy named {name} is already in {destination} "
+                                        "but differs from what was read; it was not replaced or counted, and no older copy was "
+                                        "removed.")
+            else:
+                staging = destination / f".staging-{secrets.token_hex(8)}"
+                staging.mkdir()
+                try:
+                    _write(staging / "entries.jsonl", body)
+                    _write(staging / "MEMORY.md", entry_point)
+                    _write(staging / "manifest.json", manifest_bytes)
+                    _fsync_dir(staging)
+                    os.replace(staging, published)  # one atomic rename on the same volume publishes the whole generation
+                except BaseException:
+                    shutil.rmtree(staging, ignore_errors=True)
+                    raise
             _fsync_dir(destination)
             pending = list(state.cleanup_pending)
             self._retire(destination, keep=name, all_older=bool(pending))
@@ -535,20 +611,34 @@ class Recovery:
         self._state.update(change)
         return Generation(name, final["head"], len(entries), final["frontier"]["deletions"], created, final["seal"])
 
-    def _read_generation(self, bind: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-        """Every page at one head. Pages read across a write do not seal together, so the read starts again (bounded)."""
+    def _read_generation(self, bind: str, *, pin: str | None = None) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Every page of one generation at one head: the Gateway fixes it at the first page's head (or at `pin`, a copy's own
+        head when a backup authenticates it) and serves every later page from it, so writes landing meanwhile never break it
+        (Plan 12.12 CP3). A deletion landing meanwhile makes the Gateway refuse the last page: the read starts again (bounded).
+        With `pin`, a head the Gateway no longer holds is `RECOVERY_SOURCE_MOVED`."""
+        from optimus.context.authored_memory import MemoryStoreRefused
+
         for _attempt in range(EXPORT_TRIES):
             entries: list[dict[str, Any]] = []
             heads: set[str] = set()
             cursor: str | None = None
-            while True:
-                reply = self._store.call("export", project=self._store.project, limit=PAGE, bind=bind,
-                                         **({"cursor": cursor} if cursor else {}))
-                entries += reply["entries"]
-                heads.add(reply["head"])
-                cursor = reply["cursor"]
-                if cursor is None:
-                    break
+            at = pin
+            try:
+                while True:
+                    reply = self._store.call("export", project=self._store.project, limit=PAGE, bind=bind,
+                                             **({"pin": at} if at else {}), **({"cursor": cursor} if cursor else {}))
+                    entries += reply["entries"]
+                    heads.add(reply["head"])
+                    at = reply["head"]
+                    cursor = reply["cursor"]
+                    if cursor is None:
+                        break
+            except MemoryStoreRefused as refused:
+                if refused.code == "RECOVERY_EXPORT_MOVED" and pin is not None:
+                    raise RecoveryError("RECOVERY_SOURCE_MOVED", "Memory moved on from that copy; it will be read again.") from None
+                if refused.code in ("RECOVERY_EXPORT_MOVED", "RECOVERY_DELETION_RACED"):
+                    continue  # a deletion landed, or the pinned generation lapsed: read it again
+                raise
             if len(heads) == 1:
                 return entries, reply
         raise RecoveryError("RECOVERY_BUSY", "Memory kept changing while the copy was read; it will be tried again.")

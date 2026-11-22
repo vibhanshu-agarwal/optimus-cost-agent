@@ -171,6 +171,36 @@ def test_only_the_newest_generations_are_kept(tmp_path: Path, repo: Path) -> Non
     assert len(mr.generations(mr.location(repo))) == mr.KEEP_GENERATIONS
 
 
+def test_a_location_or_copy_the_os_cannot_write_is_a_readable_answer(tmp_path: Path, repo: Path,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """CP3 platform probe P4: a recovery location the OS refuses to create, and a copy it refuses to write (a full or read-only
+    drive), answer readably through `/memory export`, never a failed turn; the failure is recorded and nothing is published."""
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    place = mr.location(repo)
+    real_mkdir = Path.mkdir
+
+    def refusing(self: Path, *args: Any, **kwargs: Any) -> None:
+        if str(self).startswith(str(place)):
+            raise PermissionError(errno.EACCES, "Access is denied")
+        real_mkdir(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "mkdir", refusing)
+    answer = host.run("/memory export")
+    assert "could not be created (Access is denied). Nothing was changed." in answer.text, answer.text
+    assert host.recovery.state().destination is None
+    monkeypatch.setattr(Path, "mkdir", real_mkdir)
+    assert "Saved" in host.run("/memory export").text
+    host.remember("Tests run with pytest -q.")
+
+    def full(_path: Path, _data: bytes) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(mr, "_write", full)
+    answer = host.run("/memory export")
+    assert f"could not be written to {place} (No space left on device). The last copy is kept." in answer.text, answer.text
+    assert host.recovery.state().failure == "RECOVERY_WRITE_FAILED"
+    assert len(mr.generations(place)) == 1 and not list(place.glob(".staging-*"))
+
+
 def test_a_synced_location_needs_consent_bound_to_it(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OneDrive", str(tmp_path))
     host = _Host(tmp_path, repo)
@@ -815,6 +845,219 @@ def test_a_mapping_is_checked_again_when_it_is_confirmed(tmp_path: Path, repo: P
     other.run("/memory export")
     assert "more than one earlier project claims this one" in new.commands.confirmed(question.confirm).text
     assert new.items() == {}
+
+
+class _WritesBetweenPages:
+    """Another host of the project writes after every export page the store answers (a sustained import or extraction)."""
+
+    def __init__(self, host: _Host, other: _Host, *, forget: str | None = None) -> None:
+        self.host, self.other, self.forget, self.pages = host, other, forget, 0
+        self._call = host.store.call
+
+    def __call__(self, op: str, **fields: Any) -> dict[str, Any]:
+        reply = self._call(op, **fields)
+        if op == "export":
+            self.pages += 1
+            if self.forget is not None and self.pages == 1:
+                self.other.run(f"/forget {self.forget}@1")  # a deletion lands while the copy is read
+            else:
+                self.other.remember(f"Written while the copy was read, number {self.pages}.")
+        return reply
+
+
+def test_an_export_stays_one_generation_while_writes_land_between_its_pages(tmp_path: Path, repo: Path) -> None:
+    """Plan 12.12 CP3 (Codex CP2 review 5): the Gateway fixes the generation at its first page's head, so writes between pages
+    never break it; the copy is that head's, sealed, and restores."""
+    host = _Host(tmp_path, repo)
+    for n in range(mr.PAGE + 30):
+        host.remember(f"Rule number {n} for this project.")
+    host.run("/memory export")  # the location, confirmed, and a first copy
+    other = _Host(tmp_path, repo, host.server)
+    writes = _WritesBetweenPages(host, other)
+    host.store.call = writes  # type: ignore[method-assign]
+    generation = host.recovery.export()
+    assert writes.pages >= 2 and generation.count == mr.PAGE + 30  # the first page's head: none of the later writes
+    manifest, entries = mr.read_generation(mr.location(repo) / generation.name, host.store.project)
+    assert manifest["head"] == generation.head and len(entries) == mr.PAGE + 30
+    assert not any("Written while the copy was read" in json.dumps(entry) for entry in entries)
+
+
+def test_a_deletion_landing_while_an_export_is_read_is_never_completed_into_a_copy(tmp_path: Path, repo: Path) -> None:
+    """A withdrawal between pages makes the Gateway refuse the last page (`RECOVERY_DELETION_RACED`); the host reads again, and
+    the copy it completes holds no text of the withdrawn item."""
+    host = _Host(tmp_path, repo)
+    canary = host.remember(CANARY)
+    for n in range(mr.PAGE + 10):
+        host.remember(f"Rule number {n} for this project.")
+    host.run("/memory export")
+    other = _Host(tmp_path, repo, host.server)
+    writes = _WritesBetweenPages(host, other, forget=canary[0])
+    host.store.call = writes  # type: ignore[method-assign]
+    generation = host.recovery.export()
+    body = (mr.location(repo) / generation.name / "entries.jsonl").read_bytes()
+    assert b"zebra-quartz" not in body and canary[0].encode() in body  # its payload-free lifecycle only
+
+
+def _pinned_first_page(host: _Host, repo: Path, extra: int = 10) -> tuple[str, dict[str, Any]]:
+    """A project of more than one export page, its copy exported, and the first page of a new generation read: (bind, page)."""
+    for n in range(mr.PAGE + extra):
+        host.remember(f"Rule number {n} for this project.")
+    host.run("/memory export")
+    bind = json.loads((mr.location(repo) / host.recovery.state().exported["name"] / "manifest.json").read_text(encoding="utf-8"))["bind"]
+    return bind, host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind)
+
+
+@pytest.mark.parametrize("purge", [False, True])
+@pytest.mark.parametrize("deleter", ["another host", "this host"])
+def test_an_item_deleted_after_the_pin_is_never_served_again_from_that_generation(tmp_path: Path, repo: Path, purge: bool,
+                                                                                  deleter: str) -> None:
+    """Fable CP3 review 1, finding 2: once an item on the first page is withdrawn or purged, through another host's Gateway or
+    this one, no page of the generation pinned before it is served again, not even the first."""
+    host = _Host(tmp_path, repo)
+    bind, first = _pinned_first_page(host, repo)
+    victim = first["entries"][0]["entry"]["item"]
+    (host if deleter == "this host" else _Host(tmp_path, repo, host.server)).run(f"/forget {victim}@1" + (" --purge" if purge else ""))
+    with pytest.raises(MemoryStoreRefused) as refused:
+        host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind, pin=first["head"])
+    # this Gateway forgot its kept generations of the project (moved), or another's deletion is seen on the page (raced)
+    assert refused.value.code == ("RECOVERY_EXPORT_MOVED" if deleter == "this host" else "RECOVERY_DELETION_RACED")
+
+
+def test_a_purge_of_an_item_the_generation_never_held_still_refuses_its_last_page(tmp_path: Path, repo: Path) -> None:
+    """The deletion-journal clause alone: an item written after the pin and purged meanwhile is not in the pinned generation, but
+    the journal grew, so the generation is not completed with a seal that undercounts it."""
+    host = _Host(tmp_path, repo)
+    bind, first = _pinned_first_page(host, repo)
+    other = _Host(tmp_path, repo, host.server)
+    late = other.remember("Written after the pin, then purged.")
+    other.run(f"/forget {late[0]}@1 --purge")
+    with pytest.raises(MemoryStoreRefused) as refused:
+        host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind, pin=first["head"], cursor=first["cursor"])
+    assert refused.value.code == "RECOVERY_DELETION_RACED"
+
+
+def test_a_pin_serves_only_its_own_bind_and_only_while_it_is_kept(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Another bind never reads a generation kept for this one; a generation evicted by newer ones (`_PINNED_MAX`) is refused once
+    memory has moved on, never answered from a newer head."""
+    import hashlib
+
+    from optimus_gateway import memory_store
+
+    host = _Host(tmp_path, repo)
+    bind, first = _pinned_first_page(host, repo)
+    host.remember("Written after the pin.")
+    other_bind = hashlib.sha256(b"another host's metadata").hexdigest()
+    with pytest.raises(MemoryStoreRefused) as foreign:
+        host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=other_bind, pin=first["head"])
+    assert foreign.value.code == "RECOVERY_EXPORT_MOVED"
+    kept = host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind, pin=first["head"], cursor=first["cursor"])
+    assert kept["head"] == first["head"]  # its own bind: still the pinned generation
+    monkeypatch.setattr(memory_store, "_PINNED_MAX", 1)
+    host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=other_bind)  # a newer generation evicts the pinned one
+    with pytest.raises(MemoryStoreRefused) as evicted:
+        host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind, pin=first["head"], cursor=first["cursor"])
+    assert evicted.value.code == "RECOVERY_EXPORT_MOVED"
+
+
+@pytest.mark.parametrize("damaged", ["entries.jsonl", "MEMORY.md"])
+def test_a_same_name_generation_is_reused_only_when_every_file_is_what_the_export_would_write(tmp_path: Path, repo: Path,
+                                                                                           damaged: str) -> None:
+    """Codex CP3 review 1, finding 1: an export repeated in the same millisecond finds its own name published. It is reused only
+    when all three files are exactly what this export would write; a damaged payload beside an intact manifest is refused, and
+    nothing is retired or recorded as exported."""
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.recovery._clock = lambda: 1_800_000_000_000  # the same millisecond for both exports
+    host.run("/memory export")
+    first = host.recovery.state().exported
+    assert host.recovery.export().name == first["name"]  # unchanged: the published generation is reused as it is
+    (mr.location(repo) / first["name"] / damaged).write_bytes(b"damaged\n")
+    with pytest.raises(mr.RecoveryError) as refused:
+        host.recovery.export()
+    assert refused.value.code == "RECOVERY_GENERATION_DAMAGED"
+    assert host.recovery.state().exported == first and host.recovery.state().failure == "RECOVERY_GENERATION_DAMAGED"
+    assert (mr.location(repo) / first["name"] / damaged).read_bytes() == b"damaged\n"  # left for the user, never rewritten
+
+
+def test_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer(tmp_path: Path, repo: Path,
+                                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 1, finding 2: the copy and the recovery state share a full disk. Writing the copy fails, and so does
+    recording that failure; `/memory export` still answers with the write failure and says the record is missing too."""
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    host.remember("Tests run with pytest -q.")
+    state_path = host.recovery._state.path
+    real = mr._durable_json
+    filled: list[int] = []  # the disk fills while the copy is written: every later state write is refused too
+
+    def full(path: Path, value: Any) -> None:
+        if path == state_path and filled:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        real(path, value)
+
+    def no_space(_path: Path, _data: bytes) -> None:
+        filled.append(1)
+        raise OSError(errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(mr, "_durable_json", full)
+    monkeypatch.setattr(mr, "_write", no_space)
+    answer = host.run("/memory export")
+    assert "could not be written to" in answer.text and "It could not be recorded either: The recovery state could not be saved " \
+        "(No space left on device)" in answer.text, answer.text
+    assert not list(state_path.parent.glob("*.tmp"))  # the refused state write left no partial file
+
+
+def _deny_lock_open(monkeypatch: pytest.MonkeyPatch, denied: Any) -> None:
+    """The config folder refuses to open the lock files `denied(path)` names, as a read-only or unavailable disk would."""
+    import builtins
+
+    import optimus_file_lock
+
+    def opening(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if denied(Path(path)):
+            raise PermissionError(errno.EACCES, "Access is denied", str(path))
+        return builtins.open(path, *args, **kwargs)
+    monkeypatch.setattr(optimus_file_lock, "open", opening, raising=False)
+
+
+def test_a_lock_file_the_config_folder_refuses_is_a_readable_answer(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 2, finding 1: the export's lock file cannot be opened (the config folder is read-only), and, separately, the
+    copy fails to write and the state's lock file then cannot be opened to record it. Both answer readably through `/memory export`."""
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    host.remember("Tests run with pytest -q.")
+    state = host.recovery._state.path
+    _deny_lock_open(monkeypatch, lambda path: path.name == state.name + ".export.lock")
+    answer = host.run("/memory export")
+    assert "The recovery state's lock file could not be opened (Access is denied)" in answer.text, answer.text
+    monkeypatch.undo()
+    filled: list[int] = []
+
+    def no_space(_path: Path, _data: bytes) -> None:
+        filled.append(1)
+        raise OSError(errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(mr, "_write", no_space)
+    _deny_lock_open(monkeypatch, lambda path: bool(filled) and path.name == state.name + ".lock")
+    answer = host.run("/memory export")
+    assert "could not be written to" in answer.text and "It could not be recorded either: The recovery state's lock file could " \
+        "not be opened (Access is denied)" in answer.text, answer.text
+
+
+def test_the_gateway_refuses_a_pinned_head_it_no_longer_holds(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A read naming a head the Gateway neither holds nor is at is refused, never answered from a newer head."""
+    from optimus_gateway import memory_store
+
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    head = host.recovery.state().exported["head"]
+    host.remember("Tests run with pytest -q.")
+    monkeypatch.setattr(memory_store, "_PINNED_SECONDS", -1.0)  # every kept generation has lapsed
+    bind = json.loads((mr.location(repo) / host.recovery.state().exported["name"] / "manifest.json").read_text(encoding="utf-8"))["bind"]
+    with pytest.raises(mr.RecoveryError) as moved:
+        host.recovery._read_generation(bind, pin=head)
+    assert moved.value.code == "RECOVERY_SOURCE_MOVED"
 
 
 # --- a lock the OS refuses for a reason other than another holder (#529 review 2) ---------------------------------------------

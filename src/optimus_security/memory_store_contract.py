@@ -276,13 +276,16 @@ def _purge_status(body: dict[str, Any]) -> None:
 
 def _export(body: dict[str, Any]) -> None:
     """A page of the project's recovery generation (D5); the host writes the one fixed location. `bind` is the digest of the host's
-    generation metadata, which the seal binds."""
-    _fields(body, {"op", "project", "limit", "bind"}, frozenset({"cursor"}))
+    generation metadata, which the seal binds; `pin`, the head of the generation being read (every page after the first, and
+    a re-read that authenticates a copy)."""
+    _fields(body, {"op", "project", "limit", "bind"}, frozenset({"cursor", "pin"}))
     _opaque(body["project"])
     _integer(body["limit"], 1, MAX_LIST)
     _match(body["bind"], _DIGEST)
     if "cursor" in body:
         _match(body["cursor"], _CURSOR)
+    if "pin" in body:
+        _match(body["pin"], _STREAM)
 
 
 def _verify_bind(body: dict[str, Any]) -> None:

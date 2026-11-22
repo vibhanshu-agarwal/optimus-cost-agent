@@ -1,0 +1,65 @@
+{
+  "schema": "plan12-memory-m3-part2.continuity.v1",
+  "plan": "12.12",
+  "issue": 491,
+  "second_model_proof": {
+    "status": "UNRUN",
+    "decision": "D4 (12.11 D6): Only on an already eligible route under a separate release; otherwise UNRUN with #491 later-plan custody. Task 0 found no second eligible route.",
+    "basis": "Task 0 inventory: one: the shipped role list names only the Anthropic route marked verified in src/optimus_model_policy/defaults.yaml; every other route is verified: false",
+    "consequence": "no second eligible route at inventory, so actual second-model proof stays UNRUN under #491 unless configuration changes before Task 3",
+    "custody": "#491, the later unnumbered plan under D1; no new route qualification is commissioned here",
+    "controlled_bindings": "the served memory block, checkpoints, backups and imports carry no model or route identity, so a binding switch cannot change them; that proves plumbing only, never an actual second model"
+  },
+  "observed": [
+    {
+      "claim": "same-session command continuity through an independent client: after acpx's agent restarts (steps 01-03 opened three ACP sessions, before anything was remembered), steps 03-15 and 18 ran in one ACP session, where the rule was remembered, exported, backed up, forgotten and listed (Codex CP3 review 4: this is not restart durability)",
+      "evidence": "platforms.json acpx steps 01-18 (transcript hashes there); platforms.json acpx protocol.sessions"
+    },
+    {
+      "claim": "a fresh host and session of the project carry on from the same store after a restart: an undelivered card is replayed once and nothing is written again (unit tier, the store's in-memory stand-in); restart durability on the real store was proven by Plan 12.11 (checkpoints survive a killed store process; a fresh host continues)",
+      "evidence": [
+        "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
+        "reports/plan12-memory-m3/continuity.json (Plan 12.11, real store; tests/integration/memory/test_continuity.py)"
+      ]
+    },
+    {
+      "claim": "an import preview belongs to its own session: a second acpx session could not apply the first session's preview, even with every request approved",
+      "evidence": "platforms.json acpx step 17"
+    },
+    {
+      "claim": "a linked worktree shares the project's registration and sees its imported notes; a separate clone is another registration and sees none",
+      "evidence": "pilot.json registrations (linked True, clone separate True) and counts"
+    },
+    {
+      "claim": "a memory card that could not be delivered is shown by the next session after a restart, once, with its own wording (an import's as Imported), and a malformed queued record never hides the rest",
+      "evidence": [
+        "tests/unit/acp/test_memory_commands.py::test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change",
+        "tests/unit/acp/test_memory_commands.py::test_an_undelivered_import_notice_is_replayed_as_imported",
+        "tests/unit/acp/test_memory_commands.py::test_a_malformed_backlog_record_never_hides_the_valid_notices"
+      ]
+    },
+    {
+      "claim": "a host that dies mid-import loses no notice and saves nothing twice; the next apply reconciles",
+      "evidence": [
+        "tests/unit/context/test_memory_import.py::test_a_host_that_dies_mid_apply_loses_no_notice_and_the_next_apply_reconciles"
+      ]
+    },
+    {
+      "claim": "a recovery generation stays one head while other hosts keep writing, and never completes holding text deleted meanwhile, through any Gateway",
+      "evidence": [
+        "tests/unit/context/test_memory_recovery.py::test_an_export_stays_one_generation_while_writes_land_between_its_pages",
+        "tests/unit/context/test_memory_recovery.py::test_an_item_deleted_after_the_pin_is_never_served_again_from_that_generation",
+        "backups.json contention runs (run 3 PASS at e02de5a)"
+      ]
+    },
+    {
+      "claim": "a lost store is restored from a backup on another disk, later deletions kept",
+      "evidence": "backups.json and restore.json (CP1)"
+    }
+  ],
+  "not_observed": [
+    "an actual second model (above)",
+    "the 24-hour overdue state in real time (unit-tested)",
+    "a synced cloud folder target (D2 needs its own release)"
+  ]
+}
