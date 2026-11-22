@@ -527,15 +527,14 @@ with memory_recovery._file_lock(Path(sys.argv[1])):
 def test_another_process_holding_the_lock_keeps_a_setup_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """#529 review: the lock holds across processes, not only threads. While a child process holds it, setup stops before its
     keyring write; once the child lets go, the same setup completes."""
-    import os
     import subprocess
     import sys
 
     monkeypatch.setattr(memory_setup, "_SETUP_LOCK_SECONDS", 0.2)
     keyring = FakeKeyring()
-    source = Path(memory_setup.__file__).resolve().parents[2]
+    # The child inherits this environment whole, so a census run's hook reaches it (#534 review 6).
     child = subprocess.Popen([sys.executable, "-c", _HOLD_LOCK, str(tmp_path / "locks" / memory_setup._SETUP_LOCK)], stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, text=True, env={**os.environ, "PYTHONPATH": str(source)})
+                             stdout=subprocess.PIPE, text=True)
     try:
         assert child.stdout is not None and child.stdin is not None
         ready: list[str] = []
