@@ -1,0 +1,55 @@
+{
+ "schema": "plan12-memory-m2a.case-provenance.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "frozen_on": "2026-11-23",
+ "author": "Claude (Opus 5.5), Plan 12.13 Task 0; Codex CLI reviews at CP1 (gpt-6.1-sol, high, read-only)",
+ "generator": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-117-p1213-implementation/freeze_task0.py writes cases.json; ranking-policy.json, evaluation-contract.json and this file are hand-authored",
+ "source_commit": "git:6f696a8118c76d8facbdd88a5b50d107c82b3e2d",
+ "grounding_sources": [
+  {"path": "reports/plan12-memory-m1/assembly.json", "sha256": "hex:beae5b118c1665cc655670cca8bbe81d0c7cb062212e99a744c094b24cfb17cf",
+   "observed": "corpus src/optimus_gateway, src/context_engine, src/optimus_model_policy: 46 Python files, 795 embedded chunks, chunk_chars_mean 712.8, chunk_chars_p95 2337; pack budget 16384 tokens at utf8 bytes / 4; idle pack_tokens 15500-16364 of 16384; during-build pack_tokens 31-9851"},
+  {"path": "src/optimus/agent/planning_loop.py", "sha256": "hex:8528bbb733a08d404196cac6ba11f40fb70fe170fc09c61a5e5d81e7fc7b92e1",
+   "observed": "PLANNING_OBSERVATION_MAX_BYTES 4096, PLANNING_NEW_READ_MAX_BYTES 12288, combined DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES 16384; OBS_RECORD and READ_BLOCK serializers; each READ_MORE turn's observation text is carried once per read request and accumulates across turns; current reads are the latest turn's only; per-turn OBSERVATION_TOO_LARGE parse check; default max_planning_turns 3"},
+  {"path": "tests/integration/agent/test_multi_turn_planning_flow.py", "sha256": "hex:4dd36aaf05a66209b1036647b27148fc1148b4eadab77450081d572b6297fd48",
+   "observed": "scripted multi-turn READ_MORE fixtures: carryover overflow (six 5-byte reads with maximal observations) and current-read overflow (12288 + 500) both fail closed with typed stops"}
+ ],
+ "limits_of_grounding": "M1 records hold no complete observation or read traces, so no schedule is a natural-demand replay. Range sizes come from M1 chunk statistics; observation sizes, read counts and round structure are synthetic choices; boundary lengths are solved exactly with the real serializers. Representativeness covers demand shapes (observation-heavy, read-heavy, mixed) and exact/one-over boundaries, not production frequency.",
+ "schedules": {
+  "S01": {"source": "M1 chunk mean (713) for every range; 2 rounds x 6 reads", "synthetic": "observation 300 bytes per turn"},
+  "S02": {"source": "S01 round 1; one read in round 2", "synthetic": "round 2 observation solved so cumulative observations = 4096 (exact, baseline limit)"},
+  "S03": {"source": "as S02", "synthetic": "cumulative observations = 4097 (one over the baseline limit)"},
+  "S04": {"source": "one round of 10 small ranges (400) across 10 corpus files", "synthetic": "observation 250 bytes; wide fan-out"},
+  "S05": {"source": "M1 chunk mean; 5 reads then 1", "synthetic": "cumulative observations = 6144 (exact, 6/10 limit)"},
+  "S06": {"source": "M1 chunk mean; 2 rounds x 5 reads", "synthetic": "observation 450 bytes per turn"},
+  "S07": {"source": "8 short ranges (300) then 1", "synthetic": "cumulative observations = 8193 (one over the 8/8 limit)"},
+  "S08": {"source": "2 rounds x 8 short ranges (300)", "synthetic": "observation 220 bytes per turn"},
+  "S09": {"source": "M1 chunk p95 (2337) x 5 in one round", "synthetic": "observation 120 bytes"},
+  "S10": {"source": "M1 chunk p95 x 4 plus one solved range", "synthetic": "current reads = 12288 (exact, baseline limit)"},
+  "S11": {"source": "as S10", "synthetic": "current reads = 12289 (one over the baseline limit)"},
+  "S12": {"source": "ranges 1800 then 2000 (between M1 mean and p95); 3 then 4 reads", "synthetic": "observation 150 bytes per turn"},
+  "S13": {"source": "M1 chunk p95 x 3 plus one solved range", "synthetic": "current reads = 10240 (exact, 6/10 limit)"},
+  "S14": {"source": "M1 chunk p95 x 4", "synthetic": "observation 200 bytes"},
+  "S15": {"source": "M1 chunk p95 x 5 plus one solved range", "synthetic": "current reads = 14337 (one over the 2/14 limit)"},
+  "S16": {"source": "6 x 1500 then 5 x M1 chunk p95", "synthetic": "observation 100 bytes per turn"},
+  "S17": {"source": "4 x 1200 then 3 x M1 chunk p95", "synthetic": "observations 500 then 400 bytes"},
+  "S18": {"source": "1 x 1200 then 5 x M1 chunk p95 plus one solved range", "synthetic": "observations = 2048 and current reads = 14336 (both exact at 2/14)"},
+  "S19": {"source": "1 x 1500 then 3 x M1 chunk p95 plus one solved range", "synthetic": "observations = 8192 and current reads = 8192 (both exact at 8/8)"},
+  "S20": {"source": "2 x M1 chunk mean in one round", "synthetic": "observation 300 bytes; small control that fits every partition by construction"},
+  "S21": {"source": "5 x 900 then 4 x 1500", "synthetic": "observation 350 bytes per turn"},
+  "S22": {"source": "1 x 1500 then 4 x M1 chunk p95 plus one solved range", "synthetic": "observations = 6144 and current reads = 10240 (both exact at 6/10)"},
+  "S23": {"source": "2 rounds x 3 x M1 chunk p95", "synthetic": "observation 600 bytes per turn"},
+  "S24": {"source": "1 x 1200 then 4 x M1 chunk p95 plus one solved range", "synthetic": "observations = 4097 (one over at 4/12) and current reads = 12288 (exact at 4/12)"}
+ },
+ "boundary_solutions_checked": "on 2026-11-23 at the source commit, every boundary target was confirmed exactly solvable with the real serializers (feasibility only; no schedule was scored under any partition before this freeze)",
+ "ambiguity": {
+  "source": "synthetic workspaces modelled on this repository's own layout and naming (A-F1..A-F8); file contents are generated at test time and are not part of the case",
+  "design": "each family has one workspace and three tasks; tasks are written as a developer would phrase them; four cases are undecidable by construction (A03, A15, A18, A24); A04 is an expected ranking loss (its only distinguishing hint is stale); A06 checks automatic resolution of one admitted target; A09 and A12 check exact-path retry and its revalidation",
+  "bias_note": "Claude wrote these tasks knowing the frozen ranking features, so the set may favor them; mitigations: expected-loss and path-order-correct cases (A02, A04, A21, A23) are included, and the held-out families (A-F7, A-F8) are scored once. CP1 should judge whether more adversarial held-out tasks are needed before Task 1."
+ },
+ "explanation": {
+  "source": "the /why states named in plan v3 (lifecycle, terminal states, privacy, fallback, rounds, restart, isolation, paging)",
+  "design": "four families of three; sentinels are fixed strings except the token, which is generated at test time so no secret-shaped string is stored"
+ },
+ "families_and_splits": "every family's cases share one split (checked by the generator); ambiguity A-F1..A-F4 train, A-F5..A-F6 development, A-F7..A-F8 held_out; schedules *-F1,*-F2 train, *-F3 development, *-F4 held_out per shape; explanation EX-F1,EX-F2 train, EX-F3 development, EX-F4 held_out"
+}

@@ -1,0 +1,71 @@
+{
+ "schema": "plan12-memory-m2a.ranking-policy.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "child": 242,
+ "frozen_on": "2026-11-23",
+ "frozen_before": "Task 1 and any feature code",
+ "authority": "Plan 12.13 v3 (sha256 26653bbc2123e66d990d37977f9ab81a6ded9121de7594e358b0c9fdad31ffa0) section #242 and decision D3, approved by the operator 2026-11-23 ('Approve hash + D1-D4')",
+ "applies_to": [
+  "ordinary workspace assembly (src/optimus/agent/workspace_context.py, the AMBIGUOUS_WORKSPACE_REFERENCE stop)",
+  "MemoryTurn.assemble() (src/optimus/context/memory_session.py), which shares blocking_from_diagnostics"
+ ],
+ "eligibility": {
+  "rule": "FilePolicy and scope decide the candidate set exactly as today; ranking only orders that set",
+  "preserved": [
+   "secret and ignore-file denials: a denied file is never a candidate and is never shown",
+   "exact workspace-relative path resolution, including the existing backslash-to-slash normalization",
+   "the existing unique-name rule: one admitted current target resolves automatically",
+   "deterministic fallback when no index is configured"
+  ],
+  "data_authority": "file, symbol and metadata text never gains instruction authority"
+ },
+ "hints": {
+  "allowed": "only verified-current structural hints: a record whose file hash matches the file's current bytes in the current index generation",
+  "missing_or_stale": "contributes nothing and never removes an eligible candidate"
+ },
+ "features": [
+  {
+   "order": 1,
+   "name": "task_term_relevance",
+   "direction": "descending",
+   "definition": "count of distinct terms in context_engine.retrieval.lexical_terms(task text) that also occur in context_engine.code_index.split_terms of the candidate's directory components, plus, when the candidate's metadata is verified-current, of its record labels (symbol names, Markdown headings)",
+   "exclusions": "terms of the ambiguous reference itself (its basename and extension) are removed from the task terms before counting"
+  },
+  {
+   "order": 2,
+   "name": "dependency_proximity",
+   "direction": "descending",
+   "definition": "1 when the candidate is in context_engine.repo_map.neighbours(verified-current map files, independently resolved task paths), else 0",
+   "bounds": "depth 1 only (what the resolved paths import, then what imports them); edges come only from verified-current records of either endpoint; an independently resolved task path is one the task names that resolves under the existing exact-path or unique-name rules; not build resolution"
+  },
+  {
+   "order": 3,
+   "name": "verified_current_metadata",
+   "direction": "descending",
+   "definition": "1 when the candidate has a verified-current index record, else 0"
+  },
+  {
+   "order": 4,
+   "name": "path",
+   "direction": "ascending",
+   "definition": "workspace-relative POSIX path, compared by Unicode code point (Python str ordering); the final, total tie-break"
+  }
+ ],
+ "not_used": [
+  "global utility functions, RRF retuning or any change to M1 fusion",
+  "wall-clock, modification time or recency",
+  "model or learned reranking",
+  "score gaps or thresholds"
+ ],
+ "threshold": {
+  "automatic_resolution": "only one admitted current target under the existing exact-path or unique-name rules",
+  "multiple_eligible": "stays ambiguous regardless of score or gap: a visible stop listing every eligible candidate in ranked order, each with its reasons (feature values), and asking for one exact workspace-relative path",
+  "retry": "the exact path is revalidated (eligibility, existence, current hash) before any read or edit; failure is a typed stop for that path, never a fallback to another candidate",
+  "no_new_dialogue": "no new confirmation dialogue; ranking never authorizes a target"
+ },
+ "baseline": {
+  "name": "path_only",
+  "definition": "today's order: ascending workspace-relative path (by_basename tuples are sorted in workspace_context._build_eligible_file_index)"
+ }
+}

@@ -1,0 +1,78 @@
+{
+ "schema": "plan12-memory-m2a.evaluation-contract.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "frozen_on": "2026-11-23",
+ "frozen_before": "Task 1 and any feature code",
+ "authority": "Plan 12.13 v3 (sha256 26653bbc2123e66d990d37977f9ab81a6ded9121de7594e358b0c9fdad31ffa0), sections /why, #242, #245, Evaluation and releases; D2-D4 approved by the operator 2026-11-23",
+ "inputs": {
+  "cases": "reports/plan12-memory-m2a/cases.json",
+  "ranking_policy": "reports/plan12-memory-m2a/ranking-policy.json",
+  "provenance": "reports/plan12-memory-m2a/case-provenance.json",
+  "binding": "every result names the sha256 of each input file and the git commit it ran at; a changed input invalidates earlier results"
+ },
+ "cost": {
+  "paid_physical_attempts_max": 0,
+  "provider_cost_usd_max": 0,
+  "rule": "local stand-ins only; any paid egress invalidates the run"
+ },
+ "split_custody": {
+  "train": "calibration and debugging; may be inspected freely",
+  "development": "calibration selection (Task 1); may be inspected",
+  "held_out": "consumed once, in Task 3 qualification, after CP1 froze the partition and ranking features; no tuning against its results; a second use needs a recorded successor disposition"
+ },
+ "ambiguity_242": {
+  "unit": "one case of cases.json ambiguity.cases",
+  "ranked_list": "every eligible candidate, ordered by ranking-policy.json; the baseline list is the same set in path_only order",
+  "metrics": {
+   "top_one_accuracy": "share of decidable cases whose first suggestion is in the acceptable set",
+   "reciprocal_rank": "mean over decidable cases of 1 / rank of the best-ranked acceptable target",
+   "wrong_target_selections": "count of cases where the system read or edited a file outside the acceptable set without an exact path naming it",
+   "oracle_regret": "mean agent-selected loss over decidable cases"
+  },
+  "agent_selected_loss": {
+   "correct": 0,
+   "wrong": 1,
+   "unresolved_on_decidable": 0.25,
+   "visible_abstention_on_undecidable": 0,
+   "note": "the loss scores what the system actually acted on; under D3 a multi-candidate case is a visible stop, so it scores 0.25 when decidable and 0 when not"
+  },
+  "denominators": "report decidable and undecidable counts separately, per split; undecidable cases enter only wrong_target_selections and abstention checks",
+  "not_confidence": "a rank or score is never reported as a probability or confidence",
+  "acceptance": [
+   "zero wrong-target selections on every split",
+   "every multi-candidate case stops visibly; no eligible candidate is lost; denied files never appear",
+   "held-out: ranked top_one_accuracy and reciprocal_rank both at least the path_only baseline, and at least one of them strictly higher",
+   "without held-out benefit there is no #242 completion claim"
+  ]
+ },
+ "split_245": {
+  "partitions_kib": [[2, 14], [4, 12], [6, 10], [8, 8]],
+  "baseline_kib": [4, 12],
+  "combined_ceiling_bytes": 16384,
+  "accounting": "UTF-8 bytes of the real serializers (_serialize_planning_observation, _serialize_planning_read_evidence), including headers, paths, hashes and framing; bytes and tokens reported separately (tokens by the existing estimator)",
+  "simulation": "each schedule is driven through the real planning-loop parse, read and pack code with only the two limits substituted; synthetic workspace files carry the ranges; a placeholder or real 64-hex sha256 as the schedule states",
+  "completed": "the schedule reaches FINAL_PLAN within max_planning_turns with every requested range delivered whole and no budget stop (OBSERVATION_TOO_LARGE, PLANNING_OBSERVATION_BUDGET_EXHAUSTED, PLANNING_READ_BUDGET_EXHAUSTED), and the final request passes the existing route fitting (ContextPacker.fit) unchanged",
+  "never_completion": "truncated or dropped required evidence; a typed refusal or guarded reread counts as a stop, recorded with its code",
+  "baseline_success": "a schedule completed under 4/12",
+  "selection_on_train_and_development": [
+   "1. reject any partition whose run weakens source-hash, completeness, ambiguity or route-fit checks",
+   "2. require no loss on baseline-success schedules",
+   "3. maximize completed schedules; ties prefer fewer budget stops, then the partition closest to 4/12",
+   "4. at qualification, require at least one held-out completion improvement over 4/12 and no held-out baseline-success regression"
+  ],
+  "no_qualifier": "if no non-baseline partition passes 1-3 at CP1, 4/12 is kept, the plan stops for operator disposition, and #245 delivery is not claimed",
+  "recorded_at_cp1": "the chosen numeric limits, before any production change"
+ },
+ "why": {
+  "unit": "one case of cases.json explanation.cases",
+  "oracle": "the snapshot fields equal the facts the turn actually produced (manifest, served set, dispatch records); never recomputed by rerunning retrieval or rereading memory",
+  "privacy": "no privacy sentinel, generated token, body, signature, description, prompt, memory statement or hidden reasoning in any page; checked on raw ACP output bytes",
+  "calls": "zero classification, maintenance, extraction, embedding or provider calls for every /why, counted at the real seams",
+  "states": "missing fields say unavailable; prepared is never shown as dispatched; a failed read is never 'no memory'; historical metadata is never presented as current validity",
+  "paging": "cases.json explanation.page_bounds; every entry appears on exactly one page"
+ },
+ "determinism": "repeated and reordered inputs give byte-identical rankings, schedule outcomes and /why pages",
+ "boundary_claims": "real index Redis, real store, acpx, Zed and WSL claims need their own released runs (cases.json release_configuration); fakes prove unit behavior only; a missing release holds the claim as UNRUN",
+ "results_retained": "losses, unknowns, skips, invalid cases and consumed held-out sets are kept; COMPLETE alone is not acceptance"
+}
