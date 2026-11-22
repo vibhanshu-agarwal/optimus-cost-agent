@@ -112,6 +112,30 @@ def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS, code: str = "REC
         lock.release()
 
 
+@contextlib.contextmanager
+def _opened_lock(path: Path, unopened: Callable[[OSError], Exception], **kwargs: Any) -> Iterator[None]:
+    """`_file_lock`, for a lock file in Optimus's own config folder: when that file cannot be created or opened (a read-only or
+    full disk), `unopened(failure)` is raised instead of the raw OSError (Codex CP3 review 2, finding 1). Errors raised inside
+    the locked block pass through untouched, and contention and lock faults keep their own codes."""
+    held = _file_lock(path, **kwargs)
+    try:
+        held.__enter__()
+    except OSError as failure:
+        raise unopened(failure) from None
+    try:
+        yield
+    except BaseException:
+        if not held.__exit__(*sys.exc_info()):
+            raise
+    else:
+        held.__exit__(None, None, None)
+
+
+def _state_unopened(path: Path) -> Callable[[OSError], Exception]:
+    return lambda failure: RecoveryError("RECOVERY_STATE_UNWRITABLE", f"The recovery state's lock file could not be opened "
+                                         f"({os_reason(failure, path)}); the earlier state is kept.")
+
+
 def _durable_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
@@ -185,7 +209,8 @@ class StateFile:
         return state
 
     def update(self, change: Callable[[RecoveryState], None]) -> RecoveryState:
-        with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
+        lock = self.path.with_name(self.path.name + ".lock")
+        with self._lock, _opened_lock(lock, _state_unopened(lock)):
             state = self.load()
             change(state)
             try:
@@ -228,7 +253,7 @@ class NoticeBacklog:
             return
         with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
             current = self._load()
-            known = {record["event_id"] for record in current}
+            known = {record.get("event_id") for record in current}  # a malformed record never blocks the rest
             current += [record for record in records if record["event_id"] not in known]
             _durable_json(self.path, current)  # kept until acknowledged, however many (Codex CP3 review 2, finding 4)
 
@@ -237,7 +262,7 @@ class NoticeBacklog:
             return
         with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
             current = self._load()
-            kept = [record for record in current if record["event_id"] not in set(event_ids)]
+            kept = [record for record in current if record.get("event_id") not in set(event_ids)]
             if kept != current:
                 _durable_json(self.path, kept)
 
@@ -499,7 +524,7 @@ class Recovery:
     def export(self) -> Generation:
         """Write one generation now, or raise why not; nothing is published when anything fails."""
         export_lock = self._state.path.with_name(self._state.path.name + ".export.lock")
-        with self._lock, _file_lock(export_lock, wait=EXPORT_LOCK_SECONDS):  # Codex CP3 review 2, finding 2
+        with self._lock, _opened_lock(export_lock, _state_unopened(export_lock), wait=EXPORT_LOCK_SECONDS):  # Codex CP3 review 2, finding 2
             state = self._state.load()
             if state.destination is None:
                 raise RecoveryError("RECOVERY_NOT_SET_UP", "No recovery location is set up for this project: `/memory export` sets one up.")

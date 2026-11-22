@@ -618,8 +618,11 @@ class Backups:
         `explicit` is the user's own `/memory backup now`: it also releases cleanup held in earlier synced targets."""
         lock = self._state.path.with_name(self._state.path.name + ".publish.lock")
         try:
-            with self._lock, mr._file_lock(lock, wait=LOCK_SECONDS, code="BACKUP_BUSY", fault_code="BACKUP_LOCK_FAILED",
-                                           message="Another session is taking this project's backup; try again shortly."):
+            unopened = lambda failure: BackupError(  # noqa: E731 - the publisher lock lives in the config folder (Codex CP3 review 2)
+                "BACKUP_STATE_UNWRITABLE", f"The backup's lock file could not be opened ({mr.os_reason(failure, lock)}); nothing "
+                "was written.")
+            with self._lock, mr._opened_lock(lock, unopened, wait=LOCK_SECONDS, code="BACKUP_BUSY", fault_code="BACKUP_LOCK_FAILED",
+                                             message="Another session is taking this project's backup; try again shortly."):
                 attempts = 0
                 while True:
                     attempts += 1

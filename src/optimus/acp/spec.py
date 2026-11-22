@@ -2891,10 +2891,14 @@ class AcpDuplexAdapter:
         if backlog is not None:  # what any session of the project left undelivered, durably (Codex CP3 review 1, finding 6)
             with contextlib.suppress(Exception):
                 known = {notice.event_id for notice in due}
-                records = await asyncio.to_thread(backlog.pending)
-                imported = {record["event_id"] for record in records if record.get("imported") is True}
-                due += [notice for notice in (_notice_of(record) for record in records)
-                        if notice is not None and notice.event_id not in known]
+                for record in await asyncio.to_thread(backlog.pending):  # one by one: a malformed record is skipped alone
+                    notice = _notice_of(record)
+                    if notice is None or notice.event_id in known:
+                        continue
+                    known.add(notice.event_id)
+                    due.append(notice)
+                    if record.get("imported") is True:
+                        imported.add(notice.event_id)
         for notice in due:
             if turn.turn_control.transport_abandoned():
                 return

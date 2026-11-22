@@ -374,6 +374,32 @@ def test_b11_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readabl
         "saved (No space left on device)" in answer.text, answer.text
 
 
+def test_b11_a_publisher_lock_the_config_folder_refuses_is_a_readable_answer(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                               monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 2, finding 1: the backup's publisher lock file cannot be opened (the config folder is read-only):
+    `/memory backup now` answers readably and nothing is written."""
+    import builtins
+
+    import optimus_file_lock
+
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+    publisher = host.backups._state.path.name + ".publish.lock"
+
+    def opening(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if Path(path).name == publisher:
+            raise PermissionError(errno.EACCES, "Access is denied", str(path))
+        return builtins.open(path, *args, **kwargs)
+    monkeypatch.setattr(optimus_file_lock, "open", opening, raising=False)
+    answer = host.run("/memory backup now")
+    assert "The backup's lock file could not be opened (Access is denied); nothing was written." in answer.text, answer.text
+    assert len(_published(places["separate"] / "b")) == 1
+
+
 def test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one(tmp_path: Path, repo: Path,
                                                                                           places: dict[str, Path],
                                                                                           monkeypatch: pytest.MonkeyPatch) -> None:

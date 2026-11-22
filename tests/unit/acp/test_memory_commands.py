@@ -732,6 +732,45 @@ def test_an_undelivered_import_notice_is_replayed_as_imported(tmp_path: Path) ->
     asyncio.run(scenario())
 
 
+def test_a_malformed_backlog_record_never_hides_the_valid_notices(tmp_path: Path) -> None:
+    """Codex CP3 review 2, finding 2: a backlog holding one malformed record (an import marker with nothing else) beside valid
+    import and user notices still replays both valid cards, each with its own heading; the malformed record is skipped alone."""
+    from optimus.context import memory_recovery as mr
+
+    async def scenario() -> None:
+        service = purge_store(tmp_path)[0]
+        backlog_root = tmp_path / "config"
+
+        def source() -> _PurgeSource:
+            made = _PurgeSource(_adapter(service))
+            made.notices = mr.NoticeBacklog(backlog_root, "p-1")
+            return made
+
+        first = AcpDuplexAdapter(runner=checked_agent_runner(Runner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                 outbound=_CardsFail(), context_attachment=make_attachment(),
+                                 memory_extractor_factory=lambda _w, **_k: source())
+        session_id = await new_session(first, tmp_path, mode="chat")
+        for number, text in enumerate(("/remember Never push to main.", "/remember Tests run with pytest -q."), 1):
+            await rpc(first, prompt_request(session_id, text, f"p-{number}"))
+        backlog = mr.NoticeBacklog(backlog_root, "p-1")
+        mine, imported = backlog.pending()
+        backlog.remove([imported["event_id"]])
+        backlog.add([imported | {"imported": True}])
+        data = json.loads(backlog.path.read_text(encoding="utf-8"))
+        backlog.path.write_text(json.dumps([{"imported": True}, *data]), encoding="utf-8")  # one malformed record first
+        outbound = RecordingOutboundChannel()
+        second = AcpDuplexAdapter(runner=checked_agent_runner(Runner()), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+                                  outbound=outbound, context_attachment=make_attachment(),
+                                  memory_extractor_factory=lambda _w, **_k: source())
+        session_id = await new_session(second, tmp_path, mode="chat")
+        await rpc(second, prompt_request(session_id, "Hello there", "p-3"))
+        titles = {u["toolCallId"]: u["title"] for u in _updates(outbound) if u["sessionUpdate"] == "tool_call"}
+        assert titles[f"memory/{imported['event_id']}"].startswith("Imported: "), titles
+        assert titles[f"memory/{mine['event_id']}"].startswith("Remembered: "), titles
+        assert mr.NoticeBacklog(backlog_root, "p-1").pending() == [{"imported": True}]  # only the malformed one is left
+    asyncio.run(scenario())
+
+
 def test_an_undelivered_notice_survives_a_restart_and_is_shown_once_with_no_second_change(tmp_path: Path) -> None:
     """Finding 6: a memory notice is kept durably until its card is confirmed sent. The host restarts; the next session of the
     project shows the same event's card, and nothing is written again."""

@@ -1007,6 +1007,43 @@ def test_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_an
     assert not list(state_path.parent.glob("*.tmp"))  # the refused state write left no partial file
 
 
+def _deny_lock_open(monkeypatch: pytest.MonkeyPatch, denied: Any) -> None:
+    """The config folder refuses to open the lock files `denied(path)` names, as a read-only or unavailable disk would."""
+    import builtins
+
+    import optimus_file_lock
+
+    def opening(path: Any, *args: Any, **kwargs: Any) -> Any:
+        if denied(Path(path)):
+            raise PermissionError(errno.EACCES, "Access is denied", str(path))
+        return builtins.open(path, *args, **kwargs)
+    monkeypatch.setattr(optimus_file_lock, "open", opening, raising=False)
+
+
+def test_a_lock_file_the_config_folder_refuses_is_a_readable_answer(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 2, finding 1: the export's lock file cannot be opened (the config folder is read-only), and, separately, the
+    copy fails to write and the state's lock file then cannot be opened to record it. Both answer readably through `/memory export`."""
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    host.remember("Tests run with pytest -q.")
+    state = host.recovery._state.path
+    _deny_lock_open(monkeypatch, lambda path: path.name == state.name + ".export.lock")
+    answer = host.run("/memory export")
+    assert "The recovery state's lock file could not be opened (Access is denied)" in answer.text, answer.text
+    monkeypatch.undo()
+    filled: list[int] = []
+
+    def no_space(_path: Path, _data: bytes) -> None:
+        filled.append(1)
+        raise OSError(errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(mr, "_write", no_space)
+    _deny_lock_open(monkeypatch, lambda path: bool(filled) and path.name == state.name + ".lock")
+    answer = host.run("/memory export")
+    assert "could not be written to" in answer.text and "It could not be recorded either: The recovery state's lock file could " \
+        "not be opened (Access is denied)" in answer.text, answer.text
+
+
 def test_the_gateway_refuses_a_pinned_head_it_no_longer_holds(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A read naming a head the Gateway neither holds nor is at is refused, never answered from a newer head."""
     from optimus_gateway import memory_store
