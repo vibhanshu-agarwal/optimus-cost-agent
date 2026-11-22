@@ -441,6 +441,21 @@ def test_tampered_or_missing_relay_capture_is_invalid_but_still_parsed(tmp_path,
         assert any(e["method"] == "initializX" for e in derived.events)
 
 
+def test_unreadable_relay_summary_does_not_drop_wire(tmp_path, monkeypatch):
+    write_relay_capture(tmp_path, HANDSHAKE)
+    original = Path.read_bytes
+
+    def read_bytes(path):
+        if path == tmp_path / "relay-summary.json":
+            raise PermissionError("synthetic relay summary read failure")
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    wire = col.derive_wire(tmp_path)
+    assert not wire.relay_valid
+    assert any(event["method"] == "initialize" for event in wire.events)
+
+
 def test_unrecognized_message_shapes_are_undecodable_not_dropped_silently(tmp_path):
     write_relay_capture(tmp_path, [("zed_to_agent", {"jsonrpc": "2.0", "id": True, "method": "initialize"}), ("agent_to_zed", {"jsonrpc": "2.0", "id": 0, "result": 1, "error": {}})])
     derived = col.derive_wire(tmp_path)
@@ -1050,6 +1065,130 @@ def test_an_unknown_launch_error_preserves_scratch_and_emits_a_fixed_code(tmp_pa
     assert raw["custody"]["cleanup"]["targets"] == [{"role": "run_root", "removed": False, "absent_after": False}]
     assert c.reduce_document(raw, layer="raw").disposition is D.INDETERMINATE_CURRENT_CLIENT_GATE
     assert _PRIVATE_TEXT.encode() not in _record_bytes(run, batch)
+
+
+@pytest.mark.parametrize("failure", ["unconfirmed-result", "runtime-error", "host-error"])
+@pytest.mark.parametrize("has_load", [True, False], ids=["stop", "no-positive"])
+def test_unconfirmed_reopen_preserves_captured_relay(tmp_path, windows_shaped_paths, monkeypatch, failure, has_load):
+    from dataclasses import replace
+
+    arm_id = "a_prime"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm_id if has_load else None))
+    original = run.host.launch
+
+    def launch(request):
+        result = original(request)
+        if (request.arm_id, request.launch_id) != (arm_id, "reopen"):
+            return result
+        if failure == "runtime-error":
+            raise _probe_error()
+        if failure == "host-error":
+            raise HostError("zed_tree_unconfirmed")
+        return replace(result, tree_stopped=False)
+
+    monkeypatch.setattr(run.host, "launch", launch)
+    batch = run.collect()
+    raw = run.raw()
+    result = c.reduce_document(raw, layer="raw")
+
+    assert raw["aborted"] == {"reason_code": "zed_tree_unconfirmed", "stage": "launch"}
+    assert run.host.approval_events[-1] == ("hold", "")
+    assert list(run.scratch.iterdir())
+    assert any(item.role == f"plan117_v5_relay:{arm_id}:reopen:zed-to-agent.bin" for item in batch.artifacts)
+    assert all(item.role != f"plan117_v5_launch:{arm_id}:reopen" for item in batch.artifacts)
+    assert _PRIVATE_TEXT.encode() not in _record_bytes(run, batch)
+    if has_load:
+        assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP, result.reason_codes()
+        assert (result.primary.reason, result.primary.subject) == (R.REOPEN_LOAD_OBSERVED, arm_id)
+    else:
+        assert result.disposition in (D.INDETERMINATE_CURRENT_CLIENT_GATE, D.INVALID_CURRENT_CLIENT_GATE)
+        assert R.REOPEN_LOAD_OBSERVED not in _codes(result)
+
+
+@pytest.mark.parametrize("capture_error", [KeyboardInterrupt, RuntimeError], ids=["interrupt", "unexpected-error"])
+@pytest.mark.parametrize("has_load", [True, False], ids=["stop", "no-positive"])
+def test_unconfirmed_reopen_holds_approval_recovery_when_capture_fails(tmp_path, windows_shaped_paths, monkeypatch, capture_error, has_load):
+    from dataclasses import replace
+
+    arm_id = "a_prime"
+    run = Run(tmp_path, run_options(reopen_load_arm=arm_id if has_load else None))
+    original_launch = run.host.launch
+    original_artifact = col._Emitter.artifact
+
+    def launch(request):
+        result = original_launch(request)
+        if (request.arm_id, request.launch_id) == (arm_id, "reopen"):
+            return replace(result, tree_stopped=False)
+        return result
+
+    def artifact(emit, role, *args):
+        if role == f"plan117_v5_relay:{arm_id}:reopen:agent-to-zed.bin":
+            raise capture_error("synthetic failure during relay capture")
+        return original_artifact(emit, role, *args)
+
+    monkeypatch.setattr(run.host, "launch", launch)
+    monkeypatch.setattr(col._Emitter, "artifact", artifact)
+    batch = run.collect()
+    raw = run.raw()
+    result = c.reduce_document(raw, layer="raw")
+
+    assert run.host.approval_events[-1] == ("hold", "")
+    assert raw["aborted"] == {"reason_code": "zed_tree_unconfirmed", "stage": "launch"}
+    assert raw["custody"]["cleanup"]["targets"] == [{"role": "run_root", "removed": False, "absent_after": False}]
+    roles = {item.role for item in batch.artifacts}
+    assert f"plan117_v5_relay:{arm_id}:reopen:zed-to-agent.bin" in roles
+    assert f"plan117_v5_relay:{arm_id}:reopen:agent-to-zed.bin" not in roles
+    assert f"plan117_v5_checkpoint:{arm_id}:after_reopen" not in roles
+    if has_load:
+        assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP, result.reason_codes()
+        assert (result.primary.reason, result.primary.subject) == (R.REOPEN_LOAD_OBSERVED, arm_id)
+    else:
+        assert result.disposition in (D.INDETERMINATE_CURRENT_CLIENT_GATE, D.INVALID_CURRENT_CLIENT_GATE)
+        assert R.REOPEN_LOAD_OBSERVED not in _codes(result)
+
+
+
+@pytest.mark.parametrize("fault", ["write", "cleanup"])
+@pytest.mark.parametrize("has_load", [True, False], ids=["stop", "invalid"])
+def test_relay_scratch_error_preserves_wire_disposition(tmp_path, windows_shaped_paths, monkeypatch, fault, has_load):
+    run = Run(tmp_path, run_options(reopen_load_arm="a_prime" if has_load else None))
+    run.collect()
+    write_bytes = Path.write_bytes
+    cleanup = col.tempfile.TemporaryDirectory.cleanup
+    relay_writes = 0
+    faulty_directory = None
+    fault_count = 0
+
+    def write(path, payload):
+        nonlocal relay_writes, faulty_directory, fault_count
+        if path.name == "zed-to-agent.bin" and path.parent.name.startswith("p117v5-relay-"):
+            relay_writes += 1
+            if relay_writes == 2:  # A-prime reopen, where the observed load must survive.
+                faulty_directory = path.parent
+                if fault == "write":
+                    fault_count += 1
+                    raise PermissionError("synthetic relay scratch write failure")
+        return write_bytes(path, payload)
+
+    def remove(directory):
+        nonlocal fault_count
+        cleanup(directory)
+        if fault == "cleanup" and Path(directory.name) == faulty_directory:
+            fault_count += 1
+            raise PermissionError("synthetic relay scratch cleanup failure")
+
+    monkeypatch.setattr(Path, "write_bytes", write)
+    monkeypatch.setattr(col.tempfile.TemporaryDirectory, "cleanup", remove)
+    redaction = col.compute_redaction(run.context, identity_tokens=())
+
+    assert fault_count == 1
+    assert redaction.gate.disposition is (D.ZERO_ENTRY_REACHABLE_STOP if has_load else D.INVALID_CURRENT_CLIENT_GATE)
+    assert R.CUSTODY_ARTIFACT_FAILURE in _codes(redaction.gate)
+    assert redaction.raw is not None
+    assert "relay_scratch_io_failed" in redaction.raw.custody_failures
+    if has_load:
+        assert (redaction.gate.primary.reason, redaction.gate.primary.subject) == (R.REOPEN_LOAD_OBSERVED, "a_prime")
+
 
 
 def test_a_runtime_error_abort_after_a_positive_signal_is_still_stop(tmp_path, windows_shaped_paths, monkeypatch):

@@ -974,7 +974,8 @@ def _cmd_memory_setup(workspace_root: Path, *, store: bool = False) -> int:
     try:
         _snapshot, paths = _prepare_candidate_context(workspace_root)
         setup = run_store_setup if store else run_setup
-        path = setup(paths.config_root, keyring_backend=keyring_backend, confirm=confirm)
+        lock_root = resolve_trusted_operator_roots(platform_name=sys.platform).approval_runtime_root  # one lock for every config root
+        path = setup(paths.config_root, keyring_backend=keyring_backend, confirm=confirm, lock_root=lock_root)
     except OperatorPathConfigurationError as exc:
         print(f"optimus-trust: {exc.user_message}", file=sys.stderr)
         return exc.exit_code

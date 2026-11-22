@@ -50,7 +50,7 @@ def test_the_configured_artifact_loads_through_setup_with_the_network_refused(tm
         shutil.copytree(snapshot, target, dirs_exist_ok=True)
 
     defaults = shipped_defaults()
-    run_setup(tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _description: True, download=copy, defaults=defaults)  # checks the real digest
+    run_setup(tmp_path, lock_root=tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _description: True, download=copy, defaults=defaults)  # checks the real digest
     root = memory_index_root(tmp_path)
     result = subprocess.run([sys.executable, "-c", _NO_NETWORK, str(root), defaults["embedding"]["artifact_directory"]], capture_output=True, text=True, check=False, timeout=180)
     assert result.returncode == 0, result.stderr[-2000:]

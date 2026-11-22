@@ -18,7 +18,7 @@ import pytest
 from optimus.acp import memory_commands as mc
 from optimus.context import memory_backups as mb
 from optimus.context import memory_recovery as mr
-from tests.unit.context.test_memory_recovery import CANARY, _git, _Host
+from tests.unit.context.test_memory_recovery import CANARY, LOCK_FAULTS, _git, _Host, fault_platform_lock
 
 DAY = 24 * 3600 * 1000
 
@@ -145,11 +145,11 @@ def test_b04_one_publisher_per_project(tmp_path: Path, repo: Path, places: dict[
     def other_host() -> None:
         with mr._file_lock(lock):
             held.set()
-            release.wait(5)
+            release.wait()
     thread = threading.Thread(target=other_host)
     thread.start()
-    held.wait(5)
     try:
+        assert held.wait(5), "publisher lock holder did not signal acquisition"
         assert host.backups.run_if_due() is None  # the other publisher holds it
         with pytest.raises(mb.BackupError) as busy:
             host.backups.backup()
@@ -1211,3 +1211,23 @@ def test_product_default_reports_drive_independence_unknown(tmp_path: Path, repo
                          config_root=tmp_path / "config", disk_of=_disks(places, repo))  # the launch's store reference
     assessed = product.assess(places["separate"] / "b")  # a different disk from the recovery copy's
     assert assessed["domain"] == "unknown" and "memory store" in assessed["reason"]  # never "separate" without the store bound
+
+
+@pytest.mark.parametrize("number", LOCK_FAULTS)
+def test_a_lock_fault_stops_a_backup_with_its_own_code(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                         number: int) -> None:
+    """#529 review 2: the publisher lock refused for a reason other than another publisher is not "busy", and says its errno."""
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    clock.now += 2 * DAY
+    before = _published(places["separate"] / "b")  # setting up took the first backup
+    fault_platform_lock(monkeypatch, number)
+    with pytest.raises(mb.BackupError) as refused:
+        host.backups.backup()
+    assert refused.value.code == "BACKUP_LOCK_FAILED" and f"errno {number}" in refused.value.message
+    assert _published(places["separate"] / "b") == before
+    with pytest.raises(mb.BackupError) as state_refused:  # the state file's own lock, which every backup step updates
+        host.backups._state.update(lambda _state: None)
+    assert state_refused.value.code == "BACKUP_LOCK_FAILED"
