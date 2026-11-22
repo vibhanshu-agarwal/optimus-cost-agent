@@ -11,7 +11,6 @@ to the approval-store HMAC key.
 from __future__ import annotations
 
 import base64
-import errno
 import getpass
 import hashlib
 import hmac
@@ -20,7 +19,6 @@ import os
 import re
 import secrets
 import tempfile
-import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
@@ -30,6 +28,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from optimus.acp.trusted_paths import WorkspaceIdentity
+from optimus_file_lock import FileLock, LockBusy, LockFault
 
 ApprovalMode = Literal["one-shot", "durable"]
 
@@ -61,7 +60,6 @@ _LOCK_WAIT_SECONDS = 2.0
 _LOCK_POLL_SECONDS = 0.02
 _LOCK_FILE_NAME = "approval-service.lock"
 # Errnos a non-blocking acquire reports when another holder has the lock (msvcrt: EACCES; flock: EWOULDBLOCK).
-_CONTENTION_ERRNOS = frozenset({errno.EACCES, errno.EAGAIN, errno.EWOULDBLOCK, errno.EDEADLK})
 _CREDENTIAL_FUNCTIONS = frozenset({"CredRead", "CredWrite", "CredDelete"})
 
 
@@ -1082,45 +1080,21 @@ class KeyringApprovalStore:
         WinVaultKeyring.set_password re-saves whatever entry occupies the service's shared slot before it writes, so
         an unserialized writer could resurrect an entry another process had just consumed or revoked. Every process
         builds its store on the per-user approval runtime root, so they share this file. `wait` retries real
-        contention until _LOCK_WAIT_SECONDS; otherwise one attempt. Any other lock failure is LOCK_FAILED at once.
+        contention until _LOCK_WAIT_SECONDS; otherwise one attempt. Any other lock failure is LOCK_FAILED at once. The lock
+        itself is optimus_file_lock's (#532).
         """
-        import sys
-
+        lock = FileLock(self._runtime_root / "locks" / _LOCK_FILE_NAME)
         try:
-            lock_dir = self._runtime_root / "locks"
-            lock_dir.mkdir(parents=True, exist_ok=True)
-            lock_fd = open(lock_dir / _LOCK_FILE_NAME, "w")  # noqa: SIM115
-        except OSError as exc:
-            raise ApprovalError(code="LOCK_FAILED", detail=f"cannot open the approval lock file (errno {exc.errno})") from None
+            lock.acquire(wait=_LOCK_WAIT_SECONDS if wait else 0.0, poll=_LOCK_POLL_SECONDS)
+        except LockBusy as exc:
+            raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
+        except LockFault as exc:
+            verb = "open" if exc.stage == "open" else "lock"
+            raise ApprovalError(code="LOCK_FAILED", detail=f"cannot {verb} the approval lock file (errno {exc.errno})") from None
         try:
-            deadline = time.monotonic() + (_LOCK_WAIT_SECONDS if wait else 0.0)
-            while True:
-                try:
-                    if sys.platform == "win32":
-                        import msvcrt
-
-                        msvcrt.locking(lock_fd.fileno(), msvcrt.LK_NBLCK, 1)
-                    else:
-                        import fcntl
-
-                        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    break
-                except OSError as exc:
-                    if exc.errno not in _CONTENTION_ERRNOS:
-                        raise ApprovalError(code="LOCK_FAILED", detail=f"cannot lock the approval lock file (errno {exc.errno})") from None
-                    if time.monotonic() >= deadline:
-                        raise ApprovalError(code="LOCK_CONTENTION", detail="another consumer holds the lock") from exc
-                    time.sleep(_LOCK_POLL_SECONDS)
             yield
         finally:
-            if sys.platform == "win32":
-                import msvcrt
-
-                try:
-                    msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
-                except OSError:
-                    pass
-            lock_fd.close()
+            lock.release()
 
     def lookup_durable(
         self,

@@ -295,3 +295,28 @@ def test_a_process_killed_at_first_initialization_requires_explicit_recovery(tmp
     assert not registry.path.exists(), "no identity is allocated before an explicit recovery"
     registry.restore({"registry_version": project_registry.REGISTRY_VERSION, "projects": {}})
     assert registry.resolve(identity, create=True).created
+
+
+# --- #532: the registry's lock is optimus_file_lock's; these are the registry's own codes for it ----------------------
+
+
+def test_a_registry_lock_file_that_cannot_be_opened_is_lock_failed_at_once(tmp_path, repos):
+    config = tmp_path / "config"
+    (config / "locks" / project_registry._LOCK_FILE_NAME).mkdir(parents=True)  # a folder where the lock file belongs
+    with pytest.raises(ProjectRegistryError) as failed:
+        ProjectRegistry(config, lock_wait_seconds=30).resolve(resolve_workspace_identity(repos["plain"]), create=True)
+    assert failed.value.code == "LOCK_FAILED" and "cannot open the registry lock file (errno " in str(failed.value)
+
+
+def test_a_registry_lock_the_os_refuses_is_lock_failed_not_contention(tmp_path, repos, monkeypatch):
+    import errno
+
+    import optimus_file_lock
+
+    def refused(_handle):
+        raise OSError(errno.ENOLCK, "no locks available")
+
+    monkeypatch.setattr(optimus_file_lock, "_lock", refused)
+    with pytest.raises(ProjectRegistryError) as failed:
+        ProjectRegistry(tmp_path / "config", lock_wait_seconds=30).resolve(resolve_workspace_identity(repos["plain"]), create=True)
+    assert failed.value.code == "LOCK_FAILED" and f"cannot lock the registry (errno {errno.ENOLCK})" in str(failed.value)
