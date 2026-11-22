@@ -344,6 +344,36 @@ def test_memory_moving_on_from_a_clean_copy_is_read_again_never_a_recorded_failu
     assert generation.count == 2 and state.failure is None and state.last_success["name"] == generation.name  # type: ignore[index]
 
 
+def test_b11_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer(tmp_path: Path, repo: Path,
+                                                                                         places: dict[str, Path],
+                                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 1, finding 2, the backup's side: the write fails and recording the failure fails too (the backup
+    settings share the full disk); `/memory backup now` still answers with the write failure, and says the record is missing."""
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    host.remember("Tests run with pytest -q.")  # a new generation to publish
+    clock.now += 2 * DAY
+    settings = host.backups._state.path
+    real = mr._durable_json
+    filled: list[int] = []  # the disk fills while the backup is written: every later settings write is refused too
+
+    def full(path: Path, value: Any) -> None:
+        if path == settings and filled:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        real(path, value)
+
+    def no_space(_captured: dict[str, bytes], _final: Path, _prefix: str) -> None:
+        filled.append(1)
+        raise OSError(errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(mr, "_durable_json", full)
+    monkeypatch.setattr(mb.Backups, "_publish", staticmethod(no_space))
+    answer = host.run("/memory backup now")
+    assert "could not be written to" in answer.text and "It could not be recorded either: The backup settings could not be " \
+        "saved (No space left on device)" in answer.text, answer.text
+
+
 def test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one(tmp_path: Path, repo: Path,
                                                                                           places: dict[str, Path],
                                                                                           monkeypatch: pytest.MonkeyPatch) -> None:

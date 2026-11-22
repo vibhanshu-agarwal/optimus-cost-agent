@@ -621,8 +621,8 @@ def _unresolved(records: Sequence[dict[str, Any]]) -> set[str]:
 
 
 def _notice_record(notice: MemoryNotice) -> dict[str, Any]:
-    """The notice backlog's record (`optimus.acp.spec._notice_record`)."""
-    return {"event_id": notice.event_id, "item": notice.item, "version": notice.version, "action": notice.action,
+    """The notice backlog's record (`optimus.acp.spec._notice_record`), marked as an import's so a replayed card says "Imported"."""
+    return {"imported": True, "event_id": notice.event_id, "item": notice.item, "version": notice.version, "action": notice.action,
             "durable_state": notice.durable_state, "projection_state": notice.projection_state}
 
 

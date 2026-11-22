@@ -106,6 +106,7 @@ def parameter(project_root):
 # have no place in this map: they must use tracked_repository_files instead.
 ALLOWED_NON_REPOSITORY_WALKERS: dict[str, str] = {
     "tests/integration/context/test_memory_b1_canaries.py:_persisted_files:rglob:*": "Reads the AOF and RDB files copied out of the released test container into tmp_path.",
+    "tests/unit/context/test_memory_recovery.py:test_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer:glob:*.tmp": "Checks that a refused state write left no temporary file in the recovery state folder this test made under tmp_path.",
     "tests/unit/context/test_memory_recovery.py:test_a_location_or_copy_the_os_cannot_write_is_a_readable_answer:glob:.staging-*": "Checks that a refused recovery-copy write left no staging folder in the recovery location this test made under tmp_path.",
     "tests/unit/context/test_memory_backups.py:test_b11_a_failed_write_keeps_the_last_good_backup_and_retries_only_transients:glob:.staging-*": "Checks that no staging folder is left in the backup folder this test made under tmp_path.",
     "tests/unit/context/test_memory_backups.py:test_interrupted_publication_never_counts_staging:glob:.staging-*": "Checks that an interrupted backup left no staging folder in the backup folder this test made under tmp_path.",

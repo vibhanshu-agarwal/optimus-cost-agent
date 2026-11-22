@@ -216,6 +216,9 @@ class BackupStateFile:
                 change(state)
                 mr._durable_json(self.path, state.to_json())
                 return state
+        except OSError as failure:  # a full or read-only disk: an answer, never a raw error (Codex CP3 review 1, finding 2)
+            raise BackupError("BACKUP_STATE_UNWRITABLE", f"The backup settings could not be saved "
+                              f"({mr.os_reason(failure, self.path)}); the earlier settings are kept.") from None
         except mr.RecoveryError as refused:  # a fault keeps its own code: only another holder is busy (#529 review 2)
             code = refused.code if refused.code == "BACKUP_LOCK_FAILED" else "BACKUP_BUSY"
             raise BackupError(code, refused.message, transient=True) from None
@@ -626,21 +629,31 @@ class Backups:
                         if failure.transient and attempts < TRANSIENT_TRIES:
                             self._sleep(0.5 * attempts)
                             continue
-                        if failure.code not in ("BACKUP_BUSY", "BACKUP_SOURCE_MOVED"):  # memory moving on is not a failure
-                            self._failed(failure, attempts)
+                        if failure.code not in ("BACKUP_BUSY", "BACKUP_SOURCE_MOVED", "BACKUP_STATE_UNWRITABLE"):
+                            # memory moving on is not a failure; a settings file the disk refuses cannot record one
+                            recorded = self._failed(failure, attempts)
+                            if recorded is not failure:
+                                raise recorded from None
                         raise
                     return generation
         except mr.RecoveryError as busy:
             raise BackupError(busy.code, busy.message, transient=True) from None
 
-    def _failed(self, failure: BackupError, attempts: int) -> None:
+    def _failed(self, failure: BackupError, attempts: int) -> BackupError:
+        """Record `failure` as the last attempt's. When even that record cannot be saved (often the same full disk), the answer
+        is still this failure's, and says the record is missing too."""
         now = self._clock()
         record: dict[str, Any] = {"code": failure.code, "message": failure.message, "at_ms": now, "attempts": attempts,
                                   "transient": failure.transient}
 
         def change(state: BackupState) -> None:
             state.failure, state.last_attempt_ms = record, now
-        self._state.update(change)
+        try:
+            self._state.update(change)
+        except BackupError as unsaved:
+            return BackupError(failure.code, f"{failure.message} It could not be recorded either: {unsaved.message}",
+                               transient=failure.transient)
+        return failure
 
     def _checked_target(self, state: BackupState) -> Path:
         """Every check configuration made, again, plus the identity recorded then; raises when any no longer holds."""

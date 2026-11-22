@@ -747,6 +747,7 @@ def test_a_host_that_dies_mid_apply_loses_no_notice_and_the_next_apply_reconcile
     third = next(e for e in _items(store) if e.statement == "Entry 2.")
     assert third.event_id in {n.event_id for n, _label in resumed.notices}
     assert len(_items(store)) == 5 and len(backlog.pending()) == 5
+    assert all(record.get("imported") is True for record in backlog.pending())  # replayed cards say "Imported" (Codex CP3 review 1)
 
 
 def test_a_copys_manifest_is_read_bounded_and_identity_checked(tmp_path: Path) -> None:

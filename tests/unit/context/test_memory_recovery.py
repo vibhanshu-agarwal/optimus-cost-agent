@@ -959,6 +959,54 @@ def test_a_pin_serves_only_its_own_bind_and_only_while_it_is_kept(tmp_path: Path
     assert evicted.value.code == "RECOVERY_EXPORT_MOVED"
 
 
+@pytest.mark.parametrize("damaged", ["entries.jsonl", "MEMORY.md"])
+def test_a_same_name_generation_is_reused_only_when_every_file_is_what_the_export_would_write(tmp_path: Path, repo: Path,
+                                                                                           damaged: str) -> None:
+    """Codex CP3 review 1, finding 1: an export repeated in the same millisecond finds its own name published. It is reused only
+    when all three files are exactly what this export would write; a damaged payload beside an intact manifest is refused, and
+    nothing is retired or recorded as exported."""
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.recovery._clock = lambda: 1_800_000_000_000  # the same millisecond for both exports
+    host.run("/memory export")
+    first = host.recovery.state().exported
+    assert host.recovery.export().name == first["name"]  # unchanged: the published generation is reused as it is
+    (mr.location(repo) / first["name"] / damaged).write_bytes(b"damaged\n")
+    with pytest.raises(mr.RecoveryError) as refused:
+        host.recovery.export()
+    assert refused.value.code == "RECOVERY_GENERATION_DAMAGED"
+    assert host.recovery.state().exported == first and host.recovery.state().failure == "RECOVERY_GENERATION_DAMAGED"
+    assert (mr.location(repo) / first["name"] / damaged).read_bytes() == b"damaged\n"  # left for the user, never rewritten
+
+
+def test_a_full_disk_that_also_refuses_the_failure_record_is_still_a_readable_answer(tmp_path: Path, repo: Path,
+                                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """Codex CP3 review 1, finding 2: the copy and the recovery state share a full disk. Writing the copy fails, and so does
+    recording that failure; `/memory export` still answers with the write failure and says the record is missing too."""
+    host = _Host(tmp_path, repo)
+    host.remember("Never push to main.")
+    host.run("/memory export")
+    host.remember("Tests run with pytest -q.")
+    state_path = host.recovery._state.path
+    real = mr._durable_json
+    filled: list[int] = []  # the disk fills while the copy is written: every later state write is refused too
+
+    def full(path: Path, value: Any) -> None:
+        if path == state_path and filled:
+            raise OSError(errno.ENOSPC, "No space left on device")
+        real(path, value)
+
+    def no_space(_path: Path, _data: bytes) -> None:
+        filled.append(1)
+        raise OSError(errno.ENOSPC, "No space left on device")
+    monkeypatch.setattr(mr, "_durable_json", full)
+    monkeypatch.setattr(mr, "_write", no_space)
+    answer = host.run("/memory export")
+    assert "could not be written to" in answer.text and "It could not be recorded either: The recovery state could not be saved " \
+        "(No space left on device)" in answer.text, answer.text
+    assert not list(state_path.parent.glob("*.tmp"))  # the refused state write left no partial file
+
+
 def test_the_gateway_refuses_a_pinned_head_it_no_longer_holds(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A read naming a head the Gateway neither holds nor is at is refused, never answered from a newer head."""
     from optimus_gateway import memory_store

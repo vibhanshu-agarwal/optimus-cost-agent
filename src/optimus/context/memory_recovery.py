@@ -115,11 +115,16 @@ def _file_lock(path: Path, *, wait: float = STATE_LOCK_SECONDS, code: str = "REC
 def _durable_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
-    with open(temporary, "wb") as handle:
-        handle.write(json.dumps(value, sort_keys=True, ensure_ascii=True).encode("ascii"))
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    try:
+        with open(temporary, "wb") as handle:
+            handle.write(json.dumps(value, sort_keys=True, ensure_ascii=True).encode("ascii"))
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            temporary.unlink()  # a write the disk refused leaves no partial file behind
+        raise
 
 
 @dataclass
@@ -183,7 +188,11 @@ class StateFile:
         with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
             state = self.load()
             change(state)
-            _durable_json(self.path, state.to_json())
+            try:
+                _durable_json(self.path, state.to_json())
+            except OSError as failure:  # a full or read-only disk: an answer, never a raw error (Codex CP3 review 1, finding 2)
+                raise RecoveryError("RECOVERY_STATE_UNWRITABLE", f"The recovery state could not be saved "
+                                    f"({os_reason(failure, self.path)}); the earlier state is kept.") from None
             return state
 
 
@@ -504,15 +513,23 @@ class Recovery:
             try:
                 generation = self._export(state, destination)
             except RecoveryError as failure:
-                code = failure.code
-                self._state.update(lambda s: setattr(s, "failure", code))
-                raise
+                raise self._recorded(failure) from None
             except OSError as failure:  # not recorded as exported; one renamed into place first is retired like any older copy
-                self._state.update(lambda s: setattr(s, "failure", "RECOVERY_WRITE_FAILED"))
-                raise RecoveryError("RECOVERY_WRITE_FAILED", f"The recovery copy could not be written to {destination} "
-                                    f"({os_reason(failure, destination)}). The last copy is kept.") from None
+                raise self._recorded(RecoveryError("RECOVERY_WRITE_FAILED", f"The recovery copy could not be written to {destination} "
+                                                   f"({os_reason(failure, destination)}). The last copy is kept.")) from None
             self._clean_prior()
             return generation
+
+    def _recorded(self, failure: RecoveryError) -> RecoveryError:
+        """`failure`, recorded as the last export's. When even that record cannot be saved (often the same full disk), the
+        answer is still this failure's, and says the record is missing too."""
+        if failure.code == "RECOVERY_STATE_UNWRITABLE":
+            return failure  # the state file itself is what the disk refused: recording it there would only fail again
+        try:
+            self._state.update(lambda s: setattr(s, "failure", failure.code))
+        except RecoveryError as unsaved:
+            return RecoveryError(failure.code, f"{failure.message} It could not be recorded either: {unsaved.message}")
+        return failure
 
     def _export(self, state: RecoveryState, destination: Path) -> Generation:
         check_git_exclusion(destination, self._git)
@@ -534,16 +551,20 @@ class Recovery:
                         "frontier": final["frontier"], "journal": final["journal"], "seal": final["seal"], "count": len(entries),
                         "entries_sha256": hashlib.sha256(body).hexdigest()}
             manifest_bytes = json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True).encode("ascii")
+            entry_point = memory_md(entries, name)
             published = destination / name
-            if published.is_dir() and _read_or_none(published / "manifest.json") == manifest_bytes:
-                pass  # this exact generation is already published (an export repeated in the same millisecond, or a rename whose
-                #       record was lost): it is kept as it is, never written again
+            if published.is_dir():  # the same name: an export repeated in the same millisecond, or a rename whose record was lost
+                held = [_read_or_none(published / file) for file in ("entries.jsonl", "MEMORY.md", "manifest.json")]
+                if held != [body, entry_point, manifest_bytes]:  # every file, not the manifest alone (Codex CP3 review 1, finding 1)
+                    raise RecoveryError("RECOVERY_GENERATION_DAMAGED", f"A recovery copy named {name} is already in {destination} "
+                                        "but differs from what was read; it was not replaced or counted, and no older copy was "
+                                        "removed.")
             else:
                 staging = destination / f".staging-{secrets.token_hex(8)}"
                 staging.mkdir()
                 try:
                     _write(staging / "entries.jsonl", body)
-                    _write(staging / "MEMORY.md", memory_md(entries, name))
+                    _write(staging / "MEMORY.md", entry_point)
                     _write(staging / "manifest.json", manifest_bytes)
                     _fsync_dir(staging)
                     os.replace(staging, published)  # one atomic rename on the same volume publishes the whole generation
