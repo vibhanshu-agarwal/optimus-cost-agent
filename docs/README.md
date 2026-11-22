@@ -129,6 +129,7 @@ Live plans (each listed in the backlog's live plan registry):
 | Plan | What it is |
 |---|---|
 | [Plan 12.13: context explanation and ranked ambiguity (memory M2a)](superpowers/plans/2026-11-23-plan-12-13-context-why-and-ambiguity-implementation_v3.md) | #545; `/why`, ranked ambiguous-reference suggestions (#242) and a measured observation/read split (#245); zero paid calls; M2b is Plan 12.14 |
+| [Plan 12.14: ranking refinements and model-aware context budgets (memory M2b)](superpowers/plans/2026-11-23-plan-12-14-ranking-and-budgets-implementation.md) | #548; utility-weighted optional packing, a model-aware budget on one configured entry (#243), overflow-only outlines and paid quality checks (USD 6.50 maximum, each released separately); starts after Plan 12.13 |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v5: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v5.md) | #240; durable ACP sessions and Zed resume ([adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md)). v1 to v3 are in `archive/`; v4 is a local frozen predecessor |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
