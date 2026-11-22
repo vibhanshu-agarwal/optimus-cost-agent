@@ -144,6 +144,46 @@ async def test_refused_or_cancelled_renewal_allocates_nothing_and_cleans_future(
     assert channel._futures == {} and adapter._reopen_reservations == {}
 
 
+async def test_a_cancel_while_the_names_are_found_never_asks_for_the_renewal(composed, monkeypatch):
+    """Codex round 116 (#530): a cancel sent while the prompt finds its workspace names cancels the renewal before it asks."""
+    from tests.unit.acp.test_context_engine_admission import _held_finder
+
+    adapter, session, _, _, runner = composed
+    state = session.client_mcp_state
+    suspend(state)
+    wire = PermissionWire()
+    adapter._outbound = channel = NdjsonOutboundChannel(wire)
+    entered, release = _held_finder(monkeypatch)
+    task = asyncio.create_task(prompt(adapter, session))
+    assert await asyncio.to_thread(entered.wait, 5)
+    await adapter.handle_client_notification({"method": "session/cancel", "params": {"sessionId": session.session_id}})
+    release.set()
+    response = await asyncio.wait_for(task, 5)
+    assert response.response["result"] == {"stopReason": "cancelled"}
+    assert wire.requests.empty()  # never asked
+    assert state.suspended and not runner.requests
+    assert channel._futures == {} and adapter._reopen_reservations == {} and adapter._reopen_cancelled == set()
+
+async def test_an_approved_renewal_keeps_the_prompts_workspace_names(composed, tmp_path):
+    """Codex round 116 attempt 2 (#530): the admission after a renewal keeps the names the first admission kept."""
+    from tests.unit.context.test_memory_serving import RUNNER_ID
+
+    named = tmp_path / "tests" / "unit" / "tools" / "test_runner.py"
+    named.parent.mkdir(parents=True, exist_ok=True)
+    named.write_text("x = 1", encoding="utf-8")
+    adapter, session, _, _, runner = composed
+    suspend(session.client_mcp_state)
+    wire = PermissionWire()
+    adapter._outbound = channel = NdjsonOutboundChannel(wire)
+    text = f"Run {RUNNER_ID} and fix what fails."
+    task = asyncio.create_task(adapter.handle_client_request({"jsonrpc": "2.0", "id": 1, "method": "session/prompt",
+        "params": {"sessionId": session.session_id, "prompt": [{"type": "text", "text": text}]}}))
+    pending = await asyncio.wait_for(wire.requests.get(), 1)
+    channel.deliver_client_response({"id": pending["id"], "result": {"outcome": {"outcome": "selected", "optionId": "allow_once"}}})
+    assert "result" in (await asyncio.wait_for(task, 5)).response
+    assert runner.requests[-1].task == text
+    assert [record.user_prompt for record in session.conversation.records.values()] == [text]
+
 async def test_setter_during_renewal_preserves_admitted_mode_and_chat_has_no_mcp(composed):
     adapter, session, _, _, runner = composed
     suspend(session.client_mcp_state)

@@ -932,8 +932,7 @@ def test_a_failed_head_swap_keeps_the_last_record(tmp_path: Path, monkeypatch: p
 
 def test_an_entry_naming_a_workspace_file_is_imported_as_written(tmp_path: Path) -> None:
     """#525, as measured in the Plan 12.12 pilot: an entry naming a long test id was refused by the scan."""
-    from optimus.context import memory_serving
-    from tests.unit.context.test_memory_serving import RUNNER_ID, _conversation, _persisted, _workspace
+    from tests.unit.context.test_memory_serving import RUNNER_ID, _aware, _persisted, _workspace
 
     entry = f"Run {RUNNER_ID} before committing."
     root = _source(tmp_path / "repo", {"MEMORY.md": f"- {entry} [project: p-1]\n"})
@@ -941,5 +940,5 @@ def test_an_entry_naming_a_workspace_file_is_imported_as_written(tmp_path: Path)
     assert "(scan)" in refused, refused
     store = _store(tmp_path)
     workspace = _workspace(tmp_path)
-    _imported(_commands(store, tmp_path, sanitize=memory_serving.workspace_sanitizer(_conversation(), workspace), workspace=workspace), root)
+    _imported(_commands(store, tmp_path, sanitize=_aware(workspace), workspace=workspace), root)
     assert _statements(store) == [entry]

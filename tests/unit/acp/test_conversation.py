@@ -11,6 +11,7 @@ from optimus.acp.conversation import (
     ConversationDisposition,
     ConversationOutcome,
     ConversationSanitizer,
+    ConversationSanitizerInputs,
     ConversationState,
     ConversationTurn,
     build_conversation_sanitizer_inputs,
@@ -292,3 +293,44 @@ def test_build_usage_update_uses_uint64_integers() -> None:
     assert "cost" not in omitted["update"]
     assert isinstance(omitted["update"]["used"], int)
     assert isinstance(omitted["update"]["size"], int)
+
+
+# --- #530: the prompt keeps the workspace's file names ---------------------------------------------------------------------
+
+
+def test_admission_keeps_workspace_file_names_found_off_the_loop(tmp_path: Path, monkeypatch) -> None:
+    from optimus.context import memory_serving
+    from tests.unit.context.test_memory_serving import RUNNER_ID, _workspace
+
+    workspace = _workspace(tmp_path)
+    known = "TestLocalRunner::test_job_object"
+    sanitizer = ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=()), workspace=workspace)
+    prompt = f"Run {RUNNER_ID} and fix what fails."
+    names = sanitizer.workspace_names(prompt)
+    admitted = ConversationState(sanitizer).prepare_admission(prompt, entropy_exempt=names)
+    assert admitted.sanitized_user_prompt == prompt
+    assert ConversationState(sanitizer).prepare_admission(prompt).sanitized_user_prompt != prompt  # names not found: as before
+    secretive = ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(known,), path_aliases=()), workspace=workspace)
+    assert known not in ConversationState(secretive).prepare_admission(prompt, entropy_exempt=secretive.workspace_names(prompt)).sanitized_user_prompt
+
+    def opened(*args, **kwargs):
+        raise AssertionError("sanitize looked at the workspace")
+
+    monkeypatch.setattr(memory_serving, "FilePolicy", opened)
+    assert sanitizer.sanitize(prompt, entropy_exempt=names) == prompt  # the loop's path never looks at a file
+
+
+def test_the_history_snapshot_keeps_the_names_a_record_holds(tmp_path: Path) -> None:
+    """Compaction extraction reads the snapshot's prompts, which are sanitized again when it is built (off the loop)."""
+    from optimus.context.adapter import make_history_snapshot
+    from tests.unit.context.test_memory_serving import RUNNER_ID, _workspace
+
+    sanitizer = ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=()), workspace=_workspace(tmp_path))
+    state = ConversationState(sanitizer)
+    prompt = f"Run {RUNNER_ID} before committing."
+    seq = state.allocate_turn_seq()
+    state.commit_after_final_flush(state.prepare_commit(seq, sanitized_user_prompt=prompt, sanitized_plan_text="",
+                                                        sanitized_completion_text="done", outcome=ConversationOutcome.COMPLETED,
+                                                        effect_state=EffectState.NONE))
+    snapshot = make_history_snapshot(session_key="s", generation=1, records=state.records, approvals={}, sanitizer=sanitizer)
+    assert snapshot.turns[0].user_prompt == prompt

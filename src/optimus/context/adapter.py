@@ -83,7 +83,7 @@ def make_history_snapshot(
         turns.append(
             OrdinaryTurn(
                 seq=seq,
-                user_prompt=sanitizer.sanitize(record.user_prompt),
+                user_prompt=sanitizer.sanitize_in_workspace(record.user_prompt),  # built off the loop; keeps file names (#530)
                 plan_text=sanitizer.sanitize(record.plan_text) if record.plan_text else "",
                 completion_text=sanitizer.sanitize(record.completion_text),
             )
