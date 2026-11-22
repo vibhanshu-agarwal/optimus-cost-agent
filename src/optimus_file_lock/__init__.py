@@ -111,6 +111,8 @@ class FileLock:
                     if remaining <= 0:
                         raise LockBusy(exc.errno, f"another process holds {self.path.name}") from exc
                     time.sleep(min(interval, remaining))
+                    if time.monotonic() >= deadline:  # a sleep that overran never buys an attempt past the deadline
+                        raise LockBusy(exc.errno, f"another process holds {self.path.name}") from exc
         except BaseException:
             handle.close()
             raise

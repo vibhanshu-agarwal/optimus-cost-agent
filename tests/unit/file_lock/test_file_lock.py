@@ -104,6 +104,34 @@ def test_a_waiter_takes_the_lock_as_soon_as_its_holder_releases(tmp_path: Path) 
     waiter.release()
 
 
+def test_a_sleep_that_overruns_the_deadline_never_buys_another_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Codex #532 review 1, finding 1: the holder lets go while the waiter oversleeps; the lock is free when the waiter
+    wakes, but its deadline has passed, so it is busy without trying again."""
+    now = [100.0]
+    attempts: list[float] = []
+
+    class Clock:
+        @staticmethod
+        def monotonic() -> float:
+            return now[0]
+
+        @staticmethod
+        def sleep(seconds: float) -> None:
+            now[0] += seconds + 0.2  # the scheduler wakes the waiter late
+
+    def free_after_the_first_attempt(_handle: IO[bytes]) -> None:
+        attempts.append(now[0])
+        if len(attempts) == 1:
+            raise OSError(sorted(fl.CONTENTION_ERRNOS)[0], "held")
+
+    monkeypatch.setattr(fl, "time", Clock)
+    monkeypatch.setattr(fl, "_lock", free_after_the_first_attempt)
+    lock = fl.FileLock(tmp_path / "x.lock")
+    with pytest.raises(fl.LockBusy):
+        lock.acquire(wait=0.1, poll=0.05)
+    assert attempts == [100.0] and not lock.held
+
+
 def test_the_old_hand_rolled_locks_and_this_one_exclude_each_other(tmp_path: Path) -> None:
     """A process still running the code from before #532 and one running this take the same byte, so neither gets in."""
     path = tmp_path / "x.lock"
