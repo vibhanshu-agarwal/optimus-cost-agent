@@ -13,6 +13,7 @@ import sys
 import time
 from pathlib import Path
 
+import keyring
 import pytest
 
 from tools.testing import run_context
@@ -36,7 +37,8 @@ def test_xdist_probe(index: int, pytestconfig: pytest.Config) -> None:
     facts: dict[str, object] = {"index": index, "worker": worker, "pid": os.getpid(),
                                 "run_context": run_context.current() is not None,
                                 "controller": None if state is None else state.controller_root["pid"],
-                                "secret_visible": xdist_context.WORKER_INPUT in getattr(pytestconfig, "workerinput", {})}
+                                "secret_visible": xdist_context.WORKER_INPUT in getattr(pytestconfig, "workerinput", {}),
+                                "keyring": type(keyring.get_keyring()).__module__}
     if action == "grandchild" and worker == "gw0":
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])  # noqa: S603 - fixed program
         facts["grandchild"] = child.pid

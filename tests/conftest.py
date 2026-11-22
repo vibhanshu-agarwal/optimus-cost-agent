@@ -20,6 +20,7 @@ from optimus.redis.async_bridge import shutdown_background_loop
 from optimus.redis.runtime import RedisRuntime
 from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
 from tests.support.contract_doubles import contract_call_scope
+from tests.support.keyring_isolation import install_fail_keyring, keyring_for_test
 from tools.plan1126_unrun_binding import (
     binding_commit_available,
     format_terminal_summary,
@@ -63,6 +64,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     config.stash[_PLAN1126_UNRUN_COUNT] = 0
+    install_fail_keyring()  # #538: before the worker return, so the controller and every worker get it
     if run_context_xdist.is_worker(config):
         # An xdist worker attaches to its controller's run, guarded before collection; it never starts its own.
         config.stash[_XDIST_WORKER] = run_context_xdist.start_worker(config)
@@ -243,6 +245,13 @@ def _default_trusted_root_isolation(request: pytest.FixtureRequest, monkeypatch:
 def _shutdown_redis_bridge_after_session() -> None:
     yield
     shutdown_background_loop()
+
+
+@pytest.fixture(autouse=True)
+def _host_keyring_only_for_marked_tests(request: pytest.FixtureRequest) -> Iterator[None]:
+    """#538: keyring's `fail` backend for every test, the host's only for `requires_os_keyring(_write)`."""
+    with keyring_for_test(request.node):
+        yield
 
 
 @pytest.fixture(autouse=True)
