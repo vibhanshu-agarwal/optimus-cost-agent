@@ -1,18 +1,19 @@
 {
  "schema": "plan12-memory-m2a.index-check.v1",
- "head": "git:562c0079a0d51e719e55ce5648384bc0d096ec2d",
+ "head": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
  "phase": "index-check",
  "inputs": {
-  "cases.json": "hex:7b0d3e136e2646d7d8c2ead3f364003c9fb54c8b0854d6183c5ae46ef85eb47c",
+  "cases.json": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2",
   "ranking-policy.json": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac",
   "evaluation-contract.json": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390",
-  "case-provenance.json": "hex:4ab2233e96f92662fb39386e788256fad73d392a1037a9b5796030c253ee5a19"
+  "case-provenance.json": "hex:cf65775aa6ea63fc0fcc56e733d0dde923f5070ac9a567c6cc58d3b2f54efeeb"
  },
  "paid_attempts": 0,
  "provider_cost_usd": "0",
  "families": [
   {
    "family": "A-F1",
+   "split": "train",
    "files_written": 3,
    "records": 7,
    "coverage": {
@@ -31,6 +32,8 @@
      "path": "src/gateway/config.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "RouteConfig",
@@ -42,6 +45,8 @@
      "path": "src/agent/config.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "AgentSettings"
@@ -52,6 +57,8 @@
      "path": "tests/fixtures/config.py",
      "frozen": "none",
      "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [],
      "matches": true
@@ -60,6 +67,8 @@
      "path": "src/gateway/server.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [
       "gateway.config"
      ],
@@ -77,6 +86,7 @@
   },
   {
    "family": "A-F2",
+   "split": "train",
    "files_written": 4,
    "records": 7,
    "coverage": {
@@ -95,6 +105,8 @@
      "path": "src/optimus/context/utils.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "fold_terms"
@@ -105,6 +117,8 @@
      "path": "src/optimus/acp/utils.py",
      "frozen": "stale",
      "observed": "stale",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "render_markdown"
@@ -115,6 +129,8 @@
      "path": "tools/utils.py",
      "frozen": "none",
      "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [],
      "matches": true
@@ -123,6 +139,8 @@
      "path": "secrets/utils.py",
      "frozen": "denied",
      "observed": "none",
+     "policy_allowed": false,
+     "policy_reason": "deny.secret",
      "imports": [],
      "labels": [],
      "matches": true
@@ -131,6 +149,8 @@
      "path": "src/a/helpers.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "slugify"
@@ -141,6 +161,8 @@
      "path": ".venv/lib/helpers.py",
      "frozen": "denied",
      "observed": "none",
+     "policy_allowed": false,
+     "policy_reason": "deny.skipped_dir",
      "imports": [],
      "labels": [],
      "matches": true
@@ -150,6 +172,7 @@
   },
   {
    "family": "A-F3",
+   "split": "train",
    "files_written": 3,
    "records": 7,
    "coverage": {
@@ -168,6 +191,8 @@
      "path": "src/optimus/agent/models.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "AgentRunStatus",
@@ -179,6 +204,8 @@
      "path": "src/optimus_gateway/models.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "ChatRequest"
@@ -189,6 +216,8 @@
      "path": "src/evidence_handoff/ledger/models.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "EntryKind"
@@ -200,6 +229,7 @@
   },
   {
    "family": "A-F4",
+   "split": "train",
    "files_written": 5,
    "records": 10,
    "coverage": {
@@ -218,6 +248,8 @@
      "path": "tests/unit/acp/test_session.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [
       "optimus.acp.session"
      ],
@@ -230,6 +262,8 @@
      "path": "tests/integration/acp/test_session.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [
       "optimus.acp.session"
      ],
@@ -242,6 +276,8 @@
      "path": "tests/unit/context/test_session.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [
       "optimus.context.memory_session"
      ],
@@ -254,6 +290,8 @@
      "path": "src/optimus/context/memory_session.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "MemorySession"
@@ -264,6 +302,8 @@
      "path": "src/optimus/acp/session.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "AcpSession"
@@ -279,6 +319,7 @@
   },
   {
    "family": "A-F5",
+   "split": "development",
    "files_written": 1,
    "records": 2,
    "coverage": {
@@ -297,6 +338,8 @@
      "path": "docs/x/schema.json",
      "frozen": "none",
      "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [],
      "matches": true
@@ -305,6 +348,8 @@
      "path": "reports/a/schema.json",
      "frozen": "none",
      "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [],
      "matches": true
@@ -313,6 +358,8 @@
      "path": "src/optimus/acp/schema.json",
      "frozen": "none",
      "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [],
      "matches": true
@@ -321,6 +368,8 @@
      "path": "src/optimus/acp/spec.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "load_schema"
@@ -334,6 +383,7 @@
   },
   {
    "family": "A-F6",
+   "split": "development",
    "files_written": 3,
    "records": 7,
    "coverage": {
@@ -352,6 +402,8 @@
      "path": "src/optimus_gateway/client.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "UpstreamClient"
@@ -362,6 +414,8 @@
      "path": "src/optimus/mcp/client.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "McpClient",
@@ -373,6 +427,8 @@
      "path": "src/optimus/acp/client.py",
      "frozen": "none",
      "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [],
      "matches": true
@@ -381,6 +437,8 @@
      "path": "src/optimus/acp/server.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [
       "optimus.acp.client"
      ],
@@ -396,6 +454,7 @@
   },
   {
    "family": "A-F7",
+   "split": "held_out",
    "files_written": 3,
    "records": 6,
    "coverage": {
@@ -414,6 +473,8 @@
      "path": "tests/conftest.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "pytest_configure"
@@ -424,6 +485,8 @@
      "path": "tests/integration/context/conftest.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "index_redis"
@@ -434,17 +497,19 @@
      "path": "tests/unit/agent/conftest.py",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "fake_gateway"
      ],
      "matches": true
     }
-   ],
-   "neighbours_of_resolved_task_paths": {}
+   ]
   },
   {
    "family": "A-F8",
+   "split": "held_out",
    "files_written": 4,
    "records": 8,
    "coverage": {
@@ -463,6 +528,8 @@
      "path": "README.md",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "Install",
@@ -474,6 +541,8 @@
      "path": "docs/README.md",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "Plans"
@@ -484,6 +553,8 @@
      "path": "docs/decisions/README.md",
      "frozen": "verified",
      "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [
       "Index"
@@ -494,6 +565,8 @@
      "path": "tests/fixtures/README.md",
      "frozen": "none",
      "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
      "imports": [],
      "labels": [],
      "matches": true
@@ -502,14 +575,13 @@
      "path": "private/M2A-SENTINEL-DENIED-PATH-5b1e/README.md",
      "frozen": "denied",
      "observed": "none",
+     "policy_allowed": false,
+     "policy_reason": "ignored.gitignore",
      "imports": [],
      "labels": [],
      "matches": true
     }
-   ],
-   "neighbours_of_resolved_task_paths": {
-    "README.md": []
-   }
+   ]
   }
  ],
  "mismatches": [],
@@ -529,5 +601,6 @@
   "revision": "git:aa8f8b060edb00e03bfdd08813a2949946c8ba55",
   "artifact_sha256": "hex:7b7f88b3e493cb8adb2c519fc05f0518364676e3f200ea3598550f02636fe0de"
  },
- "later_files": "files marked none were written after publication; files marked stale were edited after it; denied files are never indexed"
+ "later_files": "files marked none were written after publication, leaving the frozen ignore file unchanged; files marked stale were edited after it; denied files must be refused by the real FilePolicy and absent from the index",
+ "task_text": "read only for train/development families (neighbours of resolved task paths); held-out families report metadata states only"
 }

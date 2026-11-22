@@ -1,12 +1,12 @@
 {
  "schema": "plan12-memory-m2a.calibration.v1",
- "head": "git:562c0079a0d51e719e55ce5648384bc0d096ec2d",
+ "head": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
  "phase": "calibration",
  "inputs": {
-  "cases.json": "hex:7b0d3e136e2646d7d8c2ead3f364003c9fb54c8b0854d6183c5ae46ef85eb47c",
+  "cases.json": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2",
   "ranking-policy.json": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac",
   "evaluation-contract.json": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390",
-  "case-provenance.json": "hex:4ab2233e96f92662fb39386e788256fad73d392a1037a9b5796030c253ee5a19"
+  "case-provenance.json": "hex:cf65775aa6ea63fc0fcc56e733d0dde923f5070ac9a567c6cc58d3b2f54efeeb"
  },
  "paid_attempts": 0,
  "provider_cost_usd": "0",
@@ -351,6 +351,7 @@
   }
  },
  "split": {
+  "completion_scope": "demand-only: a plan, no parse failure, and exactly the expected evidence records (path, range, file sha256, whole payload). Route fitting (ContextPacker.fit) is UNRUN here and is checked in Task 3; contract-qualified completion needs it.",
   "boundaries": {
    "S02": {
     "totals": {
@@ -560,12 +561,19 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 12 expected)",
+      "read blocks differ (0 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_UNPARSEABLE_RESPONSE",
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -580,12 +588,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1403,
@@ -600,12 +613,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1404,
@@ -620,12 +638,18 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 10 expected)",
+      "read blocks differ (0 found, 10 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -640,12 +664,19 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 6 expected)",
+      "read blocks differ (0 found, 1 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_UNPARSEABLE_RESPONSE",
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -660,12 +691,19 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 10 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_UNPARSEABLE_RESPONSE",
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -680,10 +718,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1352,
@@ -698,10 +739,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1352,
@@ -716,10 +760,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1352,
@@ -734,10 +781,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (3 found, 7 expected)",
+      "read blocks differ (3 found, 4 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 904,
@@ -752,10 +806,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1402,
@@ -770,10 +827,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1402,
@@ -788,12 +848,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (3 found, 7 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1663,
@@ -808,10 +873,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2048,
@@ -826,12 +894,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 5 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 764,
@@ -846,10 +919,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 900,
@@ -864,12 +940,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 9 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2010,
@@ -884,12 +965,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 954,
@@ -906,10 +992,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (6 found, 12 expected)",
+      "read blocks differ (6 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2693,
@@ -924,10 +1017,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4096,
@@ -942,10 +1038,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2693,
@@ -960,10 +1063,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4004,
@@ -978,10 +1084,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)",
+      "read blocks differ (5 found, 1 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2997,
@@ -996,10 +1109,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 10 expected)",
+      "read blocks differ (5 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2997,
@@ -1014,10 +1134,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1032,10 +1159,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1352,
@@ -1050,10 +1180,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1068,10 +1205,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2115,
@@ -1086,10 +1226,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1402,
@@ -1104,10 +1247,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1402,
@@ -1122,10 +1268,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 7 expected)",
+      "read blocks differ (4 found, 3 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2602,
@@ -1140,10 +1293,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 906,
@@ -1158,12 +1318,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 5 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 764,
@@ -1178,10 +1343,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 900,
@@ -1196,10 +1364,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 9 expected)",
+      "read blocks differ (5 found, 4 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2497,
@@ -1214,12 +1389,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 954,
@@ -1236,10 +1416,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 5404,
@@ -1254,10 +1437,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4096,
@@ -1272,10 +1458,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4097,
@@ -1290,10 +1479,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4004,
@@ -1308,10 +1500,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 6144,
@@ -1326,10 +1521,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 6009,
@@ -1344,10 +1542,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1362,10 +1567,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1380,10 +1592,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1398,10 +1617,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 2115,
@@ -1416,10 +1638,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1402,
@@ -1434,10 +1659,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 1402,
@@ -1452,10 +1680,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4265,
@@ -1470,10 +1701,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 906,
@@ -1488,12 +1726,17 @@
      "completed": false,
      "planned": true,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 5 expected)"
+     ],
      "stop": null,
      "parse_failures": [
       "OBSERVATION_TOO_LARGE"
      ],
+     "budget_stop": true,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 764,
@@ -1508,10 +1751,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 900,
@@ -1526,10 +1772,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4507,
@@ -1544,10 +1793,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 6144,
@@ -1564,10 +1816,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 5404,
@@ -1582,10 +1837,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4096,
@@ -1600,10 +1858,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4097,
@@ -1618,10 +1879,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4004,
@@ -1636,10 +1900,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 6144,
@@ -1654,10 +1921,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 6009,
@@ -1672,10 +1942,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1690,10 +1967,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1708,10 +1992,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1726,10 +2017,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (3 found, 7 expected)",
+      "read blocks differ (3 found, 4 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 904,
@@ -1744,10 +2042,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 4 expected)",
+      "read blocks differ (0 found, 4 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1762,10 +2067,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 4 expected)",
+      "read blocks differ (0 found, 4 expected)",
+      "1 requests, 2 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 1,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 0,
@@ -1780,10 +2092,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4265,
@@ -1798,10 +2113,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 906,
@@ -1816,10 +2138,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 8192,
@@ -1834,10 +2159,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 900,
@@ -1852,10 +2180,13 @@
      "completed": true,
      "planned": true,
      "evidence_complete": true,
+     "evidence_problems": [],
      "stop": null,
      "parse_failures": [],
+     "budget_stop": false,
      "requests": 3,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 4507,
@@ -1870,10 +2201,17 @@
      "completed": false,
      "planned": false,
      "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
      "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
      "parse_failures": [],
+     "budget_stop": true,
      "requests": 2,
      "weakened": false,
+     "route_fit": "UNRUN",
      "cost_usd": "0",
      "measured": {
       "observations": 5190,
@@ -1889,13 +2227,15 @@
     "train": {
      "completed": 5,
      "of": 12,
-     "budget_stops": 2,
+     "budget_stops": 7,
+     "other_stops": 0,
      "parse_failures": 6
     },
     "development": {
      "completed": 2,
      "of": 6,
-     "budget_stops": 2,
+     "budget_stops": 4,
+     "other_stops": 0,
      "parse_failures": 4
     }
    },
@@ -1903,13 +2243,15 @@
     "train": {
      "completed": 5,
      "of": 12,
-     "budget_stops": 6,
+     "budget_stops": 7,
+     "other_stops": 0,
      "parse_failures": 1
     },
     "development": {
      "completed": 2,
      "of": 6,
-     "budget_stops": 3,
+     "budget_stops": 4,
+     "other_stops": 0,
      "parse_failures": 1
     }
    },
@@ -1917,13 +2259,15 @@
     "train": {
      "completed": 7,
      "of": 12,
-     "budget_stops": 4,
+     "budget_stops": 5,
+     "other_stops": 0,
      "parse_failures": 1
     },
     "development": {
      "completed": 6,
      "of": 6,
      "budget_stops": 0,
+     "other_stops": 0,
      "parse_failures": 0
     }
    },
@@ -1932,12 +2276,14 @@
      "completed": 7,
      "of": 12,
      "budget_stops": 5,
+     "other_stops": 0,
      "parse_failures": 0
     },
     "development": {
      "completed": 3,
      "of": 6,
      "budget_stops": 3,
+     "other_stops": 0,
      "parse_failures": 0
     }
    }
@@ -1950,7 +2296,13 @@
     "6/10": "loses baseline-success schedules: S10",
     "8/8": "loses baseline-success schedules: S10, S12, S13, S14"
    },
-   "qualifying": []
+   "eligible": [
+    {
+     "partition": "4/12",
+     "completed": 7,
+     "budget_stops": 11
+    }
+   ]
   }
  }
 }
