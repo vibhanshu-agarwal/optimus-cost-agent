@@ -1231,3 +1231,22 @@ def test_a_lock_fault_stops_a_backup_with_its_own_code(monkeypatch: pytest.Monke
     with pytest.raises(mb.BackupError) as state_refused:  # the state file's own lock, which every backup step updates
         host.backups._state.update(lambda _state: None)
     assert state_refused.value.code == "BACKUP_LOCK_FAILED"
+
+
+
+def test_a_backup_target_whose_writer_lock_cannot_be_opened_is_a_write_failure(tmp_path: Path, repo: Path,
+                                                                                places: dict[str, Path]) -> None:
+    """#532: the target's writer lock failing to open is still the backup's own write failure, read from its errno, as
+    before the lock moved to optimus_file_lock; it is not a lock fault code."""
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    clock.now += 2 * DAY
+    before = _published(target)
+    (target / ".lock").unlink()
+    (target / ".lock").mkdir()  # a folder where the writer's lock file belongs
+    with pytest.raises(mb.BackupError) as refused:
+        host.backups.backup()
+    assert refused.value.code == "BACKUP_WRITE_FAILED" and _published(target) == before

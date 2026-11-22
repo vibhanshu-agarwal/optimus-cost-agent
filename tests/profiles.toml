@@ -675,6 +675,7 @@ paths = [
   "tests/unit/context/test_memory_import.py",
   "tests/unit/context/test_memory_workspace.py",
   "tests/unit/context/test_memory_recovery.py",
+  "tests/unit/file_lock/test_file_lock.py",
   "tests/unit/guardrails/test_file_policy.py",
   "tests/unit/guardrails/test_local_secret_scan_encoding.py",
   "tests/unit/guardrails/test_runtime_tree.py",
@@ -1118,6 +1119,7 @@ serial = [
   "tests/unit/acp/test_stdio_ndjson.py",
   "tests/unit/context/test_memory_store_setup.py",
   "tests/unit/context/test_memory_workspace.py",
+  "tests/unit/file_lock/test_file_lock.py",
   "tests/unit/context/test_project_registry.py",
   "tests/unit/context_engine/test_code_index.py",
   "tests/unit/context_engine/test_boundaries.py",
@@ -1166,3 +1168,16 @@ nodes = [
   "tests/unit/context/test_memory_store_setup.py::test_concurrent_store_setups_on_one_keyring_service_both_keep_their_passwords",
 ]
 why = "#529: two setup threads are made to meet at keyring's shared-slot write, without and with the setup lock, on barrier timing."
+
+[[rules]]
+tier = "proc"
+nodes = ["tests/unit/file_lock/test_file_lock.py::test_another_process_holds_it_until_it_releases_or_dies"]
+why = "#532: a real child process holds the lock until it releases it or is killed; serial, never on xdist workers."
+
+[[tags]]
+name = "concurrency"
+nodes = [
+  "tests/unit/file_lock/test_file_lock.py::test_another_holder_is_busy_until_it_lets_go",
+  "tests/unit/file_lock/test_file_lock.py::test_a_waiter_takes_the_lock_as_soon_as_its_holder_releases",
+]
+why = "#532: two lock handles contend on deadline and release timing, one released from a timer thread."

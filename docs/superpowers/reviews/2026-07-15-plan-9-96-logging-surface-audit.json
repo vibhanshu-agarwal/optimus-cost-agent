@@ -289,22 +289,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "evidence_handoff_runtime.lifecycle:_LifecycleLock.__enter__:file_open",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: lifecycle lock opens a private lock file for mutual exclusion only; no diagnostic payload is written through this open.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/evidence_handoff/test_lifecycle.py::test_concurrent_start_is_serialized_by_lifecycle_lock",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "evidence_handoff_runtime.lifecycle:_LifecycleLock._lock_file:text_write",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: lifecycle lock writes only a process ownership marker into the private lock file; not a diagnostic export.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/evidence_handoff/test_lifecycle.py::test_concurrent_start_is_serialized_by_lifecycle_lock",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "evidence_handoff_runtime.lifecycle_cli:main:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: lifecycle_cli main serializes content-free status/result objects for operator stdout; secrets stay out of argv and structured output.",
@@ -934,14 +918,6 @@
       "rationale": "Inspection: optimus.acp.launch_approval_cli:main:stderr_export prints only controlled operational, status, or typed failure text to stderr and does not retain it.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_launch_approval_cli.py::test_run_command_accepts_elevated_debug",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.acp.launch_approvals:KeyringApprovalStore._service_lock:file_open",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: KeyringApprovalStore._service_lock:file_open opens only the trusted approval-runtime lock file that serializes every approvals-service operation (#433; it replaces the per-workspace lock files of consume_one_shot and _exclusive_workspace_lock); it writes nothing to the file and does not retain diagnostic payloads.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_launch_approvals_lock_failures.py::test_a_held_lock_refuses_with_lock_contention_and_keeps_the_approval",
       "evidence_tier": "unit"
     },
     {
@@ -4793,14 +4769,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus_model_policy.stage_c:_Lock.__init__:file_open",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: opens the ledger's .lock file only to hold an exclusive operating-system lock for the Gateway's life; nothing is written to it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/model_policy/test_stage_c_ledger.py::test_one_writer_holds_the_ledger",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus_model_policy.stage_c:_digest:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: canonical JSON of the envelope fields or the fixed scenario catalogue, serialized only to compute its SHA-256; the text is never persisted or exported.",
@@ -5689,14 +5657,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.context.project_registry:ProjectRegistry._lock:file_open",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: opens only the per-user project-registry lock file under the config root to serialize registry operations (Plan 12.6); it writes nothing to the file and retains no diagnostic payload.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/context/test_project_registry.py::test_lock_contention_is_bounded_and_reported",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.context.project_registry:ProjectRegistry._store:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: serializes only the versioned registry document (project ids, Git common-dir or folder keys, worktree paths) for its atomic replacement; no diagnostic, exception or file content is included.",
@@ -6294,14 +6254,6 @@
       "rationale": "Inspection (Plan 12.8, ADR-032): reads the size and last byte of the day's newest copy segment to decide whether the next line may be appended (never after a torn line); nothing is written.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_a_restart_continues_the_sequence_in_a_new_segment_after_a_torn_tail",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus_gateway.diagnostic_segments:_directory_lock:file_open",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection (Plan 12.8, ADR-032; Codex Checkpoint C finding 1): opens the copy directory's empty lock file to serialize the per-user Gateways' appends; nothing is written to it.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/optimus_gateway/test_diagnostic_segments.py::test_two_gateway_processes_share_one_sequence_rollover_and_cap",
       "evidence_tier": "unit"
     },
     {
@@ -7161,19 +7113,27 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.context.memory_recovery:_file_lock:file_open",
-      "policy": "safe-by-construction",
-      "rationale": "Plan 12.11: opens the lock file beside the recovery state, the notice backlog or a recovery location, to hold an OS lock on it; nothing is written.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/context/test_memory_recovery.py::test_a_held_lock_is_never_taken_over_by_its_age",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.context.memory_recovery:bind_digest:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch (Plan 12.11): serializes a generation's host metadata only to hash it for the Gateway's seal; nothing is written or exported.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/context/test_memory_recovery.py::test_a_generation_is_an_agent_memory_repo_and_its_metadata_cannot_be_changed",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus_file_lock.__init__:FileLock.acquire:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "#532: opens, appending and never truncating, the lock file its caller names (the approvals service, project registry, memory recovery and backup, Stage C ledger, Gateway diagnostics and evidence lifecycle locks) to hold an OS lock on its first byte; nothing is written to it.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/file_lock/test_file_lock.py::test_another_holder_is_busy_until_it_lets_go",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "evidence_handoff_runtime.lifecycle_cli:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "#532: prints only {\"error\": <code>} to stderr, where the code is LIFECYCLE_LOCK_BUSY or LIFECYCLE_LOCK_FAILED: value-free, with no path, password or detail, and not retained.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/evidence_handoff/test_lifecycle_cli.py::test_a_lifecycle_lock_held_elsewhere_is_a_bounded_error_and_exit_2",
       "evidence_tier": "unit"
     }
   ]

@@ -4232,6 +4232,12 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     import_committed = b"from optimus.context.memory_import import" in probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/context/memory_extraction.py")
     if not import_committed:
         expected -= {import_path}
+    # #532: the cross-process file lock, keyed on HEAD's memory recovery importing it.
+    file_lock_path = "src/optimus_file_lock/__init__.py"
+    file_lock_committed = b"from optimus_file_lock import" in probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/context/memory_recovery.py")
+    if not file_lock_committed:
+        expected -= {file_lock_path}
+    assert (file_lock_path in closure) is file_lock_committed
     assert (backups_path in closure) is backups_committed
     assert (import_path in closure) is import_committed
     assert (extraction_paths <= closure) is extraction_committed
@@ -4279,7 +4285,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         8 if capture_committed else 0
     ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
         5 if memory_session_committed else 0
-    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed
+    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
