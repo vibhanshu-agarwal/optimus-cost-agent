@@ -1550,6 +1550,7 @@ def compute_redaction(context: RunContext, *, identity_tokens: Sequence[str]) ->
     sanitized, mapping = contract.derive_sanitized_manifest(raw)
     sanitized_bytes = contract.canonical_json_bytes(sanitized)
     mapping_bytes = contract.canonical_json_bytes(mapping)
+    mapping_binding = contract.commit_private_mapping(mapping_bytes, raw.run_key)
     violations = list(contract.find_privacy_violations(sanitized, forbidden_strings=contract.private_forbidden_strings(raw), identity_tokens=identity_tokens))
     if contract.reduce_document(sanitized, layer="sanitized") != gate:
         violations.append("layer_disagreement")
@@ -1557,7 +1558,7 @@ def compute_redaction(context: RunContext, *, identity_tokens: Sequence[str]) ->
     _write_once(run_dir.joinpath(*RAW_MANIFEST_LOCATOR.split("/")), raw_bytes)
     _write_once(run_dir.joinpath(*MAPPING_LOCATOR.split("/")), mapping_bytes)
     return StagedRedaction("quarantined" if violations else "awaiting_review", gate, raw, contract.sha256_hex(raw_bytes),
-                           contract.sha256_hex(mapping_bytes), sanitized_bytes, contract.canonical_json_bytes(report))
+                           mapping_binding, sanitized_bytes, contract.canonical_json_bytes(report))
 
 
 def stage_redaction(context: RunContext, *, staging_root: Path, quarantine_root: Path, identity_tokens: Sequence[str]) -> StagedRedaction:

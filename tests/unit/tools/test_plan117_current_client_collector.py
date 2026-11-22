@@ -6,6 +6,7 @@ touched; every artifact is synthetic and none is live or accepted evidence.
 
 from __future__ import annotations
 
+import hmac
 import json
 from pathlib import Path
 
@@ -1572,11 +1573,38 @@ def test_accepting_receipt_promotes_manifest_report_and_attestation(tmp_path, wi
     attestation = c.parse_attestation(json.loads((final / "redaction-attestation.json").read_text(encoding="utf-8")))
     assert attestation.sanitized_manifest_sha256 == c.sha256_hex((final / "manifest.json").read_bytes())
     assert attestation.redaction_report_sha256 == c.sha256_hex((final / "redaction-report.json").read_bytes())
-    assert attestation.mapping_sha256 == c.sha256_hex((run.run_dir / col.MAPPING_LOCATOR).read_bytes())
+    assert attestation.mapping_sha256 == staged.mapping_sha256
     assert attestation.raw_manifest_sha256 == c.sha256_hex((run.run_dir / col.RAW_MANIFEST_LOCATOR).read_bytes())
     assert attestation.receipt_sha256 == c.sha256_hex(c.canonical_json_bytes(dict(attestation.receipt.document)))
     assert attestation.gate["disposition"] == D.ACCEPTED_CURRENT_CLIENT_GATE.value
     assert [p.name for p in roots["sanitized"].iterdir()] == [RUN_ID]
+
+
+def test_private_path_mapping_binding_is_keyed_at_promotion(tmp_path, windows_shaped_paths):
+    run, roots, staged = _staged(tmp_path)
+    assert staged.raw is not None
+    mapping_bytes = (run.run_dir / col.MAPPING_LOCATOR).read_bytes()
+    plain_digest = c.sha256_hex(mapping_bytes)
+    key = staged.raw.run_key
+    message = b"plan-11-7-v5:mapping:v1\x00" + mapping_bytes
+    expected = hmac.digest(key, message, "sha256").hex()
+    other_run_key = bytes([key[0] ^ 1]) + key[1:]
+    wrong_binding = hmac.digest(other_run_key, message, "sha256").hex()
+
+    for invalid_binding in (plain_digest, wrong_binding):
+        receipt = _receipt(run, staged, mapping_sha256=invalid_binding)
+        with pytest.raises(HostError) as excinfo:
+            _promote(run, roots, receipt)
+        assert excinfo.value.code == "receipt_binding_mismatch"
+        assert not (roots["sanitized"] / RUN_ID).exists()
+
+    receipt = _receipt(run, staged, mapping_sha256=expected)
+    final = _promote(run, roots, receipt)
+    attestation = c.parse_attestation(c.strict_json_loads((final / col.ATTESTATION_NAME).read_bytes()))
+    assert attestation.mapping_sha256 == attestation.receipt.mapping_sha256 == expected
+    assert plain_digest in c.private_forbidden_strings(staged.raw)
+    for artifact in (*final.iterdir(), receipt):
+        assert plain_digest.encode("ascii") not in artifact.read_bytes()
 
 
 @pytest.mark.parametrize(
