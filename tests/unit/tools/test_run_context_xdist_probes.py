@@ -19,6 +19,9 @@ import pytest
 from tools.testing import run_context
 from tools.testing import run_context_xdist as xdist_context
 
+# #538: the backend this module saw when its worker collected it, before any fixture ran.
+_COLLECTION_KEYRING = type(keyring.get_keyring()).__module__
+
 
 @pytest.mark.parametrize("index", range(4))
 def test_xdist_probe(index: int, pytestconfig: pytest.Config) -> None:
@@ -38,7 +41,7 @@ def test_xdist_probe(index: int, pytestconfig: pytest.Config) -> None:
                                 "run_context": run_context.current() is not None,
                                 "controller": None if state is None else state.controller_root["pid"],
                                 "secret_visible": xdist_context.WORKER_INPUT in getattr(pytestconfig, "workerinput", {}),
-                                "keyring": type(keyring.get_keyring()).__module__}
+                                "keyring": type(keyring.get_keyring()).__module__, "collection_keyring": _COLLECTION_KEYRING}
     if action == "grandchild" and worker == "gw0":
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])  # noqa: S603 - fixed program
         facts["grandchild"] = child.pid

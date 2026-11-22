@@ -7,7 +7,7 @@ keyring's own `fail` backend for the whole session, in the controller and in eve
 what CI sees and a call fails at once. Only a test marked `requires_os_keyring` or `requires_os_keyring_write`
 re-resolves the host backend, for that test alone.
 
-In-process only: a child process resolves its own backend (residual on #538). A run that selects its own backend for
+In-process only: a child process resolves its own backend (residual, #540). A run that selects its own backend for
 the pytest process, as MAIN-5 does with `PYTHON_KEYRING_BACKEND=counting_keyring.CountingKeyring`, no longer sees
 pytest-process calls in that backend's audit: they reach `fail`, so an empty audit there does not mean no calls.
 """

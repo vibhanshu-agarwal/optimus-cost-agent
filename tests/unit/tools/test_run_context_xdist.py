@@ -363,7 +363,8 @@ def test_two_real_workers_run_under_one_controller_owned_run(tmp_path: Path) -> 
     assert {line["worker"] for line in lines} == {"gw0", "gw1"}, lines  # both real workers ran tests
     assert not any(line["run_context"] for line in lines), lines  # no worker holds the run's streams
     assert not any(line["secret_visible"] for line in lines), lines  # nor can its tests read the run's secret
-    assert {line["keyring"] for line in lines} == {"keyring.backends.fail"}, lines
+    assert {line["keyring"] for line in lines} == {"keyring.backends.fail"}, lines  # in each test
+    assert {line["collection_keyring"] for line in lines} == {"keyring.backends.fail"}, lines  # and at worker collection
     controller_pid = record["root"]["pid"]
     assert all(line["pid"] != controller_pid for line in lines), lines
     identities = {item["worker"]: item for item in verdict["identities"]}
