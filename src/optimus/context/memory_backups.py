@@ -216,6 +216,9 @@ class BackupStateFile:
                 change(state)
                 mr._durable_json(self.path, state.to_json())
                 return state
+        except OSError as failure:  # a full or read-only disk: an answer, never a raw error (Codex CP3 review 1, finding 2)
+            raise BackupError("BACKUP_STATE_UNWRITABLE", f"The backup settings could not be saved "
+                              f"({mr.os_reason(failure, self.path)}); the earlier settings are kept.") from None
         except mr.RecoveryError as refused:  # a fault keeps its own code: only another holder is busy (#529 review 2)
             code = refused.code if refused.code == "BACKUP_LOCK_FAILED" else "BACKUP_BUSY"
             raise BackupError(code, refused.message, transient=True) from None
@@ -459,6 +462,7 @@ class Backups:
         self._store_data, self._disk_of, self._clock, self._git, self._sleep = store_data, disk_of, clock, git, sleep
         self._runtime_data = runtime_data
         self._lock = threading.Lock()
+        self._refresh = False  # memory moved on from the recovery copy: the next attempt exports it again first
 
     @property
     def project(self) -> str:
@@ -534,7 +538,11 @@ class Backups:
         self._placement(target)
         if mr.sync_root(target) and not assessed["synced"]:
             raise changed  # it became synced after the user was shown it: the disclosure no longer holds
-        target.mkdir(parents=True, exist_ok=True)
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+        except OSError as failure:
+            raise BackupError("BACKUP_TARGET_UNWRITABLE", f"{target} could not be created ({mr.os_reason(failure, target)}). Choose "
+                              "another folder. Nothing was changed.") from None
         if _reparse_in_chain(target) is not None or str(target.resolve()) != assessed["target"]:
             raise changed
         found = identity(target)
@@ -610,8 +618,11 @@ class Backups:
         `explicit` is the user's own `/memory backup now`: it also releases cleanup held in earlier synced targets."""
         lock = self._state.path.with_name(self._state.path.name + ".publish.lock")
         try:
-            with self._lock, mr._file_lock(lock, wait=LOCK_SECONDS, code="BACKUP_BUSY", fault_code="BACKUP_LOCK_FAILED",
-                                           message="Another session is taking this project's backup; try again shortly."):
+            unopened = lambda failure: BackupError(  # noqa: E731 - the publisher lock lives in the config folder (Codex CP3 review 2)
+                "BACKUP_STATE_UNWRITABLE", f"The backup's lock file could not be opened ({mr.os_reason(failure, lock)}); nothing "
+                "was written.")
+            with self._lock, mr._opened_lock(lock, unopened, wait=LOCK_SECONDS, code="BACKUP_BUSY", fault_code="BACKUP_LOCK_FAILED",
+                                             message="Another session is taking this project's backup; try again shortly."):
                 attempts = 0
                 while True:
                     attempts += 1
@@ -621,21 +632,31 @@ class Backups:
                         if failure.transient and attempts < TRANSIENT_TRIES:
                             self._sleep(0.5 * attempts)
                             continue
-                        if failure.code not in ("BACKUP_BUSY", "BACKUP_SOURCE_MOVED"):  # memory moving on is not a failure
-                            self._failed(failure, attempts)
+                        if failure.code not in ("BACKUP_BUSY", "BACKUP_SOURCE_MOVED", "BACKUP_STATE_UNWRITABLE"):
+                            # memory moving on is not a failure; a settings file the disk refuses cannot record one
+                            recorded = self._failed(failure, attempts)
+                            if recorded is not failure:
+                                raise recorded from None
                         raise
                     return generation
         except mr.RecoveryError as busy:
             raise BackupError(busy.code, busy.message, transient=True) from None
 
-    def _failed(self, failure: BackupError, attempts: int) -> None:
+    def _failed(self, failure: BackupError, attempts: int) -> BackupError:
+        """Record `failure` as the last attempt's. When even that record cannot be saved (often the same full disk), the answer
+        is still this failure's, and says the record is missing too."""
         now = self._clock()
         record: dict[str, Any] = {"code": failure.code, "message": failure.message, "at_ms": now, "attempts": attempts,
                                   "transient": failure.transient}
 
         def change(state: BackupState) -> None:
             state.failure, state.last_attempt_ms = record, now
-        self._state.update(change)
+        try:
+            self._state.update(change)
+        except BackupError as unsaved:
+            return BackupError(failure.code, f"{failure.message} It could not be recorded either: {unsaved.message}",
+                               transient=failure.transient)
+        return failure
 
     def _checked_target(self, state: BackupState) -> Path:
         """Every check configuration made, again, plus the identity recorded then; raises when any no longer holds."""
@@ -662,7 +683,8 @@ class Backups:
             raise BackupError("BACKUP_NEEDS_RECOVERY_COPY", "Backups copy the recovery copy, which is not set up: `/memory export` sets "
                               "it up first.")
         try:
-            if recovery_state.dirty or recovery_state.exported is None or recovery_state.cleanup_pending:
+            if recovery_state.dirty or recovery_state.exported is None or recovery_state.cleanup_pending or self._refresh:
+                self._refresh = False
                 self._recovery.export()
             exported = self._recovery.state()
             if exported.exported is None or exported.destination is None:
@@ -698,13 +720,18 @@ class Backups:
         same deletion frontier and the same seal; the manifest's count must be its entries'. Memory moving on (head or journal)
         is transient: the generation is refreshed. Returns the entries."""
         manifest, entries = _manifest_and_entries(captured, name, project)
+        moved = BackupError("BACKUP_SOURCE_MOVED", "Memory changed while the backup was checked; it will be read again.",
+                            transient=True)
         try:
-            fresh, final = self._recovery._read_generation(manifest["bind"])
+            fresh, final = self._recovery._read_generation(manifest["bind"], pin=manifest["head"])  # at the copy's own head
         except mr.RecoveryError as failure:
-            raise BackupError(failure.code, failure.message, transient=True) from None
+            if failure.code != "RECOVERY_SOURCE_MOVED":
+                raise BackupError(failure.code, failure.message, transient=True) from None
+            self._refresh = True  # the copy's head is gone (written elsewhere, the kept generation lapsed): export it again
+            raise moved from None
         if final["head"] != manifest["head"] or final["journal"] != manifest["journal"]:
-            raise BackupError("BACKUP_SOURCE_MOVED", "Memory changed while the backup was checked; it will be tried again.",
-                              transient=True)
+            self._refresh = True
+            raise moved
         if (final["seal"] != manifest["seal"] or fresh != entries or final["frontier"] != manifest["frontier"]
                 or manifest["count"] != len(entries)):
             raise BackupError("BACKUP_GENERATION_UNAUTHENTIC", "The backup does not match what the memory store sealed; it was not "
@@ -740,12 +767,10 @@ class Backups:
                     shutil.rmtree(stale, ignore_errors=True)  # this project's interrupted earlier attempt: never a generation
         except mr.RecoveryError as failure:
             raise BackupError(failure.code, failure.message, transient=failure.code == "RECOVERY_BUSY") from None
-        except FileNotFoundError:
-            raise BackupError("BACKUP_SOURCE_MOVED", "The recovery copy changed while it was copied; it will be tried again.",
-                              transient=True) from None
-        except OSError as failure:
+        except OSError as failure:  # the source was captured before this block: every OS error here is the target's
             transient = failure.errno in _TRANSIENT_ERRNOS or getattr(failure, "winerror", None) == _SHARING_VIOLATION
-            raise BackupError("BACKUP_WRITE_FAILED", f"The backup could not be written to {target} ({failure.strerror or failure}). "
+            reason = mr.os_reason(failure, Path(failure.filename) if failure.filename else target)
+            raise BackupError("BACKUP_WRITE_FAILED", f"The backup could not be written to {target} ({reason}). "
                               "The last backup is kept.", transient=transient) from None
         domain, reason = self._domain(target)
         now = self._clock()
@@ -896,9 +921,14 @@ class Backups:
         elif state.target:
             lines.append("no backup taken yet")
         if state.enabled and self.due(state):
-            overdue = (f" (overdue since {time.strftime('%Y-%m-%d', time.gmtime((state.last_success['at_ms'] + DUE_AFTER_MS) / 1000))})"
-                       if state.last_success else "")
-            lines.append(f"a backup is due{overdue}; backups are taken while a session of this project is open and pause while none is")
+            deadline = state.last_success["at_ms"] + DUE_AFTER_MS if state.last_success else None
+            if deadline is not None and self._clock() >= deadline:
+                why = f" (overdue since {time.strftime('%Y-%m-%d', time.gmtime(deadline / 1000))})"
+            elif state.cleanup_pending:
+                why = " now, to finish cleanup"  # due early: never an overdue date still in the future (real-Zed CP3 finding)
+            else:
+                why = ""
+            lines.append(f"a backup is due{why}; backups are taken while a session of this project is open and pause while none is")
         if state.held:
             lines.append(f"held: {state.held}")
         if state.failure:
@@ -906,7 +936,7 @@ class Backups:
                      else "not retried until `/memory backup now` or a new configuration")
             lines.append(f"last attempt failed: {state.failure['message']} ({retry})")
         if state.cleanup_pending:
-            lines.append(f"withdrawn; backup cleanup pending for {len(state.cleanup_pending)} item(s)")
+            lines.append(f"backup cleanup pending for {len(state.cleanup_pending)} withdrawn item(s)")
         if state.unreadable:
             lines.append("unreadable folders in the backup folder may hold withdrawn text: " + ", ".join(state.unreadable))
         for prior in state.prior:

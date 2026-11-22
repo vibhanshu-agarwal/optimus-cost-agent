@@ -1,0 +1,241 @@
+{
+ "schema": "plan12-memory-m3-part2.qualification.v1",
+ "plan": "12.12",
+ "issue": 491,
+ "full_suite_head": "git:036ab630615fe30116bf84b55342e155c1c09b8c",
+ "ci_head": "git:6d3ed923ffe3ec0e01d4cb0a3805213cd54ad07e",
+ "rule": "each claim names its reports and the head each was produced at; a report from an earlier head is attributed to that head only, and the src/ files changed between it and the full-suite head are listed, never relabelled",
+ "claims": [
+  {
+   "claim": "Scope and authority",
+   "status": "recorded: approved hash, D1-D4, releases and the oracle mapping",
+   "reports": [
+    {
+     "path": "reports/plan12-memory-m3-part2/manifest.json",
+     "sha256": "hex:80b9227fff979823a10bb3c2497925183c9603d529c4660626c4573292e5f338"
+    },
+    {
+     "path": "reports/plan12-memory-m3-part2/decisions.json",
+     "sha256": "hex:7dd065398d8ecf02778480098948a7338e0f9336b84124b5b7d842ea2e55ca57"
+    }
+   ]
+  },
+  {
+   "claim": "Backup/recovery",
+   "status": "PASS: backups 22/22 cases; restore 7 PASS, 1 REUSED, 1 PASS (unit fault injection); contention: CP2 FAIL kept, CP3 run 3 PASS at e02de5a (backups.json contention.cp3)",
+   "reports": [
+    {
+     "path": "reports/plan12-memory-m3-part2/backups.json",
+     "sha256": "hex:72b620a13cf658f0896a5c344301fc6da7ed709e8a543f0372e7ff2fe7ea2b1a",
+     "source_head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py",
+      "src/optimus_security/memory_store_contract.py"
+     ]
+    },
+    {
+     "path": "reports/plan12-memory-m3-part2/restore.json",
+     "sha256": "hex:0ca9776515a97497d5a9746764e9156b5f341beef44a792b72f37c100e8d005d",
+     "source_head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py",
+      "src/optimus_security/memory_store_contract.py"
+     ]
+    }
+   ],
+   "final_head_refresh": "tests/integration/memory/test_backups.py and test_recovery.py on the real store at the CI head: part of 20 passed"
+  },
+  {
+   "claim": "Deletion continuity",
+   "status": "recorded copies and boundaries, with the external limits named",
+   "reports": [
+    {
+     "path": "reports/plan12-memory-m3-part2/copy-inventory.json",
+     "sha256": "hex:f4f6a438f02ba8602b432c3be870f2d8cf7a194d6091a4719610eca4a904a4b5",
+     "source_head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py",
+      "src/optimus_security/memory_store_contract.py"
+     ]
+    },
+    {
+     "path": "reports/plan12-memory-m3-part2/erasure-boundaries.json",
+     "sha256": "hex:693f011e491cb8fbea4cb5b33e0af5d9878d8dd06171681d3cf4975f4bfe02b2",
+     "source_head": "git:d369e88d51996d7948bac13cbfc44dc9d20e08d0",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py",
+      "src/optimus_security/memory_store_contract.py"
+     ]
+    }
+   ],
+   "final_head_refresh": "test_backups.py::test_withdrawal_publishes_clean_before_retiring, ::test_restore_applies_newer_deletions and test_import.py::test_a_withdrawn_import_leaves_the_next_copy_payload_free at the CI head: part of 20 passed"
+  },
+  {
+   "claim": "Import authority/isolation",
+   "status": "import 28/28 PASS; round trip 6/6 PASS; evaluation: M13-a/b originals INCONCLUSIVE, M13-c and M18-c originals FAIL, every mapped comparison PASS (a mapped PASS proves only its named invariant; the answer layer is UNRUN)",
+   "reports": [
+    {
+     "path": "reports/plan12-memory-m3-part2/import-k1.json",
+     "sha256": "hex:6d960456e1be881900e1412565dc2dc5677585d19518297258875d3e66a572f5",
+     "source_head": "git:bf1b5288de1ae3b37063786ae4693dc11fa035aa",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py",
+      "src/optimus_security/memory_store_contract.py"
+     ]
+    },
+    {
+     "path": "reports/plan12-memory-m3-part2/round-trip.json",
+     "sha256": "hex:07e10055377a8a0adb57ad7c3da0223cadc8531b4e174219bb8f32b16a1595ae",
+     "source_head": "git:bf1b5288de1ae3b37063786ae4693dc11fa035aa",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py",
+      "src/optimus_security/memory_store_contract.py"
+     ]
+    },
+    {
+     "path": "reports/plan12-memory-m3-part2/evaluation.json",
+     "sha256": "hex:664626e016352045cec8f68d0917d845044f30682ce53ea733e86b26bdb38620",
+     "source_head": "git:bf1b5288de1ae3b37063786ae4693dc11fa035aa",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py",
+      "src/optimus_security/memory_store_contract.py"
+     ]
+    }
+   ],
+   "final_head_refresh": "test_import.py and test_user_authority.py at the CI head (part of 20 passed); m3_evaluate's four cases at the CI head with the same original and mapped verdicts as evaluation.json's CP2 run"
+  },
+  {
+   "claim": "Pilot disposition",
+   "status": "run under release: 26 notes and 5 negative controls, 24 imported, 0 negatives imported, zero model requests; answer-level comparison not run",
+   "reports": [
+    {
+     "path": "reports/plan12-memory-m3-part2/pilot.json",
+     "sha256": "hex:a9ee2ac4a839113c9e63a4b78c7b8a885777389a59015b4c3c5829e3ae739e48",
+     "source_head": "git:e02de5af64672e7aafc1b5b2770a910652dee530",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py"
+     ]
+    }
+   ]
+  },
+  {
+   "claim": "Visible/platform behavior",
+   "status": "real Zed (zero-paid, stub upstream), acpx 0.12.0 same-session command continuity, Windows and Linux/WSL path and permission checks; second-model proof UNRUN (D4, #491 later plan)",
+   "reports": [
+    {
+     "path": "reports/plan12-memory-m3-part2/zed-ui.json",
+     "sha256": "hex:f3f2bd18f356406b5fdf412e89ce1eed0436a64d6fcf9cadcfbb7ead74a8a8ab",
+     "source_head": "git:e02de5af64672e7aafc1b5b2770a910652dee530",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py",
+      "src/optimus/acp/memory_notices.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/context/memory_backups.py",
+      "src/optimus/context/memory_import.py",
+      "src/optimus/context/memory_recovery.py",
+      "src/optimus_gateway/memory_store.py"
+     ]
+    },
+    {
+     "path": "reports/plan12-memory-m3-part2/platforms.json",
+     "sha256": "hex:4c1c7957e2e7f46d6689c86d30814abcbfa2a93344564a9adebe0d28f634a767"
+    },
+    {
+     "path": "reports/plan12-memory-m3-part2/continuity.json",
+     "sha256": "hex:ca2bbf88c055b1691174539d621104910a63be29161525547c15674cacb4750a"
+    }
+   ]
+  },
+  {
+   "claim": "Valid delivery",
+   "status": "revert checks cp3 30/30; full suite and Ruff on 036ab63; coverage validity NOT established (exception, verification.json); Linux CI on the CI head",
+   "reports": [
+    {
+     "path": "reports/plan12-memory-m3-part2/revert-checks.json",
+     "sha256": "hex:4ec07d361157c1e43b2b6c9d7a305a58f5f55cb9737eba476a4d4811ba2bb0c0",
+     "source_head": "git:b73edc6de3fdd5c9d3065ed84457b93ce1b1663f",
+     "own_src_changes_after_source_head": [
+      "src/optimus/acp/memory_commands.py"
+     ]
+    }
+   ]
+  }
+ ],
+ "verification": "reports/plan12-memory-m3-part2/verification.json",
+ "delivery": "Plan 12.12's zero-paid delivery: plaintext backups, Agent Memory Repo import and the released pilot. COMPLETE is not acceptance; merging is the operator's",
+ "not_covered": [
+  {
+   "what": "actual second model",
+   "owner": "#491 later plan (D4)",
+   "result": "UNRUN"
+  },
+  {
+   "what": "answer-level correctness and pilot comparisons",
+   "owner": "#491 later plan",
+   "result": "UNRUN (zero-paid only)"
+  },
+  {
+   "what": "a synced cloud folder target",
+   "owner": "a separate release",
+   "result": "UNRUN"
+  },
+  {
+   "what": "the 24-hour overdue state in real time",
+   "owner": "unit tier",
+   "result": "unit-tested only"
+  },
+  {
+   "what": "encryption, the recovery phrase, key rotation and encrypted restore",
+   "owner": "#491 later plan",
+   "result": "refused visibly here"
+  }
+ ]
+}

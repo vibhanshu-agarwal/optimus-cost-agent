@@ -1475,10 +1475,10 @@ class AcpDuplexAdapter:
                     if confirmed is None:
                         return None
                     answer = confirmed
-            updates = [memory_notices.card(session_id, notice, label) for notice, label in answer.notices]
+            updates = [memory_notices.card(session_id, notice, label, imported=answer.imported) for notice, label in answer.notices]
             updates.append(build_agent_message_chunk_notification(session_id=session_id, text=answer.text))
             backlog = None if session is None else session.memory_backlog
-            shown = [_notice_record(notice) for notice, _label in answer.notices]
+            shown = [_notice_record(notice, imported=answer.imported) for notice, _label in answer.notices]
             if backlog is not None and shown:  # kept until its card is confirmed sent; else a later turn or session shows it
                 with contextlib.suppress(Exception):
                     await asyncio.to_thread(backlog.add, shown)
@@ -2887,17 +2887,26 @@ class AcpDuplexAdapter:
         turn; `/memory` always lists what the store holds. The card's id is the event's, so a resend replaces, never repeats."""
         commands, backlog = session.memory_commands, session.memory_backlog
         due: list[Any] = list(session.memory_pending)
+        imported: set[str] = set()  # event ids of an import's commits: their replayed cards say "Imported"
         if backlog is not None:  # what any session of the project left undelivered, durably (Codex CP3 review 1, finding 6)
             with contextlib.suppress(Exception):
                 known = {notice.event_id for notice in due}
-                due += [notice for notice in (_notice_of(record) for record in await asyncio.to_thread(backlog.pending))
-                        if notice is not None and notice.event_id not in known]
+                for record in await asyncio.to_thread(backlog.pending):  # one by one: a malformed record is skipped alone
+                    notice = _notice_of(record)
+                    if notice is None or notice.event_id in known:
+                        continue
+                    known.add(notice.event_id)
+                    due.append(notice)
+                    if record.get("imported") is True:
+                        imported.add(notice.event_id)
         for notice in due:
             if turn.turn_control.transport_abandoned():
                 return
             label = "" if commands is None else await asyncio.to_thread(commands.label, notice.item)
             try:
-                await self._outbound.notify("session/update", memory_notices.card(turn.session_id, notice, label), require_flushed=True)
+                await self._outbound.notify("session/update", memory_notices.card(turn.session_id, notice, label,
+                                                                                  imported=notice.event_id in imported),
+                                            require_flushed=True)
             except Exception:  # noqa: BLE001 - informational; it stays pending for the next turn
                 return
             with contextlib.suppress(ValueError):
@@ -3953,9 +3962,10 @@ def _memory_report(session: AcpSpecSession) -> Callable[[Any], None]:
     return report
 
 
-def _notice_record(notice: Any) -> dict[str, Any]:
+def _notice_record(notice: Any, *, imported: bool = False) -> dict[str, Any]:
+    """A notice backlog record; `imported` keeps an import's card wording when it is replayed (Codex CP3 review 1, finding 3)."""
     return {"event_id": notice.event_id, "item": notice.item, "version": notice.version, "action": notice.action,
-            "durable_state": notice.durable_state, "projection_state": notice.projection_state}
+            "durable_state": notice.durable_state, "projection_state": notice.projection_state} | ({"imported": True} if imported else {})
 
 
 def _notice_of(record: dict[str, Any]) -> Any:

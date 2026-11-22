@@ -51,10 +51,11 @@ COMMANDS: Final = ("remember", "forget", "memory", "welcome")
 DESCRIPTIONS: Final = {
     "remember": ("Save a rule or fact to this project's memory", "[--branch <name>] <statement>"),
     "forget": ("Withdraw a memory item (history is kept); --purge deletes its text", "<id>@<version> [--purge]"),
-    "memory": ("List memory, or view, edit, switch on or forget one item; export or restore the recovery copy",
+    "memory": ("List memory, or view, edit, switch on or forget one item; export, restore or back up the recovery copy; "
+               "import an Agent Memory Repo",
                "[view <id> | edit <id>@<version> <statement> | switch-on <id>@<version> | forget <id>@<version> | page <n> | "
                "export | restore [<generation>] | backup [configure <folder> [--cloud] | now | disable] | "
-               "import <folder> [--map <project>] | import apply <preview> | import status]"),
+               "import <folder> [--map <project>] | import show <preview> <page> | import apply <preview> | import status]"),
     "welcome": ("Show the welcome-back brief for this project", ""),
 }
 PAGE_ITEMS: Final = 20
@@ -145,6 +146,7 @@ class MemoryAnswer:
     notices: tuple[tuple[MemoryNotice, str], ...] = ()  # each confirmed or uncertain change and its label
     purge: PurgeRequest | None = None  # ask the user before anything is destroyed
     confirm: Confirmation | None = None  # ask the user before a recovery location is set or a generation restored
+    imported: bool = False  # the notices are an import's commits: their cards say "Imported"
 
 
 def _one_line(statement: str) -> bool:
@@ -907,7 +909,7 @@ class MemoryCommands:
         if "stopped" in counts:
             text += (f" It stopped because {counts['stopped']}, so {counts['remaining']} were not tried; "
                      "`/memory import status` shows where it stopped. What was saved is kept.")
-        return MemoryAnswer(text, tuple(notices))
+        return MemoryAnswer(text, tuple(notices), imported=True)
 
     def _location_question(self, destination: Path, *, moved_from: str | None = None) -> Confirmation:
         from optimus.context import memory_recovery as mr
