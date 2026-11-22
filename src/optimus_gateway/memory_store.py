@@ -731,7 +731,11 @@ class MemoryStore:
         entry, payload = _split(event)
         record = {"type": "event", "key": body["idempotency_key"], "event": entry}
         payload["digest"] = _digest([body["expected_version"], event])  # the retry check, purged with the payload
-        return self._append(body["project"], body["token"], record, payload, expected=body["expected_version"], gated=gated)
+        try:
+            return self._append(body["project"], body["token"], record, payload, expected=body["expected_version"], gated=gated)
+        finally:
+            if event["action"] == "withdraw":
+                self._drop_generations(body["project"])
 
     def _op_checkpoint(self, body: dict[str, Any]) -> dict[str, Any]:
         point = body["checkpoint"]  # host references only, never source text: it stays in the stream
@@ -916,6 +920,7 @@ class MemoryStore:
     def _served(self, project: str, answer: Callable[[_Fold], dict[str, Any]]) -> dict[str, Any]:
         """Answer from the confirmed fold while holding the read lock: another request may advance the same fold. A watermark
         behind the stream's head (a save confirmed just before a crash, or one whose proof was cut) is reconciled once first."""
+        self._drop_generations()  # lapsed kept generations go with any read, not only the next export
         for reconciled in (False, True):
             with self._reading():
                 watermark = _text(self._redis.get(self._key(project, "durable")) or b"0-0")
@@ -1050,6 +1055,10 @@ class MemoryStore:
         after = self._unseal(project, f"recovery:{pin}" if pin else "recovery", body["cursor"]) if "cursor" in body else ""
         journal = self._journal_count(project)  # how many deletion-journal records the seal binds, as of now
 
+        def deleted(held: list[dict[str, Any]], fold: _Fold) -> bool:
+            return any(shaped["entry"]["statement"] and fold.items.get(shaped["entry"]["item"], {}).get("status") in ("withdrawn", "purged")
+                       for shaped in held)
+
         def page(fold: _Fold) -> dict[str, Any]:
             pinned = self._pinned(key, project, bind, pin or fold.head, fold, journal)
             start = next((n for n, shaped in enumerate(pinned.entries) if shaped["entry"]["item"] > after), len(pinned.entries))
@@ -1061,15 +1070,15 @@ class MemoryStore:
                     break
                 entries.append(shaped)
             more = start + len(entries) < len(pinned.entries)
+            # every page, not only the last: text withdrawn or purged since the pin (through any Gateway; the fold has caught up)
+            # is never served again from it (Fable CP3 review 1, finding 2); the last page checks the whole generation
+            if journal != pinned.journal or deleted(pinned.entries if not more else entries, fold):
+                with self._generations_lock:
+                    self._generations.pop((project, pinned.head, bind), None)
+                raise msc.MemoryRequestError("RECOVERY_DELETION_RACED", 409)
             reply: dict[str, Any] = {"status": "ok", "head": pinned.head, "entries": entries,
                                      "cursor": self._seal(project, f"recovery:{pinned.head}", entries[-1]["entry"]["item"]) if more else None}
             if not more:
-                if journal != pinned.journal or any(
-                        shaped["entry"]["statement"] and fold.items.get(shaped["entry"]["item"], {}).get("status") in ("withdrawn", "purged")
-                        for shaped in pinned.entries):
-                    with self._generations_lock:
-                        self._generations.pop((project, pinned.head, bind), None)
-                    raise msc.MemoryRequestError("RECOVERY_DELETION_RACED", 409)
                 reply |= {"frontier": pinned.frontier, "journal": pinned.journal, "bind_mac": self._bind_mac(key, project, bind),
                           "seal": pinned.seal}
             return reply
@@ -1079,11 +1088,8 @@ class MemoryStore:
     def _pinned(self, key: bytes, project: str, bind: str, head: str, fold: _Fold, journal: int) -> _Pinned:
         """The generation of `project` at `head`: kept from an earlier page, or made now from the fold when it is at that head.
         Fold records are replaced, never changed in place, so what is made here cannot move afterwards."""
-        now = time.monotonic()
+        self._drop_generations()
         with self._generations_lock:
-            for cached_key, cached in list(self._generations.items()):
-                if now - cached.made > _PINNED_SECONDS:
-                    del self._generations[cached_key]
             found = self._generations.get((project, head, bind))
         if found is not None:
             return found
@@ -1094,12 +1100,21 @@ class MemoryStore:
         shaped: list[dict[str, Any]] = [{"entry": entry, "mac": mac} for entry, (_item, mac) in zip(every, macs, strict=True)]
         frontier = _frontier(every)
         seal = self._generation_seal(key, project, head, macs, frontier, bind, journal)
-        made = _Pinned(head, shaped, frontier, journal, seal, now)
+        made = _Pinned(head, shaped, frontier, journal, seal, time.monotonic())
         with self._generations_lock:
             self._generations[(project, head, bind)] = made
             while len(self._generations) > _PINNED_MAX:
                 del self._generations[min(self._generations, key=lambda k: self._generations[k].made)]
         return made
+
+    def _drop_generations(self, project: str | None = None) -> None:
+        """Forget kept generations that have lapsed, and every one of `project` (after its withdrawal or purge here), so deleted
+        text is not held in this Gateway's memory longer than needed."""
+        now = time.monotonic()
+        with self._generations_lock:
+            for cached_key, cached in list(self._generations.items()):
+                if cached_key[0] == project or now - cached.made > _PINNED_SECONDS:
+                    del self._generations[cached_key]
 
     def _restore_keys(self, project: str, generation: str) -> tuple[str, str]:
         return self._key(project, f"restore:{generation}"), self._key(project, f"restore:{generation}:next")
@@ -1239,6 +1254,12 @@ class MemoryStore:
     # --- purge ---------------------------------------------------------------------------------------------------------
 
     def _op_purge(self, body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return self._purge(body)
+        finally:
+            self._drop_generations(body["project"])
+
+    def _purge(self, body: dict[str, Any]) -> dict[str, Any]:
         """Destroy one item's text. The intent is journalled (fsynced, payload-free) before anything is sent; the tombstone and
         the HDEL of every payload the item ever had go in one transaction, so the text is never gone without its tombstone and
         never outlives it; once WAITAOF confirms that, the AOF rewrite and the snapshot that drop the text from disk are started.

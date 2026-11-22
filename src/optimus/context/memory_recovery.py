@@ -69,9 +69,10 @@ _SYNC_MARKERS: Final = ("onedrive", "dropbox", "google drive", "googledrive", "m
 
 
 def os_reason(failure: OSError, path: Path) -> str:
-    """The OS's reason, plus the likely cause when Windows refuses a path past its classic 260-character limit."""
+    """The OS's reason, plus the likely cause when Windows refuses a long path: the path that failed (else `path`) reaches the
+    248 characters a folder may have without long-path support."""
     reason = failure.strerror or str(failure)
-    if sys.platform == "win32" and len(str(path)) >= 260:
+    if sys.platform == "win32" and len(failure.filename if isinstance(failure.filename, str) else str(path)) >= 248:
         reason += "; the path is longer than Windows allows unless long paths are enabled"
     return reason
 
@@ -389,6 +390,13 @@ def generations(destination: Path) -> list[Generation]:
     return sorted(found, key=lambda g: (g.created_ms, g.name), reverse=True)
 
 
+def _read_or_none(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
 def read_generation(directory: Path, project: str | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """A generation's manifest and entries, checked by the host: its format and layout, its project, its entries' digest, and an
     entry point that is exactly the one its entries give. The seal over the entries and the metadata is the Gateway's check."""
@@ -499,7 +507,7 @@ class Recovery:
                 code = failure.code
                 self._state.update(lambda s: setattr(s, "failure", code))
                 raise
-            except OSError as failure:  # nothing was published: the staging folder is removed before this is raised
+            except OSError as failure:  # not recorded as exported; one renamed into place first is retired like any older copy
                 self._state.update(lambda s: setattr(s, "failure", "RECOVERY_WRITE_FAILED"))
                 raise RecoveryError("RECOVERY_WRITE_FAILED", f"The recovery copy could not be written to {destination} "
                                     f"({os_reason(failure, destination)}). The last copy is kept.") from None
@@ -525,17 +533,23 @@ class Recovery:
             manifest = {"format": FORMAT, "metadata": metadata, "bind": bind, "bind_mac": final["bind_mac"], "head": final["head"],
                         "frontier": final["frontier"], "journal": final["journal"], "seal": final["seal"], "count": len(entries),
                         "entries_sha256": hashlib.sha256(body).hexdigest()}
-            staging = destination / f".staging-{secrets.token_hex(8)}"
-            staging.mkdir()
-            try:
-                _write(staging / "entries.jsonl", body)
-                _write(staging / "MEMORY.md", memory_md(entries, name))
-                _write(staging / "manifest.json", json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True).encode("ascii"))
-                _fsync_dir(staging)
-                os.replace(staging, destination / name)  # one atomic rename on the same volume publishes the whole generation
-            except BaseException:
-                shutil.rmtree(staging, ignore_errors=True)
-                raise
+            manifest_bytes = json.dumps(manifest, sort_keys=True, indent=1, ensure_ascii=True).encode("ascii")
+            published = destination / name
+            if published.is_dir() and _read_or_none(published / "manifest.json") == manifest_bytes:
+                pass  # this exact generation is already published (an export repeated in the same millisecond, or a rename whose
+                #       record was lost): it is kept as it is, never written again
+            else:
+                staging = destination / f".staging-{secrets.token_hex(8)}"
+                staging.mkdir()
+                try:
+                    _write(staging / "entries.jsonl", body)
+                    _write(staging / "MEMORY.md", memory_md(entries, name))
+                    _write(staging / "manifest.json", manifest_bytes)
+                    _fsync_dir(staging)
+                    os.replace(staging, published)  # one atomic rename on the same volume publishes the whole generation
+                except BaseException:
+                    shutil.rmtree(staging, ignore_errors=True)
+                    raise
             _fsync_dir(destination)
             pending = list(state.cleanup_pending)
             self._retire(destination, keep=name, all_older=bool(pending))

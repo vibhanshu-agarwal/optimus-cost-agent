@@ -459,6 +459,7 @@ class Backups:
         self._store_data, self._disk_of, self._clock, self._git, self._sleep = store_data, disk_of, clock, git, sleep
         self._runtime_data = runtime_data
         self._lock = threading.Lock()
+        self._refresh = False  # memory moved on from the recovery copy: the next attempt exports it again first
 
     @property
     def project(self) -> str:
@@ -666,7 +667,8 @@ class Backups:
             raise BackupError("BACKUP_NEEDS_RECOVERY_COPY", "Backups copy the recovery copy, which is not set up: `/memory export` sets "
                               "it up first.")
         try:
-            if recovery_state.dirty or recovery_state.exported is None or recovery_state.cleanup_pending:
+            if recovery_state.dirty or recovery_state.exported is None or recovery_state.cleanup_pending or self._refresh:
+                self._refresh = False
                 self._recovery.export()
             exported = self._recovery.state()
             if exported.exported is None or exported.destination is None:
@@ -702,13 +704,18 @@ class Backups:
         same deletion frontier and the same seal; the manifest's count must be its entries'. Memory moving on (head or journal)
         is transient: the generation is refreshed. Returns the entries."""
         manifest, entries = _manifest_and_entries(captured, name, project)
+        moved = BackupError("BACKUP_SOURCE_MOVED", "Memory changed while the backup was checked; it will be read again.",
+                            transient=True)
         try:
             fresh, final = self._recovery._read_generation(manifest["bind"], pin=manifest["head"])  # at the copy's own head
         except mr.RecoveryError as failure:
-            raise BackupError(failure.code, failure.message, transient=True) from None
+            if failure.code != "RECOVERY_SOURCE_MOVED":
+                raise BackupError(failure.code, failure.message, transient=True) from None
+            self._refresh = True  # the copy's head is gone (written elsewhere, the kept generation lapsed): export it again
+            raise moved from None
         if final["head"] != manifest["head"] or final["journal"] != manifest["journal"]:
-            raise BackupError("BACKUP_SOURCE_MOVED", "Memory changed while the backup was checked; it will be tried again.",
-                              transient=True)
+            self._refresh = True
+            raise moved
         if (final["seal"] != manifest["seal"] or fresh != entries or final["frontier"] != manifest["frontier"]
                 or manifest["count"] != len(entries)):
             raise BackupError("BACKUP_GENERATION_UNAUTHENTIC", "The backup does not match what the memory store sealed; it was not "
@@ -744,12 +751,10 @@ class Backups:
                     shutil.rmtree(stale, ignore_errors=True)  # this project's interrupted earlier attempt: never a generation
         except mr.RecoveryError as failure:
             raise BackupError(failure.code, failure.message, transient=failure.code == "RECOVERY_BUSY") from None
-        except FileNotFoundError:
-            raise BackupError("BACKUP_SOURCE_MOVED", "The recovery copy changed while it was copied; it will be tried again.",
-                              transient=True) from None
-        except OSError as failure:
+        except OSError as failure:  # the source was captured before this block: every OS error here is the target's
             transient = failure.errno in _TRANSIENT_ERRNOS or getattr(failure, "winerror", None) == _SHARING_VIOLATION
-            raise BackupError("BACKUP_WRITE_FAILED", f"The backup could not be written to {target} ({failure.strerror or failure}). "
+            reason = mr.os_reason(failure, Path(failure.filename) if failure.filename else target)
+            raise BackupError("BACKUP_WRITE_FAILED", f"The backup could not be written to {target} ({reason}). "
                               "The last backup is kept.", transient=transient) from None
         domain, reason = self._domain(target)
         now = self._clock()

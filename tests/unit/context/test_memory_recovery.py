@@ -898,6 +898,67 @@ def test_a_deletion_landing_while_an_export_is_read_is_never_completed_into_a_co
     assert b"zebra-quartz" not in body and canary[0].encode() in body  # its payload-free lifecycle only
 
 
+def _pinned_first_page(host: _Host, repo: Path, extra: int = 10) -> tuple[str, dict[str, Any]]:
+    """A project of more than one export page, its copy exported, and the first page of a new generation read: (bind, page)."""
+    for n in range(mr.PAGE + extra):
+        host.remember(f"Rule number {n} for this project.")
+    host.run("/memory export")
+    bind = json.loads((mr.location(repo) / host.recovery.state().exported["name"] / "manifest.json").read_text(encoding="utf-8"))["bind"]
+    return bind, host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind)
+
+
+@pytest.mark.parametrize("purge", [False, True])
+@pytest.mark.parametrize("deleter", ["another host", "this host"])
+def test_an_item_deleted_after_the_pin_is_never_served_again_from_that_generation(tmp_path: Path, repo: Path, purge: bool,
+                                                                                  deleter: str) -> None:
+    """Fable CP3 review 1, finding 2: once an item on the first page is withdrawn or purged, through another host's Gateway or
+    this one, no page of the generation pinned before it is served again, not even the first."""
+    host = _Host(tmp_path, repo)
+    bind, first = _pinned_first_page(host, repo)
+    victim = first["entries"][0]["entry"]["item"]
+    (host if deleter == "this host" else _Host(tmp_path, repo, host.server)).run(f"/forget {victim}@1" + (" --purge" if purge else ""))
+    with pytest.raises(MemoryStoreRefused) as refused:
+        host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind, pin=first["head"])
+    # this Gateway forgot its kept generations of the project (moved), or another's deletion is seen on the page (raced)
+    assert refused.value.code == ("RECOVERY_EXPORT_MOVED" if deleter == "this host" else "RECOVERY_DELETION_RACED")
+
+
+def test_a_purge_of_an_item_the_generation_never_held_still_refuses_its_last_page(tmp_path: Path, repo: Path) -> None:
+    """The deletion-journal clause alone: an item written after the pin and purged meanwhile is not in the pinned generation, but
+    the journal grew, so the generation is not completed with a seal that undercounts it."""
+    host = _Host(tmp_path, repo)
+    bind, first = _pinned_first_page(host, repo)
+    other = _Host(tmp_path, repo, host.server)
+    late = other.remember("Written after the pin, then purged.")
+    other.run(f"/forget {late[0]}@1 --purge")
+    with pytest.raises(MemoryStoreRefused) as refused:
+        host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind, pin=first["head"], cursor=first["cursor"])
+    assert refused.value.code == "RECOVERY_DELETION_RACED"
+
+
+def test_a_pin_serves_only_its_own_bind_and_only_while_it_is_kept(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Another bind never reads a generation kept for this one; a generation evicted by newer ones (`_PINNED_MAX`) is refused once
+    memory has moved on, never answered from a newer head."""
+    import hashlib
+
+    from optimus_gateway import memory_store
+
+    host = _Host(tmp_path, repo)
+    bind, first = _pinned_first_page(host, repo)
+    host.remember("Written after the pin.")
+    other_bind = hashlib.sha256(b"another host's metadata").hexdigest()
+    with pytest.raises(MemoryStoreRefused) as foreign:
+        host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=other_bind, pin=first["head"])
+    assert foreign.value.code == "RECOVERY_EXPORT_MOVED"
+    kept = host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind, pin=first["head"], cursor=first["cursor"])
+    assert kept["head"] == first["head"]  # its own bind: still the pinned generation
+    monkeypatch.setattr(memory_store, "_PINNED_MAX", 1)
+    host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=other_bind)  # a newer generation evicts the pinned one
+    with pytest.raises(MemoryStoreRefused) as evicted:
+        host.store.call("export", project=host.store.project, limit=mr.PAGE, bind=bind, pin=first["head"], cursor=first["cursor"])
+    assert evicted.value.code == "RECOVERY_EXPORT_MOVED"
+
+
 def test_the_gateway_refuses_a_pinned_head_it_no_longer_holds(tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A read naming a head the Gateway neither holds nor is at is refused, never answered from a newer head."""
     from optimus_gateway import memory_store

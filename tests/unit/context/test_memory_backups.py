@@ -302,6 +302,48 @@ def test_b11_b30_a_target_the_os_cannot_create_is_a_readable_answer(tmp_path: Pa
     assert "Nothing was changed." in answer.text and host.backups.state().target is None and not target.exists()
 
 
+def test_b11_a_target_reported_missing_while_written_is_a_recorded_write_failure(tmp_path: Path, repo: Path, places: dict[str, Path],
+                                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fable CP3 review 1, finding 1: a FileNotFoundError while the target is written (a Windows path the folder fit but its files
+    do not, or the folder removed mid-write) is the target's failure, never "the source moved": it is answered and recorded."""
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    target = places["separate"] / "b"
+    host.set_up(target)
+    good = host.backups.state().last_success
+    host.remember("Tests run with pytest -q.")
+    clock.now += 2 * DAY
+
+    def missing(_captured: dict[str, bytes], final: Path, _prefix: str) -> None:
+        raise FileNotFoundError(errno.ENOENT, "The system cannot find the path specified", str(final / "entries.jsonl"))
+    monkeypatch.setattr(mb.Backups, "_publish", staticmethod(missing))
+    answer = host.run("/memory backup now")
+    assert f"could not be written to {target} (The system cannot find the path specified" in answer.text, answer.text
+    state = host.backups.state()
+    assert state.failure is not None and state.failure["code"] == "BACKUP_WRITE_FAILED" and state.last_success == good
+    assert "last attempt failed" in host.backups.status_line() and len(_published(target)) == 1
+
+
+def test_memory_moving_on_from_a_clean_copy_is_read_again_never_a_recorded_failure(tmp_path: Path, repo: Path,
+                                                                                    places: dict[str, Path],
+                                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fable CP3 review 1, finding 3: this host's copy is clean, but memory moved on through another config root and the kept
+    generation lapsed. The backup exports the copy again and succeeds; nothing is recorded as a failed attempt."""
+    from optimus_gateway import memory_store
+
+    clock = _Clock()
+    host = _Backed(tmp_path, repo, places, clock)
+    host.remember("Never push to main.")
+    host.set_up(places["separate"] / "b")
+    _Host(tmp_path, repo, host.server, config="other-config").remember("Written through another config root.")
+    monkeypatch.setattr(memory_store, "_PINNED_SECONDS", -1.0)  # the copy's own generation is no longer kept anywhere
+    clock.now += 2 * DAY
+    generation = host.backups.backup()
+    state = host.backups.state()
+    assert generation.count == 2 and state.failure is None and state.last_success["name"] == generation.name  # type: ignore[index]
+
+
 def test_b12_b13_retention_removes_only_old_managed_generations_after_a_verified_new_one(tmp_path: Path, repo: Path,
                                                                                           places: dict[str, Path],
                                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1069,8 +1111,8 @@ def test_r4_a_journal_moving_on_is_source_movement_not_a_failure(tmp_path: Path,
     def purge_in_flight(bind: str, **kwargs: Any) -> Any:
         entries, final = real(bind, **kwargs)
         calls.append(1)
-        if len(calls) == 1:
-            return entries, final  # the export itself
+        if "pin" not in kwargs:
+            return entries, final  # an export: each retry exports again (Fable CP3 review 1, finding 3)
         return entries, {**final, "journal": final["journal"] + 1, "seal": "f" * 64}  # a purge's intent journalled, head unchanged
     monkeypatch.setattr(host.recovery, "_read_generation", purge_in_flight)
     with pytest.raises(mb.BackupError) as moved:
