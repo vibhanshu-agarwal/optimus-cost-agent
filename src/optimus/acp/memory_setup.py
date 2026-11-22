@@ -52,6 +52,34 @@ class MemorySetupError(RuntimeError):
     """A setup step that could not finish, with what to do next. Carries no secret."""
 
 
+_SETUP_LOCK = "memory-setup.lock"
+_SETUP_LOCK_SECONDS = 10.0  # another setup holds it only for one keyring write
+
+
+def _store_password(keyring_backend: Any, service: str, credential: str, password: str, *, lock_root: Path) -> None:
+    """Write one setup's password while holding a lock every setup for this OS user shares (#529). keyring's Windows backend
+    reads a slot shared by the whole service and then rewrites it, so of two unserialized setups only the later write could
+    survive. `lock_root` is the per-user runtime root, never a config root: two config roots must take the same lock."""
+    from optimus.context import memory_recovery  # here, not at import: a launch imports this module for its defaults
+
+    lock = lock_root / "locks" / _SETUP_LOCK
+    stored = False
+    try:
+        with memory_recovery._file_lock(lock, wait=_SETUP_LOCK_SECONDS, code="MEMORY_SETUP_BUSY", fault_code="MEMORY_SETUP_LOCK_FAILED"):
+            try:
+                keyring_backend.set_password(service, credential, password)
+            except Exception as exc:  # noqa: BLE001 - any backend failure stops setup before a file claims a credential exists
+                raise MemorySetupError(f"The OS keyring refused the password ({type(exc).__name__}); nothing was configured.") from None
+            stored = True
+    except memory_recovery.RecoveryError as refused:
+        if refused.code == "MEMORY_SETUP_LOCK_FAILED":
+            raise MemorySetupError(f"The password was not stored: {refused.message} Nothing was configured.") from None
+        raise MemorySetupError("Another memory setup is storing its password; nothing was configured. Run this again in a moment.") from None
+    except OSError as exc:
+        what = "was stored, but releasing the setup lock" if stored else "was not stored: the setup lock"
+        raise MemorySetupError(f"The password {what} {lock} failed (errno {exc.errno}); nothing was configured. Run this again.") from None
+
+
 def shipped_defaults() -> dict[str, Any]:
     """The configured resource and embedding artifact. Models are configuration (ADR-025), so this file is their only source."""
     data: dict[str, Any] = json.loads(resources.files("optimus.context").joinpath(_DEFAULTS).read_text(encoding="utf-8"))
@@ -94,6 +122,7 @@ def run_setup(
     *,
     keyring_backend: Any,
     confirm: Callable[[str], bool],
+    lock_root: Path,
     download: Callable[..., None] = huggingface_download,
     defaults: dict[str, Any] | None = None,
 ) -> Path:
@@ -124,10 +153,7 @@ def run_setup(
         raise MemorySetupError(f"The downloaded artifact's digest is {found}, not the configured one; nothing was configured.")
 
     password, credential = secrets.token_urlsafe(32), _new_credential_name()
-    try:
-        keyring_backend.set_password(KEYRING_SERVICE, credential, password)
-    except Exception as exc:  # noqa: BLE001 - any backend failure stops setup before a file claims a credential exists
-        raise MemorySetupError(f"The OS keyring refused the password ({type(exc).__name__}); nothing was configured.") from None
+    _store_password(keyring_backend, KEYRING_SERVICE, credential, password, lock_root=lock_root)
     acl = acl_text(settings["user"], hashlib.sha256(password.encode("utf-8")).hexdigest()).encode("utf-8")
     # The container's own user reads this bind mount, and it holds only the hash of a generated high-entropy password.
     _atomic_write(root / ACL_NAME, acl, mode=0o644)
@@ -175,6 +201,7 @@ def run_store_setup(
     *,
     keyring_backend: Any,
     confirm: Callable[[str], bool],
+    lock_root: Path,
     defaults: dict[str, Any] | None = None,
 ) -> Path:
     """`memory-setup --store`: write the memory store's configuration, or return it when one is already here. The index's
@@ -194,10 +221,7 @@ def run_store_setup(
 
     root.mkdir(parents=True, exist_ok=True)
     password, credential = secrets.token_urlsafe(32), _new_credential_name()
-    try:
-        keyring_backend.set_password(STORE_KEYRING_SERVICE, credential, password)
-    except Exception as exc:  # noqa: BLE001 - any backend failure stops setup before a file claims a credential exists
-        raise MemorySetupError(f"The OS keyring refused the password ({type(exc).__name__}); nothing was configured.") from None
+    _store_password(keyring_backend, STORE_KEYRING_SERVICE, credential, password, lock_root=lock_root)
     acl = store_acl_text(settings["user"], hashlib.sha256(password.encode("utf-8")).hexdigest()).encode("utf-8")
     _atomic_write(root / STORE_ACL_NAME, acl, mode=0o644)  # read by the container's user; it holds only the hash
     config = {

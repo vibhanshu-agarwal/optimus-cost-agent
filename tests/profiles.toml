@@ -1116,6 +1116,7 @@ serial = [
   "tests/unit/acp/test_server_reader_ownership.py",
   "tests/unit/acp/test_memory_notices.py",
   "tests/unit/acp/test_stdio_ndjson.py",
+  "tests/unit/context/test_memory_store_setup.py",
   "tests/unit/context/test_memory_workspace.py",
   "tests/unit/context/test_project_registry.py",
   "tests/unit/context_engine/test_code_index.py",
@@ -1152,3 +1153,16 @@ nodes = [
   "tests/unit/tools/test_mypy_ratchet.py::test_mypy_gate_wiring",
 ]
 why = "Every commit checks the actual source-typing configuration against its accepted Git baseline."
+
+[[rules]]
+tier = "proc"
+nodes = ["tests/unit/context/test_memory_store_setup.py::test_another_process_holding_the_lock_keeps_a_setup_out"]
+why = "#529: a real child process holds the memory-setup lock while setup runs in this one; serial, never on xdist workers."
+
+[[tags]]
+name = "concurrency"
+nodes = [
+  "tests/unit/context/test_memory_store_setup.py::test_unserialized_store_setups_really_overlap_and_lose_a_password",
+  "tests/unit/context/test_memory_store_setup.py::test_concurrent_store_setups_on_one_keyring_service_both_keep_their_passwords",
+]
+why = "#529: two setup threads are made to meet at keyring's shared-slot write, without and with the setup lock, on barrier timing."

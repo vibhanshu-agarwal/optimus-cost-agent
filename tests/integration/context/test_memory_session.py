@@ -566,7 +566,7 @@ def test_the_real_artifact_answers_a_turn_while_its_own_worker_embeds(tmp_path: 
 
     defaults = shipped_defaults()
     config_root = tmp_path / "config"
-    run_setup(config_root, keyring_backend=FakeKeyring(), confirm=lambda _description: True, download=copy, defaults=defaults)
+    run_setup(config_root, lock_root=config_root, keyring_backend=FakeKeyring(), confirm=lambda _description: True, download=copy, defaults=defaults)
     memory_root = memory_index_root(config_root)
     _literal, config, _refusal = read(memory_root)
     assert config is not None

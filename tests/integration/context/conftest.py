@@ -69,7 +69,7 @@ class Provisioned:
 
 def setup_config(tmp: Path) -> tuple[Path, MemoryIndexConfig, str]:
     keyring = FakeKeyring()
-    run_setup(tmp, keyring_backend=keyring, confirm=lambda _description: True, download=_fake_artifact, defaults=settings(tmp))
+    run_setup(tmp, lock_root=tmp, keyring_backend=keyring, confirm=lambda _description: True, download=_fake_artifact, defaults=settings(tmp))
     root = memory_index_root(tmp)
     _literal, config, _refusal = read(root)
     assert config is not None

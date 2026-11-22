@@ -58,7 +58,7 @@ def _settings(tmp_path: Path) -> dict[str, Any]:
 
 def test_the_real_keyring_holds_the_password_and_no_file_does(isolated_service: str, credential: str, tmp_path: Path) -> None:
     assert keyring.get_password(isolated_service, credential) is None
-    path = memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=_settings(tmp_path))
+    path = memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=_settings(tmp_path))
     password = keyring.get_password(isolated_service, credential)
     assert password and len(password) >= 32
     for file in path.parent.rglob("*"):
@@ -68,14 +68,14 @@ def test_the_real_keyring_holds_the_password_and_no_file_does(isolated_service: 
 
 def test_a_rerun_keeps_the_real_keyrings_password(isolated_service: str, credential: str, tmp_path: Path) -> None:
     settings = _settings(tmp_path)
-    memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=settings)
+    memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=settings)
     before = keyring.get_password(isolated_service, credential)
-    memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), download=_download, defaults=settings)
+    memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), download=_download, defaults=settings)
     assert keyring.get_password(isolated_service, credential) == before
 
 
 def test_the_gateway_reports_an_absent_real_credential_with_a_stable_code(isolated_service: str, credential: str, tmp_path: Path) -> None:
-    path = memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=_settings(tmp_path))
+    path = memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=_settings(tmp_path))
     _literal, config, _refusal = mc.read(path.parent)
     assert config is not None
     keyring.delete_password(isolated_service, credential)

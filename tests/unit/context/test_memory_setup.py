@@ -44,7 +44,7 @@ def _settings(tmp_path: Path) -> dict[str, Any]:
 
 def _run(tmp_path: Path, keyring: Any = None, confirm: Any = lambda _d: True, **overrides: Any) -> Path:
     settings = {**_settings(tmp_path), **overrides}
-    return memory_setup.run_setup(tmp_path, keyring_backend=keyring or FakeKeyring(), confirm=confirm, download=_download, defaults=settings)
+    return memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring or FakeKeyring(), confirm=confirm, download=_download, defaults=settings)
 
 
 def _stored_password(keyring: Any, path: Path) -> str | None:
@@ -106,13 +106,13 @@ def test_a_rejected_download_leaves_nothing_and_the_next_attempt_is_not_hashed_w
         raise KeyboardInterrupt
 
     with pytest.raises(memory_setup.MemorySetupError, match="digest"):
-        memory_setup.run_setup(tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=with_an_extra_file, defaults=settings)
+        memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=with_an_extra_file, defaults=settings)
     assert not artifact.exists()
     with pytest.raises(KeyboardInterrupt):
-        memory_setup.run_setup(tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=interrupted, defaults=settings)
+        memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=interrupted, defaults=settings)
     assert (artifact / "partial.bin").exists()  # what a killed process leaves, which only the next attempt can clear
 
-    path = memory_setup.run_setup(tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=_download, defaults=settings)
+    path = memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=FakeKeyring(), confirm=lambda _d: True, download=_download, defaults=settings)
     assert path.exists() and [file.name for file in artifact.iterdir()] == ["model.onnx"]
 
 
@@ -144,7 +144,7 @@ def test_a_wrong_artifact_configures_nothing_and_stores_no_password(tmp_path: Pa
     settings["embedding"]["artifact_sha256"] = "0" * 64
     keyring = FakeKeyring()
     with pytest.raises(memory_setup.MemorySetupError, match="digest"):
-        memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=settings)
+        memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring, confirm=lambda _d: True, download=_download, defaults=settings)
     assert not (mc.memory_index_root(tmp_path) / mc.CONFIG_NAME).exists()
     assert not keyring._store
 
@@ -168,7 +168,7 @@ def test_a_rerun_never_replaces_a_working_password_or_downloads_again(tmp_path: 
     def no_download(**_kwargs: Any) -> None:
         raise AssertionError("a rerun must not download")
 
-    again = memory_setup.run_setup(tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), download=no_download, defaults=_settings(tmp_path))
+    again = memory_setup.run_setup(tmp_path, lock_root=tmp_path, keyring_backend=keyring, confirm=lambda _d: pytest.fail("no prompt"), download=no_download, defaults=_settings(tmp_path))
     assert again == path
     assert (path.read_bytes(), _stored_password(keyring, path)) == before
 
