@@ -1283,8 +1283,8 @@ class AcpDuplexAdapter:
             ownership_slot=ownership_slot,
         )
 
-    def _new_conversation(self) -> ConversationState:
-        sanitizer = ConversationSanitizer(self._sanitizer_inputs)
+    def _new_conversation(self, workspace: Path | None = None) -> ConversationState:
+        sanitizer = ConversationSanitizer(self._sanitizer_inputs, workspace=workspace)  # keeps the workspace's file names (#530)
         attachment = self._context_attachment
         if attachment is None:
             return ConversationState(sanitizer)
@@ -1870,7 +1870,7 @@ class AcpDuplexAdapter:
         self.retention.retain_setup_state(session.session_id, empty_state)
         completed = False
         try:
-            session.conversation = self._new_conversation()
+            session.conversation = self._new_conversation(Path(session.cwd))
             if self._context_attachment is not None:
                 session.context_strategy = self._context_attachment.initial_strategy
                 session.sliding_notice_pending = session.context_strategy == 'sliding_window'
@@ -1901,7 +1901,8 @@ class AcpDuplexAdapter:
                 # Without a registered, trusted workspace there is none: memory stays read-only and the session is unchanged.
                 session.memory_extractor = await asyncio.to_thread(
                     self._memory_extractor_factory, Path(cwd), settlement=session.cost_settlement,
-                    sanitize=ConversationSanitizer(self._sanitizer_inputs).sanitize, session_id=session.session_id,
+                    sanitize=ConversationSanitizer(self._sanitizer_inputs, workspace=Path(cwd)).sanitize_in_workspace,
+                    session_id=session.session_id,
                     report=_memory_report(session))
                 repair = getattr(session.memory_extractor, "registry_recovery", None)
                 if repair is not None:  # the project registry is lost: only its repair is offered
@@ -1916,7 +1917,7 @@ class AcpDuplexAdapter:
                     session.memory_commands = MemoryCommands(
                         extractor.store, trusted=True, keyed=extractor.keyed, source=extractor.source,
                         source_digest=extractor.source_digest,
-                        sanitize=memory_serving.workspace_sanitizer(ConversationSanitizer(self._sanitizer_inputs).sanitize, Path(cwd)),
+                        sanitize=ConversationSanitizer(self._sanitizer_inputs, workspace=Path(cwd)).sanitize_in_workspace,
                         brief=session.continuity.welcome, recovery=recovery, workspace=Path(cwd),
                         backups=getattr(extractor, "backups", None), imports=getattr(extractor, "imports", None),
                         backlog=session.memory_backlog)
@@ -1960,6 +1961,11 @@ class AcpDuplexAdapter:
                 error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="invalid request")),
                 ownership_slot,
             )
+        # The prompt's workspace file names, found on a thread because the gate may read ignore files (#530, Codex round 115).
+        # It is the handler's only wait, and it comes before every check below, so they judge the session as it is after it.
+        known = self._sessions.get(session_id)
+        finder = None if known is None else ConversationSanitizer(self._sanitizer_inputs, workspace=Path(known.cwd))
+        names = frozenset() if finder is None else await asyncio.to_thread(finder.workspace_names, _text_from_content_blocks(prompt))
         session = self._sessions.get(session_id)
         if session is None:
             self._pre_run_refused(request, session_id, "unknown_session")
@@ -2007,10 +2013,10 @@ class AcpDuplexAdapter:
 
         conversation = session.conversation
         if conversation is None:
-            conversation = self._new_conversation()
+            conversation = self._new_conversation(Path(session.cwd))
             session.conversation = conversation
 
-        admission = conversation.prepare_admission(task)
+        admission = conversation.prepare_admission(task, entropy_exempt=names)
         if not admission.admitted:
             return await self._refuse_prompt(
                 request_id=request.get("id"),

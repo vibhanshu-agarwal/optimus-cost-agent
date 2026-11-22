@@ -876,3 +876,68 @@ async def test_an_admission_refusal_leaves_a_content_free_operator_line_with_its
 
     lines = [line for line in capsys.readouterr().err.splitlines() if line.startswith("optimus.acp: prompt refused")]
     assert lines == [f"optimus.acp: prompt refused session_id={session_id} reason=reservation"]
+
+
+# --- #530: a prompt naming a workspace file reaches the planner and memory as written --------------------------------------
+
+
+async def test_a_prompt_naming_a_workspace_file_reaches_the_model_and_the_record_as_written(tmp_path):
+    from tests.unit.context.test_memory_serving import RUNNER_ID, _workspace
+
+    workspace = _workspace(tmp_path)
+    adapter, outbound, runner = make_adapter(workspace, None)
+    scans: list[Any] = []
+    adapter._memory_extractor_factory = lambda _cwd, **kwargs: scans.append(kwargs["sanitize"])  # noqa: SLF001 - memory stays off
+    session_id = await new_session(adapter, workspace, mode="chat")
+    text = f"Run {RUNNER_ID} and fix what fails."
+    await prompt(adapter, outbound, session_id, text, "q1")
+    assert runner.requests[0].task == text
+    conversation = session_of(adapter, session_id).conversation
+    (record,) = conversation.records.values()
+    assert record.user_prompt == text
+    assert conversation.sanitizer.workspace_names(text)  # the session's own sanitizer knows its workspace (history snapshots)
+    assert [scan(text) for scan in scans] == [text]  # the extractor scans with it too
+
+
+async def test_finding_a_prompts_names_never_holds_up_another_session(tmp_path, monkeypatch):
+    """Codex round 115: the gate may read ignore files, so the names are found on a thread, not on the event loop."""
+    import time
+
+    from optimus.context import memory_serving
+
+    real = memory_serving.workspace_names
+
+    def slow(text, root, sanitize):
+        if "slow" in text:
+            time.sleep(1.0)
+        return real(text, root, sanitize)
+
+    monkeypatch.setattr(memory_serving, "workspace_names", slow)
+    adapter, outbound, runner = make_adapter(tmp_path, None)
+    first, second = await new_session(adapter, tmp_path, mode="chat"), await new_session(adapter, tmp_path, mode="chat")
+    held = asyncio.create_task(rpc(adapter, prompt_request(first, "a slow prompt", "s1")))
+    await asyncio.sleep(0.05)
+    await asyncio.wait_for(rpc(adapter, prompt_request(second, "a quick prompt", "s2")), timeout=0.8)
+    assert not held.done()
+    await asyncio.wait_for(held, timeout=5)
+    assert {request.task for request in runner.requests} == {"a slow prompt", "a quick prompt"}
+
+
+def test_extraction_scans_a_block_naming_a_workspace_file_as_written(tmp_path):
+    """The extractor's scan uses the session's sanitizer for its workspace (spec.py), so a block that now keeps a name passes."""
+    import json
+
+    from optimus.context import memory_extraction as mx
+    from tests.unit.context.test_memory_serving import RUNNER_ID, _aware, _persisted, _workspace
+
+    text = f"From now on, run {RUNNER_ID} before committing."
+    reply = json.dumps({"candidates": [{"speech_act": "preference", "kind": "preference", "title": "pre-commit check",
+                                        "statement": text, "spans": [{"block": "b-1", "start": 0, "end": len(text)}]}]})
+    blocks = (mx.UserBlock("b-1", text),)
+
+    def scanned(sanitize):
+        (candidate,) = mx.user_candidates(mx.parse_reply(reply), project="p-1", scope="s-1", blocks=blocks, trusted=True,
+                                          sanitize=sanitize, sources=(), existing=())
+        return candidate.verdict.scans_passed
+
+    assert scanned(_aware(_workspace(tmp_path))) and not scanned(_persisted)
