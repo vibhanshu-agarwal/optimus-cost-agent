@@ -6465,6 +6465,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m2a_evaluate:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes a measurement report of counts, codes, byte totals, ranks, hashes, case ids and synthetic workspace-relative paths; no file body, observation text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2a.py::test_a_one_over_read_stops_at_the_baseline_fits_a_wider_read_limit_and_restores_the_limits",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2a_evaluate:main:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the same measurement report to the --output path the operator names; no file body, observation text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2a.py::test_a_one_over_read_stops_at_the_baseline_fits_a_wider_read_limit_and_restores_the_limits",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2a_evaluate:materialize:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes a synthetic workspace's .gitignore (directory names from the frozen cases) under the evaluator's own work directory; no secret, credential or diagnostic.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2a.py::test_the_ambiguity_baseline_on_real_files",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2a_evaluate:resolve:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: deep-copies a frozen schedule through json in memory; nothing is written or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2a.py::test_every_boundary_solves_exactly_under_the_real_serializers",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m1_scale:edit_visibility:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: the call is threading.Event.set(); nothing is written to Redis or any sink.",
