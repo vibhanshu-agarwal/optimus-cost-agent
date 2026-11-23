@@ -194,6 +194,10 @@ _WHITESPACE_CASES = [
     (f"credential : {_FAKE}", "credential : **********"),
     (f"My Deploy Token IS {_FAKE}", "My Deploy Token IS **********"),
     (f"API_KEY Was {_FAKE} today", "API_KEY Was ********** today"),
+    (f"my token is: {_FAKE}", "my token is: **********"),
+    (f"secret is = {_FAKE}", "secret is = **********"),
+    (f"the password was: {_FAKE}", "the password was: **********"),
+    (f"token is:{_FAKE}", "token **********"),
 ]
 
 
@@ -214,7 +218,7 @@ class TestWhitespaceSecretAssignment:
         assert sanitize_for_persistence(once, policy=policy).value == once == expected
 
     @_WHITESPACE_RULE_POLICIES
-    @pytest.mark.parametrize("masked", ["token=**********", "token: **********", "token is **********"])
+    @pytest.mark.parametrize("masked", ["token=**********", "token: **********", "token is **********", "token is: **********"])
     def test_already_masked_text_is_unchanged(self, policy, masked: str) -> None:
         assert sanitize_for_persistence(masked, policy=policy).value == masked
 

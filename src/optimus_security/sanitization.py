@@ -56,9 +56,10 @@ _RECOGNIZED_PREFIXES: tuple[str, ...] = (
 _BEARER_TOKEN_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)\S+")
 _ENV_ASSIGNMENT_RE = re.compile(r"(?i)\b([A-Z_][A-Z0-9_]*(?:_KEY|_SECRET|_TOKEN|_PASSWORD))\s*=\s*\S+")
 _GENERIC_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(token|password|secret|credential|api[_-]?key)((?:=|:)\s*)\S+")
-# Group 2 keeps an optional copula or separator ("token is X", "token = X") so the mask lands on the value (#505).
+# Group 2 keeps an optional copula and/or separator ("token is X", "token = X", "token is: X") so the mask lands on the
+# value (#505).
 _WHITESPACE_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was|[=:])\s+)?)\S+"
+    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was)(?:\s*[=:])?\s+|[=:]\s+)?)\S+"
 )
 _API_KEY_HEADER_RE = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
 _X_API_KEY_HEADER_RE = re.compile(r"(?i)x-api-key:\s*\S+")
