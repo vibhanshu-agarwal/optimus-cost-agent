@@ -45,24 +45,71 @@
   "overlap": "open PRs #549 (Plan 12.14 filing, docs only), #544 (issue240 provisional custody) and #474 (CI recovery, never merge) touch none of planning_loop.py, prompts.py, workspace_context.py, memory_session.py, assembly.py, acp/spec.py, memory_commands.py"
  },
  "labels": {
-  "issue_545_before": ["status:open", "priority:medium", "difficulty:medium", "estimate:na", "handler:claude", "product:optimus", "kind:plan"],
-  "issue_545_after": ["status:active", "priority:high", "difficulty:medium", "estimate:8d", "handler:claude", "product:optimus", "kind:plan"],
+  "issue_545_before": [
+   "status:open",
+   "priority:medium",
+   "difficulty:medium",
+   "estimate:na",
+   "handler:claude",
+   "product:optimus",
+   "kind:plan"
+  ],
+  "issue_545_after": [
+   "status:active",
+   "priority:high",
+   "difficulty:medium",
+   "estimate:8d",
+   "handler:claude",
+   "product:optimus",
+   "kind:plan"
+  ],
   "agreement": "difficulty:medium and estimate:8d proposed by Codex in plan v3 (round 114) and concurred by Claude; priority:high because an active plan is high (AGENTS.md issue tracking labels); applied 2026-11-23 on the operator's go to start",
   "children": "#242 and #245 keep their defaults until their own work starts (Tasks 2-3), per the owner-scope rule"
  },
  "registry": "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md and docs/README.md carry the Plan 12.13 rows (PR #546); #545 sub-issues [242, 245]; #235 sub-issues include 545 and 548; #548 sub-issues [243]",
  "releases": {
   "granted": [
-   {"when": "2026-11-23", "who": "operator", "words": "Release both, start",
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release both, start",
     "answering": "Start Task 1 with the index Redis and embedding artifact released?",
     "resources": [
      "dedicated index Redis: container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, image redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5, 512 MB; created and removed by the evaluator",
      "configured embedding artifact: the Qdrant/bge-small-en-v1.5-onnx-Q copy under optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models, copied by setup with its digest check"
     ],
-    "scope": "Task 1 calibration and its real-index check; the setup's ACL password lives in an in-process keyring stand-in, so no OS keyring write; the local Gateway process has an unroutable upstream (127.0.0.1:9), so no paid egress"}
+    "scope": "Task 1 calibration and its real-index check; the setup's ACL password lives in an in-process keyring stand-in, so no OS keyring write; the local Gateway process has an unroutable upstream (127.0.0.1:9), so no paid egress"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release all, start",
+    "answering": "Release Task 4's index Redis, embedding artifact, acpx, Zed and WSL runs?",
+    "resources": [
+     "dedicated index Redis: container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, the same image and 512 MB cap; created and removed by the run",
+     "the configured embedding artifact (the same bge-small-en-v1.5 copy, digest-checked)",
+     "one independent acpx client run against a zero-paid agent (own Gateway port, local stub upstream that never forwards, own config root)",
+     "one zero-paid real-Zed session (own Gateway port, local stub upstream, own agent entry; operator-typed prompts)",
+     "WSL Ubuntu-24.04 runs of the P1 and P2 checks only"
+    ],
+    "not_released": "the test memory store is not used (no served-memory boundary claim is made); keyring writes were released separately, below",
+    "scope": "Task 4 only; every resource is removed after its run"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release both (Recommended)",
+    "answering": "Release the acpx and Zed runs' launch approvals in the OS keyring, for this task's own config roots only and revoked afterwards?",
+    "resources": [
+     "one durable launch approval for optimus-handoff/p1213-task4/acpx/cfg",
+     "one durable launch approval for optimus-handoff/p1213-task4/zed/cfg"
+    ],
+    "scope": "revoked and removed after each run; nothing else in the keyring changes"
+   }
   ],
   "start_task_1": "operator 2026-11-23 'Release both, start'",
-  "status": "keyring service, test memory store, acpx, Zed sessions and WSL remain unreleased (cases.json release_configuration)"
+  "status": "Task 4 released (the test memory store is not used)",
+  "start_task_4": "operator 2026-11-23 'Release all, start'"
  },
  "review_rules": {
   "cadence": "Codex CLI alone at CP1 (Tasks 0-1), CP2 (Tasks 2-3), CP3 (Tasks 4-5); no Fable 5.2 review (medium plan)",

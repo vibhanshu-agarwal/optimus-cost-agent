@@ -30,6 +30,7 @@ from context_engine.retrieval import RRF_K, WEIGHTS, CatalogueFile, Retrieval, R
 from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
 from optimus.agent.workspace_context import (
     DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
+    NO_HINTS,
     RankingHints,
     WorkspaceContextResult,
     WorkspaceReferenceDiagnostic,
@@ -499,14 +500,22 @@ class MemorySession:
             files = kept
         return RepoMap("", 0, len(files))
 
-    def hints_for(self, scope: _Scope) -> Callable[[Sequence[str], Sequence[str]], RankingHints] | None:
-        """An ambiguous reference's verified hints (Plan 12.13 #242), from the map this scope already holds; none without one. A label
-        comes from the map's own generation, and only for a file whose bytes still match it; a failed query falls back to the map."""
-        cached = self._map if self._map is not None and self._map.identity == scope.identity else None
-        if cached is None:
-            return None
+    def hints_for(self, scope: _Scope) -> Callable[[Sequence[str], Sequence[str]], RankingHints]:
+        """An ambiguous reference's verified hints (Plan 12.13 #242), from this scope's map. A turn assembles before its prompt reads the
+        map, so the first ambiguity of a session reads it here, once (Task 4's real-index run found the hints missing). None can be read:
+        no hints. A label comes from the map's own generation, and only for a file whose bytes still match it; a failed query falls
+        back to the map."""
+
+        def held() -> _CachedMap | None:
+            return self._map if self._map is not None and self._map.identity == scope.identity else None
 
         def hints(candidates: Sequence[str], resolved: Sequence[str]) -> RankingHints:
+            cached = held()
+            if cached is None:
+                self.repo_map(scope)  # the turn's prompt reads the same map next, from this cache
+                cached = held()
+            if cached is None:
+                return NO_HINTS
             files = {item.path: item for item in cached.files}
             for path in [path for path in candidates if path in files][:_HINT_QUERIES]:
                 try:

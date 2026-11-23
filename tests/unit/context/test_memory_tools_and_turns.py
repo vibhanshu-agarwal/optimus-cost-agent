@@ -1682,8 +1682,7 @@ def test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labe
     storage = _Storage([_record("y", "lib/y/config.py", "route_timeout", _sha("route_timeout = 1\n")),  # indexed before an edit
                         _record("x", "src/x/config.py", "route_timeout", _sha("route_timeout = 5\n"))])
     session = _session(workspace, storage)
-    turn = session.turn()
-    turn.repo_map()  # the turn's prefix reads the map first
+    turn = session.turn()  # nothing has read the map yet: a turn assembles before its prompt reads it (found by Task 4's real index)
 
     result = _assemble(turn, task="where is route_timeout set in config.py")
 
