@@ -57,6 +57,8 @@ REACHED_TEXT = (
 INDETERMINATE_TEXT = "Conversation delivery is indeterminate; this prompt was refused."
 COMPLETED_TEXT = "Turn completed."
 CHAT_ANSWER = "calc.py defines add()."
+# The prompt response for a turn the runner completed (#268: `_meta` carries the run's stop code and committed outcome).
+COMPLETED_RESULT = {"stopReason": "end_turn", "_meta": {"runStopReason": None, "outcome": "completed"}}
 
 _SCHEMA = json.loads(
     (Path(__file__).resolve().parents[2] / "fixtures" / "acp" / "acp-v1-schema.json").read_text(encoding="utf-8")
@@ -206,7 +208,7 @@ async def test_notice_separation_and_cap_end_turn(tmp_path: Path) -> None:
     # Admission crosses 80%: the warning is its own block, ahead of the turn's own message.
     _seed_used_bytes(adapter, session_id, WARNING_FIRST_BYTE - 1)
     crossing = await _prompt(adapter, session_id, "Crossing task", "p1")
-    assert crossing["result"] == {"stopReason": "end_turn"}
+    assert crossing["result"] == COMPLETED_RESULT
     assert _texts(outbound) == [WARNING_TEXT + SEPARATOR, COMPLETED_TEXT + SEPARATOR]
 
     # A full conversation is refused readably and ends the turn normally, without a provider call.
@@ -404,7 +406,7 @@ async def test_an_undelivered_warning_is_sent_again_when_the_turn_commits(
         state = _seed_used_bytes(adapter, session_id, WARNING_FIRST_BYTE - 1)
 
         crossing = await _prompt(adapter, session_id, "Crossing task", "p1")
-        assert crossing["result"] == {"stopReason": "end_turn"}, "a failed notice never fails the turn"
+        assert crossing["result"] == COMPLETED_RESULT, "a failed notice never fails the turn"
         assert transport.warning_count() == warnings_on_the_wire
         assert state.warning_confirmed is True
 
@@ -475,7 +477,7 @@ async def test_the_meter_follows_chat_answers_and_cancelled_chat_turns(tmp_path:
     outbound.notifications.clear()
 
     release.set()
-    assert (await _prompt(adapter, session_id, "What does calc.py do?", "c1"))["result"] == {"stopReason": "end_turn"}
+    assert (await _prompt(adapter, session_id, "What does calc.py do?", "c1"))["result"] == COMPLETED_RESULT
     assert [u["sessionUpdate"] for u in _session_updates(outbound)] == ["agent_message_chunk", "usage_update"]
 
     release.clear()
@@ -489,7 +491,7 @@ async def test_the_meter_follows_chat_answers_and_cancelled_chat_turns(tmp_path:
     release.set()
     cancelled = await asyncio.wait_for(prompt, timeout=10)
 
-    assert cancelled["result"] == {"stopReason": "cancelled"}
+    assert cancelled["result"] == {"stopReason": "cancelled", "_meta": {"runStopReason": None, "outcome": "cancelled"}}
     conversation = adapter._sessions.get(session_id).conversation  # noqa: SLF001
     assert set(conversation.records) == {1}, "cancellation without terminal flush cannot commit"
     assert _session_updates(outbound) == [], "no changed history meter is published"
@@ -502,6 +504,6 @@ async def test_a_failed_meter_never_fails_the_turn(tmp_path: Path) -> None:
 
     response = await _prompt(adapter, session_id, "Task", "p1")
 
-    assert response["result"] == {"stopReason": "end_turn"}
+    assert response["result"] == COMPLETED_RESULT
     assert _texts(outbound) == [COMPLETED_TEXT + SEPARATOR]
     assert len(adapter._sessions.get(session_id).conversation.records) == 1  # noqa: SLF001

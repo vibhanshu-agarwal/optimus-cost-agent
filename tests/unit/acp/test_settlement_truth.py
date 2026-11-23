@@ -29,6 +29,10 @@ async def tick():
     await event.wait()
 
 
+# The prompt response for a turn the Script completed (#268: `_meta` carries the run's stop code and committed outcome).
+COMPLETED_RESULT = {"stopReason": "end_turn", "_meta": {"runStopReason": None, "outcome": "completed"}}
+
+
 class Script:
     def __init__(self, status=AgentRunStatus.COMPLETED):
         self.status = status
@@ -661,7 +665,8 @@ async def test_flushed_response_handoff_does_not_wait_for_owned_worker(tmp_path,
             await asyncio.wait_for(cancellation_submitted.wait(), 1)
         publication_release.set()
         response = await h.transport.until(lambda m: m.get("id") == "followup")
-        assert response.get("result") == {"stopReason": "cancelled" if cancel_followup else "end_turn"}
+        # A follow-up cancelled before it was handled has no run result, so no `_meta` (#268).
+        assert response.get("result") == ({"stopReason": "cancelled"} if cancel_followup else COMPLETED_RESULT)
         assert ("followup" in handled) is (not cancel_followup)
         assert not worker.done(), "physical custody remains independent of response exit"
         await h.reader.send({"jsonrpc": "2.0", "id": "setter", "method": "session/set_mode",
@@ -723,7 +728,7 @@ async def test_publication_between_reader_observations_cannot_refuse_the_followu
             "sessionId": h.session_id, "prompt": [{"type": "text", "text": "Continue"}]}})
         response = await h.transport.until(lambda m: m.get("id") == "followup")
         assert observed == [SendState.WRITE_STARTED, SendState.FLUSHED], "publication was forced between observations"
-        assert response.get("result") == {"stopReason": "end_turn"}
+        assert response.get("result") == COMPLETED_RESULT
         assert handled == [("prompt", 0), ("followup", 1)], "the follow-up queues behind the old owner's settlement"
         assert not h.sink_errors
     finally:
@@ -776,7 +781,7 @@ async def test_followup_during_held_response_write_waits_for_truthful_retirement
             h.transport.fail = (lambda m: m.get("id") == "prompt") if end == "failed" else (lambda m: False)
             h.transport.release.set()
             response = await h.transport.until(lambda m: m.get("id") == "followup")
-            assert response.get("result") == {"stopReason": "end_turn"}
+            assert response.get("result") == COMPLETED_RESULT
             assert h.events[0].payload["rpc_response_delivery"] == ("ambiguous" if end == "failed" else "flushed")
             assert handled == [("prompt", 0), ("followup", 1)], "dispatch follows the old owner's settlement"
             assert sum(m.get("id") == "prompt" for m in h.transport.writes) == 1
@@ -843,7 +848,7 @@ async def test_deferred_followups_keep_fifo_across_prompt_capacity(tmp_path, mon
         assert handled == ["prompt", "B"], "a deferred session must not block a ready session"
         publication_release.set()
         response = await h.transport.until(lambda m: m.get("id") == "A2")
-        assert response.get("result") == {"stopReason": "end_turn"}
+        assert response.get("result") == COMPLETED_RESULT
         assert [request_id for request_id in handled if request_id in {"A1", "A2"}] == ["A1", "A2"]
         assert not any(message.get("id") == "B" for message in h.transport.writes)
         assert not h.sink_errors

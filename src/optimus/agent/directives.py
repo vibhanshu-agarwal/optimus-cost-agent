@@ -7,6 +7,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
+from optimus.mcp.client_config import MCP_NAME_RE
+
 # #410 R1: directive syntax, EDIT's included, is separated by spaces and tabs only.
 _READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")
 _WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")
@@ -23,7 +25,6 @@ _EDIT_MARKERS = frozenset({EDIT_OLD_MARKER, EDIT_NEW_MARKER, EDIT_END_MARKER})
 _TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 _MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST[ \t]+(\S+)[ \t]*$")
 _MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\{.*\})[ \t]*$")
-_MCP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _INDEX_TOOL_LINE = re.compile(r"^(?:(SEARCH)[ \t]+(\S.*?)|(OUTLINE|SYMBOLS|LIST)[ \t]+(\S+))[ \t]*$")
 MAX_INDEX_TOOL_LINES = 4
 _SHELL_METACHARACTERS = re.compile(r"[;|&`$<>]|&&|\|\||\$\(")
@@ -117,7 +118,7 @@ def parse_canonical_json_object(text: str) -> dict[str, object]:
 
 
 def validate_mcp_name(name: str, *, label: str) -> str:
-    if _MCP_NAME_RE.fullmatch(name) is None:
+    if MCP_NAME_RE.fullmatch(name) is None:
         raise AgentDirectiveParseError(f"unsafe MCP {label} name")
     return name
 
