@@ -555,11 +555,14 @@ keychain. For the single local Redis / Gateway / Phoenix operator sequence, see
 — checkout-root `.env.gateway` is untrusted data for the retained trust CLI
 ceremony, not an implicit `optimus-agent` discovery path.
 
-**Local gateway and debug logs (singleton semantics):** the workspace that starts
-the loopback local gateway owns `<that-workspace>/.optimus/local-gateway.log`. If a
-gateway is already reachable on the configured loopback port, later `optimus-agent`
-invocations from other workspaces reuse that process and do **not** create their own
-gateway log. Debug tracing (`--debug-trace`) targets the current
+**Local Gateway and debug logs:** the workspace that starts the loopback Gateway
+receives its process output in `.optimus/local-gateway.log`. An agent with an approved
+local Gateway configuration can reuse a listener on the approved URL after it proves
+the same configuration. The owning launch keeps shutdown responsibility. If the borrower
+later cannot verify the listener, it ends the prompt before any model request and records
+a best-effort `gateway_refused` entry in its own workspace's `.optimus/local-gateway.log`.
+See the [local dependencies runbook](docs/runbooks/local-live-dependencies.md)
+for recovery. Debug tracing (`--debug-trace`) targets the current
 workspace's own `<workspace>/.optimus/debug-acp.ndjson`, regardless of gateway
 ownership. Diagnostic payload work is deferred until tracing is enabled. Ordinary
 payload, redaction and file-write failures are contained so they do not disrupt
