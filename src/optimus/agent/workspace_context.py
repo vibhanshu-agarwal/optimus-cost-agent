@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -10,6 +10,9 @@ from pathlib import Path
 # Which files may be packed is the one includable-files policy (Plan 12.6, ADR-031): skipped folders, the runtime
 # tree, secret files (#385) and aliases to any of them are denied before content is opened, then .gitignore and
 # .optimusignore apply. RUNTIME_DIR_NAME stays importable here.
+from context_engine.code_index import split_terms
+from context_engine.repo_map import MapFile, neighbours
+from context_engine.retrieval import lexical_terms, query_terms
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose, describe
 from optimus.guardrails.runtime_tree import RUNTIME_DIR_NAME as RUNTIME_DIR_NAME
 from optimus.guardrails.secret_paths import is_secret_path
@@ -37,11 +40,86 @@ class WorkspaceReferenceStatus(StrEnum):
 
 
 @dataclass(frozen=True)
+class RankedCandidate:
+    """One eligible target of an ambiguous reference and why it is where it is (Plan 12.13 #242). A suggestion: it authorizes nothing."""
+
+    path: str
+    task_terms: tuple[str, ...] = ()  # the task's own terms its folders or verified-current labels share, in lexical_terms' order
+    near_task_path: bool = False  # one verified import away from a file the task names that resolved on its own
+    verified_current: bool = False  # its index record matches the file's current bytes
+
+    def reasons(self) -> str:
+        said = [f"task terms: {', '.join(self.task_terms)}"] if self.task_terms else []
+        said += ["linked by an import to a file the task names"] if self.near_task_path else []
+        said += ["indexed and current"] if self.verified_current else []
+        return "; ".join(said)
+
+
+@dataclass(frozen=True)
+class RankingHints:
+    """Verified-current structural hints only. A file missing here contributes nothing; it is never removed."""
+
+    verified: Mapping[str, tuple[str, ...]] = field(default_factory=dict)  # path -> its verified record's labels
+    near: frozenset[str] = frozenset()
+
+
+NO_HINTS = RankingHints()
+
+
+@dataclass(frozen=True)
 class WorkspaceReferenceDiagnostic:
     reference: str
     status: WorkspaceReferenceStatus
     candidates: tuple[str, ...] = ()
     reason: str | None = None  # the file policy's rule id for a refused reference
+    ranked: tuple[RankedCandidate, ...] = ()  # an ambiguous reference's candidates, in `candidates` order
+
+
+def rank_candidates(candidates: Sequence[str], *, task: str, reference: str, hints: RankingHints = NO_HINTS) -> tuple[RankedCandidate, ...]:
+    """The frozen #242 order (`ranking-policy.json`): task-term relevance, dependency proximity, verified-current metadata, then path.
+    The reference's own name and extension are not task terms. No score, gap or threshold: every candidate is kept."""
+    own_name = set(query_terms(reference.replace("\\", "/").rsplit("/", 1)[-1]))
+    wanted = [term for term in dict.fromkeys(lexical_terms(task)) if term not in own_name]
+    ranked = []
+    for path in candidates:
+        folders = path.rsplit("/", 1)[0].split("/") if "/" in path else []
+        verified = path in hints.verified
+        known = set(split_terms(folders).split()) | (set(split_terms(hints.verified[path]).split()) if verified else set())
+        ranked.append(RankedCandidate(path, tuple(term for term in wanted if term in known), path in hints.near, verified))
+    return tuple(sorted(ranked, key=lambda item: (-len(item.task_terms), -item.near_task_path, -item.verified_current, item.path)))
+
+
+def verified_hints(candidates: Sequence[str], resolved: Sequence[str], *, files: Sequence[MapFile], hashes: Mapping[str, str],
+                   read: Callable[[str], bytes | None]) -> RankingHints:
+    """Hints from an index map whose records match the files' current bytes. An edge needs the record that holds the import to be
+    current, so a changed file links nothing; module names still resolve over every mapped file, as the map's own do."""
+    def current(path: str) -> bool:
+        data = read(path)
+        return data is not None and path in hashes and hashlib.sha256(data).hexdigest() == hashes[path]
+
+    by_path = {item.path: item for item in files}
+    verified = {path: by_path[path].symbols for path in candidates if path in by_path and current(path)}
+    anchors = [path for path in resolved if path in by_path and current(path)]
+    trusted = set(verified) | set(anchors)
+    linked = [item if item.path in trusted else MapFile(item.path) for item in files]
+    return RankingHints(verified, frozenset(neighbours(linked, anchors)) & set(candidates) if anchors else frozenset())
+
+
+def rank_ambiguity(diagnostics: tuple[WorkspaceReferenceDiagnostic, ...], task: str,
+                   hints_for: Callable[[Sequence[str], Sequence[str]], RankingHints] | None = None) -> tuple[WorkspaceReferenceDiagnostic, ...]:
+    """Each ambiguous reference's candidates in ranked order, for ordinary assembly and the index's alike. `hints_for(candidates,
+    resolved task paths)` gives the index's verified hints; without one only folder names count."""
+    if not any(item.status is WorkspaceReferenceStatus.AMBIGUOUS for item in diagnostics):
+        return diagnostics
+    resolved = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED))
+    out = []
+    for item in diagnostics:
+        if item.status is WorkspaceReferenceStatus.AMBIGUOUS:
+            hints = NO_HINTS if hints_for is None else hints_for(item.candidates, resolved)
+            ranked = rank_candidates(item.candidates, task=task, reference=item.reference, hints=hints)
+            item = WorkspaceReferenceDiagnostic(item.reference, item.status, tuple(entry.path for entry in ranked), item.reason, ranked)
+        out.append(item)
+    return tuple(out)
 
 
 @dataclass(frozen=True)
@@ -144,7 +222,7 @@ def assemble_workspace_context_for_prompt(
                 prioritized_paths.append(resolved_path)
                 seen_resolved.add(resolved_path)
 
-    diagnostic_tuple = tuple(diagnostics)
+    diagnostic_tuple = rank_ambiguity(tuple(diagnostics), task)
     blocking_stop_reason, blocking_message = _blocking_from_diagnostics(diagnostic_tuple)
 
     if blocking_stop_reason is not None:
@@ -237,13 +315,15 @@ def _blocking_from_diagnostics(
 ) -> tuple[str | None, str | None]:
     for diagnostic in diagnostics:
         if diagnostic.status is WorkspaceReferenceStatus.AMBIGUOUS:
-            candidates = ", ".join(diagnostic.candidates)
+            if not any(item.reasons() for item in diagnostic.ranked):  # nothing tells them apart: today's path order and words
+                listed = f"Candidates: {', '.join(diagnostic.candidates)}."
+            else:
+                listed = ("Candidates, most likely first: "
+                          + "; ".join(f"{item.path} ({item.reasons()})" if item.reasons() else item.path for item in diagnostic.ranked)
+                          + ". The order is a suggestion and chose nothing.")
             return (
                 "AMBIGUOUS_WORKSPACE_REFERENCE",
-                (
-                    f"Workspace reference '{diagnostic.reference}' is ambiguous. "
-                    f"Candidates: {candidates}. Retry with one exact workspace-relative path."
-                ),
+                f"Workspace reference '{diagnostic.reference}' is ambiguous. {listed} Retry with one exact workspace-relative path.",
             )
     for diagnostic in diagnostics:
         if diagnostic.status is WorkspaceReferenceStatus.NOT_READABLE:

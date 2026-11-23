@@ -323,6 +323,12 @@ class TurnControl:
                 )
             return self._terminal_decision
 
+    @property
+    def recorded_settlement(self) -> Settlement:
+        """The semantic outcome recorded so far, as `finalize_once` would settle it (Plan 12.13 `/why`)."""
+        with self._lock:
+            return Settlement.CANCELLED if self._cancellation_accepted else self._settlement
+
     def record_outcome(self, outcome: Settlement) -> None:
         """Keep semantic outcome independently of delivery and canonical insertion."""
         with self._lock:

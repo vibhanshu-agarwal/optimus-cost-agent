@@ -363,7 +363,7 @@ def test_a_document_shown_only_by_its_signature_still_reaches_memory_lineage(wor
     assert "Deploy notes" in result.text and set(result.file_sha256s) == {"pkg/a.py"}  # the document gave no body
     assert set(result.shown_paths) == {"pkg/a.py", "notes.md"}
     turn = assembly.AttachedTurn.__new__(assembly.AttachedTurn)
-    turn._attachment, turn._dispatches, turn._dispatched, turn._current_prompt = make_attachment(), [], [], "p"
+    turn._attachment, turn._dispatches, turn._dispatched, turn._current_prompt, turn._contexts = make_attachment(), [], [], "p", []
     turn._records, turn._checkpoint, turn._context_paths, turn._source_chars, turn._context_unattributed = {}, None, None, 0, False
     turn.record_context(result)
     assert [item.ref for item in turn.memory_lineage("r")] == ["r:context:documents"]
@@ -1672,3 +1672,23 @@ def test_a_turn_without_an_index_names_no_prefix_even_on_a_prefix_route(tmp_path
     binder = _route(tmp_path, "prefix").capture(session_id="s", turn_seq=1, deliver_notice=lambda _notice: True)
     AgentRunner(gateway_client=gateway, model="cn/alpha").run(request, route_binder=binder)
     assert gateway.bindings[0].cache_prefix_chars is None
+
+
+def test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labels_only(workspace):
+    """Plan 12.13 #242: the index's own map ranks the stop; a stale record's label counts for nothing, and the stop stays a stop."""
+    for folder, text in (("lib/y", "OLD = 1\n"), ("src/x", "route_timeout = 5\n")):
+        (workspace / folder).mkdir(parents=True)
+        (workspace / folder / "config.py").write_text(text, encoding="utf-8", newline="\n")
+    storage = _Storage([_record("y", "lib/y/config.py", "route_timeout", _sha("route_timeout = 1\n")),  # indexed before an edit
+                        _record("x", "src/x/config.py", "route_timeout", _sha("route_timeout = 5\n"))])
+    session = _session(workspace, storage)
+    turn = session.turn()
+    turn.repo_map()  # the turn's prefix reads the map first
+
+    result = _assemble(turn, task="where is route_timeout set in config.py")
+
+    assert result.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
+    (stop,) = [item for item in result.diagnostics if item.ranked]
+    assert [(item.path, item.task_terms, item.verified_current) for item in stop.ranked] == [
+        ("src/x/config.py", ("route", "route_timeout", "timeout"), True), ("lib/y/config.py", (), False)]
+    assert "src/x/config.py (task terms: route, route_timeout, timeout; indexed and current); lib/y/config.py." in result.blocking_message

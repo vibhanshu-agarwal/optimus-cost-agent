@@ -753,6 +753,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.spec:AcpDuplexAdapter._capture_why:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: logs one fixed phrase when a turn's /why snapshot cannot be built, never the exception, a path or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_context_why.py::test_a_capture_that_fails_leaves_no_stale_explanation_and_logs_a_fixed_line",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.spec:AcpDuplexAdapter._prepare_memory:logger_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: logs a fixed phrase or an exception's type name, never its text, a path or file contents; the status line it sends is a fixed line or counts.",
@@ -1318,6 +1326,14 @@
       "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_search_drops_a_record_the_file_policy_now_refuses",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.context_why:capture:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: copies the turn's own context manifest (paths, hashes, symbols, ranks and reasons, never a body) into a RAM-only string for /why; nothing is written or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_context_why.py::test_an_index_turn_shows_its_choices_ranks_fit_and_grounding_but_no_bodies",
       "evidence_tier": "unit"
     },
     {

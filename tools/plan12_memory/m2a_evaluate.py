@@ -450,6 +450,7 @@ def ambiguity_baseline(frozen: Frozen, case: Mapping[str, Any], work: Path) -> d
     """Today's behavior on the case's real files: the stop, its candidate order (path order) and an exact-path retry where the case has one."""
     materialize(_family(frozen, case["family"]), work)
     outcome, candidates, resolved = _diagnose(work, case["task"], case["reference"])
+    candidates = sorted(candidates)  # the path-only baseline (ranking-policy.json): the stop now lists them ranked (Task 2)
     acceptable = set(case["acceptable"])
     rank = (
         next((number for number, path in enumerate(candidates, start=1) if path in acceptable), None)

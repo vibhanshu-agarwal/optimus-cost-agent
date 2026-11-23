@@ -449,6 +449,7 @@ class AttachedTurn:
         # A turn without a notice channel can deliver no required notice, so it sends nothing that needs one.
         self._deliver_notice = deliver_notice if deliver_notice is not None else (lambda text: False)
         self._dispatches: list[DispatchReading] = []
+        self._contexts: list[Any] = []  # every automatic context the runner reported, for `/why` (Plan 12.13)
         # Plan 12.11: what this turn sent, kept in RAM for the memory source-overlap check only, and its bound summarizer.
         self._dispatched: list[str] = []
         self._source_chars = 0  # everything the turn sent, kept or not
@@ -819,6 +820,7 @@ class AttachedTurn:
         ones the task named and the ones retrieval chose alike (Codex CP2 review 2, finding 5), a file shown only by its signature
         or description too (review 3, finding 3). Context text with no file behind it cannot be attributed, and counts as never
         reported."""
+        self._contexts.append(context)
         delivered = (*context.prioritized_paths, *getattr(context, "file_sha256s", {}), *getattr(context, "shown_paths", ()))
         if context.text and not delivered:
             self._context_unattributed = True
@@ -853,6 +855,12 @@ class AttachedTurn:
                 gateway_usage=attempt.gateway_usage, purpose=purpose, reasoning=attempt.reasoning))
 
         return call, record
+
+    def contexts(self) -> tuple[Any, ...]:
+        return tuple(self._contexts)
+
+    def dispatch_readings(self) -> tuple[DispatchReading, ...]:
+        return tuple(self._dispatches)
 
     def largest_dispatch(self) -> DispatchReading | None:
         return DispatchReading.largest(self._dispatches)

@@ -1,3 +1,4 @@
+import hashlib
 import os
 import sys
 from pathlib import Path
@@ -63,6 +64,7 @@ def test_ambiguous_basename_returns_sorted_candidates_and_blocking_reason(tmp_pa
             reference="example.py",
             status=WorkspaceReferenceStatus.AMBIGUOUS,
             candidates=("a/example.py", "b/example.py"),
+            ranked=(workspace_context.RankedCandidate("a/example.py"), workspace_context.RankedCandidate("b/example.py")),
         ),
     )
     assert "Retry with one exact workspace-relative path" in result.blocking_message
@@ -834,3 +836,88 @@ def test_where_no_opened_handle_can_be_verified_automatic_context_is_empty_and_s
     assert named.blocking_message == (
         "Workspace reference 'app.py' cannot be read safely: the system cannot confirm which file was opened."
     )
+
+
+# --- Plan 12.13 #242: one ranked ambiguity policy (reports/plan12-memory-m2a/ranking-policy.json) ----------------------
+
+
+def _config_workspace(root: Path) -> None:
+    for folder in ("src/agent", "src/gateway", "tests/fixtures"):
+        (root / folder).mkdir(parents=True)
+        (root / folder / "config.py").write_text(f"# {folder}\n", encoding="utf-8")
+    (root / "src/gateway/server.py").write_text("import config\n", encoding="utf-8")
+
+
+def test_an_ambiguous_reference_stays_a_stop_with_every_candidate_ranked_by_task_terms(tmp_path):
+    _config_workspace(tmp_path)
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="fix the route timeout in config.py used by src/gateway/server.py")
+
+    assert result.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
+    (stop,) = [item for item in result.diagnostics if item.status is WorkspaceReferenceStatus.AMBIGUOUS]
+    assert stop.candidates == ("src/gateway/config.py", "src/agent/config.py", "tests/fixtures/config.py")
+    assert [(item.path, item.task_terms) for item in stop.ranked] == [
+        ("src/gateway/config.py", ("gateway", "src")), ("src/agent/config.py", ("src",)), ("tests/fixtures/config.py", ())]
+    # the reference's own name never counts; terms keep lexical_terms' order: "config" and "py" are in every candidate
+    assert result.blocking_message == (
+        "Workspace reference 'config.py' is ambiguous. Candidates, most likely first: src/gateway/config.py (task terms: gateway, "
+        "src); src/agent/config.py (task terms: src); tests/fixtures/config.py. The order is a suggestion and chose nothing. "
+        "Retry with one exact workspace-relative path."
+    )
+
+
+def test_ranking_follows_the_frozen_feature_order_and_unverified_hints_count_for_nothing():
+    candidates = ("a/x.py", "b/x.py", "c/x.py", "d/x.py")
+    hints = workspace_context.RankingHints(verified={"c/x.py": ("Timeout",), "d/x.py": ()}, near=frozenset({"b/x.py"}))
+
+    ranked = workspace_context.rank_candidates(candidates, task="raise the timeout in x.py", reference="x.py", hints=hints)
+
+    # terms (c's verified label), then proximity (b), then verified metadata (d), then path (a)
+    assert [item.path for item in ranked] == ["c/x.py", "b/x.py", "d/x.py", "a/x.py"]
+    assert ranked[0].task_terms == ("timeout",) and ranked[1].near_task_path and ranked[2].verified_current
+    # a label of a file not verified current contributes nothing, and no candidate is ever removed
+    stale = workspace_context.RankingHints(verified={}, near=frozenset())
+    assert [item.path for item in workspace_context.rank_candidates(candidates, task="raise the timeout in x.py", reference="x.py", hints=stale)] == list(candidates)
+
+
+def test_candidates_nothing_tells_apart_keep_todays_path_order_and_message(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "example.py").write_text("a\n", encoding="utf-8")
+    (tmp_path / "b" / "example.py").write_text("b\n", encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Update example.py")
+
+    assert result.blocking_message == ("Workspace reference 'example.py' is ambiguous. Candidates: a/example.py, b/example.py. "
+                                       "Retry with one exact workspace-relative path.")
+
+
+def test_the_exact_path_retry_is_revalidated_and_never_falls_back_to_another_candidate(tmp_path):
+    _config_workspace(tmp_path)
+    task = "fix the route timeout in {} used by src/gateway/server.py"
+
+    retried = assemble_workspace_context_for_prompt(tmp_path, task=task.format("src/agent/config.py"))
+    assert retried.blocking_stop_reason is None and retried.prioritized_paths[0] == "src/agent/config.py"
+
+    (tmp_path / "src/agent/config.py").unlink()
+    gone = assemble_workspace_context_for_prompt(tmp_path, task=task.format("src/agent/config.py"))
+    (diagnostic,) = [item for item in gone.diagnostics if item.reference == "src/agent/config.py"]
+    assert diagnostic.status is WorkspaceReferenceStatus.NOT_FOUND and "src/gateway/config.py" not in gone.prioritized_paths[:1]
+
+
+def test_verified_hints_need_the_current_bytes_and_link_only_through_verified_records():
+    from context_engine.repo_map import MapFile
+
+    files = [MapFile("src/gateway/server.py", ("src.gateway.config",)), MapFile("src/gateway/config.py", (), ("route_timeout",)),
+             MapFile("src/agent/config.py", ("src.gateway.server",), ("Agent",)), MapFile("tests/fixtures/config.py")]
+    current = {"src/gateway/server.py": b"s", "src/gateway/config.py": b"g", "src/agent/config.py": b"changed", "tests/fixtures/config.py": b"t"}
+    indexed = {path: hashlib.sha256(data).hexdigest() for path, data in current.items()} | {"src/agent/config.py": hashlib.sha256(b"a").hexdigest()}
+
+    hints = workspace_context.verified_hints(("src/agent/config.py", "src/gateway/config.py", "tests/fixtures/config.py"), ("src/gateway/server.py",),
+                                             files=files, hashes=indexed, read=current.get)
+
+    assert hints.verified == {"src/gateway/config.py": ("route_timeout",), "tests/fixtures/config.py": ()}  # agent/config.py changed since
+    assert hints.near == frozenset({"src/gateway/config.py"}), "agent/config.py imports the task file, but from a record that is not current"
+    # a task file whose bytes changed links nothing
+    moved = dict(current, **{"src/gateway/server.py": b"edited"})
+    assert workspace_context.verified_hints(("src/gateway/config.py",), ("src/gateway/server.py",), files=files, hashes=indexed, read=moved.get).near == frozenset()

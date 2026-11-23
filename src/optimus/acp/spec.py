@@ -116,6 +116,8 @@ from optimus.acp.shapes import (
 )
 from optimus.agent.models import TEST_STOP_REASONS, AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.agent.planning_loop import (
+    PLANNING_NEW_READ_MAX_BYTES,
+    PLANNING_OBSERVATION_MAX_BYTES,
     CheckInDecision,
     EscalationGrant,
     EscalationRefusal,
@@ -125,7 +127,7 @@ from optimus.agent.planning_loop import (
     PlanningEscalationCallback,
     PlanningProgressEvent,
 )
-from optimus.context import memory_serving
+from optimus.context import context_why, memory_serving
 from optimus.context.adapter import ApprovalFact, approval_fact_from_permission
 from optimus.context.assembly import AttachedTurn, ContextAttachment
 from optimus.context.memory_backups import Scheduler as BackupScheduler
@@ -133,6 +135,7 @@ from optimus.context.memory_continuity import Continuity, Settled
 from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
 from optimus.context.memory_recovery import Scheduler as RecoveryScheduler
 from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
+from optimus.guardrails.file_policy import FilePolicy
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_disposition import (
     AcpMcpPermissionBroker,
@@ -493,6 +496,9 @@ class AcpSpecSession:
     # Plan 12.4 Task 4, Auto launches only: each committed turn's routing, keyed by its turn sequence and published only
     # when that turn commits as completed or rejected. Kept apart from the canonical five-field turn records.
     auto_routes: dict[int, AutoDecision] = field(default_factory=dict, repr=False, compare=False)
+    # Plan 12.13: the last terminal turn's explanation for `/why`, and whether a prompt was refused before preparation since.
+    why: context_why.Snapshot | None = field(default=None, repr=False, compare=False)
+    why_refused_after: bool = False
 
     def __post_init__(self) -> None:
         # The conversation's cost is one projection over this session's receipts, updated whenever a
@@ -528,6 +534,11 @@ class AcpPromptTurn:
     auto_recorded: bool = False
     # #397: the model a recovery escalation moved the turn to, once; `auto_decision` stays the classifier's routing.
     escalated_model: str | None = None
+    # Plan 12.13 `/why`: how the memory read ended, the runs' stop reasons and the planning rounds and read sizes it reported.
+    memory_read: str | None = None
+    result_stop: str | None = None
+    planning_rounds: int | None = None
+    planning_reads: list[int] = field(default_factory=list)
 
     @property
     def run_id(self) -> str:
@@ -1500,6 +1511,36 @@ class AcpDuplexAdapter:
         return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered",
                                           cancelled=cancelled)
 
+    async def _handle_why(self, request: dict[str, Any], session_id: str, page: int | str,
+                          ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
+        """Plan 12.13 `/why`: the session's last turn's recorded explanation, answered locally like `/savings`. It reads the
+        snapshot already in RAM, asks the file policy only whether each path may be shown now, and calls no model, index, store
+        or extractor. A rejected prompt or a command never replaces the snapshot."""
+        session = self._sessions.get(session_id)
+
+        async def compute(wait: _LocalWait) -> _LocalAnswer | None:
+            if isinstance(page, str) or session is None:
+                text = page if isinstance(page, str) else context_why.NO_SNAPSHOT
+            else:
+                sanitize = ConversationSanitizer(self._sanitizer_inputs, workspace=Path(session.cwd)).sanitize_in_workspace
+                snapshot, refused = session.why, session.why_refused_after
+
+                def render() -> str:
+                    return context_why.answer(snapshot, page, sanitize=sanitize, admits=FilePolicy(Path(session.cwd)).admitter(),
+                                              refused_after=refused, manifests_on_disk=session.memory is not None)
+
+                work = asyncio.create_task(asyncio.to_thread(render))
+                if not await wait(work, context_why.WAIT_SECONDS):
+                    return None
+                try:
+                    text = work.result() if work.done() else context_why.UNPREPARED_TEXT
+                except Exception:  # noqa: BLE001 - an explanation that cannot be rendered says so and changes nothing
+                    text = context_why.UNPREPARED_TEXT
+            return [build_agent_message_chunk_notification(session_id=session_id, text=text)], lambda: None
+
+        return await self._answer_locally(request, session_id, compute, ownership_slot, "the explanation could not be delivered",
+                                          cancelled=cancelled)
+
     async def _ask_once(self, params: dict[str, Any], option: str, wait: _LocalWait) -> bool | None:
         """One host-generated `session/request_permission`: True only for its own response choosing `option`; False for cancel,
         another option, an error or expiry; None when the command itself was cancelled."""
@@ -1643,7 +1684,7 @@ class AcpDuplexAdapter:
     async def after_response(self, method: str, response: dict[str, Any]) -> None:
         """Called by the transport once a response is written. After a successful `session/new`, advertise `/savings`:
         Zed drops commands sent before the session's own response (zed-industries/zed#60199). The memory commands join it."""
-        if method != "session/new" or (self._usage_reports is None and self._memory_extractor_factory is None):
+        if method != "session/new":
             return
         result = response.get("result")
         session_id = result.get("sessionId") if isinstance(result, dict) else None
@@ -1656,9 +1697,9 @@ class AcpDuplexAdapter:
             }})
 
     def _available_commands(self) -> list[dict[str, Any]]:
-        """The host's own commands: `/savings` with durable capture (Plan 12.9), the memory commands with a memory store
-        (Plan 12.11), each independently of the other."""
-        commands: list[dict[str, Any]] = []
+        """The host's own commands: `/why` always (Plan 12.13), `/savings` with durable capture (Plan 12.9), the memory commands
+        with a memory store (Plan 12.11), each independently of the others."""
+        commands: list[dict[str, Any]] = [{"name": context_why.COMMAND, "description": context_why.DESCRIPTION, "input": {"hint": context_why.HINT}}]
         if self._usage_reports is not None:
             commands.append({"name": SAVINGS_COMMAND, "description": SAVINGS_DESCRIPTION, "input": {"hint": SAVINGS_HINT}})
         if self._memory_extractor_factory is not None:
@@ -2019,6 +2060,9 @@ class AcpDuplexAdapter:
                 ownership_slot,
             )
 
+        why = context_why.parse(task, attachments=any(not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
+        if why is not None:  # Plan 12.13: answered from RAM, before admission, classification or any model call
+            return await self._handle_why(request, session_id, why, ownership_slot, cancelled=cancelled)
         if self._usage_reports is not None:
             command = parse_savings_command(task, attachments=any(
                 not (isinstance(block, dict) and block.get("type") == "text") for block in prompt))
@@ -2332,6 +2376,8 @@ class AcpDuplexAdapter:
             def _session_progress_observer(event: PlanningProgressEvent) -> None:
                 if default_observer is not None:
                     default_observer(event)
+                turn.planning_rounds = max(turn.planning_rounds or 0, event.settled_turn)
+                turn.planning_reads.extend(event.read_byte_counts)
                 lane.offer(event)
 
             try:
@@ -2365,6 +2411,7 @@ class AcpDuplexAdapter:
                 raise
             finally:
                 await progress.settle()
+            turn.result_stop = planning_result.stop_reason
             self._apply_turn_cost(
                 session,
                 turn,
@@ -2552,6 +2599,7 @@ class AcpDuplexAdapter:
                 run_id="post-fix",
             )
             # endregion
+            turn.result_stop = approved_result.stop_reason
             turn_control.record_outcome(Settlement(_conversation_outcome(approved_result).value))
             await self._emit_result_updates(session_id=session_id, result=approved_result, planning=False, turn=turn)
             await self._emit_completion_message(session_id=session_id, result=approved_result, turn=turn)
@@ -2606,9 +2654,31 @@ class AcpDuplexAdapter:
                 # Plan 12.8: the turn's terminal state closes its coverage epoch once every worker has settled.
                 session.cost_settlement.finalize_turn(turn.run_id)
                 self._report_context_faults(turn)
+                self._capture_why(session, turn)
                 # Recompute after any cancellation so settlement telemetry is exact even for a turn that
                 # ends without a commit (Plan 12.2 Task 2). After transport teardown this is a no-op.
                 turn.turn_control.refresh_effect_state()
+
+    def _capture_why(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
+        """Plan 12.13: this terminal attempt's explanation replaces the last, whatever its outcome, from what it recorded."""
+        attached = turn.attached
+        memory = None if attached is None else attached.memory
+        try:
+            session.why = context_why.capture(
+                run_id=turn.run_id, turn_seq=turn.turn_seq, outcome=turn.turn_control.recorded_settlement.value, stop=turn.result_stop,
+                index="not configured" if session.memory is None else "not answering" if memory is None else "used",
+                contexts=None if attached is None else attached.contexts(),
+                dispatches=None if attached is None else [(item.tokens, item.capacity) for item in attached.dispatch_readings()],
+                rounds=turn.planning_rounds, reads=turn.planning_reads if turn.planning_rounds is not None else None,
+                limits=(PLANNING_OBSERVATION_MAX_BYTES, PLANNING_NEW_READ_MAX_BYTES),
+                manifest=getattr(memory, "manifest", None),
+                served=turn.served_memory or memory_serving.EMPTY,
+                memory_read=turn.memory_read or ("not read" if session.memory_commands is not None else None),
+            )
+        except Exception:  # noqa: BLE001 - an explanation never changes how a turn ends; a stale one must not stand in for it
+            _LOG.warning("context explanation not recorded for this turn")
+            session.why = None
+        session.why_refused_after = False
 
     def _mcp_refusal(
         self, request: dict[str, Any], session_id: str, reason: str,
@@ -2630,6 +2700,9 @@ class AcpDuplexAdapter:
         ownership_slot: ResponseOwnershipSlot | None,
     ) -> NonTurnResponseEnvelope:
         del conversation
+        refused = self._sessions.get(session_id)
+        if refused is not None:  # Plan 12.13: `/why` then says its snapshot is still the earlier turn's
+            refused.why_refused_after = True
         # The fixed refusal reason persists (Codex round 13 finding 2): the operator line, the trace and the always-on
         # telemetry record, each contained on its own (correction plan v4, C7); never the prompt.
         known = reason if reason in PROMPT_REFUSAL_REASONS else "unrecognized"
@@ -2871,11 +2944,14 @@ class AcpDuplexAdapter:
             served, block = await asyncio.wait_for(asyncio.to_thread(read), timeout=MEMORY_SERVE_SECONDS)
         except TimeoutError:
             log_memory_served(run_id=turn.run_id, source="turn", outcome="timeout")
+            turn.memory_read = "timeout"
             return memory_serving.EMPTY, ""
         except Exception:  # noqa: BLE001 - no memory this turn; the turn goes on as it would without a store
             log_memory_served(run_id=turn.run_id, source="turn", outcome="error")
+            turn.memory_read = "error"
             return memory_serving.EMPTY, ""
         log_memory_served(run_id=turn.run_id, source="turn", outcome="served", served=served)
+        turn.memory_read = "served"
         return served, block
 
     async def _render_served(self, session: AcpSpecSession, served: Any) -> str:
@@ -2916,7 +2992,7 @@ class AcpDuplexAdapter:
             return
         if text is None or turn.turn_control.transport_abandoned():
             return
-        turn.served_memory, turn.brief = served[0], text
+        turn.served_memory, turn.brief, turn.memory_read = served[0], text, "served"
         log_memory_served(run_id=turn.run_id, source="brief", outcome="served", served=served[0])
         with contextlib.suppress(Exception):
             await self._outbound.notify("session/update", build_agent_message_chunk_notification(session_id=turn.session_id, text=text),
@@ -3480,6 +3556,9 @@ class AcpDuplexAdapter:
         """A prompt request refused before any turn (correction plan v4, C5): its fixed reason, with the session and the
         client's request id each in its own shape, in the operator line, the trace and the always-on telemetry
         record. Never the prompt or the invalid values; each record is contained on its own."""
+        refused = self._sessions.get(session_id) if isinstance(session_id, str) else None
+        if refused is not None:  # Plan 12.13: `/why` then says its snapshot is still the earlier turn's
+            refused.why_refused_after = True
         known = reason if reason in PRE_RUN_REFUSAL_REASONS else "unrecognized"
         _operator_line(f"optimus.acp: prompt refused session_id={host_session_id(session_id) or 'none'} reason={known}")
         log_pre_run_refusal(session_id=session_id, request_id=request.get("id"), reason=reason, telemetry=self._failure_telemetry)

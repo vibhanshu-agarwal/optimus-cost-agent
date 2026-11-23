@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
+from optimus.context import context_why
 from optimus.usage import savings_report as sr
 from optimus.usage.durable_capture import DurableCapture, host_outbox_root
 from optimus_gateway import usage_price_snapshots
@@ -91,10 +92,12 @@ async def test_the_command_is_advertised_only_after_the_session_new_response_and
 
     adverts = [n["params"] for n in with_reports.outbound.notifications[with_reports.before:]
                if n["params"]["update"]["sessionUpdate"] == "available_commands_update"]
+    why = {"name": context_why.COMMAND, "description": context_why.DESCRIPTION, "input": {"hint": context_why.HINT}}  # Plan 12.13: always
     assert adverts == [{"sessionId": with_reports.session_id, "update": {"sessionUpdate": "available_commands_update",
-                        "availableCommands": [{"name": "savings", "description": sr.COMMAND_DESCRIPTION, "input": {"hint": sr.COMMAND_HINT}}]}}]
+                        "availableCommands": [why, {"name": "savings", "description": sr.COMMAND_DESCRIPTION, "input": {"hint": sr.COMMAND_HINT}}]}}]
     assert not any(n["params"]["update"]["sessionUpdate"] == "available_commands_update" for n in with_reports.outbound.notifications[:with_reports.before])
-    assert not any(n["params"]["update"]["sessionUpdate"] == "available_commands_update" for n in without.outbound.notifications)
+    assert [n["params"]["update"]["availableCommands"] for n in without.outbound.notifications
+            if n["params"]["update"]["sessionUpdate"] == "available_commands_update"] == [[why]], "no /savings without reports"
     await with_reports.adapter.after_response("session/new", {"error": {"code": -1}})  # a failed setup advertises nothing
     await with_reports.adapter.after_response("session/prompt", {"result": {"sessionId": with_reports.session_id}})
     assert len(adverts) == 1

@@ -391,7 +391,7 @@ def _turn_with(prompt: str) -> object:
     turn = assembly.AttachedTurn.__new__(assembly.AttachedTurn)
     turn._attachment, turn._dispatches, turn._dispatched, turn._current_prompt = make_attachment(), [], [], prompt
     turn._records, turn._checkpoint, turn._context_paths = {}, None, None
-    turn._source_chars, turn._context_unattributed = 0, False
+    turn._source_chars, turn._context_unattributed, turn._contexts = 0, False, []
     return turn
 
 
