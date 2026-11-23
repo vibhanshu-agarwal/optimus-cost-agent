@@ -8,10 +8,19 @@
   "section": "explanation"
  },
  "run": {
-  "command": "pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py tests/unit/guardrails/test_file_policy.py",
-  "code_head": "git:5c496a9caa23f9f7f1610c5a2dfea17f243bb9ea plus the three case tests added in Task 5 (uncommitted at the run; committed with this record)",
-  "result": "109 passed, 3 skipped in 3.39s",
-  "log": "hex:99b53fac412fd17372bd0af63ad4a9dfa4c749e5044dc0558d59159296b04868"
+  "command": "pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py tests/unit/guardrails/test_file_policy.py tests/unit/agent/test_context_selection.py",
+  "code_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5 (clean apart from reports/plan12-memory-m2a/inventory.json)",
+  "result": "149 passed, 3 skipped in 74.72s (0:01:14)",
+  "log": "hex:207270fcfb8dfac26e8d3117cd3539b542b22e161a2a36d691549fb06bd7f155"
+ },
+ "history": {
+  "first": "reports/plan12-memory-m2a/why.json at git:bde5e26",
+  "first_log": "hex:99b53fac412fd17372bd0af63ad4a9dfa4c749e5044dc0558d59159296b04868",
+  "partly_met_then": {
+   "E09": "no per-round breakdown",
+   "E12": "'/why 0' got the usage line without the valid range"
+  },
+  "fixed_by": "git:5aeac3a (Codex CP3 review 1, findings 2 and 3)"
  },
  "bounds": {
   "entries_per_page": 40,
@@ -20,7 +29,7 @@
   "grammar": "'/why' or '/why <n>' with ASCII digits; anything else gets the usage line"
  },
  "zero_calls": "/why is answered on the local command path: the host tests assert no runner request and no conversation record, and the live stubs received no request at any /why step (acpx.json, zed-ui.json)",
- "held_out": "E10-E12 are held-out explanation cases. They were first checked against their own oracles at this head; the tests check behaviour, so no result tuned the product",
+ "held_out": "E10-E12 are held-out explanation cases, first checked against their own oracles at git:bde5e26 (Task 5) and now consumed. E12 was partly met there; the later fix is corrective verification, not a successful first qualification (Codex CP3 ruling 6)",
  "cases": [
   {
    "case": "E01",
@@ -110,10 +119,12 @@
    "setup": "three planning rounds and a wire retry",
    "tests": [
     "tests/unit/context/test_context_why.py::test_e09_requests_and_planning_rounds_are_counted_apart",
+    "tests/unit/context/test_context_why.py::test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_and_attempt",
+    "tests/unit/context/test_context_why.py::test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn",
     "tests/unit/context/test_context_why.py::test_an_index_turn_shows_its_choices_ranks_fit_and_grounding_but_no_bodies"
    ],
-   "status": "partly met",
-   "note": "requests and rounds are counted apart (4 and 3), never from timestamps; there is no per-round breakdown, and a Gateway wire retry is not a host request, so it is not counted; test added in Task 5"
+   "status": "met",
+   "note": "met at git:5aeac3a: each request carries the round and attempt the planning loop recorded as it sent it (shown through the real AgentRunner by tests/unit/agent/test_context_selection.py::test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round), and /why lists requests per round with retries; the Gateway's own route attempts inside one request are said not to be host requests. Partly met at git:bde5e26 (history)"
   },
   {
    "case": "E10",
@@ -144,14 +155,12 @@
     "tests/unit/context/test_context_why.py::test_one_entry_longer_than_a_page_is_cut_with_a_marker",
     "tests/unit/context/test_context_why.py::test_only_why_and_why_n_are_the_command"
    ],
-   "status": "partly met",
-   "live": "Zed run 2 and acpx step 15: '/why 2' past a one-page explanation",
-   "note": "'/why 0' gets the usage line, which is readable but does not state the valid page range; test added in Task 5"
+   "status": "met",
+   "live": "acpx step 15: '/why 2' past a one-page explanation; Zed step 7 is to be re-observed (CP3 ruling 5)",
+   "note": "met at git:5aeac3a: '/why 0' names the valid range. Partly met at git:bde5e26, where it got the usage line (history)"
   }
  ],
  "deviations": [
-  "E02: an indexed turn and served memory are not shown live: no index or memory store was released for the client runs",
-  "E09: requests and rounds are counted apart (4 and 3), never from timestamps; there is no per-round breakdown, and a Gateway wire retry is not a host request, so it is not counted; test added in Task 5",
-  "E12: '/why 0' gets the usage line, which is readable but does not state the valid page range; test added in Task 5"
+  "E02: an indexed turn and served memory are not shown live: no index or memory store was released for the client runs"
  ]
 }

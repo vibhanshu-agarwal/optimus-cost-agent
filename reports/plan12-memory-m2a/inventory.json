@@ -6,24 +6,88 @@
  "phase": "Task 0 applicability (planned); each row is re-checked against the actual diff at Task 5 and its result recorded here",
  "source_commit": "git:6f696a8118c76d8facbdd88a5b50d107c82b3e2d",
  "rows": [
-  {"inventory": "establishing-import closure, tools/probe_p11_zed_session_load.py", "applicability": "applies if new runtime modules enter the ACP launch closure",
-   "expected_change": "src/optimus/context/context_why.py joins the closure list if spec.py or memory_commands.py imports it at module load"},
-  {"inventory": "logging files/sinks, docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json", "applicability": "applies if /why or the snapshot logs anything",
-   "expected_change": "none planned: reuse debug_trace.log_memory_served and its exclusions; any new debug field is added with ensure_ascii JSON and no statements, titles, paths or branches"},
-  {"inventory": "Gateway route/op/auth inventories", "applicability": "not applicable", "expected_change": "none: /why is local, no new route, op or auth"},
-  {"inventory": "walker reasons, tests/unit/guardrails/test_tracked_file_scanners.py", "applicability": "applies if the evaluator scans the repository",
-   "expected_change": "tools/plan12_memory/m2a_evaluate.py reuses tracked_repository_files, or none if it reads only frozen inputs"},
-  {"inventory": "child sites, tests/unit/tools/run_context_child_sites.json", "applicability": "applies if the evaluator or new tests launch children",
-   "expected_change": "a row for m2a_evaluate.py if it spawns a process; none expected otherwise"},
-  {"inventory": "_REVIEWED_CHEAP_LAUNCHERS, tests/unit/tools/test_test_profiles.py", "applicability": "applies with a new launching test file", "expected_change": "reviewed entry only if a new file launches"},
-  {"inventory": "[parallel].serial, tests/profiles.toml", "applicability": "applies to tests that use the released Redis or real ACP clients", "expected_change": "reuse the requires_plan12_index_redis marker (excluded by default in pyproject.toml addopts); add a [parallel].serial entry only if a new file shares a released resource"},
-  {"inventory": "platform tag for tests reading sys.platform", "applicability": "applies to P1/P2 tests", "expected_change": "platform tag on any new test that branches on sys.platform"},
-  {"inventory": "markers in default exclusions/run-context lists", "applicability": "applies only with a new marker", "expected_change": "none: prefer requires_plan12_index_redis and existing markers"},
-  {"inventory": "_INDEX_LISTINGS, tests/unit/tools/test_tracked_repository_files.py", "applicability": "applies only with a new git index listing", "expected_change": "none expected"},
-  {"inventory": "/why catalogue, descriptions, usage, parser; ACP advertisement and wiring", "applicability": "applies",
-   "expected_change": "a /why entry in the host command catalogue (spec.py _available_commands advertises memory commands only with a memory store; /why must be advertised without one, since it works with index and extraction disabled), its parser and usage text"},
-  {"inventory": "prompt fixtures/version pins and cache identities", "applicability": "applies only if CP1 selects a non-baseline partition",
-   "expected_change": "indexed_planner_prefix bytes and request digest change; registry composition hashes unchanged; before/after recorded in cache-identity.json"},
-  {"inventory": "docs: commands, docs/README.md, decision index, issue-only registry pointer, new ADR-046", "applicability": "applies", "expected_change": "at delivery"}
- ]
+  {
+   "inventory": "establishing-import closure, tools/probe_p11_zed_session_load.py",
+   "applicability": "applies if new runtime modules enter the ACP launch closure",
+   "expected_change": "src/optimus/context/context_why.py joins the closure list if spec.py or memory_commands.py imports it at module load",
+   "outcome": "changed: git:ef6bf5c lists src/optimus/context/context_why.py in the closure (spec.py imports it at load); git:ce9d98a adds its size term to the closure test"
+  },
+  {
+   "inventory": "logging files/sinks, docs/superpowers/reviews/2026-07-15-plan-9-96-logging-surface-audit.json",
+   "applicability": "applies if /why or the snapshot logs anything",
+   "expected_change": "none planned: reuse debug_trace.log_memory_served and its exclusions; any new debug field is added with ensure_ascii JSON and no statements, titles, paths or branches",
+   "outcome": "changed: rows added for optimus.acp.spec:AcpDuplexAdapter._capture_why:logger_export (a fixed phrase only), optimus.context.context_why:capture:json_serialization and six tools.plan12_memory.m2a_evaluate sinks (git:ca9bfec, git:af23353, git:ef6bf5c, git:b6dd92b); test_verify_plan996_logging_surfaces passed"
+  },
+  {
+   "inventory": "Gateway route/op/auth inventories",
+   "applicability": "not applicable",
+   "expected_change": "none: /why is local, no new route, op or auth",
+   "outcome": "not applicable, confirmed: no Gateway route, op or auth change on this branch"
+  },
+  {
+   "inventory": "walker reasons, tests/unit/guardrails/test_tracked_file_scanners.py",
+   "applicability": "applies if the evaluator scans the repository",
+   "expected_change": "tools/plan12_memory/m2a_evaluate.py reuses tracked_repository_files, or none if it reads only frozen inputs",
+   "outcome": "no change: the evaluator reads frozen inputs and its own git calls; test_tracked_file_scanners passed"
+  },
+  {
+   "inventory": "child sites, tests/unit/tools/run_context_child_sites.json",
+   "applicability": "applies if the evaluator or new tests launch children",
+   "expected_change": "a row for m2a_evaluate.py if it spawns a process; none expected otherwise",
+   "outcome": "no change: the evaluator's git subprocess calls fall under the existing rules; test_run_context_child_sites passed"
+  },
+  {
+   "inventory": "_REVIEWED_CHEAP_LAUNCHERS, tests/unit/tools/test_test_profiles.py",
+   "applicability": "applies with a new launching test file",
+   "expected_change": "reviewed entry only if a new file launches",
+   "outcome": "no change: no new launching test file; test_test_profiles passed"
+  },
+  {
+   "inventory": "[parallel].serial, tests/profiles.toml",
+   "applicability": "applies to tests that use the released Redis or real ACP clients",
+   "expected_change": "reuse the requires_plan12_index_redis marker (excluded by default in pyproject.toml addopts); add a [parallel].serial entry only if a new file shares a released resource",
+   "outcome": "no change by this branch: the real-index tests reuse requires_plan12_index_redis (excluded by default); tests/profiles.toml changed only through the merge of main (#553)"
+  },
+  {
+   "inventory": "platform tag for tests reading sys.platform",
+   "applicability": "applies to P1/P2 tests",
+   "expected_change": "platform tag on any new test that branches on sys.platform",
+   "outcome": "no new sys.platform test on this branch; the P1/P2 probe ran on the real platforms instead (platforms.json)"
+  },
+  {
+   "inventory": "markers in default exclusions/run-context lists",
+   "applicability": "applies only with a new marker",
+   "expected_change": "none: prefer requires_plan12_index_redis and existing markers",
+   "outcome": "no change: no new marker"
+  },
+  {
+   "inventory": "_INDEX_LISTINGS, tests/unit/tools/test_tracked_repository_files.py",
+   "applicability": "applies only with a new git index listing",
+   "expected_change": "none expected",
+   "outcome": "no change: no new git index listing; test_tracked_repository_files passed"
+  },
+  {
+   "inventory": "/why catalogue, descriptions, usage, parser; ACP advertisement and wiring",
+   "applicability": "applies",
+   "expected_change": "a /why entry in the host command catalogue (spec.py _available_commands advertises memory commands only with a memory store; /why must be advertised without one, since it works with index and extraction disabled), its parser and usage text",
+   "outcome": "changed as planned: /why is advertised with every session, memory store or not (git:ef6bf5c), with its parser, usage and description in context_why.py; /why 0 names the valid range (git:5aeac3a)"
+  },
+  {
+   "inventory": "prompt fixtures/version pins and cache identities",
+   "applicability": "applies only if CP1 selects a non-baseline partition",
+   "expected_change": "indexed_planner_prefix bytes and request digest change; registry composition hashes unchanged; before/after recorded in cache-identity.json",
+   "outcome": "changed: CP1 chose 6/10, so the planner prefix bytes and request digest changed; registry composition hashes unchanged (cache-identity.json, git:68622a9)"
+  },
+  {
+   "inventory": "docs: commands, docs/README.md, decision index, issue-only registry pointer, new ADR-046",
+   "applicability": "applies",
+   "expected_change": "at delivery",
+   "outcome": "changed: ADR-046 and its two index rows, a README.md paragraph, the HLD/LLD coverage notes and the roadmap's three partition mentions (git:bde5e26); ADR-046 updated for CP3 (git:5aeac3a); the registry stays issue-only"
+  }
+ ],
+ "outcomes_recorded": {
+  "when": "2026-11-23, Task 5",
+  "against": "git diff 6f696a8 5aeac3a, merges of main excluded",
+  "gates": "the Task 5 inventory gates passed at git:6dd6b97 (646 passed, 1 skipped; optimus-handoff/p1213-task5/gates-1.log) and again with the Task 5 files staged (156 passed, 1 skipped; gates-2.log)"
+ }
 }

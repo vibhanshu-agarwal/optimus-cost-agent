@@ -13,6 +13,7 @@
    "label": "r1",
    "commit": "git:b6af270",
    "record": "hex:60667ada130c223bfaaf41a57aacb04f71c322e53b011c2b29858d5abcf34fc3",
+   "schema": "plan12-memory-m2a.revert-checks.v1",
    "rows": [
     {
      "category": "snapshot publication",
@@ -150,6 +151,7 @@
    "label": "r2",
    "commit": "git:9033c59",
    "record": "hex:56a5dd691832581a8b94f7dcbd9eeb60b6d553b4cd556076b43972b6989f5073",
+   "schema": "plan12-memory-m2a.revert-checks.v1",
    "rows": [
     {
      "category": "snapshot publication",
@@ -285,6 +287,7 @@
    "label": "r3",
    "commit": "git:6dd6b97",
    "record": "hex:494357de8f8170e814dd987625ec58175ff63e687e69aa68d79a10fadfb90566",
+   "schema": "plan12-memory-m2a.revert-checks.v1",
    "rows": [
     {
      "category": "snapshot publication",
@@ -424,12 +427,631 @@
    ],
    "missed": [],
    "caught": "15 of 15"
+  },
+  {
+   "label": "r4",
+   "commit": "git:5aeac3a",
+   "record": "hex:820036e59491a60e18c2c52cb94e135f7a6b953a12b09b5b90ff0bccd1ef730c",
+   "schema": "plan12-memory-m2a.revert-checks.v2",
+   "rows": [
+    {
+     "n": 1,
+     "category": "snapshot publication",
+     "mutation": "a turn's end is not captured",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it_was_blocked",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it_was_blocked",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.59s",
+      "log": "01-control.log",
+      "log_sha256": "hex:dee3dcc9d6abad804b0efad7fc95e30dba9926e115e4874df9bef6b436c3fb03"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it_was_blocked",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_context_why.py::test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it_was_blocked"
+      ],
+      "summary": "1 failed in 2.19s",
+      "log": "01-mutant.log",
+      "log_sha256": "hex:8ab845086c42817d24a029e4c9dd6e5851be9849dc619e43d044fd78bf24d5c3"
+     },
+     "caught": true
+    },
+    {
+     "n": 2,
+     "category": "privacy filtering",
+     "mutation": "today's file denials ignored",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_todays_denials_sanitizing_and_escaping_apply_to_every_recorded_value",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_todays_denials_sanitizing_and_escaping_apply_to_every_recorded_value",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.49s",
+      "log": "02-control.log",
+      "log_sha256": "hex:99b8d43fdb20b8a6aee99bbcee8b085a33cdc170de00da8570b66c2d90a86cb0"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_todays_denials_sanitizing_and_escaping_apply_to_every_recorded_value",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_context_why.py::test_todays_denials_sanitizing_and_escaping_apply_to_every_recorded_value"
+      ],
+      "summary": "1 failed in 1.68s",
+      "log": "02-mutant.log",
+      "log_sha256": "hex:71b57201af2e98e848ea178549a3a80aa5a273c9c0f7087299d903b047db32eb"
+     },
+     "caught": true
+    },
+    {
+     "n": 3,
+     "category": "privacy filtering",
+     "mutation": "a typed reference shown without today's name check",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 53.55s",
+      "log": "03-control.log",
+      "log_sha256": "hex:b6a263bf997ee4535c8b047e87c2adfd09e4f4d312195405e9678539d435eaa8"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_context_why.py::test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy"
+      ],
+      "summary": "1 failed in 1.55s",
+      "log": "03-mutant.log",
+      "log_sha256": "hex:65672e8388177efe457fe4036407e5a472866f40f48a4c108b920248faadea75"
+     },
+     "caught": true
+    },
+    {
+     "n": 4,
+     "category": "session binding",
+     "mutation": "/why reads the snapshot of whichever session came first",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_each_session_explains_only_its_own_turns",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_each_session_explains_only_its_own_turns",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.40s",
+      "log": "04-control.log",
+      "log_sha256": "hex:c876125ced013e94527b510aca6e3ef096bf037798fa88198afa7b91a8276f13"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_each_session_explains_only_its_own_turns",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_context_why.py::test_each_session_explains_only_its_own_turns"
+      ],
+      "summary": "1 failed in 2.28s",
+      "log": "04-mutant.log",
+      "log_sha256": "hex:2b3bcee73818a9466ee4c9ebb81c28bdcf908d5f4a5e68e161a110bd763a3110"
+     },
+     "caught": true
+    },
+    {
+     "n": 5,
+     "category": "fail-closed selection",
+     "mutation": "the top-ranked candidate is taken instead of stopping",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_an_ambiguous_reference_stays_a_stop_with_every_candidate_ranked_by_task_terms",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_workspace_context.py::test_an_ambiguous_reference_stays_a_stop_with_every_candidate_ranked_by_task_terms",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 4.84s",
+      "log": "05-control.log",
+      "log_sha256": "hex:f4cc70db039c49c7615d44b9f19081bcbc85df75cca74293a0f55444c4ccbea8"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_workspace_context.py::test_an_ambiguous_reference_stays_a_stop_with_every_candidate_ranked_by_task_terms",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_workspace_context.py::test_an_ambiguous_reference_stays_a_stop_with_every_candidate_ranked_by_task_terms"
+      ],
+      "summary": "1 failed in 1.53s",
+      "log": "05-mutant.log",
+      "log_sha256": "hex:975b480ad2d0285aec841bbf4ab2a1a8e926b9f422a821cd9ce22e80910f048e"
+     },
+     "caught": true
+    },
+    {
+     "n": 6,
+     "category": "fail-closed selection",
+     "mutation": "a path from history settles an ambiguity",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_only_the_prompts_own_path_settles_it_never_one_from_history",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_workspace_context.py::test_only_the_prompts_own_path_settles_it_never_one_from_history",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.03s",
+      "log": "06-control.log",
+      "log_sha256": "hex:5e533336b8fa02f20597ad18409b938870e9d87b76875533a93963c35bd6619c"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_workspace_context.py::test_only_the_prompts_own_path_settles_it_never_one_from_history",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_workspace_context.py::test_only_the_prompts_own_path_settles_it_never_one_from_history"
+      ],
+      "summary": "1 failed in 1.42s",
+      "log": "06-mutant.log",
+      "log_sha256": "hex:0fe9c34e1181219006a5b3a6bd9b38fdf333613d0d3c236a719367385bbf62a8"
+     },
+     "caught": true
+    },
+    {
+     "n": 7,
+     "category": "fail-closed selection",
+     "mutation": "a path from history anchors the index ranking (CP3 finding 1)",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_a_path_named_only_in_history_is_no_dependency_anchor_for_the_index_ranking",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_workspace_context.py::test_a_path_named_only_in_history_is_no_dependency_anchor_for_the_index_ranking",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 0.97s",
+      "log": "07-control.log",
+      "log_sha256": "hex:e3b46d16609be0bfaeecb7da18db0af3950458eb4df87dd11c5026fdd1ac8a6c"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_workspace_context.py::test_a_path_named_only_in_history_is_no_dependency_anchor_for_the_index_ranking",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_workspace_context.py::test_a_path_named_only_in_history_is_no_dependency_anchor_for_the_index_ranking"
+      ],
+      "summary": "1 failed in 1.41s",
+      "log": "07-mutant.log",
+      "log_sha256": "hex:83c1b5a6feebb2895d359ae2a41be1895d4b35e988ce25a5dccd8b45992c2917"
+     },
+     "caught": true
+    },
+    {
+     "n": 8,
+     "category": "fail-closed selection",
+     "mutation": "the runner ranks on the history-carrying selection text",
+     "file": "src/optimus/agent/runner.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_context_selection.py::test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "2 passed in 0.99s",
+      "log": "08-control.log",
+      "log_sha256": "hex:e246eff93f64fd2719632b87ef085e95bfffc6850f43d4fdd9aea140eb39a663"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_context_selection.py::test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_context_selection.py::test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner[CHAT]",
+       "FAILED tests/unit/agent/test_context_selection.py::test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner[AGENT]"
+      ],
+      "summary": "2 failed in 1.51s",
+      "log": "08-mutant.log",
+      "log_sha256": "hex:f14858d1b599ade74448a33c5604dc11108d2269c2f209e190112393d0bde77b"
+     },
+     "caught": true
+    },
+    {
+     "n": 9,
+     "category": "fail-closed selection",
+     "mutation": "a turn that did not complete selects with its notice",
+     "file": "src/optimus/context/assembly.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_context_selection.py::test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "2 passed in 1.14s",
+      "log": "09-control.log",
+      "log_sha256": "hex:5597815de6e337525178d88e5a759b7e67594c51209f056340b28d26667a4ae1"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_context_selection.py::test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_context_selection.py::test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry[CHAT]",
+       "FAILED tests/unit/agent/test_context_selection.py::test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry[AGENT]"
+      ],
+      "summary": "2 failed in 1.53s",
+      "log": "09-mutant.log",
+      "log_sha256": "hex:198be697332f1f70765298120c4513c4bc90a4c9b63b39fbece5d82ba91e351e"
+     },
+     "caught": true
+    },
+    {
+     "n": 10,
+     "category": "fail-closed selection",
+     "mutation": "the ranked stop ends as a refusal, so Zed hides it",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/acp/test_spec_protocol.py::test_workspace_context_failure_surfaces_corrective_refusal_message",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/acp/test_spec_protocol.py::test_workspace_context_failure_surfaces_corrective_refusal_message",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 2.77s",
+      "log": "10-control.log",
+      "log_sha256": "hex:46d6aaf19c3876f86dea61d45ccb38b613fbb8965fe880320cf4eeff8c9a2510"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/acp/test_spec_protocol.py::test_workspace_context_failure_surfaces_corrective_refusal_message",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/acp/test_spec_protocol.py::test_workspace_context_failure_surfaces_corrective_refusal_message"
+      ],
+      "summary": "1 failed in 2.70s",
+      "log": "10-mutant.log",
+      "log_sha256": "hex:4fc7fe5777edb2386620ae9cff75eb30194922d8e19de5a37ef878542501e423"
+     },
+     "caught": true
+    },
+    {
+     "n": 11,
+     "category": "freshness/completeness",
+     "mutation": "a changed file's record counts as verified",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_verified_hints_need_the_current_bytes_and_link_only_through_verified_records",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_workspace_context.py::test_verified_hints_need_the_current_bytes_and_link_only_through_verified_records",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 0.98s",
+      "log": "11-control.log",
+      "log_sha256": "hex:fb081e25d638756a986893a960df9085bdde67e56d62534fc43ceec729253925"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_workspace_context.py::test_verified_hints_need_the_current_bytes_and_link_only_through_verified_records",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_workspace_context.py::test_verified_hints_need_the_current_bytes_and_link_only_through_verified_records"
+      ],
+      "summary": "1 failed in 1.48s",
+      "log": "11-mutant.log",
+      "log_sha256": "hex:6603df5df3cb268c7a933a9c5d51c462b3bad647e79626ba8afc33520720d886"
+     },
+     "caught": true
+    },
+    {
+     "n": 12,
+     "category": "freshness/completeness",
+     "mutation": "hints use only a map a turn already read",
+     "file": "src/optimus/context/memory_session.py",
+     "oracle": "tests/unit/context/test_memory_tools_and_turns.py::test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labels_only",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_memory_tools_and_turns.py::test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labels_only",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.47s",
+      "log": "12-control.log",
+      "log_sha256": "hex:fdc8b0d1af1782b8fb1d3777104afde9e7c7e5f99b39a0923236cfac0fa41cf3"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_memory_tools_and_turns.py::test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labels_only",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_memory_tools_and_turns.py::test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labels_only"
+      ],
+      "summary": "1 failed in 2.08s",
+      "log": "12-mutant.log",
+      "log_sha256": "hex:033440d46b9351a29a42b77dd83d9b4d9c578e516d5e0c8408e9ed1e13d7c6bc"
+     },
+     "caught": true
+    },
+    {
+     "n": 13,
+     "category": "UTF-8/header accounting",
+     "mutation": "observations counted in characters",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[observations]",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[observations]",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 0.99s",
+      "log": "13-control.log",
+      "log_sha256": "hex:6f748ac31d71e95364fdd7d9f8ed9507eb10647a9a47de15d66ce49b31d9e6e5"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[observations]",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[observations]"
+      ],
+      "summary": "1 failed in 1.31s",
+      "log": "13-mutant.log",
+      "log_sha256": "hex:bc50846ff3317d373c818d12025b85fb0ae81368ae095008010aaa16eca2a9fd"
+     },
+     "caught": true
+    },
+    {
+     "n": 14,
+     "category": "UTF-8/header accounting",
+     "mutation": "current reads counted in characters",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[current_reads]",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[current_reads]",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.11s",
+      "log": "14-control.log",
+      "log_sha256": "hex:e166aae9fa02477c5bfdc5b04ab3ebb3a31522b15079bcd1a5f2be31bd3c3253"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[current_reads]",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[current_reads]"
+      ],
+      "summary": "1 failed in 1.55s",
+      "log": "14-mutant.log",
+      "log_sha256": "hex:7e83b8e8444f0d824f826bc1ae0a307f66747385c875c2824f493c59b02d003a"
+     },
+     "caught": true
+    },
+    {
+     "n": 15,
+     "category": "chosen partition",
+     "mutation": "the production partition back at 4/12",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/tools/test_plan12_memory_m2a.py::test_production_limits_are_the_partition_calibration_chose",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/tools/test_plan12_memory_m2a.py::test_production_limits_are_the_partition_calibration_chose",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 0.92s",
+      "log": "15-control.log",
+      "log_sha256": "hex:de181ee75c0e32e68ed76374939d655cb47aeb531650e89b6bd9fe827d9f37fb"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/tools/test_plan12_memory_m2a.py::test_production_limits_are_the_partition_calibration_chose",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/tools/test_plan12_memory_m2a.py::test_production_limits_are_the_partition_calibration_chose"
+      ],
+      "summary": "1 failed in 1.29s",
+      "log": "15-mutant.log",
+      "log_sha256": "hex:565b1a16b65295266fb9cb29391b0e5fe3cad2649b6cf31a6b52763c5095c796"
+     },
+     "caught": true
+    },
+    {
+     "n": 16,
+     "category": "snapshot publication",
+     "mutation": "the planning loop records no round or attempt (CP3 finding 2)",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_context_selection.py::test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 0.97s",
+      "log": "16-control.log",
+      "log_sha256": "hex:99a9d25804672af387dad2ff81657e94ba5c38dea1acd5bcdb78aabf028b2834"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/agent/test_context_selection.py::test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/agent/test_context_selection.py::test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round"
+      ],
+      "summary": "1 failed in 1.40s",
+      "log": "16-mutant.log",
+      "log_sha256": "hex:336dae44687078141c89ccc289b846eac1ac5f1c2a4156101d31d0fdb07ec8a2"
+     },
+     "caught": true
+    },
+    {
+     "n": 17,
+     "category": "snapshot publication",
+     "mutation": "the host drops each request's round and attempt (CP3 finding 2)",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.13s",
+      "log": "17-control.log",
+      "log_sha256": "hex:c3c9cf7c6f7e92e2672b6a47ee9314f8aaf1ae517515739f1b330a41b2e85a0f"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_context_why.py::test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn"
+      ],
+      "summary": "1 failed in 1.72s",
+      "log": "17-mutant.log",
+      "log_sha256": "hex:0165dfa8f23a36922d7557aab7de34136e09762e70483b238acc171dda6e6e5a"
+     },
+     "caught": true
+    },
+    {
+     "n": 18,
+     "category": "snapshot publication",
+     "mutation": "/why lists no request per round (CP3 finding 2)",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_and_attempt",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_and_attempt",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.08s",
+      "log": "18-control.log",
+      "log_sha256": "hex:7631a4be7d2a6f1ffb868a5e6c1ce3ee021a7898ec4127b6e16b3f4bc97180d0"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_and_attempt",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_context_why.py::test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_and_attempt"
+      ],
+      "summary": "1 failed in 2.64s",
+      "log": "18-mutant.log",
+      "log_sha256": "hex:6b9e54e12d243e7bb4875014e868a4db406a681de76072d0416776b3bb933092"
+     },
+     "caught": true
+    },
+    {
+     "n": 19,
+     "category": "paging",
+     "mutation": "/why 0 shows a page instead of the valid range (CP3 finding 3)",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names_the_last",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names_the_last",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.01s",
+      "log": "19-control.log",
+      "log_sha256": "hex:563e70041dc1450b0c82c9cce8c13e38accc4f06284ee947f1de47e9047f805e"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names_the_last",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_context_why.py::test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names_the_last"
+      ],
+      "summary": "1 failed in 1.39s",
+      "log": "19-mutant.log",
+      "log_sha256": "hex:c80b53ec4ec63f78f895fae0739f600efb748de0c883c6621b180901046770d6"
+     },
+     "caught": true
+    },
+    {
+     "n": 20,
+     "category": "truthful attribution",
+     "mutation": "/why says model requests where it means main ones (CP3 finding 4)",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_a_blocked_turn_explains_its_ranked_stop_and_that_nothing_was_dispatched",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": ""
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_a_blocked_turn_explains_its_ranked_stop_and_that_nothing_was_dispatched",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "1 passed in 1.61s",
+      "log": "20-control.log",
+      "log_sha256": "hex:e7d32b5a63560ad3e46960e12a6d896afc494d80fc3b54fb76f2ab65c1cb43f4"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py::test_a_blocked_turn_explains_its_ranked_stop_and_that_nothing_was_dispatched",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/unit/context/test_context_why.py::test_a_blocked_turn_explains_its_ranked_stop_and_that_nothing_was_dispatched"
+      ],
+      "summary": "1 failed in 1.59s",
+      "log": "20-mutant.log",
+      "log_sha256": "hex:a31b5c4f40e9631eab13a890215d1b84045ace698fa30f05cd945f4e748efeab"
+     },
+     "caught": true
+    }
+   ],
+   "missed": [],
+   "caught": "20 of 20",
+   "rule": "caught = the unmodified oracle passes and the mutant's -rA summary reports that exact oracle FAILED",
+   "runner": "optimus-handoff/p1213-task5/revert/revert_task5.py",
+   "runner_sha256": "hex:e295d21c34eb1545063fb599be2441704f26fbfaa5b0bc3dc6217ae6e1e27bc1",
+   "logs": "optimus-handoff/p1213-task5/revert/evidence/r4/ (each row names its control and mutant log and sha256)"
   }
  ],
  "dispositions": {
   "r1": "at git:b6af270, 'the runner ranks on the history-carrying selection text' was missed: no test drove the real runner with a path only in history; git:9033c59 added that runner-level test",
   "r2": "all caught at git:9033c59",
-  "r3": "adds the live-Zed stop-reason mutation at git:6dd6b97"
+  "r3": "adds the live-Zed stop-reason mutation at git:6dd6b97",
+  "r1-r3 attribution": "Codex CP3 review 1, finding 5: r1-r3 credited any pytest exit 1 and kept only each run's summary line, so they do not show that the named oracle failed. They are kept unchanged; r4 onward replaces them with attributed runs",
+  "r4": "git:5aeac3a with the attributed runner: an unmodified control must pass, and the mutant must report that exact oracle FAILED; adds CP3 findings 1-4's mutations; the real-index mutation needs its release",
+  "r5": "the real-index mutation with the attributed runner, once released"
  },
  "kit": "optimus-handoff/p1213-task4/revert"
 }
