@@ -102,6 +102,8 @@ class Snapshot:
     limits: tuple[int, int]  # planning observation and new-read serialized limits, bytes
     manifest: str | None  # the index's own manifest for this turn, canonical JSON (paths, symbols, ranks, reasons)
     memory: MemoryFacts | None  # None: no memory store this turn
+    # Each request the planning loop prepared: (planning round, whether it fitted), sent or not; None when not recorded
+    preparations: tuple[tuple[int, bool], ...] | None = None
 
 
 def _facts(result: Any) -> ContextFacts:
@@ -115,7 +117,7 @@ def _facts(result: Any) -> ContextFacts:
 def capture(*, run_id: str, turn_seq: int, outcome: str, stop: str | None, index: str, contexts: Sequence[Any] | None,
             dispatches: Sequence[tuple[int, int] | Dispatch] | None, rounds: int | None, reads: Sequence[int] | None, limits: tuple[int, int],
             manifest: Mapping[str, Any] | None,
-            served: Any, memory_read: str | None) -> Snapshot:
+            served: Any, memory_read: str | None, preparations: Sequence[tuple[int, bool]] | None = None) -> Snapshot:
     """The turn's facts, copied now: nothing in the snapshot can change after the turn."""
     memory = None
     if memory_read is not None:
@@ -130,10 +132,32 @@ def capture(*, run_id: str, turn_seq: int, outcome: str, stop: str | None, index
         limits=limits,
         manifest=json.dumps(manifest, sort_keys=True, ensure_ascii=True) if manifest else None,
         memory=memory,
+        preparations=None if preparations is None else tuple(preparations),
     )
 
 
 # --- rendering ---------------------------------------------------------------------------------------------------------
+
+
+def _rounds(snapshot: Snapshot) -> list[str]:
+    """Frozen case E09: each planning round's prepared and sent requests, from the round each one recorded, never from times or
+    order. A round that prepared a request and sent none is listed too (Codex CP3 review 2, finding 1)."""
+    prepared = snapshot.preparations or ()
+    sent = [item for item in snapshot.dispatches or () if item[2] is not None]
+    if not prepared and not (snapshot.dispatches and len(sent) == len(snapshot.dispatches)):
+        return []  # requests the loop did not number get no invented rounds
+    lines = []
+    for number in sorted({planning_round for planning_round, _ in prepared} | {item[2] for item in sent if item[2] is not None}):
+        parts = []
+        fits = [fitted for planning_round, fitted in prepared if planning_round == number]
+        if fits:
+            parts.append(f"prepared {len(fits)} time(s)" + ("" if all(fits) else f", {fits.count(False)} of them did not fit"))
+        requests = [item for item in sent if item[2] == number]
+        retries = sum((item[3] or 1) > 1 for item in requests)
+        parts.append(f"{len(requests)} request(s) sent" + (f", {retries} of them a retry" if retries else ""))
+        lines.append(f"  - round {number}: " + "; ".join(parts))
+    lines.append("  - the Gateway's own route attempts inside one request are not host requests and are not counted")
+    return lines
 
 
 def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str], str], name: Callable[[str], str]) -> list[str]:
@@ -150,12 +174,7 @@ def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str
         lines.append("- main model requests sent: none, so this context was prepared and never sent as a main model request")
     else:
         lines.append(f"- main model requests sent: {len(snapshot.dispatches)}" + ("" if snapshot.rounds is None else f"; planning rounds: {snapshot.rounds}"))
-        if all(item[2] is not None for item in snapshot.dispatches):  # frozen case E09: per round, from the request's own round
-            for number in sorted({item[2] for item in snapshot.dispatches if item[2] is not None}):
-                sent = [item for item in snapshot.dispatches if item[2] == number]
-                retries = sum((item[3] or 1) > 1 for item in sent)
-                lines.append(f"  - round {number}: {len(sent)} request(s) sent" + (f", {retries} of them a retry" if retries else ""))
-            lines.append("  - the Gateway's own route attempts inside one request are not host requests and are not counted")
+    lines += _rounds(snapshot)
 
     lines.append("**Choices**")
     first_choice = len(lines)

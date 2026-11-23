@@ -459,6 +459,7 @@ class AttachedTurn:
         # A turn without a notice channel can deliver no required notice, so it sends nothing that needs one.
         self._deliver_notice = deliver_notice if deliver_notice is not None else (lambda text: False)
         self._dispatches: list[DispatchReading] = []
+        self._preparations: list[tuple[int, bool]] = []  # (planning round, whether it fitted), each request prepared, for `/why`
         self._contexts: list[Any] = []  # every automatic context the runner reported, for `/why` (Plan 12.13)
         # Plan 12.11: what this turn sent, kept in RAM for the memory source-overlap check only, and its bound summarizer.
         self._dispatched: list[str] = []
@@ -872,6 +873,13 @@ class AttachedTurn:
 
     def dispatch_readings(self) -> tuple[DispatchReading, ...]:
         return tuple(self._dispatches)
+
+    def record_preparation(self, planning_round: int, *, fitted: bool) -> None:
+        """The planning loop prepared one request for `planning_round`, whether or not it fitted or was then sent."""
+        self._preparations.append((planning_round, fitted))
+
+    def preparations(self) -> tuple[tuple[int, bool], ...]:
+        return tuple(self._preparations)
 
     def largest_dispatch(self) -> DispatchReading | None:
         return DispatchReading.largest(self._dispatches)

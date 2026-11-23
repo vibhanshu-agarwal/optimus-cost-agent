@@ -1877,6 +1877,11 @@ class _PlanningIterationRunner:
             # fitted to the route's usable input, repacking the history view when needed (Plan 12.2
             # Task 9). Nothing that does not fit is sent.
             fitted = self._context_packer.fit(build)
+            # Each round's preparation, sent or not, for /why (Plan 12.13, frozen case E09; Codex CP3 review 2, finding 1).
+            # Packers that predate the fact (test doubles) have none.
+            prepared = getattr(self._context_packer, "record_preparation", None)
+            if callable(prepared):
+                prepared(planning_turn, fitted=fitted is not None)
             if fitted is None and self._halt_requested():
                 return self._typed_planning_failure(
                     stop_reason="PLANNING_HALTED",

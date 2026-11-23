@@ -67,8 +67,9 @@ which is posted verbatim on #545. Decision 5 follows an earlier recorded rule fo
   cannot establish this session's last turn.
 - **What it shows:**
   - identity and delivery: outcome and stop, how many times context was prepared, the main model requests the host sent and the
-    planning rounds. Each request is listed under its own planning round, with retries counted, from the round and attempt the
-    planning loop recorded as it sent the request. The Gateway's own route attempts inside one request are not host requests and
+    planning rounds. Each round lists the requests it prepared, and whether each fitted, and the requests it sent, with retries
+    counted, from the round and attempt the planning loop recorded at each step. A round that prepared a request and sent none
+    is listed too. The Gateway's own route attempts inside one request are not host requests and
     are not counted. An Auto classifier call is not a main model request;
   - choices, with ranked candidates for an ambiguity;
   - fit: bytes and tokens used against their limits, including the partition;

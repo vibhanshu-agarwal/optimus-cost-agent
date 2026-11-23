@@ -551,6 +551,7 @@ class _FakePacker:
         self.inputs: list[str] = []
         self.dispatched: list[str] = []
         self.where: list[tuple[int | None, int | None]] = []
+        self.prepared: list[tuple[int, bool]] = []
 
     def fit(self, build):
         text = build(self.envelope)
@@ -560,6 +561,9 @@ class _FakePacker:
     def record_dispatch(self, text: str, *, planning_round: int | None = None, attempt: int | None = None) -> None:
         self.dispatched.append(text)
         self.where.append((planning_round, attempt))
+
+    def record_preparation(self, planning_round: int, *, fitted: bool) -> None:
+        self.prepared.append((planning_round, fitted))
 
 
 def test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round(tmp_path):
@@ -575,6 +579,27 @@ def test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round
     assert packer.inputs == [call["input_text"] for call in gateway.calls]  # every round, as sent
     # each request names its own planning round and attempt, for /why (Plan 12.13, frozen case E09)
     assert packer.where == [(number, 1) for number in range(1, len(gateway.calls) + 1)]
+    assert packer.prepared == [(number, True) for number in range(1, len(gateway.calls) + 1)]
+
+
+def test_a_round_whose_request_does_not_fit_is_recorded_as_prepared_and_never_sent(tmp_path):
+    """Codex CP3 review 2, finding 1 (frozen case E09): round 2 prepares a request the route cannot take. The real planning loop
+    records that preparation under its own round, though nothing is sent for it."""
+    class SecondRoundTooBig(_FakePacker):
+        def fit(self, build):
+            text = build(self.envelope)
+            self.inputs.append(text)
+            return None if len(self.inputs) >= 2 else text
+
+    (tmp_path / "big.py").write_text("b" * 200, encoding="utf-8")
+    gateway = _Gateway("OBSERVE: need it\nREAD: big.py#bytes=0:200\n")
+    packer = SecondRoundTooBig("HISTORY-VIEW")
+    request = _attached_request(tmp_path, ExecutionMode.AGENT, prompt="Go on.", selection="Go on.", envelope="HISTORY-VIEW")
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+
+    assert result.stop_reason == "CONTEXT_CAPACITY_EXCEEDED" and len(gateway.calls) == 1
+    assert packer.prepared == [(1, True), (2, False)] and packer.where == [(1, 1)]
     first = gateway.calls[0]["input_text"]
     assert "Task: Go on.\n" in first and "HISTORY-VIEW" in first
     assert first.index("HISTORY-VIEW") < first.index("Task: Go on.")

@@ -2671,6 +2671,7 @@ class AcpDuplexAdapter:
                 contexts=None if attached is None else attached.contexts(),
                 dispatches=None if attached is None else [(item.tokens, item.capacity, item.planning_round, item.attempt)
                                                           for item in attached.dispatch_readings()],
+                preparations=None if attached is None else attached.preparations(),
                 rounds=turn.planning_rounds, reads=turn.planning_reads if turn.planning_rounds is not None else None,
                 limits=(PLANNING_OBSERVATION_MAX_BYTES, PLANNING_NEW_READ_MAX_BYTES),
                 manifest=getattr(memory, "manifest", None),

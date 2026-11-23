@@ -459,6 +459,17 @@ def test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_
     assert "largest request: about 500 of 1000 usable input tokens" in text
 
 
+def test_e09_a_round_that_prepared_a_request_and_sent_none_is_listed():
+    """Codex CP3 review 2, finding 1: round 3 prepared a request that did not fit, so nothing was sent for it."""
+    text = _text(_snapshot(dispatches=[(100, 1000, 1, 1), (300, 1000, 2, 1)], rounds=2, reads=[10, 20],
+                           preparations=[(1, True), (2, True), (3, False)]))
+
+    assert ("  - round 1: prepared 1 time(s); 1 request(s) sent\n  - round 2: prepared 1 time(s); 1 request(s) sent\n"
+            "  - round 3: prepared 1 time(s), 1 of them did not fit; 0 request(s) sent\n") in text
+    nothing_sent = _text(_snapshot(dispatches=[], preparations=[(1, False)]))
+    assert "never sent as a main model request" in nothing_sent and "round 1: prepared 1 time(s), 1 of them did not fit" in nothing_sent
+
+
 async def test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn(tmp_path):
     class ThreeRounds(_ReportingRunner):
         def run(self, request, **kwargs):
@@ -466,7 +477,10 @@ async def test_e09_the_host_records_each_requests_round_and_attempt_through_the_
             if packer is not None and not request.approval.approved:
                 packer.record_context(assemble_workspace_context_for_prompt(self.root, task=request.task))
                 for planning_round, attempt in ((1, 1), (2, 1), (2, 2), (3, 1)):
+                    if attempt == 1:
+                        packer.record_preparation(planning_round, fitted=True)
                     packer.record_dispatch("x" * 400, planning_round=planning_round, attempt=attempt)
+                packer.record_preparation(4, fitted=False)
             return Runner.run(self, request, **kwargs)
 
     (tmp_path / "pkg").mkdir()
@@ -478,7 +492,8 @@ async def test_e09_the_host_records_each_requests_round_and_attempt_through_the_
     await prompt(adapter, outbound, session_id, "/why", "w1")
 
     answer = _plain(texts(outbound)[-1])
-    assert "main model requests sent: 4" in answer and "round 2: 2 request(s) sent, 1 of them a retry" in answer
+    assert "main model requests sent: 4" in answer and "round 2: prepared 1 time(s); 2 request(s) sent, 1 of them a retry" in answer
+    assert "round 4: prepared 1 time(s), 1 of them did not fit; 0 request(s) sent" in answer
 
 
 def test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names_the_last():
