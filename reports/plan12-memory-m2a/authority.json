@@ -105,10 +105,32 @@
      "one durable launch approval for optimus-handoff/p1213-task4/zed/cfg"
     ],
     "scope": "revoked and removed after each run; nothing else in the keyring changes"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release it (Recommended)",
+    "answering": "Release the dedicated index Redis again for the one real-index reversion check Codex's CP3 review requires?",
+    "resources": [
+     "dedicated index Redis: container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, the same image and 512 MB cap",
+     "the configured bge-small-en-v1.5 embedding artifact (snapshot aa8f8b060edb00e03bfdd08813a2949946c8ba55)"
+    ],
+    "scope": "CP3: one attributed real-index reversion run (r5); created and removed by the test and the runner"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release it (Recommended)",
+    "answering": "Release one more zero-paid Zed session to re-observe step 7 after the /why fixes?",
+    "resources": [
+     "one zero-paid real-Zed session: own Gateway port 18782, local stub 18798 that never forwards, the optimus-p1213-why agent entry (settings backed up and restored)",
+     "one durable launch approval for optimus-handoff/p1213-task4/zed/cfg, approved and revoked by the operator at a terminal"
+    ],
+    "scope": "CP3: Zed step 7 (/why 2) and a /why 0 check; everything torn down afterwards"
    }
   ],
   "start_task_1": "operator 2026-11-23 'Release both, start'",
-  "status": "Task 4 released (the test memory store is not used)",
+  "status": "Task 4 released and torn down; CP3 released the index Redis (r5) and one Zed session (step 7)",
   "start_task_4": "operator 2026-11-23 'Release all, start'"
  },
  "review_rules": {

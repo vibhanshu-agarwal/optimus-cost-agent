@@ -1043,6 +1043,54 @@
    "runner": "optimus-handoff/p1213-task5/revert/revert_task5.py",
    "runner_sha256": "hex:e295d21c34eb1545063fb599be2441704f26fbfaa5b0bc3dc6217ae6e1e27bc1",
    "logs": "optimus-handoff/p1213-task5/revert/evidence/r4/ (each row names its control and mutant log and sha256)"
+  },
+  {
+   "label": "r5",
+   "commit": "git:5aeac3a",
+   "record": "hex:fff26fb57ad8fda98700e27addd18fa115cd55af5158401a822ab8224929629c",
+   "schema": "plan12-memory-m2a.revert-checks.v2",
+   "rows": [
+    {
+     "n": 1,
+     "category": "freshness/completeness (real index)",
+     "mutation": "hints use only a map a turn already read",
+     "file": "src/optimus/context/memory_session.py",
+     "oracle": "tests/integration/context/test_memory_session.py::test_a_frozen_family_ranks_through_the_real_session_as_the_offline_index_order_did",
+     "clone_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5",
+     "environment": {
+      "PYTHONPATH": "",
+      "P1210_INDEX_DOCKER_RELEASED": "p1213",
+      "P1210_ARTIFACT_SNAPSHOT": "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-m1plan\\tmp\\plan12-m1-models\\models--Qdrant--bge-small-en-v1.5-onnx-Q\\snapshots\\aa8f8b060edb00e03bfdd08813a2949946c8ba55"
+     },
+     "control": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/integration/context/test_memory_session.py -m requires_plan12_index_redis -k frozen_family",
+      "exit": 0,
+      "oracle_failed": [],
+      "summary": "6 passed, 38 deselected in 44.04s",
+      "log": "01-control.log",
+      "log_sha256": "hex:fb1eff1ab65a6d5d1bea45a1d02444c278ad8b32edac15f9749dc9714e639db5"
+     },
+     "mutant": {
+      "command": "python -m pytest --no-cov -p no:cacheprovider -q -rA tests/integration/context/test_memory_session.py -m requires_plan12_index_redis -k frozen_family",
+      "exit": 1,
+      "oracle_failed": [
+       "FAILED tests/integration/context/test_memory_session.py::test_a_frozen_family_ranks_through_the_real_session_as_the_offline_index_order_did[A-F2]",
+       "FAILED tests/integration/context/test_memory_session.py::test_a_frozen_family_ranks_through_the_real_session_as_the_offline_index_order_did[A-F3]",
+       "FAILED tests/integration/context/test_memory_session.py::test_a_frozen_family_ranks_through_the_real_session_as_the_offline_index_order_did[A-F6]"
+      ],
+      "summary": "3 failed, 3 passed, 38 deselected in 20.84s",
+      "log": "01-mutant.log",
+      "log_sha256": "hex:cc142ba87429013880cc49251f59be0283e6abdfaffefdd794b6049337e9eb39"
+     },
+     "caught": true
+    }
+   ],
+   "missed": [],
+   "caught": "1 of 1",
+   "rule": "caught = the unmodified oracle passes and the mutant's -rA summary reports that exact oracle FAILED",
+   "runner": "optimus-handoff/p1213-task5/revert/revert_task5.py",
+   "runner_sha256": "hex:c82a144e5478fe42d1a8c12d715241796185420297f7ee751274c3b8f7770e30",
+   "logs": "optimus-handoff/p1213-task5/revert/evidence/r5/ (each row names its control and mutant log and sha256)"
   }
  ],
  "dispositions": {

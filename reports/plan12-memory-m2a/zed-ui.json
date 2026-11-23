@@ -22,6 +22,12 @@
    "code_head": "git:6dd6b97",
    "steps": "1-9",
    "result": "as specified, except step 7's reply not seen on screen"
+  },
+  {
+   "run": 3,
+   "code_head": "git:87349e3 (code as git:5aeac3a)",
+   "steps": "5, 7 and a /why 0 check",
+   "result": "step 7 seen on screen (Codex CP3 ruling 5), and /why 0 names the valid range (CP3 finding 3); released separately, operator 2026-11-23 'Release it (Recommended)'"
   }
  ],
  "steps": [
@@ -104,7 +110,7 @@
    "prompt": "/why 2",
    "observed": "an end_turn reply in debug-acp.ndjson; its text was not seen on screen",
    "pass": null,
-   "note": "logged, not seen; the same reply was observed through acpx (step 15)"
+   "note": "logged, not seen in run 2; re-observed on screen in run 3"
   },
   {
    "run": 2,
@@ -131,6 +137,30 @@
    "screenshot": "run2-step8c-why-turn1-ambiguous.jpg"
   },
   {
+   "run": 3,
+   "n": 5,
+   "prompt": "fix the gateway timeout in src/gateway/config.py [p1213:R1]",
+   "observed": "Planning turn 1 of 3. Synthetic stub reply, no model; no change is planned.",
+   "pass": true,
+   "screenshot": "run3-step7-why2-and-why0.jpg"
+  },
+  {
+   "run": 3,
+   "n": 7,
+   "prompt": "/why 2",
+   "observed": "The explanation has 1 page(s); `/why 1` shows the last.",
+   "pass": true,
+   "screenshot": "run3-step7-why2-and-why0.jpg"
+  },
+  {
+   "run": 3,
+   "n": "7b",
+   "prompt": "/why 0",
+   "observed": "Pages start at 1: the explanation has 1 page(s), `/why 1` to `/why 1`.",
+   "pass": true,
+   "screenshot": "run3-step7-why2-and-why0.jpg"
+  },
+  {
    "run": 2,
    "n": 9,
    "prompt": "(quit Zed, reopen, new thread) /why",
@@ -140,7 +170,7 @@
   }
  ],
  "paid_calls": 0,
- "paid_calls_basis": "the stub received 5 requests: 4 classifier calls answered 404 (unexpected_path) and 1 planning request answered by the stub itself; debug-acp.ndjson and local-gateway.log name no provider host and no port 8765; Zed's built-in agent thread, opened first by mistake during set-up, was never sent anything",
+ "paid_calls_basis": "the stub received 7 requests: 5 classifier calls answered 404 (unexpected_path) and 2 planning request answered by the stub itself; debug-acp.ndjson and local-gateway.log name no provider host and no port 8765; Zed's built-in agent thread, opened first by mistake during set-up, was never sent anything",
  "served_ids": "none: no memory store was released, so no served-memory claim is made; /why showed 'memory: none this turn (no memory store)'",
  "findings": [
   {
@@ -171,7 +201,8 @@
   "run2-step8a-8b-new-thread.jpg": "hex:ce47f869b7fccace98345501ca1054ba1a07b3969b8465aeb4bce5eabdd3cae3",
   "run2-step8c-why-turn1-ambiguous.jpg": "hex:31d21974bd877193432ce8615bcda5126272976f80e126bd18050c4c2b225996",
   "run2-step9-restore-refused.jpg": "hex:02403309ba39fb49a86412d59d159ad7add74db9bf9a93e161212180b4e3bc6b",
-  "run2-step9-why-after-restart.jpg": "hex:d454b13463f2c21c6cb338859db89a8e81b4a79dec3215966f246e866c174b9f"
+  "run2-step9-why-after-restart.jpg": "hex:d454b13463f2c21c6cb338859db89a8e81b4a79dec3215966f246e866c174b9f",
+  "run3-step7-why2-and-why0.jpg": "hex:42a9fb898e61bcaf25eced8e67e42ff08f0e8f4a7a57437c11fa4bcfc32ff9ab"
  },
  "logs": {
   "debug-acp.ndjson": "hex:f9e0054993ab1ba4d606942d51aa4651dc15b785ecd35f1bcad26a0b0f8f8008",
@@ -179,7 +210,13 @@
   "local-gateway.log": "hex:66c68250496fdabd9b6b5d59d1be4545cad57a5ac3d915ff078c3fb5588693d8",
   "telemetry.jsonl": "hex:536894c8597c02ea3726ff6c19b4d8d974d979cf5afe97a3d32c7d6f8a3531a9"
  },
- "stub_log": "hex:0b6ea44bb925db147c8c2d890382d32d8a4bcad13daa1ca97050bfe839d31d2d",
- "cleanup": "Zed settings restored byte for byte from the backup (sha256 bfbcfeb5..., matching the pre-test copy); the stub stopped; the launch approval revoked by the operator in a terminal and confirmed by 'optimus-trust inspect': no reachable current approval",
+ "logs_run3": {
+  "debug-acp.ndjson": "hex:e9e1069b514e53c00b53b57d9e2431ebbfa37101bd6dc0ab92da3cfe744cea03",
+  "launch-audit.ndjson": "hex:8be5de8e18d588d82a2d44917855b1a0862b5b020518ffd577bf4f3cdc998e87",
+  "local-gateway.log": "hex:52264fccd05832d2d7e542a9e459581178693dc59f8ad46c23a10c52f8720e96",
+  "telemetry.jsonl": "hex:6aee02d5410ddb699827ed9b217f7589bd2632ea396c8627fa8b4e69a4199f4f"
+ },
+ "stub_log": "hex:204eff436b80f8fc5dd4e3142f40fc62463317bfec092a6890f2e57d1c1cbc6b",
+ "cleanup": "after runs 2 and 3 alike: Zed settings restored byte for byte from the backup (sha256 bfbcfeb5..., matching the pre-test copy); the stub stopped; the launch approval revoked by the operator in a terminal and confirmed by 'optimus-trust inspect': no reachable current approval",
  "kit": "optimus-handoff/p1213-task4/zed"
 }

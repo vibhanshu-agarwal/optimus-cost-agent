@@ -156,7 +156,7 @@
     "tests/unit/context/test_context_why.py::test_only_why_and_why_n_are_the_command"
    ],
    "status": "met",
-   "live": "acpx step 15: '/why 2' past a one-page explanation; Zed step 7 is to be re-observed (CP3 ruling 5)",
+   "live": "Zed run 3: '/why 2' names the last page and '/why 0' names the range, on screen (zed-ui.json); acpx step 15",
    "note": "met at git:5aeac3a: '/why 0' names the valid range. Partly met at git:bde5e26, where it got the usage line (history)"
   }
  ],
