@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal
+from threading import Lock
+from typing import TYPE_CHECKING, Literal, Protocol
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from optimus.gateway.models import GatewayUsage
 from optimus.tools.policy import EvidenceReasonCode, ToolClass
 from optimus.usage.errors import DuplicateGatewayRequestError
+
+if TYPE_CHECKING:
+    # Annotation only: optimus.usage.accounting imports this module at load time.
+    from optimus.usage.accounting import UsageAccountingService
 
 
 def _settled_fingerprint(
@@ -145,3 +151,45 @@ class EvidenceLedger(BaseModel):
     def gateway_request_ids(self, *, run_id: str | None = None) -> frozenset[str]:
         entries = self.entries if run_id is None else self.entries_for_run(run_id)
         return frozenset(entry.gateway_request_id for entry in entries if entry.gateway_request_id)
+
+
+class LedgerOwner(Protocol):
+    """The two attributes a service must expose for :func:`record_ledger_entry`."""
+
+    ledger: EvidenceLedger
+    _ledger_lock: Lock
+
+
+def record_ledger_entry(owner: LedgerOwner, entry: EvidenceLedgerEntry) -> EvidenceLedger:
+    with owner._ledger_lock:
+        owner.ledger = owner.ledger.record(entry)
+        return owner.ledger
+
+
+def record_provider_usage(
+    usage_accounting: UsageAccountingService | None,
+    *,
+    run_id: str,
+    session_id: str | None,
+    request_id: str,
+    gateway_usage: GatewayUsage,
+    service: str,
+    native_unit: str,
+) -> None:
+    if usage_accounting is None:
+        return
+    usage_accounting.record_gateway_usage(
+        gateway_usage,
+        run_id=run_id,
+        session_id=session_id,
+        request_id=request_id,
+        occurred_at=datetime.now(UTC),
+        service=service,
+        native_unit=native_unit,
+    )
+
+
+def stable_request_id(run_id: str, service: str) -> str:
+    """One caller-generated ID per transport attempt, reused across the success
+    and parse-failure recording paths for that same attempt."""
+    return f"{run_id}:{service}:{uuid4().hex}"

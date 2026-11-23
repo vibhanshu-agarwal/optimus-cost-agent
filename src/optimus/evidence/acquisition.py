@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from threading import Lock
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
 from optimus.evidence.domain_policy import EvidenceDomainPolicy
 from optimus.evidence.gateway_io import (
@@ -12,7 +11,13 @@ from optimus.evidence.gateway_io import (
     parse_web_extract_envelope,
     parse_web_search_envelope,
 )
-from optimus.evidence.ledger import EvidenceLedger, EvidenceLedgerEntry
+from optimus.evidence.ledger import (
+    EvidenceLedger,
+    EvidenceLedgerEntry,
+    record_ledger_entry,
+    record_provider_usage,
+    stable_request_id,
+)
 from optimus.evidence.models import (
     EvidenceExtractRequest,
     EvidenceExtractResponse,
@@ -22,7 +27,6 @@ from optimus.evidence.models import (
 )
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
-from optimus.gateway.models import GatewayUsage
 from optimus.gateway.tool_models import GatewayToolContext
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
@@ -108,7 +112,7 @@ class EvidenceAcquisitionService:
             session_id=request.session_id,
             execution_mode=execution_mode.value,
         )
-        request_id = _stable_request_id(request.run_id, WEB_SEARCH_SERVICE)
+        request_id = stable_request_id(request.run_id, WEB_SEARCH_SERVICE)
         effective_request = request.model_copy(update={"allowed_domains": effective_allowed_domains})
         try:
             body = self.gateway_client.post_tool_json(
@@ -150,7 +154,8 @@ class EvidenceAcquisitionService:
             ),
             gateway_usage=envelope.gateway_usage,
         )
-        self._record_provider_usage(
+        record_provider_usage(
+            self._usage_accounting,
             run_id=request.run_id,
             session_id=request.session_id,
             request_id=request_id,
@@ -158,7 +163,8 @@ class EvidenceAcquisitionService:
             service=WEB_SEARCH_SERVICE,
             native_unit=TAVILY_NATIVE_UNIT,
         )
-        ledger = self._record_ledger_entry(
+        ledger = record_ledger_entry(
+            self,
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=request.run_id,
                 session_id=request.session_id,
@@ -168,7 +174,7 @@ class EvidenceAcquisitionService:
                 sources=urls,
                 gateway_usage=envelope.gateway_usage,
                 queried_at=_utc_now(),
-            )
+            ),
         )
         return response, ledger
 
@@ -204,7 +210,7 @@ class EvidenceAcquisitionService:
             session_id=request.session_id,
             execution_mode=execution_mode.value,
         )
-        request_id = _stable_request_id(request.run_id, WEB_EXTRACT_SERVICE)
+        request_id = stable_request_id(request.run_id, WEB_EXTRACT_SERVICE)
         try:
             body = self.gateway_client.post_tool_json(
                 path="/v1/tools/web/extract",
@@ -254,7 +260,8 @@ class EvidenceAcquisitionService:
             trust="untrusted",
             gateway_usage=envelope.gateway_usage,
         )
-        self._record_provider_usage(
+        record_provider_usage(
+            self._usage_accounting,
             run_id=request.run_id,
             session_id=request.session_id,
             request_id=request_id,
@@ -262,7 +269,8 @@ class EvidenceAcquisitionService:
             service=WEB_EXTRACT_SERVICE,
             native_unit=TAVILY_NATIVE_UNIT,
         )
-        ledger = self._record_ledger_entry(
+        ledger = record_ledger_entry(
+            self,
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=request.run_id,
                 session_id=request.session_id,
@@ -272,7 +280,7 @@ class EvidenceAcquisitionService:
                 sources=(target_url,),
                 gateway_usage=response.gateway_usage,
                 queried_at=_utc_now(),
-            )
+            ),
         )
         return response, ledger
 
@@ -312,33 +320,6 @@ class EvidenceAcquisitionService:
                 )
             )
 
-    def _record_ledger_entry(self, entry: EvidenceLedgerEntry) -> EvidenceLedger:
-        with self._ledger_lock:
-            self.ledger = self.ledger.record(entry)
-            return self.ledger
-
-    def _record_provider_usage(
-        self,
-        *,
-        run_id: str,
-        session_id: str | None,
-        request_id: str,
-        gateway_usage: GatewayUsage,
-        service: str,
-        native_unit: str,
-    ) -> None:
-        if self._usage_accounting is None:
-            return
-        self._usage_accounting.record_gateway_usage(
-            gateway_usage,
-            run_id=run_id,
-            session_id=session_id,
-            request_id=request_id,
-            occurred_at=_utc_now(),
-            service=service,
-            native_unit=native_unit,
-        )
-
     def _record_parse_failure_usage(
         self,
         *,
@@ -359,7 +340,8 @@ class EvidenceAcquisitionService:
         """
         if exc.gateway_usage is None:
             return
-        self._record_provider_usage(
+        record_provider_usage(
+            self._usage_accounting,
             run_id=request.run_id,
             session_id=request.session_id,
             request_id=request_id,
@@ -367,7 +349,8 @@ class EvidenceAcquisitionService:
             service=service,
             native_unit=native_unit,
         )
-        self._record_ledger_entry(
+        record_ledger_entry(
+            self,
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=request.run_id,
                 session_id=request.session_id,
@@ -377,7 +360,7 @@ class EvidenceAcquisitionService:
                 sources=sources,
                 gateway_usage=exc.gateway_usage,
                 queried_at=_utc_now(),
-            )
+            ),
         )
 
 
@@ -393,9 +376,3 @@ def _rejected_web_decision(*, reason: str, tool_class: ToolClass) -> ToolInvocat
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
-
-
-def _stable_request_id(run_id: str, service: str) -> str:
-    """One caller-generated ID per transport attempt, reused across the success
-    and parse-failure recording paths for that same attempt."""
-    return f"{run_id}:{service}:{uuid4().hex}"
