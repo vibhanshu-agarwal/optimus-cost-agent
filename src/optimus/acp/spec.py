@@ -4219,6 +4219,8 @@ def _stop_reason(result: AgentRunResult) -> str:
         return "end_turn"
     if result.stop_reason in ("PLAN_NOT_FOUND_OR_EXPIRED", WRITE_LINE_ENDINGS_MIXED):
         return "end_turn"
+    if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES:
+        return "end_turn"  # Zed hides a refused turn's text, and the person must read these candidates (Plan 12.13 Task 4)
     return "refusal"
 
 
