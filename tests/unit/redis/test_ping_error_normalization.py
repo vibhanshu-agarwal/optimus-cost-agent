@@ -86,3 +86,33 @@ def test_other_failures_propagate_unchanged(site, failure):
     with pytest.raises(type(failure)) as caught:
         site(failure)
     assert caught.value is failure
+
+
+class _SuspendedClient:
+    def __init__(self) -> None:
+        self.started = asyncio.Event()
+
+    async def ping(self) -> None:
+        self.started.set()
+        await asyncio.Event().wait()
+
+
+def _async_store_ping(client: _SuspendedClient):
+    return AsyncRedisAgentStateStore(client=client).ping()
+
+
+def _runtime_ping(client: _SuspendedClient):
+    return RedisRuntime(owner=None, pool=None, client=client)._ping_async()  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("ping", [_async_store_ping, _runtime_ping], ids=lambda ping: ping.__name__)
+def test_cancelling_a_suspended_ping_is_not_normalized(ping):
+    async def cancel_while_suspended() -> None:
+        client = _SuspendedClient()
+        task = asyncio.ensure_future(ping(client))
+        await client.started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(cancel_while_suspended())
