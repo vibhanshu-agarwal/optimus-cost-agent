@@ -242,3 +242,74 @@ def test_files_added_after_indexing_keep_the_frozen_ignore_rules(frozen: ev.Froz
     policy = FilePolicy(tmp_path)
     assert not policy.decide("secrets/utils.py", purpose=FilePurpose.AUTOMATIC).allowed
     assert policy.decide("tools/utils.py", purpose=FilePurpose.AUTOMATIC).allowed
+
+
+# ---------------------------------------------------------------- plan v4: own-limit probes and the non-boundary rule
+
+
+def test_every_own_limit_probe_solves_on_target_for_every_candidate(frozen: ev.Frozen) -> None:
+    """Lengths only, nothing run: every template (held-out included) reaches each candidate's exact and one-over targets in serialized
+    bytes, with the other side inside its limit. A payload-only rescale leaves S22 at 8/8 unreachable (read headers do not shrink)."""
+    templates = [item for item in frozen.cases["split_schedules"]["schedules"] if "boundary" in item]
+    assert len(templates) == 12 and frozen.cases["split_schedules"]["probe_recipe"]["version"] == ev.PROBE_RECIPE
+    for item in templates:
+        for partition in ev.PARTITIONS:
+            variants = ev.probe_variants(item, partition)
+            assert len(variants) == (3 if len(ev.boundary_targets(item["boundary"])) == 2 else 2), item["id"]
+            for variant in variants:
+                assert "blocked" not in variant, (item["id"], partition, variant["variant"], variant.get("blocked"))
+                assert all(variant["totals"][side] == target for side, target in variant["targets"].items()), (item["id"], partition)
+                assert variant["resolved"]["observation_text"] == "multibyte"
+
+
+def test_probe_observation_text_is_multibyte_with_unchanged_byte_lengths() -> None:
+    for size in (0, 1, 2, 7, 4096):
+        text = ev.observation_text({"observation_text": "multibyte"}, size)
+        assert len(text.encode("utf-8")) == size and (size < 2 or not text.isascii())
+    assert ev.observation_text({}, 5) == "ooooo"
+
+
+def test_own_limit_probes_at_6_10_complete_exactly_and_stop_one_over(frozen: ev.Frozen, tmp_path: Path) -> None:
+    for template in ("S10", "S02"):
+        for variant in ev.probe_variants(_schedule(frozen, template), (6, 10)):
+            row = ev.run_schedule(variant["resolved"], (6, 10), tmp_path / template / variant["variant"])
+            assert ev.probe_passed(variant["variant"], row), (template, variant["variant"], row["stop"], row["evidence_problems"])
+            assert row["completed"] is (variant["variant"] == "exact")
+    assert (pl.PLANNING_OBSERVATION_MAX_BYTES, pl.PLANNING_NEW_READ_MAX_BYTES) == (4096, 12288)
+
+
+def test_a_one_over_probe_needs_a_typed_stop_and_a_plan_after_observation_too_large_fails() -> None:
+    stopped = {"completed": False, "planned": False, "stop": "PLANNING_READ_BUDGET_EXHAUSTED", "parse_failures": []}
+    too_large = {"completed": False, "planned": False, "stop": "X", "parse_failures": ["OBSERVATION_TOO_LARGE"]}
+    f2 = {"completed": False, "planned": True, "stop": None, "parse_failures": ["OBSERVATION_TOO_LARGE"]}  # plan without that evidence
+    other = {"completed": False, "planned": False, "stop": "PLANNING_REPEATED_READ_REQUEST", "parse_failures": []}
+    assert ev.probe_passed("one_over", stopped) and ev.probe_passed("one_over_reads", too_large)
+    assert not ev.probe_passed("one_over", f2) and not ev.probe_passed("one_over_observations", other)
+    assert not ev.probe_passed("exact", {**f2, "planned": True}) and ev.probe_passed("exact", {**stopped, "completed": True})
+    assert not ev.probe_passed("exact", None) and not ev.probe_passed("one_over", None)  # blocked: never skipped
+
+
+def test_the_v4_choice_scores_non_boundary_schedules_and_rejects_a_failed_probe() -> None:
+    results = _rows(
+        **{
+            "4/12": {"a": True, "b": False, "p": True},
+            "2/14": {"a": True, "b": True, "p": False},
+            "6/10": {"a": True, "b": True, "p": False},
+            "8/8": {"a": False, "b": True, "p": True},
+        }
+    )
+    for rows in results.values():
+        rows["p"]["boundary"] = True  # a probe template: its loss under 6/10 and 2/14 does not count
+    probes = {
+        "4/12": [{"template": "p", "variant": "exact", "passed": False}],
+        "2/14": [{"template": "p", "variant": "one_over", "passed": False}],
+        "6/10": [{"template": "p", "variant": "exact", "passed": True}],
+        "8/8": [],
+    }
+    choice = ev.choose_partition(results, probes)
+    assert choice["chosen"] == "6/10"
+    assert choice["rejected"]["2/14"] == "fails own-limit probes: p:one_over"
+    assert choice["rejected"]["8/8"] == "loses baseline-success schedules: a"
+    assert choice["baseline_probe_failures"] == ["p:exact"]  # reported; the baseline stays the fallback
+    # Without the probe gate 2/14 survives: it ties 6/10 on completions and stops and is as near 4/12, and the label breaks the tie.
+    assert "2/14" not in ev.choose_partition(results)["rejected"]

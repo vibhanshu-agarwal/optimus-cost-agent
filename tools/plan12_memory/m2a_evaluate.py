@@ -83,11 +83,25 @@ def selected(items: Iterable[Mapping[str, Any]], *, phase: str, splits: Sequence
 # ---------------------------------------------------------------- #245 schedules
 
 
-def _observation_bytes(read: Mapping[str, Any], text_bytes: int) -> int:
+PROBE_RECIPE = "own-limit-probes.v1"
+
+
+def observation_text(schedule: Mapping[str, Any], size: int) -> str:
+    """`size` UTF-8 bytes of observation: ASCII, or for own-limit probes U+00F6 (two bytes each) with one ASCII pad when odd."""
+    if schedule.get("observation_text") == "multibyte":
+        return "\u00f6" * (size // 2) + "o" * (size % 2)
+    return "o" * size
+
+
+def _observation_bytes(read: Mapping[str, Any], text_bytes: int, schedule: Mapping[str, Any] | None = None) -> int:
     start, size = read["start_byte"], read["range_bytes"]
     return pl.planning_observation_serialized_bytes(
         pl.PlanningObservation(
-            path=read["path"], start_byte=start, end_byte=start + size, source_sha256=_PLACEHOLDER_SHA256, observation_text="o" * text_bytes
+            path=read["path"],
+            start_byte=start,
+            end_byte=start + size,
+            source_sha256=_PLACEHOLDER_SHA256,
+            observation_text=observation_text(schedule or {}, text_bytes),
         )
     )
 
@@ -108,7 +122,9 @@ def _read_bytes(read: Mapping[str, Any], size: int | None = None) -> int:
 def serialized_totals(resolved: Mapping[str, Any]) -> dict[str, int]:
     """Cumulative observations at the final turn and the last round's current reads, in serialized UTF-8 bytes."""
     rounds = resolved["rounds"]
-    observations = sum(_observation_bytes(read, round_["observation_text_bytes"]) for round_ in rounds for read in round_["reads"])
+    observations = sum(
+        _observation_bytes(read, round_["observation_text_bytes"], resolved) for round_ in rounds for read in round_["reads"]
+    )
     return {"observations": observations, "current_reads": sum(_read_bytes(read) for read in rounds[-1]["reads"])}
 
 
@@ -119,29 +135,100 @@ def _smallest(total: Any, target: int, *, start: int) -> int:
     raise ValueError(f"target {target} is not reachable")
 
 
-def resolve(schedule: Mapping[str, Any]) -> dict[str, Any]:
-    """The schedule with every free length solved: reads first, then observations, so each total equals its target exactly."""
+def boundary_targets(boundary: Mapping[str, Any]) -> dict[str, int]:
+    """The template's own targets by side: observations, current_reads, or both (mixed lists observations first)."""
+    if isinstance(boundary["target"], list):
+        return {"observations": boundary["target"][0], "current_reads": boundary["target"][1]}
+    side = "current_reads" if "current_reads" in boundary["total"] else "observations"
+    return {side: boundary["target"]}
+
+
+def resolve(schedule: Mapping[str, Any], targets: Mapping[str, int] | None = None) -> dict[str, Any]:
+    """The schedule with every free length solved: reads first, then observations, so each total equals its target exactly. `targets`
+    replaces the boundary's own (own-limit probes). A target unreachable at the template's lengths rescales that side's fixed records once,
+    so each one's serialized bytes (headers and framing included) become floor(bytes * target / template target) (cases.json
+    probe_recipe). Still unreachable raises ValueError: the probe is blocked, never skipped."""
     resolved = json.loads(json.dumps(schedule))
     boundary = schedule.get("boundary")
     if boundary is None:
         return resolved
-    targets = boundary["target"] if isinstance(boundary["target"], list) else None
+    own = boundary_targets(boundary)
+    goal = own if targets is None else dict(targets)
     rounds = resolved["rounds"]
-    if "current_reads" in boundary["total"]:
+    if "current_reads" in goal:
         last = rounds[-1]["reads"]
-        fixed = sum(_read_bytes(read) for read in last[:-1])
-        last[-1]["range_bytes"] = _smallest(
-            lambda n: fixed + _read_bytes(last[-1], n), targets[1] if targets else boundary["target"], start=1
-        )
-    if "observations" in boundary["total"]:
-        free = rounds[0] if targets else rounds[-1]
+
+        def solve_reads() -> int:
+            fixed = sum(_read_bytes(read) for read in last[:-1])
+            return _smallest(lambda n: fixed + _read_bytes(last[-1], n), goal["current_reads"], start=1)
+
+        try:
+            last[-1]["range_bytes"] = solve_reads()
+        except ValueError:
+            if targets is None:
+                raise
+            for read in last[:-1]:
+                size = _read_bytes(read)
+                read["range_bytes"] = max(1, size * goal["current_reads"] // own["current_reads"] - (size - read["range_bytes"]))
+            last[-1]["range_bytes"] = solve_reads()
+        if any(read["start_byte"] + read["range_bytes"] > _FILE_BYTES for read in last):
+            raise ValueError("a read range passes the end of its file")
+    if "observations" in goal:
+        free = rounds[0] if len(own) == 2 else rounds[-1]
 
         def total(n: int) -> int:
             free["observation_text_bytes"] = n
             return serialized_totals(resolved)["observations"]
 
-        free["observation_text_bytes"] = _smallest(total, targets[0] if targets else boundary["target"], start=0)
+        try:
+            free["observation_text_bytes"] = _smallest(total, goal["observations"], start=0)
+        except ValueError:
+            if targets is None:
+                raise
+            for round_ in rounds:
+                if round_ is not free:
+                    text, count = round_["observation_text_bytes"], len(round_["reads"])
+                    size = sum(_observation_bytes(read, text, resolved) for read in round_["reads"])
+                    scaled = size * goal["observations"] // own["observations"]
+                    round_["observation_text_bytes"] = max(0, (scaled - (size - count * text)) // count)
+            free["observation_text_bytes"] = _smallest(total, goal["observations"], start=0)
     return resolved
+
+
+def probe_variants(schedule: Mapping[str, Any], partition: tuple[int, int]) -> list[dict[str, Any]]:
+    """The template's own-limit probes for one candidate: exact and one-over on its side; mixed: both exact, then each side one over.
+    Observation text is multibyte. A variant that cannot be solved, or whose other side is over its limit, is blocked."""
+    limits = {"observations": partition[0] * 1024, "current_reads": partition[1] * 1024}
+    sides = list(boundary_targets(schedule["boundary"]))
+    if len(sides) == 2:
+        plans = {
+            "exact": dict(limits),
+            "one_over_observations": {**limits, "observations": limits["observations"] + 1},
+            "one_over_reads": {**limits, "current_reads": limits["current_reads"] + 1},
+        }
+    else:
+        plans = {"exact": {sides[0]: limits[sides[0]]}, "one_over": {sides[0]: limits[sides[0]] + 1}}
+    variants = []
+    for name, targets in plans.items():
+        variant: dict[str, Any] = {"template": schedule["id"], "variant": name, "targets": targets}
+        try:
+            resolved = resolve({**schedule, "observation_text": "multibyte"}, targets)
+        except ValueError as error:
+            variants.append({**variant, "blocked": str(error)})
+            continue
+        totals = serialized_totals(resolved)
+        over = [side for side in limits if side not in targets and totals[side] > limits[side]]
+        variants.append({**variant, "totals": totals, **({"blocked": f"{over[0]} over its limit"} if over else {"resolved": resolved})})
+    return variants
+
+
+def probe_passed(variant: str, row: Mapping[str, Any] | None) -> bool:
+    """Exact: completed. One-over: no plan, and a budget stop or the OBSERVATION_TOO_LARGE parse failure (a plan after it fails: F2)."""
+    if row is None:
+        return False
+    if variant == "exact":
+        return bool(row["completed"])
+    return not row["planned"] and (row["stop"] in BUDGET_STOPS or "OBSERVATION_TOO_LARGE" in row["parse_failures"])
 
 
 class _ScriptedGateway:
@@ -191,7 +278,9 @@ def check_evidence(final: str, resolved: Mapping[str, Any], work: Path) -> list[
         return read["path"], start, start + read["range_bytes"], digest_of[read["path"]]
 
     expected_observations = sorted(
-        (*span(read), "o" * round_["observation_text_bytes"]) for round_ in resolved["rounds"] for read in round_["reads"]
+        (*span(read), observation_text(resolved, round_["observation_text_bytes"]))
+        for round_ in resolved["rounds"]
+        for read in round_["reads"]
     )
     expected_reads = sorted(
         (*span(read), "lf", whole[read["path"]][read["start_byte"] : read["start_byte"] + read["range_bytes"]].decode("utf-8"))
@@ -213,7 +302,7 @@ def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: 
     paths = write_workspace(resolved, work)
     replies = [
         "OBSERVE: "
-        + "o" * round_["observation_text_bytes"]
+        + observation_text(resolved, round_["observation_text_bytes"])
         + "\n"
         + "".join(
             f"READ: {read['path']}#bytes={read['start_byte']}:{read['start_byte'] + read['range_bytes']}\n" for read in round_["reads"]
@@ -267,23 +356,33 @@ def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: 
     }
 
 
-def choose_partition(results: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> dict[str, Any]:
-    """Plan v3 #245 selection on train/development: drop partitions that weaken a check or lose a baseline-success schedule, then order the
-    baseline and the rest by most completions, fewer budget stops, then nearness to 4/12. None when the baseline comes first. The strict
-    held-out improvement is qualification's own gate, not this one (Codex CP1 review 1, finding 3)."""
+def choose_partition(
+    results: Mapping[str, Mapping[str, Mapping[str, Any]]], probes: Mapping[str, Sequence[Mapping[str, Any]]] | None = None
+) -> dict[str, Any]:
+    """Plan v4 #245 selection on train/development. Boundary templates are left out: no-loss, completions and budget stops count
+    non-boundary schedules only. A partition is dropped when it weakens a check, fails one of its own-limit probes, or loses a non-boundary
+    baseline success; the baseline and the rest are ordered by most completions, fewer budget stops, then nearness to 4/12. None when the
+    baseline comes first. 4/12's own probe failures are reported and it stays the fallback. The held-out improvement is qualification's
+    own gate (Codex CP1 review 1, finding 3)."""
 
     def stops(rows: Mapping[str, Mapping[str, Any]]) -> int:
         return sum(1 for row in rows.values() if row.get("budget_stop", row["stop"] in BUDGET_STOPS))
 
-    baseline = results[BASELINE]
-    successes = sorted(sid for sid, row in baseline.items() if row["completed"])
+    def failures(label: str) -> list[str]:
+        return [f"{probe['template']}:{probe['variant']}" for probe in (probes or {}).get(label, ()) if not probe["passed"]]
+
+    scored = {label: {sid: row for sid, row in rows.items() if not row.get("boundary")} for label, rows in results.items()}
+    successes = sorted(sid for sid, row in scored[BASELINE].items() if row["completed"])
     rejected: dict[str, str] = {}
     ranked: list[tuple[int, int, int, str]] = []
-    for label, rows in results.items():
-        weakened = sorted(sid for sid, row in rows.items() if row.get("weakened"))
+    for label, rows in scored.items():
+        weakened = sorted(sid for sid, row in results[label].items() if row.get("weakened"))
+        failed = failures(label) if label != BASELINE else []
         lost = [sid for sid in successes if not rows[sid]["completed"]]
         if weakened:
             rejected[label] = "weakens checks: " + ", ".join(weakened)
+        elif failed:
+            rejected[label] = "fails own-limit probes: " + ", ".join(failed)
         elif lost:
             rejected[label] = "loses baseline-success schedules: " + ", ".join(lost)
         else:
@@ -295,7 +394,9 @@ def choose_partition(results: Mapping[str, Mapping[str, Mapping[str, Any]]]) -> 
     chosen = ranked[0][3] if ranked and ranked[0][3] != BASELINE else None
     return {
         "chosen": chosen,
+        "scored": "non-boundary schedules only (plan v4 #245); probe templates are diagnostics",
         "baseline_completed": len(successes),
+        "baseline_probe_failures": failures(BASELINE),
         "rejected": rejected,
         "eligible": [{"partition": item[3], "completed": -item[0], "budget_stops": item[1]} for item in ranked],
     }
@@ -416,8 +517,12 @@ def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str
         ambiguity_baseline(frozen, case, work / "ambiguity" / case["id"])
         for case in selected(frozen.cases["ambiguity"]["cases"], phase=phase, splits=splits)
     ]
+    recipe = frozen.cases["split_schedules"]["probe_recipe"]["version"]
+    if recipe != PROBE_RECIPE:
+        raise FrozenInputChanged(f"cases.json probe recipe {recipe} is not the {PROBE_RECIPE} this evaluator implements")
     schedules = selected(frozen.cases["split_schedules"]["schedules"], phase=phase, splits=splits)
     runs: dict[str, dict[str, dict[str, Any]]] = {}
+    probes: dict[str, list[dict[str, Any]]] = {}
     resolved_lengths: dict[str, Any] = {}
     for schedule in schedules:
         resolved = resolve(schedule)
@@ -435,7 +540,34 @@ def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str
         for partition in PARTITIONS:
             label = f"{partition[0]}/{partition[1]}"
             row = run_schedule(resolved, partition, work / "schedules" / schedule["id"] / label.replace("/", "-"))
-            runs.setdefault(label, {})[schedule["id"]] = {**row, "split": schedule["split"], "shape": schedule["shape"]}
+            boundary = "boundary" in schedule
+            runs.setdefault(label, {})[schedule["id"]] = {
+                **row,
+                "split": schedule["split"],
+                "shape": schedule["shape"],
+                "boundary": boundary,
+            }
+            if boundary:
+                for variant in probe_variants(schedule, partition):
+                    probe_row = None
+                    if "resolved" in variant:
+                        probe_row = run_schedule(
+                            variant.pop("resolved"),
+                            partition,
+                            work / "probes" / schedule["id"] / label.replace("/", "-") / variant["variant"],
+                        )
+                    probes.setdefault(label, []).append(
+                        {
+                            **variant,
+                            "split": schedule["split"],
+                            "passed": probe_passed(variant["variant"], probe_row),
+                            **(
+                                {key: probe_row[key] for key in ("completed", "planned", "stop", "parse_failures", "evidence_problems")}
+                                if probe_row
+                                else {}
+                            ),
+                        }
+                    )
     summary = {
         label: {
             split: {
@@ -446,6 +578,15 @@ def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str
                     1 for row in rows.values() if row["split"] == split and row["stop"] is not None and not row["budget_stop"]
                 ),
                 "parse_failures": sum(1 for row in rows.values() if row["split"] == split and row["parse_failures"]),
+                "non_boundary_completed": sum(
+                    1 for row in rows.values() if row["split"] == split and not row["boundary"] and row["completed"]
+                ),
+                "non_boundary_of": sum(1 for row in rows.values() if row["split"] == split and not row["boundary"]),
+                "non_boundary_budget_stops": sum(
+                    1 for row in rows.values() if row["split"] == split and not row["boundary"] and row["budget_stop"]
+                ),
+                "probes_passed": sum(1 for probe in probes.get(label, ()) if probe["split"] == split and probe["passed"]),
+                "probes_of": sum(1 for probe in probes.get(label, ()) if probe["split"] == split),
             }
             for split in splits
         }
@@ -457,10 +598,12 @@ def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str
         "split": {
             "completion_scope": "demand-only: a plan, no parse failure, and exactly the expected evidence records (path, range, file sha256, "
             "whole payload). Route fitting (ContextPacker.fit) is UNRUN here and is checked in Task 3; contract-qualified completion needs it.",
+            "probe_recipe": recipe,
             "boundaries": resolved_lengths,
             "runs": runs,
+            "probes": probes,
             "summary": summary,
-            "choice": choose_partition(runs) if phase == "calibration" else None,
+            "choice": choose_partition(runs, probes) if phase == "calibration" else None,
         },
     }
 
@@ -604,7 +747,7 @@ def main(argv: list[str] | None = None) -> int:
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
     frozen = load_frozen(repository)
     report: dict[str, Any] = {
-        "schema": f"plan12-memory-m2a.{args.phase}.v1",
+        "schema": f"plan12-memory-m2a.{args.phase}.v{1 if args.phase == 'index-check' else 2}",
         "head": f"git:{_head(repository)}",
         "phase": args.phase,
         "inputs": frozen.digests,

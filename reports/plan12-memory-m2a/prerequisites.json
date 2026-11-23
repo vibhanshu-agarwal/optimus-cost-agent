@@ -111,7 +111,7 @@
   "files": [
    {
     "path": "reports/plan12-memory-m2a/cases.json",
-    "sha256": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2"
+    "sha256": "hex:0f76413a68fe67f60a6d0561ad89b9d5d67bfaf6cf0a8c2d8a78d85f9d8dc3a2"
    },
    {
     "path": "reports/plan12-memory-m2a/ranking-policy.json",
@@ -119,11 +119,11 @@
    },
    {
     "path": "reports/plan12-memory-m2a/evaluation-contract.json",
-    "sha256": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390"
+    "sha256": "hex:d25f23a94982644765a18483eb7fc5a75679c702d872ce79749a2841715cbccf"
    },
    {
     "path": "reports/plan12-memory-m2a/case-provenance.json",
-    "sha256": "hex:cf65775aa6ea63fc0fcc56e733d0dde923f5070ac9a567c6cc58d3b2f54efeeb"
+    "sha256": "hex:ef623c5c2b6f059c7c031ded5664fe34112182ee9cc972da71663d308d0b96ae"
    }
   ],
   "counts": {
@@ -137,7 +137,7 @@
    "mixed": 8
   },
   "splits": "family-separated; ambiguity 12/6/6, schedules 12/6/6, explanation 6/3/3 (train/development/held_out)",
-  "review": "Codex CLI CP1 attempt 2 rules on v3; a later change produces new digests and a recorded successor disposition",
+  "review": "Codex CLI CP2 rules on v4 with the v4 calibration rerun; a later change produces new digests and a recorded successor disposition",
   "history": [
    {
     "version": "v1",
@@ -186,8 +186,31 @@
      }
     ],
     "status": "superseded for cases.json and case-provenance.json by v3 (CP1 review 1 finding 4, E12); the v2 schedule repair was accepted by that review"
+   },
+   {
+    "version": "v3",
+    "frozen_on": "2026-11-23",
+    "commit": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
+    "files": [
+     {
+      "path": "reports/plan12-memory-m2a/cases.json",
+      "sha256": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/ranking-policy.json",
+      "sha256": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/evaluation-contract.json",
+      "sha256": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/case-provenance.json",
+      "sha256": "hex:cf65775aa6ea63fc0fcc56e733d0dde923f5070ac9a567c6cc58d3b2f54efeeb"
+     }
+    ]
    }
   ],
-  "version": "v3"
+  "version": "v4"
  }
 }

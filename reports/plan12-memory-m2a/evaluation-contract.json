@@ -1,10 +1,13 @@
 {
- "schema": "plan12-memory-m2a.evaluation-contract.v1",
+ "schema": "plan12-memory-m2a.evaluation-contract.v2",
  "plan": "12.13",
  "issue": 545,
  "frozen_on": "2026-11-23",
  "frozen_before": "Task 1 and any feature code",
- "authority": "Plan 12.13 v3 (sha256 26653bbc2123e66d990d37977f9ab81a6ded9121de7594e358b0c9fdad31ffa0), sections /why, #242, #245, Evaluation and releases; D2-D4 approved by the operator 2026-11-23",
+ "authority": "Plan 12.13 v4 (sha256 d25783eb95517c00c14d9907376e1a71c045b9c5c61235b136566263740013d3, approved by the operator 2026-11-23), sections /why, #242, #245, Evaluation and releases; D1-D4 as approved for v3",
+ "successor_of": {"schema": "plan12-memory-m2a.evaluation-contract.v1", "sha256": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390", "commit": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
+  "change": "split_245 only: plan v4's population rule, own-limit probes and their rejection gate; frozen before the v4 calibration rerun and before held-out qualification",
+  "reason": "CP1 ruling 2 (Codex, round 117): under v3 no replacement qualifies because exact probes at 4/12's own limits are baseline successes; the operator chose a plan successor and approved v4's hash"},
  "inputs": {
   "cases": "reports/plan12-memory-m2a/cases.json",
   "ranking_policy": "reports/plan12-memory-m2a/ranking-policy.json",
@@ -54,15 +57,24 @@
   "simulation": "each schedule is driven through the real planning-loop parse, read and pack code with only the two limits substituted; synthetic workspace files carry the ranges; a placeholder or real 64-hex sha256 as the schedule states",
   "completed": "the schedule reaches FINAL_PLAN within max_planning_turns with every requested range delivered whole and no budget stop (OBSERVATION_TOO_LARGE, PLANNING_OBSERVATION_BUDGET_EXHAUSTED, PLANNING_READ_BUDGET_EXHAUSTED), and the final request passes the existing route fitting (ContextPacker.fit) unchanged",
   "never_completion": "truncated or dropped required evidence; a typed refusal or guarded reread counts as a stop, recorded with its code",
-  "baseline_success": "a schedule completed under 4/12",
+  "population": "a schedule whose cases.json boundary is absent or null is non-boundary; one with a boundary is a probe template, whatever its outcome. Its absolute run is kept as a diagnostic and is not scored",
+  "baseline_success": "a non-boundary schedule completed under 4/12, in the same split",
+  "probes": "cases.json split_schedules.probe_recipe: each template is re-derived at every candidate's own limits (exact and one-over on its side; mixed: both exact, then each side one-over with the other exact)",
+  "probe_pass": {
+   "exact": "completed: a plan, no parse failure, every expected record whole",
+   "one_over": "no plan, with a budget stop (PLANNING_OBSERVATION_BUDGET_EXHAUSTED, PLANNING_READ_BUDGET_EXHAUSTED) or the OBSERVATION_TOO_LARGE parse failure; a plan accepted after it with incomplete evidence fails (F2)",
+   "blocked": "a variant whose target cannot be solved, or whose other side exceeds its limit, fails; it is never skipped"
+  },
   "selection_on_train_and_development": [
-   "1. reject any partition whose run weakens source-hash, completeness, ambiguity or route-fit checks",
-   "2. require no loss on baseline-success schedules",
-   "3. maximize completed schedules; ties prefer fewer budget stops, then the partition closest to 4/12",
-   "4. at qualification, require at least one held-out completion improvement over 4/12 and no held-out baseline-success regression"
+   "1. reject any partition whose run weakens source-hash, completeness, ambiguity or route-fit checks; any own-limit probe failure rejects the candidate on that split (held-out probes the same at qualification)",
+   "2. require no loss on non-boundary baseline-success schedules",
+   "3. maximize completed non-boundary schedules; ties prefer fewer non-boundary budget stops, then the partition closest to 4/12",
+   "4. at qualification, require at least one held-out non-boundary completion improvement over 4/12 and no held-out non-boundary baseline-success regression"
   ],
-  "no_qualifier": "if no non-baseline partition passes 1-3 at CP1, 4/12 is kept, the plan stops for operator disposition, and #245 delivery is not claimed",
-  "recorded_at_cp1": "the chosen numeric limits, before any production change"
+  "baseline_probes": "4/12 runs the same probes; its failures are reported, and it stays the fallback",
+  "no_qualifier": "if no non-baseline partition passes 1-3, 4/12 is kept, the plan stops for operator disposition, #245 delivery is not claimed, and no change is forced",
+  "recorded_at_cp1": "the chosen numeric limits, before any production change",
+  "recorded_under_v4": "the v4 calibration rerun at a recorded code head, before Task 2; Codex reviews it at CP2. calibration-v3.json keeps the v3 result unchanged"
  },
  "why": {
   "unit": "one case of cases.json explanation.cases",

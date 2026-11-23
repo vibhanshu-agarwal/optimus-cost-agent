@@ -1,23 +1,31 @@
 {
- "schema": "plan12-memory-m2a.cases.v3",
+ "schema": "plan12-memory-m2a.cases.v4",
  "frozen_on": "2026-11-23",
  "frozen_before": "Task 1 and any feature code",
  "plan": "12.13",
  "issue": 545,
  "rule": "Synthetic acceptance cases, frozen before implementation. Expected outcomes, including expected losses and refusals, do not change after a result; a change needs a recorded successor disposition reviewed at a checkpoint. Synthetic data only; no private content. Held-out cases are consumed once, at qualification (Task 3).",
  "successor_of": {
-  "schema": "plan12-memory-m2a.cases.v2",
-  "sha256": "hex:7b0d3e136e2646d7d8c2ead3f364003c9fb54c8b0854d6183c5ae46ef85eb47c",
-  "commit": "git:ca9bfec",
-  "change": "explanation case E12's expected text only: 130 entries at 40 per page make 4 pages, so '/why 4' is valid and '/why 5' is past the end",
-  "reason": "Codex CP1 review 1 (round 117), finding 4: v2's E12 oracle was impossible",
+  "schema": "plan12-memory-m2a.cases.v3",
+  "sha256": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2",
+  "commit": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
+  "change": "split_schedules.probe_recipe added; every schedule, boundary target, split, ambiguity case and explanation oracle unchanged",
+  "reason": "plan v4 (hex:d25783eb95517c00c14d9907376e1a71c045b9c5c61235b136566263740013d3, operator-approved 2026-11-23) after CP1 ruling 2",
   "earlier": {
-   "schema": "plan12-memory-m2a.cases.v1",
-   "sha256": "hex:8cab175f2d32583cfeeeefb46895abae8b253c097cdd66e839a5d637123a74b5",
-   "commit": "git:24a6c27",
-   "change_to_v2": "split schedules: a later round's read of a path starts where that path's previous range ended (Task 1 finding; Codex accepted the repair in CP1 review 1)"
+   "schema": "plan12-memory-m2a.cases.v2",
+   "sha256": "hex:7b0d3e136e2646d7d8c2ead3f364003c9fb54c8b0854d6183c5ae46ef85eb47c",
+   "commit": "git:ca9bfec",
+   "change": "explanation case E12's expected text only: 130 entries at 40 per page make 4 pages, so '/why 4' is valid and '/why 5' is past the end",
+   "reason": "Codex CP1 review 1 (round 117), finding 4: v2's E12 oracle was impossible",
+   "earlier": {
+    "schema": "plan12-memory-m2a.cases.v1",
+    "sha256": "hex:8cab175f2d32583cfeeeefb46895abae8b253c097cdd66e839a5d637123a74b5",
+    "commit": "git:24a6c27",
+    "change_to_v2": "split schedules: a later round's read of a path starts where that path's previous range ended (Task 1 finding; Codex accepted the repair in CP1 review 1)"
+   },
+   "disposition": "for Codex review at CP1 attempt 2"
   },
-  "disposition": "for Codex review at CP1 attempt 2"
+  "disposition": "for Codex review at CP2, with the v4 calibration rerun"
  },
  "splits": {
   "train": "calibration and debugging",
@@ -1946,7 +1954,35 @@
      "solve": "round 2 last read range_bytes first, then round 1 observation_text_bytes"
     }
    }
-  ]
+  ],
+  "probe_recipe": {
+   "version": "own-limit-probes.v1",
+   "templates": "every schedule with a boundary; its absolute run stays a diagnostic and is not scored",
+   "variants": {
+    "observations": [
+     "exact: cumulative observations at the final turn = the candidate's observation limit",
+     "one_over: that limit + 1"
+    ],
+    "current_reads": [
+     "exact: the last round's current reads = the candidate's read limit",
+     "one_over: that limit + 1"
+    ],
+    "mixed": [
+     "exact: both totals at the candidate's limits",
+     "one_over_observations: observations at limit + 1, current reads at the limit",
+     "one_over_reads: current reads at limit + 1, observations at the limit"
+    ]
+   },
+   "solve": "as the template's boundary.solve: the last read's range_bytes first, then the free observation_text_bytes; paths, rounds, record counts and start bytes unchanged",
+   "rescale": "only when a target is unreachable at the template's lengths: each fixed record on that side (the other rounds' observation records, or the last round's other read blocks) is resized once so its serialized bytes, headers and framing included, become floor(bytes * target / template target)",
+   "blocked": "a target still unreachable, or the other side over the candidate's limit, fails the probe; it is never skipped",
+   "observation_text": "multibyte: U+00F6 (two UTF-8 bytes) repeated, with one ASCII 'o' when the length is odd, so byte lengths are unchanged and every observation counts in UTF-8 bytes",
+   "pass": {
+    "exact": "completed: a plan, no parse failure, every expected record whole",
+    "one_over": "no plan, and a budget stop (PLANNING_OBSERVATION_BUDGET_EXHAUSTED, PLANNING_READ_BUDGET_EXHAUSTED) or the OBSERVATION_TOO_LARGE parse failure"
+   },
+   "failure": "any probe failure rejects the candidate on that split; held-out probes the same at qualification; 4/12's failures are reported and it stays the fallback"
+  }
  },
  "explanation": {
   "cases": [
