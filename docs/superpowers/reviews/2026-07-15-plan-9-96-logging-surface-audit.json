@@ -1201,11 +1201,11 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.agent.state_store:AsyncRedisAgentStateStore.ping:exception_export",
+      "key": "optimus.agent.state_store:normalize_redis_ping_errors:exception_export",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.agent.state_store:AsyncRedisAgentStateStore.ping:exception_export is an AST-overmatch with no sink call in its scoped body.",
+      "rationale": "Inspection: optimus.agent.state_store:normalize_redis_ping_errors:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/agent/test_state_store.py::test_redis_store_ping_fails_closed_when_redis_is_down",
+      "test_node": "tests/unit/redis/test_ping_error_normalization.py::test_connection_failures_become_builtin_connection_error",
       "evidence_tier": "unit"
     },
     {
@@ -1214,14 +1214,6 @@
       "rationale": "optimus.agent.state_store:AsyncRedisAgentStateStore.save_plan:redis_hash_write performs short-TTL functional plan replay; task, plan_text, and workspace_root require exact round-trip fidelity, so diagnostic sanitization would break replay.",
       "sanitizer": "functional replay schema and TTL; no diagnostic sanitization",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.agent.state_store:RedisAgentStateStore.ping:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.agent.state_store:RedisAgentStateStore.ping:exception_export is an AST-overmatch with no sink call in its scoped body.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/agent/test_state_store.py::test_redis_store_ping_fails_closed_when_redis_is_down",
       "evidence_tier": "unit"
     },
     {
@@ -1582,14 +1574,6 @@
       "rationale": "Inspection: AST overmatch on threading.Event.set() inside PendingClientMcpCandidateEndpoint._stop_listener; no Redis client or hash write exists on the local AF_PIPE/AF_UNIX pending-candidate path.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/mcp/test_local_ipc.py::test_listener_is_pending_only_and_exposes_no_approve_operation",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.redis.runtime:RedisRuntime._ping_async:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.redis.runtime:RedisRuntime._ping_async:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/agent/test_state_store.py::test_redis_store_ping_fails_closed_when_redis_is_down",
       "evidence_tier": "unit"
     },
     {
