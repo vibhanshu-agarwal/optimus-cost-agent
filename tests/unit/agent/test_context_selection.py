@@ -726,3 +726,18 @@ def test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry(
     control = _attached_request(tmp_path, mode, prompt=prompt, selection=_selection(prompt, ConversationOutcome.COMPLETED), envelope="")
     context, _gateway, _result = _run_and_observe(tmp_path, control, reply)
     assert context.blocking_stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner(tmp_path, mode):
+    """The runner hands the person's own prompt to the ranking: a path named in an earlier turn chooses nothing for this one."""
+    for folder in ("src/gateway", "src/agent"):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "config.py").write_text("A = 1\n", encoding="utf-8")
+    prompt = "and what does config.py hold now?"
+    request = _attached_request(tmp_path, mode, prompt=prompt, selection=f"{prompt}\nfix the gateway timeout in src/gateway/config.py",
+                                envelope="")
+
+    context, _gateway, _result = _run_and_observe(tmp_path, request, "It holds A." if mode is ExecutionMode.CHAT else "REFUSE: test")
+
+    assert context.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
