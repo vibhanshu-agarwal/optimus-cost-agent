@@ -51,6 +51,16 @@ def test_pre_commit_and_ci_name_the_same_guardrail_checks():
     assert pre_commit & expected == ci & expected == expected
 
 
+def test_ci_requires_workflow_security_checks() -> None:
+    workflow = yaml.safe_load((ROOT / ".github/workflows/guardrails.yml").read_text(encoding="utf-8"))
+    assert workflow["permissions"] == {"contents": "read"}
+    steps = workflow["jobs"]["clean-environment-recheck"]["steps"]
+    (step,) = [step for step in steps if step.get("name") == "optimus-check: workflow-security"]
+    assert "continue-on-error" not in step and "if" not in step
+    assert step["shell"] == "bash"
+    assert "tools/check_workflow_security.sh" in step["run"]
+
+
 def test_ci_dependency_sync_is_locked() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8")

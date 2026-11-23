@@ -60,7 +60,9 @@ def test_pages_workflow_publishes_the_page_and_a_redirect_only() -> None:
     assert code.count("cp docs/work-status.html _site/work-status.html") == 1
     assert len(re.findall(r"^\s+(?:cp|mv|rsync|mkdir -p)\b", code, re.MULTILINE)) == 1
     assert "          path: _site\n" in code
-    assert "uses: actions/upload-pages-artifact@v5" in code and "uses: actions/deploy-pages@v5" in code
+    for action in ("upload-pages-artifact", "deploy-pages"):
+        pin = rf"^ *uses: actions/{action}@[0-9a-f]{{40}}(?: +#.*)?$"
+        assert re.search(pin, code, re.MULTILINE)
 
 
 def test_the_hosted_address_matches_the_pages_repository_and_every_listed_document_links_it() -> None:

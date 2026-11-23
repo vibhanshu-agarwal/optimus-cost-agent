@@ -1378,7 +1378,8 @@ def test_one_approved_plan_cell_is_the_only_prerequisite_disposition_exception(t
 def test_guardrails_checkout_fetches_prerequisite_amendment_history() -> None:
     workflow = _read(GUARDRAILS_WORKFLOW)
 
-    assert "uses: actions/checkout@v4\n        with:\n          fetch-depth: 0" in workflow
+    pin = r"^ *uses: actions/checkout@[0-9a-f]{40}(?: +#.*)?\n        with:\n          fetch-depth: 0\n"
+    assert re.search(pin, workflow, re.MULTILINE)
 
 
 @pytest.fixture
