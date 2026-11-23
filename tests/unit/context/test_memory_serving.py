@@ -140,7 +140,7 @@ BUILD_PATH = "docs/sources/agent-localized-edit/tools/build.py"
 
 
 def _conversation(*known: str) -> Any:
-    """The session's persistence sanitizer, as the session builds it (evidence-redaction-v1), with these known secrets."""
+    """The session's persistence sanitizer, as the session builds it (EVIDENCE_REDACTION_POLICY), with these known secrets."""
     from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs
 
     return ConversationSanitizer(ConversationSanitizerInputs(known_secrets=known, path_aliases=())).sanitize
