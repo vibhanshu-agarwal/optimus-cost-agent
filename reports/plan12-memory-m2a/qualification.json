@@ -1,0 +1,1059 @@
+{
+ "schema": "plan12-memory-m2a.qualification.v2",
+ "head": "git:b6dd92b180685e1fab06a62e60c21ee666c4acad",
+ "phase": "qualification",
+ "inputs": {
+  "cases.json": "hex:0f76413a68fe67f60a6d0561ad89b9d5d67bfaf6cf0a8c2d8a78d85f9d8dc3a2",
+  "ranking-policy.json": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac",
+  "evaluation-contract.json": "hex:d25f23a94982644765a18483eb7fc5a75679c702d872ce79749a2841715cbccf",
+  "case-provenance.json": "hex:ef623c5c2b6f059c7c031ded5664fe34112182ee9cc972da71663d308d0b96ae"
+ },
+ "paid_attempts": 0,
+ "provider_cost_usd": "0",
+ "splits": [
+  "held_out"
+ ],
+ "ambiguity": {
+  "rows": [
+   {
+    "id": "A19",
+    "family": "A-F7",
+    "split": "held_out",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "tests/conftest.py",
+     "tests/integration/context/conftest.py",
+     "tests/unit/agent/conftest.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 2,
+    "ranked_candidates": [
+     "tests/integration/context/conftest.py",
+     "tests/conftest.py",
+     "tests/unit/agent/conftest.py"
+    ],
+    "ranked_rank": 1,
+    "index_candidates": [
+     "tests/integration/context/conftest.py",
+     "tests/conftest.py",
+     "tests/unit/agent/conftest.py"
+    ],
+    "index_rank": 1,
+    "candidates_kept": true,
+    "denied_listed": [],
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A20",
+    "family": "A-F7",
+    "split": "held_out",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "tests/conftest.py",
+     "tests/integration/context/conftest.py",
+     "tests/unit/agent/conftest.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 3,
+    "ranked_candidates": [
+     "tests/unit/agent/conftest.py",
+     "tests/conftest.py",
+     "tests/integration/context/conftest.py"
+    ],
+    "ranked_rank": 1,
+    "index_candidates": [
+     "tests/unit/agent/conftest.py",
+     "tests/conftest.py",
+     "tests/integration/context/conftest.py"
+    ],
+    "index_rank": 1,
+    "candidates_kept": true,
+    "denied_listed": [],
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A21",
+    "family": "A-F7",
+    "split": "held_out",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "tests/conftest.py",
+     "tests/integration/context/conftest.py",
+     "tests/unit/agent/conftest.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 1,
+    "ranked_candidates": [
+     "tests/conftest.py",
+     "tests/integration/context/conftest.py",
+     "tests/unit/agent/conftest.py"
+    ],
+    "ranked_rank": 1,
+    "index_candidates": [
+     "tests/conftest.py",
+     "tests/integration/context/conftest.py",
+     "tests/unit/agent/conftest.py"
+    ],
+    "index_rank": 1,
+    "candidates_kept": true,
+    "denied_listed": [],
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A22",
+    "family": "A-F8",
+    "split": "held_out",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "README.md",
+     "docs/README.md",
+     "docs/decisions/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 3,
+    "ranked_candidates": [
+     "docs/decisions/README.md",
+     "README.md",
+     "docs/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "ranked_rank": 1,
+    "index_candidates": [
+     "docs/decisions/README.md",
+     "README.md",
+     "docs/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "index_rank": 1,
+    "candidates_kept": true,
+    "denied_listed": [],
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A23",
+    "family": "A-F8",
+    "split": "held_out",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "README.md",
+     "docs/README.md",
+     "docs/decisions/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 1,
+    "ranked_candidates": [
+     "README.md",
+     "docs/README.md",
+     "docs/decisions/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "ranked_rank": 1,
+    "index_candidates": [
+     "README.md",
+     "docs/README.md",
+     "docs/decisions/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "index_rank": 1,
+    "candidates_kept": true,
+    "denied_listed": [],
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A24",
+    "family": "A-F8",
+    "split": "held_out",
+    "decidable": false,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "README.md",
+     "docs/README.md",
+     "docs/decisions/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": null,
+    "ranked_candidates": [
+     "README.md",
+     "docs/README.md",
+     "docs/decisions/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "ranked_rank": null,
+    "index_candidates": [
+     "README.md",
+     "docs/README.md",
+     "docs/decisions/README.md",
+     "tests/fixtures/README.md"
+    ],
+    "index_rank": null,
+    "candidates_kept": true,
+    "denied_listed": [],
+    "wrong_target_selections": 0
+   }
+  ],
+  "scores": {
+   "held_out": {
+    "decidable": 5,
+    "undecidable": 1,
+    "ranked_cases": 5,
+    "oracle_regret": 0.25,
+    "wrong_target_selections": 0,
+    "candidates_lost": 0,
+    "denied_listed": 0,
+    "path_only_top_one": 0.4,
+    "path_only_reciprocal_rank": 0.6333333333333333,
+    "ranked_top_one": 1.0,
+    "ranked_reciprocal_rank": 1.0,
+    "index_top_one": 1.0,
+    "index_reciprocal_rank": 1.0
+   }
+  }
+ },
+ "split": {
+  "completion_scope": "a plan, no parse failure, exactly the expected evidence records (path, range, file sha256, whole payload), and every request fitted by the shipped ContextPacker.fit to the ordinary implementer route with the smallest usable input",
+  "probe_recipe": "own-limit-probes.v1",
+  "boundaries": {
+   "S07": {
+    "totals": {
+     "observations": 8193,
+     "current_reads": 461
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 220,
+      "range_bytes": [
+       300,
+       300,
+       300,
+       300,
+       300,
+       300,
+       300,
+       300
+      ]
+     },
+     {
+      "observation_text_bytes": 5082,
+      "range_bytes": [
+       300
+      ]
+     }
+    ]
+   },
+   "S15": {
+    "totals": {
+     "observations": 1499,
+     "current_reads": 14337
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 100,
+      "range_bytes": [
+       2337,
+       2337,
+       2337,
+       2337,
+       2337,
+       1711
+      ]
+     }
+    ]
+   },
+   "S24": {
+    "totals": {
+     "observations": 4097,
+     "current_reads": 12288
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 2989,
+      "range_bytes": [
+       1200
+      ]
+     },
+     {
+      "observation_text_bytes": 40,
+      "range_bytes": [
+       2337,
+       2337,
+       2337,
+       2337,
+       2150
+      ]
+     }
+    ]
+   }
+  },
+  "runs": {
+   "4/12": {
+    "S07": {
+     "id": "S07",
+     "partition": "4/12",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (8 found, 9 expected)",
+      "read blocks differ (8 found, 1 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2957,
+      "current_reads": 3653
+     },
+     "split": "held_out",
+     "shape": "observation_heavy",
+     "boundary": true
+    },
+    "S08": {
+     "id": "S08",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (8 found, 16 expected)",
+      "read blocks differ (8 found, 8 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2957,
+      "current_reads": 3653
+     },
+     "split": "held_out",
+     "shape": "observation_heavy",
+     "boundary": false
+    },
+    "S15": {
+     "id": "S15",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 6 expected)",
+      "read blocks differ (0 found, 6 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "held_out",
+     "shape": "read_heavy",
+     "boundary": true
+    },
+    "S16": {
+     "id": "S16",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (6 found, 11 expected)",
+      "read blocks differ (6 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1499,
+      "current_reads": 9941
+     },
+     "split": "held_out",
+     "shape": "read_heavy",
+     "boundary": false
+    },
+    "S23": {
+     "id": "S23",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (3 found, 6 expected)",
+      "read blocks differ (3 found, 3 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2254,
+      "current_reads": 7486
+     },
+     "split": "held_out",
+     "shape": "mixed",
+     "boundary": false
+    },
+    "S24": {
+     "id": "S24",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 3142,
+      "current_reads": 1360
+     },
+     "split": "held_out",
+     "shape": "mixed",
+     "boundary": true
+    }
+   },
+   "6/10": {
+    "S07": {
+     "id": "S07",
+     "partition": "6/10",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (8 found, 9 expected)",
+      "read blocks differ (8 found, 1 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2957,
+      "current_reads": 3653
+     },
+     "split": "held_out",
+     "shape": "observation_heavy",
+     "boundary": true
+    },
+    "S08": {
+     "id": "S08",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 5930,
+      "current_reads": 3669
+     },
+     "split": "held_out",
+     "shape": "observation_heavy",
+     "boundary": false
+    },
+    "S15": {
+     "id": "S15",
+     "partition": "6/10",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 6 expected)",
+      "read blocks differ (0 found, 6 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "held_out",
+     "shape": "read_heavy",
+     "boundary": true
+    },
+    "S16": {
+     "id": "S16",
+     "partition": "6/10",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (6 found, 11 expected)",
+      "read blocks differ (6 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1499,
+      "current_reads": 9941
+     },
+     "split": "held_out",
+     "shape": "read_heavy",
+     "boundary": false
+    },
+    "S23": {
+     "id": "S23",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4517,
+      "current_reads": 7495
+     },
+     "split": "held_out",
+     "shape": "mixed",
+     "boundary": false
+    },
+    "S24": {
+     "id": "S24",
+     "partition": "6/10",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     },
+     "cost_usd": "0",
+     "measured": {
+      "observations": 3142,
+      "current_reads": 1360
+     },
+     "split": "held_out",
+     "shape": "mixed",
+     "boundary": true
+    }
+   }
+  },
+  "probes": {
+   "4/12": [
+    {
+     "template": "S07",
+     "variant": "exact",
+     "targets": {
+      "observations": 4096
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 461
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S07",
+     "variant": "one_over",
+     "targets": {
+      "observations": 4097
+     },
+     "totals": {
+      "observations": 4097,
+      "current_reads": 461
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (8 found, 9 expected)",
+      "read blocks differ (8 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S15",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 1499,
+      "current_reads": 12288
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S15",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 12289
+     },
+     "totals": {
+      "observations": 1499,
+      "current_reads": 12289
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 6 expected)",
+      "read blocks differ (0 found, 6 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S24",
+     "variant": "exact",
+     "targets": {
+      "observations": 4096,
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 12288
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S24",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 4097,
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 4097,
+      "current_reads": 12288
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S24",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 4096,
+      "current_reads": 12289
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 12289
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    }
+   ],
+   "6/10": [
+    {
+     "template": "S07",
+     "variant": "exact",
+     "targets": {
+      "observations": 6144
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 461
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S07",
+     "variant": "one_over",
+     "targets": {
+      "observations": 6145
+     },
+     "totals": {
+      "observations": 6145,
+      "current_reads": 461
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (8 found, 9 expected)",
+      "read blocks differ (8 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S15",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 1499,
+      "current_reads": 10240
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S15",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 10241
+     },
+     "totals": {
+      "observations": 1499,
+      "current_reads": 10241
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 6 expected)",
+      "read blocks differ (0 found, 6 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S24",
+     "variant": "exact",
+     "targets": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S24",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 6145,
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 6145,
+      "current_reads": 10240
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S24",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 6144,
+      "current_reads": 10241
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 10241
+     },
+     "split": "held_out",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    }
+   ]
+  },
+  "summary": {
+   "4/12": {
+    "held_out": {
+     "completed": 0,
+     "of": 6,
+     "budget_stops": 6,
+     "other_stops": 0,
+     "parse_failures": 1,
+     "non_boundary_completed": 0,
+     "non_boundary_of": 3,
+     "non_boundary_budget_stops": 3,
+     "probes_passed": 7,
+     "probes_of": 7
+    }
+   },
+   "6/10": {
+    "held_out": {
+     "completed": 2,
+     "of": 6,
+     "budget_stops": 4,
+     "other_stops": 0,
+     "parse_failures": 0,
+     "non_boundary_completed": 2,
+     "non_boundary_of": 3,
+     "non_boundary_budget_stops": 1,
+     "probes_passed": 7,
+     "probes_of": 7
+    }
+   }
+  },
+  "choice": null
+ },
+ "gates": {
+  "ambiguity_242": {
+   "ranked": {
+    "passed": true,
+    "top_one": [
+     0.4,
+     1.0
+    ],
+    "reciprocal_rank": [
+     0.6333333333333333,
+     1.0
+    ]
+   },
+   "index": {
+    "passed": true,
+    "top_one": [
+     0.4,
+     1.0
+    ],
+    "reciprocal_rank": [
+     0.6333333333333333,
+     1.0
+    ]
+   },
+   "safety": {
+    "zero_wrong_targets_no_loss_no_denied": true,
+    "every_expected_stop_visible": true
+   }
+  },
+  "split_245": {
+   "passed": true,
+   "chosen": "6/10",
+   "failed_probes": [],
+   "baseline_successes_lost": [],
+   "non_boundary_completions_gained": [
+    "S08",
+    "S23"
+   ]
+  }
+ },
+ "held_out_custody": "consumed once at this head; no tuning against these results; a second use needs a successor disposition"
+}
