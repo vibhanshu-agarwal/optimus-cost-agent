@@ -341,7 +341,7 @@ def test_a_request_the_route_cannot_fit_is_never_a_completion(frozen: ev.Frozen,
 
     def unrecorded():  # requests that reach the model without the packer seeing them
         turn = real()
-        turn.record_dispatch = lambda _text: None
+        turn.record_dispatch = lambda _text, **_where: None
         return turn
 
     monkeypatch.setattr(ev, "route_packer", unrecorded)
