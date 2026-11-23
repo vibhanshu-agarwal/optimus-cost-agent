@@ -6481,6 +6481,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m2a_evaluate:determinism:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical json of two evaluator rows in memory, compared for equality (determinism); nothing is written or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2a.py::test_determinism_reports_identical_reruns_and_names_a_difference",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m2a_evaluate:main:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes a measurement report of counts, codes, byte totals, ranks, hashes, case ids and synthetic workspace-relative paths; no file body, observation text, credential or exception text.",

@@ -3,6 +3,8 @@ Continue/Stop check-in (Designs 1-4 and 7; ADR-024)."""
 
 from __future__ import annotations
 
+import hashlib
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -513,3 +515,25 @@ def test_detections_and_decisions_are_recorded_without_content(tmp_path, source)
         {"record": "check_in", "signal": "REPEATED_READ", "planning_step": 4, "decision": "stop"},
     ]
     assert "a.py" not in str([e.model_dump() for e in events])
+
+
+# --- F2 (Plan 12.13 #245): an observation over its budget drops no evidence ---
+
+_EVIDENCE = re.compile(r"(?:OBS_RECORD|READ_BLOCK) path=.*?\nEND_(?:OBS_RECORD|READ_BLOCK)\n", re.DOTALL)
+
+
+def test_observation_too_large_keeps_the_earlier_evidence_and_reads_nothing(tmp_path, source):
+    """The rejected turn reads nothing: the correction request carries the earlier turn's records unchanged, and a plan after it is
+    bound only to what it was shown."""
+    from optimus.agent.planning_loop import PLANNING_OBSERVATION_MAX_BYTES, PLANNING_PARSE_FEEDBACK
+
+    (tmp_path / "b.py").write_text("bbbbbbbbbb", encoding="utf-8")
+    oversized = "OBSERVE: " + "n" * PLANNING_OBSERVATION_MAX_BYTES + "\nREAD: b.py#bytes=0:5\n"
+    gateway = Gateway([READ_A, oversized, FINAL_PLAN])
+    result = _run(tmp_path, gateway, None)
+
+    assert PLANNING_PARSE_FEEDBACK["OBSERVATION_TOO_LARGE"] in gateway.prompts[2]
+    assert _EVIDENCE.findall(gateway.prompts[2]) == _EVIDENCE.findall(gateway.prompts[1]) != []
+    assert "path=b.py" not in gateway.prompts[2]
+    assert result.stop_reason is None
+    assert result.evidence_sha256s == {"a.py": hashlib.sha256(source.read_bytes()).hexdigest()}

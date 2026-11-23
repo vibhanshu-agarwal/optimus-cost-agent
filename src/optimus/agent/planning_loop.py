@@ -77,8 +77,10 @@ PlanningAttemptCallback = Callable[[int, int, tuple[ProviderAttempt, ...], Any, 
 # A request whose required notice was not delivered: never sent, so it certainly cost nothing.
 _NOT_SENT = ProviderAttempt(number=1, outcome="not_sent", cost_usd=Decimal("0"))
 
-PLANNING_OBSERVATION_MAX_BYTES = 4 * 1024
-PLANNING_NEW_READ_MAX_BYTES = 12 * 1024
+# Plan 12.13 #245: the 6/10 partition chosen by the frozen v4 calibration (reports/plan12-memory-m2a/calibration.json);
+# the 16 KiB combined ceiling is unchanged, and one turn's current reads lose 2 KiB (split.json).
+PLANNING_OBSERVATION_MAX_BYTES = 6 * 1024
+PLANNING_NEW_READ_MAX_BYTES = 10 * 1024
 _PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)

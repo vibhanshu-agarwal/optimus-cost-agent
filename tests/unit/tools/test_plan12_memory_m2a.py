@@ -1,10 +1,11 @@
-"""Plan 12.13 Task 1: the M2a evaluator's loader, boundaries, schedule runs and partition choice, on the real planning loop and real files.
+"""Plan 12.13 Tasks 1 and 3: the M2a evaluator's loader, boundaries, schedule runs and partition choice, on the real planning loop and real files.
 
 The real-index check needs the released Redis and is not run here.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import shutil
@@ -17,6 +18,8 @@ from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 from tools.plan12_memory import m2a_evaluate as ev
 
 REPOSITORY = Path(__file__).resolve().parents[3]
+# the production limits, read before any run substitutes its own
+PRODUCTION = (pl.PLANNING_OBSERVATION_MAX_BYTES, pl.PLANNING_NEW_READ_MAX_BYTES)
 
 
 @pytest.fixture(scope="module")
@@ -69,12 +72,13 @@ def test_a_one_over_read_stops_at_the_baseline_fits_a_wider_read_limit_and_resto
     assert (baseline["completed"], baseline["stop"]) == (False, "PLANNING_READ_BUDGET_EXHAUSTED")
     assert (wider["completed"], wider["stop"], wider["evidence_complete"]) == (True, None, True)
     assert baseline["cost_usd"] == wider["cost_usd"] == "0"
-    assert (pl.PLANNING_OBSERVATION_MAX_BYTES, pl.PLANNING_NEW_READ_MAX_BYTES) == (4096, 12288)
+    assert (pl.PLANNING_OBSERVATION_MAX_BYTES, pl.PLANNING_NEW_READ_MAX_BYTES) == PRODUCTION
 
 
 def test_an_exact_read_boundary_completes_with_every_record(frozen: ev.Frozen, tmp_path: Path) -> None:
     exact = ev.run_schedule(ev.resolve(_schedule(frozen, "S10")), (4, 12), tmp_path / "a")  # current reads 12288
-    assert (exact["completed"], exact["evidence_complete"]) == (True, True)
+    assert (exact["completed"], exact["evidence_complete"], exact["route_fit"]["status"]) == (True, True, "passed")
+    assert exact["route_fit"]["requests_fitted"] == exact["requests"] and exact["route_fit"]["repacks"] == 0
 
 
 def test_an_observation_over_the_limit_never_counts_as_completed_even_when_a_plan_follows(frozen: ev.Frozen, tmp_path: Path) -> None:
@@ -275,7 +279,7 @@ def test_own_limit_probes_at_6_10_complete_exactly_and_stop_one_over(frozen: ev.
             row = ev.run_schedule(variant["resolved"], (6, 10), tmp_path / template / variant["variant"])
             assert ev.probe_passed(variant["variant"], row), (template, variant["variant"], row["stop"], row["evidence_problems"])
             assert row["completed"] is (variant["variant"] == "exact")
-    assert (pl.PLANNING_OBSERVATION_MAX_BYTES, pl.PLANNING_NEW_READ_MAX_BYTES) == (4096, 12288)
+    assert (pl.PLANNING_OBSERVATION_MAX_BYTES, pl.PLANNING_NEW_READ_MAX_BYTES) == PRODUCTION
 
 
 def test_a_one_over_probe_needs_a_typed_stop_and_a_plan_after_observation_too_large_fails() -> None:
@@ -313,3 +317,131 @@ def test_the_v4_choice_scores_non_boundary_schedules_and_rejects_a_failed_probe(
     assert choice["baseline_probe_failures"] == ["p:exact"]  # reported; the baseline stays the fallback
     # Without the probe gate 2/14 survives: it ties 6/10 on completions and stops and is as near 4/12, and the label breaks the tie.
     assert "2/14" not in ev.choose_partition(results)["rejected"]
+
+
+# ---------------------------------------------------------------- Task 3: production partition, route fitting, qualification
+
+
+def test_production_limits_are_the_partition_calibration_chose(frozen: ev.Frozen) -> None:
+    observation, read = ev.chosen_partition(REPOSITORY, frozen)
+    assert PRODUCTION == (observation * 1024, read * 1024) == (6144, 10240)
+    assert sum(PRODUCTION) == 16 * 1024  # the combined ceiling is unchanged
+
+
+def test_a_request_the_route_cannot_fit_is_never_a_completion(frozen: ev.Frozen, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    snapshot, model_id, limits = ev._route()
+    monkeypatch.setattr(ev, "_route", lambda: (snapshot, model_id, dataclasses.replace(limits, usable_input_tokens=2000)))
+    row = ev.run_schedule(ev.resolve(_schedule(frozen, "S12")), (6, 10), tmp_path)
+    assert (row["completed"], row["stop"], row["route_fit"]["status"]) == (False, "CONTEXT_CAPACITY_EXCEEDED", "failed")
+    monkeypatch.undo()
+    real = ev.route_packer
+
+    def unrecorded():  # requests that reach the model without the packer seeing them
+        turn = real()
+        turn.record_dispatch = lambda _text: None
+        return turn
+
+    monkeypatch.setattr(ev, "route_packer", unrecorded)
+    bypassed = ev.run_schedule(ev.resolve(_schedule(frozen, "S12")), (6, 10), tmp_path / "bypassed")
+    assert bypassed["planned"] and (bypassed["completed"], bypassed["route_fit"]["status"]) == (False, "failed")
+
+
+def test_the_index_order_comes_from_the_real_index_records_and_keeps_every_candidate(frozen: ev.Frozen, tmp_path: Path) -> None:
+    records = ev.index_records(REPOSITORY, frozen)
+    cases = {case["id"]: case for case in frozen.cases["ambiguity"]["cases"]}
+    neighbour = ev.ambiguity_baseline(frozen, cases["A08"], tmp_path / "a", records=records[cases["A08"]["family"]])
+    assert (neighbour["path_only_rank"], neighbour["ranked_rank"], neighbour["index_rank"]) == (3, 3, 1)
+    # A04's only distinguishing hint is stale: it contributes nothing, the stale target stays listed, and the order loses (frozen note)
+    stale = ev.ambiguity_baseline(frozen, cases["A04"], tmp_path / "b", records=records["A-F2"])
+    assert stale["index_candidates"] == ["src/optimus/context/utils.py", "src/optimus/acp/utils.py", "tools/utils.py"]
+    assert stale["index_rank"] == 2 and stale["candidates_kept"] and stale["denied_listed"] == []
+
+
+def test_index_records_must_cover_the_frozen_files(frozen: ev.Frozen, tmp_path: Path) -> None:
+    copy = tmp_path / "repo"
+    shutil.copytree(REPOSITORY / ev.REPORTS, copy / ev.REPORTS)
+    report = json.loads((copy / ev.REPORTS / "index-check.json").read_text(encoding="utf-8"))
+    report["families"][0]["candidates"].pop()
+    (copy / ev.REPORTS / "index-check.json").write_text(json.dumps(report), encoding="utf-8")
+    with pytest.raises(ev.FrozenInputChanged, match="A-F1"):
+        ev.index_records(copy, frozen)
+
+
+def _held(**orders: tuple[float, float]) -> dict:
+    score = {"wrong_target_selections": 0, "candidates_lost": 0, "denied_listed": 0}
+    for order, (top, rr) in orders.items():
+        score[f"{order}_top_one"], score[f"{order}_reciprocal_rank"] = top, rr
+    return {"held_out": score}
+
+
+def _split(done: dict[str, set[str]], failed: tuple[str, ...] = ()) -> dict:
+    ids = {"a", "b", "c", "p"}
+    return {
+        "runs": {label: {sid: {"completed": sid in ok, "boundary": sid == "p"} for sid in ids} for label, ok in done.items()},
+        "probes": {"6/10": [{"template": "p", "variant": name, "passed": name not in failed} for name in ("exact", "one_over")]},
+    }
+
+
+def test_qualification_needs_ranking_benefit_on_the_same_rows_and_a_completion_gain_without_loss() -> None:
+    rows = [{"outcome": "ambiguous_stop", "expected": "ambiguous_stop"}]
+    split = _split({"4/12": {"a", "p"}, "6/10": {"a", "b"}})
+    gates = ev.qualify(_held(path_only=(0.5, 0.7), ranked=(0.5, 0.8), index=(0.5, 0.7)), rows, split, "6/10")
+    assert gates["ambiguity_242"]["ranked"]["passed"] and not gates["ambiguity_242"]["index"]["passed"]  # equal is no benefit
+    assert gates["split_245"] == {
+        "passed": True, "chosen": "6/10", "failed_probes": [], "baseline_successes_lost": [], "non_boundary_completions_gained": ["b"]
+    }  # p is a probe template: losing its absolute run is not a loss
+    worse = ev.qualify(_held(path_only=(0.5, 0.7), ranked=(0.6, 0.6), index=(0.5, 0.7)), rows, split, "6/10")
+    assert not worse["ambiguity_242"]["ranked"]["passed"]  # one metric down
+    unsafe = _held(path_only=(0.5, 0.7), ranked=(1.0, 1.0), index=(1.0, 1.0))
+    unsafe["held_out"]["wrong_target_selections"] = 1
+    assert not ev.qualify(unsafe, rows, split, "6/10")["ambiguity_242"]["ranked"]["passed"]
+    hidden = ev.qualify(_held(path_only=(0.5, 0.7), ranked=(1.0, 1.0), index=(1.0, 1.0)), [{"outcome": "resolved", "expected": "ambiguous_stop"}], split, "6/10")
+    assert not hidden["ambiguity_242"]["ranked"]["passed"]  # an expected stop that resolved
+    assert not ev.qualify(_held(path_only=(0.5, 0.7), ranked=(1.0, 1.0), index=(1.0, 1.0)), rows, _split({"4/12": {"a"}, "6/10": {"b"}}), "6/10")["split_245"]["passed"]
+    assert not ev.qualify(_held(path_only=(0.5, 0.7), ranked=(1.0, 1.0), index=(1.0, 1.0)), rows, _split({"4/12": {"a"}, "6/10": {"a"}}), "6/10")["split_245"]["passed"]
+    failed = ev.qualify(_held(path_only=(0.5, 0.7), ranked=(1.0, 1.0), index=(1.0, 1.0)), rows, _split({"4/12": {"a"}, "6/10": {"a", "b"}}, ("one_over",)), "6/10")
+    assert failed["split_245"]["failed_probes"] == ["p:one_over"] and not failed["split_245"]["passed"]
+    assert ev.qualify(_held(path_only=(None, None), ranked=(1.0, 1.0), index=(1.0, 1.0)), rows, split, "6/10")["ambiguity_242"]["ranked"] == {
+        "passed": False, "reason": "unmeasured"
+    }
+
+
+def test_the_capacity_trade_names_every_baseline_completion_the_choice_loses() -> None:
+    runs = {"4/12": {"S10": {"completed": True}, "S12": {"completed": True}}, "6/10": {"S10": {"completed": False}, "S12": {"completed": True}}}
+    trade = ev.capacity_trade(runs, "6/10")
+    assert trade["lost_completions"] == ["S10"] and trade["current_read_bytes_lost"] == 2048
+    assert trade["current_read_bytes"] == {"4/12": 12288, "6/10": 10240}
+
+
+def test_ambiguity_scores_every_order_over_the_same_rows() -> None:
+    rows = [
+        {"split": "held_out", "decidable": True, "outcome": "ambiguous_stop", "path_only_rank": 2, "ranked_rank": 1, "index_rank": 1,
+         "wrong_target_selections": 0, "candidates_kept": True, "denied_listed": []},
+        {"split": "held_out", "decidable": True, "outcome": "ambiguous_stop", "path_only_rank": 1, "ranked_rank": 2, "index_rank": None,
+         "wrong_target_selections": 0, "candidates_kept": False, "denied_listed": ["secrets/x.py"]},
+    ]
+    score = ev.score_ambiguity(rows)["held_out"]
+    assert (score["path_only_top_one"], score["ranked_top_one"]) == (0.5, 0.5)
+    assert score["ranked_reciprocal_rank"] == pytest.approx(0.75) and score["index_top_one"] is None  # an unmeasured row: no score
+    assert (score["candidates_lost"], score["denied_listed"]) == (1, 1)
+
+
+def test_cache_identity_shows_the_prefix_moved_and_the_registry_did_not() -> None:
+    report = ev.cache_identity(REPOSITORY)
+    assert report["prefix_changed"] and report["registry"]["files_changed"] == []
+    assert report["digests"]["production"]["limits"] == [6144, 10240, 16384]
+    assert set(report["registry"]["test_profiles"]) == {"qualification", "attached", "evaluation"}
+
+
+def test_determinism_reports_identical_reruns_and_names_a_difference(frozen: ev.Frozen, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cases = json.loads(json.dumps(frozen.cases))
+    cases["ambiguity"]["cases"] = [case for case in cases["ambiguity"]["cases"] if case["id"] in {"A01", "A04"}]
+    cases["split_schedules"]["schedules"] = [item for item in cases["split_schedules"]["schedules"] if item["id"] == "S12"]
+    trimmed = ev.Frozen(cases, frozen.digests)
+    report = ev.determinism(trimmed, tmp_path / "a", (6, 10))
+    assert report["identical"] and (report["ambiguity"]["cases"], report["schedules"]["runs"]) == (2, 1)
+    real = ev.run_schedule
+    calls = iter(range(2))
+    monkeypatch.setattr(ev, "run_schedule", lambda *args: {**real(*args), "requests": next(calls)})
+    changed = ev.determinism(trimmed, tmp_path / "b", (6, 10))
+    assert changed["schedules"]["differing"] == ["S12"] and not changed["identical"]

@@ -2,13 +2,16 @@
 
 Phases: `calibration` (train and development: the path-order ambiguity baseline on real files, and every split schedule through the real
 planning loop under each candidate partition), `index-check` (the frozen metadata states against a real index on the released Redis) and
-`qualification` (held-out, once, after CP1). Model replies are scripted and cost nothing; no provider is reachable. Records carry counts,
-paths of synthetic files, hashes and codes, never file bodies.
+`qualification` (held-out, once, after CP1). Task 3 adds `split` (train and development again, every request through the real route
+fitting), `determinism` (repeated and reordered inputs) and `cache-identity` (prompt prefix, request and registry identities). Model
+replies are scripted and cost nothing; no provider is reachable. Records carry counts, paths of synthetic files, hashes and codes, never
+file bodies.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import hashlib
 import json
 import re
@@ -26,7 +29,13 @@ from optimus.agent import planning_loop as pl
 from optimus.agent.models import AgentRunRequest, AgentRunStatus
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
-from optimus.agent.workspace_context import WorkspaceReferenceStatus, assemble_workspace_context_for_prompt
+from optimus.agent.workspace_context import (
+    RankingHints,
+    WorkspaceReferenceStatus,
+    assemble_workspace_context_for_prompt,
+    rank_ambiguity,
+    verified_hints,
+)
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 from optimus.guardrails.pre_tool import PreToolGuard
@@ -296,9 +305,73 @@ def check_evidence(final: str, resolved: Mapping[str, Any], work: Path) -> list[
     return problems
 
 
+@functools.cache
+def _route() -> tuple[Any, str, Any]:
+    """The shipped ordinary registry, and the implementer route with the smallest usable input: the tightest any ordinary launch fits
+    to. Chosen by its limit, never by name (models are configuration)."""
+    from optimus.acp.context_attachment import implementer_role
+    from optimus.context.shipped_policy import attachment_limits
+    from optimus.gateway.route_binding import RouteIdentityError
+    from optimus_model_policy.binding import compose_trusted_snapshot, packaged_defaults
+
+    snapshot = compose_trusted_snapshot(packaged_defaults())
+    routes = []
+    for model_id in sorted(snapshot.policy.models):
+        try:
+            implementer_role(snapshot, model_id)
+            routes.append((attachment_limits(snapshot, model_id).usable_input_tokens, model_id))
+        except KeyError, RouteIdentityError:
+            continue
+    _usable, model_id = min(routes)
+    return snapshot, model_id, attachment_limits(snapshot, model_id)
+
+
+def route_packer() -> Any:
+    """The real ContextPacker on that route: an attached turn with no history and no summarizer, so fitting can make no call. Its fit()
+    is the shipped one, unchanged."""
+    from context_engine.engine import ContextEngine
+    from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs
+    from optimus.context.assembly import AttachedTurn, ContextAttachment
+    from optimus.context.shipped_policy import MAX_REPACKS, RECORD_RESERVATION_BYTES, SOURCE_MAX_BYTES, no_attachment_ledger
+
+    snapshot, model_id, limits = _route()
+    attachment = ContextAttachment(
+        engine=ContextEngine(),
+        parameters=limits.parameters,
+        limits=limits.limits,
+        source_max_bytes=SOURCE_MAX_BYTES,
+        record_reservation_bytes=RECORD_RESERVATION_BYTES,
+        usable_input_tokens=limits.usable_input_tokens,
+        estimate_request=limits.estimate_request,
+        registry_hash=snapshot.effective_hash,
+        model_id=model_id,
+        summarizer=None,
+        summarizer_route=None,
+        record_receipt=no_attachment_ledger,
+        max_repacks=MAX_REPACKS,
+    )
+    turn = AttachedTurn.capture(
+        attachment=attachment,
+        session_key="m2a",
+        records={},
+        approvals={},
+        generation=0,
+        sanitizer=ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=(), known_pii=())),
+        strategy="compaction",
+        mode=ExecutionMode.AGENT,
+        checkpoint=None,
+        current_prompt="Plan a change",
+        turn_seq=1,
+        cancelled=lambda: False,
+    )
+    if turn.prepare().kind != "view":
+        raise RuntimeError("the route packer has no view")
+    return turn
+
+
 def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: Path) -> dict[str, Any]:
-    """One schedule through the real runner and planning loop with only the two limits substituted. Route fitting is not part of this
-    runner (no ContextPacker): completion here is demand-only, and route fitting stays UNRUN until Task 3."""
+    """One schedule through the real runner, planning loop and route fitting (ContextPacker.fit) with only the two limits substituted.
+    Completed: a plan, no parse failure, exactly the expected evidence, and every request fitted to the route unchanged."""
     paths = write_workspace(resolved, work)
     replies = [
         "OBSERVE: "
@@ -320,14 +393,30 @@ def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: 
         max_planning_turns=3,
         max_cost_usd=Decimal("0.05"),
     )
+    _snapshot, model_id, limits = _route()
+    packer = route_packer()
     with mock.patch.object(pl, "PLANNING_OBSERVATION_MAX_BYTES", observation), mock.patch.object(pl, "PLANNING_NEW_READ_MAX_BYTES", read):
         runner = AgentRunner(
             gateway_client=gateway,
-            model="glm-5.2",
+            model=model_id,
             guard=PreToolGuard.for_workspace(workspace_root=work.resolve(), allowed_network_hosts=()),
             state_store=InMemoryAgentStateStore(),
         )
-        result = runner.run(request)
+        result = runner.run(request, context_packer=packer)
+    readings = packer.dispatch_readings()
+    fitted = (
+        result.stop_reason != "CONTEXT_CAPACITY_EXCEEDED"
+        and packer.repacks == 0
+        and len(readings) == len(gateway.inputs)
+        and all(reading.tokens <= reading.capacity for reading in readings)
+    )
+    route_fit = {
+        "status": "passed" if fitted else "failed",
+        "requests_fitted": len(readings),
+        "repacks": packer.repacks,
+        "max_request_tokens": max((reading.tokens for reading in readings), default=0),
+        "usable_input_tokens": limits.usable_input_tokens,
+    }
     final = gateway.inputs[-1] if gateway.inputs else ""
     problems = check_evidence(final, resolved, work)
     if len(gateway.inputs) != len(resolved["rounds"]) + 1:
@@ -338,7 +427,7 @@ def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: 
     return {
         "id": resolved["id"],
         "partition": f"{partition[0]}/{partition[1]}",
-        "completed": planned and not problems and not parse_failures,
+        "completed": planned and not problems and not parse_failures and fitted,
         "planned": planned,
         "evidence_complete": not problems,
         "evidence_problems": problems,
@@ -347,7 +436,7 @@ def run_schedule(resolved: Mapping[str, Any], partition: tuple[int, int], work: 
         "budget_stop": result.stop_reason in BUDGET_STOPS or "OBSERVATION_TOO_LARGE" in parse_failures,
         "requests": len(gateway.inputs),
         "weakened": False,
-        "route_fit": "UNRUN",
+        "route_fit": route_fit,
         "cost_usd": "0",
         "measured": {
             "observations": _span(final, "OBS_RECORD path=", "END_OBS_RECORD\n"),
@@ -421,13 +510,14 @@ def _content(entry: Mapping[str, Any]) -> bytes:
     return b"{}\n"
 
 
-def materialize(files: Sequence[Mapping[str, Any]], root: Path, *, skip: Iterable[str] = ()) -> None:
-    """The family's synthetic workspace, with an ignore file for every denied directory that is not skipped by policy already."""
+def materialize(files: Sequence[Mapping[str, Any]], root: Path, *, skip: Iterable[str] = (), reverse: bool = False) -> None:
+    """The family's synthetic workspace, with an ignore file for every denied directory that is not skipped by policy already. `reverse`
+    writes the files in the opposite order (determinism)."""
     left_out = set(skip)
     ignored = sorted({entry["path"].split("/", 1)[0] + "/" for entry in files if "ignore-file" in entry.get("denied", "")})
     root.mkdir(parents=True, exist_ok=True)
     (root / ".gitignore").write_text("".join(f"{item}\n" for item in ignored), encoding="utf-8", newline="\n")
-    for entry in files:
+    for entry in reversed(files) if reverse else files:
         if entry["path"] in left_out:
             continue
         target = root / entry["path"]
@@ -435,10 +525,16 @@ def materialize(files: Sequence[Mapping[str, Any]], root: Path, *, skip: Iterabl
         target.write_bytes(_content(entry))
 
 
-def _diagnose(root: Path, task: str, reference: str) -> tuple[str, list[str], str | None]:
+HintsFor = Any  # Callable[[Sequence[str], Sequence[str]], RankingHints]
+
+
+def _diagnose(root: Path, task: str, reference: str, hints_for: HintsFor = None) -> tuple[str, list[str], str | None]:
+    """The ordinary assembly's stop for `reference`; with `hints_for`, its candidates re-ranked by the shared policy with those hints, as
+    MemoryTurn.assemble ranks them."""
     result = assemble_workspace_context_for_prompt(root, task=task)
+    diagnostics = result.diagnostics if hints_for is None else rank_ambiguity(result.diagnostics, task, hints_for)
     wanted = reference.replace("\\", "/")
-    diagnostic = next((item for item in result.diagnostics if item.reference.replace("\\", "/") == wanted), None)
+    diagnostic = next((item for item in diagnostics if item.reference.replace("\\", "/") == wanted), None)
     if diagnostic is None:
         return "not_referenced", [], None
     outcome = _STATUS.get(diagnostic.status, diagnostic.status.value)
@@ -446,17 +542,48 @@ def _diagnose(root: Path, task: str, reference: str) -> tuple[str, list[str], st
     return outcome, list(diagnostic.candidates), resolved
 
 
-def ambiguity_baseline(frozen: Frozen, case: Mapping[str, Any], work: Path) -> dict[str, Any]:
-    """Today's behavior on the case's real files: the stop, its candidate order (path order) and an exact-path retry where the case has one."""
-    materialize(_family(frozen, case["family"]), work)
-    outcome, candidates, resolved = _diagnose(work, case["task"], case["reference"])
-    candidates = sorted(candidates)  # the path-only baseline (ranking-policy.json): the stop now lists them ranked (Task 2)
+def index_hints(records: Sequence[Mapping[str, Any]], files: Sequence[Mapping[str, Any]], root: Path) -> HintsFor:
+    """MemorySession.hints_for over the real index's recorded metadata (index-check.json): labels and imports of every file the index
+    holds, each record's hash being the bytes it indexed. Current bytes come from disk, so a stale file contributes nothing."""
+    from context_engine.repo_map import MapFile
+
+    content = {entry["path"]: _content(entry) for entry in files}
+    held = [row for row in records if row["observed"] != "none" and row["frozen"] != "denied"]
+    map_files = [MapFile(row["path"], tuple(row["imports"]), tuple(row["labels"])) for row in held]
+    hashes = {row["path"]: hashlib.sha256(content[row["path"]]).hexdigest() for row in held}
+
+    def read(path: str) -> bytes | None:
+        target = root / path
+        return target.read_bytes() if target.is_file() else None
+
+    def hints(candidates: Sequence[str], resolved: Sequence[str]) -> RankingHints:
+        return verified_hints(candidates, resolved, files=map_files, hashes=hashes, read=read)
+
+    return hints
+
+
+def ambiguity_baseline(
+    frozen: Frozen, case: Mapping[str, Any], work: Path, *, records: Sequence[Mapping[str, Any]] | None = None, reverse: bool = False
+) -> dict[str, Any]:
+    """The case on its real files: the stop with its candidates in path order (the baseline), in the order ordinary assembly now lists
+    them, and, given the family's recorded index metadata, in the index turn's order; then an exact-path retry where the case has one."""
+    files = _family(frozen, case["family"])
+    materialize(files, work, reverse=reverse)
+    outcome, ranked, resolved = _diagnose(work, case["task"], case["reference"])
+    candidates = sorted(ranked)  # the path-only baseline (ranking-policy.json): the stop now lists them ranked (Task 2)
     acceptable = set(case["acceptable"])
-    rank = (
-        next((number for number, path in enumerate(candidates, start=1) if path in acceptable), None)
-        if outcome == "ambiguous_stop"
-        else None
-    )
+
+    def rank_in(order: Sequence[str]) -> int | None:
+        if outcome != "ambiguous_stop":
+            return None
+        return next((number for number, path in enumerate(order, start=1) if path in acceptable), None)
+
+    rank = rank_in(candidates)
+    hinted: list[str] | None = None
+    if records is not None:
+        after_indexing(files, work, ())  # the index's stale files differ from their records now, as at the index check
+        _outcome, hinted, _resolved = _diagnose(work, case["task"], case["reference"], index_hints(records, files, work))
+    denied = {entry["path"] for entry in files if "denied" in entry}
     wrong = 1 if resolved is not None and resolved not in acceptable else 0
     row: dict[str, Any] = {
         "id": case["id"],
@@ -469,6 +596,12 @@ def ambiguity_baseline(frozen: Frozen, case: Mapping[str, Any], work: Path) -> d
         "resolved": resolved,
         "resolved_correct": resolved in acceptable if resolved else None,
         "path_only_rank": rank if case["decidable"] else None,
+        "ranked_candidates": ranked,
+        "ranked_rank": rank_in(ranked) if case["decidable"] else None,
+        **({"index_candidates": hinted, "index_rank": rank_in(hinted) if case["decidable"] else None} if hinted is not None else {}),
+        # ranking only orders the stop's set: every order lists the same candidates, and no denied file
+        "candidates_kept": sorted(ranked) == candidates and (hinted is None or sorted(hinted) == candidates),
+        "denied_listed": sorted(denied & {*ranked, *(hinted or ())}),
         "wrong_target_selections": wrong,
     }
     retry = case.get("retry")
@@ -484,8 +617,9 @@ def ambiguity_baseline(frozen: Frozen, case: Mapping[str, Any], work: Path) -> d
 
 
 def score_ambiguity(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Per split: decidable and undecidable counts apart; top-one and reciprocal rank over decidable multi-candidate stops; regret on what
-    the system acted on (a visible stop 0.25 when decidable, a correct resolution 0, a wrong one 1)."""
+    """Per split: decidable and undecidable counts apart; top-one and reciprocal rank over decidable multi-candidate stops, for each order
+    over the same rows (path_only, ranked: ordinary assembly, index: with the index's hints); regret on what the system acted on (a
+    visible stop 0.25 when decidable, a correct resolution 0, a wrong one 1)."""
     scores: dict[str, dict[str, Any]] = {}
     for split in sorted({row["split"] for row in rows}):
         group = [row for row in rows if row["split"] == split]
@@ -496,11 +630,16 @@ def score_ambiguity(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, An
             "decidable": len(decidable),
             "undecidable": len(group) - len(decidable),
             "ranked_cases": len(ranked),
-            "path_only_top_one": sum(1 for row in ranked if row["path_only_rank"] == 1) / len(ranked) if ranked else None,
-            "path_only_reciprocal_rank": sum(1 / row["path_only_rank"] for row in ranked) / len(ranked) if ranked else None,
             "oracle_regret": sum(losses) / len(losses) if losses else None,
             "wrong_target_selections": sum(row["wrong_target_selections"] for row in group),
+            "candidates_lost": sum(1 for row in group if row.get("candidates_kept") is False),
+            "denied_listed": sum(len(row.get("denied_listed", ())) for row in group),
         }
+        for order in ("path_only", "ranked", "index"):
+            ranks = [row.get(f"{order}_rank") for row in ranked]
+            known = bool(ranks) and all(value is not None for value in ranks)
+            scores[split][f"{order}_top_one"] = sum(1 for value in ranks if value == 1) / len(ranks) if known else None
+            scores[split][f"{order}_reciprocal_rank"] = sum(1 / value for value in ranks if value) / len(ranks) if known else None
     return scores
 
 
@@ -511,11 +650,19 @@ def _head(repository: Path) -> str:
     return subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
 
 
-def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str) -> dict[str, Any]:
+def calibration(
+    frozen: Frozen,
+    work: Path,
+    splits: Sequence[str],
+    *,
+    phase: str,
+    partitions: Sequence[tuple[int, int]] = PARTITIONS,
+    index: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+) -> dict[str, Any]:
     if work.exists():
         shutil.rmtree(work)
     ambiguity = [
-        ambiguity_baseline(frozen, case, work / "ambiguity" / case["id"])
+        ambiguity_baseline(frozen, case, work / "ambiguity" / case["id"], records=None if index is None else index[case["family"]])
         for case in selected(frozen.cases["ambiguity"]["cases"], phase=phase, splits=splits)
     ]
     recipe = frozen.cases["split_schedules"]["probe_recipe"]["version"]
@@ -538,7 +685,7 @@ def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str
                     for round_ in resolved["rounds"]
                 ],
             }
-        for partition in PARTITIONS:
+        for partition in partitions:
             label = f"{partition[0]}/{partition[1]}"
             row = run_schedule(resolved, partition, work / "schedules" / schedule["id"] / label.replace("/", "-"))
             boundary = "boundary" in schedule
@@ -597,14 +744,199 @@ def calibration(frozen: Frozen, work: Path, splits: Sequence[str], *, phase: str
     return {
         "ambiguity": {"rows": ambiguity, "scores": score_ambiguity(ambiguity)},
         "split": {
-            "completion_scope": "demand-only: a plan, no parse failure, and exactly the expected evidence records (path, range, file sha256, "
-            "whole payload). Route fitting (ContextPacker.fit) is UNRUN here and is checked in Task 3; contract-qualified completion needs it.",
+            "completion_scope": "a plan, no parse failure, exactly the expected evidence records (path, range, file sha256, whole payload), "
+            "and every request fitted by the shipped ContextPacker.fit to the ordinary implementer route with the smallest usable input",
             "probe_recipe": recipe,
             "boundaries": resolved_lengths,
             "runs": runs,
             "probes": probes,
             "summary": summary,
-            "choice": choose_partition(runs, probes) if phase == "calibration" else None,
+            "choice": choose_partition(runs, probes) if phase in ("calibration", "split") else None,
+        },
+    }
+
+
+# ---------------------------------------------------------------- Task 3: qualification, capacity, F2, determinism, identities
+
+
+F2 = {
+    "finding": "CP1 (round 117): a plan accepted after OBSERVATION_TOO_LARGE carries none of the rejected turn's reads",
+    "established": "no production-required evidence is dropped. The rejected turn reads nothing; the correction request carries every "
+    "earlier observation and current read unchanged; a plan binds only the evidence it was shown (PlanningLoopResult.evidence_sha256s); "
+    "an EDIT of a file it was never shown is refused EDIT_SOURCE_UNSEEN before any write",
+    "disposition": "no parse-recovery change. The evaluator never counts such a plan as a completion or as a one-over probe pass",
+    "tests": [
+        "tests/unit/agent/test_planning_loop_recovery.py::test_observation_too_large_keeps_the_earlier_evidence_and_reads_nothing",
+        "tests/unit/agent/test_planning_loop_recovery.py::test_a_plan_after_observation_too_large_cannot_edit_a_file_it_was_never_shown",
+        "tests/unit/tools/test_plan12_memory_m2a.py::test_a_one_over_probe_needs_a_typed_stop_and_a_plan_after_observation_too_large_fails",
+    ],
+}
+
+
+def chosen_partition(repository: Path, frozen: Frozen) -> tuple[int, int]:
+    """The partition calibration.json chose under these frozen inputs; refused when its inputs differ or it chose none."""
+    calibration_report = json.loads((repository / REPORTS / "calibration.json").read_text(encoding="utf-8"))
+    if calibration_report["inputs"] != frozen.digests:
+        raise FrozenInputChanged("calibration.json ran on other frozen inputs")
+    chosen = calibration_report["split"]["choice"]["chosen"]
+    if chosen is None:
+        raise SystemExit("calibration chose no partition: 4/12 stays and the plan stops for disposition")
+    observation, read = (int(part) for part in chosen.split("/"))
+    return observation, read
+
+
+def index_records(repository: Path, frozen: Frozen) -> dict[str, list[dict[str, Any]]]:
+    """index-check.json's real-index rows per family, refused unless they cover exactly the frozen files and matched every state."""
+    report = json.loads((repository / REPORTS / "index-check.json").read_text(encoding="utf-8"))
+    if report["mismatches"]:
+        raise FrozenInputChanged("index-check.json has mismatches")
+    rows = {family["family"]: family["candidates"] for family in report["families"]}
+    for workspace in frozen.cases["ambiguity"]["workspaces"]:
+        if [row["path"] for row in rows[workspace["family"]]] != [entry["path"] for entry in workspace["files"]]:
+            raise FrozenInputChanged(f"index-check.json does not cover {workspace['family']}'s frozen files")
+    return rows
+
+
+def capacity_trade(runs: Mapping[str, Mapping[str, Mapping[str, Any]]], chosen: str) -> dict[str, Any]:
+    """What one turn's current reads give up: every schedule, probe templates included, that 4/12 completes and the chosen one does not."""
+    observation, read = (int(part) * 1024 for part in chosen.split("/"))
+    return {
+        "current_read_bytes": {"4/12": 12 * 1024, chosen: read},
+        "observation_bytes": {"4/12": 4 * 1024, chosen: observation},
+        "current_read_bytes_lost": 12 * 1024 - read,
+        "lost_completions": sorted(sid for sid, row in runs[BASELINE].items() if row["completed"] and not runs[chosen][sid]["completed"]),
+        "claim": "no capacity-preservation claim: a current read over the chosen limit is a typed read-budget stop within one turn",
+    }
+
+
+def qualify(
+    ambiguity_scores: Mapping[str, Any], ambiguity_rows: Sequence[Mapping[str, Any]], split_report: Mapping[str, Any], chosen: str
+) -> dict[str, Any]:
+    """Plan v4 held-out gates, judged once. #242, per order: top-one and reciprocal rank both at least path-only and one strictly higher,
+    on the same rows, with zero wrong targets, no candidate lost and no denied file listed. #245: every held-out probe of the chosen
+    partition passes, it completes at least one more held-out non-boundary schedule than 4/12, and loses none 4/12 completes."""
+    held = ambiguity_scores["held_out"]
+    safe = held["wrong_target_selections"] == 0 and held["candidates_lost"] == 0 and held["denied_listed"] == 0
+    stops_visible = all(row["outcome"] == "ambiguous_stop" for row in ambiguity_rows if row["expected"] == "ambiguous_stop")
+    verdicts: dict[str, Any] = {}
+    for order in ("ranked", "index"):
+        top, rr = held[f"{order}_top_one"], held[f"{order}_reciprocal_rank"]
+        base_top, base_rr = held["path_only_top_one"], held["path_only_reciprocal_rank"]
+        if top is None or rr is None or base_top is None or base_rr is None:
+            verdicts[order] = {"passed": False, "reason": "unmeasured"}
+            continue
+        better = top >= base_top and rr >= base_rr and (top > base_top or rr > base_rr)
+        verdicts[order] = {"passed": better and safe and stops_visible, "top_one": [base_top, top], "reciprocal_rank": [base_rr, rr]}
+    runs = split_report["runs"]
+
+    def done(label: str) -> set[str]:
+        return {sid for sid, row in runs[label].items() if not row["boundary"] and row["completed"]}
+
+    failed_probes = [f"{probe['template']}:{probe['variant']}" for probe in split_report["probes"].get(chosen, ()) if not probe["passed"]]
+    lost = sorted(done(BASELINE) - done(chosen))
+    gained = sorted(done(chosen) - done(BASELINE))
+    return {
+        "ambiguity_242": {
+            **verdicts,
+            "safety": {"zero_wrong_targets_no_loss_no_denied": safe, "every_expected_stop_visible": stops_visible},
+        },
+        "split_245": {
+            "passed": not failed_probes and not lost and bool(gained),
+            "chosen": chosen,
+            "failed_probes": failed_probes,
+            "baseline_successes_lost": lost,
+            "non_boundary_completions_gained": gained,
+        },
+    }
+
+
+def determinism(frozen: Frozen, work: Path, chosen: tuple[int, int]) -> dict[str, Any]:
+    """Train and development only: every ambiguity case twice, its files written in opposite orders, and every schedule twice at the
+    chosen partition. Byte-identical rows, or the differing ids."""
+    if work.exists():
+        shutil.rmtree(work)
+    cases = selected(frozen.cases["ambiguity"]["cases"], phase="determinism", splits=("train", "development"))
+    differing_cases = [
+        case["id"]
+        for case in cases
+        if json.dumps(ambiguity_baseline(frozen, case, work / "a" / case["id"]), sort_keys=True)
+        != json.dumps(ambiguity_baseline(frozen, case, work / "b" / case["id"], reverse=True), sort_keys=True)
+    ]
+    schedules = selected(frozen.cases["split_schedules"]["schedules"], phase="determinism", splits=("train", "development"))
+    differing_schedules = [
+        item["id"]
+        for item in schedules
+        if json.dumps(run_schedule(resolve(item), chosen, work / "s1" / item["id"]), sort_keys=True)
+        != json.dumps(run_schedule(resolve(item), chosen, work / "s2" / item["id"]), sort_keys=True)
+    ]
+    shutil.rmtree(work)
+    return {
+        "ambiguity": {"cases": len(cases), "reordered": "files written in opposite orders", "differing": differing_cases},
+        "schedules": {"runs": len(schedules), "partition": f"{chosen[0]}/{chosen[1]}", "differing": differing_schedules},
+        "why_pages": "tests/unit/context/test_context_why.py (unit): pages are rendered from one immutable snapshot",
+        "identical": not differing_cases and not differing_schedules,
+    }
+
+
+# main merged into the branch, before Task 2's code
+PRE_TASK2 = "e0ece334e5f394544ff723aca7184715ea74b8f9"  # pragma: allowlist secret (a git commit)
+
+
+def cache_identity(repository: Path) -> dict[str, Any]:
+    """The planner prompt's versions, and its cacheable prefix and one fixed request digested under 4/12 and under the production limits;
+    the registry's ordinary, Auto and test-profile hashes, and whether any registry file changed since before Task 2."""
+    from optimus.agent import prompts
+    from optimus.agent.workspace_context import DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES
+    from optimus_model_policy import binding
+    from optimus_model_policy.registry import load_registry
+    from optimus_model_policy.test_profiles import TEST_PROFILES, compose_test_profile_snapshot
+
+    def sha(text: str) -> str:
+        return "hex:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    limits = {
+        "4/12": (4 * 1024, 12 * 1024, DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES),
+        "production": (pl.PLANNING_OBSERVATION_MAX_BYTES, pl.PLANNING_NEW_READ_MAX_BYTES, DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES),
+    }
+    digests = {
+        label: {
+            "limits": list(value),
+            "prefix_tools_on": sha(prompts.indexed_planner_prefix(repo_map="", tools_enabled=True, evidence_limits=value)),
+            "prefix_tools_off": sha(prompts.indexed_planner_prefix(repo_map="", tools_enabled=False, evidence_limits=value)),
+            "request": sha(
+                prompts.build_multi_turn_planner_input(
+                    "Plan a change", planning_turn=1, max_planning_turns=3, remaining_wall_clock_minutes=30, evidence_limits=value
+                )
+            ),
+        }
+        for label, value in limits.items()
+    }
+    changed = subprocess.run(
+        ["git", "-C", str(repository), "diff", "--name-only", PRE_TASK2, "HEAD", "--", "src/optimus_model_policy"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    auto = load_registry(binding.packaged_defaults(), Path(binding.__file__).with_name(binding.AUTO_OVERLAY_FILENAME))
+    return {
+        "prompt_versions": {
+            "multi_turn_planner": prompts.MULTI_TURN_PLANNER_PROMPT_VERSION,
+            "indexed_planner": prompts.INDEXED_PLANNER_PROMPT_VERSION,
+            "unchanged": "the templates are unchanged; only the rendered limit values differ",
+        },
+        "digests": digests,
+        "prefix_changed": digests["4/12"]["prefix_tools_on"] != digests["production"]["prefix_tools_on"],
+        "registry": {
+            "ordinary": "hex:" + binding.compose_trusted_snapshot(binding.packaged_defaults()).effective_hash,
+            "auto": "hex:" + auto.effective_hash,
+            # each composition is checked against its pinned hash and raises on a difference
+            "test_profiles": {
+                name: "hex:" + compose_test_profile_snapshot(name).effective_hash
+                for name, profile in TEST_PROFILES.items()
+                if profile.override is not None and profile.effective_hash is not None
+            },
+            "files_changed_since": f"git:{PRE_TASK2}",
+            "files_changed": changed,
         },
     }
 
@@ -741,26 +1073,51 @@ def index_check(frozen: Frozen, config: Mapping[str, Any], repository: Path) -> 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="m2a_evaluate")
     parser.add_argument("--config", required=True)
-    parser.add_argument("--phase", required=True, choices=("calibration", "index-check", "qualification"))
+    parser.add_argument(
+        "--phase", required=True, choices=("calibration", "index-check", "qualification", "split", "determinism", "cache-identity")
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     repository = Path(__file__).resolve().parents[2]
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
     frozen = load_frozen(repository)
     report: dict[str, Any] = {
-        "schema": f"plan12-memory-m2a.{args.phase}.v{1 if args.phase == 'index-check' else 2}",
+        "schema": f"plan12-memory-m2a.{args.phase}.v{1 if args.phase in ('index-check', 'split', 'determinism', 'cache-identity') else 2}",
         "head": f"git:{_head(repository)}",
         "phase": args.phase,
         "inputs": frozen.digests,
         "paid_attempts": 0,
         "provider_cost_usd": "0",
     }
+    work = repository / config["work_dir"] / args.phase
     if args.phase == "index-check":
         report.update(index_check(frozen, config, repository))
+    elif args.phase == "cache-identity":
+        report.update(cache_identity(repository))
+    elif args.phase == "determinism":
+        report.update(determinism(frozen, work, chosen_partition(repository, frozen)))
+    elif args.phase == "qualification":
+        chosen = chosen_partition(repository, frozen)
+        label = f"{chosen[0]}/{chosen[1]}"
+        report["splits"] = ["held_out"]
+        report.update(
+            calibration(
+                frozen, work, ("held_out",), phase="qualification", partitions=((4, 12), chosen), index=index_records(repository, frozen)
+            )
+        )
+        report["gates"] = qualify(report["ambiguity"]["scores"], report["ambiguity"]["rows"], report["split"], label)
+        report["held_out_custody"] = (
+            "consumed once at this head; no tuning against these results; a second use needs a successor disposition"
+        )
     else:
-        splits = ("held_out",) if args.phase == "qualification" else ("train", "development")
+        splits = ("train", "development")
         report["splits"] = list(splits)
-        report.update(calibration(frozen, repository / config["work_dir"] / args.phase, splits, phase=args.phase))
+        index = index_records(repository, frozen) if args.phase == "split" else None
+        report.update(calibration(frozen, work, splits, phase=args.phase, index=index))
+        if args.phase == "split":
+            chosen = report["split"]["choice"]["chosen"]
+            report["capacity_trade"] = None if chosen is None else capacity_trade(report["split"]["runs"], chosen)
+            report["f2"] = F2
     Path(args.output).write_text(json.dumps(report, indent=1, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")
     return 0
 
