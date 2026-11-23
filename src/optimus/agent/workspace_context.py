@@ -107,13 +107,23 @@ def verified_hints(candidates: Sequence[str], resolved: Sequence[str], *, files:
 
 def rank_ambiguity(diagnostics: tuple[WorkspaceReferenceDiagnostic, ...], task: str,
                    hints_for: Callable[[Sequence[str], Sequence[str]], RankingHints] | None = None) -> tuple[WorkspaceReferenceDiagnostic, ...]:
-    """Each ambiguous reference's candidates in ranked order, for ordinary assembly and the index's alike. `hints_for(candidates,
-    resolved task paths)` gives the index's verified hints; without one only folder names count."""
+    """Each ambiguous reference's candidates in ranked order, for ordinary assembly and the index's alike. `task` is the person's own
+    prompt: what the host itself said earlier (a stop's candidate list) never adds terms. `hints_for(candidates, resolved task paths)`
+    gives the index's verified hints; without one only folder names count.
+
+    An ambiguity that an exact path in the person's prompt settles is no longer one: they named which candidate they meant, as the
+    stop asked (Plan 12.13 Task 4: a retry after a stop still carried the earlier bare name in its history, and stopped again). Only
+    the prompt's own paths settle one, never a path from history, where the stop itself listed every candidate; the ranking never
+    settles anything."""
     if not any(item.status is WorkspaceReferenceStatus.AMBIGUOUS for item in diagnostics):
         return diagnostics
     resolved = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED))
+    own = set(_extract_file_references(task))
+    chosen = {item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED and item.reference in own}
     out = []
     for item in diagnostics:
+        if item.status is WorkspaceReferenceStatus.AMBIGUOUS and set(item.candidates) & chosen:
+            continue  # settled by the person's exact path, which is already selected
         if item.status is WorkspaceReferenceStatus.AMBIGUOUS:
             hints = NO_HINTS if hints_for is None else hints_for(item.candidates, resolved)
             ranked = rank_candidates(item.candidates, task=task, reference=item.reference, hints=hints)
@@ -165,6 +175,7 @@ def assemble_workspace_context_for_prompt(
     *,
     task: str,
     max_total_bytes: int = DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
+    prompt: str | None = None,
 ) -> WorkspaceContextResult:
     """
     Assembles a context representation of a workspace for use in generating prompts. This function evaluates
@@ -180,6 +191,9 @@ def assemble_workspace_context_for_prompt(
     :param max_total_bytes: The maximum number of bytes allowed for the assembled context buffer. Falls back to
        DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES if not provided.
     :type max_total_bytes: int
+    :param prompt: The person's own current prompt, when `task` also carries earlier turns: an ambiguous reference's candidates are
+       ranked on it alone (Plan 12.13). Defaults to `task`.
+    :type prompt: str | None
     :return: A `WorkspaceContextResult` containing the assembled context, the list of prioritized and omitted
        file paths, diagnostics regarding file reference resolutions, and any blocking reasons if context
        assembly fails.
@@ -222,7 +236,7 @@ def assemble_workspace_context_for_prompt(
                 prioritized_paths.append(resolved_path)
                 seen_resolved.add(resolved_path)
 
-    diagnostic_tuple = rank_ambiguity(tuple(diagnostics), task)
+    diagnostic_tuple = rank_ambiguity(tuple(diagnostics), task if prompt is None else prompt)
     blocking_stop_reason, blocking_message = _blocking_from_diagnostics(diagnostic_tuple)
 
     if blocking_stop_reason is not None:
@@ -288,7 +302,7 @@ def assemble_workspace_context_for_prompt(
         used_bytes=used_bytes,
         prioritized_paths=tuple(prioritized_paths),
         omitted_paths=omitted_paths,
-        diagnostics=tuple(diagnostics),
+        diagnostics=diagnostic_tuple,  # settled ambiguities are gone (Plan 12.13 Task 4)
         file_sha256s=file_sha256s,
         policy_revision=policy.revision(),
         excluded_counts=excluded_counts,

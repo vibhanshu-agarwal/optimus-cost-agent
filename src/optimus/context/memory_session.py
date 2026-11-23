@@ -598,7 +598,7 @@ class MemoryTurn:
         budget = min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
         with self._session.foreground():
             diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(extract_file_references(selection_text)))
-            diagnostics = rank_ambiguity(diagnostics, selection_text, self._session.hints_for(self._scope))
+            diagnostics = rank_ambiguity(diagnostics, task, self._session.hints_for(self._scope))
             stop_reason, message = blocking_from_diagnostics(diagnostics)
             if stop_reason is not None:
                 return self._blocked(diagnostics, stop_reason, message)
@@ -606,7 +606,7 @@ class MemoryTurn:
             self._capture_buffers(required)
         retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task)
         if retrieval.state != "ok" or pack is None:
-            return self._today(task=selection_text, retrieval=retrieval)
+            return self._today(task=selection_text, retrieval=retrieval, prompt=task)
         if not pack.complete:
             return self._incomplete(diagnostics, pack)
         coverage_line = self._coverage_line(retrieval, pack)
@@ -655,9 +655,9 @@ class MemoryTurn:
             time.sleep(_RECONCILE_WAIT_SECONDS)
         raise AssertionError("unreachable")
 
-    def _today(self, *, task: str, retrieval: Retrieval) -> WorkspaceContextResult:
+    def _today(self, *, task: str, retrieval: Retrieval, prompt: str | None = None) -> WorkspaceContextResult:
         self._overlay.clear()  # today's selection reads disk, so nothing else this turn may see other text
-        result = assemble_workspace_context_for_prompt(self._session.policy.root, task=task)
+        result = assemble_workspace_context_for_prompt(self._session.policy.root, task=task, prompt=prompt)
         line = f"Context index: no usable generation ({retrieval.state}). These files are today's selection, not a ranked search."
         self.manifest = {"schema": "optimus.context-manifest.v1", "run_id": self._run_id, "retrieval": {"state": retrieval.state, "channels": dict(retrieval.channels)}}
         self._session.write_manifest(self._run_id, self.manifest)

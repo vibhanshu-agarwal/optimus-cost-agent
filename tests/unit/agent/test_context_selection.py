@@ -659,3 +659,21 @@ def test_a_request_not_fitted_because_the_turn_was_halted_reports_a_halt(tmp_pat
 
     assert gateway.calls == []
     assert result.stop_reason in {"PLANNING_HALTED", "CHAT_HALTED"}
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_an_exact_retry_after_an_ambiguity_stop_is_selected_through_the_real_runner(tmp_path, mode):
+    """Plan 12.13 Task 4 (found by the acpx run): the runner ranks and settles on the person's own prompt, not the selection text that
+    also carries the earlier prompt and its stop."""
+    for folder in ("src/gateway", "src/agent"):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "config.py").write_text("A = 1\n", encoding="utf-8")
+    earlier = ("fix the gateway timeout in config.py\nWorkspace reference 'config.py' is ambiguous. Candidates, most likely first: "
+               "src/gateway/config.py (task terms: gateway); src/agent/config.py. Retry with one exact workspace-relative path.")
+    prompt = "fix the gateway timeout in src/gateway/config.py"
+    request = _attached_request(tmp_path, mode, prompt=prompt, selection=f"{prompt}\n{earlier}", envelope="")
+
+    context, _gateway, _result = _run_and_observe(tmp_path, request, "It is set there." if mode is ExecutionMode.CHAT else "REFUSE: test")
+
+    assert context.blocking_stop_reason is None, context.blocking_message
+    assert context.prioritized_paths[0] == "src/gateway/config.py"

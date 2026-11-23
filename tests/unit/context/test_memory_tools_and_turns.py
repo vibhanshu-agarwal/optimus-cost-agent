@@ -1691,3 +1691,19 @@ def test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labe
     assert [(item.path, item.task_terms, item.verified_current) for item in stop.ranked] == [
         ("src/x/config.py", ("route", "route_timeout", "timeout"), True), ("lib/y/config.py", (), False)]
     assert "src/x/config.py (task terms: route, route_timeout, timeout; indexed and current); lib/y/config.py." in result.blocking_message
+
+
+def test_an_index_turns_exact_retry_is_settled_and_ranked_on_its_own_prompt(workspace):
+    """Plan 12.13 Task 4: the same rule on the index's path. The selection text holds the earlier prompt and its stop."""
+    for folder in ("lib/y", "src/x"):
+        (workspace / folder).mkdir(parents=True)
+        (workspace / folder / "config.py").write_text("A = 1\n", encoding="utf-8", newline="\n")
+    session = _session(workspace, _Storage([]))
+    earlier = "where is route_timeout set in config.py\nWorkspace reference 'config.py' is ambiguous. Candidates, most likely first: lib/y/config.py; src/x/config.py."
+    retry = "where is route_timeout set in src/x/config.py"
+    settled = _assemble(session.turn(), task=retry, selection_text=f"{retry}\n{earlier}")
+    assert settled.blocking_stop_reason is None, settled.blocking_message
+
+    again = "and in config.py?"
+    stopped = _assemble(session.turn(), task=again, selection_text=f"{again}\n{earlier}")
+    assert stopped.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"  # history's own paths settle nothing

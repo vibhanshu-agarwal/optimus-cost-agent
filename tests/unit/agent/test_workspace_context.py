@@ -921,3 +921,39 @@ def test_verified_hints_need_the_current_bytes_and_link_only_through_verified_re
     # a task file whose bytes changed links nothing
     moved = dict(current, **{"src/gateway/server.py": b"edited"})
     assert workspace_context.verified_hints(("src/gateway/config.py",), ("src/gateway/server.py",), files=files, hashes=indexed, read=moved.get).near == frozenset()
+
+
+# --- Plan 12.13 Task 4 (found by the acpx run): the exact-path retry in a session whose history holds the stop ---
+
+_EARLIER = "fix the route timeout in config.py"
+_STOP = "Workspace reference 'config.py' is ambiguous. Candidates, most likely first: src/gateway/config.py (task terms: gateway, src); src/agent/config.py (task terms: src); tests/fixtures/config.py. The order is a suggestion and chose nothing. Retry with one exact workspace-relative path."
+
+
+def test_an_exact_path_in_the_prompt_settles_the_earlier_bare_name_its_history_still_holds(tmp_path):
+    _config_workspace(tmp_path)
+    prompt = "fix the route timeout in src/gateway/config.py"
+    # what an attached turn selects on: the prompt, then the earlier turn's prompt and the stop it ended with
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"{prompt}\n{_EARLIER}\n{_STOP}", prompt=prompt)
+
+    assert result.blocking_stop_reason is None, result.blocking_message
+    assert "src/gateway/config.py" in result.prioritized_paths
+    assert not [item for item in result.diagnostics if item.status is WorkspaceReferenceStatus.AMBIGUOUS]
+
+
+def test_only_the_prompts_own_path_settles_it_never_one_from_history(tmp_path):
+    """The stop listed every candidate, so its paths resolve from history; they choose nothing. A later prompt that names no file
+    stays at the stop, ranked on the prompt's own terms only: the stop's words add none."""
+    _config_workspace(tmp_path)
+    prompt = "what about the agent side of config.py"
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"{prompt}\n{_EARLIER}\n{_STOP}", prompt=prompt)
+
+    assert result.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"
+    (stop,) = [item for item in result.diagnostics if item.status is WorkspaceReferenceStatus.AMBIGUOUS]
+    assert [(item.path, item.task_terms) for item in stop.ranked] == [
+        ("src/agent/config.py", ("agent",)), ("src/gateway/config.py", ()), ("tests/fixtures/config.py", ())]
+
+
+def test_a_prompt_naming_an_exact_path_and_the_bare_name_together_is_settled(tmp_path):
+    _config_workspace(tmp_path)
+    result = assemble_workspace_context_for_prompt(tmp_path, task="fix config.py, that is src/agent/config.py")
+    assert result.blocking_stop_reason is None and result.prioritized_paths[0] == "src/agent/config.py"
