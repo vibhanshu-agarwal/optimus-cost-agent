@@ -45,7 +45,7 @@ def test_build_manifest_rejects_extra_fields() -> None:
 
 def test_serialized_manifest_has_no_forbidden_content() -> None:
     m = _manifest()
-    secret = "Q7mV2xN9pR4tY8kL3cD6wF1hJ5sB0zUa"
+    secret = "Q7mV2xN9pR4tY8kL3cD6wF1hJ5sB0zUa"  # pragma: allowlist secret
     abs_path = str(Path.cwd().resolve() / "hidden" / "secret.txt")
     payload = m.build_manifest(
         {
@@ -73,7 +73,7 @@ def test_serialized_manifest_has_no_forbidden_content() -> None:
 
 def test_manifest_canary_scan_detects_secret_leak() -> None:
     m = _manifest()
-    secret = "Q7mV2xN9pR4tY8kL3cD6wF1hJ5sB0zUa"
+    secret = "Q7mV2xN9pR4tY8kL3cD6wF1hJ5sB0zUa"  # pragma: allowlist secret
     poisoned = (
         '{"schema_version":"evidence-redaction-manifest-v1",'
         f'"artifact_locator":"{secret}"}}'
@@ -99,6 +99,28 @@ def test_manifest_canary_scan_passes_clean_manifest() -> None:
         }
     )
     serialized = m.serialize_manifest(payload)
+    assert m.manifest_canary_scan(serialized, known_secrets=("nope-secret-value-xxxx",), known_pii=()) is True
+
+
+@pytest.mark.parametrize("policy_version", ["evidence-redaction-v1", "evidence-redaction-v2"])
+def test_historical_and_current_policy_manifests_both_verify(policy_version: str) -> None:
+    """#505 bumped the policy to v2; manifests recorded under v1 must still validate, serialize and scan clean."""
+    from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY
+
+    m = _manifest()
+    assert EVIDENCE_REDACTION_POLICY.version == "evidence-redaction-v2"
+    fields = {
+        "schema_version": m.MANIFEST_SCHEMA_VERSION,
+        "sanitizer_policy_version": policy_version,
+        "artifact_kind": ArtifactKind.TEXT.value,
+        "disposition": Disposition.PROMOTED.value,
+        "artifact_locator": "<destination>/session_note/artifact",
+        "rule_counts": {"whitespace_secret_assignment": 1},
+        "final_scan_passed": True,
+        "created_at": datetime(2026, 7, 31, 12, 0, tzinfo=UTC).isoformat(),
+    }
+    serialized = m.serialize_manifest(m.build_manifest(fields))
+    assert json.loads(serialized)["sanitizer_policy_version"] == policy_version
     assert m.manifest_canary_scan(serialized, known_secrets=("nope-secret-value-xxxx",), known_pii=()) is True
 
 
