@@ -15,7 +15,7 @@ from urllib.parse import parse_qsl, quote, urlsplit, urlunsplit
 
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject, TrustScanVerdict
 
-_SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+MCP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _INJECTION_ENV_NAMES = frozenset(
     {
         "LD_PRELOAD",
@@ -209,7 +209,7 @@ class ClientMcpConfigNormalizer:
         hmac_key: bytes,
     ) -> ClientMcpRuntimeCapability:
         server_name = _require_str(entry.get("name"), rule_id="client_mcp.invalid_server_name")
-        if _SERVER_NAME_RE.fullmatch(server_name) is None:
+        if MCP_NAME_RE.fullmatch(server_name) is None:
             raise ClientMcpConfigError("client_mcp.invalid_server_name")
 
         transport = _parse_transport(entry)
