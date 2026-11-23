@@ -1,0 +1,435 @@
+{
+ "schema": "plan12-memory-m2a.revert-checks.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "rule": "plan v4 Task 4: revert snapshot publication, privacy filtering, session binding, fail-closed selection, freshness/completeness, UTF-8/header accounting and the chosen partition in disposable checkouts; each named oracle must fail",
+ "disposable": "a fresh clone per mutation at the named commit, removed after its run; production bytes never changed",
+ "runner": {
+  "file": "optimus-handoff/p1213-task4/revert/revert_task4.py",
+  "sha256": "hex:f35deb7fd95eb64319b6ccb55a51112f51ccf17923de5c5070ca601f88b19b20"
+ },
+ "runs": [
+  {
+   "label": "r1",
+   "commit": "git:b6af270",
+   "record": "hex:60667ada130c223bfaaf41a57aacb04f71c322e53b011c2b29858d5abcf34fc3",
+   "rows": [
+    {
+     "category": "snapshot publication",
+     "mutation": "a turn's end is not captured",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it_was_blocked",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 10.97s"
+    },
+    {
+     "category": "privacy filtering",
+     "mutation": "today's file denials ignored",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_todays_denials_sanitizing_and_escaping_apply_to_every_recorded_value",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 2.61s"
+    },
+    {
+     "category": "privacy filtering",
+     "mutation": "a typed reference shown without today's name check",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.34s"
+    },
+    {
+     "category": "session binding",
+     "mutation": "/why reads the snapshot of whichever session came first",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_each_session_explains_only_its_own_turns",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.59s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "the top-ranked candidate is taken instead of stopping",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_an_ambiguous_reference_stays_a_stop_with_every_candidate_ranked_by_task_terms",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.25s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "a path from history settles an ambiguity",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_only_the_prompts_own_path_settles_it_never_one_from_history",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.29s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "the runner ranks on the history-carrying selection text",
+     "file": "src/optimus/agent/runner.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_an_exact_retry_after_an_ambiguity_stop_is_selected_through_the_real_runner",
+     "exit": 0,
+     "caught": false,
+     "summary": "2 passed in 0.97s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "a turn that did not complete selects with its notice",
+     "file": "src/optimus/context/assembly.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry",
+     "exit": 1,
+     "caught": true,
+     "summary": "2 failed in 1.27s"
+    },
+    {
+     "category": "freshness/completeness",
+     "mutation": "a changed file's record counts as verified",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_verified_hints_need_the_current_bytes_and_link_only_through_verified_records",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.26s"
+    },
+    {
+     "category": "freshness/completeness",
+     "mutation": "hints use only a map a turn already read",
+     "file": "src/optimus/context/memory_session.py",
+     "oracle": "tests/unit/context/test_memory_tools_and_turns.py::test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labels_only",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.52s"
+    },
+    {
+     "category": "UTF-8/header accounting",
+     "mutation": "observations counted in characters",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[observations]",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.24s"
+    },
+    {
+     "category": "UTF-8/header accounting",
+     "mutation": "current reads counted in characters",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[current_reads]",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.28s"
+    },
+    {
+     "category": "chosen partition",
+     "mutation": "the production partition back at 4/12",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/tools/test_plan12_memory_m2a.py::test_production_limits_are_the_partition_calibration_chose",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 2.32s"
+    },
+    {
+     "category": "freshness/completeness (real index)",
+     "mutation": "hints use only a map a turn already read",
+     "file": "src/optimus/context/memory_session.py",
+     "oracle": "tests/integration/context/test_memory_session.py::test_a_frozen_family_ranks_through_the_real_session_as_the_offline_index_order_did",
+     "exit": 1,
+     "caught": true,
+     "summary": "3 failed, 3 passed, 38 deselected in 20.20s"
+    }
+   ],
+   "missed": [
+    "the runner ranks on the history-carrying selection text"
+   ],
+   "caught": "13 of 14"
+  },
+  {
+   "label": "r2",
+   "commit": "git:9033c59",
+   "record": "hex:56a5dd691832581a8b94f7dcbd9eeb60b6d553b4cd556076b43972b6989f5073",
+   "rows": [
+    {
+     "category": "snapshot publication",
+     "mutation": "a turn's end is not captured",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it_was_blocked",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.30s"
+    },
+    {
+     "category": "privacy filtering",
+     "mutation": "today's file denials ignored",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_todays_denials_sanitizing_and_escaping_apply_to_every_recorded_value",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.49s"
+    },
+    {
+     "category": "privacy filtering",
+     "mutation": "a typed reference shown without today's name check",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.33s"
+    },
+    {
+     "category": "session binding",
+     "mutation": "/why reads the snapshot of whichever session came first",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_each_session_explains_only_its_own_turns",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.61s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "the top-ranked candidate is taken instead of stopping",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_an_ambiguous_reference_stays_a_stop_with_every_candidate_ranked_by_task_terms",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.22s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "a path from history settles an ambiguity",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_only_the_prompts_own_path_settles_it_never_one_from_history",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.22s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "the runner ranks on the history-carrying selection text",
+     "file": "src/optimus/agent/runner.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner",
+     "exit": 1,
+     "caught": true,
+     "summary": "2 failed in 1.28s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "a turn that did not complete selects with its notice",
+     "file": "src/optimus/context/assembly.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry",
+     "exit": 1,
+     "caught": true,
+     "summary": "2 failed in 1.27s"
+    },
+    {
+     "category": "freshness/completeness",
+     "mutation": "a changed file's record counts as verified",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_verified_hints_need_the_current_bytes_and_link_only_through_verified_records",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.20s"
+    },
+    {
+     "category": "freshness/completeness",
+     "mutation": "hints use only a map a turn already read",
+     "file": "src/optimus/context/memory_session.py",
+     "oracle": "tests/unit/context/test_memory_tools_and_turns.py::test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labels_only",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.46s"
+    },
+    {
+     "category": "UTF-8/header accounting",
+     "mutation": "observations counted in characters",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[observations]",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.31s"
+    },
+    {
+     "category": "UTF-8/header accounting",
+     "mutation": "current reads counted in characters",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[current_reads]",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.22s"
+    },
+    {
+     "category": "chosen partition",
+     "mutation": "the production partition back at 4/12",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/tools/test_plan12_memory_m2a.py::test_production_limits_are_the_partition_calibration_chose",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.23s"
+    },
+    {
+     "category": "freshness/completeness (real index)",
+     "mutation": "hints use only a map a turn already read",
+     "file": "src/optimus/context/memory_session.py",
+     "oracle": "tests/integration/context/test_memory_session.py::test_a_frozen_family_ranks_through_the_real_session_as_the_offline_index_order_did",
+     "exit": 1,
+     "caught": true,
+     "summary": "3 failed, 3 passed, 38 deselected in 18.71s"
+    }
+   ],
+   "missed": [],
+   "caught": "14 of 14"
+  },
+  {
+   "label": "r3",
+   "commit": "git:6dd6b97",
+   "record": "hex:494357de8f8170e814dd987625ec58175ff63e687e69aa68d79a10fadfb90566",
+   "rows": [
+    {
+     "category": "snapshot publication",
+     "mutation": "a turn's end is not captured",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it_was_blocked",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 2.38s"
+    },
+    {
+     "category": "privacy filtering",
+     "mutation": "today's file denials ignored",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_todays_denials_sanitizing_and_escaping_apply_to_every_recorded_value",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 2.84s"
+    },
+    {
+     "category": "privacy filtering",
+     "mutation": "a typed reference shown without today's name check",
+     "file": "src/optimus/context/context_why.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.87s"
+    },
+    {
+     "category": "session binding",
+     "mutation": "/why reads the snapshot of whichever session came first",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/context/test_context_why.py::test_each_session_explains_only_its_own_turns",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 2.78s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "the top-ranked candidate is taken instead of stopping",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_an_ambiguous_reference_stays_a_stop_with_every_candidate_ranked_by_task_terms",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 2.07s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "a path from history settles an ambiguity",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_only_the_prompts_own_path_settles_it_never_one_from_history",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.84s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "the runner ranks on the history-carrying selection text",
+     "file": "src/optimus/agent/runner.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner",
+     "exit": 1,
+     "caught": true,
+     "summary": "2 failed in 1.93s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "a turn that did not complete selects with its notice",
+     "file": "src/optimus/context/assembly.py",
+     "oracle": "tests/unit/agent/test_context_selection.py::test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry",
+     "exit": 1,
+     "caught": true,
+     "summary": "2 failed in 1.87s"
+    },
+    {
+     "category": "fail-closed selection",
+     "mutation": "the ranked stop ends as a refusal, so Zed hides it (live Zed finding)",
+     "file": "src/optimus/acp/spec.py",
+     "oracle": "tests/unit/acp/test_spec_protocol.py::test_workspace_context_failure_surfaces_corrective_refusal_message",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 3.23s"
+    },
+    {
+     "category": "freshness/completeness",
+     "mutation": "a changed file's record counts as verified",
+     "file": "src/optimus/agent/workspace_context.py",
+     "oracle": "tests/unit/agent/test_workspace_context.py::test_verified_hints_need_the_current_bytes_and_link_only_through_verified_records",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.54s"
+    },
+    {
+     "category": "freshness/completeness",
+     "mutation": "hints use only a map a turn already read",
+     "file": "src/optimus/context/memory_session.py",
+     "oracle": "tests/unit/context/test_memory_tools_and_turns.py::test_an_ambiguous_reference_in_a_turn_is_ranked_by_the_index_s_verified_labels_only",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.65s"
+    },
+    {
+     "category": "UTF-8/header accounting",
+     "mutation": "observations counted in characters",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[observations]",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.35s"
+    },
+    {
+     "category": "UTF-8/header accounting",
+     "mutation": "current reads counted in characters",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/agent/test_planning_loop.py::test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops[current_reads]",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.65s"
+    },
+    {
+     "category": "chosen partition",
+     "mutation": "the production partition back at 4/12",
+     "file": "src/optimus/agent/planning_loop.py",
+     "oracle": "tests/unit/tools/test_plan12_memory_m2a.py::test_production_limits_are_the_partition_calibration_chose",
+     "exit": 1,
+     "caught": true,
+     "summary": "1 failed in 1.68s"
+    },
+    {
+     "category": "freshness/completeness (real index)",
+     "mutation": "hints use only a map a turn already read",
+     "file": "src/optimus/context/memory_session.py",
+     "oracle": "tests/integration/context/test_memory_session.py::test_a_frozen_family_ranks_through_the_real_session_as_the_offline_index_order_did",
+     "exit": 1,
+     "caught": true,
+     "summary": "3 failed, 3 passed, 38 deselected in 25.35s"
+    }
+   ],
+   "missed": [],
+   "caught": "15 of 15"
+  }
+ ],
+ "dispositions": {
+  "r1": "at git:b6af270, 'the runner ranks on the history-carrying selection text' was missed: no test drove the real runner with a path only in history; git:9033c59 added that runner-level test",
+  "r2": "all caught at git:9033c59",
+  "r3": "adds the live-Zed stop-reason mutation at git:6dd6b97"
+ },
+ "kit": "optimus-handoff/p1213-task4/revert"
+}

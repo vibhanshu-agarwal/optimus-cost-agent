@@ -1,0 +1,185 @@
+{
+ "schema": "plan12-memory-m2a.zed-ui.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "release": [
+  "operator 2026-11-23 'Release all, start' (Task 4: index Redis, embedding artifact, one acpx run, one Zed session, WSL P1/P2)",
+  "operator 2026-11-23 'Release both (Recommended)': one durable launch approval each for the acpx and Zed config roots, revoked afterwards"
+ ],
+ "client": "Zed 1.29.3 (operator-typed prompts, Agent mode); computer use at click tier opened the workspace, started threads and took some screenshots",
+ "agent": "optimus-agent editable from this worktree's venv; agent entry optimus-p1213-why; own Gateway port 18782; own config root zed/cfg",
+ "attach_gate": "before each run's first prompt: port 18782 held by a Gateway from this worktree whose only upstream was the stub, its parent chain ending at the optimus-agent Zed launched, and nothing on 8765",
+ "upstream": "local stub http://127.0.0.1:18798/api/v1 only, never forwards; provider key a dummy",
+ "runs": [
+  {
+   "run": 1,
+   "code_head": "git:9033c59",
+   "steps": "1-3",
+   "result": "FAILED at step 3: Zed showed 'Request Refused' instead of the ranked candidates; the agent had sent them and ended the turn with stopReason 'refusal', which makes Zed rewind the turn behind its generic content-policy banner. Fixed by git:6dd6b97; all steps rerun"
+  },
+  {
+   "run": 2,
+   "code_head": "git:6dd6b97",
+   "steps": "1-9",
+   "result": "as specified, except step 7's reply not seen on screen"
+  }
+ ],
+ "steps": [
+  {
+   "run": 1,
+   "n": 1,
+   "prompt": "/ (not sent)",
+   "observed": "/why [page]",
+   "pass": true,
+   "screenshot": "run1-step1-menu.png"
+  },
+  {
+   "run": 1,
+   "n": 2,
+   "prompt": "/why . (as sent)",
+   "observed": "the usage line: a bad page argument",
+   "pass": true,
+   "note": "an extra parser case; the planned plain /why ran in run 2",
+   "screenshot": "run1-step2-why-dot-usage.png"
+  },
+  {
+   "run": 1,
+   "n": 3,
+   "prompt": "fix the gateway timeout in config.py [p1213:R1]",
+   "observed": "'Request Refused' banner; prompt and candidates removed",
+   "pass": false,
+   "screenshot": "run1-step3-refusal-banner.png"
+  },
+  {
+   "run": 2,
+   "n": 1,
+   "prompt": "/ (not sent)",
+   "observed": "Commands: why, savings; 'Explain the context the last turn was prepared with'",
+   "pass": true,
+   "screenshot": "run2-step1-menu.png"
+  },
+  {
+   "run": 2,
+   "n": 2,
+   "prompt": "/why",
+   "observed": "No context explanation is available for this session yet.",
+   "pass": true,
+   "screenshot": "run2-step2-why-empty.png"
+  },
+  {
+   "run": 2,
+   "n": 3,
+   "prompt": "fix the gateway timeout in config.py [p1213:R1]",
+   "observed": "ranked stop: src/gateway/config.py (task terms: gateway); src/agent/config.py; the order chose nothing; stopReason end_turn; gate: the stub got only the classifier call",
+   "pass": true,
+   "screenshot": "run2-step3-ranked-stop.png"
+  },
+  {
+   "run": 2,
+   "n": 4,
+   "prompt": "/why - and /why . (as sent)",
+   "observed": "the usage line both times; the planned /why ran as step 8c",
+   "pass": true,
+   "screenshot": "run2-step4-why-dash-dot-usage-step5-retry.jpg"
+  },
+  {
+   "run": 2,
+   "n": 5,
+   "prompt": "fix the gateway timeout in src/gateway/config.py [p1213:R1]",
+   "observed": "Planning turn 1 of 3. Synthetic stub reply, no model; no change is planned.",
+   "pass": true,
+   "screenshot": "run2-step4-why-dash-dot-usage-step5-retry.jpg"
+  },
+  {
+   "run": 2,
+   "n": 6,
+   "prompt": "/why",
+   "observed": "turn 2; failed, PLANNING_MODEL_REFUSED (the stub's reply has no plan); model requests sent 1; required: src/gateway/config.py only; 358 of 16384 bytes; largest request about 5621 of 229376 tokens; limits 6144/10240; memory: none (no memory store)",
+   "pass": true,
+   "screenshot": "run2-step6-why-turn2.jpg"
+  },
+  {
+   "run": 2,
+   "n": 7,
+   "prompt": "/why 2",
+   "observed": "an end_turn reply in debug-acp.ndjson; its text was not seen on screen",
+   "pass": null,
+   "note": "logged, not seen; the same reply was observed through acpx (step 15)"
+  },
+  {
+   "run": 2,
+   "n": "8a",
+   "prompt": "/why (new thread)",
+   "observed": "No context explanation is available for this session yet.",
+   "pass": true,
+   "screenshot": "run2-step8a-8b-new-thread.jpg"
+  },
+  {
+   "run": 2,
+   "n": "8b",
+   "prompt": "fix the gateway timeout in config.py [p1213:R1]",
+   "observed": "the ranked stop again",
+   "pass": true,
+   "screenshot": "run2-step8a-8b-new-thread.jpg"
+  },
+  {
+   "run": 2,
+   "n": "8c",
+   "prompt": "/why",
+   "observed": "turn 1; failed, AMBIGUOUS_WORKSPACE_REFERENCE; model requests sent: none, so prepared and never dispatched; candidates ranked src/gateway/config.py (task terms: gateway), src/agent/config.py; limits 6144/10240",
+   "pass": true,
+   "screenshot": "run2-step8c-why-turn1-ambiguous.jpg"
+  },
+  {
+   "run": 2,
+   "n": 9,
+   "prompt": "(quit Zed, reopen, new thread) /why",
+   "observed": "Zed's restore refused: 'Loading or resuming sessions is not supported by this agent'; in a new thread, 'No context explanation is available for this session yet.'",
+   "pass": true,
+   "screenshot": "run2-step9-restore-refused.jpg, run2-step9-why-after-restart.jpg"
+  }
+ ],
+ "paid_calls": 0,
+ "paid_calls_basis": "the stub received 5 requests: 4 classifier calls answered 404 (unexpected_path) and 1 planning request answered by the stub itself; debug-acp.ndjson and local-gateway.log name no provider host and no port 8765; Zed's built-in agent thread, opened first by mistake during set-up, was never sent anything",
+ "served_ids": "none: no memory store was released, so no served-memory claim is made; /why showed 'memory: none this turn (no memory store)'",
+ "findings": [
+  {
+   "what": "the ranked ambiguity stop (and the two other visible workspace stops) ended as stopReason 'refusal', so Zed hid it",
+   "where": "acp/spec.py _stop_reason",
+   "disposition": "fixed in git:6dd6b97 with tests; revert run r3 includes it; verified live in run 2"
+  },
+  {
+   "what": "'model requests sent: none' while the classifier call reached the stub",
+   "where": "context_why rendering",
+   "disposition": "for CP3: the line counts only the main model request; wording to state that"
+  },
+  {
+   "what": "Zed's input sent '/why .' and '/why -' three times",
+   "where": "operator input or Zed completion (not determined)",
+   "disposition": "the agent answered with the usage line each time, which is correct; recorded as extra parser cases"
+  }
+ ],
+ "screenshots": {
+  "run1-step1-menu.png": "hex:6d68df6fe8d4701ad49534a4ba85ec331d2e922908cfaf484f5b4d291503f5ba",
+  "run1-step2-why-dot-usage.png": "hex:11ba4c59caaba15bd258e65f1503c84daf94d11d22da77b8c6b194960f202a9c",
+  "run1-step3-refusal-banner.png": "hex:0cd31048eed3826e890a0432da77ed2f559994cdf74c220b0b2518879719e038",
+  "run2-step1-menu.png": "hex:5bbcb9a9be3de82f2b86d97558428ddda781b54d68d1759dd52a1a168fa7f91c",
+  "run2-step2-why-empty.png": "hex:578fa788c9f6bed900a1a36039846e987dd6e3231c825b42207e71971f0c1c9a",
+  "run2-step3-ranked-stop.png": "hex:cb19085026b96df1d8e51bc3b3a469fd663b8012895f5a84a19086edd60c4aa6",
+  "run2-step4-why-dash-dot-usage-step5-retry.jpg": "hex:21b7a7acff42e573e694167bf4561eda08e8a241c2f9bc7546fd36e485a2c2ed",
+  "run2-step6-why-turn2.jpg": "hex:a2aebe97d8143b5748ec7386eadece3e14f46a5f548eda3a43568501ee4dbd76",
+  "run2-step8a-8b-new-thread.jpg": "hex:ce47f869b7fccace98345501ca1054ba1a07b3969b8465aeb4bce5eabdd3cae3",
+  "run2-step8c-why-turn1-ambiguous.jpg": "hex:31d21974bd877193432ce8615bcda5126272976f80e126bd18050c4c2b225996",
+  "run2-step9-restore-refused.jpg": "hex:02403309ba39fb49a86412d59d159ad7add74db9bf9a93e161212180b4e3bc6b",
+  "run2-step9-why-after-restart.jpg": "hex:d454b13463f2c21c6cb338859db89a8e81b4a79dec3215966f246e866c174b9f"
+ },
+ "logs": {
+  "debug-acp.ndjson": "hex:f9e0054993ab1ba4d606942d51aa4651dc15b785ecd35f1bcad26a0b0f8f8008",
+  "launch-audit.ndjson": "hex:f586b62093833a8caea03ce6d25616f654ed0989b49dea61706c2cd7857e1897",
+  "local-gateway.log": "hex:66c68250496fdabd9b6b5d59d1be4545cad57a5ac3d915ff078c3fb5588693d8",
+  "telemetry.jsonl": "hex:536894c8597c02ea3726ff6c19b4d8d974d979cf5afe97a3d32c7d6f8a3531a9"
+ },
+ "stub_log": "hex:0b6ea44bb925db147c8c2d890382d32d8a4bcad13daa1ca97050bfe839d31d2d",
+ "cleanup": "Zed settings restored byte for byte from the backup (sha256 bfbcfeb5..., matching the pre-test copy); the stub stopped; the launch approval revoked by the operator in a terminal and confirmed by 'optimus-trust inspect': no reachable current approval",
+ "kit": "optimus-handoff/p1213-task4/zed"
+}

@@ -1,0 +1,100 @@
+{
+ "schema": "plan12-memory-m2a.platforms.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "release": "operator 2026-11-23 'Release all, start' (Task 4: index Redis, embedding artifact, one acpx run, one Zed session, WSL P1/P2)",
+ "scope": "P1 and P2 only (plan v4 Task 4); no WSL arithmetic, generic serialization or broad filesystem campaign",
+ "probe": {
+  "file": "optimus-handoff/p1213-task4/paths/test_platform_paths.py",
+  "sha256": "hex:40d803cf0546fd7b8ffa1376590ce2b3ab4c8427394132f8b8c3a536aceb4459",
+  "node_ids": [
+   "test_p1_why_renders_spaced_and_non_ascii_paths_keeps_real_names_and_redacts_secrets",
+   "test_p2_an_ambiguous_name_stops_ranked_and_the_exact_retry_resolves_with_any_separator[3 separator forms]"
+  ],
+  "P1": "/why renders a workspace path with spaces and non-ASCII intact through the production sanitizer and today's FilePolicy, keeps a high-entropy real file name, and redacts a sensitive token and a known secret",
+  "P2": "an ambiguous name stops with ranked workspace-relative candidates and never lists a denied file; the exact-path retry resolves to the same relative target typed with '/', '\\\\' or the platform's separator"
+ },
+ "windows": [
+  {
+   "run": "w1",
+   "code_head": "git:1aff1c95f5fdd9c7d319b8d45f5a497066bd8ae8",
+   "exit": "exit 1",
+   "tree_clean": false,
+   "log": "hex:86ea0415d54d07874e2979214875eff794b8228c87065cbcc1445e3e53269e84",
+   "disposition": "w1: the probe's own denied-path assertion was wrong (today's typed refusal quotes the person's typed path); corrected for w2; P1 passed in w1",
+   "result": "3 failed, 1 passed in 2.25s"
+  },
+  {
+   "run": "w2",
+   "code_head": "git:1aff1c95f5fdd9c7d319b8d45f5a497066bd8ae8",
+   "exit": "exit 0",
+   "tree_clean": false,
+   "log": "hex:a294776554c9cc4165906cdaea94e5cafc49ca87fca7907a2b4bd7ed10ed4f3a",
+   "probe": "hex:40d803cf0546fd7b8ffa1376590ce2b3ab4c8427394132f8b8c3a536aceb4459",
+   "result": "4 passed in 2.07s"
+  },
+  {
+   "run": "w3",
+   "code_head": "git:aed6e4cf4991417500c66748471a254ad3b0d75c",
+   "exit": "exit 0",
+   "tree_clean": true,
+   "log": "hex:0d32e44aafbac7c61a281f62efbfdd7f6430dc0ed63bc6393471f0cb20895efe",
+   "probe": "hex:40d803cf0546fd7b8ffa1376590ce2b3ab4c8427394132f8b8c3a536aceb4459",
+   "result": "4 passed in 2.13s"
+  },
+  {
+   "run": "w4",
+   "code_head": "git:6dd6b9741ee81cbf94b946b9ae699dfffa11c39d",
+   "exit": "exit 0",
+   "tree_clean": true,
+   "log": "hex:5962ebe4ece6bb3cf3f68f6cf04b08eb4341f9b9c4ed06af362f0ecf89db7f4d",
+   "probe": "hex:40d803cf0546fd7b8ffa1376590ce2b3ab4c8427394132f8b8c3a536aceb4459",
+   "result": "4 passed in 1.69s"
+  }
+ ],
+ "linux_wsl": [
+  {
+   "run": "l1",
+   "code_head": "git:aed6e4cf",
+   "environment": [
+    "kernel 6.18.58.1-microsoft-standard-WSL2",
+    "fs ext2/ext3",
+    "uid=0(root) gid=0(root) groups=0(root)",
+    "Python 3.14.6"
+   ],
+   "exits": [
+    "probe exit 0",
+    "removed /opt/optimus-p1213-paths-l1 /opt/p1213-basetemp-l1 /opt/p1213-uv-python-l1"
+   ],
+   "probe": "hex:40d803cf0546fd7b8ffa1376590ce2b3ab4c8427394132f8b8c3a536aceb4459",
+   "post_status": [
+    "aed6e4cf Rank a session's first ambiguity with the index's hints, and check #242 through the real session on the released index (Plan 12.13 Task 4)"
+   ],
+   "log": "hex:10c351f98bd49112106385f61a261748f9561db4868d1080653c8eeab46da8f3",
+   "result": "4 passed in 1.41s"
+  },
+  {
+   "run": "l2",
+   "code_head": "git:6dd6b974",
+   "environment": [
+    "kernel 6.18.58.1-microsoft-standard-WSL2",
+    "fs ext2/ext3",
+    "uid=0(root) gid=0(root) groups=0(root)",
+    "Python 3.14.6"
+   ],
+   "exits": [
+    "probe exit 0",
+    "removed /opt/optimus-p1213-paths-l2 /opt/p1213-basetemp-l2 /opt/p1213-uv-python-l2"
+   ],
+   "probe": "hex:40d803cf0546fd7b8ffa1376590ce2b3ab4c8427394132f8b8c3a536aceb4459",
+   "post_status": [
+    "6dd6b974 End a workspace stop the person must read as end_turn, not refusal (Plan 12.13)"
+   ],
+   "log": "hex:53c2aecf455a5390fe3fd192e83246777f179cccefb3efdcf041e34931bd2c9e",
+   "result": "4 passed in 2.79s"
+  }
+ ],
+ "wsl_runner": "hex:f53a3fec37f34da5792d3c0cfe333aabccf875979defcdfd222677540f7279a2",
+ "environment_rule": "WSL runs use their own clone on ext4 under /opt and their own uv venv and managed Python, never the Windows venv; all removed afterwards",
+ "kit": "optimus-handoff/p1213-task4/paths"
+}
