@@ -2411,59 +2411,75 @@ class AcpDuplexAdapter:
                 # effect, and its exact failed outcome is kept instead of the plan.
                 turn_control.record_outcome(Settlement.FAILED)
                 await self._emit_final_text(session_id=session_id, text=CONTEXT_PLAN_TOO_LARGE_TEXT, turn=turn)
+                settled_outcome = ConversationOutcome.FAILED
                 await self._commit_turn(
                     conversation=conversation,
                     turn=turn,
                     sanitized_user_prompt=admission.sanitized_user_prompt,
                     result=planning_result.model_copy(update={"candidate_plan_text": None}),
-                    outcome=ConversationOutcome.FAILED,
+                    outcome=settled_outcome,
                     completion_text=CONTEXT_PLAN_TOO_LARGE_TEXT,
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": "end_turn"}),
+                    success_response(
+                        request_id=request.get("id"),
+                        result=_prompt_result("end_turn", planning_result, settled_outcome),
+                    ),
                     turn_control,
                     ownership_slot,
                 )
             await self._emit_result_updates(session_id=session_id, result=planning_result, planning=True, turn=turn)
             if turn.turn_control.halt_requested():
+                settled_outcome = ConversationOutcome.CANCELLED
                 await self._commit_turn(
                     conversation=conversation,
                     turn=turn,
                     sanitized_user_prompt=admission.sanitized_user_prompt,
                     result=planning_result,
-                    outcome=ConversationOutcome.CANCELLED,
+                    outcome=settled_outcome,
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": "cancelled"}),
+                    success_response(
+                        request_id=request.get("id"),
+                        result=_prompt_result("cancelled", planning_result, settled_outcome),
+                    ),
                     turn_control,
                     ownership_slot,
                 )
             if planning_result.status is not AgentRunStatus.AWAITING_APPROVAL:
                 await self._emit_completion_message(session_id=session_id, result=planning_result, turn=turn)
+                settled_outcome = _conversation_outcome(planning_result)
                 await self._commit_turn(
                     conversation=conversation,
                     turn=turn,
                     sanitized_user_prompt=admission.sanitized_user_prompt,
                     result=planning_result,
-                    outcome=_conversation_outcome(planning_result),
+                    outcome=settled_outcome,
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)}),
+                    success_response(
+                        request_id=request.get("id"),
+                        result=_prompt_result(_stop_reason(planning_result), planning_result, settled_outcome),
+                    ),
                     turn_control,
                     ownership_slot,
                 )
 
             if not planning_result.plan_hash:
                 await self._emit_completion_message(session_id=session_id, result=planning_result, turn=turn)
+                settled_outcome = _conversation_outcome(planning_result)
                 await self._commit_turn(
                     conversation=conversation,
                     turn=turn,
                     sanitized_user_prompt=admission.sanitized_user_prompt,
                     result=planning_result,
-                    outcome=_conversation_outcome(planning_result),
+                    outcome=settled_outcome,
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)}),
+                    success_response(
+                        request_id=request.get("id"),
+                        result=_prompt_result(_stop_reason(planning_result), planning_result, settled_outcome),
+                    ),
                     turn_control,
                     ownership_slot,
                 )
@@ -2496,17 +2512,21 @@ class AcpDuplexAdapter:
                     ),
                 )
             if turn.turn_control.halt_requested() or not _permission_approved(permission_result):
+                settled_outcome = (
+                    ConversationOutcome.CANCELLED if turn.turn_control.halt_requested() else ConversationOutcome.REJECTED
+                )
                 await self._commit_turn(
                     conversation=conversation,
                     turn=turn,
                     sanitized_user_prompt=admission.sanitized_user_prompt,
                     result=planning_result,
-                    outcome=ConversationOutcome.CANCELLED
-                    if turn.turn_control.halt_requested()
-                    else ConversationOutcome.REJECTED,
+                    outcome=settled_outcome,
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": "cancelled"}),
+                    success_response(
+                        request_id=request.get("id"),
+                        result=_prompt_result("cancelled", planning_result, settled_outcome),
+                    ),
                     turn_control,
                     ownership_slot,
                 )
@@ -2555,15 +2575,19 @@ class AcpDuplexAdapter:
             turn_control.record_outcome(Settlement(_conversation_outcome(approved_result).value))
             await self._emit_result_updates(session_id=session_id, result=approved_result, planning=False, turn=turn)
             await self._emit_completion_message(session_id=session_id, result=approved_result, turn=turn)
+            settled_outcome = _conversation_outcome(approved_result)
             await self._commit_turn(
                 conversation=conversation,
                 turn=turn,
                 sanitized_user_prompt=admission.sanitized_user_prompt,
                 result=approved_result,
-                outcome=_conversation_outcome(approved_result),
+                outcome=settled_outcome,
             )
             return self._turn(
-                success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(approved_result)}),
+                success_response(
+                    request_id=request.get("id"),
+                    result=_prompt_result(_stop_reason(approved_result), approved_result, settled_outcome),
+                ),
                 turn_control,
                 ownership_slot,
             )
@@ -3197,16 +3221,17 @@ class AcpDuplexAdapter:
         ``refusal``; a cancelled turn returns ``cancelled``.
         """
         if turn.turn_control.halt_requested():
+            cancelled = ConversationOutcome.CANCELLED
             await self._commit_turn(
                 conversation=conversation,
                 turn=turn,
                 sanitized_user_prompt=sanitized_user_prompt,
                 result=result,
-                outcome=ConversationOutcome.CANCELLED,
+                outcome=cancelled,
                 completion_text=_CHAT_CANCELLED_TEXT,
             )
             return self._turn(
-                success_response(request_id=request_id, result={"stopReason": "cancelled"}),
+                success_response(request_id=request_id, result=_prompt_result("cancelled", result, cancelled)),
                 turn.turn_control,
                 ownership_slot,
             )
@@ -3229,7 +3254,7 @@ class AcpDuplexAdapter:
             completion_text=text,
         )
         return self._turn(
-            success_response(request_id=request_id, result={"stopReason": "end_turn"}),
+            success_response(request_id=request_id, result=_prompt_result("end_turn", result, outcome)),
             turn.turn_control,
             ownership_slot,
         )
@@ -4140,6 +4165,12 @@ def _stop_reason(result: AgentRunResult) -> str:
     if result.stop_reason in ("PLAN_NOT_FOUND_OR_EXPIRED", WRITE_LINE_ENDINGS_MIXED):
         return "end_turn"
     return "refusal"
+
+
+def _prompt_result(stop_reason: str, result: AgentRunResult, outcome: ConversationOutcome) -> dict[str, object]:
+    """A prompt response for a turn that holds a run result. ``_meta`` carries the run's own stop code and the outcome the
+    turn committed, so a check can tell a no-work turn from a completed one without reading prose (#268, MT-FU-2)."""
+    return {"stopReason": stop_reason, "_meta": {"runStopReason": result.stop_reason, "outcome": outcome.value}}
 
 
 def _outbound_error_payload(run_id: str, exc: AcpOutboundError) -> Callable[[], dict[str, object]]:

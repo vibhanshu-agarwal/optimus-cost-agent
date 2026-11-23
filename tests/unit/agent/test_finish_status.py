@@ -133,7 +133,8 @@ async def test_acp_never_asks_permission_for_a_cut_off_plan(tmp_path: Path, fini
     }
     response = (await asyncio.wait_for(adapter.handle_client_request(prompt), timeout=10)).response
 
-    assert response["result"] == {"stopReason": "end_turn"}
+    stop_code = "PLANNING_OUTPUT_TRUNCATED" if finish_reason == "length" else "PLANNING_OUTPUT_UNFINISHED"
+    assert response["result"] == {"stopReason": "end_turn", "_meta": {"runStopReason": stop_code, "outcome": "failed"}}
     assert outbound.requests == [], "no session/request_permission for a cut-off plan"
     texts = [
         n["params"]["update"]["content"]["text"]
