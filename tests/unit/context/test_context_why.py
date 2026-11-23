@@ -33,8 +33,8 @@ def _snapshot(**fields: Any) -> why.Snapshot:
 
 
 def _raw(snapshot: why.Snapshot | None, page: int = 1, *, admits=lambda path: True, sanitize=lambda text: text, refused: bool = False,
-         on_disk: bool = False) -> str:
-    return why.answer(snapshot, page, sanitize=sanitize, admits=admits, refused_after=refused, manifests_on_disk=on_disk)
+         on_disk: bool = False, admits_name=None) -> str:
+    return why.answer(snapshot, page, sanitize=sanitize, admits=admits, refused_after=refused, manifests_on_disk=on_disk, admits_name=admits_name)
 
 
 def _plain(text: str) -> str:
@@ -51,7 +51,9 @@ def _text(snapshot: why.Snapshot | None, page: int = 1, **kwargs: Any) -> str:
 
 @pytest.mark.parametrize(("text", "expected"), [("/why", 1), ("  /why  ", 1), ("/why 3", 3), ("/why 1000", 1000), ("/why 0", why.USAGE),
                                                 ("/why 1001", why.USAGE), ("/why next", why.USAGE), ("/why 2 3", why.USAGE),
-                                                ("/whyy", None), ("why", None), ("explain /why", None)])
+                                                ("/whyy", None), ("why", None), ("explain /why", None),
+                                                ("/why \u00b2", why.USAGE), ("/why \u0663", why.USAGE), ("/why " + "9" * 5000, why.USAGE),
+                                                ("/why 0001", 1)])
 def test_only_why_and_why_n_are_the_command(text, expected):
     assert why.parse(text, attachments=False) == expected
 
@@ -97,7 +99,8 @@ def test_an_index_turn_shows_its_choices_ranks_fit_and_grounding_but_no_bodies()
     assert f"planning limits: observations {LIMITS[0]} bytes, new reads {LIMITS[1]} bytes" in text
     assert "planning reads: 2, returning 150 bytes" in text and "model requests sent: 2; planning rounds: 2" in text
     assert "retrieval: ok; generation 3, 2 of 2 files; channels: dense ok" in text
-    assert "cited but not found: gone.py" in text and "unsaved editor text: pkg/a.py" in text
+    assert "cited but not found: 1 symbol(s), not named here" in text and "gone.py" not in text
+    assert "unsaved editor text: pkg/a.py" in text
     assert why.HISTORICAL in text
 
 
@@ -141,7 +144,7 @@ def test_served_memory_is_identified_by_id_and_version_only():
 def test_no_snapshot_and_a_later_refusal_are_said_explicitly():
     assert _text(None) == why.NO_SNAPSHOT
     assert _text(None, on_disk=True) == f"{why.NO_SNAPSHOT} {why.NO_SNAPSHOT_ON_DISK}"
-    assert _text(_snapshot(turn_seq=4), refused=True).startswith("A later prompt was refused before its context was prepared, so this still explains turn 4.")
+    assert "A later prompt was refused before its context was prepared, so this still explains turn 4." in _text(_snapshot(turn_seq=4), refused=True)
 
 
 def test_pages_are_bounded_deterministic_and_lose_no_entry():
@@ -249,7 +252,7 @@ async def test_commands_and_refusals_before_preparation_never_replace_the_snapsh
     await prompt(adapter, outbound, session_id, "/why", "w2")
 
     answer = _plain(texts(outbound)[-1])
-    assert answer.startswith("A later prompt was refused before its context was prepared, so this still explains turn 1.")
+    assert answer.split("\n")[1] == why.refusal_note(1)  # page 1's first entry, under the header
     await prompt(adapter, outbound, session_id, "explain pkg/app.py", "p2")
     await prompt(adapter, outbound, session_id, "/why", "w3")
     assert _plain(texts(outbound)[-1]).startswith("Context explanation for turn 2 of this session")
@@ -371,3 +374,43 @@ async def test_a_capture_that_fails_leaves_no_stale_explanation_and_logs_a_fixed
 
     assert session_of(adapter, session_id).why is None, "turn 1's explanation must not stand in for turn 2"
     assert "context explanation not recorded for this turn" in caplog.text and BODY_MARKER not in caplog.text
+
+
+def test_a_later_refusal_is_said_even_when_page_one_is_full():
+    note = len(why.refusal_note(1).encode("utf-8")) + 1
+
+    def full(width: int) -> why.Snapshot:
+        return _snapshot(index="used", manifest={"selected": [{"path": f"pkg/m_{number:03}.py", "disclosure": "body", "ranks": {},
+                                                               "reason": "r" * width} for number in range(120)]})
+
+    # page 1 filled by bytes so tightly that the notice cannot sit beside it (the old answer dropped it then)
+    snapshot = next(full(width) for width in range(300, 420)
+                    if len(why.pages(full(width), sanitize=lambda text: text, admits=lambda path: True)[0].encode("utf-8")) + note > why.MAX_PAGE_BYTES)
+    noted = why.pages(snapshot, sanitize=lambda text: text, admits=lambda path: True, refused_after=True)
+    first = _plain(_raw(snapshot, refused=True))
+    assert why.refusal_note(1) in first and len(_raw(snapshot, refused=True).encode("utf-8")) <= why.MAX_PAGE_BYTES
+    joined = "\n".join(_plain(page) for page in noted)
+    assert all(f"pkg/m_{number:03}.py" in joined for number in range(120))  # the notice displaced no entry
+
+
+def test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy(tmp_path):
+    """References, ambiguous candidates and their reasons, chosen files and their symbols: a denial added after the turn applies."""
+    from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs
+    from optimus.guardrails.file_policy import FilePolicy
+
+    for folder in ("private/gateway", "src/gateway"):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "config.py").write_text("x = 1\n", encoding="utf-8")
+    result = assemble_workspace_context_for_prompt(tmp_path, task="fix the gateway timeout in config.py and private/gone.py")
+    manifest = {"selected": [{"path": "private/gateway/config.py", "symbol": "private_helper", "disclosure": "body", "ranks": {}}]}
+    snapshot = _snapshot(index="used", manifest=manifest, contexts=[result])
+    before = _plain(_raw(snapshot))
+    assert "private/gateway/config.py" in before and "private/gone.py" in before  # admitted when the turn ran
+
+    (tmp_path / ".gitignore").write_text("private/\n", encoding="utf-8")  # the denial comes after capture
+    sanitizer = ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=(), known_pii=()), workspace=tmp_path)
+    policy = FilePolicy(tmp_path)
+    text = _plain(_raw(snapshot, admits=policy.admitter(), admits_name=policy.name_admitter(), sanitize=sanitizer.sanitize_in_workspace))
+    assert "private" not in text and "private_helper" not in text
+    assert text.count(_plain(why.WITHHELD)) >= 3 and "src/gateway/config.py" in text
+    assert "config.py was ambiguous" in text  # a name no rule denies is still the person's own words, shown back

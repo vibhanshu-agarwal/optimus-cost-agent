@@ -232,8 +232,9 @@ def probe_variants(schedule: Mapping[str, Any], partition: tuple[int, int]) -> l
 
 
 def probe_passed(variant: str, row: Mapping[str, Any] | None) -> bool:
-    """Exact: completed. One-over: no plan, and a budget stop or the OBSERVATION_TOO_LARGE parse failure (a plan after it fails: F2)."""
-    if row is None:
+    """Exact: completed. One-over: no plan, and a budget stop or the OBSERVATION_TOO_LARGE parse failure (a plan after it fails: F2).
+    Either way every request the probe sent was fitted to the route (Codex CP2 review 1, finding 2)."""
+    if row is None or row["route_fit"]["status"] != "passed":
         return False
     if variant == "exact":
         return bool(row["completed"])
@@ -710,7 +711,18 @@ def calibration(
                             "split": schedule["split"],
                             "passed": probe_passed(variant["variant"], probe_row),
                             **(
-                                {key: probe_row[key] for key in ("completed", "planned", "stop", "parse_failures", "evidence_problems")}
+                                {
+                                    key: probe_row[key]
+                                    for key in (
+                                        "completed",
+                                        "planned",
+                                        "stop",
+                                        "parse_failures",
+                                        "evidence_problems",
+                                        "requests",
+                                        "route_fit",
+                                    )
+                                }
                                 if probe_row
                                 else {}
                             ),

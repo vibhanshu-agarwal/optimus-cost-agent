@@ -49,7 +49,11 @@ def parse(text: str, *, attachments: bool) -> int | str | None:
         return USAGE
     if len(words) == 1:
         return 1
-    return int(words[1]) if words[1].isdigit() and 1 <= int(words[1]) <= MAX_PAGE else USAGE
+    word = words[1]
+    if not (word.isascii() and word.isdigit() and len(word) <= len(str(MAX_PAGE))):  # "²" is a digit int() refuses
+        return USAGE
+    page = int(word)
+    return page if 1 <= page <= MAX_PAGE else USAGE
 
 
 @dataclass(frozen=True)
@@ -126,9 +130,10 @@ def capture(*, run_id: str, turn_seq: int, outcome: str, stop: str | None, index
 # --- rendering ---------------------------------------------------------------------------------------------------------
 
 
-def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str], str]) -> list[str]:
-    """Every line of the explanation, in order. Every recorded value goes through `show` (sanitized and escaped) or `path` (that, after
-    today's disclosure check); only the fixed words are the host's own."""
+def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str], str], name: Callable[[str], str]) -> list[str]:
+    """Every line of the explanation, in order. Every recorded value goes through `show` (sanitized and escaped), `path` (that, after
+    today's disclosure check of a file) or `name` (that, after today's check of a name a person typed); only the fixed words are the
+    host's own."""
     lines = ["**Identity and delivery**", f"- outcome: {show(snapshot.outcome)}" + (f"; stop: {show(snapshot.stop)}" if snapshot.stop else "")]
     lines.append("- prepared context: unavailable (this launch does not record it)" if snapshot.contexts is None
                  else f"- prepared context: {len(snapshot.contexts)} time(s)")
@@ -150,8 +155,10 @@ def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str
                      + (f"; ranks: {ranks}" if ranks else "") + (f"; {show(item['reason'])}" if item.get("reason") else ""))
     for facts in snapshot.contexts or ():
         for reference, ranked in facts.ranked:
-            lines.append(f"- {show(reference)} was ambiguous, so nothing was chosen; candidates, most likely first:")
-            lines += [f"  - {path(item.path)}" + (f" ({show(item.reasons())})" if item.reasons() else "") for item in ranked]
+            lines.append(f"- {name(reference)} was ambiguous, so nothing was chosen; candidates, most likely first:")
+            # a reason names the candidate's own folders, so it is withheld with the path
+            lines += [f"  - {path(item.path)}" + (f" ({show(item.reasons())})" if item.reasons() and path(item.path) != WITHHELD else "")
+                      for item in ranked]
         lines += [f"- required: {path(item)}" for item in facts.required]
         if not selected:
             lines += [f"- shown: {path(item)}" for item in facts.shown if item not in facts.required]
@@ -185,12 +192,12 @@ def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str
                      + (f", {show(coverage.get('files_indexed', 0))} of {show(coverage.get('files_total', 0))} files" if coverage else "")
                      + (f"; channels: {channels}" if channels else ""))
     for facts in snapshot.contexts or ():
-        lines += [f"- {show(reference)}: {state}" for reference, state in facts.references]
+        lines += [f"- {name(reference)}: {state}" for reference, state in facts.references]
     grounding = (manifest or {}).get("grounding")
     if grounding:
         for key, words in (("unresolved", "cited but not found"), ("ambiguous", "cited and ambiguous"), ("not_in_index", "not in the index")):
             if grounding.get(key):
-                lines.append(f"- {words}: " + ", ".join(show(item) for item in grounding[key]))
+                lines.append(f"- {words}: {len(grounding[key])} symbol(s), not named here (no single file is known to admit them)")
     elif manifest is not None and selected:
         lines.append("- answer grounding: unavailable")
     lines += [f"- unsaved editor text: {path(item)}" for item in (manifest or {}).get("unsaved_buffers") or ()]
@@ -223,15 +230,24 @@ def _clip(line: str, limit: int) -> str:
     return kept + marker
 
 
-def pages(snapshot: Snapshot, *, sanitize: Callable[[str], str], admits: Callable[[str], bool]) -> list[str]:
-    """The explanation as pages of at most `MAX_ENTRIES` lines and `MAX_PAGE_BYTES` bytes, header and navigation included."""
+def refusal_note(turn_seq: int) -> str:
+    return f"A later prompt was refused before its context was prepared, so this still explains turn {turn_seq}."
+
+
+def pages(snapshot: Snapshot, *, sanitize: Callable[[str], str], admits: Callable[[str], bool], refused_after: bool = False,
+          admits_name: Callable[[str], bool] | None = None) -> list[str]:
+    """The explanation as pages of at most `MAX_ENTRIES` lines and `MAX_PAGE_BYTES` bytes, header and navigation included. A later
+    refusal's notice is page 1's first entry, so it is never left out for room."""
     def show(value: Any) -> str:
         return escape_text(sanitize(str(value)), MAX_PAGE_BYTES)
 
     def path(value: str) -> str:
         return show(value) if admits(value) else WITHHELD
 
-    lines = _entries(snapshot, show, path)
+    def name(value: str) -> str:
+        return show(value) if (admits_name or admits)(value.replace("\\", "/")) else WITHHELD
+
+    lines = ([refusal_note(snapshot.turn_seq)] if refused_after else []) + _entries(snapshot, show, path, name)
     # the run id is the host's own (session id and turn), so it is escaped but never masked as if it were content
     head = f"Context explanation for turn {snapshot.turn_seq} of this session (run {escape_text(snapshot.run_id, MAX_PAGE_BYTES)})"
     worst_head = f"{head}, page {len(lines)} of {len(lines)}:\n"
@@ -256,16 +272,11 @@ def pages(snapshot: Snapshot, *, sanitize: Callable[[str], str], admits: Callabl
 
 
 def answer(snapshot: Snapshot | None, page: int, *, sanitize: Callable[[str], str], admits: Callable[[str], bool],
-           refused_after: bool, manifests_on_disk: bool) -> str:
+           refused_after: bool, manifests_on_disk: bool, admits_name: Callable[[str], bool] | None = None) -> str:
     """`/why [page]`'s whole text."""
     if snapshot is None:
         return NO_SNAPSHOT + (f" {NO_SNAPSHOT_ON_DISK}" if manifests_on_disk else "")
-    shown = pages(snapshot, sanitize=sanitize, admits=admits)
+    shown = pages(snapshot, sanitize=sanitize, admits=admits, refused_after=refused_after, admits_name=admits_name)
     if page > len(shown):
         return f"The explanation has {len(shown)} page(s); `/why {len(shown)}` shows the last."
-    text = shown[page - 1]
-    if refused_after and page == 1:
-        note = f"A later prompt was refused before its context was prepared, so this still explains turn {snapshot.turn_seq}.\n"
-        if len((note + text).encode("utf-8")) <= MAX_PAGE_BYTES:
-            return note + text
-    return text
+    return shown[page - 1]

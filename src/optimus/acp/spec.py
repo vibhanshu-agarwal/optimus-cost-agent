@@ -1526,7 +1526,8 @@ class AcpDuplexAdapter:
                 snapshot, refused = session.why, session.why_refused_after
 
                 def render() -> str:
-                    return context_why.answer(snapshot, page, sanitize=sanitize, admits=FilePolicy(Path(session.cwd)).admitter(),
+                    policy = FilePolicy(Path(session.cwd))
+                    return context_why.answer(snapshot, page, sanitize=sanitize, admits=policy.admitter(), admits_name=policy.name_admitter(),
                                               refused_after=refused, manifests_on_disk=session.memory is not None)
 
                 work = asyncio.create_task(asyncio.to_thread(render))

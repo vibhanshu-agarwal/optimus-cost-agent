@@ -282,11 +282,14 @@ def test_own_limit_probes_at_6_10_complete_exactly_and_stop_one_over(frozen: ev.
     assert (pl.PLANNING_OBSERVATION_MAX_BYTES, pl.PLANNING_NEW_READ_MAX_BYTES) == PRODUCTION
 
 
+FITTED, UNFITTED = {"status": "passed"}, {"status": "failed"}
+
+
 def test_a_one_over_probe_needs_a_typed_stop_and_a_plan_after_observation_too_large_fails() -> None:
-    stopped = {"completed": False, "planned": False, "stop": "PLANNING_READ_BUDGET_EXHAUSTED", "parse_failures": []}
-    too_large = {"completed": False, "planned": False, "stop": "X", "parse_failures": ["OBSERVATION_TOO_LARGE"]}
-    f2 = {"completed": False, "planned": True, "stop": None, "parse_failures": ["OBSERVATION_TOO_LARGE"]}  # plan without that evidence
-    other = {"completed": False, "planned": False, "stop": "PLANNING_REPEATED_READ_REQUEST", "parse_failures": []}
+    stopped = {"completed": False, "planned": False, "stop": "PLANNING_READ_BUDGET_EXHAUSTED", "parse_failures": [], "route_fit": FITTED}
+    too_large = {"completed": False, "planned": False, "stop": "X", "parse_failures": ["OBSERVATION_TOO_LARGE"], "route_fit": FITTED}
+    f2 = {"completed": False, "planned": True, "stop": None, "parse_failures": ["OBSERVATION_TOO_LARGE"], "route_fit": FITTED}  # plan without that evidence
+    other = {"completed": False, "planned": False, "stop": "PLANNING_REPEATED_READ_REQUEST", "parse_failures": [], "route_fit": FITTED}
     assert ev.probe_passed("one_over", stopped) and ev.probe_passed("one_over_reads", too_large)
     assert not ev.probe_passed("one_over", f2) and not ev.probe_passed("one_over_observations", other)
     assert not ev.probe_passed("exact", {**f2, "planned": True}) and ev.probe_passed("exact", {**stopped, "completed": True})
@@ -445,3 +448,21 @@ def test_determinism_reports_identical_reruns_and_names_a_difference(frozen: ev.
     monkeypatch.setattr(ev, "run_schedule", lambda *args: {**real(*args), "requests": next(calls)})
     changed = ev.determinism(trimmed, tmp_path / "b", (6, 10))
     assert changed["schedules"]["differing"] == ["S12"] and not changed["identical"]
+
+
+def test_a_probe_whose_requests_were_not_all_fitted_never_passes() -> None:
+    """Codex CP2 review 1, finding 2: a typed budget stop after an unrecorded request, or a capacity stop after OBSERVATION_TOO_LARGE."""
+    unrecorded = {"completed": False, "planned": False, "stop": "PLANNING_READ_BUDGET_EXHAUSTED", "parse_failures": [], "route_fit": UNFITTED}
+    capacity = {"completed": False, "planned": False, "stop": "CONTEXT_CAPACITY_EXCEEDED", "parse_failures": ["OBSERVATION_TOO_LARGE"],
+                "route_fit": UNFITTED}
+    assert not ev.probe_passed("one_over", unrecorded) and not ev.probe_passed("one_over_observations", capacity)
+    assert ev.probe_passed("one_over", {**unrecorded, "route_fit": FITTED})
+
+
+def test_a_probe_record_keeps_its_route_fit_and_request_count(frozen: ev.Frozen, tmp_path: Path) -> None:
+    cases = json.loads(json.dumps(frozen.cases))
+    cases["ambiguity"]["cases"] = []
+    cases["split_schedules"]["schedules"] = [item for item in cases["split_schedules"]["schedules"] if item["id"] == "S10"]
+    report = ev.calibration(ev.Frozen(cases, frozen.digests), tmp_path / "w", ("train",), phase="calibration", partitions=((4, 12), (6, 10)))
+    probes = report["split"]["probes"]["6/10"]
+    assert probes and all(probe["route_fit"]["status"] == "passed" and probe["requests"] >= 1 for probe in probes)

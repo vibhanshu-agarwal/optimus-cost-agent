@@ -722,3 +722,14 @@ def test_names_and_a_read_agree_on_a_real_file_with_a_colon(tmp_path):
     policy = FilePolicy(tmp_path)
     assert policy.names()[0] == ("keep.py",)
     assert not policy.read("a:b.py", purpose=AUTO)[0].allowed
+
+
+def test_the_name_admitter_judges_a_name_alone_whether_or_not_a_file_has_it(tmp_path: Path) -> None:
+    """Plan 12.13 `/why`: a reference a person typed is shown back only if no secret, reserved or ignore rule denies the name."""
+    (tmp_path / ".gitignore").write_text("private/\n", encoding="utf-8")
+    (tmp_path / "kept.py").write_text("x = 1\n", encoding="utf-8")
+    admits = FilePolicy(tmp_path).name_admitter()
+    assert admits("kept.py") and admits("missing.py") and admits("src/gone/config.py")
+    assert not admits("private/config.py") and not admits("private/missing.py")
+    assert not admits(".env") and not admits("../outside.py") and not admits("/abs.py")
+    assert not FilePolicy(tmp_path).admitter()("missing.py")  # the file gate still needs the file
