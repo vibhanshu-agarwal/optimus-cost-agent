@@ -1,6 +1,6 @@
 {
  "schema": "plan12-memory-m2a.split.v1",
- "head": "git:b6dd92b180685e1fab06a62e60c21ee666c4acad",
+ "head": "git:d6c9a8dbe277cd656cf60b60c706f2a4bc1398f1",
  "phase": "split",
  "inputs": {
   "cases.json": "hex:0f76413a68fe67f60a6d0561ad89b9d5d67bfaf6cf0a8c2d8a78d85f9d8dc3a2",
@@ -3005,7 +3005,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S02",
@@ -3027,7 +3035,15 @@
       "observation records differ (6 found, 7 expected)",
       "read blocks differ (6 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S03",
@@ -3045,7 +3061,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S03",
@@ -3067,7 +3091,15 @@
       "observation records differ (6 found, 7 expected)",
       "read blocks differ (6 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S05",
@@ -3085,7 +3117,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S05",
@@ -3107,7 +3147,15 @@
       "observation records differ (5 found, 6 expected)",
       "read blocks differ (5 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S10",
@@ -3125,7 +3173,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S10",
@@ -3147,7 +3203,15 @@
       "observation records differ (0 found, 5 expected)",
       "read blocks differ (0 found, 5 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S11",
@@ -3165,7 +3229,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S11",
@@ -3187,7 +3259,15 @@
       "observation records differ (0 found, 5 expected)",
       "read blocks differ (0 found, 5 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S13",
@@ -3205,7 +3285,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S13",
@@ -3227,7 +3315,15 @@
       "observation records differ (0 found, 4 expected)",
       "read blocks differ (0 found, 4 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -3246,7 +3342,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -3269,7 +3373,15 @@
       "observation records differ (1 found, 7 expected)",
       "read blocks differ (1 found, 6 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -3292,7 +3404,15 @@
       "observation records differ (1 found, 7 expected)",
       "read blocks differ (1 found, 6 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -3311,7 +3431,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -3334,7 +3462,15 @@
       "observation records differ (1 found, 5 expected)",
       "read blocks differ (1 found, 4 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -3357,7 +3493,15 @@
       "observation records differ (1 found, 5 expected)",
       "read blocks differ (1 found, 4 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -3376,7 +3520,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -3399,7 +3551,15 @@
       "observation records differ (1 found, 6 expected)",
       "read blocks differ (1 found, 5 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -3422,7 +3582,15 @@
       "observation records differ (1 found, 6 expected)",
       "read blocks differ (1 found, 5 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     }
    ],
    "4/12": [
@@ -3442,7 +3610,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S02",
@@ -3464,7 +3640,15 @@
       "observation records differ (6 found, 7 expected)",
       "read blocks differ (6 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S03",
@@ -3482,7 +3666,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S03",
@@ -3504,7 +3696,15 @@
       "observation records differ (6 found, 7 expected)",
       "read blocks differ (6 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S05",
@@ -3522,7 +3722,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S05",
@@ -3544,7 +3752,15 @@
       "observation records differ (5 found, 6 expected)",
       "read blocks differ (5 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S10",
@@ -3562,7 +3778,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S10",
@@ -3584,7 +3808,15 @@
       "observation records differ (0 found, 5 expected)",
       "read blocks differ (0 found, 5 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S11",
@@ -3602,7 +3834,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S11",
@@ -3624,7 +3864,15 @@
       "observation records differ (0 found, 5 expected)",
       "read blocks differ (0 found, 5 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S13",
@@ -3642,7 +3890,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S13",
@@ -3664,7 +3920,15 @@
       "observation records differ (0 found, 4 expected)",
       "read blocks differ (0 found, 4 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -3683,7 +3947,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -3706,7 +3978,15 @@
       "observation records differ (1 found, 7 expected)",
       "read blocks differ (1 found, 6 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -3729,7 +4009,15 @@
       "observation records differ (1 found, 7 expected)",
       "read blocks differ (1 found, 6 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -3748,7 +4036,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -3771,7 +4067,15 @@
       "observation records differ (1 found, 5 expected)",
       "read blocks differ (1 found, 4 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -3794,7 +4098,15 @@
       "observation records differ (1 found, 5 expected)",
       "read blocks differ (1 found, 4 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -3813,7 +4125,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -3836,7 +4156,15 @@
       "observation records differ (1 found, 6 expected)",
       "read blocks differ (1 found, 5 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -3859,7 +4187,15 @@
       "observation records differ (1 found, 6 expected)",
       "read blocks differ (1 found, 5 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     }
    ],
    "6/10": [
@@ -3879,7 +4215,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S02",
@@ -3901,7 +4245,15 @@
       "observation records differ (6 found, 7 expected)",
       "read blocks differ (6 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S03",
@@ -3919,7 +4271,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S03",
@@ -3941,7 +4301,15 @@
       "observation records differ (6 found, 7 expected)",
       "read blocks differ (6 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S05",
@@ -3959,7 +4327,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S05",
@@ -3981,7 +4357,15 @@
       "observation records differ (5 found, 6 expected)",
       "read blocks differ (5 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S10",
@@ -3999,7 +4383,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S10",
@@ -4021,7 +4413,15 @@
       "observation records differ (0 found, 5 expected)",
       "read blocks differ (0 found, 5 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S11",
@@ -4039,7 +4439,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S11",
@@ -4061,7 +4469,15 @@
       "observation records differ (0 found, 5 expected)",
       "read blocks differ (0 found, 5 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S13",
@@ -4079,7 +4495,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S13",
@@ -4101,7 +4525,15 @@
       "observation records differ (0 found, 4 expected)",
       "read blocks differ (0 found, 4 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -4120,7 +4552,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -4143,7 +4583,15 @@
       "observation records differ (1 found, 7 expected)",
       "read blocks differ (1 found, 6 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -4166,7 +4614,15 @@
       "observation records differ (1 found, 7 expected)",
       "read blocks differ (1 found, 6 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -4185,7 +4641,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -4208,7 +4672,15 @@
       "observation records differ (1 found, 5 expected)",
       "read blocks differ (1 found, 4 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -4231,7 +4703,15 @@
       "observation records differ (1 found, 5 expected)",
       "read blocks differ (1 found, 4 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -4250,7 +4730,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21141,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -4273,7 +4761,15 @@
       "observation records differ (1 found, 6 expected)",
       "read blocks differ (1 found, 5 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -4296,7 +4792,15 @@
       "observation records differ (1 found, 6 expected)",
       "read blocks differ (1 found, 5 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21057,
+      "usable_input_tokens": 229376
+     }
     }
    ],
    "8/8": [
@@ -4316,7 +4820,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S02",
@@ -4338,7 +4850,15 @@
       "observation records differ (6 found, 7 expected)",
       "read blocks differ (6 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S03",
@@ -4356,7 +4876,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S03",
@@ -4378,7 +4906,15 @@
       "observation records differ (6 found, 7 expected)",
       "read blocks differ (6 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S05",
@@ -4396,7 +4932,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S05",
@@ -4418,7 +4962,15 @@
       "observation records differ (5 found, 6 expected)",
       "read blocks differ (5 found, 1 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S10",
@@ -4436,7 +4988,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S10",
@@ -4458,7 +5018,15 @@
       "observation records differ (0 found, 5 expected)",
       "read blocks differ (0 found, 5 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S11",
@@ -4476,7 +5044,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S11",
@@ -4498,7 +5074,15 @@
       "observation records differ (0 found, 5 expected)",
       "read blocks differ (0 found, 5 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S13",
@@ -4516,7 +5100,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S13",
@@ -4538,7 +5130,15 @@
       "observation records differ (0 found, 4 expected)",
       "read blocks differ (0 found, 4 expected)",
       "1 requests, 2 expected"
-     ]
+     ],
+     "requests": 1,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 1,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -4557,7 +5157,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21140,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -4580,7 +5188,15 @@
       "observation records differ (1 found, 7 expected)",
       "read blocks differ (1 found, 6 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S18",
@@ -4603,7 +5219,15 @@
       "observation records differ (1 found, 7 expected)",
       "read blocks differ (1 found, 6 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -4622,7 +5246,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21140,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -4645,7 +5277,15 @@
       "observation records differ (1 found, 5 expected)",
       "read blocks differ (1 found, 4 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S19",
@@ -4668,7 +5308,15 @@
       "observation records differ (1 found, 5 expected)",
       "read blocks differ (1 found, 4 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -4687,7 +5335,15 @@
      "planned": true,
      "stop": null,
      "parse_failures": [],
-     "evidence_problems": []
+     "evidence_problems": [],
+     "requests": 3,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 3,
+      "repacks": 0,
+      "max_request_tokens": 21140,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -4710,7 +5366,15 @@
       "observation records differ (1 found, 6 expected)",
       "read blocks differ (1 found, 5 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     },
     {
      "template": "S22",
@@ -4733,7 +5397,15 @@
       "observation records differ (1 found, 6 expected)",
       "read blocks differ (1 found, 5 expected)",
       "2 requests, 3 expected"
-     ]
+     ],
+     "requests": 2,
+     "route_fit": {
+      "status": "passed",
+      "requests_fitted": 2,
+      "repacks": 0,
+      "max_request_tokens": 21056,
+      "usable_input_tokens": 229376
+     }
     }
    ]
   },
