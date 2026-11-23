@@ -922,12 +922,19 @@ def confirm_running_gateway(
     hmac_key: bytes,
     expected: gateway_identity.GatewayIdentity | None,
     log: Callable[[str], None] = _noop_log,
+    on_reuse: Callable[[Callable[[], bool]], None] | None = None,
 ) -> None:
     """For a launch that starts nothing (`--no-auto-start`): confirm a local Gateway that is listening. A remote one, or
     none at all, is left to pre-flight as before."""
     host, port = _gateway_destination(gateway_url)
     if _is_loopback(host) and _tcp_reachable(host, port):
-        verify_local_gateway(gateway_url, api_key=api_key, hmac_key=hmac_key, expected=expected, log=log)
+        def confirm() -> bool:
+            verify_local_gateway(gateway_url, api_key=api_key, hmac_key=hmac_key, expected=expected, log=log)
+            return True
+
+        confirm()
+        if on_reuse is not None and expected is not None and api_key:
+            on_reuse(confirm)
 
 
 def ensure_local_gateway(
@@ -955,6 +962,7 @@ def ensure_local_gateway(
     approved_memory_store: str | None = None,
     api_key: str | None = None,
     expected_identity: gateway_identity.GatewayIdentity | None = None,
+    on_reuse: Callable[[Callable[[], bool]], None] | None = None,
 ) -> LocalGatewayProcess | None:
     """Start the local Gateway child using ALREADY-RESOLVED credentials.
 
@@ -974,17 +982,26 @@ def ensure_local_gateway(
 
     #465 (ADR-036): a Gateway already listening is reused only after it proves ``expected_identity``; anything else raises
     `LocalInfrastructureError` with the reason, and the listener is left running. Returns None for a reused Gateway.
+    The registered prompt check returns whether the turn is borrowing a freshly authenticated listener.
     """
     host, port = _gateway_destination(gateway_url)
     if not _is_loopback(host):
         return None
 
-    def confirm_listener() -> None:
-        verify_local_gateway(gateway_url, api_key=api_key or shared_secret, hmac_key=manifest_hmac_key,
-                             expected=expected_identity, log=log)
+    gateway_key = api_key or shared_secret
+    def confirm_listener() -> bool:
+        verify_local_gateway(
+            gateway_url, api_key=gateway_key, hmac_key=manifest_hmac_key, expected=expected_identity, log=log,
+        )
+        return True
+
+    def register_check(check: Callable[[], bool]) -> None:
+        if on_reuse is not None and expected_identity is not None and gateway_key:
+            on_reuse(check)
 
     if _tcp_reachable(host, port):
         confirm_listener()
+        register_check(confirm_listener)
         return None  # a compatible Gateway, from an earlier session or another workspace; don't own it
 
     if provider_credentials is None:
@@ -1113,9 +1130,18 @@ def ensure_local_gateway(
                 # Two launches can start at once; the loser's child cannot bind. What holds the port is not this launch's.
                 if _tcp_reachable(host, port):
                     confirm_listener()
+                    register_check(confirm_listener)
                 return None
             if _tcp_reachable(host, port):
-                confirm_listener()  # the port may be another launch's while this child is still starting
+                confirm_listener()
+
+                def confirm_if_child_exited() -> bool:
+                    # A compatible listener can answer before the process that lost the bind has exited.
+                    if process is not None and process.poll() is not None:
+                        return confirm_listener()
+                    return False
+
+                register_check(confirm_if_child_exited)
                 return owned
             time.sleep(_POLL_INTERVAL_SECONDS)
 

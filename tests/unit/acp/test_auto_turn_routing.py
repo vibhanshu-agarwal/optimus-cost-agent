@@ -211,6 +211,107 @@ async def test_an_integrity_failure_or_no_routable_model_refuses_without_dispatc
     assert session_of(adapter, session_id).conversation.records == {}
 
 
+@pytest.mark.parametrize("code", ["GATEWAY_IDENTITY_UNCONFIRMED", "GATEWAY_KEY_REJECTED", "GATEWAY_CONFIGURATION_MISMATCH"])
+async def test_gateway_refusal_records_the_auto_turn_without_classifying(tmp_path, code) -> None:
+    from optimus.acp.local_infra import LocalInfrastructureError
+
+    classifier = Classifier(["easy"])
+    outbound, runner = RecordingOutboundChannel(), Runner()
+    events = []
+    available = False
+
+    def check():
+        if not available:
+            raise LocalInfrastructureError(code=code, user_message="Gateway identity refused")
+        return True
+
+    adapter = AcpDuplexAdapter(
+        runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound, auto_router=_router(classifier), settlement_sink=events.append, borrowed_gateway_check=check,
+    )
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    assert (await prompt(adapter, outbound, session_id, "Before recovery?", "q1"))["result"]["stopReason"] == "end_turn"
+    assert classifier.contracts == [] and runner.requests == []
+
+    available = True
+    assert (await prompt(adapter, outbound, session_id, "After recovery?", "q2"))["result"]["stopReason"] == "end_turn"
+    routes = [event for event in events if event.kind.value == "auto_routing"]
+    assert [route.payload["disposition"] for route in routes] == ["refused", "routed"]
+    assert routes[0].payload["reason"] == code
+    assert routes[0].payload["classifier_attempt"] is None
+    settlement = session_of(adapter, session_id).cost_settlement
+    assert settlement.receipts(routes[0].run_id) == ()
+    assert settlement.settle_turn(routes[0].run_id).complete
+    assert len(classifier.contracts) == len(runner.requests) == 1
+
+
+async def test_abandoned_auto_turn_during_gateway_identity_check_records_no_attempt(tmp_path) -> None:
+    entered, release = threading.Event(), threading.Event()
+    classifier = Classifier(["easy"])
+    outbound, runner = RecordingOutboundChannel(), Runner()
+    events = []
+
+    def check():
+        entered.set()
+        assert release.wait(5)
+        return True
+
+    adapter = AcpDuplexAdapter(
+        runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound, auto_router=_router(classifier), settlement_sink=events.append, borrowed_gateway_check=check,
+    )
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    task = asyncio.create_task(rpc(adapter, prompt_request(session_id, "Check before disconnect", "q1")))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        adapter._active_turns[session_id].turn_control.request_transport_teardown()  # noqa: SLF001
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 5)
+    finally:
+        release.set()
+
+    [route] = [event for event in events if event.kind.value == "auto_routing"]
+    assert route.payload["disposition"] == "abandoned"
+    assert route.payload["classifier_attempt"] is None
+    assert classifier.contracts == [] and runner.requests == []
+    assert session_of(adapter, session_id).cost_settlement.receipts(route.run_id) == ()
+
+
+async def test_transport_loss_stops_auto_fallback_after_the_gateway_is_borrowed(tmp_path) -> None:
+    from optimus.gateway.errors import GatewayHttpError
+
+    class Lost:
+        def post_json(self, request):
+            raise GatewayHttpError(0, "connection reset", failure={"kind": "transport"})
+
+    router = _router()
+    model = AutoComposition(router.snapshot).classifier_model()
+    classifier = HybridClassifier(snapshot=router.snapshot, gateway_client=_client(Lost()), model_id=model)
+    runner, outbound = Runner(), RecordingOutboundChannel()
+    events = []
+    borrowed = False
+    adapter = AcpDuplexAdapter(
+        runner=checked_agent_runner(runner), workspace_root=tmp_path, sessions=InMemoryAcpSpecSessionStore(),
+        outbound=outbound, auto_router=replace(router, classifier=classifier), settlement_sink=events.append,
+        borrowed_gateway_check=lambda: borrowed,
+    )
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+
+    owned_reply = await prompt(adapter, outbound, session_id, "Debug the failing test.", "q1")
+    assert owned_reply["result"]["stopReason"] == "end_turn"
+    assert len(runner.requests) == 1
+
+    borrowed = True
+    borrowed_reply = await prompt(adapter, outbound, session_id, "Explain the failing test.", "q2")
+    assert borrowed_reply["result"]["stopReason"] == "end_turn"
+    assert len(runner.requests) == 1
+    routes = [event for event in events if event.kind.value == "auto_routing"]
+    assert [route.payload["disposition"] for route in routes] == ["routed", "refused"]
+    [receipt] = session_of(adapter, session_id).cost_settlement.receipts(routes[1].run_id)
+    assert (receipt.stage, receipt.outcome, receipt.reported_cost_usd) == ("classification", "uncertain", None)
+
+
 async def test_an_unmapped_classifier_failure_takes_the_failure_rule_to_complex(tmp_path) -> None:
     adapter, outbound, runner = _adapter(tmp_path, _router(Classifier([RuntimeError("upstream timed out")])))
     session_id = await new_session(adapter, tmp_path, mode="chat")

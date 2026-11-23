@@ -7,7 +7,7 @@ import re
 import secrets
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -116,6 +116,7 @@ class _BuildServerKwargs(TypedDict):
     memory_index: NotRequired[tuple[Path, Path]]
     memory_store: NotRequired[Path]
     memory_notice: NotRequired[str]
+    borrowed_gateway_check: NotRequired[Callable[[], bool]]
 
 
 
@@ -961,16 +962,21 @@ def main(argv: list[str] | None = None) -> int:
     if expected_identity is not None:
         agent_environ[GATEWAY_IDENTITY_ENVIRON] = expected_identity.digest
 
-    def _confirm_running_gateway() -> None:
+    def _confirm_running_gateway(*, on_reuse: Callable[[Callable[[], bool]], None] | None = None) -> None:
         confirm_running_gateway(
             agent_environ.get("OPTIMUS_GATEWAY_URL", ""),
             api_key=agent_environ.get("OPTIMUS_API_KEY"),
             hmac_key=store.hmac_key,
             expected=expected_identity,
             log=_print_log,
+            on_reuse=on_reuse,
         )
 
-    def _start_gateway(*, otlp_endpoint: str | None):
+    def _start_gateway(
+        *,
+        otlp_endpoint: str | None,
+        on_reuse: Callable[[Callable[[], bool]], None] | None = None,
+    ) -> LocalGatewayProcess | None:
         return ensure_local_gateway(
             gateway_url=agent_environ.get("OPTIMUS_GATEWAY_URL", ""),
             api_key=agent_environ.get("OPTIMUS_API_KEY"),
@@ -985,6 +991,7 @@ def main(argv: list[str] | None = None) -> int:
             system_env=snapshot.values,
             config_root=candidate.operator_paths.config_root,
             otlp_endpoint=otlp_endpoint,
+            on_reuse=on_reuse,
             log=_print_log,
             # Plan 12.2 Task 5: the registry literal the operator approved, or None while inactive.
             model_registry=candidate.security_literals.get(APPROVAL_LITERAL_NAME),
@@ -1090,6 +1097,21 @@ def main(argv: list[str] | None = None) -> int:
 
         gateway_process = None
         startup_failure = None
+        borrowed_gateway_check: Callable[[], bool] | None = None
+
+        def record_borrowed_gateway(check: Callable[[], bool]) -> None:
+            def verify_and_log() -> bool:
+                try:
+                    return check()
+                except LocalInfrastructureError as refusal:
+                    record_gateway_refusal(
+                        candidate.operator_paths.runtime_root, code=refusal.code, reason=refusal.user_message,
+                    )
+                    raise
+
+            nonlocal borrowed_gateway_check
+            borrowed_gateway_check = verify_and_log
+
         # Single try/finally around BOTH build_configured_server(...) and serve(...): an earlier draft
         # of this plan wrapped only the serve() call, so an unexpected (non-StartupConfigurationError)
         # exception from build_configured_server() would skip both the except block below and the
@@ -1100,7 +1122,9 @@ def main(argv: list[str] | None = None) -> int:
             if not args.no_auto_start:
                 try:
                     # #480/#481: a Redis or Phoenix that does not prove itself is refused in the panel, as a Gateway is.
-                    gateway_process = _start_gateway(otlp_endpoint=_start_local_dependencies())
+                    gateway_process = _start_gateway(
+                        otlp_endpoint=_start_local_dependencies(), on_reuse=record_borrowed_gateway,
+                    )
                 except LocalInfrastructureError as exc:
                     return _serve_gateway_refusal(exc)
                 if test_composition is not None and gateway_process is None:
@@ -1121,7 +1145,7 @@ def main(argv: list[str] | None = None) -> int:
                 _ensure_memory_store(start=False)
                 try:
                     confirm_local_redis(agent_environ.get("OPTIMUS_REDIS_URL", ""))  # #480: as one started here would
-                    _confirm_running_gateway()
+                    _confirm_running_gateway(on_reuse=record_borrowed_gateway)
                 except LocalInfrastructureError as exc:
                     return _serve_gateway_refusal(exc)
             if delivery is not None:
@@ -1157,6 +1181,8 @@ def main(argv: list[str] | None = None) -> int:
                     build_server_kwargs["memory_index"] = (memory_index_ready[-1], candidate.operator_paths.config_root)
                 elif memory_notices:
                     build_server_kwargs["memory_notice"] = memory_notices[-1]
+                if borrowed_gateway_check is not None:
+                    build_server_kwargs["borrowed_gateway_check"] = borrowed_gateway_check
                 server = build_configured_server(**build_server_kwargs)
                 configured_server = server
             except StartupConfigurationError as exc:

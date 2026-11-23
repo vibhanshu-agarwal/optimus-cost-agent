@@ -399,6 +399,38 @@ async def test_a_summary_that_proved_the_route_stopped_says_so_and_never_suggest
     assert shown != context_unavailable_text("maintenance failed", "compaction")
 
 
+@pytest.mark.parametrize("borrowed", [False, True], ids=["owned", "borrowed"])
+async def test_an_uncertain_summary_refuses_fallback_only_for_a_borrowed_gateway(tmp_path, borrowed):
+    def lost_summary(**_):
+        attempt = SummarizerAttempt(attempt_id="lost-summary", gateway_request_id=None, outcome="uncertain", cost_usd=None)
+        return SummarizerResponse(text=None, finish_status=None, attempts=(attempt,))
+
+    engine = _SummarizingThenFailingEngine()
+    runner, outbound = Runner(), RecordingOutboundChannel()
+    adapter = AcpDuplexAdapter(
+        runner=checked_agent_runner(runner), workspace_root=tmp_path,
+        sessions=InMemoryAcpSpecSessionStore(), outbound=outbound,
+        context_attachment=make_attachment(engine=engine, summarizer=lost_summary),
+        borrowed_gateway_check=lambda: borrowed,
+    )
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    conversation = session_of(adapter, session_id).conversation
+    commit_record(conversation, "Earlier history")
+
+    result = await prompt(adapter, outbound, session_id, "Explain the current change.", "q1")
+
+    assert result["result"]["stopReason"] == "end_turn"
+    assert engine.calls == 1
+    assert len(runner.requests) == (0 if borrowed else 1)
+    if borrowed:
+        assert any("summary request's cost is unknown" in text for text in texts(outbound))
+        settlement = session_of(adapter, session_id).cost_settlement
+        receipts = settlement.receipts(f"{session_id}:2")
+        assert [(receipt.stage, receipt.outcome, receipt.reported_cost_usd) for receipt in receipts] == [
+            ("summarization", "uncertain", None),
+        ]
+
+
 async def test_genuine_source_exhaustion_is_not_overridden_by_a_healthy_engine(tmp_path):
     adapter, outbound, runner = make_adapter(tmp_path, make_attachment(source_max=4096))
     session_id = await new_session(adapter, tmp_path, mode="chat")

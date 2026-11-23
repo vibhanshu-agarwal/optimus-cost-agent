@@ -238,6 +238,92 @@ class _RecordingCompletedRunner:
         )
 
 
+async def test_a_new_prompt_requires_the_shared_gateway_to_prove_its_identity(tmp_path):
+    from optimus.acp.local_infra import LocalInfrastructureError
+
+    runner = _RecordingCompletedRunner()
+    outbound = _recording_outbound()
+    sessions = InMemoryAcpSpecSessionStore()
+    checks = []
+
+    def check():
+        checks.append("identity")
+        if len(checks) < 3:
+            code = ("GATEWAY_IDENTITY_UNCONFIRMED", "GATEWAY_CONFIGURATION_MISMATCH")[len(checks) - 1]
+            raise LocalInfrastructureError(code=code, user_message="different configuration")
+        return True
+
+    adapter = AcpDuplexAdapter(
+        runner=checked_agent_runner(runner),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+        borrowed_gateway_check=check,
+    )
+    session_id = (await _rpc(adapter, {
+        "jsonrpc": "2.0", "id": 1, "method": "session/new",
+        "params": {"cwd": str(tmp_path), "mcpServers": []},
+    }))["result"]["sessionId"]
+    conversation = sessions.get(session_id).conversation
+    initial_history = tuple(conversation.records)
+
+    async def prompt(request_id, text):
+        return await _rpc(adapter, {
+            "jsonrpc": "2.0", "id": request_id, "method": "session/prompt",
+            "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": text}]},
+        })
+
+    assert (await prompt(2, "While the Gateway is gone"))["result"]["stopReason"] == "end_turn"
+    assert (await prompt(3, "While the wrong Gateway is listening"))["result"]["stopReason"] == "end_turn"
+    assert runner.requests == []
+    assert tuple(conversation.records) == initial_history
+    notices = json.dumps(outbound.notifications)
+    assert "Restore a compatible Gateway on the approved URL" in notices
+    assert "different configuration" in notices
+    assert (await prompt(4, "After the compatible Gateway returns"))["result"]["stopReason"] == "end_turn"
+    assert checks == ["identity"] * 3
+    [request] = runner.requests
+    assert "After the compatible Gateway returns" in request.task
+
+
+async def test_prompt_cancel_during_gateway_identity_check_prevents_dispatch(tmp_path):
+    runner = _RecordingCompletedRunner()
+    entered = threading.Event()
+    release = threading.Event()
+
+    def check():
+        entered.set()
+        assert release.wait(5)
+        return True
+
+    sessions = InMemoryAcpSpecSessionStore()
+    adapter = AcpDuplexAdapter(
+        runner=checked_agent_runner(runner),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=_recording_outbound(),
+        borrowed_gateway_check=check,
+    )
+    session_id = (await _rpc(adapter, {
+        "jsonrpc": "2.0", "id": 1, "method": "session/new",
+        "params": {"cwd": str(tmp_path), "mcpServers": []},
+    }))["result"]["sessionId"]
+    prompt = asyncio.create_task(_rpc(adapter, {
+        "jsonrpc": "2.0", "id": 2, "method": "session/prompt",
+        "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": "Do not dispatch"}]},
+    }))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        await adapter.handle_client_notification({
+            "jsonrpc": "2.0", "method": "session/cancel", "params": {"sessionId": session_id},
+        })
+    finally:
+        release.set()
+    assert (await asyncio.wait_for(prompt, 5))["result"]["stopReason"] == "cancelled"
+    assert runner.requests == []
+    assert sessions.get(session_id).conversation.records == {}
+
+
 async def test_session_prompt_applies_max_planning_turns_override(tmp_path):
     runner = _RecordingCompletedRunner()
     adapter = AcpDuplexAdapter(

@@ -722,9 +722,17 @@ def test_a_proxy_that_drips_its_connect_reply_cannot_outlast_the_deadline_or_kee
     proxy = ThreadingHTTPServer(("127.0.0.1", 0), _DripConnectProxy)
     thread = threading.Thread(target=proxy.serve_forever, daemon=True)
     thread.start()
-    monkeypatch.setenv("HTTPS_PROXY", f"http://127.0.0.1:{proxy.server_address[1]}")
-    monkeypatch.setenv("NO_PROXY", "")
+    proxy_url = f"http://127.0.0.1:{proxy.server_address[1]}"
     try:
+        # Model inherited lowercase settings before configuring the loopback proxy.
+        monkeypatch.setenv("https_proxy", "http://127.0.0.1:9")
+        monkeypatch.setenv("no_proxy", "upstream.test")
+        for name in ("HTTPS_PROXY", "https_proxy"):
+            monkeypatch.setenv(name, proxy_url)
+        for name in ("NO_PROXY", "no_proxy"):
+            monkeypatch.setenv(name, "")
+        assert urllib.request.getproxies_environment().get("https") == proxy_url
+        assert not urllib.request.proxy_bypass_environment("upstream.test")
         started = time.monotonic()
         with pytest.raises(UpstreamAttemptFailure) as raised:
             _client("https://upstream.test").create_message_once(model="m", input_text="x", max_tokens=1, provider_controls={}, reasoning=None)

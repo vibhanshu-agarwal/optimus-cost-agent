@@ -705,7 +705,9 @@ class AcpStreamServer:
         session_retention_policy: SessionRetentionPolicy = DEFAULT_SESSION_RETENTION_POLICY,
         durable_capture: Any | None = None,
         usage_reports: Any | None = None,
+        borrowed_gateway_check: Callable[[], bool] | None = None,
     ) -> None:
+        self._borrowed_gateway_check = borrowed_gateway_check
         self._dispatcher = dispatcher or JsonRpcDispatcher()
         self._durable_capture = durable_capture  # Plan 12.8: each session's settlement appends to it
         self._usage_reports = usage_reports  # Plan 12.9: the `/savings` source; None leaves it unadvertised
@@ -1056,6 +1058,7 @@ class AcpStreamServer:
             monotonic_clock=self._monotonic_clock,
             session_retention_policy=self._session_retention_policy,
             usage_reports=self._usage_reports,
+            borrowed_gateway_check=self._borrowed_gateway_check,
         )
         limits = self._admission_limits
         message_queue: asyncio.Queue[tuple[dict[str, Any], Reservation, SessionUseLease | None]] = asyncio.Queue(maxsize=limits.pending_items)
