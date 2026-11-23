@@ -5,8 +5,12 @@ from __future__ import annotations
 import shutil
 import subprocess
 import threading
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import TextIO
+
+from optimus.runtime import process_tree
 
 from .common import HostError
 
@@ -97,14 +101,20 @@ def build_acpx_command(
     ]
 
 
-def _pump_stream(stream: object, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        if stream is None:
-            return
-        for line in stream:  # type: ignore[attr-defined]
-            handle.write(line)
-            handle.flush()
+def _pump_stream(stream: TextIO, path: Path | None, failures: list[OSError]) -> None:
+    try:
+        with stream:
+            if path is None:
+                while stream.read(8192):
+                    pass
+                return
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", encoding="utf-8", newline="\n") as handle:
+                for line in stream:
+                    handle.write(line)
+                    handle.flush()
+    except OSError as exc:
+        failures.append(exc)
 
 
 def spawn_acpx(
@@ -125,50 +135,46 @@ def spawn_acpx(
     """
     if timeout_seconds <= 0:
         raise HostError("invalid_timeout")
-    process = subprocess.Popen(
-        list(command),
-        cwd=str(cwd.resolve()),
-        env=dict(env),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        shell=False,
-    )
-    if stdout_path is None and stderr_path is None:
+    try:
+        process = process_tree.popen(
+            command,
+            cwd=str(cwd.resolve()),
+            env=dict(env),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            shell=False,
+        )
+    except process_tree.ContainmentError as exc:
+        code = "acpx_containment_failed" if exc.stopped else "acpx_cleanup_incomplete"
+        raise HostError(code) from None
+
+    deadline = time.monotonic() + timeout_seconds
+    readers: list[threading.Thread] = []
+    capture_failures: list[OSError] = []
+    try:
+        for stream, path in ((process.stdout, stdout_path), (process.stderr, stderr_path)):
+            if stream is not None:
+                reader = threading.Thread(target=_pump_stream, args=(stream, path, capture_failures), daemon=True)
+                reader.start()
+                readers.append(reader)
+        returncode = process.wait(timeout=max(0.0, deadline - time.monotonic()))
+        if not process_tree.join_pipe_readers(readers, deadline=deadline):
+            raise subprocess.TimeoutExpired("acpx", timeout_seconds)
+        if capture_failures:
+            raise HostError("acpx_capture_failed")
+    except BaseException as exc:
         try:
-            process.communicate(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            try:
-                process.communicate()
-            except Exception:
-                pass
+            process_tree.stop_piped_process(process, readers, deadline=time.monotonic() + 5)
+        except process_tree.PipeCleanupError as cleanup:
+            if isinstance(exc, subprocess.TimeoutExpired):
+                raise HostError("acpx_timeout_cleanup_incomplete") from None
+            if isinstance(exc, HostError):
+                raise HostError("acpx_cleanup_incomplete") from None
+            exc.add_note(f"acpx cleanup incomplete: {cleanup}")
+        if isinstance(exc, subprocess.TimeoutExpired):
             raise HostError("acpx_timeout") from None
-    else:
-        out = stdout_path if stdout_path is not None else Path(os_devnull())
-        err = stderr_path if stderr_path is not None else Path(os_devnull())
-        threads = [
-            threading.Thread(target=_pump_stream, args=(process.stdout, out), daemon=True),
-            threading.Thread(target=_pump_stream, args=(process.stderr, err), daemon=True),
-        ]
-        for thread in threads:
-            thread.start()
-        try:
-            process.wait(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            raise HostError("acpx_timeout") from None
-        finally:
-            for thread in threads:
-                thread.join(timeout=5)
-    if process.returncode is None:
-        raise HostError("acpx_timeout")
-    return int(process.returncode)
-
-
-def os_devnull() -> str:
-    import os
-
-    return os.devnull
+        raise
+    return returncode

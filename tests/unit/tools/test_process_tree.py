@@ -40,6 +40,31 @@ def test_kill_tree_kills_every_descendant_including_ones_no_parent_walk_reaches(
                 process.wait(10)
 
 
+def test_pipe_cleanup_reuses_one_budget_and_reports_all_unconfirmed_stages(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    clock = iter((0, 4, 5))
+    monkeypatch.setattr(process_tree, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+    kill = Mock(side_effect=OSError("tree refusal"))
+    monkeypatch.setattr(process_tree, "kill_tree", kill)
+    process = Mock()
+    process.wait.side_effect = subprocess.TimeoutExpired("child", 5)
+    stdout_reader, stderr_reader = Mock(), Mock()
+    stdout_reader.is_alive.return_value = True
+    stderr_reader.is_alive.return_value = True
+
+    with pytest.raises(process_tree.PipeCleanupError) as failure:
+        process_tree.stop_piped_process(process, (stdout_reader, stderr_reader), deadline=5)
+    assert str(failure.value) == (
+        "process tree termination failed, root process reap unconfirmed, capture readers still running"
+    )
+    kill.assert_called_once_with(process)
+    process.wait.assert_called_once_with(timeout=5)
+    stdout_reader.join.assert_called_once_with(timeout=1)
+    stderr_reader.join.assert_called_once_with(timeout=0)
+
+
 def test_a_tree_child_runs_normally_and_keeps_the_callers_arguments(tmp_path):
     flags = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32" else {}
     process = process_tree.popen(

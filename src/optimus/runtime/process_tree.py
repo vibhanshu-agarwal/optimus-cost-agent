@@ -165,6 +165,38 @@ def kill_tree(process: subprocess.Popen[Any]) -> None:
             pass  # every member of the group has already exited
 
 
+class PipeCleanupError(RuntimeError):
+    """The contained process or its capture readers could not be confirmed stopped."""
+
+
+def join_pipe_readers(readers: Sequence[threading.Thread], *, deadline: float) -> bool:
+    for reader in readers:
+        reader.join(timeout=max(0.0, deadline - time.monotonic()))
+    return not any(reader.is_alive() for reader in readers)
+
+
+def stop_piped_process(
+    process: subprocess.Popen[Any],
+    readers: Sequence[threading.Thread] = (),
+    *,
+    deadline: float,
+) -> None:
+    """Stop a contained tree, reap its root and drain its readers within one cleanup budget."""
+    failures = []
+    try:
+        kill_tree(process)
+    except OSError:
+        failures.append("process tree termination failed")
+    try:
+        process.wait(timeout=max(0.0, deadline - time.monotonic()))
+    except (OSError, subprocess.TimeoutExpired):
+        failures.append("root process reap unconfirmed")
+    if not join_pipe_readers(readers, deadline=deadline):
+        failures.append("capture readers still running")
+    if failures:
+        raise PipeCleanupError(", ".join(failures))
+
+
 def wait_for_empty(process: subprocess.Popen[Any], *, deadline: float) -> bool:
     """Wait for the tracked process tree, including children whose root already exited."""
     with _lock:

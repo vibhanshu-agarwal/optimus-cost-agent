@@ -44,6 +44,7 @@ from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
 from optimus.agent.prompts import AGENT_PLANNER_PROMPT_VERSION
 from optimus.agent.state_store import RedisAgentStateStore
+from optimus.runtime import process_tree
 
 DEFAULT_VERIFY_TASK = (
     "Add a module docstring to `example.py` describing its function. "
@@ -281,7 +282,7 @@ def run_operator_live_session(
     # OPEN with no teardown record and no subprocess ever launched.
     try:
         subprocess_env = build_acp_subprocess_env(operator_environ=environ)
-        process = subprocess.Popen(
+        process = process_tree.popen(
             [
                 sys.executable,
                 "-m",
@@ -413,13 +414,11 @@ def _finish_verifier_lifetime(
 ) -> None:
     """Run every cleanup stage, close the store's runtime LAST, and never mask a failure.
 
-    Round 2, R1/R4; round 3, R8. EVERY operation in this finalizer -- including the
-    process-status query and the decisions that depend on it -- runs inside a protected
-    stage, and the runtime close sits in an outer ``finally`` so it is reached even if
-    something a stage cannot catch (a ``BaseException``) unwinds through the earlier
-    stages. When a primary exception is already propagating, cleanup failures are attached
-    to it as notes (frozen-safe) rather than replacing it; when nothing is propagating,
-    the first cleanup failure is raised after the runtime has been closed.
+    The session owns process and pipe shutdown after construction. If construction fails
+    the launcher still owns the process tree. The Redis runtime close sits in an outer
+    finally so it is reached even if a BaseException unwinds through the earlier stages.
+    An active primary exception receives cleanup failures as notes. Otherwise the first
+    cleanup failure is raised after the runtime has been closed.
     """
     primary = sys.exc_info()[1]
     failures: list[BaseException] = []
@@ -436,14 +435,8 @@ def _finish_verifier_lifetime(
         if session is not None:
             _stage(lambda: session.close_stdin())
             _stage(lambda: session.terminate())
-        if process is not None:
-            # R8: the status query is itself a cleanup operation that can fail. Its
-            # failure must neither skip the runtime close nor replace the primary error;
-            # when it cannot be answered the child is assumed to still be running.
-            still_running = _stage(lambda: process.poll() is None, fallback=True)
-            if still_running:
-                _stage(lambda: process.kill())
-                _stage(lambda: process.wait(timeout=5))
+        elif process is not None:
+            _stage(lambda: process_tree.stop_piped_process(process, deadline=time.monotonic() + 5))
         for tracked_run_id in run_ids:
             _stage(lambda run_id=tracked_run_id: _delete_plan_keys(store, run_id))
     finally:

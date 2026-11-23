@@ -11,6 +11,7 @@ from typing import Any, Never
 
 from optimus.acp.admission import DEFAULT_LIMITS, AdmissionAccount, AdmissionClass, AdmissionLimits, Reservation
 from optimus.acp.e2e_transcript import E2eAcpTranscriptWriter
+from optimus.runtime import process_tree
 from optimus_security.sanitization import sanitize_for_persistence
 
 
@@ -58,7 +59,7 @@ class NdjsonSubprocessSession:
     that reads and writes NDJSON-formatted messages. It also logs inbound and outbound communications
     and manages subprocess lifecycle and error handling.
 
-    :ivar process: The subprocess instance to communicate with.
+    :ivar process: The contained subprocess started with process_tree.popen.
     :type process: subprocess.Popen[str]
     :ivar transcript: The transcript writer that records inbound and outbound messages.
     :type transcript: E2eAcpTranscriptWriter
@@ -76,6 +77,7 @@ class NdjsonSubprocessSession:
         self._stderr_bytes = 0
         self._stderr_omitted = 0
         self._gate_rejection = ""
+        self._terminated = False
         self._reader = threading.Thread(target=self._read_stdout, daemon=True)
         self._stderr_reader = threading.Thread(target=self._read_stderr, daemon=True)
         self._reader.start()
@@ -170,10 +172,21 @@ class NdjsonSubprocessSession:
         return message
 
     def terminate(self) -> None:
-        if self._process.poll() is None:
-            self._process.kill()
-        self._reader.join(timeout=5)
-        self._stderr_reader.join(timeout=5)
+        if self._terminated:
+            return
+        try:
+            process_tree.stop_piped_process(
+                self._process,
+                (self._reader, self._stderr_reader),
+                deadline=time.monotonic() + 5,
+            )
+        except process_tree.PipeCleanupError as exc:
+            raise LiveSessionError(f"ACP subprocess cleanup incomplete: {exc}") from exc
+        # Closing an active reader's stream can block on its lock.
+        for stream in (self._process.stdout, self._process.stderr):
+            if stream is not None:
+                stream.close()
+        self._terminated = True
 
     def stderr_text(self) -> str:
         with self._stderr_lock:

@@ -79,7 +79,7 @@ def test_a_projection_failure_before_the_subprocess_closes_the_store_runtime(mon
     # are refused by the genuine projection, before any subprocess exists.
     monkeypatch.setattr(subprocess_env, "_windows_semantics_default", lambda: True)
     monkeypatch.setattr(
-        operator_verify.subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no subprocess"))
+        operator_verify.process_tree, "popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no subprocess"))
     )
 
     with pytest.raises(subprocess_env.SubprocessEnvConfigurationError):
@@ -113,7 +113,7 @@ def test_a_failing_session_cleanup_still_closes_the_store_runtime_and_keeps_the_
         def terminate(self):
             return None
 
-    monkeypatch.setattr(operator_verify.subprocess, "Popen", lambda *a, **k: _Process())
+    monkeypatch.setattr(operator_verify.process_tree, "popen", lambda *a, **k: _Process())
     monkeypatch.setattr(operator_verify, "NdjsonSubprocessSession", _checked_session_factory(_Session))
 
     with pytest.raises(RuntimeError, match="child rejected the first message") as exc_info:
@@ -123,82 +123,62 @@ def test_a_failing_session_cleanup_still_closes_the_store_runtime_and_keeps_the_
     assert any("stdin already closed" in note for note in getattr(exc_info.value, "__notes__", []))
 
 
-def _launch_child_whose_status_query_fails(monkeypatch, *, send_error: BaseException | None):
+def test_a_failed_session_start_stops_the_whole_tree_and_preserves_the_primary_failure(monkeypatch, tmp_path):
+    runtime, client, pool = _runtime()
+    _store_for(monkeypatch, runtime)
     env = {"OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0"}
     monkeypatch.setattr(operator_verify, "apply_local_defaults", lambda environ, **kw: env)
     monkeypatch.setattr(operator_verify, "build_acp_subprocess_env", lambda *, operator_environ: dict(operator_environ))
-    killed: list[int] = []
+    process = object()
+    primary = ValueError("session setup failure")
+    cleanup_calls = []
 
-    class _Process:
-        def poll(self):
-            raise OSError("process status query failed")
+    def fail_session(*, process, transcript):
+        raise primary
 
-        @property
-        def kill(self):
-            # Reached only because the unanswerable status query assumed the child was
-            # still running. Raising on ATTRIBUTE ACCESS models the reviewer's control: a
-            # finalizer that evaluates `process.kill` outside its stage lets this escape.
-            killed.append(1)
-            raise OSError("kill unavailable")
+    def stop_tree(child, *, deadline):
+        cleanup_calls.append(child)
+        raise operator_verify.process_tree.PipeCleanupError("root process reap unconfirmed")
 
-        def wait(self, timeout=None):
-            return 0
+    monkeypatch.setattr(operator_verify.process_tree, "popen", lambda *a, **k: process)
+    monkeypatch.setattr(operator_verify, "NdjsonSubprocessSession", fail_session)
+    monkeypatch.setattr(operator_verify.process_tree, "stop_piped_process", stop_tree)
+    with pytest.raises(ValueError) as exc_info:
+        operator_verify.run_operator_live_session(_config(tmp_path), environ=env, transcript=None)
+    assert exc_info.value is primary
+    assert cleanup_calls == [process]
+    assert any("root process reap unconfirmed" in note for note in primary.__notes__)
+    assert runtime.state is RedisRuntimeState.CLOSED
+    assert client.count == 1 and pool.count == 1
+    assert runtime.owner.is_terminated
+
+
+def test_cleanup_failure_prevents_an_ordinary_result_after_the_runtime_closes(monkeypatch, tmp_path):
+    runtime, client, pool = _runtime()
+    _store_for(monkeypatch, runtime)
+    env = {"OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0"}
+    monkeypatch.setattr(operator_verify, "apply_local_defaults", lambda environ, **kw: env)
+    monkeypatch.setattr(operator_verify, "build_acp_subprocess_env", lambda *, operator_environ: dict(operator_environ))
 
     class _Session:
-        def __init__(self, *, process, transcript) -> None:
+        def __init__(self, *, process, transcript):
             pass
 
         def send(self, message):
-            if send_error is not None:
-                raise send_error
             return None
 
         def wait_for_response(self, request_id, *, deadline):
-            # A well-formed but incomplete initialize reply: the verifier returns its
-            # ordinary failure RESULT, so no exception is propagating when cleanup runs.
             return {"result": {}}
 
         def close_stdin(self):
             return None
 
         def terminate(self):
-            return None
+            raise operator_verify.LiveSessionError("ACP subprocess cleanup incomplete")
 
-    monkeypatch.setattr(operator_verify.subprocess, "Popen", lambda *a, **k: _Process())
+    monkeypatch.setattr(operator_verify.process_tree, "popen", lambda *a, **k: object())
     monkeypatch.setattr(operator_verify, "NdjsonSubprocessSession", _checked_session_factory(_Session))
-    return env, killed
-
-
-def test_a_failing_process_status_query_never_skips_the_runtime_close_nor_replaces_the_primary_error(
-    monkeypatch, tmp_path
-):
-    """R8 MUTATION: `process.poll()` ran outside the protected stages -- its OSError replaced the
-    primary error and the owning runtime was left OPEN with its resources unclosed."""
-    runtime, client, pool = _runtime()
-    _store_for(monkeypatch, runtime)
-    primary = ValueError("primary operation failure")
-    env, killed = _launch_child_whose_status_query_fails(monkeypatch, send_error=primary)
-
-    with pytest.raises(ValueError) as exc_info:
-        operator_verify.run_operator_live_session(_config(tmp_path), environ=env, transcript=None)
-    assert exc_info.value is primary, "the cleanup failure replaced the primary error"
-    assert any("process status query failed" in note for note in getattr(primary, "__notes__", []))
-    assert runtime.state is RedisRuntimeState.CLOSED
-    assert client.count == 1 and pool.count == 1, "Redis teardown did not happen exactly once"
-    assert runtime.owner.is_terminated
-    assert killed == [1], "an unanswerable status query must assume the child is still running"
-    assert any("kill unavailable" in note for note in getattr(primary, "__notes__", []))
-
-
-def test_a_failing_process_status_query_with_no_primary_error_is_raised_after_the_runtime_closes(
-    monkeypatch, tmp_path
-):
-    """With nothing else propagating, the cleanup failure IS the failure -- reported, after custody ends."""
-    runtime, client, pool = _runtime()
-    _store_for(monkeypatch, runtime)
-    env, _killed = _launch_child_whose_status_query_fails(monkeypatch, send_error=None)
-
-    with pytest.raises(OSError, match="process status query failed"):
+    with pytest.raises(operator_verify.LiveSessionError, match="ACP subprocess cleanup incomplete"):
         operator_verify.run_operator_live_session(_config(tmp_path), environ=env, transcript=None)
     assert runtime.state is RedisRuntimeState.CLOSED
     assert client.count == 1 and pool.count == 1
@@ -211,7 +191,7 @@ def test_a_store_that_owns_no_runtime_is_refused_before_anything_is_launched(mon
     borrowed = runtime.sync_state_store()
     monkeypatch.setattr(operator_verify.RedisAgentStateStore, "from_url", create_autospec(operator_verify.RedisAgentStateStore.from_url, return_value=borrowed))
     launched: list[int] = []
-    monkeypatch.setattr(operator_verify.subprocess, "Popen", lambda *a, **k: launched.append(1))
+    monkeypatch.setattr(operator_verify.process_tree, "popen", lambda *a, **k: launched.append(1))
     env = {"OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0"}
     monkeypatch.setattr(operator_verify, "apply_local_defaults", lambda environ, **kw: env)
     try:

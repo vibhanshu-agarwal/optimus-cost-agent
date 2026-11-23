@@ -29,6 +29,48 @@ from optimus.acp.ndjson_subprocess_session import (
 )
 
 
+@pytest.mark.parametrize("shape", ["parent-exited", "parent-alive"])
+def test_terminate_stops_inherited_pipe_holders(tmp_path, shape: str) -> None:
+    import subprocess
+    import sys
+    import time
+    from unittest.mock import Mock
+
+    from optimus.runtime import process_tree
+    from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
+    from tests.support.fault_injection import descendant_tree
+
+    script, _ = descendant_tree(tmp_path, shape, sleep_seconds=14)
+    roles = ("grandchild",)
+    with DescendantRecorder(tmp_path, roles) as recorder:
+        process = process_tree.popen(
+            [sys._base_executable, "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        session = NdjsonSubprocessSession(process=process, transcript=Mock())
+        try:
+            if shape == "parent-exited":
+                assert process.wait(timeout=5) == 0
+            assert recorder.wait_for(roles, timeout=3)
+            assert session._reader.is_alive() and session._stderr_reader.is_alive()
+            started = time.monotonic()
+            session.terminate()
+            elapsed = time.monotonic() - started
+            assert elapsed < 6, f"NDJSON cleanup took {elapsed:.3f}s"
+            assert not session._reader.is_alive()
+            assert not session._stderr_reader.is_alive()
+            assert process.returncode is not None
+            assert process.stdout is not None and process.stdout.closed
+            assert process.stderr is not None and process.stderr.closed
+            assert_descendants_killed(recorder, roles, deadline=started + 6, what="NDJSON cleanup")
+        finally:
+            process_tree.kill_tree(process)
+            session._reader.join(timeout=2)
+            session._stderr_reader.join(timeout=2)
+
+
 def _bare_session():
     session = object.__new__(NdjsonSubprocessSession)
     session._limits = AdmissionLimits()
