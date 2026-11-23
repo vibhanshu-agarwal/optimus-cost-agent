@@ -636,6 +636,12 @@ why = "Maintained signal: imports tests.support.concurrency or tests.support.fau
 
 [[tags]]
 name = "concurrency"
+nodes = ["tests/unit/acp/test_ndjson_subprocess_session.py::test_terminate_stops_inherited_pipe_holders"]
+why = "#273: real descendants can retain both captured pipes while the verifier stops the process tree."
+
+
+[[tags]]
+name = "concurrency"
 paths = [
   "tests/unit/acp/test_lifecycle.py",
   "tests/unit/acp/test_plan121_chat_mode.py",

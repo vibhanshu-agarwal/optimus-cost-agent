@@ -747,7 +747,7 @@ def test_acp_argument_vector_ownership_and_shell_false(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(acp_mod.shutil, "which", fake_which)
     monkeypatch.setattr(acp_mod.subprocess, "run", fake_run)
-    monkeypatch.setattr(acp_mod.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(acp_mod.process_tree, "popen", fake_popen)
 
     workspace = Path(r"D:\ws").resolve()
     agent = Path(r"D:\bin\optimus-agent.exe").resolve()
@@ -773,7 +773,8 @@ def test_acp_argument_vector_ownership_and_shell_false(monkeypatch: pytest.Monke
     assert missing.value.code == "acpx_not_on_path"
 
 
-def test_acp_process_timeout_is_content_free(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("kill_fails", [False, True], ids=["cleaned-up", "cleanup-incomplete"])
+def test_acp_process_timeout_is_content_free(monkeypatch: pytest.MonkeyPatch, kill_fails: bool) -> None:
     from tools.evidence_gather_support import acp as acp_mod
     from tools.evidence_gather_support.common import HostError
 
@@ -784,9 +785,8 @@ def test_acp_process_timeout_is_content_free(monkeypatch: pytest.MonkeyPatch) ->
             return None
 
         def wait(self, timeout=None):
-            raise acp_mod.subprocess.TimeoutExpired(cmd=["acpx"], timeout=timeout)
-
-        def communicate(self, timeout=None):
+            if self.returncode is not None:
+                return self.returncode
             raise acp_mod.subprocess.TimeoutExpired(cmd=["acpx"], timeout=timeout)
 
         def kill(self):
@@ -796,7 +796,13 @@ def test_acp_process_timeout_is_content_free(monkeypatch: pytest.MonkeyPatch) ->
         stdout = None
         stderr = None
 
-    monkeypatch.setattr(acp_mod.subprocess, "Popen", lambda *a, **k: Proc())
+    monkeypatch.setattr(acp_mod.process_tree, "popen", lambda *a, **k: Proc())
+    def kill_tree(process):
+        if kill_fails:
+            raise OSError("unpublished process detail")
+        process.kill()
+
+    monkeypatch.setattr(acp_mod.process_tree, "kill_tree", kill_tree)
     with pytest.raises(HostError) as exc_info:
         acp_mod.spawn_acpx(
             command=["acpx", "exec", "x"],
@@ -804,7 +810,40 @@ def test_acp_process_timeout_is_content_free(monkeypatch: pytest.MonkeyPatch) ->
             env={},
             timeout_seconds=1,
         )
-    assert exc_info.value.code == "acpx_timeout"
+    expected = "acpx_timeout_cleanup_incomplete" if kill_fails else "acpx_timeout"
+    assert str(exc_info.value) == expected
+
+
+
+@pytest.mark.parametrize("capture", [False, True], ids=["discard", "capture-files"])
+def test_spawn_acpx_timeout_stops_descendant_holding_pipes(tmp_path: Path, capture: bool) -> None:
+    import sys
+    import time
+
+    from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
+    from tests.support.fault_injection import descendant_tree
+    from tools.evidence_gather_support import acp as acp_mod
+    from tools.evidence_gather_support.common import HostError
+
+    script, _ = descendant_tree(tmp_path, "parent-exited", sleep_seconds=13)
+    roles = ("grandchild",)
+    output = tmp_path / "stdout.txt" if capture else None
+    error = tmp_path / "stderr.txt" if capture else None
+    with DescendantRecorder(tmp_path, roles) as recorder:
+        started = time.monotonic()
+        with pytest.raises(HostError) as failure:
+            acp_mod.spawn_acpx(
+                command=[sys._base_executable, "-c", script],
+                cwd=tmp_path,
+                env=acp_mod.host_process_env(),
+                timeout_seconds=2,
+                stdout_path=output,
+                stderr_path=error,
+            )
+        elapsed = time.monotonic() - started
+        assert elapsed < 8, f"acpx cleanup took {elapsed:.3f}s"
+        assert failure.value.code == "acpx_timeout"
+        assert_descendants_killed(recorder, roles, deadline=started + 8, what="acpx timeout")
 
 
 def test_completion_matches_exact_location_and_correlation() -> None:
