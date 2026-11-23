@@ -677,3 +677,52 @@ def test_an_exact_retry_after_an_ambiguity_stop_is_selected_through_the_real_run
 
     assert context.blocking_stop_reason is None, context.blocking_message
     assert context.prioritized_paths[0] == "src/gateway/config.py"
+
+
+# --- Plan 12.13 Task 4 (Codex round 120, option A): a turn that did not complete selects without its host notice ---
+
+_STOP_NOTICE = ("Workspace reference 'config.py' is ambiguous. Candidates, most likely first: src/gateway/config.py (task terms: gateway); "
+                "src/agent/config.py. The order is a suggestion and chose nothing. Retry with one exact workspace-relative path.")
+
+
+def _one_turn(outcome: ConversationOutcome, completion: str = _STOP_NOTICE) -> dict[int, ConversationTurn]:
+    return {1: ConversationTurn(user_prompt="fix the gateway timeout in config.py, as notes.md says", plan_text="PLAN: compare plan.md",
+                                completion_text=completion, outcome=outcome, effect_state=EffectState.NONE)}
+
+
+def _selection(prompt: str, outcome: ConversationOutcome) -> str:
+    from optimus.context.assembly import full_history_view
+
+    snap = snapshot(_one_turn(outcome), approvals={})
+    return build_selection_text(prompt, snap, full_history_view(snap))
+
+
+@pytest.mark.parametrize("outcome", [ConversationOutcome.FAILED, ConversationOutcome.REJECTED, ConversationOutcome.CANCELLED])
+def test_a_turn_that_did_not_complete_selects_with_its_prompt_and_plan_but_never_its_notice(outcome):
+    selection = _selection("Now src/gateway/config.py", outcome)
+    assert "src/agent/config.py" not in selection and "most likely first" not in selection
+    assert "notes.md" in selection and "plan.md" in selection  # the person's words and the plan still select
+
+
+def test_a_completed_answer_still_selects():
+    assert "src/agent/config.py" in _selection("Now src/gateway/config.py", ConversationOutcome.COMPLETED)
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry(tmp_path, mode):
+    """The live acpx retry required every candidate the stop listed; one too large for the context would have refused the retry."""
+    for folder, size in (("src/gateway", 10), ("src/agent", 20 * 1024)):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "config.py").write_text("x" * size, encoding="utf-8")
+    prompt = "fix the gateway timeout in src/gateway/config.py"
+    reply = "It is set there." if mode is ExecutionMode.CHAT else "REFUSE: test"
+
+    request = _attached_request(tmp_path, mode, prompt=prompt, selection=_selection(prompt, ConversationOutcome.FAILED), envelope="")
+    context, _gateway, _result = _run_and_observe(tmp_path, request, reply)
+    assert context.blocking_stop_reason is None, context.blocking_message
+    assert context.prioritized_paths == ("src/gateway/config.py",)
+
+    # the control: had the notice selected (as a completed answer's text does), the unchosen file would have refused the retry
+    control = _attached_request(tmp_path, mode, prompt=prompt, selection=_selection(prompt, ConversationOutcome.COMPLETED), envelope="")
+    context, _gateway, _result = _run_and_observe(tmp_path, control, reply)
+    assert context.blocking_stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE"

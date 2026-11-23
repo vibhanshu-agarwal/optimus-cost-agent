@@ -1707,3 +1707,31 @@ def test_an_index_turns_exact_retry_is_settled_and_ranked_on_its_own_prompt(work
     again = "and in config.py?"
     stopped = _assemble(session.turn(), task=again, selection_text=f"{again}\n{earlier}")
     assert stopped.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"  # history's own paths settle nothing
+
+
+@pytest.mark.parametrize("outcome", ["failed", "rejected", "cancelled"])
+def test_an_index_turns_retry_never_requires_a_candidate_only_the_stop_listed(workspace, outcome):
+    """Codex round 120, option A, on the index's path: the selection the host builds leaves out a turn's notice unless it completed."""
+    from optimus.acp.conversation import ConversationOutcome, ConversationSanitizer, ConversationSanitizerInputs, ConversationTurn
+    from optimus.acp.settlement import EffectState
+    from optimus.context.adapter import make_history_snapshot
+    from optimus.context.assembly import build_selection_text, full_history_view
+
+    for folder, text in (("lib/y", "OLD = 1\n"), ("src/x", "route_timeout = 5\n")):
+        (workspace / folder).mkdir(parents=True)
+        (workspace / folder / "config.py").write_text(text, encoding="utf-8", newline="\n")
+    notice = "Workspace reference 'config.py' is ambiguous. Candidates, most likely first: src/x/config.py; lib/y/config.py."
+    records = {1: ConversationTurn(user_prompt="where is route_timeout set in config.py", plan_text="", completion_text=notice,
+                                   outcome=ConversationOutcome(outcome), effect_state=EffectState.NONE)}
+    snap = make_history_snapshot(session_key="s", generation=1, records=records, approvals={},
+                                 sanitizer=ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=(), known_pii=())))
+    retry = "where is route_timeout set in src/x/config.py"
+    session = _session(workspace, _Storage([_record("x", "src/x/config.py", "route_timeout", _sha("route_timeout = 5\n")),
+                                            _record("y", "lib/y/config.py", "OLD", _sha("OLD = 1\n"))]))
+
+    result = _assemble(session.turn(), task=retry, selection_text=build_selection_text(retry, snap, full_history_view(snap)))
+
+    assert result.blocking_stop_reason is None, result.blocking_message
+    from optimus.agent.workspace_context import WorkspaceReferenceStatus
+
+    assert [item.candidates[0] for item in result.diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED] == ["src/x/config.py"]

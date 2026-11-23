@@ -50,6 +50,7 @@ from context_engine.selection import render_ordinary_turn, render_protected_stat
 from context_engine.summary import render_summary_block
 from optimus.acp.conversation import (
     CONVERSATION_MAX_BYTES,
+    ConversationOutcome,
     ConversationSanitizer,
     ConversationTurn,
     mark_inert_plan,
@@ -173,12 +174,19 @@ def render_context_view(snapshot: HistorySnapshot, view: PreparedView) -> str:
 
 def build_selection_text(prompt: str, snapshot: HistorySnapshot, view: PreparedView) -> str:
     """What selects workspace files and skills: the current prompt first, then the exact turns'
-    ordinary text, then every protected record. Never summary text, never an omitted turn."""
+    ordinary text, then every protected record. Never summary text, never an omitted turn.
+
+    A turn that did not complete selects with its prompt and plan only: its completion text is the host's own stop, refusal, failure
+    or cancellation notice, never content the person or a completed answer settled (Plan 12.13 Task 4, Codex round 120: an
+    ambiguity stop listed every candidate, and the retry then required them all). Selection only: the records and the model's view
+    of the history are unchanged."""
     by_seq = _check(snapshot, view)
+    outcome = {state.seq: state.outcome for state in snapshot.protected}
     parts = [prompt]
     for seq in (*view.head_turn_ids, *view.tail_turn_ids):
         turn = by_seq[seq]
-        parts.extend(text for text in (turn.user_prompt, turn.plan_text, turn.completion_text) if text)
+        completion = turn.completion_text if outcome[seq] == ConversationOutcome.COMPLETED.value else ""
+        parts.extend(text for text in (turn.user_prompt, turn.plan_text, completion) if text)
     parts.extend(render_protected_state(state) for state in view.protected)
     return "\n".join(parts)
 
