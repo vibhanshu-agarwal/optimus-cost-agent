@@ -71,7 +71,7 @@ unchanged, to [Archived moved plans](#archived-moved-plans).
 
 | Plan | State | Backlog owner | Next gate |
 |---|---|---|---|
-| [Plan 12.13 context explanation and ranked ambiguity (memory M2a)](2026-11-23-plan-12-13-context-why-and-ambiguity-implementation_v3.md) | — | — | [#545](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/545) |
+| [Plan 12.13 context explanation and ranked ambiguity (memory M2a)](2026-11-23-plan-12-13-context-why-and-ambiguity-implementation_v4.md) | — | — | [#545](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/545) |
 | [Plan 12.14 ranking refinements and model-aware context budgets (memory M2b)](2026-11-23-plan-12-14-ranking-and-budgets-implementation.md) | — | — | [#548](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548) |
 | [Plan 11.32 — work-status Bugs table](2026-11-03-plan-11-32-work-status-bugs.md) | — | — | [#354](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/354) |
 | [Idle client-MCP lifetime v3](2026-10-26-idle-mcp-suspension-main-port_v3.md) | — | — | [#427](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/427) |
