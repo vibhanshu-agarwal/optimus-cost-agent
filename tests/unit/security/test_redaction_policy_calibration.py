@@ -189,7 +189,9 @@ class TestCompatibilityPolicyDefaults:
         assert result.rule_counts.get("email_masking", 0) == 0
 
     def test_policy_constants_are_frozen_and_versioned(self) -> None:
-        assert sanitization_mod.EVIDENCE_REDACTION_POLICY.version == "evidence-redaction-v1"
+        # v2 / workspace-subject-v2: the whitespace assignment rule masks the value after a copula (#505).
+        assert sanitization_mod.EVIDENCE_REDACTION_POLICY.version == "evidence-redaction-v2"
+        assert sanitization_mod.WORKSPACE_SUBJECT_SANITIZATION_POLICY.version == "workspace-subject-v2"
         assert sanitization_mod.COMPATIBILITY_SANITIZATION_POLICY.version == "compatibility-v1"
         with pytest.raises((AttributeError, dataclasses.FrozenInstanceError)):
             sanitization_mod.EVIDENCE_REDACTION_POLICY.version = "mutated"  # type: ignore[misc]

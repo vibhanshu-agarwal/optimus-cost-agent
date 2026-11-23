@@ -12,8 +12,11 @@ from pathlib import Path
 
 import pytest
 
+from optimus.telemetry.subjects import sanitize_workspace_text
 from optimus_security.sanitization import (
+    EVIDENCE_REDACTION_POLICY,
     MAX_SECRET_TEXT_CHARS,
+    WORKSPACE_SUBJECT_SANITIZATION_POLICY,
     StreamingTextSanitizer,
     canonicalize_credential_uri,
     mask_uri_userinfo,
@@ -73,7 +76,7 @@ class TestUriUserinfoMasking:
 
     def test_http_userinfo_masked(self) -> None:
         result = sanitize_for_persistence(
-            "connecting to http://admin:hunter2@db.example.com:5432/mydb",
+            "connecting to http://admin:hunter2@db.example.com:5432/mydb",  # pragma: allowlist secret
             known_secrets=[],
         )
         assert "hunter2" not in result.value
@@ -81,7 +84,7 @@ class TestUriUserinfoMasking:
 
     def test_https_userinfo_masked(self) -> None:
         result = sanitize_for_persistence(
-            "url: https://user:pass@host.com/path",
+            "url: https://user:pass@host.com/path",  # pragma: allowlist secret
             known_secrets=[],
         )
         assert "pass" not in result.value
@@ -90,7 +93,7 @@ class TestUriUserinfoMasking:
     def test_redis_userinfo_masked(self) -> None:
         """Redis URLs with credentials get masked."""
         result = sanitize_for_persistence(
-            "OPTIMUS_REDIS_URL=redis://default:s3cr3t@127.0.0.1:6379/0",
+            "OPTIMUS_REDIS_URL=redis://default:s3cr3t@127.0.0.1:6379/0",  # pragma: allowlist secret
             known_secrets=[],
         )
         assert "s3cr3t" not in result.value
@@ -148,7 +151,7 @@ class TestEnvAssignmentRedaction:
 
     def test_optimus_api_key_assignment(self) -> None:
         result = sanitize_for_persistence(
-            "OPTIMUS_API_KEY=opt-secret-value",
+            "OPTIMUS_API_KEY=opt-secret-value",  # pragma: allowlist secret
             known_secrets=[],
         )
         assert "opt-secret-value" not in result.value
@@ -175,11 +178,71 @@ class TestEnvAssignmentRedaction:
         assert "my-bearer-tok" not in result.value
 
 
+_WHITESPACE_RULE_POLICIES = pytest.mark.parametrize(
+    "policy",
+    [EVIDENCE_REDACTION_POLICY, WORKSPACE_SUBJECT_SANITIZATION_POLICY],
+    ids=lambda policy: policy.version,
+)
+_FAKE = "FAKE-VALUE-FOR-TESTS"
+
+# (input, expected): the rule masks the value after the keyword, keeping any copula or separator (#505).
+_WHITESPACE_CASES = [
+    (f"token {_FAKE}", "token **********"),
+    (f"my deploy token is {_FAKE}.", "my deploy token is **********"),
+    (f"the password was {_FAKE}", "the password was **********"),
+    (f"secret = {_FAKE}", "secret = **********"),
+    (f"credential : {_FAKE}", "credential : **********"),
+    (f"My Deploy Token IS {_FAKE}", "My Deploy Token IS **********"),
+    (f"API_KEY Was {_FAKE} today", "API_KEY Was ********** today"),
+    (f"my token is: {_FAKE}", "my token is: **********"),
+    (f"secret is = {_FAKE}", "secret is = **********"),
+    (f"the password was: {_FAKE}", "the password was: **********"),
+    (f"token is:{_FAKE}", "token **********"),
+]
+
+
+class TestWhitespaceSecretAssignment:
+    """The whitespace assignment rule masks the value, not a copula (#505)."""
+
+    @_WHITESPACE_RULE_POLICIES
+    @pytest.mark.parametrize(("text", "expected"), _WHITESPACE_CASES)
+    def test_masks_the_value_not_the_copula(self, policy, text: str, expected: str) -> None:
+        result = sanitize_for_persistence(text, policy=policy)
+        assert result.value == expected
+        assert result.rule_counts.get("whitespace_secret_assignment") == 1
+
+    @_WHITESPACE_RULE_POLICIES
+    @pytest.mark.parametrize(("text", "expected"), _WHITESPACE_CASES)
+    def test_resanitizing_is_stable(self, policy, text: str, expected: str) -> None:
+        once = sanitize_for_persistence(text, policy=policy).value
+        assert sanitize_for_persistence(once, policy=policy).value == once == expected
+
+    @_WHITESPACE_RULE_POLICIES
+    @pytest.mark.parametrize("masked", ["token=**********", "token: **********", "token is **********", "token is: **********"])
+    def test_already_masked_text_is_unchanged(self, policy, masked: str) -> None:
+        assert sanitize_for_persistence(masked, policy=policy).value == masked
+
+    def test_streaming_sanitizer_masks_the_value(self) -> None:
+        stream = StreamingTextSanitizer(policy=EVIDENCE_REDACTION_POLICY)
+        out = stream.feed(f"my deploy token is {_FAKE}") + stream.finalize()
+        assert _FAKE not in out
+        assert "token is **********" in out
+
+    def test_workspace_subject_entry_point_masks_the_value(self) -> None:
+        assert sanitize_workspace_text(f"my deploy token is {_FAKE}", workspace_root=None) == (
+            "my deploy token is **********"
+        )
+
+    def test_compatibility_policy_leaves_whitespace_assignments_alone(self) -> None:
+        text = f"my deploy token is {_FAKE}"
+        assert sanitize_for_persistence(text).value == text
+
+
 class TestDictKeyRedaction:
     """Dictionary keys that indicate secrets get their values redacted."""
 
     def test_api_key_field_redacted(self) -> None:
-        data = {"api_key": "sk-secret-123", "model": "gpt-4"}
+        data = {"api_key": "sk-secret-123", "model": "gpt-4"}  # pragma: allowlist secret
         result = sanitize_for_persistence(data, known_secrets=[])
         assert result.value["api_key"] == "**********"
         assert result.value["model"] == "gpt-4"
@@ -195,13 +258,13 @@ class TestDictKeyRedaction:
         assert result.value["headers"]["x-api-key"] == "**********"
 
     def test_password_field_redacted(self) -> None:
-        data = {"password": "p4ssw0rd", "username": "admin"}
+        data = {"password": "p4ssw0rd", "username": "admin"}  # pragma: allowlist secret
         result = sanitize_for_persistence(data, known_secrets=[])
         assert result.value["password"] == "**********"
         assert result.value["username"] == "admin"
 
     def test_optimus_api_key_field_redacted(self) -> None:
-        data = {"optimus_api_key": "opt-secret"}
+        data = {"optimus_api_key": "opt-secret"}  # pragma: allowlist secret
         result = sanitize_for_persistence(data, known_secrets=[])
         assert result.value["optimus_api_key"] == "**********"
 
@@ -268,7 +331,7 @@ class TestRuleCounts:
 @pytest.mark.parametrize(
     ("uri", "normalized", "display", "present"),
     [
-        ("redis://user:pass@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
+        ("redis://user:pass@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),  # pragma: allowlist secret
         ("redis://@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
         ("redis://:pass@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
         ("redis://user:@host:6379/0", "redis://host:6379/0", "redis://**********@host:6379/0", True),
@@ -352,7 +415,7 @@ class TestStreamingTextSanitizer:
         assert "sk-ant-secret123" not in out
 
     def test_secret_split_evenly_across_two_chunks(self) -> None:
-        secret = "sk-ant-secret123456789"
+        secret = "sk-ant-secret123456789"  # pragma: allowlist secret
         sanitizer = StreamingTextSanitizer(known_secrets=[secret])
         mid = len(secret) // 2
         out = sanitizer.feed("prefix " + secret[:mid])
@@ -364,7 +427,7 @@ class TestStreamingTextSanitizer:
         """The specific edge a naive 'split in the middle' test would miss:
         exactly ONE character of the secret arrives in the first chunk, and
         the remaining (length - 1) characters arrive in the second."""
-        secret = "sk-ant-secret123456789"
+        secret = "sk-ant-secret123456789"  # pragma: allowlist secret
         sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
         out = sanitizer.feed("prefix " + secret[:1])
         out += sanitizer.feed(secret[1:] + " suffix")
@@ -375,7 +438,7 @@ class TestStreamingTextSanitizer:
         """Mirror image of the case above: all but the LAST character
         arrives in the first chunk, and the final character arrives alone
         in the second chunk."""
-        secret = "sk-ant-secret123456789"
+        secret = "sk-ant-secret123456789"  # pragma: allowlist secret
         sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
         out = sanitizer.feed("prefix " + secret[:-1])
         out += sanitizer.feed(secret[-1:] + " suffix")
@@ -385,7 +448,7 @@ class TestStreamingTextSanitizer:
     def test_secret_split_across_many_single_character_chunks(self) -> None:
         """Every character fed in its own separate chunk -- the extreme
         version of the worst-case split, one character at a time."""
-        secret = "sk-ant-secret123456789"
+        secret = "sk-ant-secret123456789"  # pragma: allowlist secret
         sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
         out = sanitizer.feed("prefix ")
         for ch in secret:
@@ -406,7 +469,7 @@ class TestStreamingTextSanitizer:
         assert secrets[1] not in out
 
     def test_finalize_flushes_remaining_pending_buffer(self) -> None:
-        secret = "sk-ant-secret123456789"
+        secret = "sk-ant-secret123456789"  # pragma: allowlist secret
         sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
         sanitizer.feed(secret)
         final_out = sanitizer.finalize()
@@ -422,7 +485,7 @@ class TestStreamingTextSanitizer:
         assert out == "just plain text"
 
     def test_rule_counts_accumulate_across_feeds(self) -> None:
-        secret = "sk-ant-secret123456789"
+        secret = "sk-ant-secret123456789"  # pragma: allowlist secret
         sanitizer = StreamingTextSanitizer(known_secrets=[secret], max_secret_chars=len(secret))
         sanitizer.feed(f"one={secret} ")
         sanitizer.feed(f"two={secret}")
@@ -450,7 +513,7 @@ class TestSessionCorrelationTag:
 
         session_key = b"session-key-bytes-32-long-abcd!!"
         field_name = "OPTIMUS_API_KEY"
-        secret = "my-secret"
+        secret = "my-secret"  # pragma: allowlist secret
         secret_bytes = secret.encode("utf-8")
         domain = b"p996-correlation-tag-v1"
         message = domain + b"\x00" + field_name.encode("utf-8") + b"\x00" + len(secret_bytes).to_bytes(8, "big") + secret_bytes
@@ -492,7 +555,7 @@ class TestSessionCorrelationTag:
 
     def test_tag_never_contains_the_secret_substring(self) -> None:
         session_key = b"session-key-bytes-32-long-abcd!!"
-        secret = "hunter2-canary-value"
+        secret = "hunter2-canary-value"  # pragma: allowlist secret
         tag = session_correlation_tag(secret, field_name="OPTIMUS_API_KEY", session_key=session_key)
         assert secret not in tag
 

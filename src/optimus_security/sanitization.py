@@ -56,8 +56,10 @@ _RECOGNIZED_PREFIXES: tuple[str, ...] = (
 _BEARER_TOKEN_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)\S+")
 _ENV_ASSIGNMENT_RE = re.compile(r"(?i)\b([A-Z_][A-Z0-9_]*(?:_KEY|_SECRET|_TOKEN|_PASSWORD))\s*=\s*\S+")
 _GENERIC_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(token|password|secret|credential|api[_-]?key)((?:=|:)\s*)\S+")
+# Group 2 keeps an optional copula and/or separator ("token is X", "token = X", "token is: X") so the mask lands on the
+# value (#505).
 _WHITESPACE_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+)\S+"
+    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was)(?:\s*[=:])?\s+|[=:]\s+)?)\S+"
 )
 _API_KEY_HEADER_RE = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
 _X_API_KEY_HEADER_RE = re.compile(r"(?i)x-api-key:\s*\S+")
@@ -142,8 +144,9 @@ class SanitizationPolicy:
 
 COMPATIBILITY_SANITIZATION_POLICY = SanitizationPolicy(version="compatibility-v1")
 
+# v2 (#505): the whitespace assignment rule masks the value after a copula. Manifests recorded as v1 stay valid.
 EVIDENCE_REDACTION_POLICY = SanitizationPolicy(
-    version="evidence-redaction-v1",
+    version="evidence-redaction-v2",
     enable_whitespace_secret_assignment=True,
     enable_prefix_detection=True,
     enable_entropy_detection=True,
@@ -155,8 +158,10 @@ EVIDENCE_REDACTION_POLICY = SanitizationPolicy(
 
 # Workspace subjects enable the shared whitespace assignment rule without
 # changing the default compatibility contract used by redact_for_telemetry.
+# Its own identity since #505 changed that rule's output; before it, this policy reported compatibility-v1.
 WORKSPACE_SUBJECT_SANITIZATION_POLICY = replace(
     COMPATIBILITY_SANITIZATION_POLICY,
+    version="workspace-subject-v2",
     enable_whitespace_secret_assignment=True,
 )
 
