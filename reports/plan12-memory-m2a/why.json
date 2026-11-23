@@ -9,9 +9,12 @@
  },
  "run": {
   "command": "pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py tests/unit/guardrails/test_file_policy.py tests/unit/agent/test_context_selection.py",
-  "code_head": "git:5aeac3a9542c4e08894417241d374df03ac3c6c5 (clean apart from reports/plan12-memory-m2a/inventory.json)",
-  "result": "149 passed, 3 skipped in 74.72s (0:01:14)",
-  "log": "hex:207270fcfb8dfac26e8d3117cd3539b542b22e161a2a36d691549fb06bd7f155"
+  "code_head": "git:7f18e60527346a74d44fb05fd2ae495cb5f9ccac",
+  "uncommitted_at_run": [
+   "M reports/plan12-memory-m2a/authority.json"
+  ],
+  "result": "151 passed, 3 skipped in 4.86s",
+  "log": "hex:48d2dd980c152ac8358a294e6573c39c595496338c00b83c0f6fcac4c34ed3bc"
  },
  "history": {
   "first": "reports/plan12-memory-m2a/why.json at git:bde5e26",
@@ -20,7 +23,7 @@
    "E09": "no per-round breakdown",
    "E12": "'/why 0' got the usage line without the valid range"
   },
-  "fixed_by": "git:5aeac3a (Codex CP3 review 1, findings 2 and 3)"
+  "fixed_by": "git:5aeac3a (Codex CP3 review 1, findings 2 and 3) and git:7f18e60 (review 2, finding 1: per-round preparations)"
  },
  "bounds": {
   "entries_per_page": 40,
@@ -121,10 +124,11 @@
     "tests/unit/context/test_context_why.py::test_e09_requests_and_planning_rounds_are_counted_apart",
     "tests/unit/context/test_context_why.py::test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_and_attempt",
     "tests/unit/context/test_context_why.py::test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn",
+    "tests/unit/context/test_context_why.py::test_e09_a_round_that_prepared_a_request_and_sent_none_is_listed",
     "tests/unit/context/test_context_why.py::test_an_index_turn_shows_its_choices_ranks_fit_and_grounding_but_no_bodies"
    ],
    "status": "met",
-   "note": "met at git:5aeac3a: each request carries the round and attempt the planning loop recorded as it sent it (shown through the real AgentRunner by tests/unit/agent/test_context_selection.py::test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round), and /why lists requests per round with retries; the Gateway's own route attempts inside one request are said not to be host requests. Partly met at git:bde5e26 (history)"
+   "note": "met at git:7f18e60: each round's prepared requests (fitted or not) and sent requests (with retries) carry the round the planning loop recorded at each step, shown through the real AgentRunner by tests/unit/agent/test_context_selection.py::test_a_round_whose_request_does_not_fit_is_recorded_as_prepared_and_never_sent and ::test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round; a round that prepared a request and sent none is listed; the Gateway's own route attempts inside one request are said not to be host requests. Partly met at git:bde5e26, and without preparations at git:5aeac3a (Codex CP3 review 2, finding 1) (history)"
   },
   {
    "case": "E10",

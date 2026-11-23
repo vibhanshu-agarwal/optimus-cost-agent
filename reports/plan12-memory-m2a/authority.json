@@ -127,10 +127,21 @@
      "one durable launch approval for optimus-handoff/p1213-task4/zed/cfg, approved and revoked by the operator at a terminal"
     ],
     "scope": "CP3: Zed step 7 (/why 2) and a /why 0 check; everything torn down afterwards"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Full rerun, release index (Recommended)",
+    "answering": "Codex CP3 review 2, finding 3: r4 and r5 kept no run-context records, and their clones are gone. How should they be replaced?",
+    "resources": [
+     "dedicated index Redis: container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, the same image and 512 MB cap",
+     "the configured bge-small-en-v1.5 embedding artifact (snapshot aa8f8b060edb00e03bfdd08813a2949946c8ba55)"
+    ],
+    "scope": "CP3 disposition and release: one new attributed run, r6, of all 23 mutations at the current code with records archived; r4 and r5 kept as history, marked records-unrecoverable"
    }
   ],
   "start_task_1": "operator 2026-11-23 'Release both, start'",
-  "status": "Task 4 released and torn down; CP3 released the index Redis (r5) and one Zed session (step 7)",
+  "status": "Task 4 released and torn down; CP3 released the index Redis (r5, then r6) and one Zed session (step 7)",
   "start_task_4": "operator 2026-11-23 'Release all, start'"
  },
  "review_rules": {
