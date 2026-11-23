@@ -160,6 +160,38 @@ def test_a_confirmed_launch_binds_every_request_to_what_it_compared(launch, monk
     assert environ[GATEWAY_IDENTITY_ENVIRON] == identity.digest
     assert OptimusGatewaySettings.from_env(environ).auth_headers()[gi.HEADER] == identity.digest
     assert launch["delivery"] == ["start"]
+    assert "borrowed_gateway_check" not in launch["built"][0]
+
+
+@pytest.mark.parametrize("flags", [[], ["--no-auto-start"]], ids=["auto-start", "no-auto-start"])
+def test_only_verified_gateway_reuse_wires_a_fresh_prompt_check(launch, monkeypatch, tmp_path, flags) -> None:
+    calls = []
+    refusals = []
+    reachable = True
+
+    def verify(url, *, api_key, hmac_key, expected, log):
+        calls.append((url, expected.digest))
+        if not reachable:
+            raise LocalInfrastructureError(code="GATEWAY_IDENTITY_UNCONFIRMED", user_message="listener lost")
+
+    monkeypatch.setattr(local_infra, "_tcp_reachable", lambda *_args: True)
+    monkeypatch.setattr(local_infra, "verify_local_gateway", verify)
+    monkeypatch.setattr(acp_main, "record_gateway_refusal", lambda root, **kwargs: refusals.append((root, kwargs)))
+    assert acp_main.main([*flags, "--workspace-root", str(tmp_path)]) == 0
+    [built] = launch["built"]
+    check = built.get("borrowed_gateway_check")
+    assert check is not None
+    [startup_call] = calls
+    assert startup_call[1] == built["environ"][GATEWAY_IDENTITY_ENVIRON]
+
+    reachable = False
+    with pytest.raises(LocalInfrastructureError, match="listener lost"):
+        check()
+    reachable = True
+    assert check() is True
+    assert calls == [startup_call] * 3
+    [(_runtime_root, fields)] = refusals
+    assert fields == {"code": "GATEWAY_IDENTITY_UNCONFIRMED", "reason": "listener lost"}
 
 
 def test_settings_with_no_expectation_send_no_binding() -> None:

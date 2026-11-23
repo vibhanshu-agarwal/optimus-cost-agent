@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import functools
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -202,6 +202,7 @@ def build_configured_server(
     memory_index: tuple[Path, Path] | None = None,
     memory_store: Path | None = None,
     memory_notice: str | None = None,
+    borrowed_gateway_check: Callable[[], bool] | None = None,
 ) -> AcpStreamServer:
     """
     Builds and configures an `AcpStreamServer` instance with the specified environment
@@ -375,6 +376,7 @@ def build_configured_server(
             auto_router=auto,
             durable_capture=durable_capture,
             usage_reports=_usage_reports(settings, durable_capture),
+            borrowed_gateway_check=borrowed_gateway_check,
         )
     except BaseException as exc:
         # Composition failed after the harness (and possibly the client-MCP runtime)

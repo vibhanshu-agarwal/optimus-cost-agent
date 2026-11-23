@@ -160,6 +160,64 @@ def test_the_same_configuration_is_reused(listeners, tmp_path, no_spawn) -> None
     assert upstream.calls == 0
 
 
+@pytest.mark.parametrize("failure", ["closed", "stalled"])
+async def test_a_lost_gateway_refuses_a_prompt_through_configured_ndjson(listeners, tmp_path, monkeypatch, no_spawn, failure) -> None:
+    from types import SimpleNamespace
+
+    from optimus.acp import bootstrap
+    from tests.integration.acp.test_server_stream import InteractiveLineReader, MemoryLineWriter
+    from tests.support.contract_doubles import checked_agent_runner
+    from tests.unit.acp.test_context_engine_admission import Runner
+
+    listener, upstream = _real_gateway(listeners, _expected())
+    checks = []
+    assert _ensure(listener.url, tmp_path, on_reuse=checks.append) is None
+    [check] = checks
+
+    runner = Runner()
+    monkeypatch.setattr(bootstrap, "build_agent_harness_runtime", lambda **_: SimpleNamespace(
+        agent_runner=checked_agent_runner(runner), redis_runtime=None, telemetry_writer=None, attempt_observer=None,
+    ))
+    monkeypatch.setattr(bootstrap, "build_client_mcp_runtime", lambda **_: None)
+    server = bootstrap.build_configured_server(
+        environ={"OPTIMUS_GATEWAY_URL": listener.url, "OPTIMUS_API_KEY": _SECRET},
+        workspace_root=tmp_path,
+        borrowed_gateway_check=check,
+    )
+    reader, writer = InteractiveLineReader(), MemoryLineWriter()
+    serving = asyncio.create_task(server.serve_ndjson(reader, writer))
+    release = threading.Event()
+    attempted = threading.Event()
+
+    class StalledIdentity(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:
+            attempted.set()
+            release.wait(4)
+
+    try:
+        await reader.send({"jsonrpc": "2.0", "id": "new", "method": "session/new",
+                           "params": {"cwd": str(tmp_path), "mcpServers": []}})
+        session = (await asyncio.wait_for(writer.wait_for_response("new"), 5))["result"]["sessionId"]
+        if failure == "closed":
+            listeners.remove(listener)
+            await asyncio.to_thread(listener.close)
+        else:
+            listener.server.RequestHandlerClass = StalledIdentity
+            monkeypatch.setattr(gi, "READ_SECONDS", 0.4)
+        await reader.send({"jsonrpc": "2.0", "id": "prompt", "method": "session/prompt",
+                           "params": {"sessionId": session, "prompt": [{"type": "text", "text": "Check status"}]}})
+        reply = await asyncio.wait_for(writer.wait_for_response("prompt"), 2.5)
+        assert reply["result"]["stopReason"] == "end_turn"
+        assert "The shared local Gateway could not be verified" in json.dumps(writer.messages)
+        assert runner.requests == [] and upstream.calls == 0
+        if failure == "stalled":
+            assert attempted.is_set()
+    finally:
+        release.set()
+        reader.close()
+        await asyncio.wait_for(serving, 5)
+
+
 def test_two_workspaces_on_the_same_configuration_share_one_gateway(listeners, tmp_path, no_spawn) -> None:
     listener, _ = _real_gateway(listeners, _expected())
     assert _ensure(listener.url, tmp_path / "one", workspace_digest="1" * 64, security_snapshot_digest="3" * 64) is None
@@ -286,9 +344,46 @@ def _child_that_lost_the_port(monkeypatch: pytest.MonkeyPatch, listener: _Listen
 
 
 def test_losing_the_start_race_to_a_compatible_gateway_reuses_it(listeners, tmp_path, monkeypatch) -> None:
+    listener, upstream = _real_gateway(listeners, _expected())
+    _child_that_lost_the_port(monkeypatch, listener)
+    checks = []
+    assert _ensure(listener.url, tmp_path, on_reuse=checks.append) is None
+    [check] = checks
+    assert check() is True
+    assert upstream.calls == 0
+
+
+def test_a_child_that_exits_after_readiness_rechecks_the_listener(listeners, tmp_path, monkeypatch) -> None:
     listener, _ = _real_gateway(listeners, _expected())
     _child_that_lost_the_port(monkeypatch, listener)
-    assert _ensure(listener.url, tmp_path) is None
+
+    class Child:
+        pid = 1
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+    child = Child()
+    monkeypatch.setattr(local_infra.subprocess, "Popen", lambda *_a, **_k: child)
+    confirmations = []
+    verify = local_infra.verify_local_gateway
+
+    def confirm(*args, **kwargs):
+        confirmations.append(args[0])
+        verify(*args, **kwargs)
+
+    monkeypatch.setattr(local_infra, "verify_local_gateway", confirm)
+    checks = []
+    owner = _ensure(listener.url, tmp_path, on_reuse=checks.append)
+    assert owner is not None and owner.process is child
+    [check] = checks
+    assert check() is False
+    assert confirmations == [listener.url]
+
+    child.returncode = 1
+    assert check() is True
+    assert confirmations == [listener.url, listener.url]
 
 
 def test_losing_the_start_race_to_another_configuration_refuses(listeners, tmp_path, monkeypatch) -> None:

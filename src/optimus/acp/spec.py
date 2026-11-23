@@ -64,6 +64,7 @@ from optimus.acp.lifecycle import (
     TurnResponseEnvelope,
     TurnSendKey,
 )
+from optimus.acp.local_infra import LocalInfrastructureError
 from optimus.acp.memory_commands import DESCRIPTIONS as MEMORY_COMMAND_DESCRIPTIONS
 from optimus.acp.memory_commands import PURGE_CANCEL, Confirmation, MemoryAnswer, MemoryCommand, MemoryCommands, PurgeRequest
 from optimus.acp.memory_commands import READ_ONLY as MEMORY_READ_ONLY
@@ -328,6 +329,10 @@ class _SavingsSendOwner:
         return
 
 _AUTO_REFUSAL_TEXT = {
+    "BORROWED_GATEWAY_COST_UNKNOWN": (
+        "Auto stopped after losing the connection to the shared local Gateway. The classification call's cost is unknown. "
+        "Restore a compatible Gateway on the approved URL, then send a new prompt."
+    ),
     "AUTO_NO_ROUTABLE_MODEL": (
         "Auto has no model left to route this turn to: every eligible model has stopped for this launch. Nothing was "
         "sent. Restart Optimus, or choose a model with OPTIMUS_AGENT_MODEL."
@@ -891,7 +896,9 @@ class AcpDuplexAdapter:
         monotonic_clock: Callable[[], float] = monotonic,
         session_retention_policy: SessionRetentionPolicy = DEFAULT_SESSION_RETENTION_POLICY,
         usage_reports: SavingsReports | None = None,
+        borrowed_gateway_check: Callable[[], bool] | None = None,
     ) -> None:
+        self._borrowed_gateway_check = borrowed_gateway_check
         # Plan 12.9 (ADR-034, D1): the `/savings` source; None leaves the command unadvertised and `/savings` an ordinary prompt.
         self._usage_reports = usage_reports
         self._report_cancels: dict[str, asyncio.Event] = {}  # a report in progress, by session: it holds the prompt slot
@@ -2178,6 +2185,44 @@ class AcpDuplexAdapter:
             strategy=attached_turn.strategy if attached_turn is not None else None,
         )
         try:
+            borrowed_gateway = False
+            if self._borrowed_gateway_check is not None:
+                refusal: LocalInfrastructureError | None = None
+                if not turn_control.halt_requested():
+                    try:
+                        borrowed_gateway = await self._in_worker(session, turn, self._borrowed_gateway_check)
+                    except LocalInfrastructureError as exc:
+                        refusal = exc
+                    except asyncio.CancelledError:
+                        if self._auto_router is not None:
+                            self._record_auto_turn(
+                                session, turn, "abandoned" if turn_control.transport_abandoned() else "cancelled", outcome=None,
+                            )
+                        raise
+                if turn_control.halt_requested():
+                    if self._auto_router is not None:
+                        self._record_auto_turn(
+                            session, turn, "abandoned" if turn_control.transport_abandoned() else "cancelled", outcome=None,
+                        )
+                    turn_control.record_outcome(Settlement.CANCELLED)
+                    return self._turn(
+                        success_response(request.get("id"), {"stopReason": "cancelled"}), turn_control, ownership_slot,
+                    )
+                if refusal is not None:
+                    if self._auto_router is not None:
+                        self._record_auto_turn(session, turn, "refused", outcome=None, reason=refusal.code)
+                    turn_control.record_outcome(Settlement.REJECTED)
+                    text = refusal.user_message
+                    if refusal.code == "GATEWAY_IDENTITY_UNCONFIRMED":
+                        text = (
+                            "The shared local Gateway could not be verified. Restore a compatible Gateway on the approved URL. "
+                            "If a different program is using that port, free it or approve another Gateway URL, then send a new prompt. "
+                            "No model request was sent for this prompt."
+                        )
+                    await self._emit_final_text(session_id=session_id, text=text, turn=turn)
+                    return self._turn(
+                        success_response(request.get("id"), {"stopReason": "end_turn"}), turn_control, ownership_slot,
+                    )
             if attached_turn is not None and session.memory is not None:
                 await self._prepare_memory(session, turn, attached_turn)
             elif session.memory is None and (self._memory_notice is not None or self._memory_factory is not None):
@@ -2196,6 +2241,7 @@ class AcpDuplexAdapter:
                         prompt_blocks=prompt,
                         sanitized_user_prompt=admission.sanitized_user_prompt,
                         ownership_slot=ownership_slot,
+                        borrowed_gateway=borrowed_gateway,
                     )
                 except asyncio.CancelledError:
                     # Codex round 68: the server's teardown cancels this task mid-routing; the turn keeps its one record.
@@ -2239,6 +2285,7 @@ class AcpDuplexAdapter:
                     attached_turn=attached_turn,
                     sanitized_user_prompt=admission.sanitized_user_prompt,
                     ownership_slot=ownership_slot,
+                    borrowed_gateway=borrowed_gateway,
                 )
                 if stopped is not None:
                     return stopped
@@ -2625,6 +2672,7 @@ class AcpDuplexAdapter:
         prompt_blocks: list[Any],
         sanitized_user_prompt: str,
         ownership_slot: ResponseOwnershipSlot | None,
+        borrowed_gateway: bool,
     ) -> TurnResponseEnvelope | None:
         """Plan 12.4 Tasks 4-5: classify this Auto turn with H in its worker, resolve its model, bind that model's route
         and context limits for the whole turn, then show its notice. Every admitted Auto turn leaves exactly one routing
@@ -2688,6 +2736,15 @@ class AcpDuplexAdapter:
                 completion_text=_CONTEXT_CANCELLED_TEXT,
             )
             return self._turn(success_response(request_id=request_id, result={"stopReason": "cancelled"}), turn.turn_control, ownership_slot)
+        if borrowed_gateway and outcome.failure_kind == "timeout" and any(
+            receipt.stage == "classification" and receipt.reported_cost_usd is None
+            for receipt in session.cost_settlement.receipts(turn.run_id)
+        ):
+            # A lost reply may already have incurred a charge. An Auto fallback must not send another request.
+            return await self._refuse_auto_turn(
+                request_id=request_id, session=session, turn=turn, reason="BORROWED_GATEWAY_COST_UNKNOWN",
+                outcome=outcome, ownership_slot=ownership_slot,
+            )
         try:
             decision = router.resolve(outcome)
         except AutoTurnRefused as exc:
@@ -2995,6 +3052,7 @@ class AcpDuplexAdapter:
         attached_turn: AttachedTurn,
         sanitized_user_prompt: str,
         ownership_slot: ResponseOwnershipSlot | None,
+        borrowed_gateway: bool,
     ) -> TurnResponseEnvelope | None:
         """Prepare an attached turn's view off the event loop (Plan 12.2 Task 9; design spec 8).
 
@@ -3024,6 +3082,21 @@ class AcpDuplexAdapter:
             await self._emit_final_text(
                 session_id=turn.session_id,
                 text=context_unavailable_text(outcome.reason, strategy, route_stopped=outcome.route_stopped),
+                turn=turn,
+            )
+            await self._emit_cost_alerts(turn)
+            return self._turn(success_response(request_id=request_id, result={"stopReason": "end_turn"}), turn.turn_control, ownership_slot)
+        if borrowed_gateway and outcome.kind == "fallback" and any(
+            receipt.stage == "summarization" and receipt.outcome == "uncertain" and receipt.http_status in {None, 0}
+            for receipt in session.cost_settlement.receipts(turn.run_id)
+        ):
+            self._apply_settled_cost(session, turn)
+            await self._emit_final_text(
+                session_id=turn.session_id,
+                text=(
+                    "The turn ended before an answer request because the summary request's cost is unknown. "
+                    "Restore a compatible Gateway on the approved URL, then send a new prompt."
+                ),
                 turn=turn,
             )
             await self._emit_cost_alerts(turn)
