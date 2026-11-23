@@ -148,11 +148,12 @@ class TurnRouteBinder:
         self._lock = threading.Lock()
         self._readings: list[RequestReading] = []
 
-    def record_dispatch(self, input_text: str) -> None:
+    def record_dispatch(self, input_text: str, *, planning_round: int | None = None, attempt: int | None = None) -> None:
         """The runner is sending `input_text` as one complete planning/answer request now (no attached
         engine). Its reading uses the same packed input, verified estimator and usable capacity as the
         Gateway's final guard (release supplement V1). A request that guard would refuse records nothing:
         its capacity refusal is shown instead, never a successful reading."""
+        del planning_round, attempt  # the bound route's meter reads every request alike
         if self._snapshot is None:
             return
         packed = PackedModelRequest(

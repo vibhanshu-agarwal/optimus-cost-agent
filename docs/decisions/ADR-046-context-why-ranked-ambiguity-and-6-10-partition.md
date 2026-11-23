@@ -66,7 +66,10 @@ which is posted verbatim on #545. Decision 5 follows an earlier recorded rule fo
 - **After a restart.** There is no snapshot, and `/why` says so. Diagnostic manifests on disk are never shown, because they
   cannot establish this session's last turn.
 - **What it shows:**
-  - identity and delivery: outcome and stop, how many times context was prepared, model requests sent and planning rounds;
+  - identity and delivery: outcome and stop, how many times context was prepared, the main model requests the host sent and the
+    planning rounds. Each request is listed under its own planning round, with retries counted, from the round and attempt the
+    planning loop recorded as it sent the request. The Gateway's own route attempts inside one request are not host requests and
+    are not counted. An Auto classifier call is not a main model request;
   - choices, with ranked candidates for an ambiguity;
   - fit: bytes and tokens used against their limits, including the partition;
   - grounding and scope;
@@ -79,7 +82,8 @@ which is posted verbatim on #545. Decision 5 follows an earlier recorded rule fo
   - Grounding symbols are shown as counts.
   - Output goes through the workspace-aware conversation sanitizer and Markdown escaping.
 - **Paging.** At most 40 entries and 12 KiB per page; the byte limit counts the header, navigation and markers. Pages run up to
-  1000. The page argument must be ASCII digits; anything else gets the usage line.
+  1000. The page argument must be ASCII digits; anything else gets the usage line. `/why 0` names the valid range, and a page
+  past the end names the last.
 - **No calls.** `/why` is answered on the local command path. It makes no classification, maintenance, extraction, embedding or
   provider call, and its answer does not enter later prompts.
 - **What the explanation does not prove.** It describes the turn as prepared. It does not show that those files, ranks or
@@ -99,7 +103,7 @@ which is posted verbatim on #545. Decision 5 follows an earlier recorded rule fo
 - **Ambiguity always stops.** With more than one eligible target, the turn stops whatever the scores. The stop lists the
   candidates "most likely first", with their reasons, and says "The order is a suggestion and chose nothing."
 - **What settles an ambiguity.** Only an exact workspace-relative path in the person's own current prompt. Ranking uses that
-  prompt alone. Earlier turns' text never settles an ambiguity and never adds ranking terms.
+  prompt alone. Earlier turns' text never settles an ambiguity, never adds ranking terms and is never a dependency anchor.
 
 ### 3. Partition (#245)
 
@@ -138,7 +142,7 @@ conversation outcome stays `FAILED`.
 ## Consequences and limits
 
 - `/why` cannot explain a turn from before a restart or resume.
-- "Model requests sent" counts the main model request only. An Auto classifier call is not included.
+- `/why` reports main model requests only, and says so. An Auto classifier call is not one of them.
 - Served memory IDs are unit-tested only. No memory store was released for the live runs.
 - The held-out ranking gain carries the disclosed author bias. The index-order comparison is an offline replay of recorded
   index metadata.

@@ -49,7 +49,7 @@ def _text(snapshot: why.Snapshot | None, page: int = 1, **kwargs: Any) -> str:
 # --- parsing ------------------------------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("text", "expected"), [("/why", 1), ("  /why  ", 1), ("/why 3", 3), ("/why 1000", 1000), ("/why 0", why.USAGE),
+@pytest.mark.parametrize(("text", "expected"), [("/why", 1), ("  /why  ", 1), ("/why 3", 3), ("/why 1000", 1000), ("/why 0", 0),
                                                 ("/why 1001", why.USAGE), ("/why next", why.USAGE), ("/why 2 3", why.USAGE),
                                                 ("/whyy", None), ("why", None), ("explain /why", None),
                                                 ("/why \u00b2", why.USAGE), ("/why \u0663", why.USAGE), ("/why " + "9" * 5000, why.USAGE),
@@ -76,7 +76,7 @@ def test_a_blocked_turn_explains_its_ranked_stop_and_that_nothing_was_dispatched
     text = _text(_snapshot(outcome="failed", stop="AMBIGUOUS_WORKSPACE_REFERENCE", contexts=[_ambiguous(tmp_path)]))
 
     assert "outcome: failed; stop: AMBIGUOUS_WORKSPACE_REFERENCE" in text
-    assert "model requests sent: none, so this context was prepared and never dispatched" in text
+    assert "main model requests sent: none, so this context was prepared and never sent as a main model request" in text
     assert "config.py was ambiguous, so nothing was chosen; candidates, most likely first:\n  - src/gateway/config.py (task terms: gateway)\n  - src/agent/config.py" in text
     assert BODY_MARKER not in text and "never shown" not in text
 
@@ -239,7 +239,7 @@ async def test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it
 
     answer = _plain(texts(outbound)[-1])
     assert "for turn 2 of this session" in answer and "stop: AMBIGUOUS_WORKSPACE_REFERENCE" in answer
-    assert "dup.py was ambiguous, so nothing was chosen" in answer and "never dispatched" in answer
+    assert "dup.py was ambiguous, so nothing was chosen" in answer and "never sent as a main model request" in answer
 
 
 async def test_commands_and_refusals_before_preparation_never_replace_the_snapshot(tmp_path):
@@ -444,7 +444,41 @@ async def test_e05_a_turn_cancelled_before_its_context_is_prepared_replaces_the_
 
 def test_e09_requests_and_planning_rounds_are_counted_apart():
     text = _text(_snapshot(dispatches=[(100, 1000)] * 4, rounds=3, reads=[10, 20, 30]))
-    assert "model requests sent: 4; planning rounds: 3" in text and "planning reads: 3, returning 60 bytes" in text
+    assert "main model requests sent: 4; planning rounds: 3" in text and "planning reads: 3, returning 60 bytes" in text
+    assert "round 1:" not in text, "requests the loop did not number get no invented rounds"
+
+
+def test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_and_attempt():
+    """Codex CP3 review 1, finding 2: the round and attempt are the request's own, never inferred from times or order."""
+    dispatches = [(100, 1000, 1, 1), (300, 1000, 2, 1), (300, 1000, 2, 2), (500, 1000, 3, 1)]
+    text = _text(_snapshot(dispatches=dispatches, rounds=3, reads=[10, 20, 30]))
+
+    assert ("- main model requests sent: 4; planning rounds: 3\n  - round 1: 1 request(s) sent\n  - round 2: 2 request(s) sent, 1 of them a "
+            "retry\n  - round 3: 1 request(s) sent\n  - the Gateway's own route attempts inside one request are not host requests and are "
+            "not counted") in text
+    assert "largest request: about 500 of 1000 usable input tokens" in text
+
+
+async def test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn(tmp_path):
+    class ThreeRounds(_ReportingRunner):
+        def run(self, request, **kwargs):
+            packer = kwargs.get("context_packer")
+            if packer is not None and not request.approval.approved:
+                packer.record_context(assemble_workspace_context_for_prompt(self.root, task=request.task))
+                for planning_round, attempt in ((1, 1), (2, 1), (2, 2), (3, 1)):
+                    packer.record_dispatch("x" * 400, planning_round=planning_round, attempt=attempt)
+            return Runner.run(self, request, **kwargs)
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "app.py").write_text("x = 1\n", encoding="utf-8")
+    adapter, outbound, _runner = make_adapter(tmp_path, make_attachment(), ThreeRounds(tmp_path))
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    await prompt(adapter, outbound, session_id, "explain pkg/app.py", "p1")
+
+    await prompt(adapter, outbound, session_id, "/why", "w1")
+
+    answer = _plain(texts(outbound)[-1])
+    assert "main model requests sent: 4" in answer and "round 2: 2 request(s) sent, 1 of them a retry" in answer
 
 
 def test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names_the_last():
@@ -457,4 +491,7 @@ def test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names
     joined = _plain("\n".join(shown))
     assert all(joined.count(f"pkg/m{number:03}.py:") == 1 for number in range(130)), "every entry on exactly one page"
     assert _text(snapshot, 5) == "The explanation has 4 page(s); `/why 4` shows the last."
-    assert why.parse("/why 0", attachments=False) == why.USAGE
+    # page 0 is refused readably with the valid range (Codex CP3 review 1, finding 3)
+    assert why.parse("/why 0", attachments=False) == 0
+    assert _text(snapshot, 0) == "Pages start at 1: the explanation has 4 page(s), `/why 1` to `/why 4`."
+    assert _text(None, 0) == why.NO_SNAPSHOT

@@ -260,6 +260,8 @@ class DispatchReading:
 
     tokens: int
     capacity: int
+    planning_round: int | None = None  # the planning loop's round and attempt, for /why (Plan 12.13, frozen case E09)
+    attempt: int | None = None
 
     @staticmethod
     def largest(readings: Sequence[DispatchReading]) -> DispatchReading | None:
@@ -794,9 +796,10 @@ class AttachedTurn:
                 self._sink_error = error
             raise error
 
-    def record_dispatch(self, text: str) -> None:
+    def record_dispatch(self, text: str, *, planning_round: int | None = None, attempt: int | None = None) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""
-        self._dispatches.append(DispatchReading(tokens=self._attachment.estimate_request(text), capacity=self._attachment.usable_input_tokens))
+        self._dispatches.append(DispatchReading(tokens=self._attachment.estimate_request(text), capacity=self._attachment.usable_input_tokens,
+                                                planning_round=planning_round, attempt=attempt))
         # Every request of the turn is kept, whole: a file shown only in the first planning round is still source text at the
         # end (Codex CP2 review 2, finding 7). Past the bound none is dropped silently: the sources are marked lost.
         self._source_chars += len(text)

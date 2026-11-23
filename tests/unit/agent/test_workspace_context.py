@@ -923,6 +923,33 @@ def test_verified_hints_need_the_current_bytes_and_link_only_through_verified_re
     assert workspace_context.verified_hints(("src/gateway/config.py",), ("src/gateway/server.py",), files=files, hashes=indexed, read=moved.get).near == frozenset()
 
 
+def test_a_path_named_only_in_history_is_no_dependency_anchor_for_the_index_ranking():
+    """Codex CP3 review 1, finding 1: history names server.py, which imports the gateway's config.py. Anchored on it, the index's
+    hints would rank that candidate first as linked to a file the task names, though the prompt names no such file."""
+    from context_engine.repo_map import MapFile
+
+    files = [MapFile("src/gateway/server.py", ("src.gateway.config",)), MapFile("src/gateway/config.py"), MapFile("src/agent/config.py")]
+    data = {item.path: item.path.encode() for item in files}
+    hashes = {path: hashlib.sha256(raw).hexdigest() for path, raw in data.items()}
+    seen: list[tuple[str, ...]] = []
+
+    def hints_for(candidates, resolved):
+        seen.append(tuple(resolved))
+        return workspace_context.verified_hints(candidates, resolved, files=files, hashes=hashes, read=data.get)
+
+    server = WorkspaceReferenceDiagnostic("src/gateway/server.py", WorkspaceReferenceStatus.RESOLVED, ("src/gateway/server.py",))
+    ambiguous = WorkspaceReferenceDiagnostic("config.py", WorkspaceReferenceStatus.AMBIGUOUS, ("src/agent/config.py", "src/gateway/config.py"))
+
+    (from_history,) = [item for item in workspace_context.rank_ambiguity((server, ambiguous), "explain config.py", hints_for)
+                       if item.status is WorkspaceReferenceStatus.AMBIGUOUS]
+    assert seen[-1] == () and not any(entry.near_task_path for entry in from_history.ranked)
+    assert [entry.path for entry in from_history.ranked] == ["src/agent/config.py", "src/gateway/config.py"]  # path order alone
+
+    (from_prompt,) = [item for item in workspace_context.rank_ambiguity((server, ambiguous), "explain config.py for src/gateway/server.py", hints_for)
+                      if item.status is WorkspaceReferenceStatus.AMBIGUOUS]
+    assert seen[-1] == ("src/gateway/server.py",) and from_prompt.ranked[0].path == "src/gateway/config.py" and from_prompt.ranked[0].near_task_path
+
+
 # --- Plan 12.13 Task 4 (found by the acpx run): the exact-path retry in a session whose history holds the stop ---
 
 _EARLIER = "fix the route timeout in config.py"

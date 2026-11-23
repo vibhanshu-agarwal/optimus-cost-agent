@@ -550,14 +550,16 @@ class _FakePacker:
         self.refuse = refuse
         self.inputs: list[str] = []
         self.dispatched: list[str] = []
+        self.where: list[tuple[int | None, int | None]] = []
 
     def fit(self, build):
         text = build(self.envelope)
         self.inputs.append(text)
         return None if self.refuse else text
 
-    def record_dispatch(self, text: str) -> None:
+    def record_dispatch(self, text: str, *, planning_round: int | None = None, attempt: int | None = None) -> None:
         self.dispatched.append(text)
+        self.where.append((planning_round, attempt))
 
 
 def test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round(tmp_path):
@@ -571,6 +573,8 @@ def test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round
 
     assert len(gateway.calls) >= 2
     assert packer.inputs == [call["input_text"] for call in gateway.calls]  # every round, as sent
+    # each request names its own planning round and attempt, for /why (Plan 12.13, frozen case E09)
+    assert packer.where == [(number, 1) for number in range(1, len(gateway.calls) + 1)]
     first = gateway.calls[0]["input_text"]
     assert "Task: Go on.\n" in first and "HISTORY-VIEW" in first
     assert first.index("HISTORY-VIEW") < first.index("Task: Go on.")

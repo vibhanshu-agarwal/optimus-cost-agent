@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from optimus.acp.memory_notices import escape_text
 from optimus.agent.workspace_context import RankedCandidate, WorkspaceReferenceStatus
@@ -41,7 +41,8 @@ _REFERENCE_WORDS: Final = {
 
 
 def parse(text: str, *, attachments: bool) -> int | str | None:
-    """None: not `/why`. A page number, or the usage text for a malformed one."""
+    """None: not `/why`. A page number (0 included: its answer names the valid range, frozen case E12), or the usage text for a
+    malformed one."""
     words = text.split()
     if not words or words[0] != f"/{COMMAND}":
         return None
@@ -53,7 +54,7 @@ def parse(text: str, *, attachments: bool) -> int | str | None:
     if not (word.isascii() and word.isdigit() and len(word) <= len(str(MAX_PAGE))):  # "²" is a digit int() refuses
         return USAGE
     page = int(word)
-    return page if 1 <= page <= MAX_PAGE else USAGE
+    return page if page <= MAX_PAGE else USAGE
 
 
 @dataclass(frozen=True)
@@ -82,6 +83,9 @@ class MemoryFacts:
     watermarks: tuple[str, ...]
 
 
+Dispatch = tuple[int, int, int | None, int | None]
+
+
 @dataclass(frozen=True)
 class Snapshot:
     run_id: str
@@ -90,7 +94,9 @@ class Snapshot:
     stop: str | None
     index: str  # "used", "not answering" or "not configured"
     contexts: tuple[ContextFacts, ...] | None  # None: this launch records no context
-    dispatches: tuple[tuple[int, int], ...] | None  # (estimated tokens, usable input) of each model request sent
+    # Each main model request the host sent, retries included: (estimated tokens, usable input, planning round, attempt in that
+    # round); the round and attempt are None for a request outside the planning loop.
+    dispatches: tuple[Dispatch, ...] | None
     rounds: int | None
     reads: tuple[int, ...] | None  # bytes each planning read returned
     limits: tuple[int, int]  # planning observation and new-read serialized limits, bytes
@@ -107,7 +113,7 @@ def _facts(result: Any) -> ContextFacts:
 
 
 def capture(*, run_id: str, turn_seq: int, outcome: str, stop: str | None, index: str, contexts: Sequence[Any] | None,
-            dispatches: Sequence[tuple[int, int]] | None, rounds: int | None, reads: Sequence[int] | None, limits: tuple[int, int],
+            dispatches: Sequence[tuple[int, int] | Dispatch] | None, rounds: int | None, reads: Sequence[int] | None, limits: tuple[int, int],
             manifest: Mapping[str, Any] | None,
             served: Any, memory_read: str | None) -> Snapshot:
     """The turn's facts, copied now: nothing in the snapshot can change after the turn."""
@@ -118,7 +124,7 @@ def capture(*, run_id: str, turn_seq: int, outcome: str, stop: str | None, index
     return Snapshot(
         run_id=run_id, turn_seq=turn_seq, outcome=outcome, stop=stop, index=index,
         contexts=None if contexts is None else tuple(_facts(result) for result in contexts),
-        dispatches=None if dispatches is None else tuple(dispatches),
+        dispatches=None if dispatches is None else tuple(cast(Dispatch, (*item, None, None)[:4]) for item in dispatches),
         rounds=rounds,
         reads=None if reads is None else tuple(reads),
         limits=limits,
@@ -137,12 +143,19 @@ def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str
     lines = ["**Identity and delivery**", f"- outcome: {show(snapshot.outcome)}" + (f"; stop: {show(snapshot.stop)}" if snapshot.stop else "")]
     lines.append("- prepared context: unavailable (this launch does not record it)" if snapshot.contexts is None
                  else f"- prepared context: {len(snapshot.contexts)} time(s)")
+    # "Main": an Auto classifier call is not one of these (Codex CP3 review 1, finding 4)
     if snapshot.dispatches is None:
-        lines.append("- model requests sent: unavailable")
+        lines.append("- main model requests sent: unavailable")
     elif not snapshot.dispatches:
-        lines.append("- model requests sent: none, so this context was prepared and never dispatched")
+        lines.append("- main model requests sent: none, so this context was prepared and never sent as a main model request")
     else:
-        lines.append(f"- model requests sent: {len(snapshot.dispatches)}" + ("" if snapshot.rounds is None else f"; planning rounds: {snapshot.rounds}"))
+        lines.append(f"- main model requests sent: {len(snapshot.dispatches)}" + ("" if snapshot.rounds is None else f"; planning rounds: {snapshot.rounds}"))
+        if all(item[2] is not None for item in snapshot.dispatches):  # frozen case E09: per round, from the request's own round
+            for number in sorted({item[2] for item in snapshot.dispatches if item[2] is not None}):
+                sent = [item for item in snapshot.dispatches if item[2] == number]
+                retries = sum((item[3] or 1) > 1 for item in sent)
+                lines.append(f"  - round {number}: {len(sent)} request(s) sent" + (f", {retries} of them a retry" if retries else ""))
+            lines.append("  - the Gateway's own route attempts inside one request are not host requests and are not counted")
 
     lines.append("**Choices**")
     first_choice = len(lines)
@@ -174,7 +187,7 @@ def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str
     budget = (manifest or {}).get("budget")
     lines.append(f"- index pack: {show(budget['tokens'])} of {show(budget['budget_tokens'])} tokens" if budget else "- index pack: unavailable")
     if snapshot.dispatches:
-        tokens, capacity = max(snapshot.dispatches)
+        tokens, capacity = max((item[0], item[1]) for item in snapshot.dispatches)
         lines.append(f"- largest request: about {tokens} of {capacity} usable input tokens")
     observation, read = snapshot.limits
     lines.append(f"- planning limits: observations {observation} bytes, new reads {read} bytes (serialized)")
@@ -277,6 +290,8 @@ def answer(snapshot: Snapshot | None, page: int, *, sanitize: Callable[[str], st
     if snapshot is None:
         return NO_SNAPSHOT + (f" {NO_SNAPSHOT_ON_DISK}" if manifests_on_disk else "")
     shown = pages(snapshot, sanitize=sanitize, admits=admits, refused_after=refused_after, admits_name=admits_name)
+    if page < 1:
+        return f"Pages start at 1: the explanation has {len(shown)} page(s), `/why 1` to `/why {len(shown)}`."
     if page > len(shown):
         return f"The explanation has {len(shown)} page(s); `/why {len(shown)}` shows the last."
     return shown[page - 1]

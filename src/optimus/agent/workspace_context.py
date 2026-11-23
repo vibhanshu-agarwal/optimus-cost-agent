@@ -108,18 +108,20 @@ def verified_hints(candidates: Sequence[str], resolved: Sequence[str], *, files:
 def rank_ambiguity(diagnostics: tuple[WorkspaceReferenceDiagnostic, ...], task: str,
                    hints_for: Callable[[Sequence[str], Sequence[str]], RankingHints] | None = None) -> tuple[WorkspaceReferenceDiagnostic, ...]:
     """Each ambiguous reference's candidates in ranked order, for ordinary assembly and the index's alike. `task` is the person's own
-    prompt: what the host itself said earlier (a stop's candidate list) never adds terms. `hints_for(candidates, resolved task paths)`
-    gives the index's verified hints; without one only folder names count.
+    prompt: what the host itself said earlier (a stop's candidate list) never adds terms. `hints_for(candidates, resolved paths)`
+    gives the index's verified hints, anchored on the paths the prompt itself resolves; without one only folder names count.
 
     An ambiguity that an exact path in the person's prompt settles is no longer one: they named which candidate they meant, as the
     stop asked (Plan 12.13 Task 4: a retry after a stop still carried the earlier bare name in its history, and stopped again). Only
     the prompt's own paths settle one, never a path from history, where the stop itself listed every candidate; the ranking never
-    settles anything."""
+    settles anything. A path from history is no dependency anchor either: it would rank a candidate as linked to a file the task
+    names when the task does not name it (Codex CP3 review 1, finding 1)."""
     if not any(item.status is WorkspaceReferenceStatus.AMBIGUOUS for item in diagnostics):
         return diagnostics
-    resolved = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED))
     own = set(_extract_file_references(task))
-    chosen = {item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED and item.reference in own}
+    resolved = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics
+                                   if item.status is WorkspaceReferenceStatus.RESOLVED and item.reference in own))
+    chosen = set(resolved)
     out = []
     for item in diagnostics:
         if item.status is WorkspaceReferenceStatus.AMBIGUOUS and set(item.candidates) & chosen:

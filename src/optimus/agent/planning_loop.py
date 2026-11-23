@@ -1696,10 +1696,10 @@ class _PlanningIterationRunner:
                     raise _PermanentStop("gateway attempt suppressed by turn control")
             if self._context_packer is not None:
                 # Plan 12.2 Task 10: the attached meter reads only inputs actually sent.
-                self._context_packer.record_dispatch(prompt)
+                self._context_packer.record_dispatch(prompt, planning_round=planning_turn, attempt=wire_attempt)
             elif self._route_binder is not None:
                 # Release supplement V1: without an engine, the request meter reads the bound route's capacity.
-                self._route_binder.record_dispatch(prompt)
+                self._route_binder.record_dispatch(prompt, planning_round=planning_turn, attempt=wire_attempt)
             metadata: dict[str, Any] = {
                 "run_id": self._run_id,
                 "session_id": self._session_id,

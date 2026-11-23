@@ -256,7 +256,7 @@ def test_the_runner_records_a_dispatch_only_when_it_actually_sends(tmp_path):
         def fit(self, build):
             return build("HISTORY")
 
-        def record_dispatch(self, text: str) -> None:
+        def record_dispatch(self, text: str, **_where: object) -> None:
             self.dispatched.append(text)
 
     request = AgentRunRequest(

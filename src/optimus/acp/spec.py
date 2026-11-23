@@ -2669,7 +2669,8 @@ class AcpDuplexAdapter:
                 run_id=turn.run_id, turn_seq=turn.turn_seq, outcome=turn.turn_control.recorded_settlement.value, stop=turn.result_stop,
                 index="not configured" if session.memory is None else "not answering" if memory is None else "used",
                 contexts=None if attached is None else attached.contexts(),
-                dispatches=None if attached is None else [(item.tokens, item.capacity) for item in attached.dispatch_readings()],
+                dispatches=None if attached is None else [(item.tokens, item.capacity, item.planning_round, item.attempt)
+                                                          for item in attached.dispatch_readings()],
                 rounds=turn.planning_rounds, reads=turn.planning_reads if turn.planning_rounds is not None else None,
                 limits=(PLANNING_OBSERVATION_MAX_BYTES, PLANNING_NEW_READ_MAX_BYTES),
                 manifest=getattr(memory, "manifest", None),

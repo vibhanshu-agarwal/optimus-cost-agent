@@ -189,6 +189,7 @@ class ContextPacker(Protocol):
 
     def fit(self, build: Callable[[str], str]) -> str | None: ...
 
-    def record_dispatch(self, text: str) -> None:
-        """Called as `text` is actually sent, once per attempt: the meter reads only real dispatches."""
+    def record_dispatch(self, text: str, *, planning_round: int | None = None, attempt: int | None = None) -> None:
+        """Called as `text` is actually sent, once per attempt: the meter reads only real dispatches. The planning loop names the
+        round and the attempt within it."""
         ...

@@ -814,7 +814,7 @@ class _Packer:
     def fit(self, build):
         return build("")
 
-    def record_dispatch(self, text):
+    def record_dispatch(self, text, **_where):
         self.dispatched.append(text)
 
 
