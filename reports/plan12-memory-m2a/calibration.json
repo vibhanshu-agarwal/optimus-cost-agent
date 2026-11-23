@@ -1,12 +1,12 @@
 {
- "schema": "plan12-memory-m2a.calibration.v1",
- "head": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
+ "schema": "plan12-memory-m2a.calibration.v2",
+ "head": "git:af233531c73fc1f8afd7942a338a62e91edddb2a",
  "phase": "calibration",
  "inputs": {
-  "cases.json": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2",
+  "cases.json": "hex:0f76413a68fe67f60a6d0561ad89b9d5d67bfaf6cf0a8c2d8a78d85f9d8dc3a2",
   "ranking-policy.json": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac",
-  "evaluation-contract.json": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390",
-  "case-provenance.json": "hex:cf65775aa6ea63fc0fcc56e733d0dde923f5070ac9a567c6cc58d3b2f54efeeb"
+  "evaluation-contract.json": "hex:d25f23a94982644765a18483eb7fc5a75679c702d872ce79749a2841715cbccf",
+  "case-provenance.json": "hex:ef623c5c2b6f059c7c031ded5664fe34112182ee9cc972da71663d308d0b96ae"
  },
  "paid_attempts": 0,
  "provider_cost_usd": "0",
@@ -352,6 +352,7 @@
  },
  "split": {
   "completion_scope": "demand-only: a plan, no parse failure, and exactly the expected evidence records (path, range, file sha256, whole payload). Route fitting (ContextPacker.fit) is UNRUN here and is checked in Task 3; contract-qualified completion needs it.",
+  "probe_recipe": "own-limit-probes.v1",
   "boundaries": {
    "S02": {
     "totals": {
@@ -580,7 +581,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S02": {
      "id": "S02",
@@ -605,7 +607,8 @@
       "current_reads": 875
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S03": {
      "id": "S03",
@@ -630,7 +633,8 @@
       "current_reads": 875
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S04": {
      "id": "S04",
@@ -656,7 +660,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S05": {
      "id": "S05",
@@ -683,7 +688,8 @@
       "current_reads": 0
      },
      "split": "development",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S06": {
      "id": "S06",
@@ -710,7 +716,8 @@
       "current_reads": 0
      },
      "split": "development",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S09": {
      "id": "S09",
@@ -731,7 +738,8 @@
       "current_reads": 12472
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S10": {
      "id": "S10",
@@ -752,7 +760,8 @@
       "current_reads": 12288
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S11": {
      "id": "S11",
@@ -773,7 +782,8 @@
       "current_reads": 12289
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S12": {
      "id": "S12",
@@ -798,7 +808,8 @@
       "current_reads": 5875
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S13": {
      "id": "S13",
@@ -819,7 +830,8 @@
       "current_reads": 10240
      },
      "split": "development",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S14": {
      "id": "S14",
@@ -840,7 +852,8 @@
       "current_reads": 9978
      },
      "split": "development",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S17": {
      "id": "S17",
@@ -865,7 +878,8 @@
       "current_reads": 7495
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S18": {
      "id": "S18",
@@ -886,7 +900,8 @@
       "current_reads": 14336
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     },
     "S19": {
      "id": "S19",
@@ -911,7 +926,8 @@
       "current_reads": 8192
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     },
     "S20": {
      "id": "S20",
@@ -932,7 +948,8 @@
       "current_reads": 1740
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S21": {
      "id": "S21",
@@ -957,7 +974,8 @@
       "current_reads": 6638
      },
      "split": "development",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S22": {
      "id": "S22",
@@ -982,7 +1000,8 @@
       "current_reads": 10240
      },
      "split": "development",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     }
    },
    "4/12": {
@@ -1009,7 +1028,8 @@
       "current_reads": 5213
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S02": {
      "id": "S02",
@@ -1030,7 +1050,8 @@
       "current_reads": 875
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S03": {
      "id": "S03",
@@ -1055,7 +1076,8 @@
       "current_reads": 5213
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S04": {
      "id": "S04",
@@ -1076,7 +1098,8 @@
       "current_reads": 5574
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S05": {
      "id": "S05",
@@ -1101,7 +1124,8 @@
       "current_reads": 4347
      },
      "split": "development",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S06": {
      "id": "S06",
@@ -1126,7 +1150,8 @@
       "current_reads": 4347
      },
      "split": "development",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S09": {
      "id": "S09",
@@ -1151,7 +1176,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S10": {
      "id": "S10",
@@ -1172,7 +1198,8 @@
       "current_reads": 12288
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S11": {
      "id": "S11",
@@ -1197,7 +1224,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S12": {
      "id": "S12",
@@ -1218,7 +1246,8 @@
       "current_reads": 8639
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S13": {
      "id": "S13",
@@ -1239,7 +1268,8 @@
       "current_reads": 10240
      },
      "split": "development",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S14": {
      "id": "S14",
@@ -1260,7 +1290,8 @@
       "current_reads": 9978
      },
      "split": "development",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S17": {
      "id": "S17",
@@ -1285,7 +1316,8 @@
       "current_reads": 5430
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S18": {
      "id": "S18",
@@ -1310,7 +1342,8 @@
       "current_reads": 1360
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     },
     "S19": {
      "id": "S19",
@@ -1335,7 +1368,8 @@
       "current_reads": 8192
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     },
     "S20": {
      "id": "S20",
@@ -1356,7 +1390,8 @@
       "current_reads": 1740
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S21": {
      "id": "S21",
@@ -1381,7 +1416,8 @@
       "current_reads": 5282
      },
      "split": "development",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S22": {
      "id": "S22",
@@ -1406,7 +1442,8 @@
       "current_reads": 10240
      },
      "split": "development",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     }
    },
    "6/10": {
@@ -1429,7 +1466,8 @@
       "current_reads": 5231
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S02": {
      "id": "S02",
@@ -1450,7 +1488,8 @@
       "current_reads": 875
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S03": {
      "id": "S03",
@@ -1471,7 +1510,8 @@
       "current_reads": 875
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S04": {
      "id": "S04",
@@ -1492,7 +1532,8 @@
       "current_reads": 5574
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S05": {
      "id": "S05",
@@ -1513,7 +1554,8 @@
       "current_reads": 875
      },
      "split": "development",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S06": {
      "id": "S06",
@@ -1534,7 +1576,8 @@
       "current_reads": 4362
      },
      "split": "development",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S09": {
      "id": "S09",
@@ -1559,7 +1602,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S10": {
      "id": "S10",
@@ -1584,7 +1628,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S11": {
      "id": "S11",
@@ -1609,7 +1654,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S12": {
      "id": "S12",
@@ -1630,7 +1676,8 @@
       "current_reads": 8639
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S13": {
      "id": "S13",
@@ -1651,7 +1698,8 @@
       "current_reads": 10240
      },
      "split": "development",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S14": {
      "id": "S14",
@@ -1672,7 +1720,8 @@
       "current_reads": 9978
      },
      "split": "development",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S17": {
      "id": "S17",
@@ -1693,7 +1742,8 @@
       "current_reads": 7495
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S18": {
      "id": "S18",
@@ -1718,7 +1768,8 @@
       "current_reads": 1360
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     },
     "S19": {
      "id": "S19",
@@ -1743,7 +1794,8 @@
       "current_reads": 8192
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     },
     "S20": {
      "id": "S20",
@@ -1764,7 +1816,8 @@
       "current_reads": 1740
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S21": {
      "id": "S21",
@@ -1785,7 +1838,8 @@
       "current_reads": 6638
      },
      "split": "development",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S22": {
      "id": "S22",
@@ -1806,7 +1860,8 @@
       "current_reads": 10240
      },
      "split": "development",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     }
    },
    "8/8": {
@@ -1829,7 +1884,8 @@
       "current_reads": 5231
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S02": {
      "id": "S02",
@@ -1850,7 +1906,8 @@
       "current_reads": 875
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S03": {
      "id": "S03",
@@ -1871,7 +1928,8 @@
       "current_reads": 875
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S04": {
      "id": "S04",
@@ -1892,7 +1950,8 @@
       "current_reads": 5574
      },
      "split": "train",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S05": {
      "id": "S05",
@@ -1913,7 +1972,8 @@
       "current_reads": 875
      },
      "split": "development",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": true
     },
     "S06": {
      "id": "S06",
@@ -1934,7 +1994,8 @@
       "current_reads": 4362
      },
      "split": "development",
-     "shape": "observation_heavy"
+     "shape": "observation_heavy",
+     "boundary": false
     },
     "S09": {
      "id": "S09",
@@ -1959,7 +2020,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S10": {
      "id": "S10",
@@ -1984,7 +2046,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S11": {
      "id": "S11",
@@ -2009,7 +2072,8 @@
       "current_reads": 0
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S12": {
      "id": "S12",
@@ -2034,7 +2098,8 @@
       "current_reads": 5875
      },
      "split": "train",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S13": {
      "id": "S13",
@@ -2059,7 +2124,8 @@
       "current_reads": 0
      },
      "split": "development",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": true
     },
     "S14": {
      "id": "S14",
@@ -2084,7 +2150,8 @@
       "current_reads": 0
      },
      "split": "development",
-     "shape": "read_heavy"
+     "shape": "read_heavy",
+     "boundary": false
     },
     "S17": {
      "id": "S17",
@@ -2105,7 +2172,8 @@
       "current_reads": 7495
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S18": {
      "id": "S18",
@@ -2130,7 +2198,8 @@
       "current_reads": 1360
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     },
     "S19": {
      "id": "S19",
@@ -2151,7 +2220,8 @@
       "current_reads": 8192
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     },
     "S20": {
      "id": "S20",
@@ -2172,7 +2242,8 @@
       "current_reads": 1740
      },
      "split": "train",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S21": {
      "id": "S21",
@@ -2193,7 +2264,8 @@
       "current_reads": 6638
      },
      "split": "development",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": false
     },
     "S22": {
      "id": "S22",
@@ -2218,9 +2290,1760 @@
       "current_reads": 1660
      },
      "split": "development",
-     "shape": "mixed"
+     "shape": "mixed",
+     "boundary": true
     }
    }
+  },
+  "probes": {
+   "2/14": [
+    {
+     "template": "S02",
+     "variant": "exact",
+     "targets": {
+      "observations": 2048
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S02",
+     "variant": "one_over",
+     "targets": {
+      "observations": 2049
+     },
+     "totals": {
+      "observations": 2049,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S03",
+     "variant": "exact",
+     "targets": {
+      "observations": 2048
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S03",
+     "variant": "one_over",
+     "targets": {
+      "observations": 2049
+     },
+     "totals": {
+      "observations": 2049,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S05",
+     "variant": "exact",
+     "targets": {
+      "observations": 2048
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 875
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S05",
+     "variant": "one_over",
+     "targets": {
+      "observations": 2049
+     },
+     "totals": {
+      "observations": 2049,
+      "current_reads": 875
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)",
+      "read blocks differ (5 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S10",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 14336
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S10",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 14337
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 14337
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S11",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 14336
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S11",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 14337
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 14337
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S13",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 1402,
+      "current_reads": 14336
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S13",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 14337
+     },
+     "totals": {
+      "observations": 1402,
+      "current_reads": 14337
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 4 expected)",
+      "read blocks differ (0 found, 4 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S18",
+     "variant": "exact",
+     "targets": {
+      "observations": 2048,
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 14336
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S18",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 2049,
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 2049,
+      "current_reads": 14336
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S18",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 2048,
+      "current_reads": 14337
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 14337
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S19",
+     "variant": "exact",
+     "targets": {
+      "observations": 2048,
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 14336
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S19",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 2049,
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 2049,
+      "current_reads": 14336
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 5 expected)",
+      "read blocks differ (1 found, 4 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S19",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 2048,
+      "current_reads": 14337
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 14337
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 5 expected)",
+      "read blocks differ (1 found, 4 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S22",
+     "variant": "exact",
+     "targets": {
+      "observations": 2048,
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 14336
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S22",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 2049,
+      "current_reads": 14336
+     },
+     "totals": {
+      "observations": 2049,
+      "current_reads": 14336
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S22",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 2048,
+      "current_reads": 14337
+     },
+     "totals": {
+      "observations": 2048,
+      "current_reads": 14337
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    }
+   ],
+   "4/12": [
+    {
+     "template": "S02",
+     "variant": "exact",
+     "targets": {
+      "observations": 4096
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S02",
+     "variant": "one_over",
+     "targets": {
+      "observations": 4097
+     },
+     "totals": {
+      "observations": 4097,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S03",
+     "variant": "exact",
+     "targets": {
+      "observations": 4096
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S03",
+     "variant": "one_over",
+     "targets": {
+      "observations": 4097
+     },
+     "totals": {
+      "observations": 4097,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S05",
+     "variant": "exact",
+     "targets": {
+      "observations": 4096
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 875
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S05",
+     "variant": "one_over",
+     "targets": {
+      "observations": 4097
+     },
+     "totals": {
+      "observations": 4097,
+      "current_reads": 875
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)",
+      "read blocks differ (5 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S10",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 12288
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S10",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 12289
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 12289
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S11",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 12288
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S11",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 12289
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 12289
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S13",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 1402,
+      "current_reads": 12288
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S13",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 12289
+     },
+     "totals": {
+      "observations": 1402,
+      "current_reads": 12289
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 4 expected)",
+      "read blocks differ (0 found, 4 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S18",
+     "variant": "exact",
+     "targets": {
+      "observations": 4096,
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 12288
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S18",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 4097,
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 4097,
+      "current_reads": 12288
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S18",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 4096,
+      "current_reads": 12289
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 12289
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S19",
+     "variant": "exact",
+     "targets": {
+      "observations": 4096,
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 12288
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S19",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 4097,
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 4097,
+      "current_reads": 12288
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 5 expected)",
+      "read blocks differ (1 found, 4 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S19",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 4096,
+      "current_reads": 12289
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 12289
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 5 expected)",
+      "read blocks differ (1 found, 4 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S22",
+     "variant": "exact",
+     "targets": {
+      "observations": 4096,
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 12288
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S22",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 4097,
+      "current_reads": 12288
+     },
+     "totals": {
+      "observations": 4097,
+      "current_reads": 12288
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S22",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 4096,
+      "current_reads": 12289
+     },
+     "totals": {
+      "observations": 4096,
+      "current_reads": 12289
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    }
+   ],
+   "6/10": [
+    {
+     "template": "S02",
+     "variant": "exact",
+     "targets": {
+      "observations": 6144
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S02",
+     "variant": "one_over",
+     "targets": {
+      "observations": 6145
+     },
+     "totals": {
+      "observations": 6145,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S03",
+     "variant": "exact",
+     "targets": {
+      "observations": 6144
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S03",
+     "variant": "one_over",
+     "targets": {
+      "observations": 6145
+     },
+     "totals": {
+      "observations": 6145,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S05",
+     "variant": "exact",
+     "targets": {
+      "observations": 6144
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 875
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S05",
+     "variant": "one_over",
+     "targets": {
+      "observations": 6145
+     },
+     "totals": {
+      "observations": 6145,
+      "current_reads": 875
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)",
+      "read blocks differ (5 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S10",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 1351,
+      "current_reads": 10240
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S10",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 10241
+     },
+     "totals": {
+      "observations": 1351,
+      "current_reads": 10241
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S11",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 1351,
+      "current_reads": 10240
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S11",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 10241
+     },
+     "totals": {
+      "observations": 1351,
+      "current_reads": 10241
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S13",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 1402,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S13",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 10241
+     },
+     "totals": {
+      "observations": 1402,
+      "current_reads": 10241
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 4 expected)",
+      "read blocks differ (0 found, 4 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S18",
+     "variant": "exact",
+     "targets": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S18",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 6145,
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 6145,
+      "current_reads": 10240
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S18",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 6144,
+      "current_reads": 10241
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 10241
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S19",
+     "variant": "exact",
+     "targets": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S19",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 6145,
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 6145,
+      "current_reads": 10240
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 5 expected)",
+      "read blocks differ (1 found, 4 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S19",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 6144,
+      "current_reads": 10241
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 10241
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 5 expected)",
+      "read blocks differ (1 found, 4 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S22",
+     "variant": "exact",
+     "targets": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S22",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 6145,
+      "current_reads": 10240
+     },
+     "totals": {
+      "observations": 6145,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S22",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 6144,
+      "current_reads": 10241
+     },
+     "totals": {
+      "observations": 6144,
+      "current_reads": 10241
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    }
+   ],
+   "8/8": [
+    {
+     "template": "S02",
+     "variant": "exact",
+     "targets": {
+      "observations": 8192
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S02",
+     "variant": "one_over",
+     "targets": {
+      "observations": 8193
+     },
+     "totals": {
+      "observations": 8193,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S03",
+     "variant": "exact",
+     "targets": {
+      "observations": 8192
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S03",
+     "variant": "one_over",
+     "targets": {
+      "observations": 8193
+     },
+     "totals": {
+      "observations": 8193,
+      "current_reads": 875
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S05",
+     "variant": "exact",
+     "targets": {
+      "observations": 8192
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 875
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S05",
+     "variant": "one_over",
+     "targets": {
+      "observations": 8193
+     },
+     "totals": {
+      "observations": 8193,
+      "current_reads": 875
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)",
+      "read blocks differ (5 found, 1 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S10",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S10",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 8193
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 8193
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S11",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S11",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 8193
+     },
+     "totals": {
+      "observations": 1352,
+      "current_reads": 8193
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S13",
+     "variant": "exact",
+     "targets": {
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 1401,
+      "current_reads": 8192
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S13",
+     "variant": "one_over",
+     "targets": {
+      "current_reads": 8193
+     },
+     "totals": {
+      "observations": 1401,
+      "current_reads": 8193
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (0 found, 4 expected)",
+      "read blocks differ (0 found, 4 expected)",
+      "1 requests, 2 expected"
+     ]
+    },
+    {
+     "template": "S18",
+     "variant": "exact",
+     "targets": {
+      "observations": 8192,
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S18",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 8193,
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 8193,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S18",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 8192,
+      "current_reads": 8193
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 8193
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S19",
+     "variant": "exact",
+     "targets": {
+      "observations": 8192,
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S19",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 8193,
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 8193,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 5 expected)",
+      "read blocks differ (1 found, 4 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S19",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 8192,
+      "current_reads": 8193
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 8193
+     },
+     "split": "train",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 5 expected)",
+      "read blocks differ (1 found, 4 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S22",
+     "variant": "exact",
+     "targets": {
+      "observations": 8192,
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 8192
+     },
+     "split": "development",
+     "passed": true,
+     "completed": true,
+     "planned": true,
+     "stop": null,
+     "parse_failures": [],
+     "evidence_problems": []
+    },
+    {
+     "template": "S22",
+     "variant": "one_over_observations",
+     "targets": {
+      "observations": 8193,
+      "current_reads": 8192
+     },
+     "totals": {
+      "observations": 8193,
+      "current_reads": 8192
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    },
+    {
+     "template": "S22",
+     "variant": "one_over_reads",
+     "targets": {
+      "observations": 8192,
+      "current_reads": 8193
+     },
+     "totals": {
+      "observations": 8192,
+      "current_reads": 8193
+     },
+     "split": "development",
+     "passed": true,
+     "completed": false,
+     "planned": false,
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ]
+    }
+   ]
   },
   "summary": {
    "2/14": {
@@ -2229,14 +4052,24 @@
      "of": 12,
      "budget_stops": 7,
      "other_stops": 0,
-     "parse_failures": 6
+     "parse_failures": 6,
+     "non_boundary_completed": 2,
+     "non_boundary_of": 6,
+     "non_boundary_budget_stops": 4,
+     "probes_passed": 14,
+     "probes_of": 14
     },
     "development": {
      "completed": 2,
      "of": 6,
      "budget_stops": 4,
      "other_stops": 0,
-     "parse_failures": 4
+     "parse_failures": 4,
+     "non_boundary_completed": 1,
+     "non_boundary_of": 3,
+     "non_boundary_budget_stops": 2,
+     "probes_passed": 7,
+     "probes_of": 7
     }
    },
    "4/12": {
@@ -2245,14 +4078,24 @@
      "of": 12,
      "budget_stops": 7,
      "other_stops": 0,
-     "parse_failures": 1
+     "parse_failures": 1,
+     "non_boundary_completed": 3,
+     "non_boundary_of": 6,
+     "non_boundary_budget_stops": 3,
+     "probes_passed": 14,
+     "probes_of": 14
     },
     "development": {
      "completed": 2,
      "of": 6,
      "budget_stops": 4,
      "other_stops": 0,
-     "parse_failures": 1
+     "parse_failures": 1,
+     "non_boundary_completed": 1,
+     "non_boundary_of": 3,
+     "non_boundary_budget_stops": 2,
+     "probes_passed": 7,
+     "probes_of": 7
     }
    },
    "6/10": {
@@ -2261,14 +4104,24 @@
      "of": 12,
      "budget_stops": 5,
      "other_stops": 0,
-     "parse_failures": 1
+     "parse_failures": 1,
+     "non_boundary_completed": 5,
+     "non_boundary_of": 6,
+     "non_boundary_budget_stops": 1,
+     "probes_passed": 14,
+     "probes_of": 14
     },
     "development": {
      "completed": 6,
      "of": 6,
      "budget_stops": 0,
      "other_stops": 0,
-     "parse_failures": 0
+     "parse_failures": 0,
+     "non_boundary_completed": 3,
+     "non_boundary_of": 3,
+     "non_boundary_budget_stops": 0,
+     "probes_passed": 7,
+     "probes_of": 7
     }
    },
    "8/8": {
@@ -2277,30 +4130,46 @@
      "of": 12,
      "budget_stops": 5,
      "other_stops": 0,
-     "parse_failures": 0
+     "parse_failures": 0,
+     "non_boundary_completed": 4,
+     "non_boundary_of": 6,
+     "non_boundary_budget_stops": 2,
+     "probes_passed": 14,
+     "probes_of": 14
     },
     "development": {
      "completed": 3,
      "of": 6,
      "budget_stops": 3,
      "other_stops": 0,
-     "parse_failures": 0
+     "parse_failures": 0,
+     "non_boundary_completed": 2,
+     "non_boundary_of": 3,
+     "non_boundary_budget_stops": 1,
+     "probes_passed": 7,
+     "probes_of": 7
     }
    }
   },
   "choice": {
-   "chosen": null,
-   "baseline_completed": 7,
+   "chosen": "6/10",
+   "scored": "non-boundary schedules only (plan v4 #245); probe templates are diagnostics",
+   "baseline_completed": 4,
+   "baseline_probe_failures": [],
    "rejected": {
-    "2/14": "loses baseline-success schedules: S02, S04, S12",
-    "6/10": "loses baseline-success schedules: S10",
-    "8/8": "loses baseline-success schedules: S10, S12, S13, S14"
+    "2/14": "loses baseline-success schedules: S04, S12",
+    "8/8": "loses baseline-success schedules: S12, S14"
    },
    "eligible": [
     {
+     "partition": "6/10",
+     "completed": 8,
+     "budget_stops": 1
+    },
+    {
      "partition": "4/12",
-     "completed": 7,
-     "budget_stops": 11
+     "completed": 4,
+     "budget_stops": 5
     }
    ]
   }
