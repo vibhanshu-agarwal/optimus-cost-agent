@@ -414,3 +414,47 @@ def test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_polic
     assert "private" not in text and "private_helper" not in text
     assert text.count(_plain(why.WITHHELD)) >= 3 and "src/gateway/config.py" in text
     assert "config.py was ambiguous" in text  # a name no rule denies is still the person's own words, shown back
+
+
+# --- frozen explanation cases E05, E09 and E12 (reports/plan12-memory-m2a/cases.json) ----------------------------------
+
+
+async def test_e05_a_turn_cancelled_before_its_context_is_prepared_replaces_the_completed_one(tmp_path):
+    class Cancelling(_ReportingRunner):
+        def run(self, request, **kwargs):
+            if "stop now" in request.task:
+                return AgentRunResult(run_id=request.run_id, session_id=request.session_id, execution_mode=request.execution_mode,
+                                      status=AgentRunStatus.TERMINATED, final_state="TERMINATED", output_text="Cancelled.", stop_reason="cancelled")
+            return super().run(request, **kwargs)
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "app.py").write_text(BODY_MARKER + "\n", encoding="utf-8")
+    adapter, outbound, _runner = make_adapter(tmp_path, make_attachment(), Cancelling(tmp_path))
+    session_id = await new_session(adapter, tmp_path, mode="chat")
+    await prompt(adapter, outbound, session_id, "explain pkg/app.py", "p1")
+    await prompt(adapter, outbound, session_id, "stop now", "p2")
+
+    await prompt(adapter, outbound, session_id, "/why", "w1")
+
+    answer = _plain(texts(outbound)[-1])
+    assert "for turn 2 of this session" in answer and "- outcome: cancelled" in answer
+    assert "required: pkg/app.py" not in answer, "turn 1's choices must not stand in for the cancelled turn"
+    assert "model requests sent: none" in answer or "model requests sent: unavailable" in answer
+
+
+def test_e09_requests_and_planning_rounds_are_counted_apart():
+    text = _text(_snapshot(dispatches=[(100, 1000)] * 4, rounds=3, reads=[10, 20, 30]))
+    assert "model requests sent: 4; planning rounds: 3" in text and "planning reads: 3, returning 60 bytes" in text
+
+
+def test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names_the_last():
+    manifest = {"selected": [{"path": f"pkg/m{number:03}.py", "disclosure": "body", "ranks": {"lexical": number}, "reason": "matched"}
+                             for number in range(130)]}
+    snapshot = _snapshot(index="used", manifest=manifest)
+    shown = why.pages(snapshot, sanitize=lambda text: text, admits=lambda path: True)
+
+    assert len(shown) == 4 and all(len(page.encode("utf-8")) <= why.MAX_PAGE_BYTES for page in shown)
+    joined = _plain("\n".join(shown))
+    assert all(joined.count(f"pkg/m{number:03}.py:") == 1 for number in range(130)), "every entry on exactly one page"
+    assert _text(snapshot, 5) == "The explanation has 4 page(s); `/why 4` shows the last."
+    assert why.parse("/why 0", attachments=False) == why.USAGE

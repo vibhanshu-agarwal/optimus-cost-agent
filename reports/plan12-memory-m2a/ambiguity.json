@@ -1,0 +1,109 @@
+{
+ "schema": "plan12-memory-m2a.ambiguity.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "child": 242,
+ "derived": "from the retained rows and scores; nothing was rerun for this record",
+ "sources": {
+  "split.json": {
+   "sha256": "hex:be503bc91fad891b73c0ee909aff9cac643ea9d1d83762e883202eb5a7270884",
+   "head": "git:d6c9a8dbe277cd656cf60b60c706f2a4bc1398f1",
+   "splits": "train and development"
+  },
+  "qualification.json": {
+   "sha256": "hex:98f201bd225bd39e95023eeb5cd9b219f9d28cac7278e2e17ce0ecf80fbf5fef",
+   "head": "git:b6dd92b180685e1fab06a62e60c21ee666c4acad",
+   "splits": "held_out, consumed once"
+  },
+  "ranking-policy.json": {
+   "sha256": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac"
+  }
+ },
+ "policy": "rank by task-term relevance, verified dependency proximity, verified-current metadata, then path; more than one eligible target always stops; only the person's own exact path settles (ADR-046, Decision 2)",
+ "scores": {
+  "development": {
+   "decidable": 4,
+   "undecidable": 2,
+   "ranked_cases": 4,
+   "oracle_regret": 0.25,
+   "wrong_target_selections": 0,
+   "candidates_lost": 0,
+   "denied_listed": 0,
+   "path_only_top_one": 0.25,
+   "path_only_reciprocal_rank": 0.5416666666666666,
+   "ranked_top_one": 1.0,
+   "ranked_reciprocal_rank": 1.0,
+   "index_top_one": 1.0,
+   "index_reciprocal_rank": 1.0
+  },
+  "train": {
+   "decidable": 11,
+   "undecidable": 1,
+   "ranked_cases": 10,
+   "oracle_regret": 0.22727272727272727,
+   "wrong_target_selections": 0,
+   "candidates_lost": 0,
+   "denied_listed": 0,
+   "path_only_top_one": 0.4,
+   "path_only_reciprocal_rank": 0.65,
+   "ranked_top_one": 0.7,
+   "ranked_reciprocal_rank": 0.8166666666666667,
+   "index_top_one": 0.9,
+   "index_reciprocal_rank": 0.95
+  },
+  "held_out": {
+   "decidable": 5,
+   "undecidable": 1,
+   "ranked_cases": 5,
+   "oracle_regret": 0.25,
+   "wrong_target_selections": 0,
+   "candidates_lost": 0,
+   "denied_listed": 0,
+   "path_only_top_one": 0.4,
+   "path_only_reciprocal_rank": 0.6333333333333333,
+   "ranked_top_one": 1.0,
+   "ranked_reciprocal_rank": 1.0,
+   "index_top_one": 1.0,
+   "index_reciprocal_rank": 1.0
+  }
+ },
+ "gate_242": {
+  "ranked": {
+   "passed": true,
+   "top_one": [
+    0.4,
+    1.0
+   ],
+   "reciprocal_rank": [
+    0.6333333333333333,
+    1.0
+   ]
+  },
+  "index": {
+   "passed": true,
+   "top_one": [
+    0.4,
+    1.0
+   ],
+   "reciprocal_rank": [
+    0.6333333333333333,
+    1.0
+   ]
+  },
+  "safety": {
+   "zero_wrong_targets_no_loss_no_denied": true,
+   "every_expected_stop_visible": true
+  }
+ },
+ "orders": "'ranked' is the shipped policy without index hints; 'index' adds the recorded real-index metadata (an offline replay, CP2 ruling); 'path_only' is the baseline",
+ "loss_rule": "agent-selected losses: correct 0, wrong 1, unresolved on a decidable case 0.25; a visible abstention on an undecidable case 0",
+ "boundary_and_live": {
+  "real_index": "boundaries.json: train/development families rank through a real MemorySession exactly as the offline replay did (44 passed at git:6dd6b97)",
+  "live": "zed-ui.json and acpx.json: the ranked stop, its order and the exact-path retry in real clients",
+  "platforms": "platforms.json: P2 on Windows and WSL with every separator form"
+ },
+ "limits": [
+  "the held-out gain carries the disclosed author bias",
+  "regret under D3 is the same for every order, because no order ever chooses; it is safety evidence, not benefit (CP1 ruling 4)"
+ ]
+}

@@ -219,6 +219,15 @@ is not a realized saving or the result of turning Auto off. The report makes no 
 context. References come from the packaged `optimus_model_policy/savings_references.yaml`, or from a launch-approved
 `accounting/savings-references.yaml` that replaces it whole.
 
+Context explanation and ambiguity (Plan 12.13, M2a; [ADR-046](docs/decisions/ADR-046-context-why-ranked-ambiguity-and-6-10-partition.md)): `/why` in Zed's Agent Panel
+explains the context this session's last turn was prepared with. It shows the outcome, whether the turn was sent to a model,
+the files and index entries chosen with their ranks and reasons, the byte and token limits used, and the memory served, by
+`id@version`. It never shows file bodies, prompts or memory statements, and it withholds a path that today's file policy denies.
+`/why <n>` shows page n. It makes no model call, is kept in memory only, and is unavailable after a restart. When a file name
+matches several workspace files, the turn stops and lists them most likely first; the order chooses nothing, and naming one
+exact workspace-relative path in the next prompt proceeds. A planning turn carries at most 6 KiB of earlier observations and
+10 KiB of new reads, 16 KiB in all.
+
 Project memory (Plans 12.11 and 12.12, M3; [ADR-042](docs/decisions/ADR-042-memory-store-topology-commit-and-recovery.md), [ADR-045](docs/decisions/ADR-045-completes-adr-042-deletion-journal-and-recovery-copy.md),
 [ADR-044](docs/decisions/ADR-044-explicit-user-actions-for-user-memory.md)) keeps what the user asks it to remember
 across sessions, on a dedicated Redis behind the Gateway that `optimus-trust memory-setup --store` sets up once in a
@@ -1107,8 +1116,8 @@ optimus-cost-agent/
 | Document | Purpose |
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
-| [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained; Plans 12.10 to 12.12's memory (M1, M3 including backups and import) not yet covered: see ADR-037 to ADR-045 and Plan 12.12 |
-| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 to 12.12's memory (M1, M3 including backups and import) not yet covered: see ADR-037 to ADR-045 and Plan 12.12 |
+| [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained; Plans 12.10 to 12.13's memory (M1, M3 including backups and import, M2a `/why` and ranked ambiguity) not yet covered: see ADR-037 to ADR-046 and Plans 12.12 and 12.13 |
+| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 to 12.13's memory (M1, M3 including backups and import, M2a `/why` and ranked ambiguity) not yet covered: see ADR-037 to ADR-046 and Plans 12.12 and 12.13 |
 | [docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf) | Testing approach; real Postgres report tier and Plan 12.9's qualified evidence, preserving failed Windows and separately successful Linux PR/main gates |
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |
