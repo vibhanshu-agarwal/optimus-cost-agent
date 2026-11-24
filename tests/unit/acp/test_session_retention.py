@@ -466,3 +466,29 @@ async def test_detach_exception_is_sticky_quarantine_with_original_cause(tmp_pat
         assert repeated.value is failure and repeated.value.__cause__ is cause
     assert detached == [session.session_id]
     assert closed == ([] if synchronous else [session.session_id])
+
+async def test_levelled_trace_records_quarantined_session_cleanup(tmp_path):
+    import json
+
+    from optimus.acp.debug_trace import DiagnosticLevel, configure_debug_trace
+
+    async def close(_session, _states):
+        return SessionCloseResult(("SESSION_CLOSE_FAILED",), False)
+
+    trace = tmp_path / "trace.ndjson"
+    configure_debug_trace(enabled=True, log_path=trace, minimum_level=DiagnosticLevel.ERROR)
+    store, owner = bound_store(cap=1, closer=close)
+    session = store.create(cwd=tmp_path)
+    owner.request_retire(session.session_id, reason=RetirementReason.SHUTDOWN)
+
+    result = await owner.wait_retired(session.session_id)
+
+    assert result.status is RetirementStatus.QUARANTINED
+    assert owner.retained_count == 1
+    assert trace.is_file(), "quarantine must produce an operator diagnostic at error level"
+    line, = trace.read_text(encoding="utf-8").splitlines()
+    record = json.loads(line)
+    assert record["level"] == "error"
+    assert record["data"]["event"] == "retired"
+    assert record["data"]["phase"] == "QUARANTINED"
+    assert record["data"]["failures"] == ["SESSION_CLOSE_FAILED"]

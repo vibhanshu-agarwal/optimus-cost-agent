@@ -18,7 +18,7 @@ from time import monotonic
 from typing import Any, Protocol
 
 from optimus.acp.admission import DEFAULT_LIMITS, AdmissionAccount, AdmissionClass, AdmissionLimits, Reservation
-from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled, log_provenance_once
+from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled, log_provenance_once
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.errors import (
     INTERNAL_ERROR,
@@ -661,6 +661,7 @@ def report_redis_cleanup_incomplete(runtime: Any, outcome: str) -> None:
             location="server.py:serve_ndjson:redis_cleanup_incomplete",
             message="redis runtime cleanup incomplete at teardown",
             data=payload,
+            level=DiagnosticLevel.WARNING,
         )
     except Exception:
         return
@@ -1326,14 +1327,14 @@ class AcpStreamServer:
             # or alter settlement -- so it is fully contained and writes nothing but the
             # operation id and the approved method category.
             try:
-                acp_debug_log(
+                written = acp_debug_log(
                     location="server.py:serve_ndjson:request_task_failed",
                     message="request task failed",
-                    data={"operation_id": operation_id, "request_method": request_method},
+                    data=lambda: {"operation_id": operation_id, "request_method": request_method},
+                    level=DiagnosticLevel.ERROR,
                 )
-                if not debug_trace_enabled():
-                    # With trace off the failure would otherwise be silently lost; surface a
-                    # content-free line so it is still observable.
+                if not written:
+                    # Keep the failure visible if the local trace did not complete its write.
                     print(
                         f"optimus.acp: request task failed operation_id={operation_id} method={request_method}",
                         file=sys.stderr,
@@ -1362,7 +1363,8 @@ class AcpStreamServer:
                 acp_debug_log(
                     location="server.py:serve_ndjson:reader_incomplete",
                     message="reader wrapper had not completed at the ownership decision",
-                    data={"reader_state": "incomplete"},
+                    data=lambda: {"reader_state": "incomplete"},
+                    level=DiagnosticLevel.WARNING,
                 )
             except Exception:
                 return
@@ -1414,6 +1416,7 @@ class AcpStreamServer:
                     location="server.py:serve_ndjson:mcp_cleanup_incomplete",
                     message="client MCP cleanup incomplete at teardown",
                     data=payload,
+                    level=DiagnosticLevel.WARNING,
                 )
             except Exception:
                 return
@@ -1483,6 +1486,7 @@ class AcpStreamServer:
                     message="client request failed",
                     data=_request_failure_payload(exc, request_id, method, pending_permission_id, lambda exc: str(exc)),
                     hypothesis_id="H4",
+                    level=DiagnosticLevel.ERROR,
                 )
                 # endregion
                 print(

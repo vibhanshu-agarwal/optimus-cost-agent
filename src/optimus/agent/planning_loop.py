@@ -1753,7 +1753,7 @@ class _PlanningIterationRunner:
                 self._unknown_cost_attempt_count += 1
                 ended["unknown"] = True
                 account(None, _failure_classifier(exc), exc)
-                from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+                from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():
                     acp_debug_log(
@@ -1762,6 +1762,7 @@ class _PlanningIterationRunner:
                         data=_unknown_cost_payload(self, exc, planning_turn, wire_attempt),
                         hypothesis_id="P9.95-USAGE-UNKNOWN",
                         run_id=self._run_id,
+                        level=DiagnosticLevel.ERROR,
                     )
                 raise _PermanentStop("unknown transport cost") from exc
 
@@ -1937,7 +1938,7 @@ class _PlanningIterationRunner:
         except PlanningTurnParseError as exc:
             self._last_non_progress_kind = "UNPARSEABLE"
             self._parse_failure_code = exc.code  # the next turn's notice; the repeat signature is unchanged (#403)
-            from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+            from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled
 
             if debug_trace_enabled():
                 acp_debug_log(
@@ -1946,6 +1947,7 @@ class _PlanningIterationRunner:
                     data=_non_progress_payload(self, "UNPARSEABLE", planning_turn, response, exc=exc),
                     hypothesis_id="P12.2-NONPROGRESS",
                     run_id=self._run_id,
+                    level=DiagnosticLevel.WARNING,
                 )
             return self._observed(
                 IterationOutcome(
@@ -1985,7 +1987,7 @@ class _PlanningIterationRunner:
                     cost_usd=attempt_cost,
                 )
             except PlanningReadError as exc:
-                from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+                from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():
                     acp_debug_log(
@@ -1994,6 +1996,7 @@ class _PlanningIterationRunner:
                         data=_read_rejection_payload(self, exc, request),
                         hypothesis_id="P9.87-READ-REJECT",
                         run_id=self._run_id,
+                        level=DiagnosticLevel.WARNING,
                     )
                 return self._typed_planning_failure(
                     stop_reason=exc.code,
@@ -2073,7 +2076,7 @@ class _PlanningIterationRunner:
             self._mcp_tool_calls.append(call)
             self._mcp_evidence_envelope = format_mcp_evidence_envelope(output)
             self._current_reads = ()
-            from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+            from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled
 
             if debug_trace_enabled():
                 acp_debug_log(
@@ -2082,6 +2085,7 @@ class _PlanningIterationRunner:
                     data=_non_progress_payload(self, "MCP_TOOL", planning_turn, response, decision=decision, call=call),
                     hypothesis_id="P12.2-NONPROGRESS",
                     run_id=self._run_id,
+                    level=DiagnosticLevel.WARNING,
                 )
             return self._observed(
                 IterationOutcome(

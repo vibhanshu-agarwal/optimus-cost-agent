@@ -114,3 +114,50 @@ def test_trace_batch_rejects_missing_identity_and_accepts_unknown_top_level():
     assert batch.batch_id == "batch-1"
     with pytest.raises(ValidationError, match="event_id"):
         TraceBatch.model_validate({"schema_version": "1.0", "batch_id": "batch-1", "events": [{"kind": "model_call"}]})
+
+
+def test_levelled_local_record_does_not_enter_gateway_export(tmp_path, capsys):
+    from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, configure_debug_trace
+    from optimus.telemetry.fanout import TelemetryFanout
+    from optimus.telemetry.jsonl import JsonlTelemetryWriter
+
+    transport = FakeTransport()
+    exporter = GatewayObservabilityExporter(settings=gateway_settings(), transport=transport)
+    domain_path = tmp_path / "domain.jsonl"
+    domain_sink = TelemetryFanout(
+        jsonl_writer=JsonlTelemetryWriter(domain_path),
+        redis_sink=lambda event: None,
+        gateway_exporter=exporter,
+        batch_size=1,
+    )
+    log_path = tmp_path / "local.ndjson"
+    configure_debug_trace(enabled=True, log_path=log_path, minimum_level=DiagnosticLevel.INFO)
+
+    acp_debug_log(
+        location="test:local-only",
+        message="local diagnostic marker",
+        data={"token": "fixture-only-token"},  # pragma: allowlist secret
+        level=DiagnosticLevel.INFO,
+    )
+
+    assert transport.requests == []
+    raw = log_path.read_text(encoding="utf-8")
+    assert "local diagnostic marker" in raw
+    assert "fixture-only-token" not in raw
+    assert capsys.readouterr().out == ""
+    event = TelemetryEvent.error(
+        run_id="run-control",
+        session_id=None,
+        request_id="req-control",
+        occurred_at=datetime(2026, 7, 4, tzinfo=UTC),
+        error_type="test_control",
+        message="domain event control",
+        disposition="recorded",
+    )
+    domain_sink(event)
+    request, = transport.requests
+    assert "domain event control" in domain_path.read_text(encoding="utf-8")
+    assert "local diagnostic marker" not in domain_path.read_text(encoding="utf-8")
+    assert request.url == f"{LOOPBACK_GATEWAY_URL}/v1/observability/traces"
+    assert request.payload["events"] == [event.to_json_dict()]
+    assert "local diagnostic marker" not in str(request.payload)
