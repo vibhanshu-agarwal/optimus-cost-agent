@@ -456,6 +456,8 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
         if ".." in Path(token).parts or _ABSOLUTE_PATH.match(token):
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
-        if unsafe_path_text(token):
-            raise AgentDirectiveParseError("unsafe TEST directive")  # #583: fixed text, the token is never quoted
+        # #583: fixed text, the token is never quoted. No joiner exemption here: the shell guard refuses every
+        # format character. No blank space character either, which would read as two arguments.
+        if unsafe_path_text(token) or any(c != " " and unicodedata.category(c) in ("Cf", "Zs") for c in token):
+            raise AgentDirectiveParseError("unsafe TEST directive")
     return tokens

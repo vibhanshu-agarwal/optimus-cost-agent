@@ -8,6 +8,7 @@ convert it."""
 from __future__ import annotations
 
 import asyncio
+import sys
 import unicodedata
 from decimal import Decimal
 from subprocess import CompletedProcess
@@ -16,7 +17,7 @@ from typing import Any
 import pytest
 
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
-from optimus.agent.directives import MAX_PATH_CHARS, AgentDirectiveParseError, parse_agent_plan
+from optimus.agent.directives import MAX_PATH_CHARS, AgentDirectiveParseError, parse_agent_plan, unsafe_path_text
 from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK, PlanningTurnKind, PlanningTurnParseError, parse_planning_turn
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
@@ -142,11 +143,23 @@ def test_a_legitimate_ranged_read_path_is_still_accepted(path):
     assert ranged.kind is PlanningTurnKind.READ_MORE and ranged.read_requests[0].path == path
 
 
+def test_the_only_format_characters_a_path_may_hold_are_the_two_joiners():
+    formats = (c for c in map(chr, range(sys.maxunicode + 1)) if unicodedata.category(c) == "Cf")
+    assert {c for c in formats if not unsafe_path_text(f"a{c}b")} == {ZWNJ, ZWJ}
+    assert unsafe_path_text(f"a{ZWNJ}{RLO}b") and unsafe_path_text(f"a{ZWJ}{LRI}b")  # a joiner excuses nothing beside it
+
+
 UNSAFE_TEST_TOKENS = {
     "c1-csi": f"tests/a{CSI}31mb.py",
     "rlo": f"tests/test_a{RLO}yp.exe",
     "esc": f"tests/a{ESC}b.py",
     "too-long": "a" * (MAX_PATH_CHARS + 1),
+    # a TEST argument gets no joiner exemption (the shell guard refuses every format character)
+    "zwnj": f"tests/{PERSIAN}.py",
+    "zwj": f"tests/{EMOJI_ZWJ}.py",
+    # a blank space character other than U+0020 would read as two arguments
+    "no-break-space": f"tests/a{chr(0xA0)}b.py",
+    "ideographic-space": f"tests/a{chr(0x3000)}b.py",
 }
 
 
@@ -158,7 +171,9 @@ def test_an_unsafe_test_argument_is_rejected_at_parse_time_without_quoting_it(to
     assert str(caught.value) == "unsafe TEST directive"
 
 
-@pytest.mark.parametrize("command", ["pytest -q tests/unit", "pytest tests/test_a.py::test_x[param]", f"pytest tests/{PERSIAN}.py"])
+@pytest.mark.parametrize(
+    "command", ["pytest -q tests/unit", "pytest tests/test_a.py::test_x[param]", f"pytest tests/{NIHONGO}.py", "pytest -k smoke -m slow"]
+)
 def test_a_legitimate_test_command_is_still_accepted(command):
     assert parse_agent_plan(f"TEST {command}\n", edit_base="forbidden").tests == (tuple(command.split()),)
 
