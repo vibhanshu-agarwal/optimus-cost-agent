@@ -365,6 +365,9 @@ _F = '"billing_units": 10, "gateway_request_id": "gw-1", "provider": "tavily", "
         "{" + _F + ', "cost_usd": "abc"}',
         "{" + _F + ', "cost_usd": "NaN"}',
         "{" + _F + ', "cost_usd": "Infinity"}',
+        # canonical layout, but a cost spelling str(Decimal) never writes
+        _CANONICAL.replace('"0.003"', '" 0.003 "'),
+        _CANONICAL.replace('"0.003"', '"0.00_3"'),
         b"\xff\xfe",  # invalid UTF-8
         pytest.param("[" * 100_000, id="deeply-nested"),  # json.loads raises RecursionError at this depth
         None,  # the claim was released between hsetnx and hget
@@ -404,3 +407,18 @@ async def test_record_settled_usage_nan_replay_against_its_own_stored_string_is_
     await adapter.record_settled_usage(**{**_BASE, "cost_usd": Decimal("NaN")})
 
     assert _ts_adds(client) == 2
+
+
+async def test_record_settled_usage_claim_the_client_cannot_decode_is_divergent():
+    # A decoding client raises inside hget on a stored claim that is not UTF-8; callers still get the duplicate error.
+    client = _seeded(_CANONICAL)
+
+    async def undecodable_hget(key: str, field: str):
+        raise UnicodeDecodeError("utf-8", bytes([255, 254]), 0, 1, "invalid start byte")
+
+    client.hget = undecodable_hget  # type: ignore[method-assign]
+
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        await RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "cost_usd": Decimal("0.0030")})
+
+    assert _ts_adds(client) == 0

@@ -121,7 +121,10 @@ class RedisTelemetryAdapter:
         async with self._settled_usage_lock:
             claimed = await self._client.hsetnx(claims_key, gateway_request_id, fingerprint)
             if not claimed:
-                existing = await self._client.hget(claims_key, gateway_request_id)
+                try:
+                    existing = await self._client.hget(claims_key, gateway_request_id)
+                except UnicodeDecodeError:  # a decoding client met a stored claim that is not UTF-8
+                    existing = None
                 if isinstance(existing, bytes):
                     try:
                         existing = existing.decode()
@@ -130,7 +133,7 @@ class RedisTelemetryAdapter:
                 if existing == fingerprint:
                     return
                 # Same request with the cost written differently (0.003 vs 0.0030) is a replay, but only
-                # when the stored claim is exactly the canonical string this code would have written.
+                # when the stored claim is exactly a string this code writes: canonical JSON, str(Decimal) cost.
                 cost_text = _stored_cost_text(existing) if existing is not None and cost_usd.is_finite() else None
                 if cost_text is not None:
                     try:
@@ -141,6 +144,7 @@ class RedisTelemetryAdapter:
                         stored_cost is not None
                         and stored_cost.is_finite()
                         and stored_cost == cost_usd
+                        and str(stored_cost) == cost_text
                         and existing == json.dumps(_claim_fields(*fields, cost_text), sort_keys=True)
                     ):
                         return
