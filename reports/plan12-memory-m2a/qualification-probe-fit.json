@@ -1,0 +1,155 @@
+{
+ "schema": "plan12-memory-m2a.qualification-probe-fit.v1",
+ "head": "git:d6c9a8dbe277cd656cf60b60c706f2a4bc1398f1",
+ "derived_from": {
+  "path": "reports/plan12-memory-m2a/qualification.json",
+  "sha256": "hex:98f201bd225bd39e95023eeb5cd9b219f9d28cac7278e2e17ce0ecf80fbf5fef",
+  "head": "git:b6dd92b180685e1fab06a62e60c21ee666c4acad"
+ },
+ "finding": "Codex CP2 review 1, finding 2: probe_passed ignored route_fit, and probe records dropped it",
+ "method": "derived from the retained records only; no held-out case was run again. The packer turn has no history, so it cannot repack; every planning send calls the packer's record_dispatch (planning_loop._invoke_planning_gateway); a fit that returns None ends the run with CONTEXT_CAPACITY_EXCEEDED. So an exact probe that completed and a one-over probe that stopped on a budget code had every request fitted",
+ "probes": [
+  {
+   "partition": "4/12",
+   "template": "S07",
+   "variant": "exact",
+   "passed_at_qualification": true,
+   "stop": null,
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "completed, and completion at b6dd92b required every request fitted and recorded"
+  },
+  {
+   "partition": "4/12",
+   "template": "S07",
+   "variant": "one_over",
+   "passed_at_qualification": true,
+   "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "stopped PLANNING_OBSERVATION_BUDGET_EXHAUSTED with no plan; an earlier unfitted request would have stopped CONTEXT_CAPACITY_EXCEEDED"
+  },
+  {
+   "partition": "4/12",
+   "template": "S15",
+   "variant": "exact",
+   "passed_at_qualification": true,
+   "stop": null,
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "completed, and completion at b6dd92b required every request fitted and recorded"
+  },
+  {
+   "partition": "4/12",
+   "template": "S15",
+   "variant": "one_over",
+   "passed_at_qualification": true,
+   "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "stopped PLANNING_READ_BUDGET_EXHAUSTED with no plan; an earlier unfitted request would have stopped CONTEXT_CAPACITY_EXCEEDED"
+  },
+  {
+   "partition": "4/12",
+   "template": "S24",
+   "variant": "exact",
+   "passed_at_qualification": true,
+   "stop": null,
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "completed, and completion at b6dd92b required every request fitted and recorded"
+  },
+  {
+   "partition": "4/12",
+   "template": "S24",
+   "variant": "one_over_observations",
+   "passed_at_qualification": true,
+   "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "stopped PLANNING_OBSERVATION_BUDGET_EXHAUSTED with no plan; an earlier unfitted request would have stopped CONTEXT_CAPACITY_EXCEEDED"
+  },
+  {
+   "partition": "4/12",
+   "template": "S24",
+   "variant": "one_over_reads",
+   "passed_at_qualification": true,
+   "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "stopped PLANNING_READ_BUDGET_EXHAUSTED with no plan; an earlier unfitted request would have stopped CONTEXT_CAPACITY_EXCEEDED"
+  },
+  {
+   "partition": "6/10",
+   "template": "S07",
+   "variant": "exact",
+   "passed_at_qualification": true,
+   "stop": null,
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "completed, and completion at b6dd92b required every request fitted and recorded"
+  },
+  {
+   "partition": "6/10",
+   "template": "S07",
+   "variant": "one_over",
+   "passed_at_qualification": true,
+   "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "stopped PLANNING_OBSERVATION_BUDGET_EXHAUSTED with no plan; an earlier unfitted request would have stopped CONTEXT_CAPACITY_EXCEEDED"
+  },
+  {
+   "partition": "6/10",
+   "template": "S15",
+   "variant": "exact",
+   "passed_at_qualification": true,
+   "stop": null,
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "completed, and completion at b6dd92b required every request fitted and recorded"
+  },
+  {
+   "partition": "6/10",
+   "template": "S15",
+   "variant": "one_over",
+   "passed_at_qualification": true,
+   "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "stopped PLANNING_READ_BUDGET_EXHAUSTED with no plan; an earlier unfitted request would have stopped CONTEXT_CAPACITY_EXCEEDED"
+  },
+  {
+   "partition": "6/10",
+   "template": "S24",
+   "variant": "exact",
+   "passed_at_qualification": true,
+   "stop": null,
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "completed, and completion at b6dd92b required every request fitted and recorded"
+  },
+  {
+   "partition": "6/10",
+   "template": "S24",
+   "variant": "one_over_observations",
+   "passed_at_qualification": true,
+   "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "stopped PLANNING_OBSERVATION_BUDGET_EXHAUSTED with no plan; an earlier unfitted request would have stopped CONTEXT_CAPACITY_EXCEEDED"
+  },
+  {
+   "partition": "6/10",
+   "template": "S24",
+   "variant": "one_over_reads",
+   "passed_at_qualification": true,
+   "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+   "parse_failures": [],
+   "fitted": true,
+   "basis": "stopped PLANNING_READ_BUDGET_EXHAUSTED with no plan; an earlier unfitted request would have stopped CONTEXT_CAPACITY_EXCEEDED"
+  }
+ ],
+ "all_fitted": true,
+ "absolute_runs_fitted": true
+}

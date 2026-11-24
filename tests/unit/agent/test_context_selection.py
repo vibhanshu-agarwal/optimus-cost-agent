@@ -550,14 +550,20 @@ class _FakePacker:
         self.refuse = refuse
         self.inputs: list[str] = []
         self.dispatched: list[str] = []
+        self.where: list[tuple[int | None, int | None]] = []
+        self.prepared: list[tuple[int, bool]] = []
 
     def fit(self, build):
         text = build(self.envelope)
         self.inputs.append(text)
         return None if self.refuse else text
 
-    def record_dispatch(self, text: str) -> None:
+    def record_dispatch(self, text: str, *, planning_round: int | None = None, attempt: int | None = None) -> None:
         self.dispatched.append(text)
+        self.where.append((planning_round, attempt))
+
+    def record_preparation(self, planning_round: int, *, fitted: bool) -> None:
+        self.prepared.append((planning_round, fitted))
 
 
 def test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round(tmp_path):
@@ -571,6 +577,29 @@ def test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round
 
     assert len(gateway.calls) >= 2
     assert packer.inputs == [call["input_text"] for call in gateway.calls]  # every round, as sent
+    # each request names its own planning round and attempt, for /why (Plan 12.13, frozen case E09)
+    assert packer.where == [(number, 1) for number in range(1, len(gateway.calls) + 1)]
+    assert packer.prepared == [(number, True) for number in range(1, len(gateway.calls) + 1)]
+
+
+def test_a_round_whose_request_does_not_fit_is_recorded_as_prepared_and_never_sent(tmp_path):
+    """Codex CP3 review 2, finding 1 (frozen case E09): round 2 prepares a request the route cannot take. The real planning loop
+    records that preparation under its own round, though nothing is sent for it."""
+    class SecondRoundTooBig(_FakePacker):
+        def fit(self, build):
+            text = build(self.envelope)
+            self.inputs.append(text)
+            return None if len(self.inputs) >= 2 else text
+
+    (tmp_path / "big.py").write_text("b" * 200, encoding="utf-8")
+    gateway = _Gateway("OBSERVE: need it\nREAD: big.py#bytes=0:200\n")
+    packer = SecondRoundTooBig("HISTORY-VIEW")
+    request = _attached_request(tmp_path, ExecutionMode.AGENT, prompt="Go on.", selection="Go on.", envelope="HISTORY-VIEW")
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+
+    assert result.stop_reason == "CONTEXT_CAPACITY_EXCEEDED" and len(gateway.calls) == 1
+    assert packer.prepared == [(1, True), (2, False)] and packer.where == [(1, 1)]
     first = gateway.calls[0]["input_text"]
     assert "Task: Go on.\n" in first and "HISTORY-VIEW" in first
     assert first.index("HISTORY-VIEW") < first.index("Task: Go on.")
@@ -659,3 +688,85 @@ def test_a_request_not_fitted_because_the_turn_was_halted_reports_a_halt(tmp_pat
 
     assert gateway.calls == []
     assert result.stop_reason in {"PLANNING_HALTED", "CHAT_HALTED"}
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_an_exact_retry_after_an_ambiguity_stop_is_selected_through_the_real_runner(tmp_path, mode):
+    """Plan 12.13 Task 4 (found by the acpx run): the runner ranks and settles on the person's own prompt, not the selection text that
+    also carries the earlier prompt and its stop."""
+    for folder in ("src/gateway", "src/agent"):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "config.py").write_text("A = 1\n", encoding="utf-8")
+    earlier = ("fix the gateway timeout in config.py\nWorkspace reference 'config.py' is ambiguous. Candidates, most likely first: "
+               "src/gateway/config.py (task terms: gateway); src/agent/config.py. Retry with one exact workspace-relative path.")
+    prompt = "fix the gateway timeout in src/gateway/config.py"
+    request = _attached_request(tmp_path, mode, prompt=prompt, selection=f"{prompt}\n{earlier}", envelope="")
+
+    context, _gateway, _result = _run_and_observe(tmp_path, request, "It is set there." if mode is ExecutionMode.CHAT else "REFUSE: test")
+
+    assert context.blocking_stop_reason is None, context.blocking_message
+    assert context.prioritized_paths[0] == "src/gateway/config.py"
+
+
+# --- Plan 12.13 Task 4 (Codex round 120, option A): a turn that did not complete selects without its host notice ---
+
+_STOP_NOTICE = ("Workspace reference 'config.py' is ambiguous. Candidates, most likely first: src/gateway/config.py (task terms: gateway); "
+                "src/agent/config.py. The order is a suggestion and chose nothing. Retry with one exact workspace-relative path.")
+
+
+def _one_turn(outcome: ConversationOutcome, completion: str = _STOP_NOTICE) -> dict[int, ConversationTurn]:
+    return {1: ConversationTurn(user_prompt="fix the gateway timeout in config.py, as notes.md says", plan_text="PLAN: compare plan.md",
+                                completion_text=completion, outcome=outcome, effect_state=EffectState.NONE)}
+
+
+def _selection(prompt: str, outcome: ConversationOutcome) -> str:
+    from optimus.context.assembly import full_history_view
+
+    snap = snapshot(_one_turn(outcome), approvals={})
+    return build_selection_text(prompt, snap, full_history_view(snap))
+
+
+@pytest.mark.parametrize("outcome", [ConversationOutcome.FAILED, ConversationOutcome.REJECTED, ConversationOutcome.CANCELLED])
+def test_a_turn_that_did_not_complete_selects_with_its_prompt_and_plan_but_never_its_notice(outcome):
+    selection = _selection("Now src/gateway/config.py", outcome)
+    assert "src/agent/config.py" not in selection and "most likely first" not in selection
+    assert "notes.md" in selection and "plan.md" in selection  # the person's words and the plan still select
+
+
+def test_a_completed_answer_still_selects():
+    assert "src/agent/config.py" in _selection("Now src/gateway/config.py", ConversationOutcome.COMPLETED)
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_an_unchosen_oversized_candidate_the_stop_listed_never_blocks_the_retry(tmp_path, mode):
+    """The live acpx retry required every candidate the stop listed; one too large for the context would have refused the retry."""
+    for folder, size in (("src/gateway", 10), ("src/agent", 20 * 1024)):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "config.py").write_text("x" * size, encoding="utf-8")
+    prompt = "fix the gateway timeout in src/gateway/config.py"
+    reply = "It is set there." if mode is ExecutionMode.CHAT else "REFUSE: test"
+
+    request = _attached_request(tmp_path, mode, prompt=prompt, selection=_selection(prompt, ConversationOutcome.FAILED), envelope="")
+    context, _gateway, _result = _run_and_observe(tmp_path, request, reply)
+    assert context.blocking_stop_reason is None, context.blocking_message
+    assert context.prioritized_paths == ("src/gateway/config.py",)
+
+    # the control: had the notice selected (as a completed answer's text does), the unchosen file would have refused the retry
+    control = _attached_request(tmp_path, mode, prompt=prompt, selection=_selection(prompt, ConversationOutcome.COMPLETED), envelope="")
+    context, _gateway, _result = _run_and_observe(tmp_path, control, reply)
+    assert context.blocking_stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.CHAT, ExecutionMode.AGENT])
+def test_an_exact_path_only_in_history_never_settles_the_prompts_bare_name_through_the_real_runner(tmp_path, mode):
+    """The runner hands the person's own prompt to the ranking: a path named in an earlier turn chooses nothing for this one."""
+    for folder in ("src/gateway", "src/agent"):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "config.py").write_text("A = 1\n", encoding="utf-8")
+    prompt = "and what does config.py hold now?"
+    request = _attached_request(tmp_path, mode, prompt=prompt, selection=f"{prompt}\nfix the gateway timeout in src/gateway/config.py",
+                                envelope="")
+
+    context, _gateway, _result = _run_and_observe(tmp_path, request, "It holds A." if mode is ExecutionMode.CHAT else "REFUSE: test")
+
+    assert context.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE"

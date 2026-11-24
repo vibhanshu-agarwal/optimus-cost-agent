@@ -348,7 +348,7 @@ truncating required context or failing closed on every multi-file task.
 Evidence: [`reports/plan-9-85-multi-turn-acpx-evidence.md`](../../../reports/plan-9-85-multi-turn-acpx-evidence.md).
 
 Plan 9.85 adapts the existing `GoalLoopController` with a bounded, turn-capped READ -> observe ->
-replan iteration; enforces the 4 KiB/12 KiB observation/current-read evidence partition fail-closed
+replan iteration; enforces the 4 KiB/12 KiB observation/current-read evidence partition (6 KiB/10 KiB since Plan 12.13) fail-closed
 with no silent truncation; charges and records every Gateway wire attempt (including retries)
 against `max_cost_usd`; and exposes only the final settled plan for ACP approval, hashing, and
 persistence. Real `acpx` 0.12.0 evidence proves a live multi-turn success path (settled turns
@@ -364,7 +364,8 @@ as a supplementary artifact and is credited to Plan 9.87's scope, not claimed as
 
 **Known limitations (retained, not claimed live-proven beyond this scope):**
 
-- Fixed 4 KiB/12 KiB observation-vs-current-read partition; no intelligent compression (Plan 12).
+- Fixed observation-vs-current-read partition: 4 KiB/12 KiB until Plan 12.13 recalibrated it to 6 KiB/10 KiB
+  ([ADR-046](../../decisions/ADR-046-context-why-ranked-ambiguity-and-6-10-partition.md)); no intelligent compression (Plan 12).
 - Raw evidence is visible for one turn only; earlier evidence carries forward as untrusted
   observations with path/range/hash provenance, never silently re-read as if complete.
 - Superseded/wrong plan-hash rejection (`PLAN_NOT_FOUND_OR_EXPIRED`) is proven by unit and ACP
@@ -1202,7 +1203,8 @@ Plan 12's live status is in [#235](https://github.com/vibhanshu-agarwal/optimus-
 - `P9.8-FU-3` — dynamic, model-aware context budgets and injection-safe required-file
   summarization with measured quality/cost trade-offs.
 - `P9.85-FU-1` — intelligent observation compression replacing fixed fail-closed carryover.
-- `P9.85-FU-2` — dynamic planning-evidence partition replacing the fixed 4 KiB/12 KiB split.
+- `P9.85-FU-2` — dynamic planning-evidence partition replacing the fixed split. Plan 12.13 (#245) recalibrated the fixed
+  split from 4 KiB/12 KiB to 6 KiB/10 KiB; no dynamic partition is built.
 - `P11.25-FU-1` — non-AGENT conversation carriage (designated 2026-09-29).
 - `P12-FU-1` — Plan/Chat advisory-answer capability, the residual of HLD §7 outside Plan 2's scope
   (designated 2026-09-29). It depends on `P11.25-FU-1` and reuses Plan 2's enforcement unchanged.

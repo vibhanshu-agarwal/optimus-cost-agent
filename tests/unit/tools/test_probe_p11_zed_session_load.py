@@ -4255,6 +4255,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     if not url_schemes_committed:
         expected -= {url_schemes_path}
     assert (url_schemes_path in closure) is url_schemes_committed
+    why_path = "src/optimus/context/context_why.py"  # Plan 12.13 Task 2: `/why`
+    why_committed = b"from optimus.context import context_why" in head_spec
+    if not why_committed:
+        expected -= {why_path}
+    assert (why_path in closure) is why_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4285,7 +4290,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         8 if capture_committed else 0
     ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
         5 if memory_session_committed else 0
-    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed
+    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed + why_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

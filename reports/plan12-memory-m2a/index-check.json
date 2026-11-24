@@ -1,0 +1,606 @@
+{
+ "schema": "plan12-memory-m2a.index-check.v1",
+ "head": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
+ "phase": "index-check",
+ "inputs": {
+  "cases.json": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2",
+  "ranking-policy.json": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac",
+  "evaluation-contract.json": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390",
+  "case-provenance.json": "hex:cf65775aa6ea63fc0fcc56e733d0dde923f5070ac9a567c6cc58d3b2f54efeeb"
+ },
+ "paid_attempts": 0,
+ "provider_cost_usd": "0",
+ "families": [
+  {
+   "family": "A-F1",
+   "split": "train",
+   "files_written": 3,
+   "records": 7,
+   "coverage": {
+    "complete": true,
+    "files_indexed": 3,
+    "files_total": 3,
+    "records": 7,
+    "unsupported": 0,
+    "excluded": 0,
+    "parsed_loc": {
+     "python": 9
+    }
+   },
+   "candidates": [
+    {
+     "path": "src/gateway/config.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "RouteConfig",
+      "load_routes"
+     ],
+     "matches": true
+    },
+    {
+     "path": "src/agent/config.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "AgentSettings"
+     ],
+     "matches": true
+    },
+    {
+     "path": "tests/fixtures/config.py",
+     "frozen": "none",
+     "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    },
+    {
+     "path": "src/gateway/server.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [
+      "gateway.config"
+     ],
+     "labels": [
+      "serve"
+     ],
+     "matches": true
+    }
+   ],
+   "neighbours_of_resolved_task_paths": {
+    "src/gateway/server.py": [
+     "src/gateway/config.py"
+    ]
+   }
+  },
+  {
+   "family": "A-F2",
+   "split": "train",
+   "files_written": 4,
+   "records": 7,
+   "coverage": {
+    "complete": true,
+    "files_indexed": 4,
+    "files_total": 4,
+    "records": 7,
+    "unsupported": 1,
+    "excluded": 0,
+    "parsed_loc": {
+     "python": 6
+    }
+   },
+   "candidates": [
+    {
+     "path": "src/optimus/context/utils.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "fold_terms"
+     ],
+     "matches": true
+    },
+    {
+     "path": "src/optimus/acp/utils.py",
+     "frozen": "stale",
+     "observed": "stale",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "render_markdown"
+     ],
+     "matches": true
+    },
+    {
+     "path": "tools/utils.py",
+     "frozen": "none",
+     "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    },
+    {
+     "path": "secrets/utils.py",
+     "frozen": "denied",
+     "observed": "none",
+     "policy_allowed": false,
+     "policy_reason": "deny.secret",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    },
+    {
+     "path": "src/a/helpers.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "slugify"
+     ],
+     "matches": true
+    },
+    {
+     "path": ".venv/lib/helpers.py",
+     "frozen": "denied",
+     "observed": "none",
+     "policy_allowed": false,
+     "policy_reason": "deny.skipped_dir",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    }
+   ],
+   "neighbours_of_resolved_task_paths": {}
+  },
+  {
+   "family": "A-F3",
+   "split": "train",
+   "files_written": 3,
+   "records": 7,
+   "coverage": {
+    "complete": true,
+    "files_indexed": 3,
+    "files_total": 3,
+    "records": 7,
+    "unsupported": 0,
+    "excluded": 0,
+    "parsed_loc": {
+     "python": 8
+    }
+   },
+   "candidates": [
+    {
+     "path": "src/optimus/agent/models.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "AgentRunStatus",
+      "PlanningPolicy"
+     ],
+     "matches": true
+    },
+    {
+     "path": "src/optimus_gateway/models.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "ChatRequest"
+     ],
+     "matches": true
+    },
+    {
+     "path": "src/evidence_handoff/ledger/models.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "EntryKind"
+     ],
+     "matches": true
+    }
+   ],
+   "neighbours_of_resolved_task_paths": {}
+  },
+  {
+   "family": "A-F4",
+   "split": "train",
+   "files_written": 5,
+   "records": 10,
+   "coverage": {
+    "complete": true,
+    "files_indexed": 5,
+    "files_total": 5,
+    "records": 10,
+    "unsupported": 0,
+    "excluded": 0,
+    "parsed_loc": {
+     "python": 13
+    }
+   },
+   "candidates": [
+    {
+     "path": "tests/unit/acp/test_session.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [
+      "optimus.acp.session"
+     ],
+     "labels": [
+      "test_close"
+     ],
+     "matches": true
+    },
+    {
+     "path": "tests/integration/acp/test_session.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [
+      "optimus.acp.session"
+     ],
+     "labels": [
+      "test_resume"
+     ],
+     "matches": true
+    },
+    {
+     "path": "tests/unit/context/test_session.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [
+      "optimus.context.memory_session"
+     ],
+     "labels": [
+      "test_turn"
+     ],
+     "matches": true
+    },
+    {
+     "path": "src/optimus/context/memory_session.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "MemorySession"
+     ],
+     "matches": true
+    },
+    {
+     "path": "src/optimus/acp/session.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "AcpSession"
+     ],
+     "matches": true
+    }
+   ],
+   "neighbours_of_resolved_task_paths": {
+    "src/optimus/context/memory_session.py": [
+     "tests/unit/context/test_session.py"
+    ]
+   }
+  },
+  {
+   "family": "A-F5",
+   "split": "development",
+   "files_written": 1,
+   "records": 2,
+   "coverage": {
+    "complete": true,
+    "files_indexed": 1,
+    "files_total": 1,
+    "records": 2,
+    "unsupported": 0,
+    "excluded": 0,
+    "parsed_loc": {
+     "python": 2
+    }
+   },
+   "candidates": [
+    {
+     "path": "docs/x/schema.json",
+     "frozen": "none",
+     "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    },
+    {
+     "path": "reports/a/schema.json",
+     "frozen": "none",
+     "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    },
+    {
+     "path": "src/optimus/acp/schema.json",
+     "frozen": "none",
+     "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    },
+    {
+     "path": "src/optimus/acp/spec.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "load_schema"
+     ],
+     "matches": true
+    }
+   ],
+   "neighbours_of_resolved_task_paths": {
+    "src/optimus/acp/spec.py": []
+   }
+  },
+  {
+   "family": "A-F6",
+   "split": "development",
+   "files_written": 3,
+   "records": 7,
+   "coverage": {
+    "complete": true,
+    "files_indexed": 3,
+    "files_total": 3,
+    "records": 7,
+    "unsupported": 0,
+    "excluded": 0,
+    "parsed_loc": {
+     "python": 9
+    }
+   },
+   "candidates": [
+    {
+     "path": "src/optimus_gateway/client.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "UpstreamClient"
+     ],
+     "matches": true
+    },
+    {
+     "path": "src/optimus/mcp/client.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "McpClient",
+      "reconnect"
+     ],
+     "matches": true
+    },
+    {
+     "path": "src/optimus/acp/client.py",
+     "frozen": "none",
+     "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    },
+    {
+     "path": "src/optimus/acp/server.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [
+      "optimus.acp.client"
+     ],
+     "labels": [
+      "serve"
+     ],
+     "matches": true
+    }
+   ],
+   "neighbours_of_resolved_task_paths": {
+    "src/optimus/acp/server.py": []
+   }
+  },
+  {
+   "family": "A-F7",
+   "split": "held_out",
+   "files_written": 3,
+   "records": 6,
+   "coverage": {
+    "complete": true,
+    "files_indexed": 3,
+    "files_total": 3,
+    "records": 6,
+    "unsupported": 0,
+    "excluded": 0,
+    "parsed_loc": {
+     "python": 6
+    }
+   },
+   "candidates": [
+    {
+     "path": "tests/conftest.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "pytest_configure"
+     ],
+     "matches": true
+    },
+    {
+     "path": "tests/integration/context/conftest.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "index_redis"
+     ],
+     "matches": true
+    },
+    {
+     "path": "tests/unit/agent/conftest.py",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "fake_gateway"
+     ],
+     "matches": true
+    }
+   ]
+  },
+  {
+   "family": "A-F8",
+   "split": "held_out",
+   "files_written": 4,
+   "records": 8,
+   "coverage": {
+    "complete": true,
+    "files_indexed": 4,
+    "files_total": 4,
+    "records": 8,
+    "unsupported": 1,
+    "excluded": 0,
+    "parsed_loc": {
+     "markdown": 8
+    }
+   },
+   "candidates": [
+    {
+     "path": "README.md",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "Install",
+      "Usage"
+     ],
+     "matches": true
+    },
+    {
+     "path": "docs/README.md",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "Plans"
+     ],
+     "matches": true
+    },
+    {
+     "path": "docs/decisions/README.md",
+     "frozen": "verified",
+     "observed": "verified",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [
+      "Index"
+     ],
+     "matches": true
+    },
+    {
+     "path": "tests/fixtures/README.md",
+     "frozen": "none",
+     "observed": "none",
+     "policy_allowed": true,
+     "policy_reason": "allowed",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    },
+    {
+     "path": "private/M2A-SENTINEL-DENIED-PATH-5b1e/README.md",
+     "frozen": "denied",
+     "observed": "none",
+     "policy_allowed": false,
+     "policy_reason": "ignored.gitignore",
+     "imports": [],
+     "labels": [],
+     "matches": true
+    }
+   ]
+  }
+ ],
+ "mismatches": [],
+ "redis": {
+  "used_memory_mb": 3.9,
+  "used_memory_peak_mb": 4.0,
+  "disk_kb": 152,
+  "maxmemory_mb": 512.0
+ },
+ "release": {
+  "container": "p1213-index-test-redis",
+  "image": "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5",
+  "port": 6397
+ },
+ "embedding": {
+  "model": "BAAI/bge-small-en-v1.5",
+  "revision": "git:aa8f8b060edb00e03bfdd08813a2949946c8ba55",
+  "artifact_sha256": "hex:7b7f88b3e493cb8adb2c519fc05f0518364676e3f200ea3598550f02636fe0de"
+ },
+ "later_files": "files marked none were written after publication, leaving the frozen ignore file unchanged; files marked stale were edited after it; denied files must be refused by the real FilePolicy and absent from the index",
+ "task_text": "read only for train/development families (neighbours of resolved task paths); held-out families report metadata states only"
+}

@@ -360,3 +360,33 @@ def test_planning_turns_end_edit_blocks_at_cr_lf_lines_only() -> None:
 
     assert decision.kind is PlanningTurnKind.FINAL_PLAN
     assert decision.directives.write.blocks[0].old_lines == ("x\u2028>>>>>>> END", "OBSERVE: still OLD content")
+
+
+class _Replies:
+    def __init__(self, replies: list[str]) -> None:
+        self._replies = list(replies)
+
+    def create_response(self, *, model: str, input_text: str, metadata: dict[str, Any] | None = None) -> GatewayResponse:
+        del model, input_text, metadata
+        return _response(self._replies.pop(0), f"gw-{3 - len(self._replies)}")
+
+
+def test_a_plan_after_observation_too_large_cannot_edit_a_file_it_was_never_shown(tmp_path: Path) -> None:
+    """Plan 12.13 F2: the turn over its observation budget asked for b.py and read nothing, so an EDIT of b.py has no evidence to bind:
+    refused before any write."""
+    from optimus.agent.planning_loop import PLANNING_OBSERVATION_MAX_BYTES
+
+    (tmp_path / "a.py").write_text("a = 1\n", encoding="utf-8")
+    (tmp_path / "b.py").write_text("b = 2\n", encoding="utf-8")
+    replies = [
+        "OBSERVE: a first\nREAD: a.py#bytes=0:6\n",
+        "OBSERVE: " + "n" * PLANNING_OBSERVATION_MAX_BYTES + "\nREAD: b.py#bytes=0:6\n",
+        "EDIT b.py\n<<<<<<< OLD\nb = 2\n======= NEW\nb = 3\n>>>>>>> END\n",
+    ]
+    store = InMemoryAgentStateStore()
+    result = AgentRunner(gateway_client=_Replies(replies), model="glm-5.2", state_store=store).run(_request(tmp_path, "Plan a change"))
+
+    assert result.stop_reason == "EDIT_NOT_APPLICABLE"
+    assert "EDIT_SOURCE_UNSEEN" in result.output_text
+    assert (tmp_path / "b.py").read_text(encoding="utf-8") == "b = 2\n"
+    assert store.latest_plan_for_run(run_id="run-1") is None

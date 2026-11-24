@@ -590,3 +590,64 @@ def test_the_real_artifact_answers_a_turn_while_its_own_worker_embeds(tmp_path: 
         assert session._unusable is None
     finally:
         session.close()
+
+
+# --- Plan 12.13 Task 4: #242 through the real session on the released index -------------------------------------------------
+
+
+def _m2a() -> tuple[Any, Any, dict[str, dict[str, Any]]]:
+    from tools.plan12_memory import m2a_evaluate as ev
+
+    repository = Path(__file__).resolve().parents[3]
+    frozen = ev.load_frozen(repository)
+    split = json.loads((repository / ev.REPORTS / "split.json").read_text(encoding="utf-8"))
+    return ev, frozen, {row["id"]: row for row in split["ambiguity"]["rows"]}
+
+
+def _outcome(ev: Any, result: Any, reference: str) -> tuple[str, list[str]]:
+    wanted = reference.replace("\\", "/")
+    item = next((entry for entry in result.diagnostics if entry.reference.replace("\\", "/") == wanted), None)
+    return ("not_referenced", []) if item is None else (ev._STATUS.get(item.status, item.status.value), list(item.candidates))
+
+
+@pytest.mark.parametrize("family", ["A-F1", "A-F2", "A-F3", "A-F4", "A-F5", "A-F6"])
+def test_a_frozen_family_ranks_through_the_real_session_as_the_offline_index_order_did(family: str, tmp_path: Path, sessions: _Sessions) -> None:
+    """Train and development families only: running held-out ones here would be a second held-out use (Codex CP2 review 2). The worker
+    publishes, then pauses; files the frozen case marks stale are edited and those it marks unindexed are added, as at the index check.
+    Each case's stop, candidates and order, denials and exact-path retry must equal split.json's offline replay of the index order."""
+    ev, frozen, rows = _m2a()
+    files = ev._family(frozen, family)
+    cases = [case for case in frozen.cases["ambiguity"]["cases"] if case["family"] == family]
+    assert cases and {case["split"] for case in cases} <= {"train", "development"}
+    root = tmp_path / "repo"
+    later = {entry["path"] for entry in files if entry.get("metadata") == "none" and "denied" not in entry}
+    ev.materialize(files, root, skip=later)
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "family")
+    session = sessions.open(root, project=f"m2a-{family.lower()}")
+    _ready(session)
+    session.stop()  # the published generation stays as it is; everything below happens after indexing
+    ev.after_indexing(files, root, later)
+    denied = {entry["path"] for entry in files if "denied" in entry}
+
+    for case in cases:  # every first ask before any retry, since a retry may delete a file
+        row = rows[case["id"]]
+        result = _assemble(session.turn(), case["task"], run_id=f"run-{case['id']}")
+        outcome, candidates = _outcome(ev, result, case["reference"])
+        assert outcome == row["outcome"] and case["expected"].startswith(outcome), case["id"]  # "..._then_exact_retry" retries below
+        assert not denied & set(candidates), case["id"]
+        if outcome == "ambiguous_stop":
+            assert result.blocking_stop_reason == "AMBIGUOUS_WORKSPACE_REFERENCE", case["id"]
+            assert candidates == row["index_candidates"], case["id"]  # the served order is the replayed one
+        elif outcome == "resolved":
+            assert candidates[0] == row["resolved"], case["id"]
+    for case in sorted((case for case in cases if case.get("retry")), key=lambda case: bool(case["retry"].get("mutation_before_retry"))):
+        retry = case["retry"]
+        mutation = retry.get("mutation_before_retry", "")
+        if mutation.startswith("delete "):
+            (root / mutation.removeprefix("delete ")).unlink()
+        task = case["task"].replace(case["reference"], retry["input"], 1)
+        outcome, candidates = _outcome(ev, _assemble(session.turn(), task, run_id=f"retry-{case['id']}"), retry["input"])
+        expected = rows[case["id"]]["retry"]
+        assert (outcome, candidates[0] if outcome == "resolved" else None) == (expected["outcome"], expected["resolved"]), case["id"]

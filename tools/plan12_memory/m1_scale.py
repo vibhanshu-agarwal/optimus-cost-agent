@@ -470,7 +470,8 @@ def _provision(config: dict[str, Any], repository: Path, work: Path, *, prepare:
     """The released Redis made the way a real launch makes it, and a real Gateway process in front of it."""
     work.mkdir(parents=True, exist_ok=True)
     container, volume = config["container"], config["volume"]
-    assert container.startswith("p1210-") and volume.startswith("p1210-"), "only the released resources"
+    prefix = config.get("release_prefix", "p1210-")  # each plan names its own released resources
+    assert container.startswith(prefix) and volume.startswith(prefix), "only the released resources"
     subprocess.run(["docker", "rm", "-f", container], capture_output=True, check=False)
     subprocess.run(["docker", "volume", "rm", "-f", volume], capture_output=True, check=False)
 

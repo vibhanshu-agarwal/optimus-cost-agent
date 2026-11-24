@@ -1,0 +1,205 @@
+{
+ "schema": "plan12-memory-m2a.acpx.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "release": [
+  "operator 2026-11-23 'Release all, start' (Task 4: index Redis, embedding artifact, one acpx run, one Zed session, WSL P1/P2)",
+  "operator 2026-11-23 'Release both (Recommended)': one durable launch approval each for the acpx and Zed config roots, revoked afterwards"
+ ],
+ "scope": "only /why advertisement and ambiguity -> exact-path retry against real ACP (plan v4 Task 4); no full client campaign",
+ "client": "acpx 0.12.0 (npm), --format json, one named session per code head; exchanges retained as ACP NDJSON per step",
+ "agent": "optimus-agent editable from this worktree's venv via run-agent.cmd; own Gateway port 18781 (nothing on 8765); own config root acpx/cfg",
+ "upstream": "local stub http://127.0.0.1:18797/api/v1 only, never forwards; provider key a dummy",
+ "frozen_commands": {
+  "step.sh": "hex:a62eb4b5befa8b6d3c52bb6cc18f8da246b8f50c9f6742c27dc212b8af415417",
+  "run-agent.cmd": "hex:6105ef16deadd261da3ca3d82b444ffdc4baa4e545cb314c3c8d5ab2798ccb31",
+  "stub_provider.py": "hex:0bf1f87b64626fca680cba459c4731ecfa6fe6a6620e7fbf862d0579932c9399"
+ },
+ "sessions": [
+  {
+   "steps": "01-06",
+   "code_head": "git:aed6e4c",
+   "result": "found the exact-path retry stopping again; fixed by git:a570c94"
+  },
+  {
+   "steps": "10-16",
+   "code_head": "git:a570c94",
+   "result": "retry resolved; found history's stop text selecting the unchosen candidate; fixed by git:b6af270 (Codex round 120 ruling, option A)"
+  },
+  {
+   "steps": "20-23",
+   "code_head": "git:b6af270",
+   "result": "advertisement, ranked stop, exact retry and the retry's /why all as specified"
+  }
+ ],
+ "steps": [
+  {
+   "step": "01-new",
+   "started": "2026-11-23T10:12:22Z",
+   "exit": "exit 0",
+   "prompt": "(session new)",
+   "stop_reason": null,
+   "stdout": "hex:597356c525b048a57d8a0410406cb6261c5b85eb1bbf7f20be9fda62ae8079de"
+  },
+  {
+   "step": "02-why-empty",
+   "started": "2026-11-23T10:12:49Z",
+   "exit": "exit 0",
+   "prompt": "/why",
+   "stop_reason": "end_turn",
+   "stdout": "hex:b2cd74cd8277134ffb8d783fd0a1d398285ae72edf6dd88ef710a59a04a2f5e7",
+   "advertised": [
+    "why [page]",
+    "savings [turn <run-id> | next]"
+   ],
+   "observed": "advertised why [page]; 'No context explanation is available for this session yet.'"
+  },
+  {
+   "step": "03-ambiguous",
+   "started": "2026-11-23T10:13:07Z",
+   "exit": "exit 0",
+   "prompt": "fix the gateway timeout in config.py [p1213:R1]",
+   "stop_reason": "refusal",
+   "stdout": "hex:d063fc868f8dba232308e17e7fb67f5f7461ed9665309a4a83f5e79b499cd8c1",
+   "observed": "ranked stop: src/gateway/config.py (task terms: gateway) first, then src/agent/config.py"
+  },
+  {
+   "step": "04-why-ambiguous",
+   "started": "2026-11-23T10:13:33Z",
+   "exit": "exit 0",
+   "prompt": "/why",
+   "stop_reason": "end_turn",
+   "stdout": "hex:255313f958760d396be4d8814458d82fd5923d0c968bcda44a93831da9198d88",
+   "observed": "turn 1 failed at AMBIGUOUS_WORKSPACE_REFERENCE; prepared, never dispatched; both candidates ranked"
+  },
+  {
+   "step": "05-exact-retry",
+   "started": "2026-11-23T10:13:44Z",
+   "exit": "exit 0",
+   "prompt": "fix the gateway timeout in src/gateway/config.py [p1213:R1]",
+   "stop_reason": "refusal",
+   "stdout": "hex:391de6925be7de73189e4370b94f3a03735b8eff9bb75f5fa4bb3872bcece620",
+   "observed": "DEFECT: the retry stopped again; history's bare config.py blocked it and the stop's own paths ranked src/agent first"
+  },
+  {
+   "step": "06-why-retry",
+   "started": "2026-11-23T10:14:42Z",
+   "exit": "exit 0",
+   "prompt": "/why",
+   "stop_reason": "end_turn",
+   "stdout": "hex:af74fc79fd4a61bf4168a358f5042b76ce97cf6f59e54dd8a5ee013bb169824a",
+   "observed": "turn 2 failed at AMBIGUOUS_WORKSPACE_REFERENCE (the defect, explained)"
+  },
+  {
+   "step": "10-new",
+   "started": "2026-11-23T10:20:30Z",
+   "exit": "exit 0",
+   "prompt": "(session new)",
+   "stop_reason": null,
+   "stdout": "hex:277663a2e894434ace879769af49793023772c30893664f75e02a0749a68b1af"
+  },
+  {
+   "step": "11-why-empty",
+   "started": "2026-11-23T10:20:37Z",
+   "exit": "exit 0",
+   "prompt": "/why",
+   "stop_reason": "end_turn",
+   "stdout": "hex:9a79ca70d9d23fb37d1eb4f5c39f63777bef895d068233d4db6ed4e25f0efd2f",
+   "advertised": [
+    "why [page]",
+    "savings [turn <run-id> | next]"
+   ],
+   "observed": "advertised why [page]; no explanation yet"
+  },
+  {
+   "step": "12-ambiguous",
+   "started": "2026-11-23T10:20:45Z",
+   "exit": "exit 0",
+   "prompt": "fix the gateway timeout in config.py [p1213:R1]",
+   "stop_reason": "refusal",
+   "stdout": "hex:98e7004d203da7d2bcef0b62fd0cdcb62589352804378283787db9778e885ead",
+   "observed": "the same ranked stop"
+  },
+  {
+   "step": "13-exact-retry",
+   "started": "2026-11-23T10:20:55Z",
+   "exit": "exit 0",
+   "prompt": "fix the gateway timeout in src/gateway/config.py [p1213:R1]",
+   "stop_reason": "end_turn",
+   "stdout": "hex:e0921a47ae340989b1ce1dcb8f58844002b091cd3270b880ee1dffcfda8ddd1e",
+   "observed": "the retry resolved and planned once (stub case R1)"
+  },
+  {
+   "step": "14-why-retry",
+   "started": "2026-11-23T10:21:07Z",
+   "exit": "exit 0",
+   "prompt": "/why",
+   "stop_reason": "end_turn",
+   "stdout": "hex:404359113ed109e26cf8deb93d5c67d6737a168466c4346cfd06de62e0cee582",
+   "observed": "DEFECT: required src/gateway/config.py AND src/agent/config.py; the stop message in history selected an unchosen candidate"
+  },
+  {
+   "step": "15-why-page2",
+   "started": "2026-11-23T10:21:09Z",
+   "exit": "exit 0",
+   "prompt": "/why 2",
+   "stop_reason": "end_turn",
+   "stdout": "hex:5e514168f1aeb1595b716eb8b80e0cc3436d8f2a679a2fa40e1ebb76540cfab1",
+   "observed": "'The explanation has 1 page(s); /why 1 shows the last.'"
+  },
+  {
+   "step": "16-later-bare",
+   "started": "2026-11-23T10:21:11Z",
+   "exit": "exit 0",
+   "prompt": "what about the agent side of config.py [p1213:R1]",
+   "stop_reason": "refusal",
+   "stdout": "hex:c679d7eb8659fc69f7b00712ff01b7e058083484d089b814f957e9b5a3a80705",
+   "observed": "a later bare name stopped, ranked on its own prompt (src/agent first: task terms agent)"
+  },
+  {
+   "step": "20-new",
+   "started": "2026-11-23T10:26:48Z",
+   "exit": "exit 0",
+   "prompt": "(session new)",
+   "stop_reason": null,
+   "stdout": "hex:c5736125e15dbe018999a011a70cdf30df3bcb19ef3d390be49d4e630f8638a6"
+  },
+  {
+   "step": "21-ambiguous",
+   "started": "2026-11-23T10:26:55Z",
+   "exit": "exit 0",
+   "prompt": "fix the gateway timeout in config.py [p1213:R1]",
+   "stop_reason": "refusal",
+   "stdout": "hex:c76ddcb31607db154f1447ff6b4585a9be85295c6ea8d80547317e0faebfbdc3",
+   "advertised": [
+    "why [page]",
+    "savings [turn <run-id> | next]"
+   ],
+   "observed": "advertised why [page]; the same ranked stop"
+  },
+  {
+   "step": "22-exact-retry",
+   "started": "2026-11-23T10:27:12Z",
+   "exit": "exit 0",
+   "prompt": "fix the gateway timeout in src/gateway/config.py [p1213:R1]",
+   "stop_reason": "end_turn",
+   "stdout": "hex:a96c6b32485c7c19321ddc65464d4940d0b0ed5f77afd18364decf5f099b5b00",
+   "observed": "the retry resolved and planned once (stub case R1)"
+  },
+  {
+   "step": "23-why-retry",
+   "started": "2026-11-23T10:27:15Z",
+   "exit": "exit 0",
+   "prompt": "/why",
+   "stop_reason": "end_turn",
+   "stdout": "hex:cc32511f2ca88ee5512ee306a72d883dca46bb3d11086916957ffd214b0d6984",
+   "observed": "turn 2: one model request; required src/gateway/config.py only; limits 6144/10240"
+  }
+ ],
+ "paid_calls": 0,
+ "paid_calls_basis": "the stub received 9 requests: 7 classifier calls answered 404 (unexpected_path; the stub does not serve the classifier) and 2 planning requests (case R1) answered by the stub itself; no step's exchange names a provider host or port 8765",
+ "stub_log": "hex:c0e5675c4226516d4183e0388aa3225d38a2369071fef852a696fee3c6df08cc",
+ "stop_reason_note": "every ambiguity stop here ended with stopReason 'refusal'; acpx prints the text whatever the stop reason, so this client could not show that Zed hides it. Live Zed found it; git:6dd6b97 ends these stops as end_turn. acpx was not rerun at git:6dd6b97 (approvals revoked); the change is covered by unit tests, revert run r3 and Zed run 2",
+ "cleanup": "three sessions closed (close-1..3); the stub stopped at its lifetime; the launch approval revoked by the operator in a terminal (revocation needs a TTY) and confirmed by 'optimus-trust inspect': no reachable current approval",
+ "kit": "optimus-handoff/p1213-task4/acpx"
+}

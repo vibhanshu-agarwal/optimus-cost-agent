@@ -1,0 +1,52 @@
+{
+ "schema": "plan12-memory-m2a.cache-identity.v1",
+ "head": "git:b6dd92b180685e1fab06a62e60c21ee666c4acad",
+ "phase": "cache-identity",
+ "inputs": {
+  "cases.json": "hex:0f76413a68fe67f60a6d0561ad89b9d5d67bfaf6cf0a8c2d8a78d85f9d8dc3a2",
+  "ranking-policy.json": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac",
+  "evaluation-contract.json": "hex:d25f23a94982644765a18483eb7fc5a75679c702d872ce79749a2841715cbccf",
+  "case-provenance.json": "hex:ef623c5c2b6f059c7c031ded5664fe34112182ee9cc972da71663d308d0b96ae"
+ },
+ "paid_attempts": 0,
+ "provider_cost_usd": "0",
+ "prompt_versions": {
+  "multi_turn_planner": "MULTI_TURN_PLANNER_PROMPT_VERSION:2026-10-24-p407-edit-p410-write-line-endings",
+  "indexed_planner": "INDEXED_PLANNER_PROMPT_VERSION:2026-11-04-plan-12-10",
+  "unchanged": "the templates are unchanged; only the rendered limit values differ"
+ },
+ "digests": {
+  "4/12": {
+   "limits": [
+    4096,
+    12288,
+    16384
+   ],
+   "prefix_tools_on": "hex:e835e2bae67c11ff45906b8328f0dca547516367576dc0246daed396cec52828",
+   "prefix_tools_off": "hex:217f3ee9fce69f17f38718cbf40f7ccca411e3080576376b98a6681db5909e6c",
+   "request": "hex:840492958b4eb7d52f748356ce9dd7c1273991447f8c861b47d52140fb4452a8"
+  },
+  "production": {
+   "limits": [
+    6144,
+    10240,
+    16384
+   ],
+   "prefix_tools_on": "hex:38696000c9a4a2305a6473457de1ffd530d7f867139175eda6f443ce75adf768",
+   "prefix_tools_off": "hex:a3c4c38253331fda6ebcae554b873951110b5a5822d731dfb2083de294e46cad",
+   "request": "hex:7bb1fa6ac308ea119f48777a988af4abbef216f667750b40ba10f9e9ff30880b"
+  }
+ },
+ "prefix_changed": true,
+ "registry": {
+  "ordinary": "hex:4d2f637e822841c23ae617d352c81a6472d11771fd7cd7011b3052c12b506338",
+  "auto": "hex:526153c5c682d8ffbde091869ec83e72a4b1545c555356a77c8e84b1fc85b3d2",
+  "test_profiles": {
+   "qualification": "hex:a015e40e341f304170048f5967146ebdbc0dafeeed5cbf2d20416fcf21fa3c73",
+   "attached": "hex:4d2f637e822841c23ae617d352c81a6472d11771fd7cd7011b3052c12b506338",
+   "evaluation": "hex:c235fb1af492a6f9215ba25a47ea8f5038d212f8815128b71e763bd7e49b7440"
+  },
+  "files_changed_since": "git:e0ece334e5f394544ff723aca7184715ea74b8f9",
+  "files_changed": []
+ }
+}

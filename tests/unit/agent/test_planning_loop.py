@@ -436,7 +436,7 @@ def test_parse_rejects_multi_range_observation_when_duplicated_carryover_would_o
         )
 
 
-def test_parse_rejects_raw_4096_byte_observe_when_serialized_record_would_overflow():
+def test_parse_rejects_a_raw_full_budget_observe_when_serialized_record_would_overflow():
     observation = "x" * PLANNING_OBSERVATION_MAX_BYTES
     with pytest.raises(PlanningTurnParseError, match="observation"):
         parse_planning_turn(f"OBSERVE: {observation}\nREAD: src/a.py#bytes=0:128\n")
@@ -521,3 +521,55 @@ def test_planning_read_telemetry_fields_sorts_once_from_evidence():
     assert identities == ("alpha.py#bytes=2:9", "zeta.py#bytes=0:3")
     assert sha256s == ("a" * 64, "z" * 64)
     assert byte_counts == (7, 3)
+
+
+# --- Plan 12.13 #245: each side's own limit, in serialized UTF-8 bytes (headers, paths, hashes, framing) ---
+
+
+def _multibyte(size: int) -> str:
+    return "\u00f6" * (size // 2) + "o" * (size % 2)  # `size` UTF-8 bytes, two per character where it can
+
+
+def _observation(path: str, text: str) -> PlanningObservation:
+    return PlanningObservation(path=path, start_byte=0, end_byte=128, source_sha256="a" * 64, observation_text=text)
+
+
+def _current_read(path: str, text: str) -> PlanningReadEvidence:
+    return PlanningReadEvidence(path=path, start_byte=0, end_byte=20000, source_sha256="b" * 64, range_text=text, line_endings="none")
+
+
+def _serialized(side: str, records: list) -> int:
+    serialize = planning_module._serialize_planning_observation if side == "observations" else planning_module._serialize_planning_read_evidence
+    return sum(len(serialize(record).encode("utf-8")) for record in records)
+
+
+@pytest.mark.parametrize("side", ["observations", "current_reads"])
+def test_three_multibyte_records_exactly_at_their_own_limit_pack_and_one_byte_over_stops(side: str):
+    limit, make, code = (
+        (PLANNING_OBSERVATION_MAX_BYTES, _observation, "PLANNING_OBSERVATION_BUDGET_EXHAUSTED")
+        if side == "observations"
+        else (PLANNING_NEW_READ_MAX_BYTES, _current_read, "PLANNING_READ_BUDGET_EXHAUSTED")
+    )
+    fixed = [make("src/\u00e4/a.py", _multibyte(301)), make("src/b.py", "o" * 7)]
+    size = next(n for n in range(limit) if _serialized(side, [*fixed, make("src/c.py", _multibyte(n))]) == limit)
+    exact = [*fixed, make("src/c.py", _multibyte(size))]
+
+    def pack(records: list):
+        return pack_planning_evidence(**{"observations": tuple(records) if side == "observations" else (), "current_reads": tuple(records) if side == "current_reads" else ()})
+
+    assert pack(exact).byte_size == limit
+    over = [*fixed, make("src/c.py", _multibyte(size) + "o")]
+    assert _serialized(side, over) == limit + 1
+    with pytest.raises(PlanningEvidenceBudgetError) as exc:
+        pack(over)
+    assert exc.value.code == code
+
+
+def test_a_multibyte_observe_exactly_at_the_observation_limit_parses_and_one_byte_over_is_too_large():
+    read_requests = (PlanningReadRequest(path="src/\u00e4.py", start_byte=0, end_byte=128),)
+    text = _multibyte(max_planning_observation_text_bytes(read_requests))
+    assert planning_observation_carryover_bytes(observation_text=text, read_requests=read_requests) == PLANNING_OBSERVATION_MAX_BYTES
+    assert parse_planning_turn(f"OBSERVE: {text}\nREAD: src/\u00e4.py#bytes=0:128\n").kind is PlanningTurnKind.READ_MORE
+    with pytest.raises(PlanningTurnParseError) as exc:
+        parse_planning_turn(f"OBSERVE: {text}o\nREAD: src/\u00e4.py#bytes=0:128\n")
+    assert exc.value.code == "OBSERVATION_TOO_LARGE"

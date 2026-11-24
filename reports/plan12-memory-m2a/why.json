@@ -1,0 +1,170 @@
+{
+ "schema": "plan12-memory-m2a.why.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "cases_source": {
+  "file": "reports/plan12-memory-m2a/cases.json",
+  "sha256": "hex:0f76413a68fe67f60a6d0561ad89b9d5d67bfaf6cf0a8c2d8a78d85f9d8dc3a2",
+  "section": "explanation"
+ },
+ "run": {
+  "command": "pytest --no-cov -p no:cacheprovider -q -rA tests/unit/context/test_context_why.py tests/unit/guardrails/test_file_policy.py tests/unit/agent/test_context_selection.py",
+  "code_head": "git:7f18e60527346a74d44fb05fd2ae495cb5f9ccac",
+  "uncommitted_at_run": [
+   "M reports/plan12-memory-m2a/authority.json"
+  ],
+  "result": "151 passed, 3 skipped in 4.86s",
+  "log": "hex:48d2dd980c152ac8358a294e6573c39c595496338c00b83c0f6fcac4c34ed3bc"
+ },
+ "history": {
+  "first": "reports/plan12-memory-m2a/why.json at git:bde5e26",
+  "first_log": "hex:99b53fac412fd17372bd0af63ad4a9dfa4c749e5044dc0558d59159296b04868",
+  "partly_met_then": {
+   "E09": "no per-round breakdown",
+   "E12": "'/why 0' got the usage line without the valid range"
+  },
+  "fixed_by": "git:5aeac3a (Codex CP3 review 1, findings 2 and 3) and git:7f18e60 (review 2, finding 1: per-round preparations)"
+ },
+ "bounds": {
+  "entries_per_page": 40,
+  "page_max_utf8_bytes": 12288,
+  "max_page": 1000,
+  "grammar": "'/why' or '/why <n>' with ASCII digits; anything else gets the usage line"
+ },
+ "zero_calls": "/why is answered on the local command path: the host tests assert no runner request and no conversation record, and the live stubs received no request at any /why step (acpx.json, zed-ui.json)",
+ "held_out": "E10-E12 are held-out explanation cases, first checked against their own oracles at git:bde5e26 (Task 5) and now consumed. E12 was partly met there; the later fix is corrective verification, not a successful first qualification (Codex CP3 ruling 6)",
+ "cases": [
+  {
+   "case": "E01",
+   "setup": "no snapshot in a new session",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_no_snapshot_and_a_later_refusal_are_said_explicitly",
+    "tests/unit/context/test_context_why.py::test_why_answers_from_the_last_turn_without_a_model_call_or_a_conversation_record"
+   ],
+   "status": "met",
+   "live": "Zed run 2 steps 2 and 8a; acpx steps 02 and 11"
+  },
+  {
+   "case": "E02",
+   "setup": "indexed turn completed and dispatched",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_an_index_turn_shows_its_choices_ranks_fit_and_grounding_but_no_bodies",
+    "tests/unit/context/test_context_why.py::test_an_index_turn_is_explained_from_its_own_manifest_and_a_silent_index_says_so",
+    "tests/unit/context/test_context_why.py::test_served_memory_is_identified_by_id_and_version_only",
+    "tests/unit/context/test_context_why.py::test_why_answers_from_the_last_turn_without_a_model_call_or_a_conversation_record"
+   ],
+   "status": "met (unit)",
+   "live": "Zed run 2 step 6 and acpx step 23 show a dispatched turn without an index (the proof workspace has none)",
+   "note": "an indexed turn and served memory are not shown live: no index or memory store was released for the client runs"
+  },
+  {
+   "case": "E03",
+   "setup": "a command, a /why and a prompt rejected before preparation follow a completed turn",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_commands_and_refusals_before_preparation_never_replace_the_snapshot",
+    "tests/unit/context/test_context_why.py::test_a_later_refusal_is_said_even_when_page_one_is_full"
+   ],
+   "status": "met"
+  },
+  {
+   "case": "E04",
+   "setup": "turn blocked by an ambiguity stop",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_a_blocked_turn_explains_its_ranked_stop_and_that_nothing_was_dispatched",
+    "tests/unit/context/test_context_why.py::test_the_latest_terminal_attempt_replaces_its_predecessor_even_when_it_was_blocked"
+   ],
+   "status": "met",
+   "live": "Zed run 2 step 8c; acpx step 04",
+   "note": "the outcome reads 'failed; stop: AMBIGUOUS_WORKSPACE_REFERENCE', the protected conversation outcome, rather than the word 'blocked'"
+  },
+  {
+   "case": "E05",
+   "setup": "turn cancelled during preparation after a completed turn",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_e05_a_turn_cancelled_before_its_context_is_prepared_replaces_the_completed_one",
+    "tests/unit/context/test_context_why.py::test_missing_facts_say_unavailable_and_a_failed_memory_read_is_not_no_memory"
+   ],
+   "status": "met",
+   "note": "test added in Task 5"
+  },
+  {
+   "case": "E06",
+   "setup": "memory read fails on an otherwise completed turn",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_missing_facts_say_unavailable_and_a_failed_memory_read_is_not_no_memory"
+   ],
+   "status": "met"
+  },
+  {
+   "case": "E07",
+   "setup": "privacy sentinels, a sanitizer-recognized token, spaces and non-ASCII, Markdown controls",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_todays_denials_sanitizing_and_escaping_apply_to_every_recorded_value",
+    "tests/unit/context/test_context_why.py::test_a_path_refused_after_capture_is_withheld_everywhere_with_the_real_policy",
+    "tests/unit/context/test_context_why.py::test_a_blocked_turn_explains_its_ranked_stop_and_that_nothing_was_dispatched"
+   ],
+   "status": "met",
+   "live": "P1 on Windows w4 and WSL l2 (platforms.json)"
+  },
+  {
+   "case": "E08",
+   "setup": "index and extractor disabled",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_why_is_advertised_without_any_memory_or_usage_store",
+    "tests/unit/context/test_context_why.py::test_an_index_turn_is_explained_from_its_own_manifest_and_a_silent_index_says_so",
+    "tests/unit/context/test_context_why.py::test_why_answers_from_the_last_turn_without_a_model_call_or_a_conversation_record"
+   ],
+   "status": "met",
+   "live": "Zed run 2: 'context index: not configured'; the stub received no request at any /why step"
+  },
+  {
+   "case": "E09",
+   "setup": "three planning rounds and a wire retry",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_e09_requests_and_planning_rounds_are_counted_apart",
+    "tests/unit/context/test_context_why.py::test_e09_each_round_lists_the_requests_it_sent_and_a_retry_by_its_own_round_and_attempt",
+    "tests/unit/context/test_context_why.py::test_e09_the_host_records_each_requests_round_and_attempt_through_the_turn",
+    "tests/unit/context/test_context_why.py::test_e09_a_round_that_prepared_a_request_and_sent_none_is_listed",
+    "tests/unit/context/test_context_why.py::test_an_index_turn_shows_its_choices_ranks_fit_and_grounding_but_no_bodies"
+   ],
+   "status": "met",
+   "note": "met at git:7f18e60: each round's prepared requests (fitted or not) and sent requests (with retries) carry the round the planning loop recorded at each step, shown through the real AgentRunner by tests/unit/agent/test_context_selection.py::test_a_round_whose_request_does_not_fit_is_recorded_as_prepared_and_never_sent and ::test_the_agent_planner_gets_history_in_its_own_section_and_packs_every_round; a round that prepared a request and sent none is listed; the Gateway's own route attempts inside one request are said not to be host requests. Partly met at git:bde5e26, and without preparations at git:5aeac3a (Codex CP3 review 2, finding 1) (history)"
+  },
+  {
+   "case": "E10",
+   "setup": "restart then resume, with a newest manifest on disk",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_no_snapshot_and_a_later_refusal_are_said_explicitly",
+    "tests/unit/context/test_context_why.py::test_the_snapshot_records_actual_facts_not_a_disk_manifest"
+   ],
+   "status": "met",
+   "live": "Zed run 2 step 9: Zed's restore was refused and a new thread had no explanation",
+   "note": "this agent refuses session/load, so a resumed session was not observed live"
+  },
+  {
+   "case": "E11",
+   "setup": "two sessions in one workspace",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_each_session_explains_only_its_own_turns"
+   ],
+   "status": "met",
+   "live": "Zed run 2 step 8a; revert r3 mutation 04 caught"
+  },
+  {
+   "case": "E12",
+   "setup": "130 considered candidates",
+   "tests": [
+    "tests/unit/context/test_context_why.py::test_e12_130_entries_page_into_four_within_the_bounds_and_past_the_end_names_the_last",
+    "tests/unit/context/test_context_why.py::test_pages_are_bounded_deterministic_and_lose_no_entry",
+    "tests/unit/context/test_context_why.py::test_one_entry_longer_than_a_page_is_cut_with_a_marker",
+    "tests/unit/context/test_context_why.py::test_only_why_and_why_n_are_the_command"
+   ],
+   "status": "met",
+   "live": "Zed run 3: '/why 2' names the last page and '/why 0' names the range, on screen (zed-ui.json); acpx step 15",
+   "note": "met at git:5aeac3a: '/why 0' names the valid range. Partly met at git:bde5e26, where it got the usage line (history)"
+  }
+ ],
+ "deviations": [
+  "E02: an indexed turn and served memory are not shown live: no index or memory store was released for the client runs"
+ ]
+}

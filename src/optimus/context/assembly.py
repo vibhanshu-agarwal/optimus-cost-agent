@@ -50,6 +50,7 @@ from context_engine.selection import render_ordinary_turn, render_protected_stat
 from context_engine.summary import render_summary_block
 from optimus.acp.conversation import (
     CONVERSATION_MAX_BYTES,
+    ConversationOutcome,
     ConversationSanitizer,
     ConversationTurn,
     mark_inert_plan,
@@ -173,12 +174,19 @@ def render_context_view(snapshot: HistorySnapshot, view: PreparedView) -> str:
 
 def build_selection_text(prompt: str, snapshot: HistorySnapshot, view: PreparedView) -> str:
     """What selects workspace files and skills: the current prompt first, then the exact turns'
-    ordinary text, then every protected record. Never summary text, never an omitted turn."""
+    ordinary text, then every protected record. Never summary text, never an omitted turn.
+
+    A turn that did not complete selects with its prompt and plan only: its completion text is the host's own stop, refusal, failure
+    or cancellation notice, never content the person or a completed answer settled (Plan 12.13 Task 4, Codex round 120: an
+    ambiguity stop listed every candidate, and the retry then required them all). Selection only: the records and the model's view
+    of the history are unchanged."""
     by_seq = _check(snapshot, view)
+    outcome = {state.seq: state.outcome for state in snapshot.protected}
     parts = [prompt]
     for seq in (*view.head_turn_ids, *view.tail_turn_ids):
         turn = by_seq[seq]
-        parts.extend(text for text in (turn.user_prompt, turn.plan_text, turn.completion_text) if text)
+        completion = turn.completion_text if outcome[seq] == ConversationOutcome.COMPLETED.value else ""
+        parts.extend(text for text in (turn.user_prompt, turn.plan_text, completion) if text)
     parts.extend(render_protected_state(state) for state in view.protected)
     return "\n".join(parts)
 
@@ -252,6 +260,8 @@ class DispatchReading:
 
     tokens: int
     capacity: int
+    planning_round: int | None = None  # the planning loop's round and attempt, for /why (Plan 12.13, frozen case E09)
+    attempt: int | None = None
 
     @staticmethod
     def largest(readings: Sequence[DispatchReading]) -> DispatchReading | None:
@@ -449,6 +459,8 @@ class AttachedTurn:
         # A turn without a notice channel can deliver no required notice, so it sends nothing that needs one.
         self._deliver_notice = deliver_notice if deliver_notice is not None else (lambda text: False)
         self._dispatches: list[DispatchReading] = []
+        self._preparations: list[tuple[int, bool]] = []  # (planning round, whether it fitted), each request prepared, for `/why`
+        self._contexts: list[Any] = []  # every automatic context the runner reported, for `/why` (Plan 12.13)
         # Plan 12.11: what this turn sent, kept in RAM for the memory source-overlap check only, and its bound summarizer.
         self._dispatched: list[str] = []
         self._source_chars = 0  # everything the turn sent, kept or not
@@ -785,9 +797,10 @@ class AttachedTurn:
                 self._sink_error = error
             raise error
 
-    def record_dispatch(self, text: str) -> None:
+    def record_dispatch(self, text: str, *, planning_round: int | None = None, attempt: int | None = None) -> None:
         """The runner is sending `text` as a complete planning/answer request now."""
-        self._dispatches.append(DispatchReading(tokens=self._attachment.estimate_request(text), capacity=self._attachment.usable_input_tokens))
+        self._dispatches.append(DispatchReading(tokens=self._attachment.estimate_request(text), capacity=self._attachment.usable_input_tokens,
+                                                planning_round=planning_round, attempt=attempt))
         # Every request of the turn is kept, whole: a file shown only in the first planning round is still source text at the
         # end (Codex CP2 review 2, finding 7). Past the bound none is dropped silently: the sources are marked lost.
         self._source_chars += len(text)
@@ -819,6 +832,7 @@ class AttachedTurn:
         ones the task named and the ones retrieval chose alike (Codex CP2 review 2, finding 5), a file shown only by its signature
         or description too (review 3, finding 3). Context text with no file behind it cannot be attributed, and counts as never
         reported."""
+        self._contexts.append(context)
         delivered = (*context.prioritized_paths, *getattr(context, "file_sha256s", {}), *getattr(context, "shown_paths", ()))
         if context.text and not delivered:
             self._context_unattributed = True
@@ -853,6 +867,19 @@ class AttachedTurn:
                 gateway_usage=attempt.gateway_usage, purpose=purpose, reasoning=attempt.reasoning))
 
         return call, record
+
+    def contexts(self) -> tuple[Any, ...]:
+        return tuple(self._contexts)
+
+    def dispatch_readings(self) -> tuple[DispatchReading, ...]:
+        return tuple(self._dispatches)
+
+    def record_preparation(self, planning_round: int, *, fitted: bool) -> None:
+        """The planning loop prepared one request for `planning_round`, whether or not it fitted or was then sent."""
+        self._preparations.append((planning_round, fitted))
+
+    def preparations(self) -> tuple[tuple[int, bool], ...]:
+        return tuple(self._preparations)
 
     def largest_dispatch(self) -> DispatchReading | None:
         return DispatchReading.largest(self._dispatches)

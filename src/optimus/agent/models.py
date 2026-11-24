@@ -185,10 +185,14 @@ class ContextPacker(Protocol):
 
     ``build`` renders the complete request around a history envelope. The packer returns the text to
     send: with the admitted view when it fits, otherwise with a smaller view of the same captured
-    history within a finite allowance; ``None`` when nothing fits, and then nothing is sent."""
+    history within a finite allowance; ``None`` when nothing fits, and then nothing is sent.
+
+    A packer may also offer ``record_preparation(planning_round, *, fitted)``, which the planning loop calls after each fit, sent
+    or not, for `/why` (Plan 12.13); packers without it (test doubles) are left alone."""
 
     def fit(self, build: Callable[[str], str]) -> str | None: ...
 
-    def record_dispatch(self, text: str) -> None:
-        """Called as `text` is actually sent, once per attempt: the meter reads only real dispatches."""
+    def record_dispatch(self, text: str, *, planning_round: int | None = None, attempt: int | None = None) -> None:
+        """Called as `text` is actually sent, once per attempt: the meter reads only real dispatches. The planning loop names the
+        round and the attempt within it."""
         ...

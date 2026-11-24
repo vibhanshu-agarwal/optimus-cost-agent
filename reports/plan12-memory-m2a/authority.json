@@ -1,0 +1,156 @@
+{
+ "schema": "plan12-memory-m2a.authority.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "recorded": "2026-11-23",
+ "recorded_by": "Claude (Opus 5.5), Task 0",
+ "plan_file": {
+  "path": "docs/superpowers/plans/2026-11-23-plan-12-13-context-why-and-ambiguity-implementation_v3.md",
+  "sha256": "hex:26653bbc2123e66d990d37977f9ab81a6ded9121de7594e358b0c9fdad31ffa0",
+  "verified": "sha256 of the bytes at git:6f696a8118c76d8facbdd88a5b50d107c82b3e2d matches the approved digest (2026-11-23); filed by git:387be2f, merged to main by PR #546 (git:cc121ce790729cccacd9d75265aaeecf479d15a7)"
+ },
+ "approval": {
+  "who": "operator",
+  "where": "Claude chat, 2026-11-23",
+  "words": "Approve hash + D1-D4",
+  "start": "operator, 2026-11-23: \"Start Plan 12.13 Task 0 in a new chat thread\""
+ },
+ "successor": {
+  "plan_file": "docs/superpowers/plans/2026-11-23-plan-12-13-context-why-and-ambiguity-implementation_v4.md",
+  "sha256": "hex:d25783eb95517c00c14d9907376e1a71c045b9c5c61235b136566263740013d3",
+  "why": "CP1 ruling 2 (Codex, round 117): retain 4/12 and stop for operator disposition; excluding the boundary probes needs an approved complete successor",
+  "disposition": "operator, Claude chat, 2026-11-23: \"Draft plan successor\"",
+  "authored": "Codex CLI round 118 (gpt-6.1-sol, high, read-only, session 01a205be-955e-7ad1-82e7-8526c66cef5d); Claude reviews 1-2 posted on #545",
+  "approval": "operator, Claude chat, 2026-11-23: \"Approve v4 hash\"",
+  "filing": "docs-only PR #552 (operator's standing authority for approved plans); v3 archived unchanged"
+ },
+ "decisions_adopted": {
+  "D1": "Filing: issue #545 (kind:plan, under #235, handler:claude) with #242 and #245 as children; #243 and M2b allocated to Plan 12.14 (#548, which holds #243 as its child); #235 keeps custody of the rest of M2",
+  "D2": "/why explains this ACP session's last terminal, non-command context-preparation attempt; snapshot kept in RAM; unavailable after restart/resume without it; never inferred from diagnostic timestamps",
+  "D3": "ranking only suggests; an exact workspace-relative path is required whenever more than one eligible target remains; ranking never authorizes a target",
+  "D4": "calibrate a replacement fixed byte partition among 2/14, 4/12, 6/10, 8/8 KiB; keep the 16 KiB combined ceiling and route fitting; stop at CP1 if none qualifies"
+ },
+ "checkout": {
+  "worktree": "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p1213",
+  "branch": "agent/claude/p1213-task0",
+  "created_from": "origin/main git:cc121ce790729cccacd9d75265aaeecf479d15a7, then fast-forwarded to git:6f696a8118c76d8facbdd88a5b50d107c82b3e2d",
+  "environment": "own venv by uv sync --frozen --all-extras (Python 3.14.4); not borrowed",
+  "status_at_intake": "clean (git status --porcelain=v1 --untracked-files=all empty)"
+ },
+ "drift": {
+  "inspected_main_in_plan": "git:8e56b3c9591441ab2a63a0a3024eeab2d5f26322",
+  "registry_merge": "git:cc121ce790729cccacd9d75265aaeecf479d15a7 (PR #546)",
+  "main_at_intake": "git:6f696a8118c76d8facbdd88a5b50d107c82b3e2d (PR #547)",
+  "delta_cc121ce_to_main": "one commit, 6c0c396: pyproject.toml adds [tool.ruff.format] exclude for four files (settlement.py, lifecycle.py, outbound_writer.py, wire_baseline_scenarios.py); none is in this plan's file list; no behavior change",
+  "overlap": "open PRs #549 (Plan 12.14 filing, docs only), #544 (issue240 provisional custody) and #474 (CI recovery, never merge) touch none of planning_loop.py, prompts.py, workspace_context.py, memory_session.py, assembly.py, acp/spec.py, memory_commands.py"
+ },
+ "labels": {
+  "issue_545_before": [
+   "status:open",
+   "priority:medium",
+   "difficulty:medium",
+   "estimate:na",
+   "handler:claude",
+   "product:optimus",
+   "kind:plan"
+  ],
+  "issue_545_after": [
+   "status:active",
+   "priority:high",
+   "difficulty:medium",
+   "estimate:8d",
+   "handler:claude",
+   "product:optimus",
+   "kind:plan"
+  ],
+  "agreement": "difficulty:medium and estimate:8d proposed by Codex in plan v3 (round 114) and concurred by Claude; priority:high because an active plan is high (AGENTS.md issue tracking labels); applied 2026-11-23 on the operator's go to start",
+  "children": "#242 and #245 keep their defaults until their own work starts (Tasks 2-3), per the owner-scope rule"
+ },
+ "registry": "docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md and docs/README.md carry the Plan 12.13 rows (PR #546); #545 sub-issues [242, 245]; #235 sub-issues include 545 and 548; #548 sub-issues [243]",
+ "releases": {
+  "granted": [
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release both, start",
+    "answering": "Start Task 1 with the index Redis and embedding artifact released?",
+    "resources": [
+     "dedicated index Redis: container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, image redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5, 512 MB; created and removed by the evaluator",
+     "configured embedding artifact: the Qdrant/bge-small-en-v1.5-onnx-Q copy under optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models, copied by setup with its digest check"
+    ],
+    "scope": "Task 1 calibration and its real-index check; the setup's ACL password lives in an in-process keyring stand-in, so no OS keyring write; the local Gateway process has an unroutable upstream (127.0.0.1:9), so no paid egress"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release all, start",
+    "answering": "Release Task 4's index Redis, embedding artifact, acpx, Zed and WSL runs?",
+    "resources": [
+     "dedicated index Redis: container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, the same image and 512 MB cap; created and removed by the run",
+     "the configured embedding artifact (the same bge-small-en-v1.5 copy, digest-checked)",
+     "one independent acpx client run against a zero-paid agent (own Gateway port, local stub upstream that never forwards, own config root)",
+     "one zero-paid real-Zed session (own Gateway port, local stub upstream, own agent entry; operator-typed prompts)",
+     "WSL Ubuntu-24.04 runs of the P1 and P2 checks only"
+    ],
+    "not_released": "the test memory store is not used (no served-memory boundary claim is made); keyring writes were released separately, below",
+    "scope": "Task 4 only; every resource is removed after its run"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release both (Recommended)",
+    "answering": "Release the acpx and Zed runs' launch approvals in the OS keyring, for this task's own config roots only and revoked afterwards?",
+    "resources": [
+     "one durable launch approval for optimus-handoff/p1213-task4/acpx/cfg",
+     "one durable launch approval for optimus-handoff/p1213-task4/zed/cfg"
+    ],
+    "scope": "revoked and removed after each run; nothing else in the keyring changes"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release it (Recommended)",
+    "answering": "Release the dedicated index Redis again for the one real-index reversion check Codex's CP3 review requires?",
+    "resources": [
+     "dedicated index Redis: container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, the same image and 512 MB cap",
+     "the configured bge-small-en-v1.5 embedding artifact (snapshot aa8f8b060edb00e03bfdd08813a2949946c8ba55)"
+    ],
+    "scope": "CP3: one attributed real-index reversion run (r5); created and removed by the test and the runner"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Release it (Recommended)",
+    "answering": "Release one more zero-paid Zed session to re-observe step 7 after the /why fixes?",
+    "resources": [
+     "one zero-paid real-Zed session: own Gateway port 18782, local stub 18798 that never forwards, the optimus-p1213-why agent entry (settings backed up and restored)",
+     "one durable launch approval for optimus-handoff/p1213-task4/zed/cfg, approved and revoked by the operator at a terminal"
+    ],
+    "scope": "CP3: Zed step 7 (/why 2) and a /why 0 check; everything torn down afterwards"
+   },
+   {
+    "when": "2026-11-23",
+    "who": "operator",
+    "words": "Full rerun, release index (Recommended)",
+    "answering": "Codex CP3 review 2, finding 3: r4 and r5 kept no run-context records, and their clones are gone. How should they be replaced?",
+    "resources": [
+     "dedicated index Redis: container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, the same image and 512 MB cap",
+     "the configured bge-small-en-v1.5 embedding artifact (snapshot aa8f8b060edb00e03bfdd08813a2949946c8ba55)"
+    ],
+    "scope": "CP3 disposition and release: one new attributed run, r6, of all 23 mutations at the current code with records archived; r4 and r5 kept as history, marked records-unrecoverable"
+   }
+  ],
+  "start_task_1": "operator 2026-11-23 'Release both, start'",
+  "status": "Task 4 released and torn down; CP3 released the index Redis (r5, then r6) and one Zed session (step 7)",
+  "start_task_4": "operator 2026-11-23 'Release all, start'"
+ },
+ "review_rules": {
+  "cadence": "Codex CLI alone at CP1 (Tasks 0-1), CP2 (Tasks 2-3), CP3 (Tasks 4-5); no Fable 5.2 review (medium plan)",
+  "command": "codex exec -m gpt-6.1-sol -c 'model_reasoning_effort=\"high\"' -s read-only",
+  "posting": "reviews and resolutions posted verbatim on #545 (no ask needed)",
+  "approval": "Codex-approved counts as operator-approved for review rulings only; push, PR, merge, containers, Zed sessions and keyring writes outside an isolated test service each need the operator"
+ },
+ "frozen_files": "sha256 of cases.json, ranking-policy.json, evaluation-contract.json and case-provenance.json is recorded in prerequisites.json (frozen_inputs), written after them",
+ "checkpoint_log": "docs/superpowers/reviews/plan-12-13-review-checkpoints.md (gitignored by .gitignore line 102, owned by Claude, never staged)",
+ "review_kit": "optimus-handoff/sandbox-review-kit/plan12-codex-cli/round-117-p1213-implementation"
+}
