@@ -10,24 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from optimus.gateway.models import GatewayUsage
 from optimus.tools.policy import EvidenceReasonCode, ToolClass
-from optimus.usage.errors import DuplicateGatewayRequestError
+from optimus.usage.ledger import append_settled, sum_billing_units, sum_cost_usd
 
 if TYPE_CHECKING:
-    # Annotation only: optimus.usage.accounting imports this module at load time.
+    # Annotation only: this module and optimus.usage.accounting must not import each other at load time (#563).
     from optimus.usage.accounting import UsageAccountingService
-
-
-def _settled_fingerprint(
-    entry: EvidenceLedgerEntry,
-) -> tuple[str, str, str | None, int, Decimal]:
-    """Settled-facts fingerprint mirroring Redis ``record_settled_usage``'s claim fields."""
-    return (
-        entry.gateway_request_id,
-        entry.provider,
-        entry.provider_request_id,
-        entry.billing_units,
-        entry.cost_usd,
-    )
 
 
 class EvidenceLedgerEntry(BaseModel):
@@ -111,28 +98,9 @@ class EvidenceLedger(BaseModel):
     entries: tuple[EvidenceLedgerEntry, ...] = ()
 
     def record(self, entry: EvidenceLedgerEntry) -> EvidenceLedger:
-        """Append ``entry`` keyed by ``gateway_request_id``, idempotently.
-
-        Same-ID replays are compared on the settled-facts fingerprint alone --
-        ``gateway_request_id``, ``provider``, ``provider_request_id``, ``billing_units``,
-        ``cost_usd`` -- mirroring the Redis ``record_settled_usage`` claim. Caller-side
-        bookkeeping fields such as ``request_id``/``queried_at`` legitimately differ across
-        a genuine Gateway-level retry and must not trigger a false divergence. A same-ID
-        record whose settled facts diverge raises ``DuplicateGatewayRequestError`` before a
-        second entry is ever appended.
-        """
-        existing = self._entry_for_gateway_request(entry.gateway_request_id)
-        if existing is not None:
-            if _settled_fingerprint(existing) == _settled_fingerprint(entry):
-                return self
-            raise DuplicateGatewayRequestError(entry.gateway_request_id)
-        return EvidenceLedger(entries=(*self.entries, entry))
-
-    def _entry_for_gateway_request(self, gateway_request_id: str) -> EvidenceLedgerEntry | None:
-        for entry in self.entries:
-            if entry.gateway_request_id == gateway_request_id:
-                return entry
-        return None
+        """Append ``entry`` idempotently by the settled-facts rule of ``optimus.usage.ledger.append_settled``."""
+        entries = append_settled(self.entries, entry)
+        return self if entries is None else EvidenceLedger(entries=entries)
 
     def entries_for_run(self, run_id: str) -> tuple[EvidenceLedgerEntry, ...]:
         return tuple(entry for entry in self.entries if entry.run_id == run_id)
@@ -143,10 +111,10 @@ class EvidenceLedger(BaseModel):
         return self.entries_for_run(run_id)
 
     def total_billing_units(self, *, run_id: str | None = None) -> int:
-        return sum(entry.billing_units for entry in self._matching_entries(run_id))
+        return sum_billing_units(self._matching_entries(run_id))
 
     def total_cost_usd(self, *, run_id: str | None = None) -> Decimal:
-        return sum((entry.cost_usd for entry in self._matching_entries(run_id)), Decimal("0"))
+        return sum_cost_usd(self._matching_entries(run_id))
 
     def gateway_request_ids(self, *, run_id: str | None = None) -> frozenset[str]:
         entries = self.entries if run_id is None else self.entries_for_run(run_id)
