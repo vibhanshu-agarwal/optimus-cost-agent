@@ -10,8 +10,8 @@ from typing import Literal
 from optimus.mcp.client_config import MCP_NAME_RE
 
 # #410 R1: directive syntax, EDIT's included, is separated by spaces and tabs only.
-_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")
+READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")
+WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")
 _EDIT_PREFIX = re.compile(r"^EDIT(?:[ \t]|$)")
 _EDIT_DIRECTIVE = re.compile(r"^EDIT[ \t]+(\S+)(?:[ \t]+base_sha256=(\S*))?[ \t]*$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -22,7 +22,7 @@ EDIT_OLD_MARKER = "<<<<<<< OLD"
 EDIT_NEW_MARKER = "======= NEW"
 EDIT_END_MARKER = ">>>>>>> END"
 _EDIT_MARKERS = frozenset({EDIT_OLD_MARKER, EDIT_NEW_MARKER, EDIT_END_MARKER})
-_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
+TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 _MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST[ \t]+(\S+)[ \t]*$")
 _MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\{.*\})[ \t]*$")
 _INDEX_TOOL_LINE = re.compile(r"^(?:(SEARCH)[ \t]+(\S.*?)|(OUTLINE|SYMBOLS|LIST)[ \t]+(\S+))[ \t]*$")
@@ -183,7 +183,7 @@ def _invents_an_edit(plan_text: str) -> bool:
     index = 0
     while index < len(lines):
         line = _normalize_directive_line(lines[index])
-        if _WRITE_DIRECTIVE.match(line) is not None:
+        if WRITE_DIRECTIVE.match(line) is not None:
             index += 1
             while index < len(lines) and not _is_directive_line(lines[index]):
                 index += 1
@@ -209,7 +209,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
         if lines[index].strip() in _EDIT_MARKERS:
             raise AgentDirectiveParseError("EDIT block marker outside an EDIT directive")
 
-        read_match = _READ_DIRECTIVE.match(line)
+        read_match = READ_DIRECTIVE.match(line)
         if read_match is not None:
             path = read_match.group(1)
             _validate_relative_path(path)
@@ -217,7 +217,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
             index += 1
             continue
 
-        write_match = _WRITE_DIRECTIVE.match(line)
+        write_match = WRITE_DIRECTIVE.match(line)
         if write_match is not None:
             if isinstance(write, AgentWriteDirective):
                 raise AgentDirectiveParseError("multiple WRITE directives are not supported")
@@ -244,7 +244,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
             write, index = _parse_edit(lines, index, edit_base=edit_base)
             continue
 
-        test_match = _TEST_DIRECTIVE.match(line)
+        test_match = TEST_DIRECTIVE.match(line)
         if test_match is not None:
             command = _parse_test_command(test_match.group(1))
             tests.append(command)
@@ -333,9 +333,9 @@ def _edit_block_lines(lines: list[str], index: int, *, until: str) -> tuple[tupl
 def _is_directive_line(line: str) -> bool:
     normalized = _normalize_directive_line(line)
     return (
-        _READ_DIRECTIVE.match(normalized) is not None
-        or _WRITE_DIRECTIVE.match(normalized) is not None
-        or _TEST_DIRECTIVE.match(normalized) is not None
+        READ_DIRECTIVE.match(normalized) is not None
+        or WRITE_DIRECTIVE.match(normalized) is not None
+        or TEST_DIRECTIVE.match(normalized) is not None
         or _MCP_LIST_DIRECTIVE.match(normalized) is not None
         or _MCP_CALL_DIRECTIVE.match(normalized) is not None
     )

@@ -15,6 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from optimus.agent.directives import (
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
+    READ_DIRECTIVE,
+    TEST_DIRECTIVE,
+    WRITE_DIRECTIVE,
     AgentDirectiveParseError,
     AgentPlanDirectives,
     IndexToolRequest,
@@ -86,7 +89,6 @@ _PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
 _REFUSE_DIRECTIVE = re.compile(r"^REFUSE:\s*(.+)$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
 _DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:", "MCP_LIST", "MCP_CALL")
 _REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
     r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT|MCP_LIST\s|MCP_CALL\s)"
@@ -598,8 +600,6 @@ def _resolve_workspace_file(*, workspace_root: Path, relative_path: str) -> Path
 
 
 _RANGED_READ_LINE = re.compile(r"^READ:\s+\S+#bytes=\d+:\d+\s*$")
-_FINAL_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
-_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 
 
 def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurnDecision:
@@ -709,7 +709,7 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
     while index < len(lines):
         line = lines[index]
         normalized = _normalize_directive_surface_line(line)
-        if _WRITE_DIRECTIVE.match(normalized) is not None:
+        if WRITE_DIRECTIVE.match(normalized) is not None:
             index += 1
             while index < len(lines) and not _is_final_directive_line(lines[index]):
                 index += 1
@@ -735,9 +735,9 @@ def _normalize_directive_surface_line(line: str) -> str:
 def _is_final_directive_line(line: str) -> bool:
     normalized = _normalize_directive_surface_line(line)
     return (
-        _FINAL_READ_DIRECTIVE.match(normalized) is not None
-        or _WRITE_DIRECTIVE.match(normalized) is not None
-        or _FINAL_TEST_DIRECTIVE.match(normalized) is not None
+        READ_DIRECTIVE.match(normalized) is not None
+        or WRITE_DIRECTIVE.match(normalized) is not None
+        or TEST_DIRECTIVE.match(normalized) is not None
         or normalized.startswith("MCP_LIST ")
         or normalized.startswith("MCP_CALL ")
         or normalized == "MCP_LIST"
