@@ -24,14 +24,30 @@ EDIT_FAILURE_CODES = frozenset(
     }
 )
 
+# (why the change was not made, what the person can do next). LLD v2.48 §4B.5 still states the old text: #576.
 _FAILURE_TEXT = {
-    "EDIT_TARGET_MISSING": "the file does not exist",
-    "EDIT_NOT_UTF8": "the file is not UTF-8 text",
-    "EDIT_SOURCE_UNSEEN": "the plan was not made on raw evidence of this file",
-    "EDIT_SOURCE_CHANGED": "the file changed after the model read it",
-    "EDIT_OLD_NOT_FOUND": "an OLD block does not match the file's lines",
-    "EDIT_OLD_NOT_UNIQUE": "an OLD block matches the file more than once",
-    "EDIT_BLOCKS_OVERLAP": "two OLD blocks overlap",
+    "EDIT_TARGET_MISSING": ("no file exists at that path", "Check the file name, then send your request again"),
+    "EDIT_NOT_UTF8": (
+        "the file is not UTF-8 text",
+        "Save the file as UTF-8 and send your request again, or make this change yourself",
+    ),
+    "EDIT_SOURCE_UNSEEN": (
+        "the file was not read before the change was planned",
+        "Send your request again and name the file, so it is read first",
+    ),
+    "EDIT_SOURCE_CHANGED": ("the file changed after it was read", "Send your request again so the file is read as it is now"),
+    "EDIT_OLD_NOT_FOUND": (
+        "the lines it replaces are not in the file exactly as planned",
+        "Send your request again to get a new plan",
+    ),
+    "EDIT_OLD_NOT_UNIQUE": (
+        "the lines it replaces appear in the file more than once",
+        "Send your request again and say which place to change",
+    ),
+    "EDIT_BLOCKS_OVERLAP": (
+        "two parts of the planned change replace the same lines",
+        "Send your request again to get a new plan",
+    ),
 }
 assert set(_FAILURE_TEXT) == EDIT_FAILURE_CODES
 
@@ -48,8 +64,10 @@ class EditNotApplicable(Exception):
 
 
 def edit_failure_text(code: str, path: str) -> str:
-    """The fixed text an EDIT_NOT_APPLICABLE run shows: the closed code and why, never file or model content."""
-    return f"EDIT not applied to {path} ({code}): {_FAILURE_TEXT[code]}. Nothing was written."
+    """The text an EDIT_NOT_APPLICABLE run shows: a fixed sentence per code, built only from the code and the path the
+    plan named, never file content. The closed code ends it, so the next turn's history still carries it."""
+    reason, next_step = _FAILURE_TEXT[code]
+    return f"The change to {path} was not made because {reason}. Nothing was written and no tests ran. {next_step}. ({code})"
 
 
 def apply_edit_blocks(text: str, blocks: Sequence[AgentEditBlock]) -> str:

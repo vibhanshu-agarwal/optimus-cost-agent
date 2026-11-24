@@ -18,8 +18,9 @@ from optimus.runtime.modes import ExecutionMode
 from tests.unit.acp.test_hidden_text_stops_end_turn import assert_failed_turn_shown_without_a_completed_plan, drive_stop_turn
 
 PLAN = "EDIT small.py\nOLD\nold\nNEW\nnew\nEND\n"
-# What the person must read, independent of the production text: what was not applied, where, why, and that nothing changed.
-PHRASES = ("not applied", "small.py", "does not match", "nothing was written")
+# What the person must read, independent of the production text: what was not made, where, why, that nothing changed,
+# and what to do next (#574).
+PHRASES = ("was not made", "small.py", "not in the file", "nothing was written", "send your request again")
 
 
 def _edit_not_applicable(request):
