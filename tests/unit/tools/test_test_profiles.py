@@ -520,6 +520,7 @@ _REVIEWED_CHEAP_LAUNCHERS = {
     "tests/unit/context_engine/test_code_index.py": "one inline-script child imports the neutral engine with the optional parser package blocked; a test of an import, cheap and starting nothing",
     "tests/unit/context/test_project_registry.py": "a git helper builds fixture repositories; three registry child sites (concurrent allocators, one killed at the commit boundary, one at first initialization); the other nodes run in-process",
     "tests/unit/context_engine/test_boundaries.py": _MIXED,
+    "tests/unit/evidence/test_ledger_first_import.py": "one inline-script child imports the evidence ledger first in a fresh interpreter (#563); a test of an import, cheap and starting nothing",
     "tests/unit/guardrails/test_ci_parity.py": _MIXED,
     "tests/unit/guardrails/test_local_secret_scan_encoding.py": _MIXED,
     "tests/unit/optimus_gateway/test_diagnostic_segments.py": "two literal diagnostic-copy writer children sharing one temporary directory; the other nodes run in-process on temporary files",
