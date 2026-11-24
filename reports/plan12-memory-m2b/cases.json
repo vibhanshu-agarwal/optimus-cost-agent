@@ -1,0 +1,862 @@
+{
+ "schema": "plan12-memory-m2b.cases.v1",
+ "plan": "12.14",
+ "issue": 548,
+ "frozen_on": "2026-11-24",
+ "state": "DRAFT: drafted by Claude; Codex verifies every case at CP1; sealed only after that verification",
+ "authority": "operator 2026-11-24 \"Approve sampling\" (Claude's chat, Plan 12.14 thread) of optimus-handoff/p1214-task0/sampling-proposal.md, sha256 hex:ee232629b668773faa3342c6fc0669e82c8165a6f917eed5a17df4cc992c2054",
+ "builders": {
+  "fresh": "optimus-handoff/p1214-task0/m2b_fresh3_pool.py + m2b_fresh3_build.py",
+  "this_file": "optimus-handoff/p1214-task0/m2b_cases_build.py"
+ },
+ "packing_sets": {
+  "development": {
+   "fixtures": {
+    "tests/fixtures/plan12_memory/localization.json": [
+     "train",
+     "development"
+    ],
+    "tests/fixtures/plan12_memory_m1/localization.json": [
+     "train",
+     "development"
+    ]
+   },
+   "use": "the three development repetitions and the choice of baseline or one utility candidate (Task 1); may be inspected",
+   "cases": 16,
+   "requirements": 35,
+   "fixture_sha256": {
+    "tests/fixtures/plan12_memory/localization.json": "hex:07cc94c9b94d2d9ae5a09b6072cdc66f527bbd2767617b0e26230e07be1998dc",
+    "tests/fixtures/plan12_memory_m1/localization.json": "hex:4254408ded16fb4fdc8f0902b1735689f57ffe571a92b8eee377e1f033ed9688"
+   }
+  },
+  "fresh": {
+   "fixtures": {
+    "tests/fixtures/plan12_memory_m2b_fresh/localization.json": [
+     "held_out"
+    ]
+   },
+   "use": "fresh qualification, opened once in Task 4 after CP1 froze the candidate; no tuning against it; a second use needs a recorded successor disposition",
+   "cases": 14,
+   "requirements": 44,
+   "fixture_sha256": {
+    "tests/fixtures/plan12_memory_m2b_fresh/localization.json": "hex:9d9033d5eaf3f0b3be85617df5db2c19eca495908ce33ad903742cc8aba15d98"
+   }
+  },
+  "replay_seed_held_out": {
+   "fixtures": {
+    "tests/fixtures/plan12_memory/localization.json": [
+     "held_out"
+    ]
+   },
+   "use": "historical replay, reported separately, never used for selection",
+   "cases": 4,
+   "requirements": 12,
+   "fixture_sha256": {
+    "tests/fixtures/plan12_memory/localization.json": "hex:07cc94c9b94d2d9ae5a09b6072cdc66f527bbd2767617b0e26230e07be1998dc"
+   }
+  },
+  "replay_m1_held_out": {
+   "fixtures": {
+    "tests/fixtures/plan12_memory_m1/localization.json": [
+     "held_out"
+    ]
+   },
+   "use": "historical replay, reported separately, never used for selection",
+   "cases": 4,
+   "requirements": 11,
+   "fixture_sha256": {
+    "tests/fixtures/plan12_memory_m1/localization.json": "hex:4254408ded16fb4fdc8f0902b1735689f57ffe571a92b8eee377e1f033ed9688"
+   }
+  },
+  "replay_fresh": {
+   "fixtures": {
+    "tests/fixtures/plan12_memory_m1_fresh/localization.json": [
+     "held_out"
+    ]
+   },
+   "use": "historical replay, reported separately, never used for selection",
+   "cases": 12,
+   "requirements": 30,
+   "fixture_sha256": {
+    "tests/fixtures/plan12_memory_m1_fresh/localization.json": "hex:caf1aefa78796438b073f5dae7acff96c691ce978ed7f5ca472f6e21b46e82a0"
+   }
+  },
+  "replay_fresh2": {
+   "fixtures": {
+    "tests/fixtures/plan12_memory_m1_fresh2/localization.json": [
+     "held_out"
+    ]
+   },
+   "use": "historical replay including its earlier failures (retrieval-fresh2-held-out.json), reported separately, never used for selection",
+   "cases": 23,
+   "requirements": 44,
+   "fixture_sha256": {
+    "tests/fixtures/plan12_memory_m1_fresh2/localization.json": "hex:eaaabf131ae9c17e499ebd71a4237d7a0d9d8589781b2c6bf15c7129d0a6b2b0"
+   }
+  }
+ },
+ "fresh_selection": {
+  "rule": "M1's fresh-selection rule (Codex review 32 option A) on main git:7abbaa262696c40409cea166569a93bd2feb6853; every PR of the seed, M1, fresh and fresh2 golds and #475 excluded; every eligible PR; no date cutoff",
+  "pool": "optimus-handoff/p1214-task0/m2b-fresh3-pool.json",
+  "pool_sha256": "hex:227d1676acbe0c314a983a6e45aa4fda32ef834af527109fa6806cdfc92d07e8",
+  "deduplicated": {
+   "30": "same stable patch id as #29's fix commit (Codex review 33)"
+  },
+  "prs": [
+   487,
+   488,
+   493,
+   494,
+   496,
+   500,
+   502,
+   503,
+   504,
+   522,
+   542,
+   551,
+   553,
+   561
+  ],
+  "limit": "historical holdout, not forward-time generalization; several PRs are memory-feature review fixes"
+ },
+ "injections": {
+  "rule": "each set's materialized trees gain its poison and its control at the paths below; the poison is the set's 12 most frequent task lexical terms (document frequency, single characters dropped, ties alphabetical), 8 lines; the control is equally short, genuinely relevant text and the gold of one added control requirement; both <= 1 KiB",
+  "gate": "the poison never raises irrelevant estimated tokens above the baseline's and meets no requirement; the control requirement is admitted at least as often as by the baseline; control requirements are counted apart from the set's requirements",
+  "sets": {
+   "development": {
+    "poison": {
+     "path": "docs/notes/dev-terms.md",
+     "text": "# Notes\n\nserver tool client acp gateway request agent error exception mcp result after\nserver tool client acp gateway request agent error exception mcp result after\nserver tool client acp gateway request agent error exception mcp result after\nserver tool client acp gateway request agent error exception mcp result after\nserver tool client acp gateway request agent error exception mcp result after\nserver tool client acp gateway request agent error exception mcp result after\nserver tool client acp gateway request agent error exception mcp result after\nserver tool client acp gateway request agent error exception mcp result after\n",
+     "terms": [
+      "server",
+      "tool",
+      "client",
+      "acp",
+      "gateway",
+      "request",
+      "agent",
+      "error",
+      "exception",
+      "mcp",
+      "result",
+      "after"
+     ],
+     "meets_requirement": false,
+     "bytes": 633,
+     "sha256": "hex:4cdeda02957592423233b4531af00067db23288f28a590fc38d3d49830e15bb1"
+    },
+    "control": {
+     "path": "docs/notes/dev-control.md",
+     "text": "# Fixture note (Plan 12.14 positive control): how a failed client tool call is reported\n\nWhen a client tool call fails, the agent's server turns the exception into an error result before the result reaches the agent. The report keeps the tool name and the redacted error text, after the request ends, so the Gateway and the person see the same cause.\n",
+     "case": {
+      "case_id": "DC01-a",
+      "query": "Which fixture note says how a failed client tool call's exception becomes an error result before it reaches the agent?",
+      "required_evidence": [
+       {
+        "requirement_id": "R1",
+        "any_of": [
+         "path:docs/notes/dev-control.md"
+        ]
+       }
+      ]
+     },
+     "bytes": 351,
+     "sha256": "hex:1485ae75f0b7a315be80f58a2ade9bed6a3ea44cb4e101480175cf4cb4827608"
+    }
+   },
+   "fresh": {
+    "poison": {
+     "path": "notes/fresh-terms.md",
+     "text": "# Glossary\n\nmemory agent because gateway read recovery reply run session acp adapter answers\nmemory agent because gateway read recovery reply run session acp adapter answers\nmemory agent because gateway read recovery reply run session acp adapter answers\nmemory agent because gateway read recovery reply run session acp adapter answers\nmemory agent because gateway read recovery reply run session acp adapter answers\nmemory agent because gateway read recovery reply run session acp adapter answers\nmemory agent because gateway read recovery reply run session acp adapter answers\nmemory agent because gateway read recovery reply run session acp adapter answers\n",
+     "terms": [
+      "memory",
+      "agent",
+      "because",
+      "gateway",
+      "read",
+      "recovery",
+      "reply",
+      "run",
+      "session",
+      "acp",
+      "adapter",
+      "answers"
+     ],
+     "meets_requirement": false,
+     "bytes": 660,
+     "sha256": "hex:aeb67777f3ad90ea51a10a942882a1f59ea8e6ab19665e7715bafe606048ed3d"
+    },
+    "control": {
+     "path": "notes/fresh-control.md",
+     "text": "# Fixture note (Plan 12.14 positive control): what a memory reply names during recovery\n\nWhen the memory store answers a session's read during recovery, the reply names the run and the recovery state, because the adapter shows that answer to the person and the check runs again on the agent's next command.\n",
+     "case": {
+      "case_id": "FC01-a",
+      "query": "Which fixture note says what the memory store's reply names when it answers a session's read during recovery?",
+      "required_evidence": [
+       {
+        "requirement_id": "R1",
+        "any_of": [
+         "path:notes/fresh-control.md"
+        ]
+       }
+      ]
+     },
+     "bytes": 307,
+     "sha256": "hex:94d67dc219158042eab7d95826e651f20719490c33674e41077a18fbbef810aa"
+    }
+   }
+  }
+ },
+ "paid_q": {
+  "snapshot_note": "QR1-QR4 keep their development cases' own snapshots; QB and QO use main git:7abbaa262696c40409cea166569a93bd2feb6853",
+  "turn": "fresh zero-tool Chat turn, no memory, no history; matched source, route, reasoning, output cap and stopping rule across arms",
+  "check_rules": {
+   "citation": "a requirement passes when the reply names its path and, for a symbol requirement, the symbol's last name segment, or a path:line or path:start-end whose range overlaps that symbol's span in the snapshot (AST, decorators included)",
+   "fact": "any_of: one listed string appears in the reply (case-insensitive substring); all_of: every listed string does; at_least n of: n distinct listed names appear as whole words",
+   "prohibited": "any cited repository path absent from the case's snapshot, or a cited line beyond that file's length, fails the case; for QO4 any quoted code line not verbatim in the snapshot file fails",
+   "verdict": "PASS only when every applicable check passes; any FAIL is FAIL; an UNKNOWN check makes the case INCOMPLETE; no paid grader, no repair",
+   "selector": "the reply text the host delivers as the turn's final answer, host-added text excluded; its digest and the scoring script's digest are frozen in Task 1 before any paid prompt"
+  },
+  "cases": [
+   {
+    "case_id": "QR1",
+    "category": "ranking",
+    "snapshot": "git:3b3093d3b1b956f256f936b014495cee40a4f21a",
+    "task": "An exception that escapes error delivery or cancellation cleanup of an ACP request task disappears with no diagnostic from the server. Where are finished request tasks handled?",
+    "source": "tests/fixtures/plan12_memory_m1/localization.json ML05-a (development split), verbatim",
+    "required_files": [],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "symbol:src/optimus/acp/server.py::AcpStreamServer.serve_ndjson",
+        "symbol:src/optimus/acp/server.py::AcpStreamServer.serve_ndjson.process_request"
+       ]
+      }
+     ],
+     "facts": [],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": false,
+     "U": false,
+     "F": false
+    },
+    "comparable": true
+   },
+   {
+    "case_id": "QR2",
+    "category": "ranking",
+    "snapshot": "git:b5d77abd12143d698143a8680e82c2914d49c230",
+    "task": "Tool-server shutdown reports the runtime as dead once its wait budget ends even while its owner thread is alive, and cleanup stops at the first failing stage while ACP ignores the result. Where is shutdown completed?",
+    "source": "tests/fixtures/plan12_memory_m1/localization.json ML06-a (development split), verbatim",
+    "required_files": [],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "symbol:src/optimus/acp/server.py::AcpStreamServer.serve_ndjson"
+       ]
+      },
+      {
+       "requirement_id": "R2",
+       "any_of": [
+        "symbol:src/optimus/mcp/client_disposition.py::ClientMcpRuntime",
+        "symbol:src/optimus/mcp/client_disposition.py::ClientMcpRuntime.close"
+       ]
+      },
+      {
+       "requirement_id": "R3",
+       "any_of": [
+        "symbol:src/optimus/mcp/client_supervisor.py::MCPAsyncSupervisor.__init__",
+        "symbol:src/optimus/mcp/client_supervisor.py::MCPAsyncSupervisor.close",
+        "symbol:src/optimus/mcp/client_supervisor.py::MCPAsyncSupervisor.start"
+       ]
+      }
+     ],
+     "facts": [],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": false,
+     "U": false,
+     "F": false
+    },
+    "comparable": true
+   },
+   {
+    "case_id": "QR3",
+    "category": "ranking",
+    "snapshot": "git:1be9e0562b8d20a7a76196fdf279a283ec4f5532",
+    "task": "Starting a client tool server can read the ambient process environment again or lose captured system values such as the search path, because startup forwards only the agent's filtered environment. Where are those values carried into construction of the server?",
+    "source": "tests/fixtures/plan12_memory_m1/localization.json ML07-a (development split), verbatim",
+    "required_files": [],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "symbol:src/optimus/acp/__main__.py::main"
+       ]
+      },
+      {
+       "requirement_id": "R2",
+       "any_of": [
+        "symbol:src/optimus/acp/bootstrap.py::build_client_mcp_runtime",
+        "symbol:src/optimus/acp/bootstrap.py::build_configured_server"
+       ]
+      },
+      {
+       "requirement_id": "R3",
+       "any_of": [
+        "symbol:src/optimus/acp/subprocess_env.py::build_acp_subprocess_env"
+       ]
+      },
+      {
+       "requirement_id": "R4",
+       "any_of": [
+        "symbol:src/optimus/mcp/client_config.py::ClientMcpConfigNormalizer.__init__",
+        "symbol:src/optimus/mcp/client_config.py::ClientMcpConfigNormalizer._normalize_one",
+        "symbol:src/optimus/mcp/client_config.py::ClientMcpRuntimeCapability",
+        "symbol:src/optimus/mcp/client_config.py::ClientMcpRuntimeCapability.__init__",
+        "symbol:src/optimus/mcp/client_config.py::ClientMcpRuntimeCapability.constructed_child_environ",
+        "symbol:src/optimus/mcp/client_config.py::_resolve_stdio_command"
+       ]
+      }
+     ],
+     "facts": [],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": false,
+     "U": false,
+     "F": false
+    },
+    "comparable": true
+   },
+   {
+    "case_id": "QR4",
+    "category": "ranking",
+    "snapshot": "git:5ad8ef4f62b7147737a2ed40a7f335bf3acdf4fe",
+    "task": "With debug tracing turned off the agent still builds every diagnostic payload, and a failure while building or redacting one can escape. Where are trace records written and their payloads built?",
+    "source": "tests/fixtures/plan12_memory_m1/localization.json ML08-a (development split), verbatim",
+    "required_files": [],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "symbol:src/optimus/acp/debug_trace.py::acp_debug_log",
+        "symbol:src/optimus/acp/debug_trace.py::log_authorized_launch_comparison",
+        "symbol:src/optimus/acp/debug_trace.py::log_planning_replan_event",
+        "symbol:src/optimus/acp/debug_trace.py::log_provenance_once",
+        "symbol:src/optimus/acp/debug_trace.py::log_workspace_context_result"
+       ]
+      },
+      {
+       "requirement_id": "R2",
+       "any_of": [
+        "symbol:src/optimus/acp/server.py::AcpStreamServer.serve_ndjson",
+        "symbol:src/optimus/acp/server.py::AcpStreamServer.serve_ndjson.process_request",
+        "symbol:src/optimus/acp/server.py::AcpStreamServer.serve_ndjson.report_mcp_cleanup_incomplete",
+        "symbol:src/optimus/acp/server.py::NdjsonOutboundChannel.deliver_client_response",
+        "symbol:src/optimus/acp/server.py::NdjsonOutboundChannel.notify",
+        "symbol:src/optimus/acp/server.py::NdjsonOutboundChannel.request"
+       ]
+      },
+      {
+       "requirement_id": "R3",
+       "any_of": [
+        "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._emit_completion_message",
+        "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._emit_result_updates",
+        "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._handle_session_prompt",
+        "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._request_permission",
+        "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter.handle_client_notification"
+       ]
+      },
+      {
+       "requirement_id": "R4",
+       "any_of": [
+        "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner._invoke_planning_gateway.operation",
+        "symbol:src/optimus/agent/planning_loop.py::_PlanningIterationRunner.run_iteration"
+       ]
+      }
+     ],
+     "facts": [],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": false,
+     "U": false,
+     "F": false
+    },
+    "comparable": true
+   },
+   {
+    "case_id": "QB1",
+    "category": "budget",
+    "kind": "ordinary-fit",
+    "snapshot": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+    "task": "In \"src/context_engine/context_pack.py\", what share of the optional room goes to signatures, and what does the pack do when the required files do not fit its budget?",
+    "required_files": [
+     {
+      "path": "src/context_engine/context_pack.py",
+      "bytes": 7093,
+      "sha256": "hex:2ddd20918965ddd0c24faa7492c21b4909569e2acef5fa3952139eed3b66e057",
+      "lines": 183
+     }
+    ],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "path:src/context_engine/context_pack.py"
+       ]
+      }
+     ],
+     "facts": [
+      {
+       "fact_id": "F1",
+       "any_of": [
+        "0.25",
+        "25%",
+        "25 %",
+        "a quarter",
+        "one quarter",
+        "quarter"
+       ]
+      },
+      {
+       "fact_id": "F2",
+       "any_of": [
+        "incomplete",
+        "missing",
+        "empty pack",
+        "not complete"
+       ]
+      }
+     ],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": false,
+     "U": false,
+     "F": false
+    },
+    "comparable": true
+   },
+   {
+    "case_id": "QB2",
+    "category": "budget",
+    "kind": "ordinary-fit",
+    "snapshot": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+    "task": "In \"src/context_engine/retrieval.py\", what is the reciprocal-rank fusion constant, and which two channels does the quota interleave for the first places?",
+    "required_files": [
+     {
+      "path": "src/context_engine/retrieval.py",
+      "bytes": 14419,
+      "sha256": "hex:55d59f937c9e2c40200f1077c58c62f3668a0e00883c56fc991d7e3f700033a6",
+      "lines": 266
+     }
+    ],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "path:src/context_engine/retrieval.py"
+       ]
+      }
+     ],
+     "facts": [
+      {
+       "fact_id": "F1",
+       "any_of": [
+        "60"
+       ]
+      },
+      {
+       "fact_id": "F2",
+       "all_of": [
+        "dense",
+        "lexical"
+       ]
+      }
+     ],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": false,
+     "U": false,
+     "F": false
+    },
+    "comparable": true
+   },
+   {
+    "case_id": "QB3",
+    "category": "budget",
+    "kind": "required-over-legacy",
+    "snapshot": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+    "task": "In \"src/optimus/context/context_why.py\", how many entries and how many bytes can one page of the explanation hold?",
+    "required_files": [
+     {
+      "path": "src/optimus/context/context_why.py",
+      "bytes": 18461,
+      "sha256": "hex:1cc3fd8f5d0fee3f295fd6f115e8afba80fc75f9deac3521a90dff60153b5a61",
+      "lines": 316
+     }
+    ],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "path:src/optimus/context/context_why.py"
+       ]
+      }
+     ],
+     "facts": [
+      {
+       "fact_id": "F1",
+       "any_of": [
+        "40"
+       ]
+      },
+      {
+       "fact_id": "F2",
+       "any_of": [
+        "12 KiB",
+        "12KiB",
+        "12 * 1024",
+        "12288",
+        "12,288",
+        "12 KB",
+        "12KB"
+       ]
+      }
+     ],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": true,
+     "U": true,
+     "F": false
+    },
+    "comparable": false
+   },
+   {
+    "case_id": "QB4",
+    "category": "budget",
+    "kind": "required-over-legacy",
+    "snapshot": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+    "task": "In \"src/optimus_model_policy/registry.py\", what is the maximum context ceiling in tokens, and which roles are implementer roles?",
+    "required_files": [
+     {
+      "path": "src/optimus_model_policy/registry.py",
+      "bytes": 20713,
+      "sha256": "hex:568cdd8dd87cc98563df7413a52f4490ed68546c26e8d8dbc594f6485ae8b7b9",
+      "lines": 540
+     }
+    ],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "path:src/optimus_model_policy/registry.py"
+       ]
+      }
+     ],
+     "facts": [
+      {
+       "fact_id": "F1",
+       "any_of": [
+        "262144",
+        "262,144",
+        "262_144"
+       ]
+      },
+      {
+       "fact_id": "F2",
+       "all_of": [
+        "easy",
+        "medium",
+        "complex",
+        "escalation"
+       ]
+      }
+     ],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": true,
+     "U": true,
+     "F": false
+    },
+    "comparable": false
+   },
+   {
+    "case_id": "QO1",
+    "category": "outline",
+    "kind": "outline",
+    "snapshot": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+    "task": "Summarize \"src/optimus/acp/launch_gate.py\"",
+    "required_files": [
+     {
+      "path": "src/optimus/acp/launch_gate.py",
+      "bytes": 48719,
+      "sha256": "hex:914967640d3129b8ec14e857f0ec3c1f20fbf3fbfbddc26b7399255c3b1092c0",
+      "lines": 1131
+     }
+    ],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "path:src/optimus/acp/launch_gate.py"
+       ]
+      }
+     ],
+     "facts": [
+      {
+       "fact_id": "F1",
+       "at_least": 2,
+       "of": [
+        "resolve_launch_candidate",
+        "authorize_launch",
+        "LaunchCandidate",
+        "AuthorizedLaunch",
+        "LaunchGateError",
+        "validate_config_file_permissions"
+       ]
+      }
+     ],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": true,
+     "U": true,
+     "F": false
+    },
+    "comparable": false
+   },
+   {
+    "case_id": "QO2",
+    "category": "outline",
+    "kind": "outline",
+    "snapshot": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+    "task": "Summarize \"src/optimus/context/memory_import.py\"",
+    "required_files": [
+     {
+      "path": "src/optimus/context/memory_import.py",
+      "bytes": 50387,
+      "sha256": "hex:ec8b3ab369d82dfdf3e1c6c5ec0256b5cfad9007487026677d0972c855e3e406",
+      "lines": 902
+     }
+    ],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "path:src/optimus/context/memory_import.py"
+       ]
+      }
+     ],
+     "facts": [
+      {
+       "fact_id": "F1",
+       "at_least": 2,
+       "of": [
+        "Importer",
+        "Reader",
+        "ImportLog",
+        "ImportRefused",
+        "Preview",
+        "preview_text"
+       ]
+      }
+     ],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": true,
+     "U": true,
+     "F": false
+    },
+    "comparable": false
+   },
+   {
+    "case_id": "QO3",
+    "category": "outline",
+    "kind": "whole-summary",
+    "snapshot": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+    "task": "Summarize \"src/context_engine/repo_map.py\"",
+    "required_files": [
+     {
+      "path": "src/context_engine/repo_map.py",
+      "bytes": 4498,
+      "sha256": "hex:939930d15c4394c8da20d92922192090acb221662a59c86c8061e1f426274a49",
+      "lines": 113
+     }
+    ],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "path:src/context_engine/repo_map.py"
+       ]
+      }
+     ],
+     "facts": [
+      {
+       "fact_id": "F1",
+       "at_least": 2,
+       "of": [
+        "MapFile",
+        "RepoMap",
+        "build_repo_map",
+        "neighbours",
+        "rank",
+        "imports_of"
+       ]
+      }
+     ],
+     "quote": null
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": false,
+     "U": false,
+     "F": false
+    },
+    "comparable": true
+   },
+   {
+    "case_id": "QO4",
+    "category": "outline",
+    "kind": "exact-over-ceiling",
+    "snapshot": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+    "task": "Quote exactly the lines of \"src/optimus/acp/launch_gate.py\" that define _project_child_env.",
+    "required_files": [
+     {
+      "path": "src/optimus/acp/launch_gate.py",
+      "bytes": 48719,
+      "sha256": "hex:914967640d3129b8ec14e857f0ec3c1f20fbf3fbfbddc26b7399255c3b1092c0",
+      "lines": 1131
+     }
+    ],
+    "checks": {
+     "citations": [
+      {
+       "requirement_id": "R1",
+       "any_of": [
+        "path:src/optimus/acp/launch_gate.py"
+       ]
+      }
+     ],
+     "facts": [],
+     "quote": {
+      "target_lines": [
+       1123,
+       1131
+      ],
+      "pass": "every quoted code line appears verbatim in the snapshot file, and either lines 1123-1131 are quoted verbatim or the reply says it was not given them (refusal_phrases, case-insensitive)",
+      "refusal_phrases": [
+       "not included",
+       "not provided",
+       "was not given",
+       "were not given",
+       "cannot see",
+       "can't see",
+       "do not have",
+       "don't have",
+       "not available",
+       "unable to",
+       "only an outline",
+       "outline only",
+       "not in the context"
+      ]
+     }
+    },
+    "forced_refusal": {
+     "N": false,
+     "B": true,
+     "U": true,
+     "F": true
+    },
+    "comparable": false
+   }
+  ],
+  "forced_refusal_rule": "predeclared from sizes alone: B and U use the legacy 16,384 budget, so a required set over it is an incomplete pack; every pack arm refuses the exact-over-ceiling request; those arm-cases are reported separately and excluded from superiority and comparable-cost wins",
+  "comparable_cohort": [
+   "QR1",
+   "QR2",
+   "QR3",
+   "QR4",
+   "QB1",
+   "QB2",
+   "QO3"
+  ],
+  "files": {
+   "src/context_engine/context_pack.py": {
+    "path": "src/context_engine/context_pack.py",
+    "bytes": 7093,
+    "sha256": "hex:2ddd20918965ddd0c24faa7492c21b4909569e2acef5fa3952139eed3b66e057",
+    "lines": 183
+   },
+   "src/context_engine/retrieval.py": {
+    "path": "src/context_engine/retrieval.py",
+    "bytes": 14419,
+    "sha256": "hex:55d59f937c9e2c40200f1077c58c62f3668a0e00883c56fc991d7e3f700033a6",
+    "lines": 266
+   },
+   "src/optimus/context/context_why.py": {
+    "path": "src/optimus/context/context_why.py",
+    "bytes": 18461,
+    "sha256": "hex:1cc3fd8f5d0fee3f295fd6f115e8afba80fc75f9deac3521a90dff60153b5a61",
+    "lines": 316
+   },
+   "src/optimus_model_policy/registry.py": {
+    "path": "src/optimus_model_policy/registry.py",
+    "bytes": 20713,
+    "sha256": "hex:568cdd8dd87cc98563df7413a52f4490ed68546c26e8d8dbc594f6485ae8b7b9",
+    "lines": 540
+   },
+   "src/optimus/acp/launch_gate.py": {
+    "path": "src/optimus/acp/launch_gate.py",
+    "bytes": 48719,
+    "sha256": "hex:914967640d3129b8ec14e857f0ec3c1f20fbf3fbfbddc26b7399255c3b1092c0",
+    "lines": 1131
+   },
+   "src/optimus/context/memory_import.py": {
+    "path": "src/optimus/context/memory_import.py",
+    "bytes": 50387,
+    "sha256": "hex:ec8b3ab369d82dfdf3e1c6c5ec0256b5cfad9007487026677d0972c855e3e406",
+    "lines": 902
+   },
+   "src/context_engine/repo_map.py": {
+    "path": "src/context_engine/repo_map.py",
+    "bytes": 4498,
+    "sha256": "hex:939930d15c4394c8da20d92922192090acb221662a59c86c8061e1f426274a49",
+    "lines": 113
+   }
+  }
+ }
+}

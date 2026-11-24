@@ -1,0 +1,89 @@
+{
+ "schema": "plan12-memory-m2b.evaluation-contract.v1",
+ "plan": "12.14",
+ "issue": 548,
+ "frozen_on": "2026-11-24",
+ "frozen_before": "Task 1 and any feature code; Task 1 adds the fields marked frozen_in_task_1 as a recorded successor before any paid prompt",
+ "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
+ "inputs": {
+  "cases": "reports/plan12-memory-m2b/cases.json",
+  "manifest": "reports/plan12-memory-m2b/manifest.json",
+  "binding": "every result names the sha256 of each input file and the git commit it ran at; a changed input invalidates earlier results"
+ },
+ "split_custody": {
+  "development": "Task 1: three real-index repetitions from paired captured channel inputs; selects the baseline or one utility candidate before any fresh qualification; may be inspected",
+  "fresh": "opened once, in Task 4, after CP1 froze the candidate; no replacement or tuning against it",
+  "replays": "seed held-out, M1 held-out, fresh, fresh2: each reported separately, never used for selection",
+  "incomplete_repetition": "inconclusive; no replacement repetition"
+ },
+ "packing_candidates": {
+  "baseline": "M1 greedy fill in fused order (delivered M2a)",
+  "density": "RRF score * (1 + marginal_terms / max(1, task_terms)) / max(1, candidate_tokens)",
+  "coverage": "RRF score * (1 + marginal_terms / max(1, task_terms)), then greedy fit",
+  "fixed": "RRF_K 60, WEIGHTS, CHANNEL_K 100, QUOTA and stable ties, M2a ambiguity authority; ranked output and recall at five unchanged; required files untouched; 25% signatures, remainder bodies; ties by fused ordinal, path, range, id; cost is the candidate's own serialized signature/excerpt/framing; marginal terms recomputed after each selection within a disclosure phase",
+  "terms": "lexical_terms(task) including the stop-word fallback; task_terms is its count"
+ },
+ "packing_gates": {
+  "ships_only_if": [
+   "evidence in context >= baseline in every development repetition, every replay set and the fresh set",
+   "strictly higher evidence in context on development and on fresh",
+   "irrelevant estimated tokens <= baseline and <= 16,000",
+   "zero stale, denied or wrong-scope evidence",
+   "recall at five equal to baseline",
+   "the injection gate in cases.json"
+  ],
+  "otherwise": "baseline retained (U = B)"
+ },
+ "budget": {
+  "C": "min(floor(0.25 * usable_input), 32768)",
+  "T": "floor(1,000,000 * input_target_usd / effective_input_price); effective price x 1.25 when a cache write is possible; zero price gives T = C",
+  "chosen": "min(C, max(V + min(1024, C - V), T)); optional_room = chosen - V",
+  "entry": "D3 only: anthropic/claude-haiku-5.5 named via Role.EASY, input_target_usd 0.008192; other entries omit the field and keep the legacy min(floor(0.25 * usable_input), 16384)",
+  "forecast": {"C": 32768, "T_write": 13107, "T_no_write": 16384, "legacy": 16384},
+  "cp1_requires": "per budget case R, T, C, allocation, pack bytes and digest; all four paid budget cases change substantive F/U pack bytes: >= two ordinary-fit allocation changes and two R values in (16384, C]; otherwise stop CP1"
+ },
+ "arms": {
+  "N": "actual engine-absent assemble_workspace_context_for_prompt(root, task=task), default 16 KiB bytes/order/truncation/diagnostics, the existing non-indexed Chat builder, no map",
+  "B": "delivered M2a packing, fusion and legacy budget, indexed map; an evaluator control",
+  "U": "the selected utility with B's budget, builder and map; U = B if the baseline is retained, and identical per-case prompts then share one recorded attempt and receipts under arm aliases",
+  "F": "U plus the qualified budget and overflow outline through the actual production builder, fit and binding",
+  "verification": "N checked against the fallback; F byte-for-byte against production builders at the tested head (Task 2); B and U are evaluator controls"
+ },
+ "arm_order": {
+  "rule": "each category's four cases, in case-id order, take these orders once",
+  "orders": [["N", "B", "U", "F"], ["B", "U", "F", "N"], ["U", "F", "N", "B"], ["F", "N", "B", "U"]],
+  "record": "cache warmth, order and timing per attempt"
+ },
+ "caps": {
+  "Q_input_estimated_tokens": 65536,
+  "Q_output_estimated_tokens": 2048,
+  "R_input_estimated_tokens": 16384,
+  "R_output_estimated_tokens": 512,
+  "rule": "CP1 proves budget cases fit C + map + framing; a failed preflight stops before paid prompts; no cap increase after results"
+ },
+ "cohorts": {
+  "forced_refusals": "cases.json paid_q.cases[].forced_refusal (predeclared from sizes alone); reported separately; excluded from superiority and comparable-cost wins",
+  "comparable": ["QR1", "QR2", "QR3", "QR4", "QB1", "QB2", "QO3"],
+  "ordinary_fit": ["QB1", "QB2"]
+ },
+ "adoption_and_cost_gates": [
+  "utility passes its packing gates; recall at five unchanged",
+  "budgets: zero silent required omissions; required coverage >= U on deterministic budget and qualification sets; ordinary-fit uncached-repriced input cost <= U with one strict saving; all four budget cases change substantive pack bytes",
+  "paid F loses no B/U-success case, has success count >= N, and has zero safety or unsupported-material-claim failures",
+  "fully loaded uncached-repriced cost per success for every arm beside actual charges, denominators and coverage; comparable-cohort F costs <= B and <= U; zero-success ratios are unavailable; missing comparable evidence holds cost acceptance",
+  "one stochastic sample establishes no population superiority"
+ ],
+ "expected_attempts": {
+  "Q": {"logical_intended": 48, "logical_if_U_equals_B": 36, "physical_max": 96, "usd_max": "6.00", "gateway_attempts_per_logical": 3, "reservation": "3 physical attempts reserved before each logical request; the run stops when a reservation cannot be made inside 96, so retries may prevent completing intended requests", "usd_bound_at_caps": "4.42"},
+  "R": {"logical_intended": 4, "physical_max": 12, "usd_max": "0.50", "usd_bound_at_caps": "0.14", "cases": "four development cases, one configured top-12 reranker; output must permute the supplied ids exactly"},
+  "unintended_calls": "none: no host retry, fallback, classifier, extraction, maintenance, repair or replacement; any is a breach recorded and stops the run"
+ },
+ "cache_observations": "Q records reported cache usage and charges, prefix and request digests and order; cold and warm reported without attributing order discounts to policy; no production hit-rate or causal cache-savings claim",
+ "producer_contract_463": {
+  "status": "drafted by Claude; Codex agreement sought at CP1; no savings reader is built",
+  "record": "reports/plan12-memory-m2b/paid-attempts.json, schema plan12-memory-m2b.paid-attempts.v1, owned by this plan",
+  "row": ["release", "case_id", "arm (and alias when U = B)", "logical_request_id", "physical attempt ids", "gateway_request_id", "route/model/provider", "usage (input, output, reasoning nested, cached read, cache write)", "billing fields as reported", "actual_usd (as reported, or UNKNOWN)", "repriced_uncached_usd", "tariff_id", "outcome and terminal classification", "timing and order"],
+  "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
+ },
+ "frozen_in_task_1": ["tariff (one dated uncached D3 tariff)", "scoring script digest", "claim selector digest", "intended composition hash and production-equivalence test", "reservations and resend accounting", "the selected utility candidate"]
+}
