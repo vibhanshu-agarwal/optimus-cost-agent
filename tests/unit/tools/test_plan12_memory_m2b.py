@@ -128,6 +128,7 @@ def test_one_repetition_below_the_baseline_rejects():
 def test_injections_are_written_only_with_their_frozen_bytes(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(ev.m1_scale, "_git", lambda tree, *args: calls.append(args))
+    (tmp_path / "pyproject.toml").write_text("x", encoding="utf-8")
     injection = CASES["injections"]["sets"]["development"]
     ev.inject(tmp_path, injection)
     assert (tmp_path / injection["poison"]["path"]).read_text(encoding="utf-8") == injection["poison"]["text"]
@@ -155,3 +156,24 @@ def test_main_refuses_qualification_before_task_4(tmp_path, monkeypatch):
     monkeypatch.chdir(ROOT)
     with pytest.raises(ev.FreshRefused):
         ev.main(["--config", "reports/plan12-memory-m2b/run-config.json", "--phase", "qualification", "--output", str(tmp_path / "q.json")])
+
+
+def test_injections_take_the_trees_own_archive_date(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setattr(ev.m1_scale, "_git", lambda tree, *args: None)
+    (tmp_path / "pyproject.toml").write_text("x", encoding="utf-8")
+    os.utime(tmp_path / "pyproject.toml", (1_000_000_000, 1_000_000_000))
+    injection = CASES["injections"]["sets"]["fresh"]
+    ev.inject(tmp_path, injection)
+    assert {(tmp_path / injection[k]["path"]).stat().st_mtime for k in ("poison", "control")} == {1_000_000_000}
+
+
+def test_a_capture_keeps_ids_and_ranks_never_text(tmp_path):
+    hit = Hit(id="h", kind="symbol", path="a.py", file_hash="0" * 64, symbol="f", start_line=1, end_line=2)
+    case = ev.control_case(CASES["injections"]["sets"]["development"], f"git:{SNAPSHOT}", "2026-11-24T18:08:04+05:30")
+    capture = ev.Capture(case, "secret words", (Ranked(hit, 0.5, {"lexical": 1}),), ("h",), lambda _p: b"body")
+    digest = ev.save_capture(tmp_path / "c.json", capture)
+    text = (tmp_path / "c.json").read_text(encoding="utf-8")
+    assert "secret words" not in text and "body" not in text and json.loads(text)["protected"] == ["h"]
+    assert digest == "hex:" + hashlib.sha256((tmp_path / "c.json").read_bytes()).hexdigest()

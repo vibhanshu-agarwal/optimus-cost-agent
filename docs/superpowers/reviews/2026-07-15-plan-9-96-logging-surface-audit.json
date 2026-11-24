@@ -6569,6 +6569,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m2b_evaluate:save_capture:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes one retrieval capture of hit ids, kinds, repository-relative paths, symbol names, line numbers, file hashes, scores and channel ranks, and the query's hash; no query text, file body, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_a_capture_keeps_ids_and_ranks_never_text",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m1_scale:edit_visibility:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: the call is threading.Event.set(); nothing is written to Redis or any sink.",

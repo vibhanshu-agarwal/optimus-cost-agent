@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import threading
@@ -87,7 +88,9 @@ def control_case(injection: Mapping[str, Any], snapshot: str, cutoff: str) -> Go
 
 
 def inject(tree: Path, injection: Mapping[str, Any]) -> None:
-    """The set's poison and control, committed into the cutoff tree so the real policy and worker index them as ordinary files."""
+    """The set's poison and control, committed into the cutoff tree so the real policy and worker index them as ordinary files. They take
+    the tree's own archive date (materialize gives every file its commit time), so recency neither favours them nor varies with the clock."""
+    anchor = (m1_scale.long_path(tree) / "pyproject.toml").stat().st_mtime
     for key in ("poison", "control"):
         item = injection[key]
         data = item["text"].encode("utf-8")
@@ -95,6 +98,7 @@ def inject(tree: Path, injection: Mapping[str, Any]) -> None:
         target = m1_scale.long_path(tree) / item["path"]
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
+        os.utime(target, (anchor, anchor))
     m1_scale._git(tree, "add", "-A")
     m1_scale._git(tree, "commit", "-q", "-m", "plan 12.14 injections")
 
@@ -270,6 +274,7 @@ def run_calibration(config: Mapping[str, Any], repository: Path, out: Path) -> d
         report["repetitions"].append({"number": number, "trees": trees, "cases": rows, "totals": totals([r for r in rows if not r["case_id"].startswith("Q")])})
         _write(report, out)
     report["selection"] = select_candidate([rep["totals"] for rep in report["repetitions"]])
+    report["budget_gates"] = budget_gates([r for rep in report["repetitions"] for r in rep["cases"] if r["case_id"].startswith("Q")])
     _write(report, out)
     return report
 
@@ -281,7 +286,7 @@ def _repetition(config: Mapping[str, Any], repository: Path, snapshots: Mapping[
     rows: list[dict[str, Any]] = []
     trees: list[dict[str, Any]] = []
     try:
-        embedder = m1_evaluate.CachedEmbedder(FastembedEmbedder(root, memory.embedding, directory=settings_file["embedding"]["artifact_directory"], threads=config["embedding_threads"]), work / "embedding-cache.sqlite")
+        embedder = m1_evaluate.CachedEmbedder(FastembedEmbedder(root, memory.embedding, directory=settings_file["embedding"]["artifact_directory"], threads=config["embedding_threads"]), embedding_cache(config, repository))
         if number == 1:
             report["wrong_branch_control"] = m1_evaluate.wrong_branch_control(work, settings, embedder)
         previous = None
@@ -299,8 +304,10 @@ def _repetition(config: Mapping[str, Any], repository: Path, snapshots: Mapping[
                 row = score_capture(capture, budget=legacy, poison_path=poison)
                 row["stale_or_missing_records"] = m1_evaluate.stale_or_missing_hits(retrieval.ranked, tree)
                 rows.append({**row, "case_id": row["case_id"] if case.role == "probe" else f"{row['case_id']}@{revision[:12]}"})
+                rows[-1]["capture_sha256"] = save_capture(work / "captures" / f"{rows[-1]['case_id'].replace('@', '_')}.json", capture)
             previous = _rotate(previous, index, work, tree)
-        rows.extend(_budget_cases(config, repository, work, settings, embedder, cases_record, trees, legacy=legacy, model_aware=model_aware))
+        if number == 1:  # main's tree and the baseline policy only: identical in every repetition (run 1, d7f060d), so measured once
+            rows.extend(_budget_cases(config, repository, work, settings, embedder, cases_record, trees, legacy=legacy, model_aware=model_aware))
     finally:
         client.close()
         gateway.kill()
@@ -308,6 +315,25 @@ def _repetition(config: Mapping[str, Any], repository: Path, snapshots: Mapping[
         subprocess.run(["docker", "rm", "-f", config["container"]], capture_output=True, check=False)
         subprocess.run(["docker", "volume", "rm", "-f", config["volume"]], capture_output=True, check=False)
     return rows, trees
+
+
+def embedding_cache(config: Mapping[str, Any], repository: Path) -> Path:
+    """One content-keyed vector cache for every repetition and run: vectors are keyed by embedder identity and text hash, so a cached
+    vector is the one the embedder returns. Each repetition still provisions a fresh store and builds its index with the real worker."""
+    path = repository / config.get("embedding_cache", f"{config['work_dir']}/embedding-cache.sqlite")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def save_capture(path: Path, capture: Capture) -> str:
+    """What retrieval returned, so any later policy can be re-scored offline. Ids, paths, lines, hashes and ranks only, never text."""
+    record = {"case_id": capture.case.case_id, "query_sha256": "hex:" + hashlib.sha256(capture.query.encode("utf-8")).hexdigest(), "protected": list(capture.protected),
+              "ranked": [{"id": r.hit.id, "kind": r.hit.kind, "path": r.hit.path, "symbol": r.hit.symbol, "file_hash": r.hit.file_hash, "start_line": r.hit.start_line,
+                          "end_line": r.hit.end_line, "score": r.score, "ranks": dict(r.ranks)} for r in capture.ranked]}
+    data = (json.dumps(record, sort_keys=True, ensure_ascii=True) + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return "hex:" + hashlib.sha256(data).hexdigest()
 
 
 def _index(tree: Path, settings: Any, embedder: Any, trees: list[dict[str, Any]], revision: str) -> m1_scale._Index:
