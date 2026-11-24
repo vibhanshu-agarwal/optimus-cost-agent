@@ -3,12 +3,16 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from threading import Lock
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
-from optimus.evidence.ledger import EvidenceLedger, EvidenceLedgerEntry
+from optimus.evidence.ledger import (
+    EvidenceLedger,
+    EvidenceLedgerEntry,
+    record_ledger_entry,
+    record_provider_usage,
+    stable_request_id,
+)
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
-from optimus.gateway.models import GatewayUsage
 from optimus.gateway.tool_models import (
     PackageLookupRequest,
     PackageLookupResult,
@@ -91,7 +95,7 @@ class PackageAdvisoryService:
             execution_mode=execution_mode,
             action=f"package_lookup:{request.package}",
         )
-        request_id = _stable_request_id(context.run_id, PACKAGE_LOOKUP_SERVICE)
+        request_id = stable_request_id(context.run_id, PACKAGE_LOOKUP_SERVICE)
         try:
             body = self.gateway_client.post_tool_json(
                 path="/v1/tools/package/lookup",
@@ -127,7 +131,8 @@ class PackageAdvisoryService:
                 request_id=request_id,
             )
             raise
-        self._record_provider_usage(
+        record_provider_usage(
+            self._usage_accounting,
             run_id=context.run_id,
             session_id=context.session_id,
             request_id=request_id,
@@ -135,7 +140,8 @@ class PackageAdvisoryService:
             service=PACKAGE_LOOKUP_SERVICE,
             native_unit=PACKAGE_ADVISORY_NATIVE_UNIT,
         )
-        ledger = self._record_ledger_entry(
+        ledger = record_ledger_entry(
+            self,
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=context.run_id,
                 session_id=context.session_id,
@@ -145,7 +151,7 @@ class PackageAdvisoryService:
                 sources=tuple(str(citation) for citation in envelope.result.citations),
                 gateway_usage=envelope.gateway_usage,
                 queried_at=_utc_now(),
-            )
+            ),
         )
         return envelope.result, ledger
 
@@ -171,7 +177,7 @@ class PackageAdvisoryService:
             execution_mode=execution_mode,
             action=f"security_advisory:{request.identifier}",
         )
-        request_id = _stable_request_id(context.run_id, SECURITY_ADVISORY_SERVICE)
+        request_id = stable_request_id(context.run_id, SECURITY_ADVISORY_SERVICE)
         try:
             body = self.gateway_client.post_tool_json(
                 path="/v1/tools/security/advisory",
@@ -210,7 +216,8 @@ class PackageAdvisoryService:
         sources = tuple(
             str(citation) for advisory in envelope.result.advisories for citation in advisory.citations
         )
-        self._record_provider_usage(
+        record_provider_usage(
+            self._usage_accounting,
             run_id=context.run_id,
             session_id=context.session_id,
             request_id=request_id,
@@ -218,7 +225,8 @@ class PackageAdvisoryService:
             service=SECURITY_ADVISORY_SERVICE,
             native_unit=PACKAGE_ADVISORY_NATIVE_UNIT,
         )
-        ledger = self._record_ledger_entry(
+        ledger = record_ledger_entry(
+            self,
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=context.run_id,
                 session_id=context.session_id,
@@ -228,7 +236,7 @@ class PackageAdvisoryService:
                 sources=sources,
                 gateway_usage=envelope.gateway_usage,
                 queried_at=_utc_now(),
-            )
+            ),
         )
         return envelope.result, ledger
 
@@ -258,33 +266,6 @@ class PackageAdvisoryService:
                 _rejected_package_advisory_decision(reason=f"human approval required: {result.reason}")
             )
 
-    def _record_ledger_entry(self, entry: EvidenceLedgerEntry) -> EvidenceLedger:
-        with self._ledger_lock:
-            self.ledger = self.ledger.record(entry)
-            return self.ledger
-
-    def _record_provider_usage(
-        self,
-        *,
-        run_id: str,
-        session_id: str | None,
-        request_id: str,
-        gateway_usage: GatewayUsage,
-        service: str,
-        native_unit: str,
-    ) -> None:
-        if self._usage_accounting is None:
-            return
-        self._usage_accounting.record_gateway_usage(
-            gateway_usage,
-            run_id=run_id,
-            session_id=session_id,
-            request_id=request_id,
-            occurred_at=_utc_now(),
-            service=service,
-            native_unit=native_unit,
-        )
-
     def _record_parse_failure_usage(
         self,
         *,
@@ -308,7 +289,8 @@ class PackageAdvisoryService:
         """
         if exc.gateway_usage is None:
             return
-        self._record_provider_usage(
+        record_provider_usage(
+            self._usage_accounting,
             run_id=run_id,
             session_id=session_id,
             request_id=request_id,
@@ -316,7 +298,8 @@ class PackageAdvisoryService:
             service=service,
             native_unit=native_unit,
         )
-        self._record_ledger_entry(
+        record_ledger_entry(
+            self,
             EvidenceLedgerEntry.from_gateway_usage(
                 run_id=run_id,
                 session_id=session_id,
@@ -326,7 +309,7 @@ class PackageAdvisoryService:
                 sources=sources,
                 gateway_usage=exc.gateway_usage,
                 queried_at=_utc_now(),
-            )
+            ),
         )
 
 
@@ -342,9 +325,3 @@ def _rejected_package_advisory_decision(*, reason: str) -> ToolInvocationDecisio
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
-
-
-def _stable_request_id(run_id: str, service: str) -> str:
-    """One caller-generated ID per transport attempt, reused across the success
-    and parse-failure recording paths for that same attempt."""
-    return f"{run_id}:{service}:{uuid4().hex}"

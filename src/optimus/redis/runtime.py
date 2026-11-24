@@ -17,6 +17,7 @@ from optimus.agent.state_store import (
     AsyncRedisAgentStateStore,
     AsyncStateClient,
     RedisAgentStateStore,
+    normalize_redis_ping_errors,
     validate_redis_url,
 )
 from optimus.redis.async_bridge import (
@@ -310,21 +311,10 @@ class RedisRuntime:
             raise RedisHealthDeadlineExceeded("Redis health deadline expired") from exc
 
     async def _ping_async(self) -> None:
-        try:
+        with normalize_redis_ping_errors():
             if self.client is None:
                 raise RuntimeError("redis client is not configured")
             await self.client.ping()
-        except ConnectionError:
-            raise
-        except OSError as exc:
-            raise ConnectionError(str(exc)) from exc
-        except Exception as exc:
-            if type(exc).__module__.startswith("redis") and type(exc).__name__ in {
-                "ConnectionError",
-                "TimeoutError",
-            }:
-                raise ConnectionError(str(exc)) from exc
-            raise
 
     # -- teardown ------------------------------------------------------------------
 

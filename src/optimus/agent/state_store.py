@@ -4,7 +4,8 @@ import json
 import logging
 import threading
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
@@ -402,19 +403,8 @@ class RedisAgentStateStore:
         if async_store is not None:
             self.submit(lambda: async_store.ping())
             return
-        try:
+        with normalize_redis_ping_errors():
             self._required_sync_client.ping()
-        except ConnectionError:
-            raise
-        except OSError as exc:
-            raise ConnectionError(str(exc)) from exc
-        except Exception as exc:
-            if type(exc).__module__.startswith("redis") and type(exc).__name__ in {
-                "ConnectionError",
-                "TimeoutError",
-            }:
-                raise ConnectionError(str(exc)) from exc
-            raise
 
 
 class AsyncRedisAgentStateStore:
@@ -466,19 +456,30 @@ class AsyncRedisAgentStateStore:
             return None
 
     async def ping(self) -> None:
-        try:
+        with normalize_redis_ping_errors():
             await self._client.ping()
-        except ConnectionError:
-            raise
-        except OSError as exc:
+
+
+@contextmanager
+def normalize_redis_ping_errors() -> Iterator[None]:
+    """Turn a Redis client's connection or timeout failure into builtin ``ConnectionError``.
+
+    The one health-check contract for the state stores and ``RedisRuntime``; any other
+    failure propagates unchanged.
+    """
+    try:
+        yield
+    except ConnectionError:
+        raise
+    except OSError as exc:
+        raise ConnectionError(str(exc)) from exc
+    except Exception as exc:
+        if type(exc).__module__.startswith("redis") and type(exc).__name__ in {
+            "ConnectionError",
+            "TimeoutError",
+        }:
             raise ConnectionError(str(exc)) from exc
-        except Exception as exc:
-            if type(exc).__module__.startswith("redis") and type(exc).__name__ in {
-                "ConnectionError",
-                "TimeoutError",
-            }:
-                raise ConnectionError(str(exc)) from exc
-            raise
+        raise
 
 
 def validate_redis_url(url: str) -> str:

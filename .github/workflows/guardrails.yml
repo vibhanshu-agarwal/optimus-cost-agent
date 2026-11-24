@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 concurrency:
   group: guardrails-${{ github.ref }}
   cancel-in-progress: true
@@ -15,15 +18,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: "optimus-check: workflow-security"
+        shell: bash
+        run: |
+          tools_dir=$(mktemp -d "$RUNNER_TEMP/optimus-workflow-security.XXXXXX")
+          cd "$tools_dir"
+          curl --fail --silent --show-error --location --max-time 120 --remote-name \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          curl --fail --silent --show-error --location --max-time 120 --remote-name \
+            https://github.com/zizmorcore/zizmor/releases/download/v1.33.1/zizmor-x86_64-unknown-linux-gnu.tar.gz
+          sha256sum --check --strict <<'CHECKSUMS'
+          8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint_1.7.12_linux_amd64.tar.gz
+          3e6a301c7a820a2501915f5a9de8c0486da82bdec7965f068477538a98743d43  zizmor-x86_64-unknown-linux-gnu.tar.gz
+          CHECKSUMS
+          tar -xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
+          tar -xzf zizmor-x86_64-unknown-linux-gnu.tar.gz zizmor
+          cd "$GITHUB_WORKSPACE"
+          bash tools/check_workflow_security.sh "$tools_dir/actionlint" "$tools_dir/zizmor"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
 
@@ -122,7 +144,7 @@ jobs:
 
       - name: Upload product coverage evidence
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: product-coverage-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/product-coverage/

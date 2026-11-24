@@ -324,9 +324,13 @@ class TurnControl:
             return self._terminal_decision
 
     @property
-    def recorded_settlement(self) -> Settlement:
-        """The semantic outcome recorded so far, as `finalize_once` would settle it (Plan 12.13 `/why`)."""
+    def settlement(self) -> Settlement:
+        """The semantic settlement as `finalize_once` would report it now, read under the same lock and rule."""
         with self._lock:
+            if self._final_outcome is not None:
+                return self._final_outcome.settlement
+            if self._frozen_snapshot is not None:
+                return self._frozen_snapshot.settlement
             return Settlement.CANCELLED if self._cancellation_accepted else self._settlement
 
     def record_outcome(self, outcome: Settlement) -> None:

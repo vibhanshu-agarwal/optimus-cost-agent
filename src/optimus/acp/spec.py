@@ -2468,7 +2468,7 @@ class AcpDuplexAdapter:
                     completion_text=CONTEXT_PLAN_TOO_LARGE_TEXT,
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": "end_turn"}),
+                    success_response(request_id=request.get("id"), result=_prompt_result("end_turn", planning_result, turn_control)),
                     turn_control,
                     ownership_slot,
                 )
@@ -2482,7 +2482,7 @@ class AcpDuplexAdapter:
                     outcome=ConversationOutcome.CANCELLED,
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": "cancelled"}),
+                    success_response(request_id=request.get("id"), result=_prompt_result("cancelled", planning_result, turn_control)),
                     turn_control,
                     ownership_slot,
                 )
@@ -2496,7 +2496,7 @@ class AcpDuplexAdapter:
                     outcome=_conversation_outcome(planning_result),
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)}),
+                    success_response(request_id=request.get("id"), result=_prompt_result(_stop_reason(planning_result), planning_result, turn_control)),
                     turn_control,
                     ownership_slot,
                 )
@@ -2511,7 +2511,7 @@ class AcpDuplexAdapter:
                     outcome=_conversation_outcome(planning_result),
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(planning_result)}),
+                    success_response(request_id=request.get("id"), result=_prompt_result(_stop_reason(planning_result), planning_result, turn_control)),
                     turn_control,
                     ownership_slot,
                 )
@@ -2554,7 +2554,7 @@ class AcpDuplexAdapter:
                     else ConversationOutcome.REJECTED,
                 )
                 return self._turn(
-                    success_response(request_id=request.get("id"), result={"stopReason": "cancelled"}),
+                    success_response(request_id=request.get("id"), result=_prompt_result("cancelled", planning_result, turn_control)),
                     turn_control,
                     ownership_slot,
                 )
@@ -2612,7 +2612,7 @@ class AcpDuplexAdapter:
                 outcome=_conversation_outcome(approved_result),
             )
             return self._turn(
-                success_response(request_id=request.get("id"), result={"stopReason": _stop_reason(approved_result)}),
+                success_response(request_id=request.get("id"), result=_prompt_result(_stop_reason(approved_result), approved_result, turn_control)),
                 turn_control,
                 ownership_slot,
             )
@@ -2666,7 +2666,7 @@ class AcpDuplexAdapter:
         memory = None if attached is None else attached.memory
         try:
             session.why = context_why.capture(
-                run_id=turn.run_id, turn_seq=turn.turn_seq, outcome=turn.turn_control.recorded_settlement.value, stop=turn.result_stop,
+                run_id=turn.run_id, turn_seq=turn.turn_seq, outcome=turn.turn_control.settlement.value, stop=turn.result_stop,
                 index="not configured" if session.memory is None else "not answering" if memory is None else "used",
                 contexts=None if attached is None else attached.contexts(),
                 dispatches=None if attached is None else [(item.tokens, item.capacity, item.planning_round, item.attempt)
@@ -3285,7 +3285,7 @@ class AcpDuplexAdapter:
                 completion_text=_CHAT_CANCELLED_TEXT,
             )
             return self._turn(
-                success_response(request_id=request_id, result={"stopReason": "cancelled"}),
+                success_response(request_id=request_id, result=_prompt_result("cancelled", result, turn.turn_control)),
                 turn.turn_control,
                 ownership_slot,
             )
@@ -3308,7 +3308,7 @@ class AcpDuplexAdapter:
             completion_text=text,
         )
         return self._turn(
-            success_response(request_id=request_id, result={"stopReason": "end_turn"}),
+            success_response(request_id=request_id, result=_prompt_result("end_turn", result, turn.turn_control)),
             turn.turn_control,
             ownership_slot,
         )
@@ -4224,6 +4224,15 @@ def _stop_reason(result: AgentRunResult) -> str:
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES:
         return "end_turn"  # Zed hides a refused turn's text, and the person must read these candidates (Plan 12.13 Task 4)
     return "refusal"
+
+
+def _prompt_result(stop_reason: str, result: AgentRunResult, control: TurnControl) -> dict[str, object]:
+    """A prompt response for a turn that holds a run result (#268, MT-FU-2). ``_meta`` carries the run's own stop code
+    and the turn's semantic settlement as finalization would report it when the response is built, so a check can tell
+    a no-work turn from a completed one without reading prose. It is not a claim of canonical commit or delivery, and a
+    response cannot vouch for its own later transport settlement: a teardown after this point still settles the turn
+    as abandoned, and a turn whose final delivery was not sealed can still accept a cancel until finalization."""
+    return {"stopReason": stop_reason, "_meta": {"runStopReason": result.stop_reason, "outcome": control.settlement.value}}
 
 
 def _outbound_error_payload(run_id: str, exc: AcpOutboundError) -> Callable[[], dict[str, object]]:
