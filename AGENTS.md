@@ -143,7 +143,7 @@
 
 | Owner | Reviewer CLI invocation prefix | Owner's stronger second opinion | Never call through the CLI |
 |---|---|---|---|
-| Claude | Codex: `codex exec -m gpt-6.1-sol -c 'model_reasoning_effort="high"' -s read-only` | latest Fable 5.x | GPT-6.x Astra |
+| Claude | Codex: `codex exec -m gpt-6.2-sol -c 'model_reasoning_effort="high"' -s read-only` | latest Fable 5.x | GPT-6.x Astra |
 | Codex | Claude: `claude -p --model claude-opus-5-5 --effort high --permission-mode plan` | latest GPT-6.x Astra | Fable 5.x |
 
 - Pass the model and effort explicitly on every reviewer CLI call, including resumed sessions; never rely on a CLI's default model. If the named model fails, report it, and do not substitute another model without operator direction.
