@@ -125,3 +125,33 @@ def test_check_config_with_relative_debug_log_path(monkeypatch, tmp_path):
     log_path = (tmp_path / "reports/issue-33.ndjson").resolve()
     assert exit_code == 0
     assert log_path.exists()
+
+
+def test_diagnostic_level_requires_debug_trace(capsys):
+    with pytest.raises(SystemExit, match="2"):
+        acp_main.parse_args(["--diagnostic-level", "warning"])
+
+    assert "--diagnostic-level requires --debug-trace" in capsys.readouterr().err
+
+
+def test_check_config_applies_diagnostic_level_to_authorized_trace(monkeypatch, tmp_path, capsys):
+    from optimus.acp import debug_trace
+
+    monkeypatch.setattr(debug_trace, "_PROVENANCE_LOGGED", False)
+    _authorize(monkeypatch, tmp_path, _base_env())
+    monkeypatch.setattr(acp_main, "ensure_local_redis", lambda *a, **k: None)
+    monkeypatch.setattr(acp_main, "run_preflight", lambda *a, **k: "redis://127.0.0.1:6379/0")
+
+    assert acp_main.main([
+        "--workspace-root", str(tmp_path), "--check-config", "--debug-trace", "--diagnostic-level", "info"
+    ]) == 0
+    debug_trace.acp_debug_log(location="test:debug", message="filtered")
+
+    log_path = tmp_path / DEFAULT_DEBUG_LOG_RELATIVE_PATH
+    line, = log_path.read_text(encoding="utf-8").splitlines()
+    record = json.loads(line)
+    assert record["schemaVersion"] == 1
+    assert record["level"] == "info"
+    assert record["hypothesisId"] == "PROVENANCE"
+    assert "runId" not in record
+    assert capsys.readouterr().out == ""

@@ -561,19 +561,27 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.debug_trace:acp_debug_log:file_open",
+      "key": "optimus.acp.debug_trace:_NdjsonDiagnosticSink.write:file_open",
       "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.debug_trace:acp_debug_log:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.debug_trace:_NdjsonDiagnosticSink.write:file_open before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.debug_trace:acp_debug_log:json_serialization",
+      "key": "optimus.acp.debug_trace:_NdjsonDiagnosticSink.write:json_serialization",
       "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.debug_trace:acp_debug_log:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.debug_trace:_NdjsonDiagnosticSink.write:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:_NdjsonDiagnosticSink.write:text_write",
+      "policy": "shared-sanitize",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.debug_trace:_NdjsonDiagnosticSink.write:text_write before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/acp/test_debug_trace.py::test_levelled_trace_filters_before_payload_work_and_writes_one_local_record",
       "evidence_tier": "unit"
     },
     {
@@ -4814,6 +4822,38 @@
       "rationale": "Inspection: load_registry wraps a schema validation failure of the curated, non-secret registry YAML in a typed RegistryError; production callers (launch gate, Gateway startup) export only its stable code, never the detail.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_launch_gate_model_registry.py::test_an_untrustworthy_registry_blocks_launch",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_dependency_audit:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Only fixed diagnostics, pin counts and normalized public package, version and advisory IDs reach stderr. Raw tool output and exception metadata stay private.",
+      "sanitizer": "validated public identities or fixed diagnostics; no raw auditor output retention",
+      "test_node": "tests/unit/tools/test_check_dependency_audit.py::test_cli_audits_all_batches_and_keeps_vendor_output_private",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_dependency_audit:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Only the audited pin, advisory and accepted exception counts reach stdout.",
+      "sanitizer": "validated public identities or fixed diagnostics; no raw auditor output retention",
+      "test_node": "tests/unit/tools/test_check_dependency_audit.py::test_cli_audits_all_batches_and_keeps_vendor_output_private",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_dependency_audit:read_lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Read-only access to the public dependency lockfile, with no exported file contents.",
+      "sanitizer": "validated public identities or fixed diagnostics; no raw auditor output retention",
+      "test_node": "tests/unit/tools/test_check_dependency_audit.py::test_lock_accounts_for_each_marker_specific_version",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_dependency_audit:scan:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Temporary requirements files contain only validated public package names and versions. The files are removed with the audit temporary directory.",
+      "sanitizer": "validated public identities or fixed diagnostics; no raw auditor output retention",
+      "test_node": "tests/unit/tools/test_check_dependency_audit.py::test_cli_audits_all_batches_and_keeps_vendor_output_private",
       "evidence_tier": "unit"
     },
     {

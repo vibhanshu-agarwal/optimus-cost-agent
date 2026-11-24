@@ -6,9 +6,12 @@ from pathlib import Path
 import pytest
 
 from optimus.acp import launch_audit
+from optimus.acp.conversation import ConversationOutcome, ConversationSanitizer, ConversationSanitizerInputs, ConversationState
 from optimus.acp.debug_trace import DEFAULT_DEBUG_LOG_RELATIVE_PATH
 from optimus.acp.operator_paths import resolve_operator_paths
+from optimus.acp.settlement import EffectState
 from optimus.agent import workspace_context
+from optimus.agent.edits import edit_failure_text
 from optimus.agent.workspace_context import (
     WorkspaceReferenceDiagnostic,
     WorkspaceReferenceStatus,
@@ -984,3 +987,27 @@ def test_a_prompt_naming_an_exact_path_and_the_bare_name_together_is_settled(tmp
     _config_workspace(tmp_path)
     result = assemble_workspace_context_for_prompt(tmp_path, task="fix config.py, that is src/agent/config.py")
     assert result.blocking_stop_reason is None and result.prioritized_paths[0] == "src/agent/config.py"
+
+
+@pytest.mark.parametrize("path", ["token", "config/secret", "password", "my-api_key"])
+def test_a_failed_edit_to_a_secret_like_name_does_not_block_the_next_request(tmp_path, path):
+    """#574 round 3 (Codex): without an engine, the next Agent request's task carries the JSON history. A quoted path
+    in the failed EDIT's text was read as a secret folder reference ("token/") and refused an unrelated request."""
+    (tmp_path / "README.md").write_text("# readme\n", encoding="utf-8")
+    sanitizer = ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=()), workspace=tmp_path)
+    conversation = ConversationState(sanitizer)
+    decision = conversation.prepare_commit(
+        1,
+        sanitized_user_prompt="Make the change",
+        sanitized_plan_text="",
+        sanitized_completion_text=conversation.sanitize_text(edit_failure_text("EDIT_SOURCE_UNSEEN", path)),
+        outcome=ConversationOutcome.FAILED,
+        effect_state=EffectState.NONE,
+    )
+    conversation.commit_after_final_flush(decision)
+    task = f"{conversation.planner_envelope()}\nUpdate the README"  # spec.py _planner_inputs, Agent mode, no engine
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task, prompt="Update the README")
+
+    assert workspace_context.extract_file_references(task) == ()
+    assert result.blocking_stop_reason is None

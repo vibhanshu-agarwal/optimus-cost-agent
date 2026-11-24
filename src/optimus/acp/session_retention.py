@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from optimus.acp.debug_trace import acp_debug_log
+from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log
 from optimus_security.failure_facts import exception_fact, host_session_id
 
 if TYPE_CHECKING:
@@ -140,7 +140,13 @@ class SessionRetentionOwner:
     def _log(self, event: str, entry: _SessionEntry | None = None) -> None:
         # Diagnostics cannot affect custody, even when a custom sink fails.
         with contextlib.suppress(Exception):
+            level = DiagnosticLevel.DEBUG
+            if event == 'refused':
+                level = DiagnosticLevel.WARNING
+            elif event == 'retired' and entry is not None and entry.result is not None and entry.result.status is RetirementStatus.QUARANTINED:
+                level = DiagnosticLevel.ERROR
             acp_debug_log(location='session_retention.py:SessionRetentionOwner', message='session retention',
+                          level=level,
                           data=lambda: {'event': event, 'session_id': host_session_id(entry.session.session_id)
                                         if entry is not None else None,
                                         'phase': entry.phase if entry is not None else None,

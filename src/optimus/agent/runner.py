@@ -2181,14 +2181,15 @@ def _edit_path(plan_text: str) -> str:
 
 def _log_edit(run_id: str, path: str, outcome: str, *, base_sha256: str | None, result_sha256: str | None = None) -> None:
     """Every EDIT outcome keeps its closed code and digests in the debug trace; never file or model content."""
-    from optimus.acp.debug_trace import acp_debug_log
+    from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log
 
     acp_debug_log(
         location="runner.py:edit",
         message="edit outcome",
-        data={"path": path, "outcome": outcome, "base_sha256": base_sha256, "result_sha256": result_sha256},
+        data=lambda: {"path": path, "outcome": outcome, "base_sha256": base_sha256, "result_sha256": result_sha256},
         hypothesis_id="P407-EDIT",
         run_id=run_id,
+        level=DiagnosticLevel.DEBUG if outcome == "EDIT_APPLIED" else DiagnosticLevel.WARNING,
     )
 
 

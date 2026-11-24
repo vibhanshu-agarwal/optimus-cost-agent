@@ -262,3 +262,163 @@ async def test_record_settled_usage_rejects_missing_run_id():
             billing_units=10,
             cost_usd=Decimal("0.002"),
         )
+
+
+
+_BASE = dict(
+    run_id="run-1",
+    gateway_request_id="gw-1",
+    provider="tavily",
+    provider_request_id="provider-1",
+    billing_units=10,
+    cost_usd=Decimal("0.003"),
+)
+_CLAIMS = "optimus:usage:run-1:claims"
+_CANONICAL = (
+    '{"billing_units": 10, "cost_usd": "0.003", "gateway_request_id": "gw-1", '
+    '"provider": "tavily", "provider_request_id": "provider-1"}'
+)
+
+
+def _ts_adds(client: FakeRedis) -> int:
+    return sum(1 for command in client.commands if command[0] == "TS.ADD")
+
+
+def _seeded(stored: str | bytes | None) -> FakeRedis:
+    client = FakeRedis()
+    if stored is not None:
+        client._hashes[_CLAIMS] = {"gw-1": stored}  # type: ignore[dict-item]
+    return client
+
+
+@pytest.mark.parametrize(("first", "second"), [("0.003", "0.0030"), ("0.0030", "0.003"), ("1E+1", "10"), ("10", "1E+1")])
+async def test_record_settled_usage_replay_with_other_cost_exponent_is_a_noop(first: str, second: str):
+    client = FakeRedis()
+    adapter = RedisTelemetryAdapter(client=client)
+
+    await adapter.record_settled_usage(**{**_BASE, "cost_usd": Decimal(first)})
+    await adapter.record_settled_usage(**{**_BASE, "cost_usd": Decimal(second)})
+
+    assert _ts_adds(client) == 2
+
+
+async def test_record_settled_usage_pins_the_stored_fingerprint_format():
+    client = FakeRedis()
+    await RedisTelemetryAdapter(client=client).record_settled_usage(**_BASE)
+
+    assert client._hashes[_CLAIMS]["gw-1"] == _CANONICAL
+
+
+@pytest.mark.parametrize("stored", [_CANONICAL, _CANONICAL.encode()])
+async def test_record_settled_usage_honours_a_claim_stored_in_the_current_format(stored: str | bytes):
+    client = _seeded(stored)
+
+    await RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "cost_usd": Decimal("0.0030")})
+
+    assert _ts_adds(client) == 0
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"gateway_request_id": "gw-other"},  # the stored claim's id differs from its hash field
+        {"provider": "other"},
+        {"provider_request_id": "provider-2"},
+        {"provider_request_id": None},
+        {"billing_units": 11},
+        {"cost_usd": Decimal("0.004")},
+    ],
+)
+async def test_record_settled_usage_any_differing_field_raises_and_writes_no_point(change: dict):
+    client = FakeRedis()
+    adapter = RedisTelemetryAdapter(client=client)
+    await adapter.record_settled_usage(**_BASE)
+    if "gateway_request_id" in change:
+        client._hashes[_CLAIMS]["gw-1"] = client._hashes[_CLAIMS]["gw-1"].replace('"gw-1"', '"gw-other"')
+        change = {}
+
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1") as raised:
+        await adapter.record_settled_usage(**{**_BASE, **change})
+
+    assert raised.value.args == ("divergent gateway_request_id: gw-1",)
+    assert _ts_adds(client) == 2
+
+
+_F = '"billing_units": 10, "gateway_request_id": "gw-1", "provider": "tavily", "provider_request_id": "provider-1"'
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        # Only the canonical written form is honoured: a duplicated key whose last value equals the
+        # replay's cost, an extra key, and a different key order or spacing all diverge.
+        '{"cost_usd": "0.004", ' + _F + ', "cost_usd": "0.003"}',
+        "{" + _F + ', "cost_usd": "0.003", "extra": 1}',
+        '{"cost_usd": "0.003", ' + _F + "}",
+        "{" + _F.replace(", ", ",") + ',"cost_usd":"0.003"}',
+        "not json",
+        "[]",
+        '"text"',
+        "null",
+        "{" + _F + "}",
+        "{" + _F + ', "cost_usd": 0.003}',
+        "{" + _F + ', "cost_usd": "abc"}',
+        "{" + _F + ', "cost_usd": "NaN"}',
+        "{" + _F + ', "cost_usd": "Infinity"}',
+        # canonical layout, but a cost spelling str(Decimal) never writes
+        _CANONICAL.replace('"0.003"', '" 0.003 "'),
+        _CANONICAL.replace('"0.003"', '"0.00_3"'),
+        b"\xff\xfe",  # invalid UTF-8
+        pytest.param("[" * 100_000, id="deeply-nested"),  # json.loads raises RecursionError at this depth
+        None,  # the claim was released between hsetnx and hget
+    ],
+)
+async def test_record_settled_usage_corrupt_stored_claim_is_divergent(stored: str | bytes | None):
+    client = _seeded(stored)
+    if stored is None:
+        client._hashes[_CLAIMS] = {}
+        client.hsetnx = _lost_hsetnx  # type: ignore[method-assign]
+
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        await RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "cost_usd": Decimal("0.0030")})
+
+    assert _ts_adds(client) == 0
+
+
+async def _lost_hsetnx(key: str, field: str, value: str):
+    return 0
+
+
+@pytest.mark.parametrize("cost", ["sNaN", "NaN", "Infinity"])
+async def test_record_settled_usage_non_finite_replay_against_a_finite_claim_is_divergent(cost: str):
+    client = _seeded(_CANONICAL)
+
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        await RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "cost_usd": Decimal(cost)})
+
+    assert _ts_adds(client) == 0
+
+
+async def test_record_settled_usage_nan_replay_against_its_own_stored_string_is_still_a_noop():
+    client = FakeRedis()
+    adapter = RedisTelemetryAdapter(client=client)
+
+    await adapter.record_settled_usage(**{**_BASE, "cost_usd": Decimal("NaN")})
+    await adapter.record_settled_usage(**{**_BASE, "cost_usd": Decimal("NaN")})
+
+    assert _ts_adds(client) == 2
+
+
+async def test_record_settled_usage_claim_the_client_cannot_decode_is_divergent():
+    # A decoding client raises inside hget on a stored claim that is not UTF-8; callers still get the duplicate error.
+    client = _seeded(_CANONICAL)
+
+    async def undecodable_hget(key: str, field: str):
+        raise UnicodeDecodeError("utf-8", bytes([255, 254]), 0, 1, "invalid start byte")
+
+    client.hget = undecodable_hget  # type: ignore[method-assign]
+
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        await RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "cost_usd": Decimal("0.0030")})
+
+    assert _ts_adds(client) == 0

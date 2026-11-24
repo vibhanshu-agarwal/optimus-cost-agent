@@ -578,10 +578,11 @@ def test_supplier_is_not_evaluated_recursively(tmp_path):
 
 
 @pytest.mark.parametrize("control_flow", [KeyboardInterrupt, SystemExit, asyncio.CancelledError])
-def test_control_flow_raised_inside_a_supplier_propagates(tmp_path, control_flow):
+@pytest.mark.parametrize("minimum_level", [None, debug_trace.DiagnosticLevel.DEBUG], ids=["legacy", "levelled"])
+def test_control_flow_raised_inside_a_supplier_propagates(tmp_path, control_flow, minimum_level):
     """Containment is for ordinary Exceptions only; control flow must escape the sink."""
     log_path = resolve_debug_log_path(workspace_root=tmp_path)
-    configure_debug_trace(enabled=True, log_path=log_path)
+    configure_debug_trace(enabled=True, log_path=log_path, minimum_level=minimum_level)
 
     def interrupting():
         raise control_flow()
@@ -840,3 +841,43 @@ def test_provenance_disabled_does_no_provenance_work(tmp_path, monkeypatch):
 
     assert debug_trace._PROVENANCE_LOGGED is False
     assert not log_path.exists()
+
+
+def test_levelled_trace_filters_before_payload_work_and_writes_one_local_record(tmp_path, capsys):
+    log_path = tmp_path / "trace.ndjson"
+    configure_debug_trace(enabled=True, log_path=log_path, minimum_level=debug_trace.DiagnosticLevel.WARNING)
+    calls = []
+
+    def supply():
+        calls.append("evaluated")
+        return {"api_key": "fixture-only-secret", "outcome": "observed"}  # pragma: allowlist secret
+
+    acp_debug_log(location="test:levelled", message="filtered", data=supply)
+    assert calls == []
+    assert not log_path.exists()
+
+    acp_debug_log(location="test:levelled", message="warning", data=supply, level=debug_trace.DiagnosticLevel.WARNING)
+
+    assert calls == ["evaluated"]
+    line, = log_path.read_text(encoding="utf-8").splitlines()
+    record = json.loads(line)
+    assert record["schemaVersion"] == 1
+    assert record["level"] == "warning"
+    assert record["data"] == {"api_key": "**********", "outcome": "observed"}
+    assert "fixture-only-secret" not in line
+    assert "runId" not in record
+    assert "hypothesisId" not in record
+    assert capsys.readouterr().out == ""
+
+
+def test_levelled_trace_records_an_existing_operational_error(tmp_path):
+    log_path = tmp_path / "trace.ndjson"
+    configure_debug_trace(enabled=True, log_path=log_path, minimum_level=debug_trace.DiagnosticLevel.ERROR)
+
+    debug_trace.log_late_worker_failure(run_id="invalid-id")
+
+    line, = log_path.read_text(encoding="utf-8").splitlines()
+    record = json.loads(line)
+    assert record["level"] == "error"
+    assert record["location"] == "debug_trace.py:log_late_worker_failure"
+    assert record["data"]["outcome"] == "failed_after_detach"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import unicodedata
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -10,8 +11,8 @@ from typing import Literal
 from optimus.mcp.client_config import MCP_NAME_RE
 
 # #410 R1: directive syntax, EDIT's included, is separated by spaces and tabs only.
-_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")
+READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")
+WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")
 _EDIT_PREFIX = re.compile(r"^EDIT(?:[ \t]|$)")
 _EDIT_DIRECTIVE = re.compile(r"^EDIT[ \t]+(\S+)(?:[ \t]+base_sha256=(\S*))?[ \t]*$")
 _SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
@@ -22,7 +23,7 @@ EDIT_OLD_MARKER = "<<<<<<< OLD"
 EDIT_NEW_MARKER = "======= NEW"
 EDIT_END_MARKER = ">>>>>>> END"
 _EDIT_MARKERS = frozenset({EDIT_OLD_MARKER, EDIT_NEW_MARKER, EDIT_END_MARKER})
-_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
+TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 _MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST[ \t]+(\S+)[ \t]*$")
 _MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\{.*\})[ \t]*$")
 _INDEX_TOOL_LINE = re.compile(r"^(?:(SEARCH)[ \t]+(\S.*?)|(OUTLINE|SYMBOLS|LIST)[ \t]+(\S+))[ \t]*$")
@@ -183,7 +184,7 @@ def _invents_an_edit(plan_text: str) -> bool:
     index = 0
     while index < len(lines):
         line = _normalize_directive_line(lines[index])
-        if _WRITE_DIRECTIVE.match(line) is not None:
+        if WRITE_DIRECTIVE.match(line) is not None:
             index += 1
             while index < len(lines) and not _is_directive_line(lines[index]):
                 index += 1
@@ -209,7 +210,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
         if lines[index].strip() in _EDIT_MARKERS:
             raise AgentDirectiveParseError("EDIT block marker outside an EDIT directive")
 
-        read_match = _READ_DIRECTIVE.match(line)
+        read_match = READ_DIRECTIVE.match(line)
         if read_match is not None:
             path = read_match.group(1)
             _validate_relative_path(path)
@@ -217,7 +218,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
             index += 1
             continue
 
-        write_match = _WRITE_DIRECTIVE.match(line)
+        write_match = WRITE_DIRECTIVE.match(line)
         if write_match is not None:
             if isinstance(write, AgentWriteDirective):
                 raise AgentDirectiveParseError("multiple WRITE directives are not supported")
@@ -244,7 +245,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
             write, index = _parse_edit(lines, index, edit_base=edit_base)
             continue
 
-        test_match = _TEST_DIRECTIVE.match(line)
+        test_match = TEST_DIRECTIVE.match(line)
         if test_match is not None:
             command = _parse_test_command(test_match.group(1))
             tests.append(command)
@@ -333,14 +334,15 @@ def _edit_block_lines(lines: list[str], index: int, *, until: str) -> tuple[tupl
 def _is_directive_line(line: str) -> bool:
     normalized = _normalize_directive_line(line)
     return (
-        _READ_DIRECTIVE.match(normalized) is not None
-        or _WRITE_DIRECTIVE.match(normalized) is not None
-        or _TEST_DIRECTIVE.match(normalized) is not None
+        READ_DIRECTIVE.match(normalized) is not None
+        or WRITE_DIRECTIVE.match(normalized) is not None
+        or TEST_DIRECTIVE.match(normalized) is not None
         or _MCP_LIST_DIRECTIVE.match(normalized) is not None
         or _MCP_CALL_DIRECTIVE.match(normalized) is not None
     )
 
 
+BULLET_PREFIXES = ("- ", "* ", "+ ")  # list markers a directive line may sit behind; planning_loop imports this
 _DIRECTIVE_BLANKS = " \t"  # #410 R1: the only padding stripped around directive syntax
 # #410 R1: what `splitlines()` treats as a line break but a plan treats as content. A line holding one is never
 # directive syntax, wherever it sits; a CR is content unless it begins a CRLF terminator.
@@ -405,7 +407,7 @@ def _unwrap_markdown_code_fence(plan_text: str, *, exact: bool = False) -> str:
 def _normalize_directive_line(line: str) -> str:
     normalized = directive_text(line)
     while True:
-        for prefix in ("- ", "* ", "+ "):
+        for prefix in BULLET_PREFIXES:
             if normalized.startswith(prefix):
                 normalized = normalized[len(prefix) :].lstrip(_DIRECTIVE_BLANKS)
                 break
@@ -413,8 +415,25 @@ def _normalize_directive_line(line: str) -> str:
             return normalized
 
 
+MAX_PATH_CHARS = 4096  # #583: a safety bound, in code points, on a model-authored path; not a filesystem limit
+# #583: control, format (bidi overrides and isolates among them), surrogate, unassigned, private use, separator.
+_UNSAFE_PATH_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Cn", "Co", "Zl", "Zp"})
+# #583: ZWNJ and ZWJ are allowed: Persian, Indic scripts and emoji need them, and they neither reorder nor drive a terminal.
+_ALLOWED_FORMAT_CHARACTERS = frozenset({"\N{ZERO WIDTH NON-JOINER}", "\N{ZERO WIDTH JOINER}"})
+# #583: fillers that render blank, which no category catches (Hangul fillers, the blank Braille pattern).
+_BLANK_FILLERS = frozenset(chr(code) for code in (0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800))
+
+
+def unsafe_path_text(path_text: str) -> bool:
+    """#583: a model's path that could reorder or hide text, or drive a terminal, where a person or the model reads it."""
+    return len(path_text) > MAX_PATH_CHARS or any(
+        c in _BLANK_FILLERS or (unicodedata.category(c) in _UNSAFE_PATH_CATEGORIES and c not in _ALLOWED_FORMAT_CHARACTERS)
+        for c in path_text
+    )
+
+
 def _validate_relative_path(path_text: str) -> None:
-    if not path_text:
+    if not path_text or unsafe_path_text(path_text):
         raise AgentDirectiveParseError("no valid agent directives")
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
@@ -437,4 +456,8 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
         if ".." in Path(token).parts or _ABSOLUTE_PATH.match(token):
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
+        # #583: fixed text, the token is never quoted. No joiner exemption here: the shell guard refuses every
+        # format character. No blank space character either, which would read as two arguments.
+        if unsafe_path_text(token) or any(c != " " and unicodedata.category(c) in ("Cf", "Zs") for c in token):
+            raise AgentDirectiveParseError("unsafe TEST directive")
     return tokens

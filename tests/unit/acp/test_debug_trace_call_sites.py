@@ -228,6 +228,8 @@ PAYLOAD_FACTORIES = {
 
 def _opaque_namespace(sink):
     namespace = _NoPayloadReads(
+        DiagnosticLevel=debug_trace.DiagnosticLevel,
+        level=debug_trace.DiagnosticLevel.DEBUG,
         acp_debug_log=sink,
         debug_trace_enabled=debug_trace.debug_trace_enabled,
         __builtins__=__builtins__,
@@ -248,6 +250,7 @@ def _run_result(**changes):
 def _real_namespace(sink):
     return dict(
         **PAYLOAD_FACTORIES,
+        DiagnosticLevel=debug_trace.DiagnosticLevel,
         acp_debug_log=sink,
         debug_trace_enabled=debug_trace.debug_trace_enabled,
         method="session/prompt", request_id=7, pending_permission_id=None, operation_id="op-1",
@@ -322,7 +325,8 @@ def _site_namespace(location, sink):
     elif location == WARM[12]:
         namespace["exc"] = SimpleNamespace(code="GRAMMAR_UNRECOGNIZED")
     elif location == RETENTION_SITE:
-        namespace.update(event='retired', self=SimpleNamespace(retained_count=1, _clock=lambda: 6.0),
+        namespace.update(event='retired', level=debug_trace.DiagnosticLevel.ERROR,
+            self=SimpleNamespace(retained_count=1, _clock=lambda: 6.0),
             entry=SimpleNamespace(session=SimpleNamespace(session_id='session-' + 'a' * 32), phase='QUARANTINED',
                 uses=0, reason=retention_module.RetirementReason.EXPLICIT_REMOVE, created=4.0,
                 result=SimpleNamespace(close=retention_module.SessionCloseResult(('SESSION_CLOSE_FAILED',), False)),
@@ -379,7 +383,7 @@ def test_disabled_redis_reporter_reads_no_runtime_fields(tmp_path):
     def payload_must_not_run(runtime):
         raise _DiagnosticInputRead("redis_cleanup_payload was evaluated with tracing disabled")
 
-    namespace = {"acp_debug_log": debug_trace.acp_debug_log, "redis_cleanup_payload": payload_must_not_run}
+    namespace = {"DiagnosticLevel": debug_trace.DiagnosticLevel, "acp_debug_log": debug_trace.acp_debug_log, "redis_cleanup_payload": payload_must_not_run}
     exec(_redis_reporter(), namespace)
     try:
         namespace["report_redis_cleanup_incomplete"](_Opaque(), "incomplete")
@@ -391,7 +395,7 @@ def test_disabled_redis_reporter_reads_no_runtime_fields(tmp_path):
 def test_disabled_mcp_reporter_builds_no_fields(tmp_path):
     """Classification stays with the caller; the reporter's field reads are diagnostic-only."""
     configure_debug_trace(enabled=False, log_path=tmp_path / "mcp.ndjson")
-    namespace = {"acp_debug_log": debug_trace.acp_debug_log, "MCPSupervisorState": MCPSupervisorState}
+    namespace = {"DiagnosticLevel": debug_trace.DiagnosticLevel, "acp_debug_log": debug_trace.acp_debug_log, "MCPSupervisorState": MCPSupervisorState}
     exec(_mcp_reporter(), namespace)
     try:
         namespace["report_mcp_cleanup_incomplete"](_Opaque(), "incomplete")
@@ -484,7 +488,7 @@ def test_exception_diagnostic_has_static_message_and_redacted_lazy_detail(tmp_pa
 def test_enabled_mcp_reporter_fields_and_sentinels(tmp_path):
     path = tmp_path / "mcp.ndjson"
     configure_debug_trace(enabled=True, log_path=path)
-    namespace = {"acp_debug_log": debug_trace.acp_debug_log, "MCPSupervisorState": MCPSupervisorState}
+    namespace = {"DiagnosticLevel": debug_trace.DiagnosticLevel, "acp_debug_log": debug_trace.acp_debug_log, "MCPSupervisorState": MCPSupervisorState}
     exec(_mcp_reporter(), namespace)
     reporter = namespace["report_mcp_cleanup_incomplete"]
     outcome = ClientMcpShutdownOutcome(
@@ -502,7 +506,7 @@ def test_enabled_mcp_reporter_fields_and_sentinels(tmp_path):
 def test_enabled_mcp_reporter_field_failure_is_contained(tmp_path):
     path = tmp_path / "mcp.ndjson"
     configure_debug_trace(enabled=True, log_path=path)
-    namespace = {"acp_debug_log": debug_trace.acp_debug_log, "MCPSupervisorState": MCPSupervisorState}
+    namespace = {"DiagnosticLevel": debug_trace.DiagnosticLevel, "acp_debug_log": debug_trace.acp_debug_log, "MCPSupervisorState": MCPSupervisorState}
     exec(_mcp_reporter(), namespace)
 
     class _Failing:

@@ -3,7 +3,7 @@
 import pytest
 
 from optimus.agent.directives import AgentEditBlock
-from optimus.agent.edits import EditNotApplicable, apply_edit_blocks
+from optimus.agent.edits import EDIT_FAILURE_CODES, EditNotApplicable, apply_edit_blocks, edit_failure_text
 
 
 def _block(old: str, new: str | None) -> AgentEditBlock:
@@ -105,3 +105,46 @@ def test_one_empty_unterminated_replacement_line_keeps_the_bom():
 
 def test_separators_other_than_cr_and_lf_stay_inside_a_line():
     assert _apply("x\u2028y\nz\n", _block("x\u2028y", "a\x0cb")) == "a\x0cb\nz\n"
+
+
+_PATH = "src/pkg/small.py"
+_NEXT_STEPS = {
+    "EDIT_TARGET_MISSING": "Check the path, then send your request again.",
+    "EDIT_NOT_UTF8": "Save the file as UTF-8 and send your request again, or make this change yourself.",
+    "EDIT_SOURCE_UNSEEN": "Send your request again, naming the file.",
+    "EDIT_SOURCE_CHANGED": "Send your request again so the file is read as it is now.",
+    "EDIT_OLD_NOT_FOUND": "Send your request again to get a new plan.",
+    "EDIT_OLD_NOT_UNIQUE": "Send your request again and say which place to change.",
+    "EDIT_BLOCKS_OVERLAP": "Send your request again to get a new plan.",
+}
+_REASONS = {
+    "EDIT_TARGET_MISSING": "no file could be found at that path",
+    "EDIT_NOT_UTF8": "the file is not UTF-8 text",
+    "EDIT_SOURCE_UNSEEN": "the plan was not tied to a version of the file that had been read",
+    "EDIT_SOURCE_CHANGED": "the file changed after it was read",
+    "EDIT_OLD_NOT_FOUND": "the lines it replaces are not in the file exactly as planned",
+    "EDIT_OLD_NOT_UNIQUE": "the lines it replaces appear in the file more than once",
+    "EDIT_BLOCKS_OVERLAP": "two parts of the planned change replace the same lines",
+}
+
+
+def test_every_failure_code_has_a_pinned_text():
+    assert set(_NEXT_STEPS) == set(_REASONS) == EDIT_FAILURE_CODES
+
+
+@pytest.mark.parametrize("code", sorted(EDIT_FAILURE_CODES))
+def test_the_failure_text_says_why_and_what_to_do_next_in_plain_words(code):
+    """#574: the person reads this text in their editor; the closed code stays at the end for tools and the next turn."""
+    text = edit_failure_text(code, _PATH)
+
+    assert text == (
+        f"The change was not made to {_PATH}, because {_REASONS[code]}. "
+        f"The plan made no changes and ran none of its tests. {_NEXT_STEPS[code]} ({code})"
+    )
+    assert f" {_PATH}, " in text  # a comma, not quotes, delimits the path (#574 round 3)
+    assert f'"{_PATH}' not in text and f"'{_PATH}" not in text
+    assert text.endswith(f"({code})")
+    assert _NEXT_STEPS[code] in text
+    prose = text.removesuffix(f"({code})")
+    for jargon in ("EDIT ", "OLD block", "raw evidence", "directive"):
+        assert jargon not in prose

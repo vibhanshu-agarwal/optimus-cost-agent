@@ -52,6 +52,12 @@ jobs:
       - name: Install Python
         run: uv python install 3.14
 
+      - name: "optimus-check: dependency-audit"
+        timeout-minutes: 15
+        env:
+          UV_KEYRING_PROVIDER: disabled
+        run: uv run --locked --script tools/check_dependency_audit.py
+
       - name: Install dependencies
         run: uv sync --locked --all-extras
 

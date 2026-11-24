@@ -13,8 +13,13 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from optimus.agent.directives import (
+    BULLET_PREFIXES,
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
+    MAX_PATH_CHARS,
+    READ_DIRECTIVE,
+    TEST_DIRECTIVE,
+    WRITE_DIRECTIVE,
     AgentDirectiveParseError,
     AgentPlanDirectives,
     IndexToolRequest,
@@ -27,6 +32,7 @@ from optimus.agent.directives import (
     plan_lines,
     split_cr_lf_keepends,
     strip_plan_text,
+    unsafe_path_text,
 )
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
@@ -86,12 +92,10 @@ _PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
 _REFUSE_DIRECTIVE = re.compile(r"^REFUSE:\s*(.+)$")
-_WRITE_DIRECTIVE = re.compile(r"^WRITE[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
 _DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:", "MCP_LIST", "MCP_CALL")
 _REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
     r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT|MCP_LIST\s|MCP_CALL\s)"
 )
-_BULLET_PREFIXES = ("- ", "* ", "+ ")
 
 
 class PlanningTurnKind(StrEnum):
@@ -159,7 +163,10 @@ PLANNING_PARSE_FEEDBACK: dict[str, str] = {
     "INTERMEDIATE_REQUIRES_OBSERVE": "an intermediate turn needs an OBSERVE: line before its READ: lines.",
     "INTERMEDIATE_REQUIRES_READ": "an intermediate turn needs at least one ranged READ: line after its OBSERVE: line.",
     "OBSERVATION_TOO_LARGE": "the OBSERVE: note and its READ: requests exceeded the observation budget; keep the note shorter.",
-    "READ_PATH_NOT_RELATIVE": "each READ: path must be workspace-relative.",
+    "READ_PATH_NOT_RELATIVE": (
+        f"each READ: path must be workspace-relative, at most {MAX_PATH_CHARS} characters, "
+        "with no control or invisible format characters."
+    ),
     "READ_RANGES_DUPLICATE": "the READ: ranges must not repeat.",
     "READ_RANGES_OVERLAP": "the READ: ranges must not overlap.",
 }
@@ -598,8 +605,6 @@ def _resolve_workspace_file(*, workspace_root: Path, relative_path: str) -> Path
 
 
 _RANGED_READ_LINE = re.compile(r"^READ:\s+\S+#bytes=\d+:\d+\s*$")
-_FINAL_READ_DIRECTIVE = re.compile(r"^READ[ \t]+(\S+)[ \t]*$")  # #410 R1: spaces and tabs only
-_FINAL_TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
 
 
 def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurnDecision:
@@ -709,7 +714,7 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
     while index < len(lines):
         line = lines[index]
         normalized = _normalize_directive_surface_line(line)
-        if _WRITE_DIRECTIVE.match(normalized) is not None:
+        if WRITE_DIRECTIVE.match(normalized) is not None:
             index += 1
             while index < len(lines) and not _is_final_directive_line(lines[index]):
                 index += 1
@@ -724,7 +729,7 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
 def _normalize_directive_surface_line(line: str) -> str:
     normalized = directive_text(line)  # #410 R1: a line holding a content separator is never directive syntax
     while True:
-        for prefix in _BULLET_PREFIXES:
+        for prefix in BULLET_PREFIXES:
             if normalized.startswith(prefix):
                 normalized = normalized[len(prefix) :].lstrip(" \t")
                 break
@@ -735,9 +740,9 @@ def _normalize_directive_surface_line(line: str) -> str:
 def _is_final_directive_line(line: str) -> bool:
     normalized = _normalize_directive_surface_line(line)
     return (
-        _FINAL_READ_DIRECTIVE.match(normalized) is not None
-        or _WRITE_DIRECTIVE.match(normalized) is not None
-        or _FINAL_TEST_DIRECTIVE.match(normalized) is not None
+        READ_DIRECTIVE.match(normalized) is not None
+        or WRITE_DIRECTIVE.match(normalized) is not None
+        or TEST_DIRECTIVE.match(normalized) is not None
         or normalized.startswith("MCP_LIST ")
         or normalized.startswith("MCP_CALL ")
         or normalized == "MCP_LIST"
@@ -889,7 +894,7 @@ def _normalize_workspace_relative_path(path_text: str) -> str:
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
         raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
-    if re.match(r"^[A-Za-z]:[\\/]|^/", path_text):
+    if re.match(r"^[A-Za-z]:[\\/]|^/", path_text) or unsafe_path_text(path_text):
         raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     return path.as_posix()
 
@@ -1753,7 +1758,7 @@ class _PlanningIterationRunner:
                 self._unknown_cost_attempt_count += 1
                 ended["unknown"] = True
                 account(None, _failure_classifier(exc), exc)
-                from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+                from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():
                     acp_debug_log(
@@ -1762,6 +1767,7 @@ class _PlanningIterationRunner:
                         data=_unknown_cost_payload(self, exc, planning_turn, wire_attempt),
                         hypothesis_id="P9.95-USAGE-UNKNOWN",
                         run_id=self._run_id,
+                        level=DiagnosticLevel.ERROR,
                     )
                 raise _PermanentStop("unknown transport cost") from exc
 
@@ -1937,7 +1943,7 @@ class _PlanningIterationRunner:
         except PlanningTurnParseError as exc:
             self._last_non_progress_kind = "UNPARSEABLE"
             self._parse_failure_code = exc.code  # the next turn's notice; the repeat signature is unchanged (#403)
-            from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+            from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled
 
             if debug_trace_enabled():
                 acp_debug_log(
@@ -1946,6 +1952,7 @@ class _PlanningIterationRunner:
                     data=_non_progress_payload(self, "UNPARSEABLE", planning_turn, response, exc=exc),
                     hypothesis_id="P12.2-NONPROGRESS",
                     run_id=self._run_id,
+                    level=DiagnosticLevel.WARNING,
                 )
             return self._observed(
                 IterationOutcome(
@@ -1985,7 +1992,7 @@ class _PlanningIterationRunner:
                     cost_usd=attempt_cost,
                 )
             except PlanningReadError as exc:
-                from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+                from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled
 
                 if debug_trace_enabled():
                     acp_debug_log(
@@ -1994,6 +2001,7 @@ class _PlanningIterationRunner:
                         data=_read_rejection_payload(self, exc, request),
                         hypothesis_id="P9.87-READ-REJECT",
                         run_id=self._run_id,
+                        level=DiagnosticLevel.WARNING,
                     )
                 return self._typed_planning_failure(
                     stop_reason=exc.code,
@@ -2073,7 +2081,7 @@ class _PlanningIterationRunner:
             self._mcp_tool_calls.append(call)
             self._mcp_evidence_envelope = format_mcp_evidence_envelope(output)
             self._current_reads = ()
-            from optimus.acp.debug_trace import acp_debug_log, debug_trace_enabled
+            from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled
 
             if debug_trace_enabled():
                 acp_debug_log(
@@ -2082,6 +2090,7 @@ class _PlanningIterationRunner:
                     data=_non_progress_payload(self, "MCP_TOOL", planning_turn, response, decision=decision, call=call),
                     hypothesis_id="P12.2-NONPROGRESS",
                     run_id=self._run_id,
+                    level=DiagnosticLevel.WARNING,
                 )
             return self._observed(
                 IterationOutcome(
