@@ -341,6 +341,7 @@ def _is_directive_line(line: str) -> bool:
     )
 
 
+BULLET_PREFIXES = ("- ", "* ", "+ ")  # list markers a directive line may sit behind; planning_loop imports this
 _DIRECTIVE_BLANKS = " \t"  # #410 R1: the only padding stripped around directive syntax
 # #410 R1: what `splitlines()` treats as a line break but a plan treats as content. A line holding one is never
 # directive syntax, wherever it sits; a CR is content unless it begins a CRLF terminator.
@@ -405,7 +406,7 @@ def _unwrap_markdown_code_fence(plan_text: str, *, exact: bool = False) -> str:
 def _normalize_directive_line(line: str) -> str:
     normalized = directive_text(line)
     while True:
-        for prefix in ("- ", "* ", "+ "):
+        for prefix in BULLET_PREFIXES:
             if normalized.startswith(prefix):
                 normalized = normalized[len(prefix) :].lstrip(_DIRECTIVE_BLANKS)
                 break

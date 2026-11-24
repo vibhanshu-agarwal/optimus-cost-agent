@@ -70,3 +70,44 @@ def test_a_bare_write_keyword_inside_a_write_body_stays_body_text() -> None:
 @pytest.mark.parametrize("name", ["READ_DIRECTIVE", "WRITE_DIRECTIVE", "TEST_DIRECTIVE"])
 def test_planning_loop_uses_the_directives_compiled_patterns(name: str) -> None:
     assert getattr(planning_loop, name) is getattr(directives, name)
+
+
+# #575: the bullet prefixes are one tuple, and MCP_LIST / MCP_CALL lines take spaces or tabs in both modules.
+def test_planning_loop_uses_the_directives_bullet_prefixes() -> None:
+    assert planning_loop.BULLET_PREFIXES is directives.BULLET_PREFIXES
+
+
+@pytest.mark.parametrize("bullet", ["- ", "* ", "+ "])  # literal, so shrinking the shared tuple fails here
+def test_a_bulleted_directive_line_ends_a_write_body_in_both_modules(bullet: str) -> None:
+    plan = parse_agent_plan(f"WRITE a.txt\nbody\n{bullet}READ b.txt\n", edit_base="forbidden")
+    assert plan.read_paths == ("b.txt",)
+    assert plan.write.content == "body\n"
+    # planning turn: the READ line ends the body, so the OBSERVE behind it is seen (not hidden as body text)
+    assert _classify(f"WRITE a.txt\nbody\n{bullet}READ b.txt\nOBSERVE: x") == "INTERMEDIATE_UNSUPPORTED_DIRECTIVE"
+
+
+MCP_LINES = [
+    "MCP_LIST server",
+    "MCP_LIST\tserver",
+    "MCP_LIST \t server \t",
+    "MCP_CALL server tool {}",
+    "MCP_CALL\tserver\ttool\t{}",
+    "MCP_CALL \t server \t tool \t {} \t",
+]
+MCP_PLAN_ERROR = "MCP directives are not valid in a final mutation plan"
+
+
+@pytest.mark.parametrize("line", MCP_LINES)
+def test_mcp_lines_are_classified_alike_by_both_modules(line: str) -> None:
+    # whole reply: the planning turn is an MCP request; the final-plan parser refuses it
+    assert _classify(line) == "MCP_TOOL"
+    with pytest.raises(AgentDirectiveParseError, match=MCP_PLAN_ERROR):
+        parse_agent_plan(f"{line}\n", edit_base="forbidden")
+    # in a WRITE body: exactly these outcomes, so an unrelated parse error cannot pass
+    assert _classify(f"WRITE a.txt\nbody\n{line}\nOBSERVE: x") == "MCP_MIXED_DIRECTIVES"
+    with pytest.raises(AgentDirectiveParseError, match=MCP_PLAN_ERROR):
+        parse_agent_plan(f"WRITE a.txt\nbody\n{line}\n", edit_base="forbidden")
+    # behind a bullet the planning turn only sees it through its WRITE-body scan: it must end the body
+    assert _classify(f"WRITE a.txt\nbody\n- {line}\nOBSERVE: x") == "INTERMEDIATE_UNSUPPORTED_DIRECTIVE"
+    with pytest.raises(AgentDirectiveParseError, match=MCP_PLAN_ERROR):
+        parse_agent_plan(f"WRITE a.txt\nbody\n- {line}\n", edit_base="forbidden")

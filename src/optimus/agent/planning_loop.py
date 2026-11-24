@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from optimus.agent.directives import (
+    BULLET_PREFIXES,
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
     READ_DIRECTIVE,
@@ -93,7 +94,6 @@ _DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:",
 _REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
     r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT|MCP_LIST\s|MCP_CALL\s)"
 )
-_BULLET_PREFIXES = ("- ", "* ", "+ ")
 
 
 class PlanningTurnKind(StrEnum):
@@ -724,7 +724,7 @@ def _directive_surface_lines(text: str) -> tuple[str, ...]:
 def _normalize_directive_surface_line(line: str) -> str:
     normalized = directive_text(line)  # #410 R1: a line holding a content separator is never directive syntax
     while True:
-        for prefix in _BULLET_PREFIXES:
+        for prefix in BULLET_PREFIXES:
             if normalized.startswith(prefix):
                 normalized = normalized[len(prefix) :].lstrip(" \t")
                 break
@@ -738,8 +738,7 @@ def _is_final_directive_line(line: str) -> bool:
         READ_DIRECTIVE.match(normalized) is not None
         or WRITE_DIRECTIVE.match(normalized) is not None
         or TEST_DIRECTIVE.match(normalized) is not None
-        or normalized.startswith("MCP_LIST ")
-        or normalized.startswith("MCP_CALL ")
+        or normalized.startswith(("MCP_LIST ", "MCP_LIST\t", "MCP_CALL ", "MCP_CALL\t"))  # #410 R1: spaces and tabs
         or normalized == "MCP_LIST"
         or normalized == "MCP_CALL"
     )
