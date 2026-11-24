@@ -105,7 +105,7 @@ WRITE_ROWS = {
     "runtime-tree-posix-separator": pytest.param(".optimus/state.txt", None),
     "runtime-tree": pytest.param(f".optimus{BS}state.txt", None, marks=WINDOWS_ONLY),
     "secret-id_rsa-trailing-dot": pytest.param("id_rsa.", "id_rsa", marks=WINDOWS_ONLY),
-    "secret-env-trailing-dot": pytest.param(".env.", None, marks=WINDOWS_ONLY),
+    "secret-env-trailing-dot": pytest.param(".env.", None),  # the lexical ".env." rule, on every platform
 }
 # #590 will reject these at parse time; drop or convert this group when #590 lands
 WRITE_ROWS_GROUP_B = {

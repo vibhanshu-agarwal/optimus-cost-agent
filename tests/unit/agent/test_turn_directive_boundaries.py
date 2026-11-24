@@ -273,6 +273,20 @@ def test_a_guard_refused_test_is_no_effect_and_suppresses_the_later_tests(tmp_pa
     assert control.refresh_effect_state() is EffectState.NONE
 
 
+def test_a_guard_refused_test_after_an_applied_write_counts_the_write(tmp_path: Path) -> None:
+    (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
+    control = _RecordingControl()
+    cjk = chr(0x65E5) + chr(0x672C) + chr(0x8A9E)
+    runner, request = _approved(tmp_path, f"WRITE example.py\nnew\nTEST pytest tests/{cjk}.py", _Shell(control))
+
+    result = runner.run(request, operation_control=control)
+
+    assert (result.stop_reason, result.mutation_count) == ("TEST_GUARD_REFUSED", 1)
+    assert control.terminal(DirectiveKind.WRITE, _single(control, DirectiveKind.WRITE)) == "succeeded"
+    assert control.terminal(DirectiveKind.TEST, _single(control, DirectiveKind.TEST)) == "failed_no_effect"
+    assert control.refresh_effect_state() is EffectState.PARTIAL
+
+
 def test_a_guard_refused_read_before_write_suppresses_the_write_and_tests(tmp_path: Path) -> None:
     (tmp_path / ".env").write_text("KEY=value\n", encoding="utf-8")
     control = _RecordingControl()
