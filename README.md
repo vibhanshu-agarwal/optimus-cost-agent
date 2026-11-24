@@ -158,6 +158,24 @@ drift. CI also checks tracked GitHub Actions workflow YAML with actionlint and
 offline zizmor. A generated detect-secrets baseline keeps the real secret scan
 separate from the config-trust scan.
 
+Guardrails audits all public package/version pins in `uv.lock`, including
+development, optional and platform-specific pins, before installing project
+dependencies. Run the same audit with
+`uv run --locked --script tools/check_dependency_audit.py`. The audit uses an
+independently locked pip-audit environment and fails on missing, skipped or
+unverified results. Dependabot opens weekly root uv updates and assigns them to
+`vibhanshu-agarwal` for triage. Maintain the audit tool's separately pinned
+script dependencies in `tools/check_dependency_audit.py.lock` as part of
+dependency security reviews.
+
+To accept a temporary advisory exception, obtain approval in a repository issue
+or PR and record it in `.github/dependency-audit-exceptions.json`. Each record
+requires `package`, `version`, `advisory` (the reported ID, matched case-insensitively), `rationale`,
+`owner` (GitHub login), `approval` (issue or PR URL), and `expires`
+(`YYYY-MM-DD`, effective at 00:00 UTC). Reviewers verify the recorded approval.
+Each exception covers one exact pin and advisory. Expired, malformed and
+duplicate records fail the audit. Remove the record when the fix lands.
+
 The required CI secret-scan step enumerates Git-tracked text files under every
 `src/` package and runs the scanner over that inventory. It rejects an empty
 inventory rather than reporting success, so a selection that matches nothing

@@ -4801,6 +4801,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.check_dependency_audit:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Only fixed diagnostics, pin counts and normalized public package, version and advisory IDs reach stderr. Raw tool output and exception metadata stay private.",
+      "sanitizer": "validated public identities or fixed diagnostics; no raw auditor output retention",
+      "test_node": "tests/unit/tools/test_check_dependency_audit.py::test_cli_audits_all_batches_and_keeps_vendor_output_private",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_dependency_audit:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Only the audited pin, advisory and accepted exception counts reach stdout.",
+      "sanitizer": "validated public identities or fixed diagnostics; no raw auditor output retention",
+      "test_node": "tests/unit/tools/test_check_dependency_audit.py::test_cli_audits_all_batches_and_keeps_vendor_output_private",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_dependency_audit:read_lock:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Read-only access to the public dependency lockfile, with no exported file contents.",
+      "sanitizer": "validated public identities or fixed diagnostics; no raw auditor output retention",
+      "test_node": "tests/unit/tools/test_check_dependency_audit.py::test_lock_accounts_for_each_marker_specific_version",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.check_dependency_audit:scan:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Temporary requirements files contain only validated public package names and versions. The files are removed with the audit temporary directory.",
+      "sanitizer": "validated public identities or fixed diagnostics; no raw auditor output retention",
+      "test_node": "tests/unit/tools/test_check_dependency_audit.py::test_cli_audits_all_batches_and_keeps_vendor_output_private",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.check_model_registry_drift:_save_snapshot:json_serialization",
       "policy": "safe-by-construction",
       "rationale": "Inspection: _save_snapshot re-serializes only the public OpenRouter catalog and endpoint responses, fetched without any credential, into the operator-chosen snapshot directory as drift evidence.",
