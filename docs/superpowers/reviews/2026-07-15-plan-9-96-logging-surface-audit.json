@@ -5057,6 +5057,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.check_workflow_security:script:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "The wrapper writes fixed workflow inventory errors and a shell-escaped repository-relative path read from the Git index. It does not print the workflow contents, scanner arguments, or environment values.",
+      "sanitizer": "Fixed text and Bash printf %q for the repository-relative workflow path.",
+      "test_node": "tests/unit/guardrails/test_ci_parity.py::test_ci_requires_workflow_security_checks",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.check_product_coverage:main:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: main exports only CoverageGateError text into the report and stderr; every message is built by the gate from fixed wording, src package names, src-relative file paths, group names and coverage percentages, and a groups-file read failure names only the exception type. No credential, environment value or test output is included.",

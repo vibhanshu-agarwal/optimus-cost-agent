@@ -152,10 +152,11 @@ registry for local/legacy manifest-backed servers. Gateway MCP brokering is
 retired (Plan 11.12). Client-supplied ACP
 `mcpServers` (P11-FU-9) use a separate agent-owned client path with CLI durable
 trust and `PreToolGuard` / `ConfigTrustScanner`; they are not auto-loaded from
-cloned repositories and are not Gateway-brokered. Local pre-commit configuration and CI use the same named guardrail
-checks so skipped hooks and clean-checkout drift are caught by CI; a generated
-detect-secrets baseline keeps the real secret scan separate from the
-config-trust scan.
+cloned repositories and are not Gateway-brokered. Local pre-commit and CI share
+the named Phase 1 guardrail checks so CI catches skipped hooks and clean-checkout
+drift. CI also checks tracked GitHub Actions workflow YAML with actionlint and
+offline zizmor. A generated detect-secrets baseline keeps the real secret scan
+separate from the config-trust scan.
 
 The required CI secret-scan step enumerates Git-tracked text files under every
 `src/` package and runs the scanner over that inventory. It rejects an empty
