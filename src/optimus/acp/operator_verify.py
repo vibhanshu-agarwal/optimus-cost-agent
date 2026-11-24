@@ -387,6 +387,9 @@ def run_operator_live_session(
         stop_reason = prompt_response.get("result", {}).get("stopReason", "")
         if stop_reason != "end_turn":
             return _failure(f"expected stopReason=end_turn, got {stop_reason!r}")
+        not_completed = _not_completed_message(prompt_response.get("result", {}))
+        if not_completed:
+            return _failure(not_completed)
 
         loaded = redis_store.latest_plan_for_run(run_id=run_id)
         cost = loaded.cost_usd if loaded is not None else Decimal("0")
@@ -747,6 +750,15 @@ def _operator_action_message(check: PreflightCheckResult) -> str:
     if check.name == "workspace writable":
         return "Choose a writable workspace directory for --workspace-root."
     return check.detail
+
+
+def _not_completed_message(result: Mapping[str, object]) -> str:
+    """Why an end_turn response is not a completed turn, or "" if it is. A failed stop also ends as end_turn, so its
+    ``_meta.outcome`` decides (#565); a response without ``_meta`` comes from an older agent build and passes as before."""
+    meta = result.get("_meta")
+    if not isinstance(meta, dict) or "outcome" not in meta or meta["outcome"] == "completed":
+        return ""
+    return f"the turn ended as end_turn but did not complete: outcome={meta['outcome']!r}, runStopReason={meta.get('runStopReason')!r}"
 
 
 def _failure(message: str) -> OperatorLiveSessionResult:
