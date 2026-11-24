@@ -3960,17 +3960,18 @@ class AcpDuplexAdapter:
         result: AgentRunResult,
         turn: AcpPromptTurn | None = None,
     ) -> None:
+        send_plan = result.stop_reason not in _UNAPPLIED_PLAN_STOP_REASONS  # a completed plan would claim undone work
         if turn is not None:
             turn.turn_control.seal_final_delivery()
-            turn.turn_control.declare_terminal_messages(("completed_plan", "final_text"))
-        completed_plan = build_plan_session_update(
+            turn.turn_control.declare_terminal_messages(("completed_plan", "final_text") if send_plan else ("final_text",))
+        completed_plan: dict[str, Any] = build_plan_session_update(
             session_id=session_id,
             plan_text=result.output_text,
             entry_status="completed",
-        )
-        if turn is None:
+        ) if send_plan else {"update": {"entries": []}}  # unsent; the diagnostic below counts no entries
+        if send_plan and turn is None:
             await self._outbound.notify("session/update", completed_plan)
-        else:
+        elif send_plan and turn is not None:
             await self._send_terminal(turn, "completed_plan", completed_plan)
         message = _completion_message(result)
         message_payload = build_agent_message_chunk_notification(session_id=session_id, text=message)
@@ -4068,11 +4069,25 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
 )
 
 
+# The run's output_text is the plan for this stop, so the person's text is fixed here (#565). TESTs run before the check.
+_WRITE_NOT_EXECUTED_MESSAGE = (
+    "The file change in the approved plan was not applied. "
+    "Any tests in the plan may still have run. Send your request again to get a new plan."
+)
+
+# Stops whose plan's work was not done: they end as end_turn and send no completed-plan update (#559, #565).
+_UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED"})
+
+
 def _completion_message(result: AgentRunResult) -> str:
     if result.stop_reason in TEST_STOP_REASONS.values():
         return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
     if result.stop_reason == "EDIT_NOT_APPLICABLE":
         return result.output_text  # the closed code and that nothing was written (#407)
+    if result.stop_reason == "UNSAFE_TEST_DIRECTIVE":
+        return result.output_text  # what was rejected and that nothing ran (#565)
+    if result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED":
+        return _WRITE_NOT_EXECUTED_MESSAGE
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
         return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
@@ -4219,7 +4234,7 @@ def _stop_reason(result: AgentRunResult) -> str:
         return "cancelled"
     if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS or result.stop_reason in TEST_STOP_REASONS.values():
         return "end_turn"
-    if result.stop_reason in ("PLAN_NOT_FOUND_OR_EXPIRED", WRITE_LINE_ENDINGS_MIXED):
+    if result.stop_reason in ("PLAN_NOT_FOUND_OR_EXPIRED", WRITE_LINE_ENDINGS_MIXED) or result.stop_reason in _UNAPPLIED_PLAN_STOP_REASONS:
         return "end_turn"
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES:
         return "end_turn"  # Zed hides a refused turn's text, and the person must read these candidates (Plan 12.13 Task 4)
