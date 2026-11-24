@@ -14,6 +14,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from typing import Any
 
+from optimus.acp.conversation import ConversationOutcome
 from optimus.acp.spec import CONTEXT_PLAN_TOO_LARGE_TEXT, AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.agent.runner import AgentRunner
@@ -93,6 +94,10 @@ class _Turn:
             permission = await asyncio.wait_for(self.outbound.wait_for_request("session/request_permission"), timeout=5)
             self.outbound.respond(permission["id"], {"outcome": {"outcome": "selected", "optionId": answer_permission}})
         return (await asyncio.wait_for(task, timeout=10)).response["result"]
+
+    def records(self) -> Any:
+        """The committed turns of the session's real conversation object, keyed by turn_seq."""
+        return self.adapter._sessions.get(self.session_id).conversation.records  # noqa: SLF001
 
     def settlement_event_outcome(self) -> str:
         """The semantic outcome the turn's own settlement event reports (not a conversation record)."""
@@ -249,3 +254,30 @@ async def test_a_plan_too_large_for_its_record_reports_failed(tmp_path: Path) ->
     assert result == {"stopReason": "end_turn", "_meta": {"runStopReason": None, "outcome": "failed"}}
     assert result["_meta"]["outcome"] == turn.settlement_event_outcome()
     assert any(CONTEXT_PLAN_TOO_LARGE_TEXT in text for text in turn.texts())
+
+
+async def test_the_record_of_a_cancel_accepted_before_the_oversized_plan_terminal(tmp_path: Path) -> None:
+    turn = _scripted_turn(tmp_path, _Scripted(cancel_in="planning", plan_text=BIG_PLAN), small_record=True)
+    await turn.open()
+
+    result = await turn.prompt()
+
+    assert result["_meta"]["outcome"] == "cancelled" == turn.settlement_event_outcome()
+    [record] = turn.records().values()  # a record is committed for the turn
+    # #558: today the record keeps failed while the settlement is cancelled; the ruling on which is authoritative is pending.
+    assert record.outcome is ConversationOutcome.FAILED
+    assert record.plan_text == "", "the oversized plan itself is not kept"
+    assert CONTEXT_PLAN_TOO_LARGE_TEXT in record.completion_text, "the refusal text is kept as the completion"
+
+
+async def test_the_record_of_a_cancel_accepted_while_the_approved_run_is_in_flight(tmp_path: Path) -> None:
+    turn = _scripted_turn(tmp_path, _Scripted(cancel_in="approved"))
+    await turn.open()
+
+    result = await turn.prompt(answer_permission="approve")
+
+    assert result["_meta"]["outcome"] == "cancelled" == turn.settlement_event_outcome()
+    [record] = turn.records().values()  # a record is committed for the turn
+    # #558: today the record keeps completed while the settlement is cancelled; the ruling on which is authoritative is pending.
+    assert record.outcome is ConversationOutcome.COMPLETED
+    assert record.completion_text == "Turn completed."
