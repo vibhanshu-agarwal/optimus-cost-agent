@@ -16,6 +16,7 @@ from optimus.agent.directives import (
     BULLET_PREFIXES,
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
+    MAX_PATH_CHARS,
     READ_DIRECTIVE,
     TEST_DIRECTIVE,
     WRITE_DIRECTIVE,
@@ -31,6 +32,7 @@ from optimus.agent.directives import (
     plan_lines,
     split_cr_lf_keepends,
     strip_plan_text,
+    unsafe_path_text,
 )
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
@@ -161,7 +163,10 @@ PLANNING_PARSE_FEEDBACK: dict[str, str] = {
     "INTERMEDIATE_REQUIRES_OBSERVE": "an intermediate turn needs an OBSERVE: line before its READ: lines.",
     "INTERMEDIATE_REQUIRES_READ": "an intermediate turn needs at least one ranged READ: line after its OBSERVE: line.",
     "OBSERVATION_TOO_LARGE": "the OBSERVE: note and its READ: requests exceeded the observation budget; keep the note shorter.",
-    "READ_PATH_NOT_RELATIVE": "each READ: path must be workspace-relative.",
+    "READ_PATH_NOT_RELATIVE": (
+        f"each READ: path must be workspace-relative, at most {MAX_PATH_CHARS} characters, "
+        "with no control or invisible format characters."
+    ),
     "READ_RANGES_DUPLICATE": "the READ: ranges must not repeat.",
     "READ_RANGES_OVERLAP": "the READ: ranges must not overlap.",
 }
@@ -889,7 +894,7 @@ def _normalize_workspace_relative_path(path_text: str) -> str:
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
         raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
-    if re.match(r"^[A-Za-z]:[\\/]|^/", path_text):
+    if re.match(r"^[A-Za-z]:[\\/]|^/", path_text) or unsafe_path_text(path_text):
         raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     return path.as_posix()
 
