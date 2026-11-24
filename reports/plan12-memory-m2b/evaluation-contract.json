@@ -1,9 +1,9 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v1",
+ "schema": "plan12-memory-m2b.evaluation-contract.v2",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "frozen_before": "Task 1 and any feature code; Task 1 adds the fields marked frozen_in_task_1 as a recorded successor before any paid prompt",
+ "frozen_before": "Task 2 and any paid prompt; Task 1's successor of v1",
  "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
  "inputs": {
   "cases": "reports/plan12-memory-m2b/cases.json",
@@ -39,7 +39,12 @@
   "T": "floor(1,000,000 * input_target_usd / effective_input_price); effective price x 1.25 when a cache write is possible; zero price gives T = C",
   "chosen": "min(C, max(V + min(1024, C - V), T)); optional_room = chosen - V",
   "entry": "D3 only: anthropic/claude-haiku-5.5 named via Role.EASY, input_target_usd 0.008192; other entries omit the field and keep the legacy min(floor(0.25 * usable_input), 16384)",
-  "forecast": {"C": 32768, "T_write": 13107, "T_no_write": 16384, "legacy": 16384},
+  "forecast": {
+   "C": 32768,
+   "T_write": 13107,
+   "T_no_write": 16384,
+   "legacy": 16384
+  },
   "cp1_requires": "per budget case R, T, C, allocation, pack bytes and digest; all four paid budget cases change substantive F/U pack bytes: >= two ordinary-fit allocation changes and two R values in (16384, C]; otherwise stop CP1"
  },
  "arms": {
@@ -51,7 +56,32 @@
  },
  "arm_order": {
   "rule": "each category's four cases, in case-id order, take these orders once",
-  "orders": [["N", "B", "U", "F"], ["B", "U", "F", "N"], ["U", "F", "N", "B"], ["F", "N", "B", "U"]],
+  "orders": [
+   [
+    "N",
+    "B",
+    "U",
+    "F"
+   ],
+   [
+    "B",
+    "U",
+    "F",
+    "N"
+   ],
+   [
+    "U",
+    "F",
+    "N",
+    "B"
+   ],
+   [
+    "F",
+    "N",
+    "B",
+    "U"
+   ]
+  ],
   "record": "cache warmth, order and timing per attempt"
  },
  "caps": {
@@ -63,8 +93,19 @@
  },
  "cohorts": {
   "forced_refusals": "cases.json paid_q.cases[].forced_refusal (predeclared from sizes alone); reported separately; excluded from superiority and comparable-cost wins",
-  "comparable": ["QR1", "QR2", "QR3", "QR4", "QB1", "QB2", "QO3"],
-  "ordinary_fit": ["QB1", "QB2"]
+  "comparable": [
+   "QR1",
+   "QR2",
+   "QR3",
+   "QR4",
+   "QB1",
+   "QB2",
+   "QO3"
+  ],
+  "ordinary_fit": [
+   "QB1",
+   "QB2"
+  ]
  },
  "adoption_and_cost_gates": [
   "utility passes its packing gates; recall at five unchanged",
@@ -74,16 +115,104 @@
   "one stochastic sample establishes no population superiority"
  ],
  "expected_attempts": {
-  "Q": {"logical_intended": 48, "logical_if_U_equals_B": 36, "physical_max": 96, "usd_max": "6.00", "gateway_attempts_per_logical": 3, "reservation": "3 physical attempts reserved before each logical request; the run stops when a reservation cannot be made inside 96, so retries may prevent completing intended requests", "usd_bound_at_caps": "4.42"},
-  "R": {"logical_intended": 4, "physical_max": 12, "usd_max": "0.50", "usd_bound_at_caps": "0.14", "cases": "four development cases, one configured top-12 reranker; output must permute the supplied ids exactly"},
+  "Q": {
+   "logical_intended": 48,
+   "logical_if_U_equals_B": 36,
+   "physical_max": 96,
+   "usd_max": "6.00",
+   "gateway_attempts_per_logical": 3,
+   "reservation": "3 physical attempts reserved before each logical request; the run stops when a reservation cannot be made inside 96, so retries may prevent completing intended requests",
+   "usd_bound_at_caps": "4.42"
+  },
+  "R": {
+   "logical_intended": 4,
+   "physical_max": 12,
+   "usd_max": "0.50",
+   "usd_bound_at_caps": "0.14",
+   "cases": "four development cases, one configured top-12 reranker; output must permute the supplied ids exactly"
+  },
   "unintended_calls": "none: no host retry, fallback, classifier, extraction, maintenance, repair or replacement; any is a breach recorded and stops the run"
  },
  "cache_observations": "Q records reported cache usage and charges, prefix and request digests and order; cold and warm reported without attributing order discounts to policy; no production hit-rate or causal cache-savings claim",
  "producer_contract_463": {
   "status": "drafted by Claude; Codex agreement sought at CP1; no savings reader is built",
   "record": "reports/plan12-memory-m2b/paid-attempts.json, schema plan12-memory-m2b.paid-attempts.v1, owned by this plan",
-  "row": ["release", "case_id", "arm (and alias when U = B)", "logical_request_id", "physical attempt ids", "gateway_request_id", "route/model/provider", "usage (input, output, reasoning nested, cached read, cache write)", "billing fields as reported", "actual_usd (as reported, or UNKNOWN)", "repriced_uncached_usd", "tariff_id", "outcome and terminal classification", "timing and order"],
+  "row": [
+   "release",
+   "case_id",
+   "arm (and alias when U = B)",
+   "logical_request_id",
+   "physical attempt ids",
+   "gateway_request_id",
+   "route/model/provider",
+   "usage (input, output, reasoning nested, cached read, cache write)",
+   "billing fields as reported",
+   "actual_usd (as reported, or UNKNOWN)",
+   "repriced_uncached_usd",
+   "tariff_id",
+   "outcome and terminal classification",
+   "timing and order"
+  ],
   "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
  },
- "frozen_in_task_1": ["tariff (one dated uncached D3 tariff)", "scoring script digest", "claim selector digest", "intended composition hash and production-equivalence test", "reservations and resend accounting", "the selected utility candidate"]
+ "successor_of": {
+  "schema": "plan12-memory-m2b.evaluation-contract.v1",
+  "sha256": "hex:e950d4bbcbc6ed17656a0fbc87d892b317b4eed9d56741e15a76c7ed99643016",
+  "commit": "git:eb23d96",
+  "change": "adds the Task 1 freezes (frozen_in_task_1) and corrects the attempt topology; nothing in v1's cases, arms, orders, caps, cohorts or gates changes"
+ },
+ "task1_freezes": {
+  "selected_candidate": {
+   "value": "baseline",
+   "u_equals_b": true,
+   "evidence": "reports/plan12-memory-m2b/calibration.json (run 1 at git:4f2a991, sha256 hex:cbbf61c50400f737b78996d4e4bed26dc56ffb3d8ac7d13b76ed8ccc96a20307): every policy 16/35 evidence in every repetition; density fails the poison and 16,000 gates, coverage the irrelevant and 16,000 gates; no strict improvement",
+   "consequence": "U is an alias of B: identical per-case prompts share one recorded attempt; the utility code ships unused (default baseline)"
+  },
+  "tariff": {
+   "id": "d3-haiku-5.5-uncached-2026-09-30",
+   "input_usd_per_million": "0.50",
+   "output_usd_per_million": "2.50",
+   "cached_input": "repriced at the ordinary input price",
+   "reasoning": "nested in output, priced as output",
+   "source": "src/optimus_model_policy/defaults.yaml, ADR-004 pinned-route prices of 2026-09-30",
+   "label": "ADR-034 estimate; actual charges recorded separately"
+  },
+  "scoring": {
+   "script": "tools/plan12_memory/m2b_score.py",
+   "sha256": "hex:abb0db0977b9ff5f90edf478d2c9f5afc9e49d01f7cc41690d0a061a7ea4abd7",
+   "git_blob": "git:250e33e4fe9b089c235f34aa84c5428a98397357",
+   "selector": "m2b_score.select: the delivered final answer less the host's search-limit notice (optimus.agent.index_turn.LIMIT_NOTICE); its digest is the script's"
+  },
+  "runner": {
+   "script": "tools/plan12_memory/m2b_paid.py",
+   "sha256": "hex:3dc623bb90cea045e056374945c87ae44eda79e354fd86b16766cc6e79b00e07",
+   "git_blob": "git:64879daf2f35d51e45e153f08df8d1cb54c6f931",
+   "design": "optimus-handoff/p1214-task1/q-runner-design.md (Fable 5.2 consult)"
+  },
+  "intended_composition": {
+   "registry": "src/optimus_model_policy/defaults.yaml plus models.anthropic/claude-haiku-5.5.context_budget.input_target_usd = \"0.008192\" (staged in Task 2 as defaults.yaml itself, not an override)",
+   "effective_hash": "hex:b7fca195e22c4884109540c8c0d8acf2f23ec70534994d4136445a7408906e3a",
+   "shipped_hash_today": "hex:4d2f637e822841c23ae617d352c81a6472d11771fd7cd7011b3052c12b506338",
+   "approval": "the operator approves this effective hash (D5's fresh hash approval) before Q; on gate failure the field is removed and the pre-change hash proven",
+   "deltas_from_shipping_production": [
+    "index tools withdrawn: optimus.agent.runner.MAX_INDEX_ROUNDS = 0, so an indexed Chat turn is one zero-tool request carrying the runner's own limit observation",
+    "output cap 2,048 bound through RoutePolicy (production binds the implementer reserve, 32,768)"
+   ],
+   "arm_configuration": {
+    "N": "no memory turn",
+    "B": "memory turn, pack budget forced to the legacy policy host-side (same snapshot, binder and Gateway)",
+    "F": "memory turn, the route's own budget from the staged composition"
+   }
+  },
+  "production_equivalence": "Task 2: F's recorded request equals an unpatched runner's final-round request on the same turn, and B's pack digest equals calibration's BU pack_sha256 for the same case",
+  "attempt_topology": {
+   "correction": "a bound model request makes at most MAX_ROUTE_ATTEMPTS = 2 physical attempts (src/optimus_model_policy/binding.py:225); manifest.json's 3 is the legacy unbound loop (upstream_client.py:39) and is superseded here",
+   "reservation": "before each logical request: attempts_used + 2 <= 96 and settled USD + 0.04608 x (unknown attempts + 2) <= 6.00",
+   "sent_requests": "30 of 36 rows (12 N, 7 B, 11 F); predeclared refusals send nothing: B on QB3, QB4, QO1, QO2, QO4; F on QO4 (and on QO1, QO2 until Task 3's outline)",
+   "worst_case": "60 physical attempts, USD 2.76 at the caps"
+  },
+  "answers_custody": "answers are written only to a separate sink outside the repository (optimus-handoff/p1214-q-*), archived and hashed; paid-attempts.json keeps each answer's digest",
+  "prefix_identity": "src/optimus/agent/prompts.py is unchanged from git:7abbaa2; budget and outline disclosure go only inside the dynamic pack (Task 3 tests prefix digests)",
+  "fit_note": "calibration's full_input omits the runner's limit observation (about 130 bytes); the largest complete F input is QB4's, far under 65,536"
+ }
 }
