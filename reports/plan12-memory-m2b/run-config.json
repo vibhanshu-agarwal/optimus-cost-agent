@@ -1,0 +1,17 @@
+{
+ "schema": "plan12-memory-m2b.run-config.v1",
+ "label": "plan12.14-task1-calibration",
+ "authorization": "PENDING: needs the operator's release of the dedicated index Redis and the configured embedding artifact (and starting Docker Desktop); no paid call is possible",
+ "cases": "reports/plan12-memory-m2b/cases.json",
+ "release_prefix": "p1214-",
+ "container": "p1214-index-test-redis",
+ "volume": "p1214-index-test-data",
+ "port": 6401,
+ "gateway_port": 8781,
+ "maxmemory_mb": 512,
+ "work_dir": "tmp/plan12-m2b",
+ "artifact_cache": "C:/worktrees/optimus-cost-agent-worktrees/optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+ "embedding_threads": 2,
+ "models": "none: the index Gateway's upstream is unroutable (127.0.0.1:9); the keyring is the in-process stand-in of m1_scale._provision, so no OS keyring write",
+ "teardown": "each repetition removes its container and volume in a finally block (m2b_evaluate._repetition)"
+}
