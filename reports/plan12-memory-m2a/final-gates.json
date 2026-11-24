@@ -1,0 +1,239 @@
+{
+  "schema": "plan12-memory-m2a.final-gates.v1",
+  "plan": "Plan 12.13 (M2a), #545, plan v4",
+  "issue": 545,
+  "branch": "agent/claude/p1213-task0",
+  "status": "met: Windows full suite at the code head, and actual-SHA Linux PR CI with the formal safety comparison at the merged head",
+  "heads": {
+    "code_head": "git:74c81e5cdd445873a9fc91a621c80ebf85988a54",
+    "code_head_meaning": "the only head the Windows full suite and its coverage are attributed to",
+    "merged_head": "git:a235b34ec939364fc2857a3f30d52c2c2078dcb3",
+    "merged_tree": "git:1b83dce7e6ca407f5302cf8a2204966e4a0683c5",
+    "merged_head_meaning": "merges origin/main git:053d6e74716af2840f86beb9dc09e2488fde4628; the only head the Linux PR CI below is attributed to",
+    "src_changed_by_the_merge": [
+      "src/optimus/acp/lifecycle.py",
+      "src/optimus/acp/spec.py",
+      "src/optimus/agent/directives.py",
+      "src/optimus/agent/state_store.py",
+      "src/optimus/evidence/acquisition.py",
+      "src/optimus/evidence/ledger.py",
+      "src/optimus/evidence/package_advisory.py",
+      "src/optimus/mcp/client_config.py",
+      "src/optimus/redis/runtime.py",
+      "src/optimus/retry/gated_run.py"
+    ],
+    "records_commit": "this file's own commit adds only reports/plan12-memory-m2a/final-gates.json and closure.json; no executable byte changes after the merged head"
+  },
+  "disposition": {
+    "codex": "CP3 attempt 6 (session 01a20c53-ba7c-7991-ab04-be67f6c1d16f) ACCEPTed the merge resolution and endorsed the broad gate below; #545 comment 7124430836",
+    "operator": "authorized in Claude chat on 2026-11-24 (\"Approve and push\"): actual-SHA Linux PR CI, the tree proof, and the formal compare against main's Linux export; no second Windows full suite"
+  },
+  "windows_full_suite": {
+    "attempts": [
+      {
+        "attempt": 1,
+        "head": "git:8cc850e5e2834a6d5a4c8b35176af3212d05943f",
+        "records": "optimus-handoff/p1213-task5/final/ (SHA256SUMS.txt)",
+        "result": "exit 1: 1 failed, 14262 passed, 74 skipped, 410 deselected (1:33:12); run 20261123T181306-52408-769f86, records=COMPLETE",
+        "failed": "tests/unit/tools/test_plan12_memory_m2a.py::test_a_request_the_route_cannot_fit_is_never_a_completion",
+        "cause": "its unrecorded stand-in `lambda _text: None` still took one argument after 7f18e60 added record_dispatch's planning_round and attempt keywords, so the bypass run raised TypeError before planning",
+        "coverage_json_sha256": "hex:114f5cea8ae4bca5f68377036ba7b5b118bfaa0cdbb179c965f0c4ebff9c5fa8",
+        "kept_as": "failed attempt; not a validated coverage result"
+      },
+      {
+        "attempt": 2,
+        "head": "git:74c81e5cdd445873a9fc91a621c80ebf85988a54",
+        "fix": "74c81e5 changes only that stand-in, to `lambda _text, **_where: None`",
+        "disposition": "Codex CP3 attempt 4 (session 01a209f5-87f6-7c42-872b-b96f3c71517a) accepted the fix and endorsed one replacement run; the operator authorized it in Claude chat on 2026-11-24 (\"Yes, run it\")",
+        "records": "optimus-handoff/p1213-task5/final-2/ (SHA256SUMS.txt)",
+        "command": "uv run --no-sync python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json tmp/coverage/product-coverage-report.json --coverage-json tmp/coverage/coverage.json",
+        "environment": "Windows PowerShell 5.1, CPython 3.14.4, uv 0.11.29, coverage 7.14.3, PYTHONPATH cleared; uv.lock hex:33dc323f8d102ea8d592768c44dedf0c07a98d67230f83426fe27b96ac840e44, pyproject.toml hex:b2e64b2f5750b8f13fe700928e44e1b22aac852480da446369cef1510391e477",
+        "checkout": "HEAD git:74c81e5cdd445873a9fc91a621c80ebf85988a54 and tree git:7f40967aff2bdc2609d0341ff9fa945e32d34fe8, both unchanged before and after; porcelain status empty before and after",
+        "result": "exit 0: 14263 passed, 74 skipped, 410 deselected (1:33:57); run 20261124T024315-43528-5c7a82, records=COMPLETE, parent=UNKNOWN",
+        "coverage_json_sha256": "hex:10a60cdf8ea6536dcde1ddf7af9b863f2695357ea9f4c416c3d0797592aa2c8f",
+        "coverage_data_sha256": "hex:ff99332a16ab2bac89f7339869f4e0c51f4963ebe30bf0f525d93a30a916060a",
+        "validation": "coverage_products validate exit 0: bound full session 20261124T024315-43528-5c7a82 (440 records considered), full-run validity established"
+      }
+    ]
+  },
+  "windows_coverage": {
+    "floors": {
+      "optimus": "89.26% (required 80%) PASS",
+      "context_engine": "90.97% (required 80%) PASS",
+      "optimus_model_policy": "95.70% (required 80%) PASS",
+      "evidence_handoff": "68.81% (informational) BELOW; this plan changed no file in it",
+      "aggregate": "87.01% (80%) PASS"
+    },
+    "gate_verdict": "passed, no failures"
+  },
+  "merged_tree_targeted_run": {
+    "result": "exit 0: 3027 passed, 32 skipped (tests/unit/acp, the context /why and selection tests, the probe-closure, logging-surface and plan12 m2a tests, tests/unit/docs)",
+    "log": {
+      "path": "optimus-handoff/p1213-task5/merge-main/targeted.log",
+      "sha256": "hex:5e7655000174aacf37fce5d1ed528b9e1efd58cd591c6096682d88e14756a57d"
+    },
+    "attribution": "provisional only: its run records name the pre-commit HEAD git:74c81e5cdd445873a9fc91a621c80ebf85988a54"
+  },
+  "linux_pr_ci": {
+    "pr": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/pull/562",
+    "workflow": "guardrails",
+    "run": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/45344948073",
+    "event": "pull_request",
+    "head": "git:a235b34ec939364fc2857a3f30d52c2c2078dcb3",
+    "checkout": {
+      "commit": "git:4da81cb00dc68b44228a7080f8bf634c606ab4ea",
+      "meaning": "GitHub's synthetic merge of the head into main git:053d6e74716af2840f86beb9dc09e2488fde4628",
+      "tree": "git:1b83dce7e6ca407f5302cf8a2204966e4a0683c5",
+      "tree_equals_merged_head": true,
+      "why": "git:053d6e74716af2840f86beb9dc09e2488fde4628 is an ancestor of the merged head, so the synthetic merge's tree is the head's tree; no exact-head run is needed"
+    },
+    "checks": [
+      {
+        "name": "clean-environment-recheck",
+        "state": "pass",
+        "duration": "36m42s",
+        "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/45344948073/job/138277144783"
+      },
+      {
+        "name": "page-fixtures",
+        "state": "pass",
+        "duration": "14s",
+        "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/45344947940/job/138277144022"
+      },
+      {
+        "name": "verify",
+        "state": "pass",
+        "duration": "16s",
+        "link": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/actions/runs/45344947953/job/138277144302"
+      }
+    ],
+    "artifact": {
+      "name": "product-coverage-4da81cb00dc68b44228a7080f8bf634c606ab4ea-1",
+      "id": 14898724534,
+      "retained_at": "optimus-handoff/p1213-task5/ci-a235b34/candidate-4da81cb",
+      "coverage_json": {
+        "path": "optimus-handoff/p1213-task5/ci-a235b34/candidate-4da81cb/coverage.json",
+        "sha256": "hex:c884d986278039a205cff79bf57c7855ad1f1467b9ce0b179bae0ba3b352989a"
+      },
+      "report": {
+        "path": "optimus-handoff/p1213-task5/ci-a235b34/candidate-4da81cb/product-coverage-report.json",
+        "sha256": "hex:c15ed3ef43f5e2a8a5b3e895c9316dce8c7de27cdc9677e1c2f4cfc9890172bc"
+      },
+      "validity": [
+        "coverage-products: bound full session 20261124T070441-3249-d7cb77 (71 records considered)",
+        "coverage-products: full-run validity established"
+      ]
+    },
+    "coverage": {
+      "floors": {
+        "optimus": "88.87% (required 80%) PASS",
+        "context_engine": "90.97% (required 80%) PASS",
+        "evidence_handoff": "67.22% (informational 80%) BELOW",
+        "optimus_model_policy": "95.70% (required 80%) PASS",
+        "aggregate": "86.49% (required by plan v4 80%) PASS"
+      },
+      "verdict": {
+        "failures": [],
+        "passed": true
+      }
+    }
+  },
+  "safety_critical": {
+    "scope": "the seven SAFETY_MODULES in tools/testing/coverage_products.py",
+    "windows_rows_at_code_head": {
+      "src/optimus/tools/registry.py": [
+        45,
+        1,
+        5,
+        1
+      ],
+      "src/optimus/runtime/mutation.py": [
+        24,
+        1,
+        7,
+        1
+      ],
+      "src/optimus/gateway/models.py": [
+        163,
+        5,
+        47,
+        7
+      ],
+      "src/optimus/evidence/ledger.py": [
+        63,
+        0,
+        10,
+        0
+      ],
+      "src/optimus/acp/framing.py": [
+        52,
+        2,
+        20,
+        2
+      ],
+      "src/optimus/retry/policy.py": [
+        123,
+        2,
+        25,
+        1
+      ],
+      "src/optimus/tools/policy.py": [
+        86,
+        3,
+        22,
+        2
+      ]
+    },
+    "branch_changes": "none: no safety module differs between main git:053d6e74716af2840f86beb9dc09e2488fde4628 and the merged head (main's #561 changed src/optimus/evidence/ledger.py before the merge)",
+    "formal_compare": {
+      "command": "python -m tools.testing.coverage_products compare (base: main run 45314729026 at git:053d6e74716af2840f86beb9dc09e2488fde4628, artifact 14885987741, bound session 20261124T024744-3186-32cc86; candidate: the PR CI artifact, bound session 20261124T070441-3249-d7cb77; both producers +00:00)",
+      "exit": 0,
+      "output": [
+        "coverage-products: compared base sha256 3e4f6fde3eb4775ea758e21787e1e8887c99bbb9ef86675bdeb91d11bf5f6995",
+        "coverage-products: compared candidate sha256 c884d986278039a205cff79bf57c7855ad1f1467b9ce0b179bae0ba3b352989a",
+        "coverage-products: safety rows comparable, no regression"
+      ],
+      "log": {
+        "path": "optimus-handoff/p1213-task5/ci-a235b34/compare.log",
+        "sha256": "hex:b4e418e0e9ddeac23aac7db05f305296342e4074b1fbc79b481d1645d0628cae"
+      },
+      "base_report": {
+        "path": "optimus-handoff/p1213-task5/ci-a235b34/base-053d6e7/product-coverage-report.json",
+        "sha256": "hex:a51f4020291d2f9d01f8668d55d86c92057b4d5f4e271aede9cdb90d463fa657"
+      },
+      "base_coverage": {
+        "floors": {
+          "optimus": "88.79% (required 80%) PASS",
+          "context_engine": "90.97% (required 80%) PASS",
+          "evidence_handoff": "67.22% (informational 80%) BELOW",
+          "optimus_model_policy": "95.70% (required 80%) PASS",
+          "aggregate": "86.41% (required by plan v4 80%) PASS"
+        },
+        "verdict": {
+          "failures": [],
+          "passed": true
+        }
+      }
+    }
+  },
+  "source_gates": {
+    "ruff_check": "exit 0 at 74c81e5 (also CI's guardrails step and the commit hook)",
+    "ruff_format": "not a repo gate: 729 files would be reformatted repo-wide; the format rollout is held (#325)",
+    "commit_hooks": "74c81e5 passed every hook except pytest-coverage, which was skipped by rule (one full run at the end)"
+  },
+  "evidence_manifests": [
+    {
+      "path": "optimus-handoff/p1213-task5/final-2/SHA256SUMS.txt",
+      "sha256": "hex:537bcd5d9d253c3d90a812a5a57ac5ad9a06b758e075e1dc3f9b065bb9f45b90"
+    },
+    {
+      "path": "optimus-handoff/p1213-task5/ci-a235b34/SHA256SUMS.txt",
+      "sha256": "hex:cdcb51945f8e3ed0d3ab09361946ab1df3fe8db3ad621dcc457caea282ce6ff8"
+    }
+  ],
+  "not_covered": [
+    "the Windows full suite did not run at the merged head; Linux PR CI is not Windows parity",
+    "evidence_handoff is below 80% on both platforms and on main; informational, and this plan changes none of its files",
+    "the records commit's own PR CI run is not part of this file"
+  ]
+}
