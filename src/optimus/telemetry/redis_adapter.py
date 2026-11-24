@@ -4,7 +4,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
@@ -24,6 +24,27 @@ class RedisTelemetryClient(Protocol):
     def hget(self, name: str, field: str, /) -> Awaitable[bytes | str | None]: ...
     def hdel(self, name: str, /, *fields: str) -> Awaitable[int]: ...
     def expire(self, name: str, seconds: int, /) -> Awaitable[bool]: ...
+
+
+def _claim_fields(
+    gateway_request_id: str, provider: str, provider_request_id: str | None, billing_units: int, cost_text: str
+) -> dict[str, object]:
+    return {
+        "gateway_request_id": gateway_request_id,
+        "provider": provider,
+        "provider_request_id": provider_request_id,
+        "billing_units": billing_units,
+        "cost_usd": cost_text,
+    }
+
+
+def _stored_cost_text(stored: str) -> str | None:
+    """The ``cost_usd`` string of a stored claim object, or ``None`` if it has none."""
+    try:
+        cost = json.loads(stored)["cost_usd"]
+    except (ValueError, TypeError, KeyError, RecursionError):
+        return None
+    return cost if isinstance(cost, str) else None
 
 
 @dataclass(frozen=True)
@@ -82,36 +103,51 @@ class RedisTelemetryAdapter:
 
         Idempotent by ``gateway_request_id``: a fingerprint of every accounting field is
         claimed via ``HSETNX`` under the adapter lock. An identical replay's fingerprint
-        matches the existing claim and is a no-op (no second ``TS.ADD``); a divergent
+        matches the existing claim (cost compared by value) and is a no-op (no second ``TS.ADD``); a divergent
         fingerprint raises :class:`~optimus.usage.errors.DuplicateGatewayRequestError`
         without writing a second point. If the TimeSeries write itself fails after a new
         claim is made, the claim is released so a legitimate retry is not permanently
         blocked by a phantom claim.
         """
-        # Deferred import: optimus.usage's package __init__ pulls in optimus.evidence,
-        # which (transitively) imports back into optimus.telemetry at module-load time.
-        # Importing here keeps that cycle out of this module's top-level import graph.
+        # Stays deferred: optimus.usage.accounting imports optimus.telemetry at load time, so a
+        # module-level import here would make a package cycle (concurrent cold imports can deadlock).
         from optimus.usage.errors import DuplicateGatewayRequestError
 
         if not run_id:
             raise ValueError("Access constraint violation: Missing telemetry run_id key.")
         claims_key = f"{USAGE_KEY_PREFIX}:{run_id}:claims"
-        fingerprint = json.dumps(
-            {
-                "gateway_request_id": gateway_request_id,
-                "provider": provider,
-                "provider_request_id": provider_request_id,
-                "billing_units": billing_units,
-                "cost_usd": str(cost_usd),
-            },
-            sort_keys=True,
-        )
+        fields = (gateway_request_id, provider, provider_request_id, billing_units)
+        fingerprint = json.dumps(_claim_fields(*fields, str(cost_usd)), sort_keys=True)
         async with self._settled_usage_lock:
             claimed = await self._client.hsetnx(claims_key, gateway_request_id, fingerprint)
             if not claimed:
-                existing = await self._client.hget(claims_key, gateway_request_id)
+                try:
+                    existing = await self._client.hget(claims_key, gateway_request_id)
+                except UnicodeDecodeError:  # a decoding client met a stored claim that is not UTF-8
+                    existing = None
+                if isinstance(existing, bytes):
+                    try:
+                        existing = existing.decode()
+                    except UnicodeDecodeError:
+                        existing = None
                 if existing == fingerprint:
                     return
+                # Same request with the cost written differently (0.003 vs 0.0030) is a replay, but only
+                # when the stored claim is exactly a string this code writes: canonical JSON, str(Decimal) cost.
+                cost_text = _stored_cost_text(existing) if existing is not None and cost_usd.is_finite() else None
+                if cost_text is not None:
+                    try:
+                        stored_cost = Decimal(cost_text)
+                    except InvalidOperation:
+                        stored_cost = None
+                    if (
+                        stored_cost is not None
+                        and stored_cost.is_finite()
+                        and stored_cost == cost_usd
+                        and str(stored_cost) == cost_text
+                        and existing == json.dumps(_claim_fields(*fields, cost_text), sort_keys=True)
+                    ):
+                        return
                 raise DuplicateGatewayRequestError(gateway_request_id)
             try:
                 cost_key = f"{USAGE_KEY_PREFIX}:{run_id}:cost_usd"
