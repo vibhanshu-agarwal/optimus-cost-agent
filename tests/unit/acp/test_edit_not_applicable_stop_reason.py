@@ -20,7 +20,7 @@ from tests.unit.acp.test_hidden_text_stops_end_turn import assert_failed_turn_sh
 PLAN = "EDIT small.py\nOLD\nold\nNEW\nnew\nEND\n"
 # What the person must read, independent of the production text: what was not made, where, why, that the plan changed
 # nothing and ran none of its tests, and what to do next (#574).
-PHRASES = ('"small.py" was not made', "not in the file", "made no changes", "ran none of its tests", "send your request again")
+PHRASES = ("was not made to small.py,", "not in the file", "made no changes", "ran none of its tests", "send your request again")
 CODE = "(EDIT_OLD_NOT_FOUND)"
 
 
@@ -55,12 +55,15 @@ async def test_an_edit_that_cannot_be_applied_ends_the_turn_normally_with_its_te
 
 @pytest.mark.parametrize("path", ["token", "config/secret", "password", "my-api_key"])
 def test_a_secret_like_file_name_keeps_the_sentence_in_history(path):
-    """Codex #574 finding 4: unquoted, "token was not made" read as a secret assignment and lost its negation."""
+    """Codex #574 finding 4: "token was not made" read as a secret assignment and lost its negation. With the negation
+    first and a comma after the path, the sanitizer masks nothing in the sentence."""
     state = ConversationState(ConversationSanitizer(ConversationSanitizerInputs(known_secrets=(), path_aliases=())))
+    text = edit_failure_text("EDIT_OLD_NOT_FOUND", path)
 
-    stored = state.sanitize_text(edit_failure_text("EDIT_OLD_NOT_FOUND", path))  # what _commit_turn stores
+    stored = state.sanitize_text(text)  # what _commit_turn stores
 
-    assert f'"{path}" was not made' in stored
+    assert stored == text
+    assert f"was not made to {path}," in stored
     assert stored.endswith(CODE)
 
 

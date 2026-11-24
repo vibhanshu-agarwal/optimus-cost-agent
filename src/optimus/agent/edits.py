@@ -26,14 +26,14 @@ EDIT_FAILURE_CODES = frozenset(
 
 # (why the change was not made, what the person can do next). LLD v2.48 §4B.5 still states the old text: #576.
 _FAILURE_TEXT = {
-    "EDIT_TARGET_MISSING": ("that path is missing or is not a file", "Check the path, then send your request again"),
+    "EDIT_TARGET_MISSING": ("no file could be found at that path", "Check the path, then send your request again"),
     "EDIT_NOT_UTF8": (
         "the file is not UTF-8 text",
         "Save the file as UTF-8 and send your request again, or make this change yourself",
     ),
     "EDIT_SOURCE_UNSEEN": (
-        "the change was planned without the file's contents to hand",
-        "Send your request again and name the file, so it is read first",
+        "the plan was not tied to a version of the file that had been read",
+        "Send your request again, naming the file",
     ),
     "EDIT_SOURCE_CHANGED": ("the file changed after it was read", "Send your request again so the file is read as it is now"),
     "EDIT_OLD_NOT_FOUND": (
@@ -65,14 +65,15 @@ class EditNotApplicable(Exception):
 
 def edit_failure_text(code: str, path: str) -> str:
     """The text an EDIT_NOT_APPLICABLE run shows: a fixed sentence per code, built only from the code and the path the
-    plan named, never file content. The closed code ends it, so the next turn's history still carries it.
+    plan named, never file content. The closed code ends it; a history record shortened to fit its storage can lose it,
+    and the run result and telemetry keep it.
 
-    The path is quoted so the history sanitizer cannot read "<secret-like name> was not" as an assignment and mask the
-    negation. The second sentence speaks for this plan only: an earlier planning round may have run approved tools."""
+    The negation comes before the path, and a comma follows the path, so the history sanitizer cannot read
+    "<secret-like name> was not" as an assignment. The path is not quoted: in the engine-absent JSON history an escaped
+    quote made the workspace reference scanner read a secret-like name as a folder and refuse the next request. The second
+    sentence speaks for this plan only: an earlier planning round may have run approved tools."""
     reason, next_step = _FAILURE_TEXT[code]
-    return (
-        f'The change to "{path}" was not made because {reason}. The plan made no changes and ran none of its tests. {next_step}. ({code})'
-    )
+    return f"The change was not made to {path}, because {reason}. The plan made no changes and ran none of its tests. {next_step}. ({code})"
 
 
 def apply_edit_blocks(text: str, blocks: Sequence[AgentEditBlock]) -> str:
