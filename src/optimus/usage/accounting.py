@@ -4,14 +4,18 @@ import threading
 from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict
 
-from optimus.evidence.ledger import EvidenceLedger
 from optimus.gateway.models import GatewayUsage
 from optimus.telemetry.events import TelemetryEvent
 from optimus.usage.ledger import ProviderUsageLedger
 from optimus.usage.models import ProviderUsage
+
+if TYPE_CHECKING:
+    # Annotation only: optimus.evidence.ledger imports optimus.usage at load time.
+    from optimus.evidence.ledger import EvidenceLedger
 
 
 class UsageReconciliationReport(BaseModel):
