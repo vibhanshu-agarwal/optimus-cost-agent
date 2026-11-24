@@ -1,4 +1,5 @@
 import json
+import sys
 from datetime import date, datetime
 from subprocess import CompletedProcess
 from types import SimpleNamespace
@@ -90,6 +91,12 @@ def test_lock_rejects_empty_public_inventory(lockfile):
 def test_incomplete_or_inconsistent_audit_fails_closed(result):
     with pytest.raises(audit.AuditError):
         audit.audit_result(result, {("pillow", "13.0.0")})
+
+
+def test_invalid_feed_exit_produces_bounded_audit_error():
+    response = CompletedProcess([], audit.INVALID_PYPI_RESPONSE, "", "private upstream data")
+    with pytest.raises(audit.AuditError, match="could not verify PyPI release advisory data"):
+        audit.audit_result(response, {("pillow", "13.0.0")})
 
 
 def test_audit_parses_clean_and_advisory_results():
@@ -202,6 +209,7 @@ def test_cli_audits_all_batches_and_keeps_vendor_output_private(exception_path, 
     calls = []
 
     def fake_auditor(command, **kwargs):
+        assert command[1:4] == ["-P", str(audit.Path(audit.__file__).resolve()), "--pypi-audit-child"]
         assert {"--strict", "--no-deps", "--disable-pip"} <= set(command)
         assert kwargs["capture_output"]
         pins = audit.Path(command[-1]).read_text(encoding="utf-8").splitlines()
@@ -260,3 +268,94 @@ def test_cli_rejects_unreadable_auditor_output(exception_path, monkeypatch, caps
     )
     assert audit.main() == 1
     assert capsys.readouterr().err == ("Dependency audit failed: could not read, parse or complete the audit\n")
+
+
+@pytest.mark.parametrize(
+    ("release", "status", "accepted"),
+    [
+        pytest.param({"info": {"name": "Pillow", "version": "13.0.0"}, "vulnerabilities": []}, 200, True, id="clean"),
+        pytest.param({"info": {"name": "Pillow", "version": "13.0"}, "vulnerabilities": []}, 200, True, id="equivalent-version"),
+        pytest.param(
+            '{"info":{"name":"Pillow","version":"13.0.0"},"vulnerabilities":[],"vulnerabilities":[]}', 200, False, id="duplicate-field"
+        ),
+        pytest.param(None, 404, False, id="upstream-skip"),
+        pytest.param(None, 500, False, id="upstream-error"),
+        pytest.param(
+            {"info": {"name": "Pillow", "version": "13.0.0"}, "vulnerabilities": [{"id": "PYSEC-2026-1"}]}, 200, True, id="has-advisory"
+        ),
+        pytest.param({"info": {"name": "Pillow", "version": "13.0.0"}}, 200, False, id="missing-advisories"),
+        pytest.param({"info": {"name": "Pillow", "version": "13.0.0"}, "vulnerabilities": None}, 200, False, id="null-advisories"),
+        pytest.param({"info": {"name": "Pillow", "version": "13.0.0"}, "vulnerabilities": {}}, 200, False, id="invalid-array"),
+        pytest.param({"info": {"name": "Pillow", "version": "13.0.0"}, "vulnerabilities": [None]}, 200, False, id="invalid-entry"),
+        pytest.param({"info": {"name": "Other", "version": "13.0.0"}, "vulnerabilities": []}, 200, False, id="wrong-name"),
+        pytest.param({"info": {"name": "Pillow", "version": "13.1.0"}, "vulnerabilities": []}, 200, False, id="wrong-version"),
+        pytest.param({"vulnerabilities": []}, 200, False, id="missing-release"),
+        pytest.param({"info": {"name": "Pillow", "version": "13.0.0"}, "vulnerabilities": []}, 206, False, id="partial-response"),
+    ],
+)
+def test_auditor_checks_the_pypi_response_it_consumes(tmp_path, monkeypatch, release, status, accepted):
+    requirements = tmp_path / "pins.txt"
+    requirements.write_text("pillow==13.0.0\n", encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["audit", "-r", str(requirements)])
+    url = "https://pypi.org/pypi/pillow/13.0.0/json"
+    raw = release if isinstance(release, str) else json.dumps(release)
+    response = SimpleNamespace(status_code=status, json=lambda **kwargs: json.loads(raw, **kwargs))
+    received = []
+
+    class Service:
+        def __init__(self, *, cache_dir, timeout):
+            assert (cache_dir, timeout) == ("stub-cache", 15)
+            self.session = SimpleNamespace(get=request)
+
+    def request(**kwargs):
+        assert kwargs == {"url": url, "timeout": 15}
+        received.append(response)
+        return response
+
+    def consume():
+        service = cli.PyPIService(cache_dir="stub-cache", timeout=15)
+        assert service.session.get(url=url, timeout=15) is response
+
+    cli = SimpleNamespace(PyPIService=Service, audit=consume)
+    monkeypatch.setitem(sys.modules, "pip_audit", SimpleNamespace(_cli=cli))
+    assert audit._run_pip_audit() == (0 if accepted else audit.INVALID_PYPI_RESPONSE)
+    assert received == [response]
+    assert cli.PyPIService is Service
+
+
+@pytest.mark.parametrize(
+    ("requested", "process_exit", "expected_exit"),
+    [
+        pytest.param((), None, 3, id="factory-bypassed"),
+        pytest.param(("pillow",), 0, 3, id="partial-clean-report"),
+        pytest.param(("pillow",), 1, 3, id="partial-findings-report"),
+        pytest.param(("pillow", "colorama"), 1, 1, id="complete-findings-report"),
+        pytest.param(("pillow", "colorama"), 0, 0, id="complete-clean-report"),
+    ],
+)
+def test_auditor_proves_every_pin_was_validated(tmp_path, monkeypatch, requested, process_exit, expected_exit):
+    pins = {"pillow": "13.0.0", "colorama": "0.4.6"}
+    requirements = tmp_path / "pins.txt"
+    requirements.write_text("".join(f"{name}=={version}\n" for name, version in pins.items()), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["audit", "-r", str(requirements)])
+
+    def request(*, url, timeout):
+        name = url.split("/")[4]
+        payload = {"info": {"name": name, "version": pins[name]}, "vulnerabilities": []}
+        return SimpleNamespace(status_code=200, json=lambda **_: payload)
+
+    def service(**_):
+        return SimpleNamespace(session=SimpleNamespace(get=request))
+
+    def consume():
+        if requested:
+            scanner = cli.PyPIService(cache_dir=None, timeout=15)
+            for name in requested:
+                scanner.session.get(url=f"https://pypi.org/pypi/{name}/{pins[name]}/json", timeout=15)
+        if process_exit is not None:
+            raise SystemExit(process_exit)
+
+    cli = SimpleNamespace(PyPIService=service, audit=consume)
+    monkeypatch.setitem(sys.modules, "pip_audit", SimpleNamespace(_cli=cli))
+    assert audit._run_pip_audit() == expected_exit
+    assert cli.PyPIService is service

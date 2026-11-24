@@ -21,6 +21,8 @@ from packaging.version import InvalidVersion, Version
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPI_SOURCE = {"registry": "https://pypi.org/simple"}
+PYPI_RELEASE_URL = re.compile(r"https://pypi\.org/pypi/([^/]+)/([^/]+)/json")
+INVALID_PYPI_RESPONSE = 3
 APPROVAL = re.compile(r"https://github\.com/vibhanshu-agarwal/optimus-cost-agent/(issues|pull)/[1-9][0-9]*")
 EXCEPTION_FIELDS = {"package", "version", "advisory", "rationale", "owner", "approval", "expires"}
 
@@ -93,6 +95,8 @@ def _advisory_id(value: object) -> str:
 
 
 def audit_result(result: subprocess.CompletedProcess[str], expected: set[Pin]) -> set[Finding]:
+    if result.returncode == INVALID_PYPI_RESPONSE:
+        raise AuditError("could not verify PyPI release advisory data")
     if result.returncode not in (0, 1):
         raise AuditError(f"auditor exited with code {result.returncode}")
     data = json.loads(result.stdout, object_pairs_hook=_unique_json_object)
@@ -155,6 +159,77 @@ def read_exceptions(path: Path, today: date) -> set[Finding]:
     return exceptions
 
 
+def _validate_pypi_release(url: str, release: object) -> Pin:
+    match = PYPI_RELEASE_URL.fullmatch(url)
+    if match is None or not isinstance(release, dict):
+        raise AuditError("invalid PyPI release response")
+    info = release.get("info")
+    advisories = release.get("vulnerabilities")
+    if not isinstance(info, dict) or not isinstance(advisories, list):
+        raise AuditError("incomplete PyPI release response")
+    if any(not isinstance(advisory, dict) for advisory in advisories):
+        raise AuditError("invalid PyPI advisory list")
+    expected_name, expected_version = _pin(*match.groups())
+    name, version = _pin(info.get("name"), info.get("version"))
+    if name != expected_name or Version(version) != Version(expected_version):
+        raise AuditError("PyPI release does not match the requested pin")
+    return expected_name, expected_version
+
+
+def _run_pip_audit() -> int:
+    # pip-audit 2.10.1 selects this factory in its CLI. Adapt its transport in
+    # the child process so validation sees exactly the response it will use.
+    from pip_audit import _cli
+
+    if sys.argv[-2:-1] != ["-r"]:
+        return INVALID_PYPI_RESPONSE
+    expected = set()
+    try:
+        for line in Path(sys.argv[-1]).read_text(encoding="utf-8").splitlines():
+            name, _, version = line.partition("==")
+            expected.add(_pin(name, version))
+    except AuditError, OSError, ValueError:
+        return INVALID_PYPI_RESPONSE
+    if not expected:
+        return INVALID_PYPI_RESPONSE
+
+    verified = set()
+    original_service = _cli.PyPIService
+
+    def validated_service(*, cache_dir, timeout):
+        service = original_service(cache_dir=cache_dir, timeout=timeout)
+        request = service.session.get
+
+        def verified_get(*, url, timeout):
+            response = request(url=url, timeout=timeout)
+            if response.status_code < 400:
+                if response.status_code != 200:
+                    raise AuditError("unexpected PyPI release status")
+                verified.add(_validate_pypi_release(url, response.json(object_pairs_hook=_unique_json_object)))
+            return response
+
+        service.session.get = verified_get
+        return service
+
+    _cli.PyPIService = validated_service
+    exit_code = 0
+    try:
+        _cli.audit()
+    except SystemExit as result:
+        if result.code not in (None, 0, 1):
+            raise
+        exit_code = int(result.code or 0)
+    except AuditError, ValueError, RecursionError:
+        return INVALID_PYPI_RESPONSE
+    finally:
+        _cli.PyPIService = original_service
+    # Reject a successful-looking report if the pinned CLI stops using our
+    # factory or fails to validate a response for every pin in this batch.
+    if verified != expected:
+        return INVALID_PYPI_RESPONSE
+    return exit_code
+
+
 def scan(pins: set[Pin], temp: Path) -> set[Finding]:
     findings = set()
     for batch in pin_batches(pins):
@@ -166,8 +241,9 @@ def scan(pins: set[Pin], temp: Path) -> set[Finding]:
         result = subprocess.run(
             [
                 sys.executable,
-                "-m",
-                "pip_audit",
+                "-P",
+                str(Path(__file__).resolve()),
+                "--pypi-audit-child",
                 "--strict",
                 "--no-deps",
                 "--disable-pip",
@@ -215,4 +291,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--pypi-audit-child"]:
+        del sys.argv[1]
+        raise SystemExit(_run_pip_audit())
     raise SystemExit(main())

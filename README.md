@@ -162,9 +162,11 @@ Guardrails audits all public package/version pins in `uv.lock`, including
 development, optional and platform-specific pins, before installing project
 dependencies. Run the same audit with
 `uv run --locked --script tools/check_dependency_audit.py`. The audit uses an
-independently locked pip-audit environment and fails on missing, skipped or
-unverified results. Dependabot opens weekly root uv updates and assigns them to
-`vibhanshu-agarwal` for triage. Maintain the audit tool's separately pinned
+independently locked pip-audit environment. It verifies the PyPI release
+identity and advisory array before pip-audit interprets the response, then
+requires verified responses for every pin. Missing, skipped or unverified
+results fail the check. Dependabot schedules weekly root uv updates and
+assigns them to `vibhanshu-agarwal` for triage. Maintain the audit tool's separately pinned
 script dependencies in `tools/check_dependency_audit.py.lock` as part of
 dependency security reviews.
 
