@@ -3964,11 +3964,11 @@ class AcpDuplexAdapter:
         if turn is not None:
             turn.turn_control.seal_final_delivery()
             turn.turn_control.declare_terminal_messages(("completed_plan", "final_text") if send_plan else ("final_text",))
-        completed_plan = build_plan_session_update(
+        completed_plan: dict[str, Any] = build_plan_session_update(
             session_id=session_id,
-            plan_text=result.output_text if send_plan else "",  # unsent; empty, so the diagnostic below counts no entries
+            plan_text=result.output_text,
             entry_status="completed",
-        )
+        ) if send_plan else {"update": {"entries": []}}  # unsent; the diagnostic below counts no entries
         if send_plan and turn is None:
             await self._outbound.notify("session/update", completed_plan)
         elif send_plan and turn is not None:

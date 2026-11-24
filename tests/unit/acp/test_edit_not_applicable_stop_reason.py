@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from optimus.acp import spec
 from optimus.acp.conversation import ConversationOutcome
 from optimus.acp.spec import _conversation_outcome
 from optimus.agent.edits import edit_failure_text
@@ -39,10 +40,23 @@ def _edit_not_applicable(request):
 
 @pytest.mark.parametrize("approve", [False, True], ids=["direct", "approved"])
 async def test_an_edit_that_cannot_be_applied_ends_the_turn_normally_with_its_text_and_no_completed_plan(approve, tmp_path):
-    result, updates, runner = await drive_stop_turn(tmp_path, _edit_not_applicable, approve=approve, plan_text=PLAN)
+    result, updates, runner, records = await drive_stop_turn(tmp_path, _edit_not_applicable, approve=approve, plan_text=PLAN)
 
-    assert_failed_turn_shown_without_a_completed_plan(result, updates, "EDIT_NOT_APPLICABLE", PHRASES)
+    assert_failed_turn_shown_without_a_completed_plan(result, updates, records, "EDIT_NOT_APPLICABLE", PHRASES)
     assert [r.approval.approved for r in runner.requests] == ([False, True] if approve else [False])
+
+
+async def test_the_completion_diagnostic_counts_no_plan_entries_when_none_is_sent(tmp_path, monkeypatch):
+    logged = []
+
+    def record(*, location, data=None, **_):
+        if location == "spec.py:_emit_completion_message":
+            logged.append(data())
+
+    monkeypatch.setattr(spec, "acp_debug_log", record)
+    await drive_stop_turn(tmp_path, _edit_not_applicable, approve=False, plan_text=PLAN)
+
+    assert [entry["plan_entry_count"] for entry in logged] == [0]
 
 
 def test_the_conversation_outcome_stays_failed():

@@ -485,6 +485,60 @@ def test_run_operator_live_session_resolves_redis_default_for_parent_only(tmp_pa
     assert not any(name.startswith("OPTIMUS_") for name in child_env)
 
 
+@pytest.mark.parametrize(
+    ("outcome", "passes"), [("failed", False), ("completed", True)], ids=["failed-end-turn", "completed-end-turn"]
+)
+def test_run_operator_live_session_fails_an_end_turn_that_did_not_complete(tmp_path, monkeypatch, outcome, passes):
+    """#565: a failed stop also ends as end_turn, so the verifier must read the settled outcome before passing.
+    In process only: the child, its session and the prompt turn are fakes, so no subprocess is started."""
+
+    class _FakeRedisStore:
+        owned_runtime = object()
+
+        def close(self, *, timeout=None):
+            return None
+
+        def latest_plan_for_run(self, *, run_id):
+            return None
+
+    class _FakeSession:
+        def __init__(self, *, process, transcript):
+            pass
+
+        def send(self, message):
+            return None
+
+        def wait_for_response(self, request_id, *, deadline):
+            return {1: {"result": {"protocolVersion": 1}}, 2: {"result": {"sessionId": "sess-1"}}}[request_id]
+
+        def close_stdin(self):
+            return None
+
+        def terminate(self):
+            return None
+
+    response = {"result": {"stopReason": "end_turn", "_meta": {"runStopReason": "WRITE_DIRECTIVE_NOT_EXECUTED", "outcome": outcome}}}
+    env = {"OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0"}
+    monkeypatch.setattr(operator_verify.RedisAgentStateStore, "from_url", staticmethod(lambda url: _FakeRedisStore()))
+    monkeypatch.setattr(operator_verify, "apply_local_defaults", lambda environ, **kw: env)
+    monkeypatch.setattr(operator_verify, "build_acp_subprocess_env", lambda *, operator_environ: dict(operator_environ))
+    monkeypatch.setattr(operator_verify.process_tree, "popen", lambda *a, **k: object())
+    monkeypatch.setattr(operator_verify, "NdjsonSubprocessSession", _FakeSession)
+    monkeypatch.setattr(operator_verify, "_run_prompt_turn", lambda **kw: (response, "run-1", "PARSED"))
+    monkeypatch.setattr(operator_verify, "_delete_plan_keys", lambda store, run_id: None)
+    config = operator_verify.OperatorLiveSessionConfig(
+        workspace_root=tmp_path, repository_root=tmp_path, model="glm-5.2", task="irrelevant",
+        transcript_path=tmp_path / "transcript.json", wall_clock_timeout_seconds=10,
+    )
+
+    result = operator_verify.run_operator_live_session(config, environ=env, transcript=E2eAcpTranscriptWriter())
+
+    assert result.success is passes
+    if not passes:
+        assert "outcome='failed'" in result.failure_message
+        assert "WRITE_DIRECTIVE_NOT_EXECUTED" in result.failure_message
+
+
 def test_verify_live_agent_runtime_failure_exits_3(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPTIMUS_GATEWAY_URL", "https://gateway.example")
     monkeypatch.setenv("OPTIMUS_API_KEY", "opt-test")

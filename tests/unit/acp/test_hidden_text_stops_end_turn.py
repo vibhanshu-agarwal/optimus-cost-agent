@@ -81,11 +81,14 @@ async def drive_stop_turn(tmp_path, produce, *, approve: bool, plan_text: str = 
         outbound.respond(permission["id"], {"outcome": {"outcome": "selected", "optionId": "approve"}})
     response = await asyncio.wait_for(task, timeout=10)
     updates = [n["params"]["update"] for n in outbound.notifications if n["method"] == "session/update"]
-    return response["result"], updates, runner
+    records = adapter._sessions.get(session_id).conversation.records
+    return response["result"], updates, runner, records
 
 
-def assert_failed_turn_shown_without_a_completed_plan(result, updates, stop, phrases):
+def assert_failed_turn_shown_without_a_completed_plan(result, updates, records, stop, phrases):
     assert result == {"stopReason": "end_turn", "_meta": {"runStopReason": stop, "outcome": "failed"}}
+    # Committed only once every declared terminal message was flushed: a declared but unsent plan would leave none.
+    assert [record.outcome for record in records.values()] == [ConversationOutcome.FAILED]
     completed = [u for u in updates if u["sessionUpdate"] == "plan" and any(e["status"] == "completed" for e in u["entries"])]
     assert completed == [], "a completed plan would tell the client the plan's work was done"
     final = [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"][-1].lower()
@@ -98,9 +101,9 @@ def assert_failed_turn_shown_without_a_completed_plan(result, updates, stop, phr
 async def test_the_stop_ends_the_turn_normally_with_its_text_and_no_completed_plan(stop, approve, tmp_path):
     produce, phrases = _STOPS[stop]
 
-    result, updates, runner = await drive_stop_turn(tmp_path, produce, approve=approve)
+    result, updates, runner, records = await drive_stop_turn(tmp_path, produce, approve=approve)
 
-    assert_failed_turn_shown_without_a_completed_plan(result, updates, stop, phrases)
+    assert_failed_turn_shown_without_a_completed_plan(result, updates, records, stop, phrases)
     assert [r.approval.approved for r in runner.requests] == ([False, True] if approve else [False])
 
 
