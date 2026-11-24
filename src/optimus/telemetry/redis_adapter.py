@@ -4,8 +4,11 @@ import asyncio
 import json
 from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass
-from decimal import Decimal
-from typing import TYPE_CHECKING, Protocol
+from decimal import Decimal, InvalidOperation
+from typing import TYPE_CHECKING, NamedTuple, Protocol
+
+from optimus.usage.errors import DuplicateGatewayRequestError
+from optimus.usage.ledger import settled_fingerprint
 
 if TYPE_CHECKING:
     from redis.typing import EncodableT, FieldT
@@ -24,6 +27,34 @@ class RedisTelemetryClient(Protocol):
     def hget(self, name: str, field: str, /) -> Awaitable[bytes | str | None]: ...
     def hdel(self, name: str, /, *fields: str) -> Awaitable[int]: ...
     def expire(self, name: str, seconds: int, /) -> Awaitable[bool]: ...
+
+
+class _Claim(NamedTuple):
+    gateway_request_id: str
+    provider: str
+    provider_request_id: str | None
+    billing_units: int
+    cost_usd: Decimal
+
+
+def _parse_claim(stored: bytes | str | None) -> _Claim | None:
+    """Read a stored claim fingerprint; ``None`` for anything corrupt (treated as divergent)."""
+    try:
+        data = json.loads(stored.decode() if isinstance(stored, bytes) else stored)  # type: ignore[arg-type]
+        if not isinstance(data["cost_usd"], str):
+            return None
+        cost = Decimal(data["cost_usd"])
+        claim = _Claim(data["gateway_request_id"], data["provider"], data["provider_request_id"], data["billing_units"], cost)
+    except (TypeError, ValueError, KeyError, InvalidOperation):  # UnicodeDecodeError and JSONDecodeError are ValueErrors
+        return None
+    ids = (claim.gateway_request_id, claim.provider)
+    valid = (
+        all(isinstance(v, str) for v in ids)
+        and isinstance(claim.provider_request_id, str | None)
+        and type(claim.billing_units) is int
+        and cost.is_finite()
+    )
+    return claim if valid else None
 
 
 @dataclass(frozen=True)
@@ -81,18 +112,13 @@ class RedisTelemetryAdapter:
         """Persist one settled Gateway usage attempt to two run-scoped TimeSeries.
 
         Idempotent by ``gateway_request_id``: a fingerprint of every accounting field is
-        claimed via ``HSETNX`` under the adapter lock. An identical replay's fingerprint
-        matches the existing claim and is a no-op (no second ``TS.ADD``); a divergent
+        claimed via ``HSETNX`` under the adapter lock. A replay whose fields match the
+        existing claim by value (cost as a ``Decimal``: ``0.003`` equals ``0.0030``) is a no-op (no second ``TS.ADD``); a divergent
         fingerprint raises :class:`~optimus.usage.errors.DuplicateGatewayRequestError`
         without writing a second point. If the TimeSeries write itself fails after a new
         claim is made, the claim is released so a legitimate retry is not permanently
         blocked by a phantom claim.
         """
-        # Deferred import: optimus.usage's package __init__ pulls in optimus.evidence,
-        # which (transitively) imports back into optimus.telemetry at module-load time.
-        # Importing here keeps that cycle out of this module's top-level import graph.
-        from optimus.usage.errors import DuplicateGatewayRequestError
-
         if not run_id:
             raise ValueError("Access constraint violation: Missing telemetry run_id key.")
         claims_key = f"{USAGE_KEY_PREFIX}:{run_id}:claims"
@@ -110,7 +136,10 @@ class RedisTelemetryAdapter:
             claimed = await self._client.hsetnx(claims_key, gateway_request_id, fingerprint)
             if not claimed:
                 existing = await self._client.hget(claims_key, gateway_request_id)
-                if existing == fingerprint:
+                stored = _parse_claim(existing)
+                if stored is not None and settled_fingerprint(stored) == settled_fingerprint(
+                    _Claim(gateway_request_id, provider, provider_request_id, billing_units, cost_usd)
+                ):
                     return
                 raise DuplicateGatewayRequestError(gateway_request_id)
             try:
