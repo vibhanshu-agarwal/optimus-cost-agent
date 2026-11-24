@@ -43,6 +43,7 @@ from optimus.agent.workspace_context import (
     verified_hints,
 )
 from optimus.config.gateway import OptimusGatewaySettings
+from optimus.context.context_budget import BudgetPolicy
 from optimus.context.index_tools import IndexTools
 from optimus.context.memory_workspace import (
     EmbedderUnavailableError,
@@ -589,13 +590,16 @@ class MemoryTurn:
     def status(self) -> str:
         return self._session.status()
 
-    def assemble(self, *, run_id: str, task: str, selection_text: str, model_id: str, estimate: Callable[[str], int], usable_input_tokens: int) -> WorkspaceContextResult:
+    def assemble(self, *, run_id: str, task: str, selection_text: str, model_id: str, estimate: Callable[[str], int], usable_input_tokens: int,
+                 pack_budget: BudgetPolicy | None = None) -> WorkspaceContextResult:
         """The turn's context. Blocking conditions are today's own, so each mode's handling of them is unchanged. An index that cannot
         answer gives today's context plus a line saying so; required evidence that does not fit is never quietly dropped."""
         self._run_id = run_id
         policy = self._session.policy
         policy.forget_ignore_files()
-        budget = min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
+        # Plan 12.14: the route's budget, computed once before preparation; without one, M1's legacy budget
+        budget = pack_budget.ceiling if pack_budget is not None else min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
+        target = pack_budget.target if pack_budget is not None else None
         with self._session.foreground():
             diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(extract_file_references(selection_text)))
             diagnostics = rank_ambiguity(diagnostics, task, self._session.hints_for(self._scope))
@@ -604,7 +608,7 @@ class MemoryTurn:
                 return self._blocked(diagnostics, stop_reason, message)
             required = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED))
             self._capture_buffers(required)
-        retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task)
+        retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task, target)
         if retrieval.state != "ok" or pack is None:
             return self._today(task=selection_text, retrieval=retrieval, prompt=task)
         if not pack.complete:
@@ -638,7 +642,7 @@ class MemoryTurn:
             if not _same_text(data, disk) and b"\x00" not in data and len(data) <= MAX_BUFFER_BYTES:
                 self._overlay[path] = data
 
-    def _retrieve(self, text: str, required: Sequence[str], estimate: Callable[[str], int], budget: int, task: str) -> tuple[Retrieval, Pack | None]:
+    def _retrieve(self, text: str, required: Sequence[str], estimate: Callable[[str], int], budget: int, task: str, target: int | None = None) -> tuple[Retrieval, Pack | None]:
         query = text[:_QUERY_CHARS]
         symbols = named_symbols(task)
         pack: Pack | None = None
@@ -647,7 +651,7 @@ class MemoryTurn:
                 retrieval = self._retriever.retrieve(query, named_paths=required, named_symbols=symbols)
                 if retrieval.state != "ok":
                     return retrieval, None
-                pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget)
+                pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget, target_tokens=target)
             # The wait below is outside: the worker gives way to a busy turn, so it could not do this repair while one was waiting for it.
             if not pack.stale_paths or attempt == _RECONCILE_ATTEMPTS or self._cancelled():
                 return retrieval, pack

@@ -70,3 +70,61 @@ def test_a_target_must_be_a_positive_decimal(bad):
 )
 def test_chosen_budget(ceiling, target, required, expected):
     assert chosen_budget(ceiling, target, required) == expected
+
+
+# --- The route's budget, bound before preparation (Task 2 seam) ----------------------------------------------------------
+
+
+def test_the_shipped_route_keeps_the_legacy_budget_and_the_d3_target_gives_the_forecast(tmp_path):
+    from optimus.context.shipped_policy import attachment_limits
+    from optimus_model_policy.binding import packaged_defaults, trusted_snapshot
+    from optimus_model_policy.registry import load_registry
+
+    haiku = "anthropic/claude-haiku-5.5"
+    assert attachment_limits(trusted_snapshot(), haiku).pack_budget == BudgetPolicy("legacy", 16_384, None)
+    override = tmp_path / "override.yaml"
+    override.write_text(f'models:\n  {haiku}:\n    context_budget: {{input_target_usd: "0.008192"}}\n', encoding="utf-8")
+    staged = attachment_limits(load_registry(packaged_defaults(), override), haiku).pack_budget
+    assert staged == BudgetPolicy("model-aware", 32_768, 13_107)  # Haiku's route caches its prefix, so a write is priced
+
+
+def test_escalation_keeps_the_budget_the_pack_was_prepared_with():
+    from dataclasses import replace
+
+    from tests.unit.agent.test_context_selection import _attached_turn
+
+    attached, _ = _attached_turn(usable=1100)
+    assert attached.pack_budget == BudgetPolicy("legacy", 275, None)  # no budget on the attachment: legacy on its usable input
+    prepared = BudgetPolicy("model-aware", 275, 200)
+    attached._attachment = replace(attached._attachment, pack_budget=prepared)  # noqa: SLF001 - as bound before preparation
+    attached.escalate_attachment(replace(attached._attachment, model_id="test/strong", usable_input_tokens=5_000, pack_budget=BudgetPolicy("legacy", 1_250, None)))  # noqa: SLF001
+    assert attached.model_id == "test/strong" and attached.pack_budget == prepared
+
+
+def _pack(required_bytes: int, *, budget: int, target: int | None):
+    from context_engine.context_pack import assemble_pack
+    from context_engine.retrieval import Hit, Ranked
+
+    body = "".join(f"def f{i}():\n    return {i}\n" for i in range(2000)).encode()
+    files = {"req.py": b"#" * required_bytes + b"\n", "opt.py": body}
+    import hashlib
+
+    digest = hashlib.sha256(body).hexdigest()
+    ranked = [Ranked(Hit(id=str(i), kind="symbol", path="opt.py", file_hash=digest, symbol=f"f{i}", signature=f"def f{i}()", start_line=2 * i + 1, end_line=2 * i + 2), 1 / (60 + i), {"lexical": i + 1}) for i in range(2000)]
+    return assemble_pack(required=("req.py",), ranked=ranked, read=files.get, estimate=lambda t: len(t.encode()), budget_tokens=budget, target_tokens=target)
+
+
+def test_without_a_target_the_pack_is_unchanged_and_with_one_it_uses_the_chosen_budget():
+    legacy = _pack(1_000, budget=16_384, target=None)
+    assert legacy.budget_tokens == 16_384 and legacy.complete
+    aware = _pack(1_000, budget=32_768, target=13_107)
+    assert aware.complete and aware.budget_tokens == 13_107 and aware.tokens <= 13_107 < legacy.tokens
+
+
+def test_required_text_between_legacy_and_the_ceiling_is_whole_with_a_floor_and_over_the_ceiling_is_incomplete():
+    assert not _pack(20_000, budget=16_384, target=None).complete
+    whole = _pack(20_000, budget=32_768, target=13_107)
+    required = 20_000 + len("--- required files ---\n--- req.py ---\n") + 1
+    assert whole.complete and whole.budget_tokens == required + 1_024 and whole.tokens <= whole.budget_tokens
+    over = _pack(40_000, budget=32_768, target=13_107)
+    assert not over.complete and over.missing_required == ("req.py",)

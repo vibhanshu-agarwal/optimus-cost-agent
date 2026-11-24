@@ -82,9 +82,11 @@ def _signature_line(hit: Hit) -> str | None:
 
 
 def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Callable[[str], bytes | None], estimate: Callable[[str], int], budget_tokens: int,
-                  policy: str = "baseline", task: str = "", protected: Sequence[str] = ()) -> Pack:
+                  policy: str = "baseline", task: str = "", protected: Sequence[str] = (), target_tokens: int | None = None) -> Pack:
     """`read` returns the file's current bytes, or None when policy no longer admits it. `estimate` is the route's token estimator.
-    `policy` chooses which optional items fill each phase (pack_utility); `task` gives its terms and `protected` the quota places."""
+    `policy` chooses which optional items fill each phase (pack_utility); `task` gives its terms and `protected` the quota places.
+    With `target_tokens` (Plan 12.14), `budget_tokens` is the hard ceiling C: required text that fits it is whole, and optional room is
+    chosen_budget(C, target, required) less the required text. Without it, `budget_tokens` is the whole budget, as before."""
     selected: list[Selected] = []
     hashes: dict[str, str] = {}
     contents: dict[str, bytes | None] = {}
@@ -117,6 +119,8 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         return Pack("", 0, budget_tokens, tuple(selected), {}, tuple(required))
     if missing:
         return Pack(required_text, used, budget_tokens, tuple(selected), hashes, tuple(missing))
+    if target_tokens is not None:
+        budget_tokens = chosen_budget(budget_tokens, target_tokens, used)
 
     room = budget_tokens - used
     signatures_room = int(room * SIGNATURE_SHARE)

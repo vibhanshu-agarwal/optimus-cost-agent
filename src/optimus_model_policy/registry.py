@@ -41,6 +41,7 @@ __all__ = [
     "CACHE_WRITE_INPUT_MULTIPLIER",
     "Admission",
     "Capabilities",
+    "ContextBudget",
     "DataUse",
     "EmpiricalEstimateAdmission",
     "Endpoint",
@@ -235,6 +236,7 @@ def canonical_decimal(value: Decimal) -> str:
 
 _CanonicalJson = PlainSerializer(canonical_decimal, return_type=str, when_used="json")
 NonNegativeDecimal = Annotated[Decimal, Field(ge=0, allow_inf_nan=False), _CanonicalJson]
+PositiveDecimal = Annotated[Decimal, Field(gt=0, allow_inf_nan=False), _CanonicalJson]
 StrictCount = Annotated[int, Field(ge=0, strict=True)]
 PositiveCount = Annotated[int, Field(gt=0, strict=True)]
 StrictFlag = Annotated[bool, Field(strict=True)]
@@ -249,6 +251,20 @@ class Prices(BaseModel):
     @field_validator("input_usd_per_million", "output_usd_per_million", mode="before")
     @classmethod
     def prices_from_text(cls, value: Any) -> Any:
+        return _decimal_text(value)
+
+
+class ContextBudget(BaseModel):
+    """Plan 12.14 (D3): the context pack's soft input target, in USD per request, priced at the entry's input price. It sets a
+    model-aware budget for implementer turns (optimus.context.context_budget); summarizers never use it. Absent, the legacy budget holds."""
+
+    model_config = _FROZEN
+
+    input_target_usd: PositiveDecimal
+
+    @field_validator("input_target_usd", mode="before")
+    @classmethod
+    def target_from_text(cls, value: Any) -> Any:
         return _decimal_text(value)
 
 
@@ -396,6 +412,7 @@ class ModelEntry(BaseModel):
     """Purpose-scoped reasoning (CP4 review 10, design R; operator-accepted 2026-11-19): a request bound to one of these
     memory purposes is sent with its setting instead of ``default_reasoning``; nothing else changes. The Gateway admits
     only the exact pair. Absent from the canonical policy when empty, so registries without it keep their hashes."""
+    context_budget: ContextBudget | None = None  # Plan 12.14; absent from the canonical policy when None, so hashes hold
 
     @field_validator("purpose_reasoning")
     @classmethod
@@ -410,6 +427,8 @@ class ModelEntry(BaseModel):
         data: dict[str, Any] = handler(self)
         if not self.purpose_reasoning:
             data.pop("purpose_reasoning", None)
+        if self.context_budget is None:
+            data.pop("context_budget", None)
         return data
 
 

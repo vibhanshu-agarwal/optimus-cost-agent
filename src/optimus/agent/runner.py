@@ -1935,6 +1935,7 @@ class AgentRunner:
                 model_id=context_packer.model_id,  # type: ignore[union-attr]
                 estimate=context_packer.estimate_request,  # type: ignore[union-attr]
                 usable_input_tokens=context_packer.usable_input_tokens,  # type: ignore[union-attr]
+                pack_budget=getattr(context_packer, "pack_budget", None),
             )
         report = getattr(context_packer, "record_context", None)
         if report is not None:  # Plan 12.11: what the turn carried, for memory lineage
