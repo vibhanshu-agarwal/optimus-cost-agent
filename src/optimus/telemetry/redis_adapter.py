@@ -5,10 +5,7 @@ import json
 from collections.abc import Awaitable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING, NamedTuple, Protocol
-
-from optimus.usage.errors import DuplicateGatewayRequestError
-from optimus.usage.ledger import settled_fingerprint
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from redis.typing import EncodableT, FieldT
@@ -29,32 +26,25 @@ class RedisTelemetryClient(Protocol):
     def expire(self, name: str, seconds: int, /) -> Awaitable[bool]: ...
 
 
-class _Claim(NamedTuple):
-    gateway_request_id: str
-    provider: str
-    provider_request_id: str | None
-    billing_units: int
-    cost_usd: Decimal
+def _claim_fields(
+    gateway_request_id: str, provider: str, provider_request_id: str | None, billing_units: int, cost_text: str
+) -> dict[str, object]:
+    return {
+        "gateway_request_id": gateway_request_id,
+        "provider": provider,
+        "provider_request_id": provider_request_id,
+        "billing_units": billing_units,
+        "cost_usd": cost_text,
+    }
 
 
-def _parse_claim(stored: bytes | str | None) -> _Claim | None:
-    """Read a stored claim fingerprint; ``None`` for anything corrupt (treated as divergent)."""
+def _stored_cost_text(stored: str) -> str | None:
+    """The ``cost_usd`` string of a stored claim object, or ``None`` if it has none."""
     try:
-        data = json.loads(stored.decode() if isinstance(stored, bytes) else stored)  # type: ignore[arg-type]
-        if not isinstance(data["cost_usd"], str):
-            return None
-        cost = Decimal(data["cost_usd"])
-        claim = _Claim(data["gateway_request_id"], data["provider"], data["provider_request_id"], data["billing_units"], cost)
-    except (TypeError, ValueError, KeyError, InvalidOperation):  # UnicodeDecodeError and JSONDecodeError are ValueErrors
+        cost = json.loads(stored)["cost_usd"]
+    except (ValueError, TypeError, KeyError, RecursionError):
         return None
-    ids = (claim.gateway_request_id, claim.provider)
-    valid = (
-        all(isinstance(v, str) for v in ids)
-        and isinstance(claim.provider_request_id, str | None)
-        and type(claim.billing_units) is int
-        and cost.is_finite()
-    )
-    return claim if valid else None
+    return cost if isinstance(cost, str) else None
 
 
 @dataclass(frozen=True)
@@ -112,35 +102,48 @@ class RedisTelemetryAdapter:
         """Persist one settled Gateway usage attempt to two run-scoped TimeSeries.
 
         Idempotent by ``gateway_request_id``: a fingerprint of every accounting field is
-        claimed via ``HSETNX`` under the adapter lock. A replay whose fields match the
-        existing claim by value (cost as a ``Decimal``: ``0.003`` equals ``0.0030``) is a no-op (no second ``TS.ADD``); a divergent
+        claimed via ``HSETNX`` under the adapter lock. An identical replay's fingerprint
+        matches the existing claim (cost compared by value) and is a no-op (no second ``TS.ADD``); a divergent
         fingerprint raises :class:`~optimus.usage.errors.DuplicateGatewayRequestError`
         without writing a second point. If the TimeSeries write itself fails after a new
         claim is made, the claim is released so a legitimate retry is not permanently
         blocked by a phantom claim.
         """
+        # Stays deferred: optimus.usage.accounting imports optimus.telemetry at load time, so a
+        # module-level import here would make a package cycle (concurrent cold imports can deadlock).
+        from optimus.usage.errors import DuplicateGatewayRequestError
+
         if not run_id:
             raise ValueError("Access constraint violation: Missing telemetry run_id key.")
         claims_key = f"{USAGE_KEY_PREFIX}:{run_id}:claims"
-        fingerprint = json.dumps(
-            {
-                "gateway_request_id": gateway_request_id,
-                "provider": provider,
-                "provider_request_id": provider_request_id,
-                "billing_units": billing_units,
-                "cost_usd": str(cost_usd),
-            },
-            sort_keys=True,
-        )
+        fields = (gateway_request_id, provider, provider_request_id, billing_units)
+        fingerprint = json.dumps(_claim_fields(*fields, str(cost_usd)), sort_keys=True)
         async with self._settled_usage_lock:
             claimed = await self._client.hsetnx(claims_key, gateway_request_id, fingerprint)
             if not claimed:
                 existing = await self._client.hget(claims_key, gateway_request_id)
-                stored = _parse_claim(existing)
-                if stored is not None and settled_fingerprint(stored) == settled_fingerprint(
-                    _Claim(gateway_request_id, provider, provider_request_id, billing_units, cost_usd)
-                ):
+                if isinstance(existing, bytes):
+                    try:
+                        existing = existing.decode()
+                    except UnicodeDecodeError:
+                        existing = None
+                if existing == fingerprint:
                     return
+                # Same request with the cost written differently (0.003 vs 0.0030) is a replay, but only
+                # when the stored claim is exactly the canonical string this code would have written.
+                cost_text = _stored_cost_text(existing) if existing is not None and cost_usd.is_finite() else None
+                if cost_text is not None:
+                    try:
+                        stored_cost = Decimal(cost_text)
+                    except InvalidOperation:
+                        stored_cost = None
+                    if (
+                        stored_cost is not None
+                        and stored_cost.is_finite()
+                        and stored_cost == cost_usd
+                        and existing == json.dumps(_claim_fields(*fields, cost_text), sort_keys=True)
+                    ):
+                        return
                 raise DuplicateGatewayRequestError(gateway_request_id)
             try:
                 cost_key = f"{USAGE_KEY_PREFIX}:{run_id}:cost_usd"
