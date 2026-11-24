@@ -243,6 +243,7 @@ _S1_PROBE_EXECUTES = (
     "src/optimus/agent/state_store.py",
     "src/optimus/config/gateway.py",
     "src/optimus/context/assembly.py",
+    "src/optimus/context/context_budget.py",
     "src/optimus/context/maintenance.py",
     "src/optimus/context/shipped_policy.py",
     "src/optimus/gateway/client.py",

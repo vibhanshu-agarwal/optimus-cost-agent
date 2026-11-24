@@ -4260,6 +4260,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     if not why_committed:
         expected -= {why_path}
     assert (why_path in closure) is why_committed
+    budget_path = "src/optimus/context/context_budget.py"  # Plan 12.14: the route's pack budget, imported by the shipped policy
+    budget_committed = b"from optimus.context.context_budget import" in probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/context/shipped_policy.py")
+    if not budget_committed:
+        expected -= {budget_path}
+    assert (budget_path in closure) is budget_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4290,7 +4295,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         8 if capture_committed else 0
     ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
         5 if memory_session_committed else 0
-    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed + why_committed
+    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed + why_committed + budget_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base
