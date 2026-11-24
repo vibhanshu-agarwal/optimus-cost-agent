@@ -1,0 +1,163 @@
+{
+ "schema": "plan12-memory-m2b.manifest.v1",
+ "plan": "12.14",
+ "issue": 548,
+ "recorded": "2026-11-24",
+ "recorded_by": "claude (Opus 5.5), Task 0",
+ "state": "Task 0 items 1-2 recorded; item 3 (cases, seals, sampling approval, #463 producer contract) pending the operator's sampling approval",
+ "authority": {
+  "plan_file": "docs/superpowers/plans/2026-11-23-plan-12-14-ranking-and-budgets-implementation.md",
+  "plan_sha256": "hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc",
+  "bytes_verified_at": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+  "approval": "operator, 2026-11-23, Claude's chat: \"Approve hash + D1-D7\" (quoted on #548's body)",
+  "decisions_adopted": ["D1", "D2", "D3", "D4", "D5", "D6", "D7"],
+  "implementation_gate": "Plan 12.13 (#545) closed 2026-11-24T12:17:00Z after PR #562 (merge git:5467386) and closure PR #567 (git:d43665d)",
+  "reviewer_rule": "Fable 5.2 first, then one consolidated Codex CLI review per checkpoint: codex exec -m gpt-6.2-sol -c 'model_reasoning_effort=\"high\"' -s read-only. The plan's text names gpt-6.1-sol; AGENTS.md on main and the operator's 2026-11-24 directive name gpt-6.2-sol, which governs. Reviews are posted verbatim on #548; a review is not an approval."
+ },
+ "checkout": {
+  "worktree": "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-cost-agent-wt-claude-p1214",
+  "branch": "agent/claude/p1214-impl",
+  "base": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+  "base_tree": "git:fb0302636ad3692e3e212ec2b7b84a4a76d0a016",
+  "base_committed": "2026-11-24T18:08:04+05:30",
+  "status_at_intake": "clean (git status --porcelain=v1 --untracked-files=all empty)",
+  "upstream": "unset; nothing pushed",
+  "environment": {
+   "venv": "own, uv sync --frozen --all-extras (log optimus-handoff/p1214-setup/uv-sync.log, exit 0)",
+   "python": "3.14.4",
+   "uv_lock_sha256": "hex:33dc323f8d102ea8d592768c44dedf0c07a98d67230f83426fe27b96ac840e44",
+   "pyproject_sha256": "hex:b2e64b2f5750b8f13fe700928e44e1b22aac852480da446369cef1510391e477",
+   "platform": "Windows 11 Pro 10.0.26300"
+  }
+ },
+ "drift": {
+  "plan_source": "git:8e56b3c (plus Plan 12.13's filing)",
+  "since_plan_source": "127 files changed; chiefly Plan 12.13's delivery (PR #562), its closure (#567) and #559/#565 (PR #569). The plan's named interfaces are re-verified below at the base.",
+  "open_prs": [
+   {"pr": 571, "files": ["src/optimus/agent/directives.py", "src/optimus/agent/planning_loop.py", "tests/unit/agent/test_directive_grammar_shared.py"], "overlap": "planning_loop.py holds M2a's 6/10 partition; this plan does not plan to edit it (Files and inventories). Recheck before every push."},
+   {"pr": 566, "files": "dependency-audit gate, pyproject.toml, README.md, guardrails.yml", "overlap": "pyproject.toml and README.md only; recheck at delivery"},
+   {"pr": 544, "files": "plan117 collector tools/tests", "overlap": "none"},
+   {"pr": 474, "files": "CI-recovery branch, never merged", "overlap": "none"}
+  ]
+ },
+ "labels": {
+  "issue": 548,
+  "set": "2026-11-24, as the plan proposes and the operator approved with it",
+  "values": ["status:active", "priority:high", "difficulty:high", "estimate:13d", "handler:claude", "kind:plan", "product:optimus"],
+  "removed": ["status:open", "priority:medium", "difficulty:medium", "estimate:na"]
+ },
+ "registry": "backlog live plan registry row for Plan 12.14 points to #548 (docs/superpowers/plans/2026-07-23-consolidated-deferred-followups-backlog.md line 74)",
+ "issue_custody": {
+  "#548": "this plan",
+  "#243": "child; OPEN; only D3's entry/hash/target is in scope; other routes stay unestablished and #243 open",
+  "#235": "parent umbrella; Gated reranker, outcome learning, deferred items",
+  "#463": "broad campaigns and report integration; this plan owns only its narrow producer contract (Task 0 item 3)",
+  "#491": "encryption/handoff/rotation and second-model continuity",
+  "#545": "predecessor, CLOSED"
+ },
+ "releases": {
+  "granted": [],
+  "pending": {
+   "Q": "USD 6.00, at most 96 physical attempts; needs its own release",
+   "R": "USD 0.50, at most 12 physical attempts; needs its own release",
+   "containers_zed_keyring": "each needs its own release"
+  }
+ },
+ "predecessor": {
+  "plan": "docs/superpowers/plans/archive/2026-11-23-plan-12-13-context-why-and-ambiguity-implementation_v4.md",
+  "plan_sha256": "hex:d25783eb95517c00c14d9907376e1a71c045b9c5c61235b136566263740013d3",
+  "plan_v3_sha256": "hex:26653bbc2123e66d990d37977f9ab81a6ded9121de7594e358b0c9fdad31ffa0",
+  "issue": "#545 CLOSED 2026-11-24T12:17:00Z",
+  "delivered_merge": "git:5467386 (PR #562); closure git:d43665d (PR #567)",
+  "records": "reports/plan12-memory-m2a/ (final-gates.json, closure.json, why.json, ambiguity.json, split.json, zed-ui.json, acpx.json, cache-identity.json)",
+  "note": "reports/plan12-memory-m2a/closure.json was written before the merge and still says 'pending the operator's merge go'; the terminal state is #545's (closed), per ADR-022. Not edited: it is a committed record.",
+  "interfaces_verified_at_base": {
+   "ambiguity": "src/optimus/agent/workspace_context.py and the M2a ranking (ADR-046)",
+   "why": "src/optimus/context/context_why.py present",
+   "partition": "src/optimus/agent/planning_loop.py:82-83 PLANNING_OBSERVATION_MAX_BYTES = 6 * 1024, PLANNING_NEW_READ_MAX_BYTES = 10 * 1024; line 917 asserts their sum equals DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES = 16 * 1024 (workspace_context.py:20); line 470 keeps the separate 16 KiB combined ceiling",
+   "manifest_schema": "src/optimus/context/memory_session.py:662,706 write optimus.context-manifest.v1"
+  }
+ },
+ "code_facts": {
+  "rule": "each plan statement the design relies on, read at the base",
+  "rows": [
+   {"plan": "RRF_K=60, WEIGHTS, depth 100, quota", "found": "src/context_engine/retrieval.py:19 RRF_K = 60; :21 WEIGHTS lexical 1.0 dense 1.0 structure 1.5 recency 0.25 memory 1.0; :24 CHANNEL_K = 100; :27 QUOTA dense0, lexical0, dense1, lexical1", "matches": true},
+   {"plan": "lexical_terms(task) with stop-word fallback", "found": "src/context_engine/retrieval.py:104 lexical_terms; STOP_WORDS :34", "matches": true},
+   {"plan": "25% optional signatures, remainder bodies", "found": "src/context_engine/context_pack.py:18 SIGNATURE_SHARE = 0.25", "matches": true},
+   {"plan": "assemble_pack budget_tokens; required over budget is incomplete", "found": "context_pack.py:77 assemble_pack(..., budget_tokens); :108-109 required text over budget returns an empty pack with every required path missing", "matches": true},
+   {"plan": "legacy budget min(floor(0.25*usable_input), 16,384)", "found": "src/optimus/context/memory_session.py:59-60 PACK_SHARE 0.25, PACK_MAX_TOKENS 16_384; :598 min(int(usable * PACK_SHARE), PACK_MAX_TOKENS)", "matches": true},
+   {"plan": "262,144 ceiling, reserve once", "found": "src/optimus_model_policy/registry.py:63 MAX_CONTEXT_CEILING_TOKENS = 262_144; defaults.yaml context_ceiling_tokens 262144, output_reserve_tokens implementer 32768", "matches": true},
+   {"plan": "bind_attachment() before preparation", "found": "src/optimus/context/assembly.py:529 bind_attachment", "matches": true},
+   {"plan": "indexed_chat_prefix / indexed_planner_prefix", "found": "src/optimus/agent/prompts.py:251, :259", "matches": true},
+   {"plan": "optimus_model_policy.registry.CACHE_WRITE_INPUT_MULTIPLIER = 1.25, imported by host and Gateway", "found": "only a private src/optimus_gateway/responses.py:284 _CACHE_WRITE_INPUT_MULTIPLIER = Decimal('1.25'); not in the registry", "matches": false, "disposition": "genuinely absent; Task 2 moves it to the registry as the plan states, and test_prompt_cache.py checks agreement"},
+   {"plan": "ModelEntry.context_budget.input_target_usd", "found": "absent (no context_budget in src)", "matches": false, "disposition": "genuinely absent; Task 2"},
+   {"plan": "new pack_utility.py, file_outline.py, context_budget.py, m2b_evaluate.py", "found": "absent", "matches": false, "disposition": "genuinely absent; Tasks 1-3"},
+   {"plan": "Role.EASY names the entry", "found": "registry.py:101-111 Role.EASY; IMPLEMENTER_ROLES easy, medium, complex, escalation; defaults.yaml entry anthropic/claude-haiku-5.5 (easy and summarizer)", "matches": true}
+  ]
+ },
+ "route_custody": {
+  "d3_entry": "anthropic/claude-haiku-5.5 (named via Role.EASY in src/optimus_model_policy/defaults.yaml)",
+  "price": "input USD 0.50 / M, output USD 2.50 / M (defaults.yaml)",
+  "endpoint": "anthropic, context_window_tokens 1000000, max_output_tokens 128000, verified true, observed 2026-10-09",
+  "prompt_cache": "prefix (ADR-041)",
+  "estimator": "haiku-5-5-empirical: 1 token per UTF-8 byte, 16 per message, 256 fixed, verified false",
+  "effective_hash": "SHIPPED_DEFAULTS_HASH = HAIKU_ATTACHED_HASH hex:4d2f637e822841c23ae617d352c81a6472d11771fd7cd7011b3052c12b506338 (src/optimus_model_policy/experimental.py:47-48); qualification hash hex:a015e40e341f304170048f5967146ebdbc0dafeeed5cbf2d20416fcf21fa3c73",
+  "forecast_check": {
+   "usable_input": "min(1000000, 262144) - 32768 = 229376",
+   "C": "min(floor(0.25 * 229376), 32768) = min(57344, 32768) = 32768",
+   "T_with_write": "floor(1000000 * 0.008192 / (0.50 * 1.25)) = floor(13107.2) = 13107",
+   "T_without_write": "floor(1000000 * 0.008192 / 0.50) = 16384",
+   "legacy": "min(57344, 16384) = 16384",
+   "matches_plan_forecast": true
+  },
+  "summarizer_note": "the same entry is the summarizer; the field applies across implementer roles only, never summarizers (plan Design: one preparation-time budget)",
+  "attempt_topology": {
+   "gateway_model_attempts_per_logical_request": "src/optimus_gateway/upstream_client.py:39 _MODEL_MAX_UPSTREAM_ATTEMPTS = 3",
+   "Q": "48 intended logical (36 if U=B); the 96-attempt ceiling admits every intended request only if retries stay within it; reserving 3 per logical request before sending can stop the run before all intended requests (the plan allows this: 'retries may prevent completing intended requests')",
+   "R": "4 intended x 3 = 12 = the ceiling",
+   "usd_bound": {
+    "Q_per_physical_attempt_max": "65536 x 0.50 x 1.25 / 1e6 + 2048 x 2.50 / 1e6 = 0.04096 + 0.00512 = USD 0.04608",
+    "Q_96_attempts_max": "USD 4.42 <= 6.00",
+    "R_per_physical_attempt_max": "16384 x 0.50 x 1.25 / 1e6 + 512 x 2.50 / 1e6 = USD 0.01152",
+    "R_12_attempts_max": "USD 0.14 <= 0.50",
+    "note": "estimator tokens, not provider tokens; the Gateway's own reservation and per-reply checks govern, and actual charges are recorded separately"
+   }
+  }
+ },
+ "prerequisites": [
+  {"prerequisite": "M1 pack/escalation/accounting", "plan_value": "yes", "now": "yes", "evidence": "code_facts rows above"},
+  {"prerequisite": "Delivered M2a closed/merged/evidenced", "plan_value": "no", "now": "yes", "evidence": "predecessor above"},
+  {"prerequisite": "Exact hash/decisions/issue-label writes", "plan_value": "no", "now": "yes", "evidence": "authority and labels above"},
+  {"prerequisite": "Latest-main checkout/overlap/frozen environment", "plan_value": "unknown", "now": "yes", "evidence": "checkout and drift above"},
+  {"prerequisite": "Specs/decisions/M2a interface reconciliation", "plan_value": "unknown", "now": "yes, no unresolved conflict", "evidence": "spec_reconciliation below"},
+  {"prerequisite": "Development/fresh >=40 requirements/12 paid cases", "plan_value": "no", "now": "no: drafting; the sampling rule awaits the operator's approval", "evidence": "dry pool optimus-handoff/p1214-task0/m2b-fresh3-pool.json: 15 eligible PRs, 45 requirements before source-only deduplication"},
+  {"prerequisite": "Dedicated index/artifact/live services", "plan_value": "unknown", "now": "merely unauthorized", "evidence": "Docker daemon not answering at intake (Docker Desktop's WSL distribution stopped); no p1214 container; the bge-small-en-v1.5 ONNX artifact copy exists under optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models (digest checked by setup at use); starting Docker and each container needs its own release"},
+  {"prerequisite": "Easy-route prices/hashes/attempt topology", "plan_value": "unknown", "now": "yes (verified); configuration approval of the candidate hash comes after qualification (D5)", "evidence": "route_custody above"},
+  {"prerequisite": "Windows/WSL Ubuntu-24.04/Zed/acpx capability", "plan_value": "yes", "now": "yes", "evidence": "acpx 0.12.0; WSL Ubuntu-24.04 version 2 (stopped); Zed 1.29.3 d01b134c; no operation run"},
+  {"prerequisite": "Isolated zero-paid first-prompt procedure", "plan_value": "yes", "now": "yes", "evidence": "reports/plan12-memory-m2a/zed-ui.json and reports/plan12-memory-m3-part2/zed-ui.json; instantiated only under a fresh release"},
+  {"prerequisite": "Container/Zed/keyring/Q/R operations", "plan_value": "no", "now": "no (none released)", "evidence": "releases above"},
+  {"prerequisite": "Support-review/adjudication availability", "plan_value": "unknown", "now": "arranged as CP3's Fable then Codex reviews; operator disposition for unresolved material support", "evidence": "plan Evaluation: CP3 reviewers audit unsupported claims; no paid grader"}
+ ],
+ "spec_reconciliation": {
+  "inspected": [
+   {"path": "docs/Optimus-Cost-Agent-Architecture-v2.25.pdf", "sha256": "hex:30f3992275ebf223de1f2c5217f8fff171795ba42765ccbdda655604d98638a6"},
+   {"path": "docs/Optimus-Cost-Agent-LLD-v2.48.pdf", "sha256": "hex:620ee455216572e71c28ae7923c12ccc7673659089bae01a0199e807cd44644f"},
+   {"path": "docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf", "sha256": "hex:f417e97e966e41d6603e29f19b649cfd2c810ef0aed0bf6f937f85ecbe107616"},
+   {"path": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md", "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"},
+   {"path": "docs/decisions/ADR-038-context-index-retrieval-tools-and-caching.md", "sha256": "hex:0bc18de81a0c26fae74af952fe4a3391b22c477b18a276fe375793c8b56f503e"},
+   {"path": "docs/decisions/ADR-046-context-why-ranked-ambiguity-and-6-10-partition.md", "sha256": "hex:2efc87698b406fb6b9cb0ffdd254b29fd27e4c2bd7005e6d919cc869f29ede2e"},
+   {"path": "discovery v12 (provenance only)", "sha256": "hex:33670c6b84aceccd629437c14f03609ba4293d70cde95b242dd93a2b0ad4fb14"}
+  ],
+  "findings": [
+   "ADR-038 line 51 fixes the pack budget at the smaller of a quarter of usable input and 16,384. The plan changes it only for D3's entry and names a new ADR plus index row (Files and inventories); ADR-038 is frozen and stays unchanged. Not a conflict: the plan anticipates the successor record.",
+   "ADR-038 line 64 names an agent OUTLINE tool (a whole-reply directive, results at most 8 KB). The plan's overflow outline is a different, pack-level disclosure; the new ADR must name both so they are not confused. The plan retains Agent ranged reads.",
+   "ADR-046 line 150 leaves paid answer quality, model-aware budgets and ranking refinements to Plan 12.14 (#548): consistent.",
+   "Memory spec v4 line 51 (missing required evidence gives explicit incompleteness) matches the plan's 'never silently omit required evidence' and context_pack.py's incomplete pack.",
+   "HLD/LLD/Test Strategy carry no pack-budget number, outline rule or packing utility, as Plan 12.13's reconciliation also found; nothing binds or contradicts D2-D4.",
+   "Next free ADR number at the base is 047; no open PR adds a decision record."
+  ],
+  "unresolved_authority_conflicts": []
+ },
+ "checkpoint_log": "docs/superpowers/reviews/plan-12-14-review-checkpoints.md (gitignored, Claude-owned, never staged)",
+ "evidence_roots": ["C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\p1214-*", "C:\\worktrees\\optimus-cost-agent-worktrees\\optimus-handoff\\sandbox-review-kit\\plan12-codex-cli\\round-<n>-p1214-*"]
+}
