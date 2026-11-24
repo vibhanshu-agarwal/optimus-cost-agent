@@ -1,0 +1,25 @@
+{
+ "schema": "plan12-memory-m2a.determinism.v1",
+ "head": "git:b6dd92b180685e1fab06a62e60c21ee666c4acad",
+ "phase": "determinism",
+ "inputs": {
+  "cases.json": "hex:0f76413a68fe67f60a6d0561ad89b9d5d67bfaf6cf0a8c2d8a78d85f9d8dc3a2",
+  "ranking-policy.json": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac",
+  "evaluation-contract.json": "hex:d25f23a94982644765a18483eb7fc5a75679c702d872ce79749a2841715cbccf",
+  "case-provenance.json": "hex:ef623c5c2b6f059c7c031ded5664fe34112182ee9cc972da71663d308d0b96ae"
+ },
+ "paid_attempts": 0,
+ "provider_cost_usd": "0",
+ "ambiguity": {
+  "cases": 18,
+  "reordered": "files written in opposite orders",
+  "differing": []
+ },
+ "schedules": {
+  "runs": 18,
+  "partition": "6/10",
+  "differing": []
+ },
+ "why_pages": "tests/unit/context/test_context_why.py (unit): pages are rendered from one immutable snapshot",
+ "identical": true
+}

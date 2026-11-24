@@ -1,0 +1,64 @@
+{
+  "schema": "plan12-memory-m2a.closure.v1",
+  "plan": "Plan 12.13 (M2a), #545, plan v4",
+  "issue": 545,
+  "state": "delivery ready, pending the operator's merge go; terminal closure steps run after the merge",
+  "identities": {
+    "code_head": "git:74c81e5cdd445873a9fc91a621c80ebf85988a54",
+    "merged_head": "git:a235b34ec939364fc2857a3f30d52c2c2078dcb3",
+    "ci_checkout": "git:4da81cb00dc68b44228a7080f8bf634c606ab4ea",
+    "tree": "git:1b83dce7e6ca407f5302cf8a2204966e4a0683c5",
+    "pr_head": "the records commit that adds this file; its parent is the merged head",
+    "merge_commit": "UNKNOWN until the merge"
+  },
+  "freshness": {
+    "audited_at_cp3": "README memory paragraph and coverage notes, the roadmap's 4/12 mentions, the docs and decisions index rows, ADR-046 (Proposed); Codex CP3 attempt 5 (session 01a20bc8-c8e5-7851-a49c-350184358d22) confirmed them at git:74c81e5cdd445873a9fc91a621c80ebf85988a54",
+    "main_after_ci": {
+      "main": "git:eda6e632d4dade69c6e6c11c456ae259a699f6f7",
+      "commits": [
+        "eda6e63 Merge pull request #564 from vibhanshu-agarwal/agent/claude/ledger-import-cycle",
+        "59329eb List the fresh-process import test in the serial profile rule and the reviewed launchers (#563)",
+        "38acccc Register the fresh-process import test's child and bind it to this checkout (#563)",
+        "c8cb219 Break the import cycle between the evidence ledger and usage accounting (#563)"
+      ],
+      "overlap_with_branch": [
+        "src/optimus/usage/accounting.py",
+        "tests/profiles.toml",
+        "tests/unit/evidence/test_ledger_first_import.py",
+        "tests/unit/tools/run_context_child_sites.json",
+        "tests/unit/tools/test_test_profiles.py"
+      ],
+      "assessment": "none of these files is in the branch's diff or among the seven safety modules; GitHub reports the PR CLEAN. Repeat before merge."
+    }
+  },
+  "reviews": {
+    "cp1": "round 117 ACCEPT at git:4953c51",
+    "cp2": "round 119 ACCEPT at git:1aff1c9",
+    "cp3": "round 121: attempts 1-2 REJECT (all findings fixed); attempt 3 ACCEPT at git:8cc850e; attempt 4 ACCEPT of the full-suite fix; attempt 5 final confirmation at git:74c81e5cdd445873a9fc91a621c80ebf85988a54; attempt 6 ACCEPT of the main merge at git:a235b34ec939364fc2857a3f30d52c2c2078dcb3",
+    "reviewer": "Codex CLI gpt-6.1-sol, reasoning effort high, read-only; every verdict posted verbatim on #545"
+  },
+  "final_gates": "reports/plan12-memory-m2a/final-gates.json",
+  "issue_custody": {
+    "#545": "close after the merge and the archive of plan v4; remove its status: label",
+    "#242": "close after the merge with reports/plan12-memory-m2a/ambiguity.json as acceptance evidence",
+    "#245": "close after the merge with reports/plan12-memory-m2a/split.json and calibration.json as acceptance evidence (6/10 chosen)",
+    "#235": "stays open for Plan 12.14, with every M2b exception",
+    "M2": "stays open for Plan 12.14",
+    "#243": "stays open",
+    "follow_ups": {
+      "#555": "history-blocking selection",
+      "#559": "EDIT_NOT_APPLICABLE still ends as refusal"
+    }
+  },
+  "after_merge": [
+    "record the terminal disposition on #545",
+    "archive plan v4 under the flat-archive and frozen-byte rules; repair mutable references and docs/README.md",
+    "close #545, #242 and #245 as above"
+  ],
+  "paid_calls": "0; provider cost USD 0",
+  "risks": [
+    "/why keeps no snapshot across restarts",
+    "synthetic schedules prove bounded demand-shape behavior, not production frequency or universal ranking correctness",
+    "6/10 loses 2 KiB of single-turn current-read capacity (12288 to 10240 serialized bytes)"
+  ]
+}

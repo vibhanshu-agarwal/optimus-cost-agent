@@ -1,0 +1,2308 @@
+{
+ "schema": "plan12-memory-m2a.calibration.v1",
+ "head": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
+ "phase": "calibration",
+ "inputs": {
+  "cases.json": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2",
+  "ranking-policy.json": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac",
+  "evaluation-contract.json": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390",
+  "case-provenance.json": "hex:cf65775aa6ea63fc0fcc56e733d0dde923f5070ac9a567c6cc58d3b2f54efeeb"
+ },
+ "paid_attempts": 0,
+ "provider_cost_usd": "0",
+ "splits": [
+  "train",
+  "development"
+ ],
+ "ambiguity": {
+  "rows": [
+   {
+    "id": "A01",
+    "family": "A-F1",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/agent/config.py",
+     "src/gateway/config.py",
+     "tests/fixtures/config.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 2,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A02",
+    "family": "A-F1",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/agent/config.py",
+     "src/gateway/config.py",
+     "tests/fixtures/config.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 1,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A03",
+    "family": "A-F1",
+    "split": "train",
+    "decidable": false,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/agent/config.py",
+     "src/gateway/config.py",
+     "tests/fixtures/config.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": null,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A04",
+    "family": "A-F2",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/optimus/acp/utils.py",
+     "src/optimus/context/utils.py",
+     "tools/utils.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 1,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A05",
+    "family": "A-F2",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/optimus/acp/utils.py",
+     "src/optimus/context/utils.py",
+     "tools/utils.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 2,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A06",
+    "family": "A-F2",
+    "split": "train",
+    "decidable": true,
+    "outcome": "resolved",
+    "expected": "resolved",
+    "candidates": [
+     "src/a/helpers.py"
+    ],
+    "resolved": "src/a/helpers.py",
+    "resolved_correct": true,
+    "path_only_rank": null,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A07",
+    "family": "A-F3",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/evidence_handoff/ledger/models.py",
+     "src/optimus/agent/models.py",
+     "src/optimus_gateway/models.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 2,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A08",
+    "family": "A-F3",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/evidence_handoff/ledger/models.py",
+     "src/optimus/agent/models.py",
+     "src/optimus_gateway/models.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 3,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A09",
+    "family": "A-F3",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop_then_exact_retry",
+    "candidates": [
+     "src/evidence_handoff/ledger/models.py",
+     "src/optimus/agent/models.py",
+     "src/optimus_gateway/models.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 3,
+    "wrong_target_selections": 0,
+    "retry": {
+     "outcome": "resolved",
+     "resolved": "src/optimus_gateway/models.py"
+    }
+   },
+   {
+    "id": "A10",
+    "family": "A-F4",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "tests/integration/acp/test_session.py",
+     "tests/unit/acp/test_session.py",
+     "tests/unit/context/test_session.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 3,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A11",
+    "family": "A-F4",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "tests/integration/acp/test_session.py",
+     "tests/unit/acp/test_session.py",
+     "tests/unit/context/test_session.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 1,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A12",
+    "family": "A-F4",
+    "split": "train",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop_then_exact_retry",
+    "candidates": [
+     "tests/integration/acp/test_session.py",
+     "tests/unit/acp/test_session.py",
+     "tests/unit/context/test_session.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 1,
+    "wrong_target_selections": 0,
+    "retry": {
+     "outcome": "not_found",
+     "resolved": null
+    }
+   },
+   {
+    "id": "A13",
+    "family": "A-F5",
+    "split": "development",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "docs/x/schema.json",
+     "reports/a/schema.json",
+     "src/optimus/acp/schema.json"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 3,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A14",
+    "family": "A-F5",
+    "split": "development",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "docs/x/schema.json",
+     "reports/a/schema.json",
+     "src/optimus/acp/schema.json"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 3,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A15",
+    "family": "A-F5",
+    "split": "development",
+    "decidable": false,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "docs/x/schema.json",
+     "reports/a/schema.json",
+     "src/optimus/acp/schema.json"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": null,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A16",
+    "family": "A-F6",
+    "split": "development",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/optimus/acp/client.py",
+     "src/optimus/mcp/client.py",
+     "src/optimus_gateway/client.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 1,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A17",
+    "family": "A-F6",
+    "split": "development",
+    "decidable": true,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/optimus/acp/client.py",
+     "src/optimus/mcp/client.py",
+     "src/optimus_gateway/client.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": 2,
+    "wrong_target_selections": 0
+   },
+   {
+    "id": "A18",
+    "family": "A-F6",
+    "split": "development",
+    "decidable": false,
+    "outcome": "ambiguous_stop",
+    "expected": "ambiguous_stop",
+    "candidates": [
+     "src/optimus/acp/client.py",
+     "src/optimus/mcp/client.py",
+     "src/optimus_gateway/client.py"
+    ],
+    "resolved": null,
+    "resolved_correct": null,
+    "path_only_rank": null,
+    "wrong_target_selections": 0
+   }
+  ],
+  "scores": {
+   "development": {
+    "decidable": 4,
+    "undecidable": 2,
+    "ranked_cases": 4,
+    "path_only_top_one": 0.25,
+    "path_only_reciprocal_rank": 0.5416666666666666,
+    "oracle_regret": 0.25,
+    "wrong_target_selections": 0
+   },
+   "train": {
+    "decidable": 11,
+    "undecidable": 1,
+    "ranked_cases": 10,
+    "path_only_top_one": 0.4,
+    "path_only_reciprocal_rank": 0.65,
+    "oracle_regret": 0.22727272727272727,
+    "wrong_target_selections": 0
+   }
+  }
+ },
+ "split": {
+  "completion_scope": "demand-only: a plan, no parse failure, and exactly the expected evidence records (path, range, file sha256, whole payload). Route fitting (ContextPacker.fit) is UNRUN here and is checked in Task 3; contract-qualified completion needs it.",
+  "boundaries": {
+   "S02": {
+    "totals": {
+     "observations": 4096,
+     "current_reads": 875
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 300,
+      "range_bytes": [
+       713,
+       713,
+       713,
+       713,
+       713,
+       713
+      ]
+     },
+     {
+      "observation_text_bytes": 1248,
+      "range_bytes": [
+       713
+      ]
+     }
+    ]
+   },
+   "S03": {
+    "totals": {
+     "observations": 4097,
+     "current_reads": 875
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 300,
+      "range_bytes": [
+       713,
+       713,
+       713,
+       713,
+       713,
+       713
+      ]
+     },
+     {
+      "observation_text_bytes": 1249,
+      "range_bytes": [
+       713
+      ]
+     }
+    ]
+   },
+   "S05": {
+    "totals": {
+     "observations": 6144,
+     "current_reads": 875
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 450,
+      "range_bytes": [
+       713,
+       713,
+       713,
+       713,
+       713
+      ]
+     },
+     {
+      "observation_text_bytes": 2992,
+      "range_bytes": [
+       713
+      ]
+     }
+    ]
+   },
+   "S10": {
+    "totals": {
+     "observations": 1352,
+     "current_reads": 12288
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 120,
+      "range_bytes": [
+       2337,
+       2337,
+       2337,
+       2337,
+       2153
+      ]
+     }
+    ]
+   },
+   "S11": {
+    "totals": {
+     "observations": 1352,
+     "current_reads": 12289
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 120,
+      "range_bytes": [
+       2337,
+       2337,
+       2337,
+       2337,
+       2154
+      ]
+     }
+    ]
+   },
+   "S13": {
+    "totals": {
+     "observations": 1402,
+     "current_reads": 10240
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 200,
+      "range_bytes": [
+       2337,
+       2337,
+       2337,
+       2599
+      ]
+     }
+    ]
+   },
+   "S18": {
+    "totals": {
+     "observations": 2048,
+     "current_reads": 14336
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 753,
+      "range_bytes": [
+       1200
+      ]
+     },
+     {
+      "observation_text_bytes": 40,
+      "range_bytes": [
+       2337,
+       2337,
+       2337,
+       2337,
+       2337,
+       1707
+      ]
+     }
+    ]
+   },
+   "S19": {
+    "totals": {
+     "observations": 8192,
+     "current_reads": 8192
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 7275,
+      "range_bytes": [
+       1500
+      ]
+     },
+     {
+      "observation_text_bytes": 40,
+      "range_bytes": [
+       2337,
+       2337,
+       2337,
+       549
+      ]
+     }
+    ]
+   },
+   "S22": {
+    "totals": {
+     "observations": 6144,
+     "current_reads": 10240
+    },
+    "rounds": [
+     {
+      "observation_text_bytes": 5037,
+      "range_bytes": [
+       1500
+      ]
+     },
+     {
+      "observation_text_bytes": 40,
+      "range_bytes": [
+       2337,
+       2337,
+       2337,
+       2337,
+       103
+      ]
+     }
+    ]
+   }
+  },
+  "runs": {
+   "2/14": {
+    "S01": {
+     "id": "S01",
+     "partition": "2/14",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 12 expected)",
+      "read blocks differ (0 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_UNPARSEABLE_RESPONSE",
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S02": {
+     "id": "S02",
+     "partition": "2/14",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1403,
+      "current_reads": 875
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S03": {
+     "id": "S03",
+     "partition": "2/14",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1404,
+      "current_reads": 875
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S04": {
+     "id": "S04",
+     "partition": "2/14",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 10 expected)",
+      "read blocks differ (0 found, 10 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S05": {
+     "id": "S05",
+     "partition": "2/14",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 6 expected)",
+      "read blocks differ (0 found, 1 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_UNPARSEABLE_RESPONSE",
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "development",
+     "shape": "observation_heavy"
+    },
+    "S06": {
+     "id": "S06",
+     "partition": "2/14",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 10 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_UNPARSEABLE_RESPONSE",
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "development",
+     "shape": "observation_heavy"
+    },
+    "S09": {
+     "id": "S09",
+     "partition": "2/14",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1352,
+      "current_reads": 12472
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S10": {
+     "id": "S10",
+     "partition": "2/14",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1352,
+      "current_reads": 12288
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S11": {
+     "id": "S11",
+     "partition": "2/14",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1352,
+      "current_reads": 12289
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S12": {
+     "id": "S12",
+     "partition": "2/14",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (3 found, 7 expected)",
+      "read blocks differ (3 found, 4 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 904,
+      "current_reads": 5875
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S13": {
+     "id": "S13",
+     "partition": "2/14",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1402,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "shape": "read_heavy"
+    },
+    "S14": {
+     "id": "S14",
+     "partition": "2/14",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1402,
+      "current_reads": 9978
+     },
+     "split": "development",
+     "shape": "read_heavy"
+    },
+    "S17": {
+     "id": "S17",
+     "partition": "2/14",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (3 found, 7 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1663,
+      "current_reads": 7495
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S18": {
+     "id": "S18",
+     "partition": "2/14",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2048,
+      "current_reads": 14336
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S19": {
+     "id": "S19",
+     "partition": "2/14",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 5 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 764,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S20": {
+     "id": "S20",
+     "partition": "2/14",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 900,
+      "current_reads": 1740
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S21": {
+     "id": "S21",
+     "partition": "2/14",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 9 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2010,
+      "current_reads": 6638
+     },
+     "split": "development",
+     "shape": "mixed"
+    },
+    "S22": {
+     "id": "S22",
+     "partition": "2/14",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 954,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "shape": "mixed"
+    }
+   },
+   "4/12": {
+    "S01": {
+     "id": "S01",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (6 found, 12 expected)",
+      "read blocks differ (6 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2693,
+      "current_reads": 5213
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S02": {
+     "id": "S02",
+     "partition": "4/12",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4096,
+      "current_reads": 875
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S03": {
+     "id": "S03",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (6 found, 7 expected)",
+      "read blocks differ (6 found, 1 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2693,
+      "current_reads": 5213
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S04": {
+     "id": "S04",
+     "partition": "4/12",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4004,
+      "current_reads": 5574
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S05": {
+     "id": "S05",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)",
+      "read blocks differ (5 found, 1 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2997,
+      "current_reads": 4347
+     },
+     "split": "development",
+     "shape": "observation_heavy"
+    },
+    "S06": {
+     "id": "S06",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 10 expected)",
+      "read blocks differ (5 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2997,
+      "current_reads": 4347
+     },
+     "split": "development",
+     "shape": "observation_heavy"
+    },
+    "S09": {
+     "id": "S09",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S10": {
+     "id": "S10",
+     "partition": "4/12",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1352,
+      "current_reads": 12288
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S11": {
+     "id": "S11",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S12": {
+     "id": "S12",
+     "partition": "4/12",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2115,
+      "current_reads": 8639
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S13": {
+     "id": "S13",
+     "partition": "4/12",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1402,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "shape": "read_heavy"
+    },
+    "S14": {
+     "id": "S14",
+     "partition": "4/12",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1402,
+      "current_reads": 9978
+     },
+     "split": "development",
+     "shape": "read_heavy"
+    },
+    "S17": {
+     "id": "S17",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 7 expected)",
+      "read blocks differ (4 found, 3 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2602,
+      "current_reads": 5430
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S18": {
+     "id": "S18",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 906,
+      "current_reads": 1360
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S19": {
+     "id": "S19",
+     "partition": "4/12",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 5 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 764,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S20": {
+     "id": "S20",
+     "partition": "4/12",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 900,
+      "current_reads": 1740
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S21": {
+     "id": "S21",
+     "partition": "4/12",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 9 expected)",
+      "read blocks differ (5 found, 4 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_OBSERVATION_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2497,
+      "current_reads": 5282
+     },
+     "split": "development",
+     "shape": "mixed"
+    },
+    "S22": {
+     "id": "S22",
+     "partition": "4/12",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (5 found, 6 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 954,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "shape": "mixed"
+    }
+   },
+   "6/10": {
+    "S01": {
+     "id": "S01",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 5404,
+      "current_reads": 5231
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S02": {
+     "id": "S02",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4096,
+      "current_reads": 875
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S03": {
+     "id": "S03",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4097,
+      "current_reads": 875
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S04": {
+     "id": "S04",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4004,
+      "current_reads": 5574
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S05": {
+     "id": "S05",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 6144,
+      "current_reads": 875
+     },
+     "split": "development",
+     "shape": "observation_heavy"
+    },
+    "S06": {
+     "id": "S06",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 6009,
+      "current_reads": 4362
+     },
+     "split": "development",
+     "shape": "observation_heavy"
+    },
+    "S09": {
+     "id": "S09",
+     "partition": "6/10",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S10": {
+     "id": "S10",
+     "partition": "6/10",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S11": {
+     "id": "S11",
+     "partition": "6/10",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S12": {
+     "id": "S12",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 2115,
+      "current_reads": 8639
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S13": {
+     "id": "S13",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1402,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "shape": "read_heavy"
+    },
+    "S14": {
+     "id": "S14",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 1402,
+      "current_reads": 9978
+     },
+     "split": "development",
+     "shape": "read_heavy"
+    },
+    "S17": {
+     "id": "S17",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4265,
+      "current_reads": 7495
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S18": {
+     "id": "S18",
+     "partition": "6/10",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 906,
+      "current_reads": 1360
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S19": {
+     "id": "S19",
+     "partition": "6/10",
+     "completed": false,
+     "planned": true,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (4 found, 5 expected)"
+     ],
+     "stop": null,
+     "parse_failures": [
+      "OBSERVATION_TOO_LARGE"
+     ],
+     "budget_stop": true,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 764,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S20": {
+     "id": "S20",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 900,
+      "current_reads": 1740
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S21": {
+     "id": "S21",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4507,
+      "current_reads": 6638
+     },
+     "split": "development",
+     "shape": "mixed"
+    },
+    "S22": {
+     "id": "S22",
+     "partition": "6/10",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 6144,
+      "current_reads": 10240
+     },
+     "split": "development",
+     "shape": "mixed"
+    }
+   },
+   "8/8": {
+    "S01": {
+     "id": "S01",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 5404,
+      "current_reads": 5231
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S02": {
+     "id": "S02",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4096,
+      "current_reads": 875
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S03": {
+     "id": "S03",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4097,
+      "current_reads": 875
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S04": {
+     "id": "S04",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4004,
+      "current_reads": 5574
+     },
+     "split": "train",
+     "shape": "observation_heavy"
+    },
+    "S05": {
+     "id": "S05",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 6144,
+      "current_reads": 875
+     },
+     "split": "development",
+     "shape": "observation_heavy"
+    },
+    "S06": {
+     "id": "S06",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 6009,
+      "current_reads": 4362
+     },
+     "split": "development",
+     "shape": "observation_heavy"
+    },
+    "S09": {
+     "id": "S09",
+     "partition": "8/8",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S10": {
+     "id": "S10",
+     "partition": "8/8",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S11": {
+     "id": "S11",
+     "partition": "8/8",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 5 expected)",
+      "read blocks differ (0 found, 5 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S12": {
+     "id": "S12",
+     "partition": "8/8",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (3 found, 7 expected)",
+      "read blocks differ (3 found, 4 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 904,
+      "current_reads": 5875
+     },
+     "split": "train",
+     "shape": "read_heavy"
+    },
+    "S13": {
+     "id": "S13",
+     "partition": "8/8",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 4 expected)",
+      "read blocks differ (0 found, 4 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "development",
+     "shape": "read_heavy"
+    },
+    "S14": {
+     "id": "S14",
+     "partition": "8/8",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (0 found, 4 expected)",
+      "read blocks differ (0 found, 4 expected)",
+      "1 requests, 2 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 1,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 0,
+      "current_reads": 0
+     },
+     "split": "development",
+     "shape": "read_heavy"
+    },
+    "S17": {
+     "id": "S17",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4265,
+      "current_reads": 7495
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S18": {
+     "id": "S18",
+     "partition": "8/8",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 7 expected)",
+      "read blocks differ (1 found, 6 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 906,
+      "current_reads": 1360
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S19": {
+     "id": "S19",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 8192,
+      "current_reads": 8192
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S20": {
+     "id": "S20",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 900,
+      "current_reads": 1740
+     },
+     "split": "train",
+     "shape": "mixed"
+    },
+    "S21": {
+     "id": "S21",
+     "partition": "8/8",
+     "completed": true,
+     "planned": true,
+     "evidence_complete": true,
+     "evidence_problems": [],
+     "stop": null,
+     "parse_failures": [],
+     "budget_stop": false,
+     "requests": 3,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 4507,
+      "current_reads": 6638
+     },
+     "split": "development",
+     "shape": "mixed"
+    },
+    "S22": {
+     "id": "S22",
+     "partition": "8/8",
+     "completed": false,
+     "planned": false,
+     "evidence_complete": false,
+     "evidence_problems": [
+      "observation records differ (1 found, 6 expected)",
+      "read blocks differ (1 found, 5 expected)",
+      "2 requests, 3 expected"
+     ],
+     "stop": "PLANNING_READ_BUDGET_EXHAUSTED",
+     "parse_failures": [],
+     "budget_stop": true,
+     "requests": 2,
+     "weakened": false,
+     "route_fit": "UNRUN",
+     "cost_usd": "0",
+     "measured": {
+      "observations": 5190,
+      "current_reads": 1660
+     },
+     "split": "development",
+     "shape": "mixed"
+    }
+   }
+  },
+  "summary": {
+   "2/14": {
+    "train": {
+     "completed": 5,
+     "of": 12,
+     "budget_stops": 7,
+     "other_stops": 0,
+     "parse_failures": 6
+    },
+    "development": {
+     "completed": 2,
+     "of": 6,
+     "budget_stops": 4,
+     "other_stops": 0,
+     "parse_failures": 4
+    }
+   },
+   "4/12": {
+    "train": {
+     "completed": 5,
+     "of": 12,
+     "budget_stops": 7,
+     "other_stops": 0,
+     "parse_failures": 1
+    },
+    "development": {
+     "completed": 2,
+     "of": 6,
+     "budget_stops": 4,
+     "other_stops": 0,
+     "parse_failures": 1
+    }
+   },
+   "6/10": {
+    "train": {
+     "completed": 7,
+     "of": 12,
+     "budget_stops": 5,
+     "other_stops": 0,
+     "parse_failures": 1
+    },
+    "development": {
+     "completed": 6,
+     "of": 6,
+     "budget_stops": 0,
+     "other_stops": 0,
+     "parse_failures": 0
+    }
+   },
+   "8/8": {
+    "train": {
+     "completed": 7,
+     "of": 12,
+     "budget_stops": 5,
+     "other_stops": 0,
+     "parse_failures": 0
+    },
+    "development": {
+     "completed": 3,
+     "of": 6,
+     "budget_stops": 3,
+     "other_stops": 0,
+     "parse_failures": 0
+    }
+   }
+  },
+  "choice": {
+   "chosen": null,
+   "baseline_completed": 7,
+   "rejected": {
+    "2/14": "loses baseline-success schedules: S02, S04, S12",
+    "6/10": "loses baseline-success schedules: S10",
+    "8/8": "loses baseline-success schedules: S10, S12, S13, S14"
+   },
+   "eligible": [
+    {
+     "partition": "4/12",
+     "completed": 7,
+     "budget_stops": 11
+    }
+   ]
+  }
+ }
+}

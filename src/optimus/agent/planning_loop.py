@@ -77,8 +77,10 @@ PlanningAttemptCallback = Callable[[int, int, tuple[ProviderAttempt, ...], Any, 
 # A request whose required notice was not delivered: never sent, so it certainly cost nothing.
 _NOT_SENT = ProviderAttempt(number=1, outcome="not_sent", cost_usd=Decimal("0"))
 
-PLANNING_OBSERVATION_MAX_BYTES = 4 * 1024
-PLANNING_NEW_READ_MAX_BYTES = 12 * 1024
+# Plan 12.13 #245: the 6/10 partition chosen by the frozen v4 calibration (reports/plan12-memory-m2a/calibration.json);
+# the 16 KiB combined ceiling is unchanged, and one turn's current reads lose 2 KiB (split.json).
+PLANNING_OBSERVATION_MAX_BYTES = 6 * 1024
+PLANNING_NEW_READ_MAX_BYTES = 10 * 1024
 _PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
@@ -1694,10 +1696,10 @@ class _PlanningIterationRunner:
                     raise _PermanentStop("gateway attempt suppressed by turn control")
             if self._context_packer is not None:
                 # Plan 12.2 Task 10: the attached meter reads only inputs actually sent.
-                self._context_packer.record_dispatch(prompt)
+                self._context_packer.record_dispatch(prompt, planning_round=planning_turn, attempt=wire_attempt)
             elif self._route_binder is not None:
                 # Release supplement V1: without an engine, the request meter reads the bound route's capacity.
-                self._route_binder.record_dispatch(prompt)
+                self._route_binder.record_dispatch(prompt, planning_round=planning_turn, attempt=wire_attempt)
             metadata: dict[str, Any] = {
                 "run_id": self._run_id,
                 "session_id": self._session_id,
@@ -1875,6 +1877,11 @@ class _PlanningIterationRunner:
             # fitted to the route's usable input, repacking the history view when needed (Plan 12.2
             # Task 9). Nothing that does not fit is sent.
             fitted = self._context_packer.fit(build)
+            # Each round's preparation, sent or not, for /why (Plan 12.13, frozen case E09; Codex CP3 review 2, finding 1).
+            # Packers that predate the fact (test doubles) have none.
+            prepared = getattr(self._context_packer, "record_preparation", None)
+            if callable(prepared):
+                prepared(planning_turn, fitted=fitted is not None)
             if fitted is None and self._halt_requested():
                 return self._typed_planning_failure(
                     stop_reason="PLANNING_HALTED",

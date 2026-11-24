@@ -729,7 +729,8 @@ async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp
         }
     )
 
-    assert response["result"]["stopReason"] == "refusal"
+    # end_turn, not refusal: Zed rewinds a refused turn and shows only a generic banner (Plan 12.13 Task 4, live Zed)
+    assert response["result"]["stopReason"] == "end_turn"
     messages = [
         item["params"]["update"]["content"]["text"]
         for item in outbound.notifications

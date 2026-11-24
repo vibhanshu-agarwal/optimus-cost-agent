@@ -30,13 +30,17 @@ from context_engine.retrieval import RRF_K, WEIGHTS, CatalogueFile, Retrieval, R
 from optimus.acp.trusted_paths import TrustedPathError, resolve_workspace_identity
 from optimus.agent.workspace_context import (
     DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES,
+    NO_HINTS,
+    RankingHints,
     WorkspaceContextResult,
     WorkspaceReferenceDiagnostic,
     WorkspaceReferenceStatus,
     assemble_workspace_context_for_prompt,
     blocking_from_diagnostics,
     extract_file_references,
+    rank_ambiguity,
     resolve_task_references,
+    verified_hints,
 )
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.context.index_tools import IndexTools
@@ -72,6 +76,7 @@ _MAX_DIRTY_CHECKED: Final = 64
 BRANCH_MOVED: Final = "BRANCH_MOVED"
 _QUERY_CHARS: Final = 2_000
 _MAX_SYMBOLS: Final = 8
+_HINT_QUERIES: Final = 16  # shortcut: label queries for the first 16 candidates; the rest keep the map's symbols
 # A name someone wrote as code: backticked, dotted, or with an inner capital or underscore. Ordinary words are not symbols.
 _SYMBOL_WORD = re.compile(r"`([A-Za-z_][\w.]*)`|\b([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+|[a-z]+[A-Z]\w*|[A-Z][a-z0-9]+[A-Z]\w*|[a-z]+_\w+)\b")
 _BACKTICKED = re.compile(r"`([A-Za-z_][\w.]*)`")
@@ -166,6 +171,7 @@ class _CachedMap:
     at: float
     files: list[MapFile]
     hashes: dict[str, str]
+    epoch: int = 0  # the generation the hashes and symbols are from
 
 
 class MemorySession:
@@ -454,7 +460,8 @@ class MemorySession:
                 if current:
                     catalogue = read_catalogue(scope.storage, current["epoch"])  # exactly this epoch: its hashes are what the symbols below are checked against
                     self._publish_catalogue(scope, current["epoch"], self._clock(), catalogue, bool(current["coverage"].get("complete")))  # the turn's retrieval needs the same pages
-                    cached = _CachedMap(scope.identity, self._clock(), seed_files(scope.storage, current["epoch"], catalogue), {item.path: item.file_hash for item in catalogue})
+                    cached = _CachedMap(scope.identity, self._clock(), seed_files(scope.storage, current["epoch"], catalogue), {item.path: item.file_hash for item in catalogue},
+                                        current["epoch"])
                     self._map = cached
                 elif cached is None:
                     return ""
@@ -492,6 +499,34 @@ class MemorySession:
                 return built
             files = kept
         return RepoMap("", 0, len(files))
+
+    def hints_for(self, scope: _Scope) -> Callable[[Sequence[str], Sequence[str]], RankingHints]:
+        """An ambiguous reference's verified hints (Plan 12.13 #242), from this scope's map. A turn assembles before its prompt reads the
+        map, so the first ambiguity of a session reads it here, once (Task 4's real-index run found the hints missing). None can be read:
+        no hints. A label comes from the map's own generation, and only for a file whose bytes still match it; a failed query falls
+        back to the map."""
+
+        def held() -> _CachedMap | None:
+            return self._map if self._map is not None and self._map.identity == scope.identity else None
+
+        def hints(candidates: Sequence[str], resolved: Sequence[str]) -> RankingHints:
+            cached = held()
+            if cached is None:
+                self.repo_map(scope)  # the turn's prompt reads the same map next, from this cache
+                cached = held()
+            if cached is None:
+                return NO_HINTS
+            files = {item.path: item for item in cached.files}
+            for path in [path for path in candidates if path in files][:_HINT_QUERIES]:
+                try:
+                    reply = scope.storage.call("query", mode="path", epoch=cached.epoch, path_id=path_id(path), k=20, kinds=["symbol", "section"])
+                except (StorageRefusedError, StorageUnavailableError):
+                    continue
+                labels = sorted({record.get("symbol") or record.get("label") or "" for record in reply.get("records", ())} - {""})
+                files[path] = MapFile(path, files[path].imports, tuple(labels))
+            return verified_hints(candidates, resolved, files=list(files.values()), hashes=cached.hashes, read=self._read)
+
+        return hints
 
     def write_manifest(self, run_id: str, document: Mapping[str, Any]) -> None:
         """An explanation of one turn's selection, never a historical pack: paths, hashes, symbols, ranks and reasons. Failing to
@@ -563,6 +598,7 @@ class MemoryTurn:
         budget = min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
         with self._session.foreground():
             diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(extract_file_references(selection_text)))
+            diagnostics = rank_ambiguity(diagnostics, task, self._session.hints_for(self._scope))
             stop_reason, message = blocking_from_diagnostics(diagnostics)
             if stop_reason is not None:
                 return self._blocked(diagnostics, stop_reason, message)
@@ -570,7 +606,7 @@ class MemoryTurn:
             self._capture_buffers(required)
         retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task)
         if retrieval.state != "ok" or pack is None:
-            return self._today(task=selection_text, retrieval=retrieval)
+            return self._today(task=selection_text, retrieval=retrieval, prompt=task)
         if not pack.complete:
             return self._incomplete(diagnostics, pack)
         coverage_line = self._coverage_line(retrieval, pack)
@@ -619,9 +655,9 @@ class MemoryTurn:
             time.sleep(_RECONCILE_WAIT_SECONDS)
         raise AssertionError("unreachable")
 
-    def _today(self, *, task: str, retrieval: Retrieval) -> WorkspaceContextResult:
+    def _today(self, *, task: str, retrieval: Retrieval, prompt: str | None = None) -> WorkspaceContextResult:
         self._overlay.clear()  # today's selection reads disk, so nothing else this turn may see other text
-        result = assemble_workspace_context_for_prompt(self._session.policy.root, task=task)
+        result = assemble_workspace_context_for_prompt(self._session.policy.root, task=task, prompt=prompt)
         line = f"Context index: no usable generation ({retrieval.state}). These files are today's selection, not a ranked search."
         self.manifest = {"schema": "optimus.context-manifest.v1", "run_id": self._run_id, "retrieval": {"state": retrieval.state, "channels": dict(retrieval.channels)}}
         self._session.write_manifest(self._run_id, self.manifest)

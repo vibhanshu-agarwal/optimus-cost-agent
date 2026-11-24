@@ -1,0 +1,216 @@
+{
+ "schema": "plan12-memory-m2a.prerequisites.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "recorded": "2026-11-23",
+ "source_commit": "git:6f696a8118c76d8facbdd88a5b50d107c82b3e2d",
+ "rows": [
+  {
+   "prerequisite": "M1 pack/manifest, ambiguity stop, partition, served-memory records",
+   "plan_value": "yes",
+   "now": "yes",
+   "evidence": "workspace_context._blocking_from_diagnostics stops with AMBIGUOUS_WORKSPACE_REFERENCE and sorted candidates, shared by MemorySession (memory_session.py lines 566, 650); planning_loop.py PLANNING_OBSERVATION_MAX_BYTES 4096 + PLANNING_NEW_READ_MAX_BYTES 12288 = DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES 16384 (asserted at import)"
+  },
+  {
+   "prerequisite": "Exact v3 hash/D1-D4",
+   "plan_value": "no",
+   "now": "yes",
+   "evidence": "operator 2026-11-23 'Approve hash + D1-D4'; bytes verified (authority.json)"
+  },
+  {
+   "prerequisite": "Issue, relationships, assessed labels",
+   "plan_value": "no",
+   "now": "yes",
+   "evidence": "#545 filed; sub-issues 242, 245; parent 235; labels assessed 2026-11-23 (authority.json labels)"
+  },
+  {
+   "prerequisite": "Checkout/base/overlap/environment refresh",
+   "plan_value": "unknown",
+   "now": "yes",
+   "evidence": "own worktree and venv; main 6f696a8, one Ruff-config commit after cc121ce, no overlap with open PRs (authority.json drift)"
+  },
+  {
+   "prerequisite": "Complete /why snapshot/command",
+   "plan_value": "no",
+   "now": "no",
+   "evidence": "genuinely absent; built in Task 2 (no /why in the command catalogue at 6f696a8)"
+  },
+  {
+   "prerequisite": "Frozen M2a cases/oracles",
+   "plan_value": "no",
+   "now": "yes: cases v3 after CP1 review 1 (v2 schedule repair accepted; E12 corrected)",
+   "evidence": "frozen_inputs below"
+  },
+  {
+   "prerequisite": "This run's dedicated index/store and configured embedding artifact",
+   "plan_value": "unknown",
+   "now": "released for Task 1 (operator 2026-11-23 'Release both, start'); the test memory store is not released",
+   "evidence": "Docker 29.9.3 present (server answers); no p1213 container exists; ports 6397 and 6398 not listening at intake; M1 image digest known (setup.json); a copy of Qdrant/bge-small-en-v1.5-onnx-Q exists under optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models (its digest is checked by setup at use); each needs its own release; Task 1 index-check.json ran on p1213-index-test-redis with the bge-small-en-v1.5 artifact and removed both afterwards"
+  },
+  {
+   "prerequisite": "Windows, WSL Ubuntu-24.04, acpx, real Zed capability",
+   "plan_value": "yes",
+   "now": "yes",
+   "evidence": "acpx 0.12.0; WSL Ubuntu-24.04 (version 2, stopped); Zed 1.29.3 (d01b134c); Windows 11 Pro 10.0.26300; no new operation run"
+  },
+  {
+   "prerequisite": "Isolated Gateway/zero-paid first-prompt procedure",
+   "plan_value": "yes",
+   "now": "yes",
+   "evidence": "reports/plan12-memory-m3-part2/zed-ui.json (own Gateway port, stub upstream, first-prompt gate); to be instantiated under a fresh release"
+  },
+  {
+   "prerequisite": "Keyboard/screenshots",
+   "plan_value": "unknown",
+   "now": "needs the operator per Zed session",
+   "evidence": "merely unauthorized: asked for with the Zed release"
+  },
+  {
+   "prerequisite": "Paid capability",
+   "plan_value": "yes",
+   "now": "unneeded",
+   "evidence": "attempts and USD maximum zero"
+  }
+ ],
+ "spec_reconciliation": {
+  "inspected": [
+   {
+    "path": "docs/Optimus-Cost-Agent-Architecture-v2.25.pdf",
+    "sha256": "hex:30f3992275ebf223de1f2c5217f8fff171795ba42765ccbdda655604d98638a6"
+   },
+   {
+    "path": "docs/Optimus-Cost-Agent-LLD-v2.48.pdf",
+    "sha256": "hex:620ee455216572e71c28ae7923c12ccc7673659089bae01a0199e807cd44644f"
+   },
+   {
+    "path": "docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf",
+    "sha256": "hex:f417e97e966e41d6603e29f19b649cfd2c810ef0aed0bf6f937f85ecbe107616"
+   },
+   {
+    "path": "docs/superpowers/specs/2026-10-22-plan12-memory-design_v4.md",
+    "sha256": "hex:708e0e7831f6d4c56b5f6442cd37c4e02eecffd2659db04f3e6a6b1c54506ff9"
+   },
+   {
+    "path": "docs/decisions (ADR-001..045, README index)",
+    "sha256": "n/a: read at the source commit"
+   }
+  ],
+  "findings": [
+   "HLD/LLD/Test Strategy carry no /why, reference-ranking or observation/read-split rule, so nothing in them binds or contradicts D2-D4",
+   "memory spec v4 line 21 lists the canonical order M3 -> M2; the operator's 2026-11-22 ruling (M2 before M3 . 3, split M2a/M2b) and discovery v12 (M2 depends only on M1) are recorded in the approved plan, and M3 . 1 and M3 . 2 are delivered, so only encryption (#491) follows: reconciled, no conflict",
+   "memory spec v4 line 51 (missing required evidence gives explicit incompleteness) matches the #245 completeness rule",
+   "ADR-038 names /why as M2; ADR-044 rule 1 (commands recognized before inference, on the bound user-command channel) and rule 11 (zero inference) match the /why design",
+   "ADR-043 (durable sessions, sealed history only; P1-P6 unreleased) is consistent with D2: the /why snapshot is RAM-only and not part of sealed history, so resume reports it unavailable",
+   "ADR-039/041 breakpoint after the map is preserved; no record pins the 4/12 split (grep of docs/decisions and docs/context-window-optimization-strategy.md)",
+   "next free ADR number is 046 at the source commit; no open PR adds a decision record"
+  ],
+  "unresolved_authority_conflicts": []
+ },
+ "frozen_inputs": {
+  "frozen_on": "2026-11-23",
+  "files": [
+   {
+    "path": "reports/plan12-memory-m2a/cases.json",
+    "sha256": "hex:0f76413a68fe67f60a6d0561ad89b9d5d67bfaf6cf0a8c2d8a78d85f9d8dc3a2"
+   },
+   {
+    "path": "reports/plan12-memory-m2a/ranking-policy.json",
+    "sha256": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac"
+   },
+   {
+    "path": "reports/plan12-memory-m2a/evaluation-contract.json",
+    "sha256": "hex:d25f23a94982644765a18483eb7fc5a75679c702d872ce79749a2841715cbccf"
+   },
+   {
+    "path": "reports/plan12-memory-m2a/case-provenance.json",
+    "sha256": "hex:ef623c5c2b6f059c7c031ded5664fe34112182ee9cc972da71663d308d0b96ae"
+   }
+  ],
+  "counts": {
+   "ambiguity": 24,
+   "split_schedules": 24,
+   "explanation": 12
+  },
+  "shapes": {
+   "observation_heavy": 8,
+   "read_heavy": 8,
+   "mixed": 8
+  },
+  "splits": "family-separated; ambiguity 12/6/6, schedules 12/6/6, explanation 6/3/3 (train/development/held_out)",
+  "review": "Codex CLI CP2 rules on v4 with the v4 calibration rerun; a later change produces new digests and a recorded successor disposition",
+  "history": [
+   {
+    "version": "v1",
+    "frozen_on": "2026-11-23",
+    "commit": "git:24a6c27358ff46bdbb7c5e7c2e1620e4c6e5cfe4",
+    "files": [
+     {
+      "path": "reports/plan12-memory-m2a/cases.json",
+      "sha256": "hex:8cab175f2d32583cfeeeefb46895abae8b253c097cdd66e839a5d637123a74b5"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/ranking-policy.json",
+      "sha256": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/evaluation-contract.json",
+      "sha256": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/case-provenance.json",
+      "sha256": "hex:d6cca73913410f7b7be7db50286b8120d8f4c92444626cb1c8bf1a335196e040"
+     }
+    ],
+    "status": "superseded for cases.json and case-provenance.json by v2 (Task 1 finding: repeated round-2 read sets); results kept in calibration-v1.json"
+   },
+   {
+    "version": "v2",
+    "frozen_on": "2026-11-23",
+    "commit": "git:ca9bfeca1d968c8c88ba7b862f09b469d79e23b2",
+    "files": [
+     {
+      "path": "reports/plan12-memory-m2a/cases.json",
+      "sha256": "hex:7b0d3e136e2646d7d8c2ead3f364003c9fb54c8b0854d6183c5ae46ef85eb47c"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/ranking-policy.json",
+      "sha256": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/evaluation-contract.json",
+      "sha256": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/case-provenance.json",
+      "sha256": "hex:4ab2233e96f92662fb39386e788256fad73d392a1037a9b5796030c253ee5a19"
+     }
+    ],
+    "status": "superseded for cases.json and case-provenance.json by v3 (CP1 review 1 finding 4, E12); the v2 schedule repair was accepted by that review"
+   },
+   {
+    "version": "v3",
+    "frozen_on": "2026-11-23",
+    "commit": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
+    "files": [
+     {
+      "path": "reports/plan12-memory-m2a/cases.json",
+      "sha256": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/ranking-policy.json",
+      "sha256": "hex:0e8b1841c61fca52210747d52c912c5b541e4cc47b76ccc99c80f670a8ecbdac"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/evaluation-contract.json",
+      "sha256": "hex:1e658574007f1958dc039ba9d4e3db3d75a17928c8c94edf41cd5ece80a04390"
+     },
+     {
+      "path": "reports/plan12-memory-m2a/case-provenance.json",
+      "sha256": "hex:cf65775aa6ea63fc0fcc56e733d0dde923f5070ac9a567c6cc58d3b2f54efeeb"
+     }
+    ]
+   }
+  ],
+  "version": "v4"
+ }
+}

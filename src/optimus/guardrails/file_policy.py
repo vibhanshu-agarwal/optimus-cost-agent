@@ -144,6 +144,17 @@ class FilePolicy:
         folders: dict[tuple[tuple[str, ...], bool], str | None] = {}
         return lambda relative_path: not isinstance(self._gate(relative_path, folders), FileDecision)
 
+    def name_admitter(self) -> Callable[[str], bool]:
+        """Whether a name alone is admitted: a valid relative path with no secret or reserved part that no ignore file excludes, whether
+        or not a file has it. For words a person typed, such as a reference that resolved to nothing; an existing file is `admitter`'s."""
+        folders: dict[tuple[tuple[str, ...], bool], str | None] = {}
+
+        def admits(relative_path: str) -> bool:
+            parts = _relative_parts(relative_path)
+            return parts is not None and _parts_denial(parts) is None and self._ignored(parts, folders) is None
+
+        return admits
+
     def names(self) -> tuple[tuple[str, ...], int]:
         """Every file an `admitter` admits, and how many folders could not be listed. A full `walk` reads every file, which takes most of a
         minute on a large repository; this is for what must look at the tree during a person's turn. A path with no link on the way cannot

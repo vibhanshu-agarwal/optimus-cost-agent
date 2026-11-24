@@ -5,7 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-from optimus.acp.spec import _completion_message, _stop_reason
+from optimus.acp.conversation import ConversationOutcome
+from optimus.acp.spec import _completion_message, _conversation_outcome, _stop_reason
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
 from optimus.runtime.modes import ExecutionMode
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
@@ -49,6 +50,22 @@ def test_mcp_records_do_not_hide_terminal_explanations(reason):
     assert _completion_message(result) == text
     if reason == "PLANNING_BUDGET_EXHAUSTED":
         assert _stop_reason(result) == "end_turn"
+
+
+@pytest.mark.parametrize("reason", [
+    "AMBIGUOUS_WORKSPACE_REFERENCE", "REQUIRED_WORKSPACE_FILE_TOO_LARGE", "WORKSPACE_REFERENCE_NOT_READABLE",
+])
+def test_a_workspace_stop_the_person_must_read_ends_the_turn_normally(reason):
+    """Plan 12.13 Task 4 (live Zed): a "refusal" makes Zed rewind the turn behind a generic content-policy banner, so the
+    ranked candidates (#242) never reached the person. The conversation outcome, not the stop reason, records the failure."""
+    result = _refused().model_copy(update={"stop_reason": reason, "output_text": "Retry with one exact path.", "tool_calls": ()})
+    assert _completion_message(result) == "Retry with one exact path."
+    assert _stop_reason(result) == "end_turn"
+    assert _conversation_outcome(result) is ConversationOutcome.FAILED
+
+
+def test_an_unlisted_failure_still_ends_as_a_refusal():
+    assert _stop_reason(_refused().model_copy(update={"stop_reason": "SOMETHING_ELSE"})) == "refusal"
 
 
 @pytest.mark.parametrize("outcome", ["ALLOW", "HOLD", "BLOCK"])

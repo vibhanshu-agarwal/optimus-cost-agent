@@ -870,7 +870,12 @@ class OversizedSizeReadGateway(ScriptingGateway):
 
 
 def test_oversized_required_file_lists_its_size_on_every_planning_turn(tmp_path):
-    (tmp_path / "large.py").write_text("x" * (20 * 1024), encoding="utf-8")
+    from optimus.agent.planning_loop import PLANNING_NEW_READ_MAX_BYTES
+
+    # Too large for the initial context, and each half (with its read header) fits one turn's current reads (Plan 12.13 6/10).
+    size = 2 * (PLANNING_NEW_READ_MAX_BYTES - 1024)
+    assert size > 16 * 1024
+    (tmp_path / "large.py").write_text("x" * size, encoding="utf-8")
     final_plan = "READ large.py\nWRITE large.py\nupdated header\n"
     gateway = OversizedSizeReadGateway(
         [("", Decimal("0.001"), "gw-1"), ("", Decimal("0.001"), "gw-2"), (final_plan, Decimal("0.001"), "gw-3")]
@@ -889,9 +894,9 @@ def test_oversized_required_file_lists_its_size_on_every_planning_turn(tmp_path)
     assert result.status is AgentRunStatus.AWAITING_APPROVAL, result.output_text
     assert len(gateway.calls) == 3
     for call in gateway.calls:
-        assert "- large.py: size 20480 bytes" in str(call["input_text"])
+        assert f"- large.py: size {size} bytes" in str(call["input_text"])
         # A full-range hint would exceed the current-read limit and end planning.
-        assert "READ: large.py#bytes=0:20480" not in str(call["input_text"])
+        assert f"READ: large.py#bytes=0:{size}" not in str(call["input_text"])
 
 
 def test_oversized_required_file_honors_max_planning_turns_override(tmp_path):

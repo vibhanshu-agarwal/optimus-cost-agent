@@ -1,0 +1,71 @@
+{
+ "schema": "plan12-memory-m2a.boundaries.v1",
+ "plan": "12.13",
+ "issue": 545,
+ "release": "operator 2026-11-23 'Release all, start' (Task 4: index Redis, embedding artifact, one acpx run, one Zed session, WSL P1/P2)",
+ "index": {
+  "command": "pytest --no-cov -p no:cacheprovider -m requires_plan12_index_redis tests/integration/context/test_memory_session.py -q -rA (P1210_INDEX_DOCKER_RELEASED=p1213; P1210_ARTIFACT_SNAPSHOT=the released artifact's snapshot folder)",
+  "resources": "dedicated Redis p1213-index-test-redis with volume p1213-index-test-data on 127.0.0.1:6397 (the released image, 512 MB), created by the test fixture and removed after each run (removed_after); the configured Qdrant/bge-small-en-v1.5-onnx-Q artifact, snapshot aa8f8b060edb00e03bfdd08813a2949946c8ba55, digest-checked by setup",
+  "claim": "each train/development family A-F1..A-F6 runs through a real MemorySession on the released index; its stop, candidates and order, denials and exact-path retry equal split.json's offline replay; held-out families are never run (Codex CP2 review 2)",
+  "runs": [
+   {
+    "run": "run-1",
+    "code_head": "git:1aff1c95f5fdd9c7d319b8d45f5a497066bd8ae8 plus the uncommitted Task 4 changes listed in pre-status.txt",
+    "result": "2 failed, 42 passed in 189.14s (0:03:09)",
+    "exit": "exit 1",
+    "disposition": "run-1: 42 passed; A-F3 and A-F4 failed on the new test's own check (a retry case's frozen expected outcome is ambiguous_stop_then_exact_retry); corrected for run-2",
+    "log": "hex:fa518ead70c5c8489f91581550ad71ff275d794731b124589cbd054d17831a50"
+   },
+   {
+    "run": "run-2",
+    "code_head": "the same tree with the test's expected outcome corrected",
+    "selection": "-k frozen_family",
+    "result": "6 passed, 38 deselected in 21.96s",
+    "exit": "exit 0",
+    "log": "hex:414d51c05b64103eca646c195c6d39061cabad360c4b340812bfd882c8af77b1"
+   },
+   {
+    "run": "run-3",
+    "code_head": "git:aed6e4cf4991417500c66748471a254ad3b0d75c",
+    "tree_clean": true,
+    "result": "44 passed in 216.03s (0:03:36)",
+    "exit": "exit 0",
+    "removed_after": [
+     "p1213-index-test-redis",
+     "p1213-index-test-data"
+    ],
+    "log": "hex:d577e2b2f35dd40a4cadc7db3797d45498764880aa1b84091196c8338517b9f1"
+   },
+   {
+    "run": "run-4",
+    "code_head": "git:6dd6b9741ee81cbf94b946b9ae699dfffa11c39d",
+    "tree_clean": true,
+    "result": "43 passed, 1 skipped in 198.43s (0:03:18)",
+    "exit": "exit 0",
+    "removed_after": [
+     "p1213-index-test-redis",
+     "p1213-index-test-data"
+    ],
+    "log": "hex:0a6251359650fee82d4e67acd9fc41e892b0adc5c02ee4c0198416d039947645",
+    "disposition": "run-4: 43 passed, 1 skipped: P1210_ARTIFACT_SNAPSHOT was not set, so the real-artifact test did not run; rerun as run-5 with it set"
+   },
+   {
+    "run": "run-5",
+    "code_head": "git:6dd6b9741ee81cbf94b946b9ae699dfffa11c39d",
+    "tree_clean": true,
+    "result": "44 passed in 210.97s (0:03:30)",
+    "exit": "exit 0",
+    "removed_after": [
+     "p1213-index-test-redis",
+     "p1213-index-test-data"
+    ],
+    "log": "hex:b987c8f9dd55158f990f61fb9133c2f5b2c12017b7683223980cfed8733bc82c"
+   }
+  ],
+  "found": "the index's hints were missing on a session's first ambiguity (the runner assembles before the prompt reads the map); fixed by git:aed6e4c"
+ },
+ "gateway_and_filesystem": "the acpx and Zed runs crossed the real ACP, Gateway and filesystem boundaries (acpx.json, zed-ui.json); P1/P2 crossed the real Windows and WSL filesystems (platforms.json)",
+ "served_memory": "UNRUN: no test memory store was released, so no served-memory boundary claim is made; served IDs are unit-tested only",
+ "shared_redis": "operator 2026-11-23 'Start it (Recommended)': the shared optimus-redis was started for the client runs and left running",
+ "kit": "optimus-handoff/p1213-task4/index"
+}

@@ -139,6 +139,8 @@ class ServerTurn:
         await self.reader.send({"jsonrpc": "2.0", "id": "new", "method": "session/new", "params": {"cwd": str(self.tmp_path)}})
         response = await self.transport.until(lambda m: m.get("id") == "new")
         self.session_id = response["result"]["sessionId"]
+        # Plan 12.13: `/why` is always advertised just after the response, so setup ends with that frame
+        await self.transport.until(lambda m: m.get("params", {}).get("update", {}).get("sessionUpdate") == "available_commands_update")
 
     async def prompt(self):
         await self.reader.send({"jsonrpc": "2.0", "id": "prompt", "method": "session/prompt", "params": {

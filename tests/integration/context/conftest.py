@@ -25,9 +25,10 @@ from optimus_security.memory_index_config import KEYRING_SERVICE, MemoryIndexCon
 from tests.unit.acp.conftest import FakeKeyring
 
 RELEASE_FLAG = "P1210_INDEX_DOCKER_RELEASED"
-CONTAINER = "p1210-index-test-redis"
-VOLUME = "p1210-index-test-data"
-PORT = 6392
+# The flag's value names whose released resources these are: Plan 12.10's by default, or "p1213" for Plan 12.13 Task 4's (operator
+# 2026-11-23, "Release all, start"). Each release has its own names and port, so one never touches the other's.
+_RELEASES = {"p1213": ("p1213-index-test-redis", "p1213-index-test-data", 6397)}
+CONTAINER, VOLUME, PORT = _RELEASES.get(os.environ.get(RELEASE_FLAG, ""), ("p1210-index-test-redis", "p1210-index-test-data", 6392))
 IMAGE = "redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5"
 
 

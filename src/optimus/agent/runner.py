@@ -1922,7 +1922,7 @@ class AgentRunner:
         memory = getattr(context_packer, "memory", None)
         result: WorkspaceContextResult
         if memory is None:
-            result = assemble_workspace_context_for_prompt(request.workspace_root, task=selection_text)
+            result = assemble_workspace_context_for_prompt(request.workspace_root, task=selection_text, prompt=request.task)
         else:
             result = memory.assemble(
                 run_id=request.run_id,

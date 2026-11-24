@@ -1,0 +1,2130 @@
+{
+ "schema": "plan12-memory-m2a.cases.v4",
+ "frozen_on": "2026-11-23",
+ "frozen_before": "Task 1 and any feature code",
+ "plan": "12.13",
+ "issue": 545,
+ "rule": "Synthetic acceptance cases, frozen before implementation. Expected outcomes, including expected losses and refusals, do not change after a result; a change needs a recorded successor disposition reviewed at a checkpoint. Synthetic data only; no private content. Held-out cases are consumed once, at qualification (Task 3).",
+ "successor_of": {
+  "schema": "plan12-memory-m2a.cases.v3",
+  "sha256": "hex:d78b0f42536e3c7c13e5a509a2c520c4b97016229c406c4c39b63058667b76b2",
+  "commit": "git:ead32c853d41c3864df5b0684a00b57c53b48749",
+  "change": "split_schedules.probe_recipe added; every schedule, boundary target, split, ambiguity case and explanation oracle unchanged",
+  "reason": "plan v4 (hex:d25783eb95517c00c14d9907376e1a71c045b9c5c61235b136566263740013d3, operator-approved 2026-11-23) after CP1 ruling 2",
+  "earlier": {
+   "schema": "plan12-memory-m2a.cases.v2",
+   "sha256": "hex:7b0d3e136e2646d7d8c2ead3f364003c9fb54c8b0854d6183c5ae46ef85eb47c",
+   "commit": "git:ca9bfec",
+   "change": "explanation case E12's expected text only: 130 entries at 40 per page make 4 pages, so '/why 4' is valid and '/why 5' is past the end",
+   "reason": "Codex CP1 review 1 (round 117), finding 4: v2's E12 oracle was impossible",
+   "earlier": {
+    "schema": "plan12-memory-m2a.cases.v1",
+    "sha256": "hex:8cab175f2d32583cfeeeefb46895abae8b253c097cdd66e839a5d637123a74b5",
+    "commit": "git:24a6c27",
+    "change_to_v2": "split schedules: a later round's read of a path starts where that path's previous range ended (Task 1 finding; Codex accepted the repair in CP1 review 1)"
+   },
+   "disposition": "for Codex review at CP1 attempt 2"
+  },
+  "disposition": "for Codex review at CP2, with the v4 calibration rerun"
+ },
+ "splits": {
+  "train": "calibration and debugging",
+  "development": "calibration selection",
+  "held_out": "qualification only, consumed once"
+ },
+ "counts": {
+  "ambiguity": 24,
+  "split_schedules": 24,
+  "explanation": 12
+ },
+ "ambiguity": {
+  "workspaces": [
+   {
+    "family": "A-F1",
+    "files": [
+     {
+      "path": "src/gateway/config.py",
+      "metadata": "verified",
+      "symbols": [
+       "RouteConfig",
+       "load_routes"
+      ],
+      "imports": []
+     },
+     {
+      "path": "src/agent/config.py",
+      "metadata": "verified",
+      "symbols": [
+       "AgentSettings"
+      ],
+      "imports": []
+     },
+     {
+      "path": "tests/fixtures/config.py",
+      "metadata": "none"
+     },
+     {
+      "path": "src/gateway/server.py",
+      "metadata": "verified",
+      "symbols": [
+       "serve"
+      ],
+      "imports": [
+       "gateway.config"
+      ]
+     }
+    ]
+   },
+   {
+    "family": "A-F2",
+    "files": [
+     {
+      "path": "src/optimus/context/utils.py",
+      "metadata": "verified",
+      "symbols": [
+       "fold_terms"
+      ],
+      "imports": []
+     },
+     {
+      "path": "src/optimus/acp/utils.py",
+      "metadata": "stale",
+      "symbols": [
+       "render_markdown"
+      ],
+      "imports": []
+     },
+     {
+      "path": "tools/utils.py",
+      "metadata": "none"
+     },
+     {
+      "path": "secrets/utils.py",
+      "metadata": "none",
+      "denied": "ignore-file rule (secrets/ in .gitignore)"
+     },
+     {
+      "path": "src/a/helpers.py",
+      "metadata": "verified",
+      "symbols": [
+       "slugify"
+      ],
+      "imports": []
+     },
+     {
+      "path": ".venv/lib/helpers.py",
+      "metadata": "none",
+      "denied": "skipped directory (.venv)"
+     }
+    ]
+   },
+   {
+    "family": "A-F3",
+    "files": [
+     {
+      "path": "src/optimus/agent/models.py",
+      "metadata": "verified",
+      "symbols": [
+       "PlanningPolicy",
+       "AgentRunStatus"
+      ],
+      "imports": []
+     },
+     {
+      "path": "src/optimus_gateway/models.py",
+      "metadata": "verified",
+      "symbols": [
+       "ChatRequest"
+      ],
+      "imports": []
+     },
+     {
+      "path": "src/evidence_handoff/ledger/models.py",
+      "metadata": "verified",
+      "symbols": [
+       "EntryKind"
+      ],
+      "imports": []
+     }
+    ]
+   },
+   {
+    "family": "A-F4",
+    "files": [
+     {
+      "path": "tests/unit/acp/test_session.py",
+      "metadata": "verified",
+      "symbols": [
+       "test_close"
+      ],
+      "imports": [
+       "optimus.acp.session"
+      ]
+     },
+     {
+      "path": "tests/integration/acp/test_session.py",
+      "metadata": "verified",
+      "symbols": [
+       "test_resume"
+      ],
+      "imports": [
+       "optimus.acp.session"
+      ]
+     },
+     {
+      "path": "tests/unit/context/test_session.py",
+      "metadata": "verified",
+      "symbols": [
+       "test_turn"
+      ],
+      "imports": [
+       "optimus.context.memory_session"
+      ]
+     },
+     {
+      "path": "src/optimus/context/memory_session.py",
+      "metadata": "verified",
+      "symbols": [
+       "MemorySession"
+      ],
+      "imports": []
+     },
+     {
+      "path": "src/optimus/acp/session.py",
+      "metadata": "verified",
+      "symbols": [
+       "AcpSession"
+      ],
+      "imports": []
+     }
+    ]
+   },
+   {
+    "family": "A-F5",
+    "files": [
+     {
+      "path": "docs/x/schema.json",
+      "metadata": "none"
+     },
+     {
+      "path": "reports/a/schema.json",
+      "metadata": "none"
+     },
+     {
+      "path": "src/optimus/acp/schema.json",
+      "metadata": "none"
+     },
+     {
+      "path": "src/optimus/acp/spec.py",
+      "metadata": "verified",
+      "symbols": [
+       "load_schema"
+      ],
+      "imports": []
+     }
+    ]
+   },
+   {
+    "family": "A-F6",
+    "files": [
+     {
+      "path": "src/optimus_gateway/client.py",
+      "metadata": "verified",
+      "symbols": [
+       "UpstreamClient"
+      ],
+      "imports": []
+     },
+     {
+      "path": "src/optimus/mcp/client.py",
+      "metadata": "verified",
+      "symbols": [
+       "McpClient",
+       "reconnect"
+      ],
+      "imports": []
+     },
+     {
+      "path": "src/optimus/acp/client.py",
+      "metadata": "none"
+     },
+     {
+      "path": "src/optimus/acp/server.py",
+      "metadata": "verified",
+      "symbols": [
+       "serve"
+      ],
+      "imports": [
+       "optimus.acp.client"
+      ]
+     }
+    ]
+   },
+   {
+    "family": "A-F7",
+    "files": [
+     {
+      "path": "tests/conftest.py",
+      "metadata": "verified",
+      "symbols": [
+       "pytest_configure"
+      ],
+      "imports": []
+     },
+     {
+      "path": "tests/integration/context/conftest.py",
+      "metadata": "verified",
+      "symbols": [
+       "index_redis"
+      ],
+      "imports": []
+     },
+     {
+      "path": "tests/unit/agent/conftest.py",
+      "metadata": "verified",
+      "symbols": [
+       "fake_gateway"
+      ],
+      "imports": []
+     }
+    ]
+   },
+   {
+    "family": "A-F8",
+    "files": [
+     {
+      "path": "README.md",
+      "metadata": "verified",
+      "symbols": [
+       "Install",
+       "Usage"
+      ],
+      "imports": []
+     },
+     {
+      "path": "docs/README.md",
+      "metadata": "verified",
+      "symbols": [
+       "Plans"
+      ],
+      "imports": []
+     },
+     {
+      "path": "docs/decisions/README.md",
+      "metadata": "verified",
+      "symbols": [
+       "Index"
+      ],
+      "imports": []
+     },
+     {
+      "path": "tests/fixtures/README.md",
+      "metadata": "none"
+     },
+     {
+      "path": "private/M2A-SENTINEL-DENIED-PATH-5b1e/README.md",
+      "metadata": "none",
+      "denied": "ignore-file rule (private/ in .gitignore)"
+     }
+    ]
+   }
+  ],
+  "cases": [
+   {
+    "id": "A01",
+    "family": "A-F1",
+    "split": "train",
+    "reference": "config.py",
+    "task": "fix the route timeout in config.py used by src/gateway/server.py",
+    "acceptable": [
+     "src/gateway/config.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A02",
+    "family": "A-F1",
+    "split": "train",
+    "reference": "config.py",
+    "task": "where does config.py define AgentSettings",
+    "acceptable": [
+     "src/agent/config.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A03",
+    "family": "A-F1",
+    "split": "train",
+    "reference": "config.py",
+    "task": "update config.py",
+    "acceptable": [],
+    "decidable": false,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A04",
+    "family": "A-F2",
+    "split": "train",
+    "reference": "utils.py",
+    "task": "render_markdown in utils.py escapes too much",
+    "acceptable": [
+     "src/optimus/acp/utils.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop",
+    "note": "expected ranking loss: the only distinguishing hint is stale, so it contributes nothing; the stale candidate stays listed"
+   },
+   {
+    "id": "A05",
+    "family": "A-F2",
+    "split": "train",
+    "reference": "utils.py",
+    "task": "fix utils.py in the context package",
+    "acceptable": [
+     "src/optimus/context/utils.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop",
+    "note": "secrets/utils.py is denied: never a candidate, never shown"
+   },
+   {
+    "id": "A06",
+    "family": "A-F2",
+    "split": "train",
+    "reference": "helpers.py",
+    "task": "rename the slug helper in helpers.py",
+    "acceptable": [
+     "src/a/helpers.py"
+    ],
+    "decidable": true,
+    "expected": "resolved",
+    "note": "one admitted current target under the existing unique-name rule; the .venv copy is denied"
+   },
+   {
+    "id": "A07",
+    "family": "A-F3",
+    "split": "train",
+    "reference": "models.py",
+    "task": "add a field to PlanningPolicy in models.py",
+    "acceptable": [
+     "src/optimus/agent/models.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A08",
+    "family": "A-F3",
+    "split": "train",
+    "reference": "models.py",
+    "task": "models.py chat request validation is wrong",
+    "acceptable": [
+     "src/optimus_gateway/models.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A09",
+    "family": "A-F3",
+    "split": "train",
+    "reference": "models.py",
+    "task": "models.py chat request validation is wrong",
+    "acceptable": [
+     "src/optimus_gateway/models.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop_then_exact_retry",
+    "retry": {
+     "input": "src\\optimus_gateway\\models.py",
+     "expected": "resolved to src/optimus_gateway/models.py after revalidation (existing separator rule; same on Windows and POSIX)"
+    }
+   },
+   {
+    "id": "A10",
+    "family": "A-F4",
+    "split": "train",
+    "reference": "test_session.py",
+    "task": "the test_session.py that covers src/optimus/context/memory_session.py is flaky",
+    "acceptable": [
+     "tests/unit/context/test_session.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A11",
+    "family": "A-F4",
+    "split": "train",
+    "reference": "test_session.py",
+    "task": "integration test_session.py for acp fails on resume",
+    "acceptable": [
+     "tests/integration/acp/test_session.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A12",
+    "family": "A-F4",
+    "split": "train",
+    "reference": "test_session.py",
+    "task": "integration test_session.py for acp fails on resume",
+    "acceptable": [
+     "tests/integration/acp/test_session.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop_then_exact_retry",
+    "retry": {
+     "input": "tests/unit/acp/test_session.py",
+     "mutation_before_retry": "delete tests/unit/acp/test_session.py",
+     "expected": "typed not-found stop for the retried path; never falls back to another candidate"
+    }
+   },
+   {
+    "id": "A13",
+    "family": "A-F5",
+    "split": "development",
+    "reference": "schema.json",
+    "task": "acp schema.json is missing the why command",
+    "acceptable": [
+     "src/optimus/acp/schema.json"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A14",
+    "family": "A-F5",
+    "split": "development",
+    "reference": "schema.json",
+    "task": "schema.json loaded by src/optimus/acp/spec.py rejects a valid request",
+    "acceptable": [
+     "src/optimus/acp/schema.json"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A15",
+    "family": "A-F5",
+    "split": "development",
+    "reference": "schema.json",
+    "task": "regenerate schema.json",
+    "acceptable": [],
+    "decidable": false,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A16",
+    "family": "A-F6",
+    "split": "development",
+    "reference": "client.py",
+    "task": "the client.py imported by src/optimus/acp/server.py drops messages",
+    "acceptable": [
+     "src/optimus/acp/client.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop",
+    "note": "the candidate has no record of its own; the edge comes from server.py's verified-current record"
+   },
+   {
+    "id": "A17",
+    "family": "A-F6",
+    "split": "development",
+    "reference": "client.py",
+    "task": "mcp client.py reconnect loops forever",
+    "acceptable": [
+     "src/optimus/mcp/client.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A18",
+    "family": "A-F6",
+    "split": "development",
+    "reference": "client.py",
+    "task": "client.py timeout is too short",
+    "acceptable": [],
+    "decidable": false,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A19",
+    "family": "A-F7",
+    "split": "held_out",
+    "reference": "conftest.py",
+    "task": "the conftest.py that provides the index redis fixture for context integration tests",
+    "acceptable": [
+     "tests/integration/context/conftest.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A20",
+    "family": "A-F7",
+    "split": "held_out",
+    "reference": "conftest.py",
+    "task": "conftest.py for agent unit tests needs a new fixture",
+    "acceptable": [
+     "tests/unit/agent/conftest.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A21",
+    "family": "A-F7",
+    "split": "held_out",
+    "reference": "conftest.py",
+    "task": "the root conftest.py registers markers",
+    "acceptable": [
+     "tests/conftest.py"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A22",
+    "family": "A-F8",
+    "split": "held_out",
+    "reference": "README.md",
+    "task": "add ADR-046 to the decisions README.md",
+    "acceptable": [
+     "docs/decisions/README.md"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A23",
+    "family": "A-F8",
+    "split": "held_out",
+    "reference": "README.md",
+    "task": "update the install steps in the top-level README.md",
+    "acceptable": [
+     "README.md"
+    ],
+    "decidable": true,
+    "expected": "ambiguous_stop"
+   },
+   {
+    "id": "A24",
+    "family": "A-F8",
+    "split": "held_out",
+    "reference": "README.md",
+    "task": "README.md has a typo",
+    "acceptable": [],
+    "decidable": false,
+    "expected": "ambiguous_stop",
+    "note": "privacy: the denied path's sentinel never appears in suggestions, stops or /why"
+   }
+  ],
+  "expected_everywhere": "zero wrong-target selections; every eligible candidate listed; denied files never listed; an exact-path retry is revalidated before read/edit"
+ },
+ "split_schedules": {
+  "planner": "max_planning_turns 3 (default): each round is one READ_MORE turn, then a FINAL_PLAN turn; sha256 values are 64 hex characters; line endings lf",
+  "schedules": [
+   {
+    "id": "S01",
+    "family": "OBS-F1",
+    "split": "train",
+    "shape": "observation_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 300,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 300,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S02",
+    "family": "OBS-F1",
+    "split": "train",
+    "shape": "observation_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 300,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": null,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "observations_cumulative_at_final_turn",
+     "target": 4096,
+     "solve": "round 2 observation_text_bytes"
+    }
+   },
+   {
+    "id": "S03",
+    "family": "OBS-F2",
+    "split": "train",
+    "shape": "observation_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 300,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": null,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "observations_cumulative_at_final_turn",
+     "target": 4097,
+     "solve": "round 2 observation_text_bytes"
+    }
+   },
+   {
+    "id": "S04",
+    "family": "OBS-F2",
+    "split": "train",
+    "shape": "observation_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 250,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/optimus_model_policy/registry.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/context_engine/index_worker.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/optimus_gateway/memory_store.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       },
+       {
+        "path": "src/optimus_gateway/upstream_client.py",
+        "start_byte": 0,
+        "range_bytes": 400
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S05",
+    "family": "OBS-F3",
+    "split": "development",
+    "shape": "observation_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 450,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": null,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "observations_cumulative_at_final_turn",
+     "target": 6144,
+     "solve": "round 2 observation_text_bytes"
+    }
+   },
+   {
+    "id": "S06",
+    "family": "OBS-F3",
+    "split": "development",
+    "shape": "observation_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 450,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 450,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 713,
+        "range_bytes": 713
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S07",
+    "family": "OBS-F4",
+    "split": "held_out",
+    "shape": "observation_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 220,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/optimus_model_policy/registry.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/index_worker.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": null,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "observations_cumulative_at_final_turn",
+     "target": 8193,
+     "solve": "round 2 observation_text_bytes"
+    }
+   },
+   {
+    "id": "S08",
+    "family": "OBS-F4",
+    "split": "held_out",
+    "shape": "observation_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 220,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/optimus_model_policy/registry.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/index_worker.py",
+        "start_byte": 0,
+        "range_bytes": 300
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 220,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/optimus_model_policy/registry.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       },
+       {
+        "path": "src/context_engine/index_worker.py",
+        "start_byte": 300,
+        "range_bytes": 300
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S09",
+    "family": "READ-F1",
+    "split": "train",
+    "shape": "read_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 120,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S10",
+    "family": "READ-F1",
+    "split": "train",
+    "shape": "read_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 120,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": null
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "current_reads_at_final_turn",
+     "target": 12288,
+     "solve": "last read range_bytes"
+    }
+   },
+   {
+    "id": "S11",
+    "family": "READ-F2",
+    "split": "train",
+    "shape": "read_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 120,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": null
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "current_reads_at_final_turn",
+     "target": 12289,
+     "solve": "last read range_bytes"
+    }
+   },
+   {
+    "id": "S12",
+    "family": "READ-F2",
+    "split": "train",
+    "shape": "read_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 150,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 1800
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 1800
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 1800
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 150,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 1800,
+        "range_bytes": 2000
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 1800,
+        "range_bytes": 2000
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 1800,
+        "range_bytes": 2000
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2000
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S13",
+    "family": "READ-F3",
+    "split": "development",
+    "shape": "read_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 200,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": null
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "current_reads_at_final_turn",
+     "target": 10240,
+     "solve": "last read range_bytes"
+    }
+   },
+   {
+    "id": "S14",
+    "family": "READ-F3",
+    "split": "development",
+    "shape": "read_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 200,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S15",
+    "family": "READ-F4",
+    "split": "held_out",
+    "shape": "read_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 100,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": null
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "current_reads_at_final_turn",
+     "target": 14337,
+     "solve": "last read range_bytes"
+    }
+   },
+   {
+    "id": "S16",
+    "family": "READ-F4",
+    "split": "held_out",
+    "shape": "read_heavy",
+    "rounds": [
+     {
+      "observation_text_bytes": 100,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 1500
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 1500
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 1500
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 1500
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 1500
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": 1500
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 100,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 1500,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 1500,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 1500,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 1500,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 1500,
+        "range_bytes": 2337
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S17",
+    "family": "MIX-F1",
+    "split": "train",
+    "shape": "mixed",
+    "rounds": [
+     {
+      "observation_text_bytes": 500,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 1200
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 1200
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 1200
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 1200
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 400,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 1200,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 1200,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 1200,
+        "range_bytes": 2337
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S18",
+    "family": "MIX-F1",
+    "split": "train",
+    "shape": "mixed",
+    "rounds": [
+     {
+      "observation_text_bytes": null,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 1200
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 40,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 1200,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/optimus_gateway/server.py",
+        "start_byte": 0,
+        "range_bytes": null
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "observations_cumulative_at_final_turn=2048 and current_reads_at_final_turn=14336",
+     "target": [
+      2048,
+      14336
+     ],
+     "solve": "round 2 last read range_bytes first, then round 1 observation_text_bytes"
+    }
+   },
+   {
+    "id": "S19",
+    "family": "MIX-F2",
+    "split": "train",
+    "shape": "mixed",
+    "rounds": [
+     {
+      "observation_text_bytes": null,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 1500
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 40,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 1500,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": null
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "observations_cumulative_at_final_turn=8192 and current_reads_at_final_turn=8192",
+     "target": [
+      8192,
+      8192
+     ],
+     "solve": "round 2 last read range_bytes first, then round 1 observation_text_bytes"
+    }
+   },
+   {
+    "id": "S20",
+    "family": "MIX-F2",
+    "split": "train",
+    "shape": "mixed",
+    "rounds": [
+     {
+      "observation_text_bytes": 300,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 713
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S21",
+    "family": "MIX-F3",
+    "split": "development",
+    "shape": "mixed",
+    "rounds": [
+     {
+      "observation_text_bytes": 350,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 900
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 900
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 900
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 900
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": 900
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 350,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 900,
+        "range_bytes": 1500
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 900,
+        "range_bytes": 1500
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 900,
+        "range_bytes": 1500
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 900,
+        "range_bytes": 1500
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S22",
+    "family": "MIX-F3",
+    "split": "development",
+    "shape": "mixed",
+    "rounds": [
+     {
+      "observation_text_bytes": null,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 1500
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 40,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 1500,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": null
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "observations_cumulative_at_final_turn=6144 and current_reads_at_final_turn=10240",
+     "target": [
+      6144,
+      10240
+     ],
+     "solve": "round 2 last read range_bytes first, then round 1 observation_text_bytes"
+    }
+   },
+   {
+    "id": "S23",
+    "family": "MIX-F4",
+    "split": "held_out",
+    "shape": "mixed",
+    "rounds": [
+     {
+      "observation_text_bytes": 600,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 600,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 2337,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 2337,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 2337,
+        "range_bytes": 2337
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "S24",
+    "family": "MIX-F4",
+    "split": "held_out",
+    "shape": "mixed",
+    "rounds": [
+     {
+      "observation_text_bytes": null,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 0,
+        "range_bytes": 1200
+       }
+      ]
+     },
+     {
+      "observation_text_bytes": 40,
+      "reads": [
+       {
+        "path": "src/optimus_gateway/memory_index.py",
+        "start_byte": 1200,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/retrieval.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/context_pack.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/repo_map.py",
+        "start_byte": 0,
+        "range_bytes": 2337
+       },
+       {
+        "path": "src/context_engine/code_index.py",
+        "start_byte": 0,
+        "range_bytes": null
+       }
+      ]
+     }
+    ],
+    "boundary": {
+     "total": "observations_cumulative_at_final_turn=4097 and current_reads_at_final_turn=12288",
+     "target": [
+      4097,
+      12288
+     ],
+     "solve": "round 2 last read range_bytes first, then round 1 observation_text_bytes"
+    }
+   }
+  ],
+  "probe_recipe": {
+   "version": "own-limit-probes.v1",
+   "templates": "every schedule with a boundary; its absolute run stays a diagnostic and is not scored",
+   "variants": {
+    "observations": [
+     "exact: cumulative observations at the final turn = the candidate's observation limit",
+     "one_over: that limit + 1"
+    ],
+    "current_reads": [
+     "exact: the last round's current reads = the candidate's read limit",
+     "one_over: that limit + 1"
+    ],
+    "mixed": [
+     "exact: both totals at the candidate's limits",
+     "one_over_observations: observations at limit + 1, current reads at the limit",
+     "one_over_reads: current reads at limit + 1, observations at the limit"
+    ]
+   },
+   "solve": "as the template's boundary.solve: the last read's range_bytes first, then the free observation_text_bytes; paths, rounds, record counts and start bytes unchanged",
+   "rescale": "only when a target is unreachable at the template's lengths: each fixed record on that side (the other rounds' observation records, or the last round's other read blocks) is resized once so its serialized bytes, headers and framing included, become floor(bytes * target / template target)",
+   "blocked": "a target still unreachable, or the other side over the candidate's limit, fails the probe; it is never skipped",
+   "observation_text": "multibyte: U+00F6 (two UTF-8 bytes) repeated, with one ASCII 'o' when the length is odd, so byte lengths are unchanged and every observation counts in UTF-8 bytes",
+   "pass": {
+    "exact": "completed: a plan, no parse failure, every expected record whole",
+    "one_over": "no plan, and a budget stop (PLANNING_OBSERVATION_BUDGET_EXHAUSTED, PLANNING_READ_BUDGET_EXHAUSTED) or the OBSERVATION_TOO_LARGE parse failure"
+   },
+   "failure": "any probe failure rejects the candidate on that split; held-out probes the same at qualification; 4/12's failures are reported and it stays the fallback"
+  }
+ },
+ "explanation": {
+  "cases": [
+   {
+    "id": "E01",
+    "family": "EX-F1",
+    "split": "train",
+    "setup": "no snapshot in a new session",
+    "expected": "the exact text 'No context explanation is available for this session yet.'; zero calls"
+   },
+   {
+    "id": "E02",
+    "family": "EX-F1",
+    "split": "train",
+    "setup": "indexed turn completed and dispatched",
+    "expected": "identity (turn/run/outcome), prepared and dispatched, choices with ranks and reasons, fit, grounding/scope, served memory id@version; matches the actual manifest and served set of that turn"
+   },
+   {
+    "id": "E03",
+    "family": "EX-F1",
+    "split": "train",
+    "setup": "a /memory command, a /why, and a prompt rejected before preparation (active turn) follow a completed turn",
+    "expected": "none replaces the snapshot; the rejected prompt leaves the previous snapshot shown and explicitly identified as the earlier turn"
+   },
+   {
+    "id": "E04",
+    "family": "EX-F2",
+    "split": "train",
+    "setup": "turn blocked by an ambiguity stop (A-F1 workspace, A01 task)",
+    "expected": "outcome blocked; prepared, not dispatched; ranked candidates with reasons; the unresolved reference listed"
+   },
+   {
+    "id": "E05",
+    "family": "EX-F2",
+    "split": "train",
+    "setup": "turn cancelled during preparation after a completed turn",
+    "expected": "the cancelled attempt replaces its predecessor; outcome cancelled; fields not reached say unavailable"
+   },
+   {
+    "id": "E06",
+    "family": "EX-F2",
+    "split": "train",
+    "setup": "memory read fails (store unreachable) on an otherwise completed turn",
+    "expected": "read outcome failed, completeness unknown; never rendered as 'no memory'"
+   },
+   {
+    "id": "E07",
+    "family": "EX-F3",
+    "split": "development",
+    "setup": "privacy: workspace with all body/statement/prompt/denied-path sentinels and a sanitizer-recognized token generated at test time in a path; path with spaces and non-ASCII; Markdown control characters in a path",
+    "expected": "no sentinel and no token in any page; paths sanitized and escaped; denied files absent"
+   },
+   {
+    "id": "E08",
+    "family": "EX-F3",
+    "split": "development",
+    "setup": "index and extractor disabled (fallback assembly)",
+    "expected": "fallback outcome explained; index fields unavailable; zero classification, maintenance, extraction, embedding or provider calls"
+   },
+   {
+    "id": "E09",
+    "family": "EX-F3",
+    "split": "development",
+    "setup": "one turn with three planning rounds and a wire retry",
+    "expected": "per-round prepared versus dispatched and request/round distinctions; no round inferred from timestamps"
+   },
+   {
+    "id": "E10",
+    "family": "EX-F4",
+    "split": "held_out",
+    "setup": "agent restart, then session resume; newest manifest file exists in manifest_root",
+    "expected": "states that diagnostic manifests cannot establish this session's last turn; never shows the newest workspace manifest"
+   },
+   {
+    "id": "E11",
+    "family": "EX-F4",
+    "split": "held_out",
+    "setup": "two sessions in one workspace; each completes a different turn",
+    "expected": "each /why shows only its own session's snapshot"
+   },
+   {
+    "id": "E12",
+    "family": "EX-F4",
+    "split": "held_out",
+    "setup": "a turn with 130 considered candidates",
+    "expected": "deterministic pages within the frozen bounds; every entry on exactly one page; '/why 4' is the last valid page (130 entries at 40 per page is 4 pages); '/why 5' past the end and '/why 0' refused readably with the valid range; zero calls"
+   }
+  ],
+  "privacy_sentinels": {
+   "body": "M2A-SENTINEL-BODY-7f3a",
+   "memory_statement": "M2A-SENTINEL-MEMORY-STATEMENT-2c9e",
+   "prompt": "M2A-SENTINEL-PROMPT-91d4",
+   "denied_path": "M2A-SENTINEL-DENIED-PATH-5b1e",
+   "signature_or_description": "M2A-SENTINEL-SIGNATURE-0d6b",
+   "token": "generated at test time in a form the workspace sanitizer redacts; never stored in this file or any record"
+  },
+  "page_bounds": {
+   "grammar": "'/why' is page 1; '/why <n>' with n a positive decimal integer; anything else is refused readably with zero calls",
+   "entries_per_page": 40,
+   "page_max_utf8_bytes": 12288,
+   "rule": "entries keep deterministic order and are never split across pages or silently dropped; a single entry that alone exceeds the page bound is shown with a visible marker naming the elided byte count"
+  },
+  "no_snapshot_text": "No context explanation is available for this session yet."
+ },
+ "release_configuration": {
+  "status": "none released at freeze; every resource below needs its own operator release before use",
+  "resources": [
+   {
+    "resource": "dedicated index Redis",
+    "proposed": "container p1213-index-test-redis, volume p1213-index-test-data, 127.0.0.1:6397, image redis@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5 (M1's), 512 MB",
+    "used_by": "Task 1 real-index checks, Task 4 boundaries"
+   },
+   {
+    "resource": "configured embedding artifact",
+    "proposed": "Qdrant/bge-small-en-v1.5-onnx-Q, the copy under optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models (digest checked by setup at use)",
+    "used_by": "Task 1/4 retrieval claims"
+   },
+   {
+    "resource": "isolated keyring service",
+    "proposed": "optimus-p1213-test, writes for test config only",
+    "used_by": "Task 4"
+   },
+   {
+    "resource": "released memory store",
+    "proposed": "separate test store p1213-memory-test-redis, 127.0.0.1:6398",
+    "used_by": "Task 4 served-memory boundary claims only"
+   },
+   {
+    "resource": "acpx check",
+    "proposed": "acpx 0.12.0, one zero-paid run for /why advertisement and ambiguity -> exact-path retry",
+    "used_by": "Task 4"
+   },
+   {
+    "resource": "real Zed session(s)",
+    "proposed": "Zed 1.29.3, own Gateway port 18779, own config root, own agent entry, zero-paid first-prompt gate",
+    "used_by": "Task 4"
+   },
+   {
+    "resource": "WSL Ubuntu-24.04",
+    "proposed": "P1 and P2 only",
+    "used_by": "Task 4"
+   }
+  ]
+ }
+}

@@ -393,7 +393,7 @@ def test_purge_happens_only_on_its_own_confirmation(tmp_path: Path, answer: str)
         session_id = await new_session(adapter, tmp_path, mode="chat")
         await adapter.after_response("session/new", {"result": {"sessionId": session_id}})  # what the transport does
         advertised = [u for u in _updates(outbound) if u["sessionUpdate"] == "available_commands_update"]
-        assert {c["name"] for c in advertised[-1]["availableCommands"]} == {"remember", "forget", "memory", "welcome"}
+        assert {c["name"] for c in advertised[-1]["availableCommands"]} == {"remember", "forget", "memory", "welcome", "why"}
         await rpc(adapter, prompt_request(session_id, "/remember Never push to main.", "p-1"))
         ((item, version, *_),) = _events_any(store)
         task = asyncio.create_task(rpc(adapter, prompt_request(session_id, f"/forget {item}@{version} --purge", "p-2")))
