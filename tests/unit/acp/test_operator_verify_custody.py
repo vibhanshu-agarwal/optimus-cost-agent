@@ -249,3 +249,20 @@ def test_contract_ndjson_session_rejects_drift_and_preserves_send():
         session.send(payload={})
     session.send({"id": 1})
     assert sent == [{"id": 1}]
+
+
+@pytest.mark.parametrize(
+    ("result", "passes"),
+    [
+        ({"stopReason": "end_turn", "_meta": {"runStopReason": "WRITE_DIRECTIVE_NOT_EXECUTED", "outcome": "failed"}}, False),
+        ({"stopReason": "end_turn", "_meta": {"runStopReason": None, "outcome": "completed"}}, True),
+        ({"stopReason": "end_turn"}, True),  # an older agent build sends no _meta
+    ],
+    ids=["failed", "completed", "no-meta"],
+)
+def test_an_end_turn_passes_only_when_the_turn_completed(result, passes):
+    """#565: a failed stop also ends as end_turn, so the live verifier reads the settled outcome before reporting PASS."""
+    message = operator_verify._not_completed_message(result)
+    assert (message == "") is passes
+    if not passes:
+        assert "outcome='failed'" in message and "runStopReason='WRITE_DIRECTIVE_NOT_EXECUTED'" in message

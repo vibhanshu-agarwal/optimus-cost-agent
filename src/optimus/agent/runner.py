@@ -1394,7 +1394,8 @@ class AgentRunner:
             final_state="FAILED",
             output_text=(
                 "The plan was rejected because one of its TEST commands is not allowed (only plain pytest commands "
-                "are). No files were changed and no tests were run. Ask again, or name the pytest command to run."
+                "are). None of the plan's file changes were applied and none of its tests were run. Ask again, or name "
+                "the pytest command to run."
             ),
             tool_calls=(),
             total_cost_usd=Decimal("0"),
