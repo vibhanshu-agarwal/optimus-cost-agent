@@ -204,3 +204,23 @@ def test_evidence_entries_with_the_default_empty_id_settle_against_each_other() 
     with pytest.raises(DuplicateGatewayRequestError):
         ledger.record(_evidence(gateway_request_id="", cost_usd=Decimal("1")))
     assert ledger.entries == (first,)
+
+
+@LEDGERS
+def test_the_first_entry_with_an_id_is_the_one_a_replay_is_compared_with(ledger_type: Any, make: Make, bookkeeping: dict) -> None:
+    # Both models accept a tuple that already holds two entries with one id; the first one decides.
+    first, second = make("gw-1"), make("gw-1", **_SETTLED_OTHER)
+    ledger = ledger_type(entries=(first, second))
+
+    assert ledger.record(first) is ledger
+    with pytest.raises(DuplicateGatewayRequestError):
+        ledger.record(second)
+
+
+@LEDGERS
+def test_empty_totals_are_a_decimal_zero_and_an_int_zero(ledger_type: Any, make: Make, bookkeeping: dict) -> None:
+    ledger = ledger_type()
+
+    cost, units = ledger.total_cost_usd(), ledger.total_billing_units()
+    assert type(cost) is Decimal and cost == 0
+    assert type(units) is int and units == 0

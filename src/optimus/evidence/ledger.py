@@ -13,7 +13,7 @@ from optimus.tools.policy import EvidenceReasonCode, ToolClass
 from optimus.usage.ledger import append_settled, sum_billing_units, sum_cost_usd
 
 if TYPE_CHECKING:
-    # Annotation only: optimus.usage.accounting imports this module at load time.
+    # Annotation only: this module and optimus.usage.accounting must not import each other at load time (#563).
     from optimus.usage.accounting import UsageAccountingService
 
 
