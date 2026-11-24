@@ -159,6 +159,37 @@ def read_exceptions(path: Path, today: date) -> set[Finding]:
     return exceptions
 
 
+def _validate_pypi_advisory(advisory: object) -> None:
+    if not isinstance(advisory, dict):
+        raise AuditError("invalid PyPI advisory list")
+    _advisory_id(advisory.get("id"))
+
+    aliases = advisory.get("aliases")
+    if not isinstance(aliases, list):
+        raise AuditError("invalid PyPI advisory aliases")
+    for alias in aliases:
+        _advisory_id(alias)
+
+    fixes = advisory.get("fixed_in")
+    if not isinstance(fixes, list) or any(not isinstance(version, str) for version in fixes):
+        raise AuditError("invalid PyPI advisory fix versions")
+    try:
+        for version in fixes:
+            Version(version)
+    except InvalidVersion:
+        raise AuditError("invalid PyPI advisory fix versions") from None
+
+    withdrawn = advisory.get("withdrawn")
+    if withdrawn is not None:
+        # Warehouse emits a UTC timestamp. pip-audit skips on any non-null value.
+        if not isinstance(withdrawn, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", withdrawn):
+            raise AuditError("invalid PyPI advisory withdrawal timestamp")
+        try:
+            datetime.fromisoformat(withdrawn)
+        except ValueError:
+            raise AuditError("invalid PyPI advisory withdrawal timestamp") from None
+
+
 def _validate_pypi_release(url: str, release: object) -> Pin:
     match = PYPI_RELEASE_URL.fullmatch(url)
     if match is None or not isinstance(release, dict):
@@ -167,8 +198,8 @@ def _validate_pypi_release(url: str, release: object) -> Pin:
     advisories = release.get("vulnerabilities")
     if not isinstance(info, dict) or not isinstance(advisories, list):
         raise AuditError("incomplete PyPI release response")
-    if any(not isinstance(advisory, dict) for advisory in advisories):
-        raise AuditError("invalid PyPI advisory list")
+    for advisory in advisories:
+        _validate_pypi_advisory(advisory)
     expected_name, expected_version = _pin(*match.groups())
     name, version = _pin(info.get("name"), info.get("version"))
     if name != expected_name or Version(version) != Version(expected_version):

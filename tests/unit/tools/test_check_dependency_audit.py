@@ -281,7 +281,13 @@ def test_cli_rejects_unreadable_auditor_output(exception_path, monkeypatch, caps
         pytest.param(None, 404, False, id="upstream-skip"),
         pytest.param(None, 500, False, id="upstream-error"),
         pytest.param(
-            {"info": {"name": "Pillow", "version": "13.0.0"}, "vulnerabilities": [{"id": "PYSEC-2026-1"}]}, 200, True, id="has-advisory"
+            {
+                "info": {"name": "Pillow", "version": "13.0.0"},
+                "vulnerabilities": [{"id": "PYSEC-2026-1", "aliases": [], "fixed_in": [], "withdrawn": None}],
+            },
+            200,
+            True,
+            id="has-advisory",
         ),
         pytest.param({"info": {"name": "Pillow", "version": "13.0.0"}}, 200, False, id="missing-advisories"),
         pytest.param({"info": {"name": "Pillow", "version": "13.0.0"}, "vulnerabilities": None}, 200, False, id="null-advisories"),
@@ -359,3 +365,36 @@ def test_auditor_proves_every_pin_was_validated(tmp_path, monkeypatch, requested
     monkeypatch.setitem(sys.modules, "pip_audit", SimpleNamespace(_cli=cli))
     assert audit._run_pip_audit() == expected_exit
     assert cli.PyPIService is service
+
+
+@pytest.mark.parametrize("withdrawn", [None, "2026-11-24T10:00:00Z"], ids=["active", "withdrawn"])
+def test_pypi_accepts_a_valid_advisory(withdrawn):
+    release = {
+        "info": {"name": "pillow", "version": "13.0.0"},
+        "vulnerabilities": [{"id": "PYSEC-2026-1", "aliases": ["GHSA-aaaa-bbbb-cccc"], "fixed_in": ["13.1.0rc1"], "withdrawn": withdrawn}],
+    }
+    assert audit._validate_pypi_release("https://pypi.org/pypi/pillow/13.0.0/json", release) == ("pillow", "13.0.0")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("withdrawn", False, id="invalid-withdrawal-type"),
+        pytest.param("withdrawn", "2026-11-24T10:00:00", id="withdrawal-without-timezone"),
+        pytest.param("withdrawn", "2026-02-30T10:00:00Z", id="invalid-withdrawal-date"),
+        pytest.param("id", "invalid id", id="invalid-id"),
+        pytest.param("id", None, id="missing-id"),
+        pytest.param("aliases", "CVE-2026-1", id="aliases-not-a-list"),
+        pytest.param("aliases", [42], id="invalid-alias-type"),
+        pytest.param("aliases", ["invalid alias"], id="invalid-alias-id"),
+        pytest.param("fixed_in", {"13.1": "bad"}, id="fixes-not-a-list"),
+        pytest.param("fixed_in", [3], id="invalid-fix-type"),
+        pytest.param("fixed_in", ["not-a-version"], id="invalid-fix-version"),
+    ],
+)
+def test_pypi_rejects_malformed_advisory_metadata(field, value):
+    advisory = {"id": "PYSEC-2026-1", "aliases": [], "fixed_in": [], "withdrawn": None}
+    advisory[field] = value
+    release = {"info": {"name": "pillow", "version": "13.0.0"}, "vulnerabilities": [advisory]}
+    with pytest.raises(audit.AuditError):
+        audit._validate_pypi_release("https://pypi.org/pypi/pillow/13.0.0/json", release)
