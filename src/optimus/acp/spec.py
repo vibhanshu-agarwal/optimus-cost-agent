@@ -4068,11 +4068,22 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
 )
 
 
+# The run's output_text is the plan for this stop, so the person's text is fixed here (#565). TESTs run before the check.
+_WRITE_NOT_EXECUTED_MESSAGE = (
+    "The file change in the approved plan was not carried out, so no file was written. "
+    "Any tests in the plan may still have run. Send your request again to get a new plan."
+)
+
+
 def _completion_message(result: AgentRunResult) -> str:
     if result.stop_reason in TEST_STOP_REASONS.values():
         return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
     if result.stop_reason == "EDIT_NOT_APPLICABLE":
         return result.output_text  # the closed code and that nothing was written (#407)
+    if result.stop_reason == "UNSAFE_TEST_DIRECTIVE":
+        return result.output_text  # what was rejected and that nothing ran (#565)
+    if result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED":
+        return _WRITE_NOT_EXECUTED_MESSAGE
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
         return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
@@ -4219,7 +4230,7 @@ def _stop_reason(result: AgentRunResult) -> str:
         return "cancelled"
     if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS or result.stop_reason in TEST_STOP_REASONS.values():
         return "end_turn"
-    if result.stop_reason in ("PLAN_NOT_FOUND_OR_EXPIRED", "EDIT_NOT_APPLICABLE", WRITE_LINE_ENDINGS_MIXED):
+    if result.stop_reason in ("PLAN_NOT_FOUND_OR_EXPIRED", "EDIT_NOT_APPLICABLE", WRITE_LINE_ENDINGS_MIXED, "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED"):
         return "end_turn"
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES:
         return "end_turn"  # Zed hides a refused turn's text, and the person must read these candidates (Plan 12.13 Task 4)

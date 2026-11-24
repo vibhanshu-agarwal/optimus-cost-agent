@@ -1392,7 +1392,10 @@ class AgentRunner:
             request=request,
             status=AgentRunStatus.FAILED,
             final_state="FAILED",
-            output_text="Unsafe TEST directive rejected.",
+            output_text=(
+                "The plan was rejected because one of its TEST commands is not allowed (only plain pytest commands "
+                "are). No files were changed and no tests were run. Ask again, or name the pytest command to run."
+            ),
             tool_calls=(),
             total_cost_usd=Decimal("0"),
             stop_reason="UNSAFE_TEST_DIRECTIVE",
