@@ -178,6 +178,53 @@ def test_a_legitimate_test_command_is_still_accepted(command):
     assert parse_agent_plan(f"TEST {command}\n", edit_base="forbidden").tests == (tuple(command.split()),)
 
 
+# #590: a colon anywhere (drive, alternate data stream) or a leading backslash (drive-root) in a plan path.
+BS, NL = chr(0x5C), chr(0x0A)
+WINDOWS_SHAPES = {
+    "stream": "a.py:stream",
+    "env-stream": ".env:s",
+    "drive-relative": "C:rel.py",
+    "other-drive": "D:x" + BS + "y.py",
+    "data-stream": "a.py::$DATA",
+    "env-data-stream": ".env::$DATA",
+    "rooted": BS + "rooted.py",
+    "rooted-dirs": BS + "Users" + BS + "x.py",
+    "sub-stream": "sub/a.py:s",
+}
+
+
+@pytest.mark.parametrize("path", WINDOWS_SHAPES.values(), ids=WINDOWS_SHAPES.keys())
+@pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
+def test_a_colon_or_leading_backslash_path_is_rejected_with_a_fixed_message(directive, path):
+    with pytest.raises(AgentDirectiveParseError) as caught:
+        parse_agent_plan(_plan(directive, path), edit_base="forbidden")
+
+    assert str(caught.value) == "no valid agent directives" and path not in str(caught.value)
+
+
+@pytest.mark.parametrize("path", WINDOWS_SHAPES.values(), ids=WINDOWS_SHAPES.keys())
+def test_a_colon_or_leading_backslash_ranged_read_path_is_rejected_with_a_fixed_message(path):
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"OBSERVE: the header{NL}READ: {path}#bytes=0:10{NL}")
+
+    assert caught.value.code == "READ_PATH_NOT_RELATIVE"
+    assert str(caught.value) == "READ path must be workspace-relative" and path not in str(caught.value)
+
+
+@pytest.mark.parametrize("path", ["sub/a.py", "sub" + BS + "a.py"], ids=["slash", "interior-backslash"])
+@pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
+def test_an_ordinary_relative_path_is_still_accepted_after_the_colon_rule(directive, path):
+    plan = parse_agent_plan(_plan(directive, path), edit_base="forbidden")
+
+    assert (plan.read_paths[0] if directive == "READ" else plan.write.path) == path
+
+
+def test_a_pytest_node_id_with_a_double_colon_is_still_a_legitimate_test_argument():
+    assert parse_agent_plan(f"TEST pytest tests/test_a.py::test_x{NL}", edit_base="forbidden").tests == (
+        ("pytest", "tests/test_a.py::test_x"),
+    )
+
+
 class _SamePlan:
     """Every planning turn returns ``plan``; records what the model was sent."""
 
