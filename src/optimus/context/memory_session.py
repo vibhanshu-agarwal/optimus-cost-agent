@@ -567,6 +567,13 @@ class MemorySession:
         return self._foreground()
 
 
+def pack_limits(pack_budget: BudgetPolicy | None, usable_input_tokens: int) -> tuple[int, int | None]:
+    """The pack's budget and soft target (Plan 12.14): the route's own, computed once before preparation; without one, M1's legacy budget."""
+    if pack_budget is None:
+        return min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS), None
+    return pack_budget.ceiling, pack_budget.target
+
+
 class MemoryTurn:
     """One turn's view: one scope, and the same read path for the pack and the tools."""
 
@@ -597,9 +604,7 @@ class MemoryTurn:
         self._run_id = run_id
         policy = self._session.policy
         policy.forget_ignore_files()
-        # Plan 12.14: the route's budget, computed once before preparation; without one, M1's legacy budget
-        budget = pack_budget.ceiling if pack_budget is not None else min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
-        target = pack_budget.target if pack_budget is not None else None
+        budget, target = pack_limits(pack_budget, usable_input_tokens)
         with self._session.foreground():
             diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(extract_file_references(selection_text)))
             diagnostics = rank_ambiguity(diagnostics, task, self._session.hints_for(self._scope))

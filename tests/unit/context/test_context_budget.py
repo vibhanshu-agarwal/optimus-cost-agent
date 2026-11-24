@@ -128,3 +128,58 @@ def test_required_text_between_legacy_and_the_ceiling_is_whole_with_a_floor_and_
     assert whole.complete and whole.budget_tokens == required + 1_024 and whole.tokens <= whole.budget_tokens
     over = _pack(40_000, budget=32_768, target=13_107)
     assert not over.complete and over.missing_required == ("req.py",)
+
+
+# --- the seam's middle links (Fable CP1 finding 7): each would pass silently if reverted ----------------------------------
+
+
+def test_the_memory_turn_takes_the_routes_ceiling_and_target_or_the_legacy_budget():
+    from optimus.context.memory_session import pack_limits
+
+    assert pack_limits(None, 229_376) == (16_384, None)
+    assert pack_limits(BudgetPolicy("model-aware", 32_768, 13_107), 229_376) == (32_768, 13_107)
+
+
+def test_the_memory_turn_hands_the_target_to_the_pack(monkeypatch):
+    import contextlib
+
+    from context_engine.retrieval import Retrieval
+    from optimus.context import memory_session
+
+    seen: dict = {}
+
+    def fake_pack(**kwargs):
+        seen.update(kwargs)
+        return type("P", (), {"stale_paths": ()})()
+
+    monkeypatch.setattr(memory_session, "assemble_pack", fake_pack)
+    turn = object.__new__(memory_session.MemoryTurn)
+    turn._session = type("S", (), {"foreground": staticmethod(contextlib.nullcontext)})()  # noqa: SLF001
+    turn._retriever = type("R", (), {"retrieve": staticmethod(lambda *_a, **_k: Retrieval("ok"))})()  # noqa: SLF001
+    turn._read = lambda _p: None  # noqa: SLF001
+    turn._cancelled = lambda: False  # noqa: SLF001
+    turn._retrieve("task", (), len, 32_768, "task", 13_107)  # noqa: SLF001
+    assert (seen["budget_tokens"], seen["target_tokens"]) == (32_768, 13_107)
+
+
+def test_the_runner_hands_the_packers_budget_to_the_memory_turn(tmp_path):
+    from decimal import Decimal
+
+    from optimus.agent.models import AgentRunRequest
+    from optimus.agent.runner import AgentRunner
+    from optimus.agent.workspace_context import WorkspaceContextResult
+    from optimus.runtime.modes import ExecutionMode
+
+    seen: dict = {}
+    budget = BudgetPolicy("model-aware", 32_768, 13_107)
+
+    class Memory:
+        def assemble(self, **kwargs):
+            seen.update(kwargs)
+            return WorkspaceContextResult(text="", max_total_bytes=16_384, used_bytes=0, prioritized_paths=(), omitted_paths=(), diagnostics=())
+
+    packer = type("Packer", (), {"memory": Memory(), "model_id": "m", "estimate_request": staticmethod(len), "usable_input_tokens": 229_376, "pack_budget": budget})()
+    runner = AgentRunner(gateway_client=object(), model="m")
+    request = AgentRunRequest(run_id="r", task="t", execution_mode=ExecutionMode.CHAT, workspace_root=tmp_path, max_cost_usd=Decimal("0"))
+    runner._turn_context(request, "t", packer)  # noqa: SLF001
+    assert seen["pack_budget"] is budget

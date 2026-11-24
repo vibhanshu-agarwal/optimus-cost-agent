@@ -109,21 +109,52 @@ class Recorder:
 
     def create_response(self, **kwargs: Any) -> Any:
         text = kwargs.get("input_text", "")
+        prefix_chars = getattr(kwargs.get("route_binding"), "cache_prefix_chars", None)
         started = time.time()
         try:
             return self.inner.create_response(**kwargs)
         finally:
-            self.sent.append({"input_sha256": "hex:" + hashlib.sha256(text.encode("utf-8")).hexdigest(), "input_bytes": len(text.encode("utf-8")),
+            self.sent.append({"input_sha256": _sha(text), "input_bytes": len(text.encode("utf-8")), "cache_prefix_chars": prefix_chars,
+                              "prefix_sha256": None if prefix_chars is None else _sha(text[:prefix_chars]),
                               "started": round(started, 3), "seconds": round(time.time() - started, 3)})
 
 
-def attempt_row(receipt: Any) -> dict[str, Any]:
+def _sha(text: str) -> str:
+    return "hex:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class Tariff:
+    """One dated uncached tariff (evaluation-contract v2 task1_freezes.tariff): cached input repriced at ordinary input, reasoning as output."""
+
+    id: str
+    input_usd_per_million: Decimal
+    output_usd_per_million: Decimal
+
+    def reprice(self, usage: Any) -> str | None:
+        tokens = (getattr(usage, "input_tokens", None), getattr(usage, "output_tokens", None))
+        if usage is None or None in tokens:
+            return None
+        return str((Decimal(tokens[0]) * self.input_usd_per_million + Decimal(tokens[1]) * self.output_usd_per_million) / Decimal(1_000_000))
+
+
+D3_TARIFF: Final = Tariff("d3-haiku-5.5-uncached-2026-09-30", Decimal("0.50"), Decimal("2.50"))
+
+
+def attempt_row(receipt: Any, *, release: str, logical_request_id: str, tariff: Tariff = D3_TARIFF) -> dict[str, Any]:
+    """One physical attempt as #463's producer row (evaluation-contract producer_contract_463). Fields the provider does not report stay
+    None; the cache-write token count is never reported here, so it is UNKNOWN."""
     usage = getattr(receipt, "gateway_usage", None)
     return {
-        "attempt_id": receipt.attempt_id, "gateway_request_id": receipt.gateway_request_id, "outcome": receipt.outcome, "stage": receipt.stage,
+        "release": release, "logical_request_id": logical_request_id, "attempt_id": receipt.attempt_id, "gateway_request_id": receipt.gateway_request_id,
+        "provider_request_id": receipt.provider_request_id, "http_status": receipt.http_status, "outcome": receipt.outcome, "stage": receipt.stage,
         "cost_usd": None if receipt.reported_cost_usd is None else str(receipt.reported_cost_usd),
-        "requested_model": receipt.requested_model, "route": list(receipt.route), "reasoning": receipt.reasoning,
-        "usage": None if usage is None else {name: getattr(usage, name, None) for name in ("input_tokens", "output_tokens", "reasoning_tokens", "cached_tokens", "provider", "model")},
+        "repriced_uncached_usd": tariff.reprice(usage), "tariff_id": tariff.id,
+        "requested_model": receipt.requested_model, "route": list(receipt.route), "reasoning": receipt.reasoning, "registry_hash": receipt.registry_hash,
+        "usage": None if usage is None else {name: getattr(usage, name, None) for name in (
+            "input_tokens", "output_tokens", "reasoning_tokens", "cached_tokens", "cache_hit", "cache_age_seconds", "billing_units", "price_snapshot_id",
+            "provider", "resolved_provider", "model", "resolved_model", "route_request_id", "attempt")},
+        "cache_write_tokens": "UNKNOWN",
     }
 
 
@@ -139,21 +170,24 @@ def legacy_policy(usable_input: int) -> BudgetPolicy:
 
 
 def run_one(case: Mapping[str, Any], arm: str, *, position: int, gateway: Any, model: str, packer: Any, binder: Any, workspace: Path,
-            ceiling: Ceiling) -> dict[str, Any]:
-    """One logical request through the real runner. The ceiling is reserved first; the attempts observed settle it."""
+            ceiling: Ceiling, release: str = "Q") -> dict[str, Any]:
+    """One logical request through the real runner. The ceiling is reserved first; the attempts observed settle it. A request sent with
+    no attempt observed is an unknown cost, never a known zero."""
     ceiling.reserve()
     recorder = Recorder(gateway)
     receipts: list[Any] = []
-    request = AgentRunRequest(run_id=f"m2b-q-{case['case_id']}-{arm}", task=case["task"], execution_mode=ExecutionMode.CHAT, workspace_root=workspace,
+    run_id = f"m2b-q-{case['case_id']}-{arm}"
+    request = AgentRunRequest(run_id=run_id, task=case["task"], execution_mode=ExecutionMode.CHAT, workspace_root=workspace,
                               max_planning_turns=1, max_cost_usd=ceiling.usd_max)
     runner = AgentRunner(gateway_client=recorder, model=model, state_store=InMemoryAgentStateStore())
     with zero_tools():
         result = runner.run(request, context_packer=packer, route_binder=binder, stage_receipts=receipts.append)
-    attempts = [attempt_row(r) for r in receipts]
-    ceiling.settle(attempts)
-    return {"case_id": case["case_id"], "arm": arm, "position": position, "logical_requests": len(recorder.sent), "sent": recorder.sent,
-            "attempts": attempts, "stop_reason": result.stop_reason, "answer": result.output_text,
-            "unknown_cost": any(a["cost_usd"] is None for a in attempts)}
+    attempts = [attempt_row(r, release=release, logical_request_id=run_id) for r in receipts]
+    unobserved = len(recorder.sent) > 0 and not attempts
+    ceiling.settle(attempts or ([{"cost_usd": None}] * len(recorder.sent)))
+    return {"case_id": case["case_id"], "arm": arm, "position": position, "logical_request_id": run_id, "logical_requests": len(recorder.sent),
+            "sent": recorder.sent, "attempts": attempts, "unobserved_attempts": unobserved, "stop_reason": result.stop_reason, "answer": result.output_text,
+            "unknown_cost": unobserved or any(a["cost_usd"] is None for a in attempts)}
 
 
 def run(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_available: bool, gateway: Any, model: str,

@@ -3,7 +3,7 @@
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "state": "DRAFT: drafted by Claude; Codex verifies every case at CP1; sealed only after that verification",
+ "state": "DRAFT v2 (QB1 F2 hardened after Fable CP1 finding 2): drafted by Claude; Codex verifies every case at CP1; sealed only after that verification",
  "authority": "operator 2026-11-24 \"Approve sampling\" (Claude's chat, Plan 12.14 thread) of optimus-handoff/p1214-task0/sampling-proposal.md, sha256 hex:ee232629b668773faa3342c6fc0669e82c8165a6f917eed5a17df4cc992c2054",
  "builders": {
   "fresh": "optimus-handoff/p1214-task0/m2b_fresh3_pool.py + m2b_fresh3_build.py",
@@ -437,10 +437,12 @@
       {
        "fact_id": "F2",
        "any_of": [
-        "incomplete",
-        "missing",
+        "incomplete pack",
+        "pack is incomplete",
+        "pack as incomplete",
+        "marks the pack incomplete",
         "empty pack",
-        "not complete"
+        "missing_required"
        ]
       }
      ],

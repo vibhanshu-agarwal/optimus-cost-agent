@@ -121,7 +121,8 @@ def test_the_selector_removes_only_the_hosts_search_limit_notice():
 
 def test_a_citation_passes_by_path_and_symbol_or_an_overlapping_range():
     requirement = {"requirement_id": "R1", "any_of": ["symbol:src/a.py::Thing.method"]}
-    assert sc.check_citation(requirement, "See src/a.py, method.", _read) == sc.PASS
+    assert sc.check_citation(requirement, "See src/a.py, `method`.", _read) == sc.PASS
+    assert sc.check_citation(requirement, "See src/a.py, the method.", _read) == sc.FAIL  # an ordinary word needs code form
     assert sc.check_citation(requirement, "See src/a.py:6-7.", _read) == sc.PASS
     assert sc.check_citation(requirement, "See src/a.py:1-2.", _read) == sc.FAIL
     assert sc.check_citation(requirement, "See method.", _read) == sc.FAIL
@@ -169,7 +170,7 @@ def test_every_frozen_case_scores_its_own_correct_answer_and_rejects_an_empty_on
         for requirement in case["checks"]["citations"]:
             kind, _, rest = requirement["any_of"][0].partition(":")
             path, _, symbol = rest.partition("::")
-            parts.append(f"{path} {symbol.rsplit('.', 1)[-1]}")
+            parts.append(f"{path} `{symbol.rsplit('.', 1)[-1]}`")
         for fact in case["checks"]["facts"]:
             parts.append(" ".join(fact.get("all_of") or fact.get("any_of", [])[:1] or fact["of"][: fact["at_least"]]))
         if case["checks"]["quote"] is not None:
@@ -177,3 +178,73 @@ def test_every_frozen_case_scores_its_own_correct_answer_and_rejects_an_empty_on
         read = reader(case["snapshot"])
         assert sc.score(case, " ".join(parts), read)["verdict"] == sc.PASS, case["case_id"]
         assert sc.score(case, "", read)["verdict"] == sc.FAIL, case["case_id"]
+
+
+# --- Fable CP1 review: the scorer must not pass a non-answer; the runner must not book a failure as free ------------------
+
+
+def _snapshot_reader(snapshot: str):
+    import subprocess
+
+    def read(path: str) -> bytes | None:
+        done = subprocess.run(["git", "-C", str(ROOT), "cat-file", "blob", f"{snapshot.removeprefix('git:')}:{path}"], capture_output=True)
+        return done.stdout if done.returncode == 0 else None
+
+    return read
+
+
+@pytest.mark.parametrize("case", [c for c in CASES if c["case_id"] != "QO4"], ids=lambda c: c["case_id"])
+def test_a_path_echo_with_a_hedge_fails_every_case(case):
+    """The task's own path, every requirement's path and the runner's limit-observation wording, with no answer, must not pass."""
+    paths = {e.partition(":")[2].partition("::")[0] for r in case["checks"]["citations"] for e in r["any_of"]}
+    hedge = (f"{' '.join(sorted(paths))}: I could not inspect these files, so details are missing and this answer is incomplete. "
+             "I cannot say what the main request or the close and start operations do; notify me if you need more.")
+    assert sc.score(case, hedge, _snapshot_reader(case["snapshot"]))["verdict"] == sc.FAIL
+
+
+def test_a_refusal_beside_invented_unfenced_code_fails_the_exact_quote_case():
+    case = next(c for c in CASES if c["case_id"] == "QO4")
+    read = _snapshot_reader(case["snapshot"])
+    assert sc.score(case, "src/optimus/acp/launch_gate.py was not included, but roughly:\ndef _project_child_env(snapshot, target):\n    return {}", read)["verdict"] == sc.FAIL
+    assert sc.score(case, "src/optimus/acp/launch_gate.py was not included, so I cannot quote it.", read)["verdict"] == sc.PASS
+    assert sc.score(case, "src/optimus/acp/launch_gate.py:\n```python\ndef invented(", read)["verdict"] == sc.FAIL  # a fence cut at the cap counts
+
+
+def test_common_word_symbols_need_code_form_and_numbers_need_whole_numbers():
+    assert not sc.names_symbol("main", "the main loop") and sc.names_symbol("main", "see `main`") and sc.names_symbol("main", "main() starts")
+    assert sc.names_symbol("AcpStreamServer.serve_ndjson", "serve_ndjson handles it")
+    assert sc.names_symbol("MCPAsyncSupervisor.close", "MCPAsyncSupervisor.close waits") and not sc.names_symbol("MCPAsyncSupervisor.close", "they close it")
+    assert not sc.has_phrase("60", "line 160") and not sc.has_phrase("40", "src/a.py:140") and not sc.has_phrase("40", "4.40")
+    assert sc.has_phrase("60", "RRF_K is 60.") and sc.has_phrase("40", "40 entries")
+
+
+class _Failing:
+    def __init__(self) -> None:
+        self.inputs: list[str] = []
+
+    def create_response(self, *, model: str, input_text: str, metadata: Any = None, route_binding: Any = None) -> GatewayResponse:
+        from optimus.gateway.errors import GatewayHttpError
+
+        self.inputs.append(input_text)
+        raise GatewayHttpError(502, "upstream failed", retryable=False)
+
+
+def test_a_failure_without_usage_through_the_real_runner_is_an_unknown_cost_and_is_not_resent(tmp_path):
+    gateway = _Failing()
+    ceiling = paid.Ceiling(attempts_max=96, usd_max=Decimal("6.00"), per_attempt_usd=Decimal("0.04608"))
+    row = paid.run_one({"case_id": "QB9", "task": "What is x?"}, "N", position=1, gateway=gateway, model="anthropic/claude-haiku-5.5", packer=None, binder=None,
+                       workspace=tmp_path, ceiling=ceiling)
+    assert len(gateway.inputs) == 1 and row["unknown_cost"] and ceiling.unknown_attempts >= 1
+
+
+def test_an_attempt_row_carries_the_463_producer_fields():
+    from datetime import UTC, datetime
+
+    from optimus.usage.turn_settlement import StageReceipt
+
+    usage = GatewayUsage(gateway_request_id="g1", provider="anthropic", billing_units=0, cost_usd=Decimal("0.01"), input_tokens=1000, output_tokens=100, cached_tokens=600)
+    receipt = StageReceipt(session_id=None, turn_id="t", stage="answer", attempt_id="a1", gateway_request_id="g1", outcome="completed",
+                           reported_cost_usd=Decimal("0.01"), recorded_at=datetime.now(UTC), gateway_usage=usage)
+    row = paid.attempt_row(receipt, release="Q", logical_request_id="m2b-q-QB1-F")
+    assert row["repriced_uncached_usd"] == "0.00075" and row["tariff_id"] == paid.D3_TARIFF.id and row["cache_write_tokens"] == "UNKNOWN"
+    assert {"release", "logical_request_id", "gateway_request_id", "cost_usd", "usage"} <= set(row) and row["usage"]["cached_tokens"] == 600

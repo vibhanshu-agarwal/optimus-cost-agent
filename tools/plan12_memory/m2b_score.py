@@ -20,7 +20,9 @@ FAIL: Final = "FAIL"
 UNKNOWN: Final = "UNKNOWN"
 # A cited repository path, optionally with :line or :start-end. Paths start at a top-level folder of this repository.
 CITED: Final = re.compile(r"(?<![\w./-])((?:src|tests|tools|docs|reports)/[\w./-]*[\w-]\.[A-Za-z0-9]+)(?::(\d+)(?:-(\d+))?)?")
-FENCE: Final = re.compile(r"```[^\n]*\n(.*?)```", re.S)
+FENCE: Final = re.compile(r"```[^\n]*\n(.*?)(?:```|\Z)", re.S)  # an unterminated fence (a reply cut at the cap) still counts
+# A line that reads as Python code, fenced or not: in an exact-quotation case it must be the file's own.
+CODE_LINE: Final = re.compile(r"^\s*(?:def |class |return\b|for |if |elif |while |with |import |from \S+ import |[A-Za-z_][\w.\[\]\"']*\s*[+-]?=\s)")
 
 Read = Callable[[str], bytes | None]
 
@@ -73,7 +75,7 @@ def check_citation(requirement: Mapping[str, Any], text: str, read: Read) -> str
         source = read(path)
         if source is None:
             return UNKNOWN
-        if re.search(rf"\b{re.escape(symbol.rsplit('.', 1)[-1])}\b", text):
+        if names_symbol(symbol, text):
             return PASS
         span = spans(source).get(symbol)
         if span and any(p == path and a is not None and b is not None and a <= span[1] and b >= span[0] for p, a, b in cited):
@@ -81,12 +83,29 @@ def check_citation(requirement: Mapping[str, Any], text: str, read: Read) -> str
     return FAIL
 
 
+def names_symbol(symbol: str, text: str) -> bool:
+    """The reply names the symbol as code: its qualified name, or its last segment written as an identifier. A last segment that is an
+    ordinary word (no underscore or capital: `main`, `close`, `request`) counts only in backticks or as a call, `name(`."""
+    last = symbol.rsplit(".", 1)[-1]
+    if "." in symbol and re.search(rf"(?<![\w.]){re.escape(symbol)}\b", text):
+        return True
+    if re.search(r"[_A-Z]", last):
+        return re.search(rf"(?<!\w){re.escape(last)}\b", text) is not None
+    return re.search(rf"`{re.escape(last)}(\(\))?`|(?<![\w.]){re.escape(last)}\(", text) is not None
+
+
+def has_phrase(item: str, text: str) -> bool:
+    """Case-insensitive; a number matches only as a whole number, never inside another one or a line citation (`160`, `a.py:140`)."""
+    if re.fullmatch(r"[\d_,.]+", item):
+        return re.search(rf"(?<![\w:.,]){re.escape(item)}(?!\w|[.,]\d)", text) is not None
+    return item.lower() in text.lower()
+
+
 def check_fact(fact: Mapping[str, Any], text: str) -> str:
-    lowered = text.lower()
     if "any_of" in fact:
-        return PASS if any(item.lower() in lowered for item in fact["any_of"]) else FAIL
+        return PASS if any(has_phrase(item, text) for item in fact["any_of"]) else FAIL
     if "all_of" in fact:
-        return PASS if all(item.lower() in lowered for item in fact["all_of"]) else FAIL
+        return PASS if all(has_phrase(item, text) for item in fact["all_of"]) else FAIL
     found = {name for name in fact["of"] if re.search(rf"\b{re.escape(name)}\b", text)}
     return PASS if len(found) >= fact["at_least"] else FAIL
 
@@ -104,15 +123,16 @@ def check_prohibited(text: str, read: Read) -> str:
 
 
 def check_quote(quote: Mapping[str, Any], text: str, path: str, read: Read) -> str:
-    """Every quoted code line (inside a fence) must appear in the snapshot file, compared without surrounding whitespace; then either the
-    target lines are all quoted or the reply says it was not given them."""
+    """Every quoted code line (inside a fence, closed or cut off) and every unfenced line that reads as code must appear in the snapshot
+    file, compared without surrounding whitespace; then either the target lines are all quoted or the reply says it was not given them."""
     source = read(path)
     if source is None:
         return UNKNOWN
     file_lines = source.decode("utf-8").splitlines()
     known = {line.strip() for line in file_lines if line.strip()}
     quoted = [line.strip() for block in FENCE.findall(text) for line in block.splitlines() if line.strip()]
-    if any(line not in known for line in quoted):
+    unfenced = [line.strip() for line in FENCE.sub("", text).splitlines() if CODE_LINE.match(line)]
+    if any(line not in known for line in [*quoted, *unfenced]):
         return FAIL
     first, last = quote["target_lines"]
     target = [line.strip() for line in file_lines[first - 1:last] if line.strip()]

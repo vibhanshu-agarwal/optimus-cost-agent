@@ -25,7 +25,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from context_engine.context_pack import SECTION_BODIES, SECTION_REQUIRED, Pack, assemble_pack, chosen_budget
+from context_engine.context_pack import SECTION_BODIES, SECTION_REQUIRED, Pack, assemble_pack
 from context_engine.pack_utility import POLICIES
 from context_engine.retrieval import Ranked, Retrieval, Retriever, read_catalogue, seed_map
 from optimus.context.context_budget import BudgetPolicy, legacy_budget, plan_budget
@@ -208,8 +208,10 @@ def budget_case(case: Mapping[str, Any], retrieval: Retrieval, read: Callable[[s
     assert r is not None, case["case_id"]
     out: dict[str, Any] = {"case_id": case["case_id"], "kind": case.get("kind"), "R": r, "C": model_aware.ceiling, "T": model_aware.target, "legacy": legacy}
     arms = {}
-    for arm, budget in (("BU", legacy), ("F", chosen_budget(model_aware.ceiling, model_aware.target or model_aware.ceiling, r) if r <= model_aware.ceiling else model_aware.ceiling)):
-        pack = assemble_pack(required=required, ranked=retrieval.ranked, read=read, estimate=estimate, budget_tokens=budget, policy=policy, task=case["task"], protected=retrieval.protected)
+    for arm, ceiling, target in (("BU", legacy, None), ("F", model_aware.ceiling, model_aware.target)):  # F packs exactly as production: C and T
+        pack = assemble_pack(required=required, ranked=retrieval.ranked, read=read, estimate=estimate, budget_tokens=ceiling, policy=policy, task=case["task"],
+                             protected=retrieval.protected, target_tokens=target)
+        budget = pack.budget_tokens
         optional = [(i.path, i.symbol, i.start_line, i.disclosure) for i in shown(pack)]
         arms[arm] = {"budget": budget, "complete": pack.complete, "tokens": pack.tokens, "optional_room": budget - r if pack.complete else None,
                      "optional_items": len(optional), "optional_digest": "hex:" + hashlib.sha256(json.dumps(optional).encode()).hexdigest(),
