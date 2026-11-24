@@ -415,14 +415,21 @@ def _normalize_directive_line(line: str) -> str:
             return normalized
 
 
-MAX_PATH_CHARS = 4096  # #583: Linux PATH_MAX; no workspace-relative path a person can open is longer
-# #583: control, format (bidi overrides; ZWJ/ZWNJ too, a conservative choice for file names), surrogate, separator.
-_UNSAFE_PATH_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
+MAX_PATH_CHARS = 4096  # #583: a safety bound, in code points, on a model-authored path; not a filesystem limit
+# #583: control, format (bidi overrides and isolates among them), surrogate, unassigned, private use, separator.
+_UNSAFE_PATH_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Cn", "Co", "Zl", "Zp"})
+# #583: ZWNJ and ZWJ are allowed: Persian, Indic scripts and emoji need them, and they neither reorder nor drive a terminal.
+_ALLOWED_FORMAT_CHARACTERS = frozenset({"\N{ZERO WIDTH NON-JOINER}", "\N{ZERO WIDTH JOINER}"})
+# #583: fillers that render blank, which no category catches (Hangul fillers, the blank Braille pattern).
+_BLANK_FILLERS = frozenset(chr(code) for code in (0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800))
 
 
 def unsafe_path_text(path_text: str) -> bool:
     """#583: a model's path that could reorder or hide text, or drive a terminal, where a person or the model reads it."""
-    return len(path_text) > MAX_PATH_CHARS or any(unicodedata.category(c) in _UNSAFE_PATH_CATEGORIES for c in path_text)
+    return len(path_text) > MAX_PATH_CHARS or any(
+        c in _BLANK_FILLERS or (unicodedata.category(c) in _UNSAFE_PATH_CATEGORIES and c not in _ALLOWED_FORMAT_CHARACTERS)
+        for c in path_text
+    )
 
 
 def _validate_relative_path(path_text: str) -> None:
@@ -449,4 +456,6 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
         if ".." in Path(token).parts or _ABSOLUTE_PATH.match(token):
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
+        if unsafe_path_text(token):
+            raise AgentDirectiveParseError("unsafe TEST directive")  # #583: fixed text, the token is never quoted
     return tokens
