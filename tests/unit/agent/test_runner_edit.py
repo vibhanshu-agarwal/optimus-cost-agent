@@ -157,7 +157,7 @@ def test_a_change_outside_old_after_approval_writes_nothing_and_runs_no_test(tmp
 
     assert result.status is AgentRunStatus.FAILED
     assert result.stop_reason == "EDIT_NOT_APPLICABLE"
-    assert "EDIT_SOURCE_CHANGED" in result.output_text and "Nothing was written" in result.output_text
+    assert "EDIT_SOURCE_CHANGED" in result.output_text and "The plan made no changes" in result.output_text
     assert target.read_bytes().endswith(b"# a user edit far from OLD\n")
     assert not target.read_bytes().startswith(HEADER.encode())
     assert shell.commands == []

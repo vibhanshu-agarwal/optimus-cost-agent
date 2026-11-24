@@ -109,7 +109,7 @@ def test_separators_other_than_cr_and_lf_stay_inside_a_line():
 
 _PATH = "src/pkg/small.py"
 _NEXT_STEPS = {
-    "EDIT_TARGET_MISSING": "Check the file name, then send your request again.",
+    "EDIT_TARGET_MISSING": "Check the path, then send your request again.",
     "EDIT_NOT_UTF8": "Save the file as UTF-8 and send your request again, or make this change yourself.",
     "EDIT_SOURCE_UNSEEN": "Send your request again and name the file, so it is read first.",
     "EDIT_SOURCE_CHANGED": "Send your request again so the file is read as it is now.",
@@ -118,9 +118,9 @@ _NEXT_STEPS = {
     "EDIT_BLOCKS_OVERLAP": "Send your request again to get a new plan.",
 }
 _REASONS = {
-    "EDIT_TARGET_MISSING": "no file exists at that path",
+    "EDIT_TARGET_MISSING": "that path is missing or is not a file",
     "EDIT_NOT_UTF8": "the file is not UTF-8 text",
-    "EDIT_SOURCE_UNSEEN": "the file was not read before the change was planned",
+    "EDIT_SOURCE_UNSEEN": "the change was planned without the file's contents to hand",
     "EDIT_SOURCE_CHANGED": "the file changed after it was read",
     "EDIT_OLD_NOT_FOUND": "the lines it replaces are not in the file exactly as planned",
     "EDIT_OLD_NOT_UNIQUE": "the lines it replaces appear in the file more than once",
@@ -138,9 +138,10 @@ def test_the_failure_text_says_why_and_what_to_do_next_in_plain_words(code):
     text = edit_failure_text(code, _PATH)
 
     assert text == (
-        f"The change to {_PATH} was not made because {_REASONS[code]}. Nothing was written and no tests ran. {_NEXT_STEPS[code]} ({code})"
+        f'The change to "{_PATH}" was not made because {_REASONS[code]}. '
+        f"The plan made no changes and ran none of its tests. {_NEXT_STEPS[code]} ({code})"
     )
-    assert _PATH in text
+    assert f'"{_PATH}"' in text
     assert text.endswith(f"({code})")
     assert _NEXT_STEPS[code] in text
     prose = text.removesuffix(f"({code})")

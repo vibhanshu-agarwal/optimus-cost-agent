@@ -4083,7 +4083,7 @@ def _completion_message(result: AgentRunResult) -> str:
     if result.stop_reason in TEST_STOP_REASONS.values():
         return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
     if result.stop_reason == "EDIT_NOT_APPLICABLE":
-        return result.output_text  # why the change was not made, that nothing was written, the next step and the code (#574)
+        return result.output_text  # why the change was not made, that the plan made no changes, the next step and the code (#574)
     if result.stop_reason == "UNSAFE_TEST_DIRECTIVE":
         return result.output_text  # what was rejected and that nothing ran (#565)
     if result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED":
