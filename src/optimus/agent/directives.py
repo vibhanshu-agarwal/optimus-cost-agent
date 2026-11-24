@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import unicodedata
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
@@ -414,8 +415,18 @@ def _normalize_directive_line(line: str) -> str:
             return normalized
 
 
+MAX_PATH_CHARS = 4096  # #583: Linux PATH_MAX; no workspace-relative path a person can open is longer
+# #583: control, format (bidi overrides; ZWJ/ZWNJ too, a conservative choice for file names), surrogate, separator.
+_UNSAFE_PATH_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
+
+
+def unsafe_path_text(path_text: str) -> bool:
+    """#583: a model's path that could reorder or hide text, or drive a terminal, where a person or the model reads it."""
+    return len(path_text) > MAX_PATH_CHARS or any(unicodedata.category(c) in _UNSAFE_PATH_CATEGORIES for c in path_text)
+
+
 def _validate_relative_path(path_text: str) -> None:
-    if not path_text:
+    if not path_text or unsafe_path_text(path_text):
         raise AgentDirectiveParseError("no valid agent directives")
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:

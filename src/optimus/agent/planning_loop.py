@@ -31,6 +31,7 @@ from optimus.agent.directives import (
     plan_lines,
     split_cr_lf_keepends,
     strip_plan_text,
+    unsafe_path_text,
 )
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
@@ -889,7 +890,7 @@ def _normalize_workspace_relative_path(path_text: str) -> str:
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
         raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
-    if re.match(r"^[A-Za-z]:[\\/]|^/", path_text):
+    if re.match(r"^[A-Za-z]:[\\/]|^/", path_text) or unsafe_path_text(path_text):
         raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     return path.as_posix()
 
