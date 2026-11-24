@@ -600,6 +600,14 @@ payload, redaction and file-write failures are contained so they do not disrupt
 requests; records remain best effort, and cancellation/control-flow exceptions
 are not swallowed. Debug tracing never writes to the ACP stdout channel.
 
+To select a minimum level for local diagnostics, add `--diagnostic-level` to
+an authorized `--debug-trace` launch. The levels are `debug`, `info`,
+`warning`, and `error`. For example, `--debug-trace --diagnostic-level warning`
+records warnings and errors. Filtering skips lazy payload suppliers.
+The levelled NDJSON records include `schemaVersion` and `level`. This file
+stays local. Use `--debug-trace` alone with evidence tools that require the
+original NDJSON format.
+
 **Required after `pip install --user` on Windows:** Python installs scripts to
 `%APPDATA%\Python\Python<version>\Scripts` (for example
 `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts`). Windows does **not** add this

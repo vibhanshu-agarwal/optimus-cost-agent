@@ -18,6 +18,7 @@ import keyring
 from optimus.acp.auto_composition import AutoComposition, compose_auto_composition
 from optimus.acp.bootstrap import StartupConfigurationError, build_configured_server, resolve_ephemeral_hmac_flag
 from optimus.acp.debug_trace import (
+    DiagnosticLevel,
     configure_debug_trace,
     log_authorized_launch_comparison,
     log_provenance_once,
@@ -390,6 +391,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Enable ACP protocol debug tracing to an NDJSON log file (never stdout).",
     )
     parser.add_argument(
+        "--diagnostic-level",
+        choices=tuple(level.name.lower() for level in DiagnosticLevel),
+        help="Write versioned local diagnostics at or above this level. Requires --debug-trace.",
+    )
+    parser.add_argument(
         "--debug-log",
         default=None,
         metavar="PATH",
@@ -434,6 +440,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     # the argv it spawns.
     parser.add_argument("--diagnostic-grant-id", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.diagnostic_level is not None and not args.debug_trace:
+        parser.error("--diagnostic-level requires --debug-trace")
     if args.expected_durable_approval is not None:
         match = re.fullmatch(r"(appr_[0-9a-f]{24}):([0-9a-f]{64})", args.expected_durable_approval)
         if match is None or not Path(args.workspace_root).is_absolute():
@@ -477,7 +485,12 @@ def _apply_debug_trace_args(
         workspace_root=workspace_root,
         log_path=args.debug_log or default_log_path,
     )
-    configure_debug_trace(enabled=True, log_path=resolved, provenance_root=workspace_root)
+    configure_debug_trace(
+        enabled=True,
+        log_path=resolved,
+        provenance_root=workspace_root,
+        minimum_level=DiagnosticLevel[args.diagnostic_level.upper()] if args.diagnostic_level is not None else None,
+    )
     return resolved
 
 

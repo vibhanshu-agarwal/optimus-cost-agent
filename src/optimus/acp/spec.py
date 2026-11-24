@@ -33,6 +33,7 @@ from optimus.acp.conversation import (
 from optimus.acp.debug_trace import (
     PRE_RUN_REFUSAL_REASONS,
     PROMPT_REFUSAL_REASONS,
+    DiagnosticLevel,
     acp_debug_log,
     debug_trace_enabled,
     log_auto_route,
@@ -2623,6 +2624,7 @@ class AcpDuplexAdapter:
                 message="client rejected outbound ACP request",
                 data=_outbound_error_payload(run_id, exc),
                 hypothesis_id="H1",
+                level=DiagnosticLevel.ERROR,
             )
             # endregion
             # A live exit still reports any threshold this turn crossed (Codex CP3 ruling R2).

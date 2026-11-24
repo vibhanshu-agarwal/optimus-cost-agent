@@ -1129,3 +1129,36 @@ def test_main5_runner_bash_guarded_probe(tmp_path: Path) -> None:
     assert bash is not None
     command = f'"{sys.executable}" -c pass & wait'
     subprocess.run([bash, "-c", command], check=True)
+
+
+@pytest.mark.parametrize("sink_fails", [False, True], ids=["trace-available", "trace-unavailable"])
+async def test_seam4_levelled_error_trace_preserves_escaped_request_failure(tmp_path, monkeypatch, capsys, sink_fails):
+    from optimus.acp.debug_trace import DiagnosticLevel, configure_debug_trace, reset_debug_trace_context
+    from tests.integration.acp.test_server_stream import InteractiveLineReader, MemoryLineWriter
+
+    log_path = tmp_path / "trace.ndjson"
+    if sink_fails:
+        log_path.mkdir()
+    configure_debug_trace(enabled=True, log_path=log_path, minimum_level=DiagnosticLevel.ERROR)
+    configured = configured_test_agent_server(tmp_path, output_text="done")
+    reader, writer = InteractiveLineReader(), MemoryLineWriter()
+    serve_task = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+    try:
+        await _seam4_drive_a2_escape(tmp_path, monkeypatch, reader, writer, serve_task)
+    finally:
+        await _seam4_finally(reader, serve_task)
+        reset_debug_trace_context()
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    if sink_fails:
+        assert captured.err.count("request task failed") == 1
+        assert "method=session/prompt" in captured.err
+        assert "cancellation cleanup failed" not in captured.err
+    else:
+        lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines()] if log_path.is_file() else []
+        failure, = [row for row in lines if row["location"] == "server.py:serve_ndjson:request_task_failed"]
+        assert failure["level"] == "error"
+        assert failure["data"]["request_method"] == "session/prompt"
+        assert "cancellation cleanup failed" not in str(failure)
+        assert "request task failed" not in captured.err

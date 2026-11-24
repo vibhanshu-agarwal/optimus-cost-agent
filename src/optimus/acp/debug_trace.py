@@ -13,9 +13,10 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
+from enum import IntEnum
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from optimus.agent.models import AgentRunRequest
 from optimus.agent.planning_loop import PlanningProgressEvent
@@ -47,6 +48,58 @@ _PROVENANCE_LOGGED = False
 DEFAULT_DEBUG_LOG_RELATIVE_PATH = Path(".optimus/debug-acp.ndjson")
 
 
+class DiagnosticLevel(IntEnum):
+    DEBUG = 10
+    INFO = 20
+    WARNING = 30
+    ERROR = 40
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosticRecord:
+    session_id: str
+    timestamp_ms: int
+    level: DiagnosticLevel
+    location: str
+    message: str
+    data: object
+    hypothesis_id: str
+    run_id: str
+
+
+class LocalDiagnosticSink(Protocol):
+    def write(self, record: DiagnosticRecord) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class _NdjsonDiagnosticSink:
+    path: Path
+    versioned: bool
+
+    def write(self, record: DiagnosticRecord) -> None:
+        payload: dict[str, object] = {
+            "sessionId": record.session_id,
+            "timestamp": record.timestamp_ms,
+            "location": record.location,
+            "message": record.message,
+            "data": record.data,
+        }
+        if self.versioned:
+            payload["schemaVersion"] = 1
+            payload["level"] = record.level.name.lower()
+            if record.hypothesis_id:
+                payload["hypothesisId"] = record.hypothesis_id
+            if record.run_id and record.run_id != "pre-fix":
+                payload["runId"] = record.run_id
+        else:
+            # Existing evidence tools read this exact envelope with --debug-trace alone.
+            payload["hypothesisId"] = record.hypothesis_id
+            payload["runId"] = record.run_id
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, separators=(",", ":"), default=_json_default_handler) + "\n")
+
+
 @dataclass(frozen=True)
 class DebugTraceContext:
     """Process-local ACP debug trace configuration.
@@ -66,6 +119,7 @@ class DebugTraceContext:
     session_hmac_key: bytes
     log_path: Path | None = None
     provenance_root: Path | None = None
+    minimum_level: DiagnosticLevel | None = None
 
 
 _ACTIVE_CONTEXT: DebugTraceContext | None = None
@@ -87,6 +141,7 @@ def configure_debug_trace(
     enabled: bool,
     log_path: str | Path | None = None,
     provenance_root: str | Path | None = None,
+    minimum_level: DiagnosticLevel | None = None,
 ) -> None:
     """Set the process-local debug trace context.
 
@@ -102,6 +157,7 @@ def configure_debug_trace(
         session_hmac_key=secrets.token_bytes(32),
         log_path=Path(log_path).resolve() if log_path is not None else None,
         provenance_root=Path(provenance_root).resolve() if provenance_root is not None else None,
+        minimum_level=minimum_level,
     )
 
 
@@ -171,7 +227,7 @@ def log_provenance_once() -> None:
             "cwd": str(Path.cwd().resolve()),
         },
         hypothesis_id="PROVENANCE",
-        run_id="pre-fix",
+        level=DiagnosticLevel.INFO,
     )
 
 
@@ -223,11 +279,12 @@ def acp_debug_log(
     data: dict[str, Any] | Callable[[], dict[str, Any] | None] | None = None,
     hypothesis_id: str = "",
     run_id: str = "pre-fix",
-) -> None:
-    """Append one NDJSON debug line. Never writes to stdout (ACP protocol channel).
+    level: DiagnosticLevel = DiagnosticLevel.DEBUG,
+) -> bool:
+    """Append one local NDJSON line and report whether the write completed.
 
     ``data`` may be a dict, ``None``, or a zero-argument synchronous supplier returning
-    one. The supplier is evaluated once, only after the enabled check, and inside this
+    one. The supplier is evaluated once after the enabled and level checks, inside this
     function's failure boundary: a diagnostic that raises can never break the request it
     was describing, and with tracing disabled no payload work happens at all. Only the
     top-level supplier is invoked; callables nested inside a payload are data and are
@@ -245,27 +302,28 @@ def acp_debug_log(
     current and future caller (including generic exception handlers that log
     ``str(exc)``) gets that right on its own.
     """
-    if not debug_trace_enabled():
-        return
+    context = _ACTIVE_CONTEXT
+    if context is None or not context.enabled or (context.minimum_level is not None and level < context.minimum_level):
+        return False
     try:
-        # Only the explicit `data` supplier is invoked, once, after the enabled check.
-        # Callables nested inside a payload are never called.
         resolved = data() if callable(data) else data
-        payload = {
-            "sessionId": _ACTIVE_CONTEXT.session_id if _ACTIVE_CONTEXT is not None else "",
-            "timestamp": int(time.time() * 1000),
-            "location": location,
-            "message": redact_for_telemetry(message),
-            "data": redact_for_telemetry(resolved if resolved is not None else {}),
-            "hypothesisId": hypothesis_id,
-            "runId": run_id,
-        }
-        log_path = _log_path()
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, separators=(",", ":"), default=_json_default_handler) + "\n")
+        versioned = context.minimum_level is not None
+        record = DiagnosticRecord(
+            session_id=context.session_id,
+            timestamp_ms=int(time.time() * 1000),
+            level=level,
+            location=redact_for_telemetry(location) if versioned else location,
+            message=redact_for_telemetry(message),
+            data=redact_for_telemetry(resolved if resolved is not None else {}),
+            hypothesis_id=redact_for_telemetry(hypothesis_id) if versioned else hypothesis_id,
+            run_id=redact_for_telemetry(run_id) if versioned else run_id,
+        )
+        # The sink receives the already sanitized record from this single write path.
+        sink: LocalDiagnosticSink = _NdjsonDiagnosticSink(path=_log_path(), versioned=versioned)
+        sink.write(record)
     except Exception:
-        return
+        return False
+    return True
 
 
 def log_workspace_context_result(request: AgentRunRequest, result: WorkspaceContextResult) -> None:
@@ -424,7 +482,18 @@ def log_provider_attempts(
             record["reason"] = bounded(reason, TRACE_REASONS)
         return record
 
-    acp_debug_log(location="debug_trace.py:log_provider_attempts", message="provider attempts classified", data=data, hypothesis_id="P12.2-ATTEMPT-STATUS")
+    level = DiagnosticLevel.DEBUG
+    if failure is not None:
+        level = DiagnosticLevel.ERROR
+    elif reason is not None:
+        level = DiagnosticLevel.WARNING
+    acp_debug_log(
+        location="debug_trace.py:log_provider_attempts",
+        message="provider attempts classified",
+        data=data,
+        hypothesis_id="P12.2-ATTEMPT-STATUS",
+        level=level,
+    )
     if telemetry is None:
         return
     try:
@@ -473,7 +542,13 @@ def log_prompt_refusal(*, session_id: object, request_id: object, reason: str, t
     def data() -> dict[str, Any]:
         return _refusal_record(session_id, request_id, reason, PROMPT_REFUSAL_REASONS)
 
-    acp_debug_log(location="debug_trace.py:log_prompt_refusal", message="prompt refused before any run", data=data, hypothesis_id="P12.2-DIAGNOSABILITY")
+    acp_debug_log(
+        location="debug_trace.py:log_prompt_refusal",
+        message="prompt refused before any run",
+        data=data,
+        hypothesis_id="P12.2-DIAGNOSABILITY",
+        level=DiagnosticLevel.WARNING,
+    )
     _emit_refusal(telemetry, "prompt_refused", data)
 
 
@@ -484,7 +559,13 @@ def log_pre_run_refusal(*, session_id: object, request_id: object, reason: str, 
     def data() -> dict[str, Any]:
         return _refusal_record(session_id, request_id, reason, PRE_RUN_REFUSAL_REASONS)
 
-    acp_debug_log(location="debug_trace.py:log_pre_run_refusal", message="prompt request refused before any turn", data=data, hypothesis_id="P12.2-DIAGNOSABILITY")
+    acp_debug_log(
+        location="debug_trace.py:log_pre_run_refusal",
+        message="prompt request refused before any turn",
+        data=data,
+        hypothesis_id="P12.2-DIAGNOSABILITY",
+        level=DiagnosticLevel.WARNING,
+    )
     _emit_refusal(telemetry, "pre_run_refused", data)
 
 
@@ -495,7 +576,13 @@ def log_context_fault(*, run_id: str, phase: str, category: str, detail: str | N
     def data() -> dict[str, Any]:
         return {"run_id": host_route_id(run_id), "phase": phase, "category": category, "detail": detail, "outcome": outcome}
 
-    acp_debug_log(location="debug_trace.py:log_context_fault", message="context fault", data=data, hypothesis_id="P12.2-DIAGNOSABILITY")
+    acp_debug_log(
+        location="debug_trace.py:log_context_fault",
+        message="context fault",
+        data=data,
+        hypothesis_id="P12.2-DIAGNOSABILITY",
+        level=DiagnosticLevel.ERROR,
+    )
     if telemetry is None:
         return
     try:
@@ -534,7 +621,13 @@ def log_auto_route(
             record["failure"] = exception_fact(failure)
         return record
 
-    acp_debug_log(location="debug_trace.py:log_auto_route", message="auto route", data=data, hypothesis_id="P12.4-AUTO")
+    acp_debug_log(
+        location="debug_trace.py:log_auto_route",
+        message="auto route",
+        data=data,
+        hypothesis_id="P12.4-AUTO",
+        level=DiagnosticLevel.ERROR if failure is not None else DiagnosticLevel.WARNING,
+    )
     if telemetry is None:
         return
     try:
@@ -569,7 +662,18 @@ def log_memory_served(*, run_id: str, source: str, outcome: str, served: Any = N
                                           for mark in served.watermarks]})
         return record
 
-    acp_debug_log(location="debug_trace.py:log_memory_served", message="memory served", data=data, hypothesis_id="P12.11-MEMORY")
+    level = DiagnosticLevel.DEBUG
+    if outcome == "error":
+        level = DiagnosticLevel.ERROR
+    elif outcome == "timeout":
+        level = DiagnosticLevel.WARNING
+    acp_debug_log(
+        location="debug_trace.py:log_memory_served",
+        message="memory served",
+        data=data,
+        hypothesis_id="P12.11-MEMORY",
+        level=level,
+    )
 
 
 def log_late_worker_failure(*, run_id: str, telemetry: JsonlTelemetryWriter | None = None) -> None:
@@ -577,7 +681,12 @@ def log_late_worker_failure(*, run_id: str, telemetry: JsonlTelemetryWriter | No
     run = host_route_id(run_id)
     record = {"run_id": run, "outcome": "failed_after_detach"}
     with suppress(Exception):
-        acp_debug_log(location="debug_trace.py:log_late_worker_failure", message="late worker failure", data=record)
+        acp_debug_log(
+            location="debug_trace.py:log_late_worker_failure",
+            message="late worker failure",
+            data=record,
+            level=DiagnosticLevel.ERROR,
+        )
     if telemetry is not None:
         with suppress(Exception):
             session = host_session_id(run.split(":")[0]) if run not in (None, UNRECOGNIZED) else None
