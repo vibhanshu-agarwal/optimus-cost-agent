@@ -6521,6 +6521,54 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m2b_evaluate:_write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes or prints a calibration report of counts, token totals, ranks, hashes, case ids and repository-relative paths; no file body, query result text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_report_is_written_as_sorted_ascii_json",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:_write:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes or prints a calibration report of counts, token totals, ranks, hashes, case ids and repository-relative paths; no file body, query result text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_report_is_written_as_sorted_ascii_json",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:budget_case:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical json of (path, symbol, line, disclosure) tuples, hashed in memory for an optional-set digest; nothing is written or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_a_budget_case_records_both_arms_and_a_substantive_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes or prints a calibration report of counts, token totals, ranks, hashes, case ids and repository-relative paths; no file body, query result text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_main_refuses_qualification_before_task_4",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints the selected policy name and the repetition count; no file body, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_main_refuses_qualification_before_task_4",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:run_calibration:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the frozen cases record and writes nothing beyond the calibration report covered by _write.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_development_set_loads_from_its_frozen_fixtures",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m1_scale:edit_visibility:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "AST overmatch: the call is threading.Event.set(); nothing is written to Redis or any sink.",

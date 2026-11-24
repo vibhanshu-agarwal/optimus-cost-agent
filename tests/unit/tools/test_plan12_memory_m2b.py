@@ -142,3 +142,16 @@ def test_the_control_case_is_a_valid_development_control():
     injection = CASES["injections"]["sets"]["development"]
     case = ev.control_case(injection, f"git:{SNAPSHOT}", "2026-11-24T18:08:04+05:30")
     assert isinstance(case, GoldenCase) and case.role == "control" and case.required_evidence[0].any_of == ("path:docs/notes/dev-control.md",)
+
+
+def test_the_report_is_written_as_sorted_ascii_json(tmp_path):
+    out = tmp_path / "report.json"
+    ev._write({"b": 1, "a": "é"}, out)
+    text = out.read_text(encoding="utf-8")
+    assert text.isascii() and text.index('"a"') < text.index('"b"') and json.loads(text) == {"a": "é", "b": 1}
+
+
+def test_main_refuses_qualification_before_task_4(tmp_path, monkeypatch):
+    monkeypatch.chdir(ROOT)
+    with pytest.raises(ev.FreshRefused):
+        ev.main(["--config", "reports/plan12-memory-m2b/run-config.json", "--phase", "qualification", "--output", str(tmp_path / "q.json")])
