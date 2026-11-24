@@ -1217,6 +1217,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.agent.runner:_guard_refused:exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "#589: a guard refusal of an approved step is written to the debug trace as the exception and cause type names and the guard's fixed reason text, never the refused path or command; the record goes through the already classified acp_debug_log shared sanitizer.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence via acp_debug_log",
+      "test_node": "tests/unit/acp/test_guard_refusal_ends_turn.py::test_the_refusal_cause_is_in_the_debug_trace_without_the_path",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.agent.state_store:normalize_redis_ping_errors:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.agent.state_store:normalize_redis_ping_errors:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
