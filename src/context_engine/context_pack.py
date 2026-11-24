@@ -13,9 +13,11 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final
 
-from .retrieval import Hit, Ranked
+from .pack_utility import Candidate, select
+from .retrieval import Hit, Ranked, lexical_terms
 
 SIGNATURE_SHARE: Final = 0.25  # of what optional context has; bodies get the rest
+REQUIRED_FLOOR_TOKENS: Final = 1024  # optional room kept above required text when there is room for it (Plan 12.14)
 SECTION_REQUIRED: Final = "--- required files ---"
 SECTION_SIGNATURES: Final = "--- relevant symbols and sections (from the index) ---"
 SECTION_BODIES: Final = "--- verified excerpts (read from disk now) ---"
@@ -52,6 +54,11 @@ class Pack:
         return not self.missing_required
 
 
+def chosen_budget(ceiling: int, target: int, required: int) -> int:
+    """Plan 12.14: the soft target, never below the required text plus a floor of optional room, never above the hard ceiling."""
+    return min(ceiling, max(required + min(REQUIRED_FLOOR_TOKENS, ceiling - required), target))
+
+
 def _excerpt(data: bytes, hit: Hit) -> str | None:
     if hit.start_line is None or hit.end_line is None:
         return None
@@ -74,8 +81,10 @@ def _signature_line(hit: Hit) -> str | None:
     return f"{_where(hit)} {label}: {' '.join((summary or '').split())}".rstrip(": ")
 
 
-def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Callable[[str], bytes | None], estimate: Callable[[str], int], budget_tokens: int) -> Pack:
-    """`read` returns the file's current bytes, or None when policy no longer admits it. `estimate` is the route's token estimator."""
+def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Callable[[str], bytes | None], estimate: Callable[[str], int], budget_tokens: int,
+                  policy: str = "baseline", task: str = "", protected: Sequence[str] = ()) -> Pack:
+    """`read` returns the file's current bytes, or None when policy no longer admits it. `estimate` is the route's token estimator.
+    `policy` chooses which optional items fill each phase (pack_utility); `task` gives its terms and `protected` the quota places."""
     selected: list[Selected] = []
     hashes: dict[str, str] = {}
     contents: dict[str, bytes | None] = {}
@@ -128,35 +137,27 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         else:
             verified.append(item)
 
-    signature_lines: list[str] = []
-    shown_signature: set[str] = set()
-    for item in verified:
-        line = _signature_line(item.hit)
-        if line is None:
-            continue
-        candidate = "\n".join([SECTION_SIGNATURES, *signature_lines, line])
-        if estimate(candidate) > signatures_room:
-            continue
-        signature_lines.append(line)
-        shown_signature.add(item.hit.id)
+    task_terms = lexical_terms(task) if policy != "baseline" else []
+    keep = frozenset(protected)
+    lines_by_id = {item.hit.id: line for item in verified if (line := _signature_line(item.hit)) is not None}
+    pool = [Candidate(item.hit.id, lines_by_id[item.hit.id], item.score, ordinal) for ordinal, item in enumerate(verified) if item.hit.id in lines_by_id]
+    shown_signature = {c.id for c in select(SECTION_SIGNATURES, pool, room=signatures_room, estimate=estimate, policy=policy, task_terms=task_terms, protected=keep)}
+    signature_lines = [c.text for c in pool if c.id in shown_signature]
     signature_text = "\n".join([SECTION_SIGNATURES, *signature_lines]) if signature_lines else ""
     used_signatures = estimate(signature_text) if signature_text else 0
 
     bodies_room = room - used_signatures
-    body_blocks: list[str] = []
-    shown_body: set[str] = set()
-    for item in verified:
+    blocks_pool: list[Candidate] = []
+    for ordinal, item in enumerate(verified):
         hit = item.hit
         excerpt = _excerpt(contents[hit.path] or b"", hit) if hit.kind != "file" else None
-        if not excerpt:
-            continue
-        block = f"--- {_where(hit)} ---\n{excerpt}"
-        candidate = "\n".join([SECTION_BODIES, *body_blocks, block])
-        if estimate(candidate) > bodies_room:
-            continue
-        body_blocks.append(block)
-        shown_body.add(hit.id)
-        hashes[hit.path] = hit.file_hash
+        if excerpt:
+            blocks_pool.append(Candidate(hit.id, f"--- {_where(hit)} ---\n{excerpt}", item.score, ordinal))
+    shown_body = {c.id for c in select(SECTION_BODIES, blocks_pool, room=bodies_room, estimate=estimate, policy=policy, task_terms=task_terms, protected=keep)}
+    body_blocks = [c.text for c in blocks_pool if c.id in shown_body]
+    for item in verified:
+        if item.hit.id in shown_body:
+            hashes[item.hit.path] = item.hit.file_hash
     body_text = "\n".join([SECTION_BODIES, *body_blocks]) if body_blocks else ""
 
     for item in verified:

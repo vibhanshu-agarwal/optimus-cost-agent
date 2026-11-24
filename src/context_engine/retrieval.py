@@ -90,6 +90,7 @@ class Retrieval:
     revision: str | None = None
     ranked: tuple[Ranked, ...] = ()
     channels: Mapping[str, str] = field(default_factory=dict)
+    protected: tuple[str, ...] = ()  # the quota places fusion put first, which a packing utility considers first
 
 
 def query_terms(text: str) -> list[str]:
@@ -125,15 +126,23 @@ def fuse(channels: Mapping[str, Sequence[Hit]], *, named: Iterable[str] = (), we
         return (-round(scores[identity], 12), hit.path not in chosen, _KIND_ORDER.get(hit.kind, 3), hit.path, hit.start_line or 0, identity)
 
     base = tuple(Ranked(hits[identity], scores[identity], ranks[identity]) for identity in sorted(hits, key=order))
-    if chosen or channels.get("structure"):  # a named path or a structural hit keeps the base order (plan v3)
+    first = quota_ids(channels, named=chosen)
+    if not first:
         return base
+    by_id = {item.hit.id: item for item in base}
+    return (*(by_id[identity] for identity in first), *(item for item in base if item.hit.id not in first))
+
+
+def quota_ids(channels: Mapping[str, Sequence[Hit]], *, named: Iterable[str] = ()) -> tuple[str, ...]:
+    """The ids fusion places first: none when a path was named or structure answered (plan v3), else each quota place's hit."""
+    if set(named) or channels.get("structure"):
+        return ()
     first: dict[str, None] = {}
     for channel, position in QUOTA:
         listed = channels.get(channel) or ()
         if position < len(listed):
             first.setdefault(listed[position].id)  # a duplicate takes no place and nothing backfills it
-    by_id = {item.hit.id: item for item in base}
-    return (*(by_id[identity] for identity in first), *(item for item in base if item.hit.id not in first))
+    return tuple(first)
 
 
 def read_catalogue(storage: IndexStorage, epoch: int) -> list[CatalogueFile]:
@@ -226,7 +235,7 @@ class Retriever:
         run("structure", lambda: self._structure(named_paths, named_symbols, epoch, catalogue))
         run("recency", lambda: self._recent(epoch, catalogue))
         ranked = fuse(channels, named=named_paths)
-        return Retrieval("ok", epoch, current["coverage"], current.get("revision"), ranked, report)
+        return Retrieval("ok", epoch, current["coverage"], current.get("revision"), ranked, report, quota_ids(channels, named=named_paths))
 
     def _ask(self, epoch: int, **query: Any) -> list[Hit]:
         return [Hit.from_wire(record) for record in self._storage.call("query", epoch=epoch, **query)["records"]]

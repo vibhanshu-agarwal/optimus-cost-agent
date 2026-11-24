@@ -38,6 +38,7 @@ from pydantic import (
 )
 
 __all__ = [
+    "CACHE_WRITE_INPUT_MULTIPLIER",
     "Admission",
     "Capabilities",
     "DataUse",
@@ -62,6 +63,10 @@ __all__ = [
 
 MAX_CONTEXT_CEILING_TOKENS = 262_144
 """ADR-003's total context ceiling, output reserve included once."""
+
+CACHE_WRITE_INPUT_MULTIPLIER = Decimal("1.25")
+"""A five-minute cache write costs this many times ordinary input, by the qualified provider's documentation. The Gateway's reservation
+and the host's model-aware context budget (Plan 12.14) both price a possible write with it."""
 
 SUMMARY_FORMAT = "context-summary-v1"
 """The accepted host-wrapped plain-text summary format (Task 1 contracts §3)."""
