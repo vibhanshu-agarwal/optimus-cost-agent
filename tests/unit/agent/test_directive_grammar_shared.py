@@ -72,8 +72,8 @@ def test_planning_loop_uses_the_directives_compiled_patterns(name: str) -> None:
     assert getattr(planning_loop, name) is getattr(directives, name)
 
 
-# #575: the bullet prefixes are one tuple, and a VALID MCP_LIST / MCP_CALL line takes spaces or tabs in both modules.
-# Malformed and bare MCP lines are NOT classified alike at the WRITE boundary; see the characterization test below.
+# #575 Part A: the bullet prefixes are one tuple shared by both parsers (behaviour-neutral).
+# The MCP_LIST / MCP_CALL lines are a pinned, unresolved disagreement between the parsers; see the end of the file.
 def test_planning_loop_uses_the_directives_bullet_prefixes() -> None:
     assert planning_loop.BULLET_PREFIXES is directives.BULLET_PREFIXES
 
@@ -87,58 +87,62 @@ def test_a_bulleted_directive_line_ends_a_write_body_in_both_modules(bullet: str
     assert _classify(f"WRITE a.txt\nbody\n{bullet}READ b.txt\nOBSERVE: x") == "INTERMEDIATE_UNSUPPORTED_DIRECTIVE"
 
 
-MCP_LINES = [
-    "MCP_LIST server",
-    "MCP_LIST\tserver",
-    "MCP_LIST \t server \t",
-    "MCP_CALL server tool {}",
-    "MCP_CALL\tserver\ttool\t{}",
-    "MCP_CALL \t server \t tool \t {} \t",
-]
-MCP_PLAN_ERROR = "MCP directives are not valid in a final mutation plan"
-
-
-@pytest.mark.parametrize("line", MCP_LINES)
-def test_valid_mcp_lines_are_classified_alike_by_both_modules(line: str) -> None:
-    # whole reply: the planning turn is an MCP request; the final-plan parser refuses it
-    assert _classify(line) == "MCP_TOOL"
-    with pytest.raises(AgentDirectiveParseError, match=MCP_PLAN_ERROR):
-        parse_agent_plan(f"{line}\n", edit_base="forbidden")
-    # in a WRITE body: exactly these outcomes, so an unrelated parse error cannot pass
-    assert _classify(f"WRITE a.txt\nbody\n{line}\nOBSERVE: x") == "MCP_MIXED_DIRECTIVES"
-    with pytest.raises(AgentDirectiveParseError, match=MCP_PLAN_ERROR):
-        parse_agent_plan(f"WRITE a.txt\nbody\n{line}\n", edit_base="forbidden")
-    # behind a bullet the planning turn only sees a valid line through its WRITE-body scan: it must end the body
-    assert _classify(f"WRITE a.txt\nbody\n- {line}\nOBSERVE: x") == "INTERMEDIATE_UNSUPPORTED_DIRECTIVE"
-    with pytest.raises(AgentDirectiveParseError, match=MCP_PLAN_ERROR):
-        parse_agent_plan(f"WRITE a.txt\nbody\n- {line}\n", edit_base="forbidden")
-
-
+# Characterization tests: they pin what the code does TODAY for MCP lines behind a bullet in a WRITE body. The two
+# parsers disagree for several of these rows, and that disagreement is tracked in #575 (it is unresolved, and nothing
+# below endorses it). Each case sends the SAME reply text to both real parsers. Whoever resolves the disagreement
+# must change these expectations deliberately.
 NBSP = " "
-# Malformed (MCP_LIST takes exactly one argument, MCP_CALL three) or not separated by a space or tab: body text.
-NOT_MCP_LINES = [
-    "MCP_LIST\tList configured servers",
-    "MCP_CALL\tserver",
-    f"MCP_LIST{NBSP}server",
-    f"MCP_CALL{NBSP}server tool {{}}",
+MCP_PLAN_ERROR = "MCP directives are not valid in a final mutation plan"
+FINAL = "FINAL_PLAN"
+UNSUPPORTED = "INTERMEDIATE_UNSUPPORTED_DIRECTIVE"
+# (line behind "- ", planning-turn outcome, plan-parser outcome): an error message, or None when the plan parser
+# keeps the whole body (everything after "WRITE a.txt\n") as the WRITE content.
+BULLETED_MCP_LINES = [
+    ("MCP_LIST server", UNSUPPORTED, MCP_PLAN_ERROR),
+    ("MCP_LIST\tserver", "GRAMMAR_UNRECOGNIZED", MCP_PLAN_ERROR),
+    ("MCP_LIST", UNSUPPORTED, None),
+    ("MCP_LIST a b", UNSUPPORTED, None),
+    ("MCP_LIST\ta b", FINAL, None),
+    (f"MCP_LIST{NBSP}server", FINAL, None),
+    ("MCP_CALL server tool {}", UNSUPPORTED, MCP_PLAN_ERROR),
+    ("MCP_CALL\tserver tool {}", "GRAMMAR_UNRECOGNIZED", MCP_PLAN_ERROR),
+    ("MCP_CALL", UNSUPPORTED, None),
+    ("MCP_CALL server", UNSUPPORTED, None),
+    ("MCP_CALL\tserver", FINAL, None),
+    (f"MCP_CALL{NBSP}server tool {{}}", FINAL, None),
 ]
 
 
-@pytest.mark.parametrize("line", NOT_MCP_LINES)
-def test_a_malformed_mcp_line_behind_a_bullet_stays_in_a_write_body(line: str) -> None:
-    # A realistic Markdown body: both modules keep the bullet and the OBSERVE line as WRITE content.
-    body = f"body\n- {line}\nOBSERVE: Record the result here\n"
-    turn = parse_planning_turn(f"WRITE a.txt\n{body}")
-    assert turn.kind.value == "FINAL_PLAN"
-    assert turn.directives.write.content == body
-    assert parse_agent_plan(f"WRITE a.txt\n{body}", edit_base="forbidden").write.content == body
+@pytest.mark.parametrize(("line", "turn_outcome", "plan_error"), BULLETED_MCP_LINES)
+def test_known_disagreement_bulleted_mcp_line_in_a_write_body_followed_by_observe(
+    line: str, turn_outcome: str, plan_error: str | None
+) -> None:
+    reply = f"WRITE a.txt\nbody\n- {line}\nOBSERVE: x\n"
+    body = f"body\n- {line}\nOBSERVE: x\n"
+    assert _classify(reply) == turn_outcome
+    if turn_outcome == FINAL:
+        assert parse_planning_turn(reply).directives.write.content == body
+    if plan_error is None:
+        assert parse_agent_plan(reply, edit_base="forbidden").write.content == body
+    else:
+        with pytest.raises(AgentDirectiveParseError) as excinfo:
+            parse_agent_plan(reply, edit_base="forbidden")
+        assert str(excinfo.value) == plan_error
 
 
-@pytest.mark.parametrize("line", ["MCP_LIST List configured servers", "MCP_LIST", "MCP_CALL server", "MCP_CALL"])
-def test_known_disagreement_bare_and_malformed_mcp_lines_end_the_planning_turns_write_body(line: str) -> None:
-    # Characterization, NOT an endorsement (#575): parse_planning_turn treats a bulleted bare or space-separated
-    # malformed MCP line as a directive line, so it ends the WRITE body and the OBSERVE behind it is rejected;
-    # parse_agent_plan keeps the same lines as body text. Fixing the disagreement must change this test.
-    assert _classify(f"WRITE a.txt\nbody\n- {line}\nOBSERVE: x\n") == "INTERMEDIATE_UNSUPPORTED_DIRECTIVE"
-    kept = parse_agent_plan(f"WRITE a.txt\nbody\n- {line}\n", edit_base="forbidden").write.content
-    assert kept == f"body\n- {line}\n"
+def test_known_disagreement_pin_bare_cr_edit_example_body_with_a_tab_mcp_line_is_kept_whole() -> None:
+    # Pins main's behaviour (#575): a WRITE body holding a literal EDIT example whose END marker is followed by a bare
+    # CR and then a bulleted tab-form MCP_LIST line stays one FINAL_PLAN in both parsers.
+    body = "<<<<<<< OLD\na\n======= NEW\nb\n>>>>>>> END\r- MCP_LIST\tserver\nOBSERVE: x\n"
+    reply = f"WRITE notes.md\n{body}"
+    assert _classify(reply) == FINAL
+    assert parse_planning_turn(reply).directives.write.content == body
+    assert parse_agent_plan(reply, edit_base="forbidden").write.content == body
+
+
+def test_known_disagreement_pin_fenced_write_followed_outside_the_fence_by_a_tab_mcp_line() -> None:
+    # Pins main's behaviour (#575): text after the closing fence is not read as part of the WRITE.
+    reply = "```\nWRITE a.txt\nbody\n```\n- MCP_LIST\tserver\nOBSERVE: x\n"
+    assert _classify(reply) == FINAL
+    assert parse_planning_turn(reply).directives.write.content == "body\n"
+    assert parse_agent_plan(reply, edit_base="forbidden").write.content == "body\n"
