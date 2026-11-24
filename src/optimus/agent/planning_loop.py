@@ -16,6 +16,8 @@ from optimus.agent.directives import (
     BULLET_PREFIXES,
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
+    MCP_CALL_DIRECTIVE,
+    MCP_LIST_DIRECTIVE,
     READ_DIRECTIVE,
     TEST_DIRECTIVE,
     WRITE_DIRECTIVE,
@@ -738,7 +740,10 @@ def _is_final_directive_line(line: str) -> bool:
         READ_DIRECTIVE.match(normalized) is not None
         or WRITE_DIRECTIVE.match(normalized) is not None
         or TEST_DIRECTIVE.match(normalized) is not None
-        or normalized.startswith(("MCP_LIST ", "MCP_LIST\t", "MCP_CALL ", "MCP_CALL\t"))  # #410 R1: spaces and tabs
+        or normalized.startswith("MCP_LIST ")
+        or normalized.startswith("MCP_CALL ")
+        or MCP_LIST_DIRECTIVE.match(normalized) is not None  # a valid tab form only (#575); a malformed one stays body text
+        or MCP_CALL_DIRECTIVE.match(normalized) is not None
         or normalized == "MCP_LIST"
         or normalized == "MCP_CALL"
     )

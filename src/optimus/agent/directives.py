@@ -23,8 +23,8 @@ EDIT_NEW_MARKER = "======= NEW"
 EDIT_END_MARKER = ">>>>>>> END"
 _EDIT_MARKERS = frozenset({EDIT_OLD_MARKER, EDIT_NEW_MARKER, EDIT_END_MARKER})
 TEST_DIRECTIVE = re.compile(r"^TEST[ \t]+(.+)$")
-_MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST[ \t]+(\S+)[ \t]*$")
-_MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\{.*\})[ \t]*$")
+MCP_LIST_DIRECTIVE = re.compile(r"^MCP_LIST[ \t]+(\S+)[ \t]*$")
+MCP_CALL_DIRECTIVE = re.compile(r"^MCP_CALL[ \t]+(\S+)[ \t]+(\S+)[ \t]+(\{.*\})[ \t]*$")
 _INDEX_TOOL_LINE = re.compile(r"^(?:(SEARCH)[ \t]+(\S.*?)|(OUTLINE|SYMBOLS|LIST)[ \t]+(\S+))[ \t]*$")
 MAX_INDEX_TOOL_LINES = 4
 _SHELL_METACHARACTERS = re.compile(r"[;|&`$<>]|&&|\|\||\$\(")
@@ -124,14 +124,14 @@ def validate_mcp_name(name: str, *, label: str) -> str:
 
 
 def parse_mcp_list_line(line: str) -> AgentMcpListDirective | None:
-    match = _MCP_LIST_DIRECTIVE.match(_normalize_directive_line(line))
+    match = MCP_LIST_DIRECTIVE.match(_normalize_directive_line(line))
     if match is None:
         return None
     return AgentMcpListDirective(server=validate_mcp_name(match.group(1), label="server"))
 
 
 def parse_mcp_call_line(line: str) -> AgentMcpCallDirective | None:
-    match = _MCP_CALL_DIRECTIVE.match(_normalize_directive_line(line))
+    match = MCP_CALL_DIRECTIVE.match(_normalize_directive_line(line))
     if match is None:
         return None
     server = validate_mcp_name(match.group(1), label="server")
@@ -204,7 +204,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
 
     while index < len(lines):
         line = _normalize_directive_line(lines[index])
-        if _MCP_LIST_DIRECTIVE.match(line) is not None or _MCP_CALL_DIRECTIVE.match(line) is not None:
+        if MCP_LIST_DIRECTIVE.match(line) is not None or MCP_CALL_DIRECTIVE.match(line) is not None:
             raise AgentDirectiveParseError("MCP directives are not valid in a final mutation plan")
         if lines[index].strip() in _EDIT_MARKERS:
             raise AgentDirectiveParseError("EDIT block marker outside an EDIT directive")
@@ -336,8 +336,8 @@ def _is_directive_line(line: str) -> bool:
         READ_DIRECTIVE.match(normalized) is not None
         or WRITE_DIRECTIVE.match(normalized) is not None
         or TEST_DIRECTIVE.match(normalized) is not None
-        or _MCP_LIST_DIRECTIVE.match(normalized) is not None
-        or _MCP_CALL_DIRECTIVE.match(normalized) is not None
+        or MCP_LIST_DIRECTIVE.match(normalized) is not None
+        or MCP_CALL_DIRECTIVE.match(normalized) is not None
     )
 
 
