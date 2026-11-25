@@ -633,6 +633,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.errors:outbound_error_response:structured_exception_export",
+      "policy": "shared-sanitize",
+      "rationale": "Both ACP response paths use this helper. It selects fixed host-owned facts for peer failures and routes host errors through error_response, which sanitizes messages and data and has no raw fallback.",
+      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
+      "test_node": "tests/unit/acp/test_outbound_errors.py::test_peer_error_stays_named_and_drops_data_when_the_sanitizer_fails",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.e2e_transcript:E2eAcpTranscriptWriter.write:json_serialization",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.e2e_transcript:E2eAcpTranscriptWriter.write:json_serialization before this persistence or export boundary; sanitizer failure has no raw fallback.",
@@ -1129,14 +1137,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.server:AcpStreamServer.process_request:structured_exception_export",
-      "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.process_request:structured_exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
-      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.acp.server:AcpStreamServer.read_lines:exception_export",
       "policy": "shared-sanitize",
       "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.server:AcpStreamServer.read_lines:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
@@ -1173,14 +1173,6 @@
       "policy": "protocol-only",
       "rationale": "Functional protocol serialization at optimus.acp.server:StdioNdjsonLineWriter.write_line:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",
       "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
-      "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
-      "evidence_tier": "unit"
-    },
-    {
-      "key": "optimus.acp.spec:AcpDuplexAdapter._handle_session_prompt:structured_exception_export",
-      "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.spec:AcpDuplexAdapter._handle_session_prompt:structured_exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
-      "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
       "evidence_tier": "unit"
     },

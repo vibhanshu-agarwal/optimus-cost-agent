@@ -155,7 +155,7 @@ class _ErrorCodeLiteralVisitor(ast.NodeVisitor):
             func_name = node.func.id
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
-        if func_name in {"JsonRpcError", "AcpOutboundError"} and node.args:
+        if func_name in {"JsonRpcError", "AcpOutboundError", "AcpPeerResponseError"} and node.args:
             self._maybe_record_value(node.args[0], self._enclosing())
         self.generic_visit(node)
 

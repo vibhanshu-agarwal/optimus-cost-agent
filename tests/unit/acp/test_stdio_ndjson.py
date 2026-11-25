@@ -1257,3 +1257,94 @@ async def test_ndjson_request_trace_joins_the_host_session_and_run(tmp_path):
     assert terminal["correlation"]["runId"] == f"{session_id}:1"
     worker, = [row for row in records if row["location"] == "spec.py:_handle_session_prompt:entry"]
     assert worker["correlation"]["runId"] == terminal["correlation"]["runId"]
+
+
+@pytest.mark.parametrize("path", ["prompt", "recovery"])
+@pytest.mark.parametrize("trace_level", ["legacy", "debug", "error"])
+async def test_ndjson_peer_error_returns_host_error_without_retaining_peer_body(
+    path, trace_level, tmp_path, monkeypatch, capsys,
+):
+    from optimus.acp.debug_trace import DiagnosticLevel, configure_debug_trace
+    from tests.integration.acp.test_server_stream import InteractiveLineReader, MemoryLineWriter
+
+    minimum_level = None if trace_level == "legacy" else DiagnosticLevel[trace_level.upper()]
+    trace = tmp_path / "peer-error.ndjson"
+    configure_debug_trace(enabled=True, log_path=trace, minimum_level=minimum_level)
+    configured = configured_test_agent_server(tmp_path, output_text="WRITE example.py\ncontent")
+    if path == "recovery":
+        original = server.AcpDuplexAdapter.handle_client_request
+
+        async def await_peer_in_adapter(self, message, ownership_slot=None):
+            if message.get("id") == 2:
+                await self._outbound.request("session/request_permission", {})
+            return await original(self, message, ownership_slot=ownership_slot)
+
+        monkeypatch.setattr(server.AcpDuplexAdapter, "handle_client_request", await_peer_in_adapter)
+
+    reader, writer = InteractiveLineReader(), MemoryLineWriter()
+    serve_task = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+    try:
+        await reader.send({
+            "jsonrpc": "2.0", "id": 1, "method": "session/new",
+            "params": {"cwd": str(tmp_path), "mcpServers": []},
+        })
+        opened = await asyncio.wait_for(writer.wait_for_response(1), timeout=A_BOUND_SECONDS)
+        await reader.send({
+            "jsonrpc": "2.0", "id": 2, "method": "session/prompt",
+            "params": {"sessionId": opened["result"]["sessionId"], "prompt": [{"type": "text", "text": "fixture"}]},
+        })
+        pending = await asyncio.wait_for(writer.wait_for_request("session/request_permission"), timeout=A_BOUND_SECONDS)
+        await reader.send({
+            "jsonrpc": "2.0", "id": pending["id"],
+            "error": {
+                "code": -31415,
+                "message": "peer-detail-marker",
+                "data": {"nested": {"peer-payload-marker": "synthetic fixture"}},
+            },
+        })
+        reply = await asyncio.wait_for(writer.wait_for_response(2), timeout=A_BOUND_SECONDS)
+        await reader.send({
+            "jsonrpc": "2.0", "id": 3, "method": "session/new",
+            "params": {"cwd": str(tmp_path), "mcpServers": []},
+        })
+        assert "result" in await asyncio.wait_for(writer.wait_for_response(3), timeout=A_BOUND_SECONDS)
+    finally:
+        await _seam4_finally(reader, serve_task)
+
+    assert sum(message.get("id") == 2 for message in writer.messages) == 1
+    assert not (tmp_path / "example.py").exists()
+    assert reply == {
+        "jsonrpc": "2.0", "id": 2,
+        "error": {
+            "code": errors.INTERNAL_ERROR,
+            "message": "client rejected outbound request",
+            "data": {"reason": "CLIENT_REJECTED_OUTBOUND"},
+        },
+    }
+    # In the visible tiers, the absence test needs a positive trace observation.
+    if trace_level in {"legacy", "debug"}:
+        log = trace.read_text(encoding="utf-8")
+        records = [json.loads(line) for line in log.splitlines()]
+        assert any(
+            row["location"] == "server.py:serve_ndjson:inbound_client_response_raw"
+            and row["data"] == {"id": pending["id"], "has_result": False, "has_error": True}
+            for row in records
+        )
+    elif path == "prompt":
+        log = trace.read_text(encoding="utf-8")
+        records = [json.loads(line) for line in log.splitlines()]
+        assert any(
+            row["location"] == "spec.py:_handle_session_prompt:outbound_error"
+            and row["level"] == "error"
+            and row["data"]["reason"] == "CLIENT_REJECTED_OUTBOUND"
+            for row in records
+        )
+    else:
+        # This outer recovery path emits DEBUG response observations only.
+        assert not trace.exists()
+        log = ""
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    for marker in ("-31415", "peer-detail-marker", "peer-payload-marker"):
+        assert marker not in log
+        assert marker not in captured.err

@@ -50,9 +50,12 @@ from optimus.acp.errors import (
     MCP_REOPEN_REFUSED,
     METHOD_NOT_FOUND,
     REQUEST_CANCELLED,
+    AcpErrorOutcome,
     AcpOutboundError,
+    AcpPeerResponseError,
     JsonRpcError,
     error_response,
+    outbound_error_response,
     success_response,
 )
 from optimus.acp.lifecycle import (
@@ -2656,10 +2659,7 @@ class AcpDuplexAdapter:
             # A live exit still reports any threshold this turn crossed (Codex CP3 ruling R2).
             await self._emit_exit_cost_alerts(turn)
             return self._turn(
-                error_response(
-                    request_id=request.get("id"),
-                    error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
-                ),
+                outbound_error_response(request.get("id"), exc),
                 turn_control,
                 ownership_slot,
             )
@@ -4287,6 +4287,8 @@ def _prompt_result(stop_reason: str, result: AgentRunResult, control: TurnContro
 
 def _outbound_error_payload(run_id: str, exc: AcpOutboundError) -> Callable[[], dict[str, object]]:
     def payload() -> dict[str, object]:
+        if isinstance(exc, AcpPeerResponseError):
+            return {"run_id": run_id, "provenance": "peer", "reason": AcpErrorOutcome.CLIENT_REJECTED_OUTBOUND.value}
         return {"run_id": run_id, "code": exc.code, "message": exc.message}
 
     return payload
