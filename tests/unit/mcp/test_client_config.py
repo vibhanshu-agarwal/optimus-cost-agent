@@ -402,14 +402,16 @@ def test_userinfo_and_fragment_are_judged_before_the_port(tmp_path: Path, url: s
         _http_entry(headers=[{"name": "X-" + LONE_SURROGATE, "value": "v"}]),
         _stdio_entry(env=[{"name": "ISSUE603_ENV", "value": LONE_SURROGATE}]),
         _stdio_entry(env=[{"name": "ISSUE603_" + LONE_SURROGATE, "value": "v"}]),
+        _stdio_entry(env=[{"name": "ISSUE603_ENV", "value": chr(0)}]),
+        _http_entry(headers=[{"name": "X-Key", "value": "a" + chr(0)}]),
     ],
-    ids=["header-value", "header-name", "env-value", "env-name"],
+    ids=["header-value", "header-name", "env-value", "env-name", "env-value-nul", "header-value-nul"],
 )
 def test_named_value_that_cannot_be_encoded_is_a_config_error(tmp_path: Path, entry: dict[str, object]) -> None:
     with pytest.raises(ClientMcpConfigError) as exc_info:
         _normalize([entry], workspace_root=tmp_path, controlled_path=str(tmp_path))
     assert exc_info.value.rule_id == "client_mcp.invalid_named_values"
-    assert exc_info.value.__suppress_context__
+    assert exc_info.value.__context__ is None
 
 
 @pytest.mark.parametrize(

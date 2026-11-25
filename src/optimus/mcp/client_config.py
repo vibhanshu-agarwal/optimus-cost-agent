@@ -224,11 +224,7 @@ class ClientMcpConfigNormalizer:
 
         if transport == "stdio":
             command = _require_str(entry.get("command"), rule_id="client_mcp.invalid_stdio_command")
-            try:  # the filesystem refuses a NUL or an unencodable name, on POSIX before any lookup
-                command.encode("utf-8")
-            except UnicodeEncodeError:
-                raise ClientMcpConfigError("client_mcp.invalid_stdio_command") from None
-            if "\0" in command:
+            if "\0" in command or not _encodes_as_utf8(command):  # same answer on every platform
                 raise ClientMcpConfigError("client_mcp.invalid_stdio_command")
             args_raw = entry.get("args", [])
             if not isinstance(args_raw, list) or not all(isinstance(item, str) for item in args_raw):
@@ -246,7 +242,12 @@ class ClientMcpConfigNormalizer:
                 fingerprints.append(
                     _fingerprint(hmac_key, kind="env", name=env_name, index=env_index, value=env_value)
                 )
-            canonical_target = _resolve_stdio_command(command, controlled_path=controlled_path, pathext=self._pathext)
+            try:
+                canonical_target = _resolve_stdio_command(
+                    command, controlled_path=controlled_path, pathext=self._pathext
+                )
+            except ValueError:  # a NUL, or a name the filesystem encoding cannot hold
+                raise ClientMcpConfigError("client_mcp.invalid_stdio_command") from None
             scan_chunks.extend([command, *arguments, *credential_names])
         else:
             url = _require_str(entry.get("url"), rule_id="client_mcp.invalid_url")
@@ -359,11 +360,9 @@ def _parse_named_values(
         value = item.get("value")
         if not isinstance(value, str):
             raise ClientMcpConfigError("client_mcp.invalid_named_values")
-        try:  # a lone surrogate cannot be fingerprinted, sent or put in a child environment
-            name.encode("utf-8")
-            value.encode("utf-8")
-        except UnicodeEncodeError:
-            raise ClientMcpConfigError("client_mcp.invalid_named_values") from None
+        # A lone surrogate cannot be fingerprinted or sent; no environment or HTTP header can carry a NUL.
+        if not (_encodes_as_utf8(name) and _encodes_as_utf8(value)) or "\0" in name or "\0" in value:
+            raise ClientMcpConfigError("client_mcp.invalid_named_values")
         key = name.casefold() if case_insensitive else name
         if key in seen:
             raise ClientMcpConfigError(duplicate_rule)
@@ -372,6 +371,14 @@ def _parse_named_values(
             raise ClientMcpConfigError("client_mcp.injection_env_name")
         items.append((name, value))
     return items
+
+
+def _encodes_as_utf8(text: str) -> bool:
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _fingerprint(hmac_key: bytes, *, kind: str, name: str, index: int, value: str) -> str:
