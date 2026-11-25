@@ -1,6 +1,9 @@
 
 from optimus.guardrails.command_safety import CommandSafetyValidator
 from optimus.guardrails.path_safety import ValidationVerdict
+from optimus.guardrails.permissions import ToolSurface
+from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
+from optimus.runtime.modes import ExecutionMode, GenerationScope
 
 
 def validator(tmp_path):
@@ -359,3 +362,35 @@ def test_a_command_without_a_url_scheme_is_still_allowed(tmp_path):
     result = validator(tmp_path).validate(("pytest", "tests", "-k", "not slow and https"))
 
     assert result.verdict is ValidationVerdict.ALLOW
+
+
+# #603 row 4, the web surface of the same guard (kept here: test_pre_tool_guard.py holds a fixture the secret-scan
+# hook rejects whenever that file is staged).
+def _web_request(target_path):
+    return PreToolRequest(
+        run_id="run-1",
+        session_id="session-1",
+        execution_mode=ExecutionMode.AGENT,
+        tool_surface=ToolSurface.WEB,
+        action="web_extract",
+        target_path=target_path,
+        generation_scope=GenerationScope.INLINE_SNIPPET,
+        approval_granted=True,
+    )
+
+
+def test_pre_tool_guard_refuses_an_empty_web_target(tmp_path):
+    """An explicitly empty target used to be treated like no target and skipped the network rule."""
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    result = guard.check(_web_request(""))
+
+    assert result.verdict is PreToolVerdict.BLOCK
+    assert result.rule_id == "network.insecure_transport"
+
+
+def test_pre_tool_guard_still_allows_a_web_request_with_no_target(tmp_path):
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    assert guard.check(_web_request(None)).verdict is PreToolVerdict.ALLOW
+    assert guard.check(_web_request("https://gateway.optimus.ai/x")).verdict is PreToolVerdict.ALLOW
