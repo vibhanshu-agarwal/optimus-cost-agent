@@ -260,8 +260,8 @@ def test_a_guard_refused_test_is_no_effect_and_suppresses_the_later_tests(tmp_pa
     """#589: the shell guard refuses the first TEST (a confusable); it never ran, and the second never starts."""
     control = _RecordingControl()
     shell = _Shell(control)
-    cjk = chr(0x65E5) + chr(0x672C) + chr(0x8A9E)
-    runner, request = _approved(tmp_path, f"TEST pytest tests/{cjk}.py\nTEST pytest -q", shell)
+    lookalike = "p" + chr(0x0443) + "test"  # Cyrillic u for y; a plain CJK name passes since #596
+    runner, request = _approved(tmp_path, f"TEST pytest tests/{lookalike}.py\nTEST pytest -q", shell)
 
     result = runner.run(request, operation_control=control)
 
@@ -276,8 +276,8 @@ def test_a_guard_refused_test_is_no_effect_and_suppresses_the_later_tests(tmp_pa
 def test_a_guard_refused_test_after_an_applied_write_counts_the_write(tmp_path: Path) -> None:
     (tmp_path / "example.py").write_text("old\n", encoding="utf-8")
     control = _RecordingControl()
-    cjk = chr(0x65E5) + chr(0x672C) + chr(0x8A9E)
-    runner, request = _approved(tmp_path, f"WRITE example.py\nnew\nTEST pytest tests/{cjk}.py", _Shell(control))
+    lookalike = "p" + chr(0x0443) + "test"  # Cyrillic u for y
+    runner, request = _approved(tmp_path, f"WRITE example.py\nnew\nTEST pytest tests/{lookalike}.py", _Shell(control))
 
     result = runner.run(request, operation_control=control)
 

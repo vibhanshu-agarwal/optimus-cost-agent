@@ -426,7 +426,7 @@ def _approved_test_command(tmp_path, *command):
             session_id="session-1",
             execution_mode=ExecutionMode.AGENT,
             tool_surface=ToolSurface.SHELL,
-            action="test",
+            action=" ".join(command),  # as shell_exec builds it
             command=command,
             generation_scope=GenerationScope.INLINE_SNIPPET,
             approval_granted=True,
