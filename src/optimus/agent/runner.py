@@ -122,6 +122,10 @@ def _chat_builder(request: AgentRunRequest, files: str, *, memory: Any, repo_map
 CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "CHAT_EMPTY_ANSWER": "Chat received an empty answer from the model. Please rephrase the question or try again.",
     "CHAT_SEARCH_LIMIT_REACHED": "Chat stopped: the model kept asking to search after its limit of search rounds and gave no answer. Please narrow the question.",
+    "CHAT_TOOL_ARGUMENT_REFUSED": (
+        "Chat stopped: the model asked to search with control or invisible format characters, so nothing was run "
+        "or shown. Please try again."
+    ),
     "CHAT_GATEWAY_FAILURE": "Chat could not get an answer: the model gateway reported a failure. Please try again.",
     "CHAT_GATEWAY_COST_UNKNOWN": (
         "Chat stopped because the model gateway failed without reporting the call's cost. Please try again."
@@ -1992,7 +1996,8 @@ class AgentRunner:
             try:
                 requests = None if memory is None else parse_index_tool_reply(reply.answer)
             except AgentDirectivePathError:
-                requests = None  # #583: not a request; the reply is the answer, like any other prose
+                # #583: tool syntax is not an answer, and this one holds a refused argument; run and show neither.
+                return fail(stop_reason="CHAT_TOOL_ARGUMENT_REFUSED")
             if requests is None:
                 break
             if not tools_open:

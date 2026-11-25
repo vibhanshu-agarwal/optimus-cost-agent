@@ -435,6 +435,14 @@ def test_an_unsafe_refuse_reason_is_rejected_with_a_fixed_message(token):
     assert caught.value.code == "REFUSE_UNSAFE_TEXT" and token not in str(caught.value)
 
 
+def test_a_lone_surrogate_in_a_refuse_reason_is_refused_not_a_crash():
+    """Codex review: a JSON reply can decode to one; the 512-byte check raised UnicodeEncodeError before the rule."""
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"REFUSE: I will not change {chr(0xD800)}\n")
+
+    assert caught.value.code == "REFUSE_UNSAFE_TEXT"
+
+
 @pytest.mark.parametrize("reason", [f"I will not change docs/{PERSIAN}.md", f"caf{E_ACUTE} {NIHONGO} {EMOJI_ZWJ}"], ids=["zwnj", "letters-emoji"])
 def test_a_refuse_reason_in_any_script_is_still_accepted(reason):
     assert parse_planning_turn(f"REFUSE: {reason}\n").reason == reason

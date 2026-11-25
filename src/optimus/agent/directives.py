@@ -98,7 +98,9 @@ class IndexToolRequest:
 def parse_index_tool_reply(text: str) -> tuple[IndexToolRequest, ...] | None:
     """The requests when a whole reply is nothing but tool lines; otherwise None, because a line inside prose or a plan is not a request.
     Raises AgentDirectivePathError when such a reply holds an argument the path rule refuses (#583)."""
-    lines = [line for line in (directive_text(item) for item in plan_lines(_unwrap_markdown_code_fence(text))) if line]
+    # #583 (Codex review): a line holding a content separator is not blank, so it makes the reply prose rather
+    # than being dropped while the rest of the batch runs.
+    lines = [directive_text(item) for item in plan_lines(_unwrap_markdown_code_fence(text)) if plan_line_text(item)]
     if not lines or len(lines) > MAX_INDEX_TOOL_LINES:
         return None
     requests: list[IndexToolRequest] = []

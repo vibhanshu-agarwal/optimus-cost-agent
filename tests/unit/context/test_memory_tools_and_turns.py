@@ -29,7 +29,7 @@ from optimus.agent.prompts import (
     indexed_chat_prefix,
     indexed_planner_prefix,
 )
-from optimus.agent.runner import AgentRunner
+from optimus.agent.runner import CHAT_FAILURE_MESSAGES, AgentRunner
 from optimus.agent.tools import AgentToolbox
 from optimus.context import memory_session
 from optimus.context.index_tools import IndexTools
@@ -1803,3 +1803,20 @@ def test_chat_never_runs_an_unsafe_index_tool_argument(workspace, tool, argument
     result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
 
     assert result.tool_calls == () and cards == [] and len(gateway.inputs) == 1
+    # Codex review: tool syntax is not an answer, so the refused reply is not shown either.
+    assert result.stop_reason == "CHAT_TOOL_ARGUMENT_REFUSED"
+    assert result.output_text == CHAT_FAILURE_MESSAGES["CHAT_TOOL_ARGUMENT_REFUSED"] and not _unsafe(result.output_text)
+
+
+@pytest.mark.parametrize("separator", (chr(0x85), chr(0x0B), chr(0x2028)), ids=("nel", "vt", "line-sep"))
+def test_a_batch_line_holding_a_content_separator_runs_no_tool(workspace, separator):
+    """Codex review: such a line was dropped like a blank one, so the rest of the batch ran."""
+    reply = f"LIST .\nSEARCH a{separator}b"
+    assert parse_index_tool_reply(reply) is None
+    gateway = _Gateway([reply])
+    packer = _Packer(_session(workspace, _Storage()).turn())
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="q", execution_mode=ExecutionMode.CHAT, workspace_root=workspace)
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+
+    assert result.tool_calls == () and len(gateway.inputs) == 1

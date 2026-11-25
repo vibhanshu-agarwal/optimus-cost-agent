@@ -925,7 +925,7 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
     reason = refuse_match.group(1).strip()
     if not reason:
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
-    if len(reason.encode("utf-8")) > 512:
+    if len(reason.encode("utf-8", "surrogatepass")) > 512:  # a lone surrogate is refused below, not a crash
         raise PlanningTurnParseError("REFUSE_TOO_LONG", "REFUSE reason exceeds 512 UTF-8 bytes")
     if _REFUSE_REASON_DIRECTIVE_PREFIX.match(reason):
         raise PlanningTurnParseError("REFUSE_HAS_DIRECTIVE_PREFIX", "REFUSE reason must not contain directive prefixes")
