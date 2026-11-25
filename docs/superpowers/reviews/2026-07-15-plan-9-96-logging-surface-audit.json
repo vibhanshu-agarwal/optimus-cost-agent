@@ -6633,6 +6633,38 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m2b_launch:LocalGateway.post_json:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization: the rehearsal's in-process transport hands the real Gateway handler's reply to the Gateway client exactly as the urllib transport would; a refused reply is kept in process memory only, so a failed rehearsal can say why, and never written.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_rehearsal_sends_every_row_once_and_seals_what_the_paid_run_must_reproduce",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the run config and prints whether the gate passed, the send count and the first rehearsal problems, which are built from case ids, arms, counts, digests and the Guard's own refusal reasons; no file body, request or answer text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_gate_driver_refuses_with_a_provider_key_in_the_environment_before_provisioning_anything",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints whether the gate passed, the send count and the first rehearsal problems (case ids, arms, counts and the Guard's own refusal reasons); no file body, request or answer text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_gate_driver_refuses_with_a_provider_key_in_the_environment_before_provisioning_anything",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:run_gate:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the frozen contract and cases records; the gate report it writes goes through m2b_evaluate._write (counts, budgets, digests, git ids, case ids, repository-relative paths); request texts stay in process memory and only their digests are kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_gate_driver_refuses_with_a_provider_key_in_the_environment_before_provisioning_anything",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m2b_paid:run:text_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: builds a row's terminal reason and the run's stop reason from counts, the Guard's refusal reason and the expected request count; no reply, source or credential text.",

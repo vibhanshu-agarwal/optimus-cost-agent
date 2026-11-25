@@ -417,20 +417,26 @@ def _rotate(previous: Any, index: Any, work: Path, tree: Path) -> Any:
 
 
 def _budget_cases(config: Mapping[str, Any], repository: Path, work: Path, settings: Any, embedder: Any, cases_record: Mapping[str, Any], trees: list[dict[str, Any]], *,
-                  legacy: int, model_aware: BudgetPolicy, outline: bool = False) -> list[dict[str, Any]]:
+                  legacy: int, model_aware: BudgetPolicy, outline: bool = False, turn: Any = None) -> list[dict[str, Any]]:
+    """With `turn` (the Q launcher's memory turn on the paid rows' own session, Fable gate consult), the cases are measured through that
+    turn's retriever, catalogue, admitted reader and map, so the budget report's packs are the ones the rows send (gate item 8)."""
     from optimus.agent.prompts import indexed_chat_prefix
 
     paid = [c for c in cases_record["paid_q"]["cases"] if c["category"] in {"budget", "outline"}]
     revision = paid[0]["snapshot"].removeprefix("git:")
     assert all(c["snapshot"] == f"git:{revision}" for c in paid)
-    tree = work / "trees" / f"main-{revision[:12]}"
-    m1_evaluate.materialize(repository, revision, tree, branch=f"main-{revision[:12]}")
-    index = _index(tree, settings, embedder, trees, revision)
-    read = policy_reader(tree)  # production's admitted reader (Codex CP1 round 122 finding 6)
     estimate_request = production_estimator()
-    retriever = Retriever(index.storage, embedder)
-    epoch = index.storage.call("coverage")["current"]["epoch"]
-    prefix = indexed_chat_prefix(repo_map=seed_map(index.storage, epoch, read_catalogue(index.storage, epoch), budget_chars=MAP_CHARS).text, tools_enabled=False)
+    if turn is None:
+        tree = work / "trees" / f"main-{revision[:12]}"
+        m1_evaluate.materialize(repository, revision, tree, branch=f"main-{revision[:12]}")
+        index = _index(tree, settings, embedder, trees, revision)
+        read = policy_reader(tree)  # production's admitted reader (Codex CP1 round 122 finding 6)
+        retriever = Retriever(index.storage, embedder)
+        epoch = index.storage.call("coverage")["current"]["epoch"]
+        repo_map = seed_map(index.storage, epoch, read_catalogue(index.storage, epoch), budget_chars=MAP_CHARS).text
+    else:
+        read, retriever, repo_map = turn._read, turn._retriever, turn.repo_map()  # noqa: SLF001 - the turn's own, exactly
+    prefix = indexed_chat_prefix(repo_map=repo_map, tools_enabled=False)
     rows = []
     for case in paid:
         retrieval = production_retrieve(retriever, case["task"], named=[item["path"] for item in case["required_files"]])
