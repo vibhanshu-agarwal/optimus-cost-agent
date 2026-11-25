@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from optimus.agent.directives import IndexToolRequest, validate_mcp_name
+from optimus.agent.directives import IndexToolRequest, validate_mcp_name, windows_path_shape
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
@@ -112,6 +112,9 @@ class AgentToolbox:
         names_path = request.tool in {"OUTLINE", "LIST"}
         # The file policy reads a backslash as a separator on every platform, so the guard must judge the same path.
         named = request.argument.replace("\\", "/")
+        # #590: the plan path rule, before any lookup; a root in either separator style (//./NUL).
+        if names_path and (named.startswith("/") or windows_path_shape(request.argument)):
+            raise PermissionError("the path is not a plain workspace-relative path")
         target = self._workspace_root / named if names_path else self._workspace_root
         resolved = resolve_target(target)
         result = self._guard.check(

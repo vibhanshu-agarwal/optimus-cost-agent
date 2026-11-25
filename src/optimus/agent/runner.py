@@ -1277,6 +1277,13 @@ class AgentRunner:
         operation_control: TurnOperationControl | None,
     ) -> AgentRunResult:
 
+        try:
+            parse_agent_plan(record.plan_text)
+        except AgentDirectiveParseError as exc:
+            # #590: a plan stored before a parse rule tightened; nothing of it runs, the person plans again.
+            if "unsafe TEST directive" in str(exc):
+                return self._unsafe_test_directive_result(request)
+            return self._missing_plan_result(request)
         context = self._transition(context, AgentState.PLANNING)
         context = self._transition(context, AgentState.PLAN_READY)
         gate = _DirectiveGate(operation_control, run_id=request.run_id, phase="approved")
@@ -1319,12 +1326,7 @@ class AgentRunner:
                 request=request, refused=gate.refused, tool_calls=tool_calls, total_cost_usd=record.cost_usd, plan_hash=record.plan_hash
             )
         if not gate.halted:
-            try:
-                tool_calls.extend(self._execute_test_directives(record.plan_text, toolbox=approved_toolbox, gate=gate))
-            except AgentDirectiveParseError as exc:
-                if "unsafe TEST directive" in str(exc):
-                    return self._unsafe_test_directive_result(request)
-                raise
+            tool_calls.extend(self._execute_test_directives(record.plan_text, toolbox=approved_toolbox, gate=gate))
         if gate.guard_refused is not None:
             return self._guard_refused_result(
                 request=request, code=gate.guard_refused, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=record.cost_usd,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -410,6 +411,8 @@ def _resolve_reference(
     safe = _safe_relative_reference(reference)
     if safe is None:
         return None
+    if ntpath.isreserved(reference):  # #590: a device or a second name for a file, refused by name and never looked up
+        return WorkspaceReferenceDiagnostic(reference=reference, status=WorkspaceReferenceStatus.NOT_READABLE, candidates=())
 
     normalized = Path(*safe.parts)
     relative_posix = normalized.as_posix()

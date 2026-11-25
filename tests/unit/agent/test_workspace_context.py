@@ -1011,3 +1011,16 @@ def test_a_failed_edit_to_a_secret_like_name_does_not_block_the_next_request(tmp
 
     assert workspace_context.extract_file_references(task) == ()
     assert result.blocking_stop_reason is None
+
+
+@pytest.mark.parametrize("reference", ["aux.txt", "sub/aux.txt", "sub/con.py"])
+def test_a_typed_reference_to_a_windows_device_name_is_refused_on_every_host(tmp_path, reference):
+    """#590: refused by name, visibly, without a lookup; on Linux the same name would be an ordinary file."""
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "app.py").write_text("x = 1" + chr(10), encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Show me {reference}")
+
+    assert result.diagnostics[0].reference == reference
+    assert result.diagnostics[0].status is WorkspaceReferenceStatus.NOT_READABLE
+    assert result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
