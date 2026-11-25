@@ -170,6 +170,14 @@ def _budget_policy(config: Mapping[str, Any], show: Callable[[Any], str]) -> str
             "computed once before preparation for the route bound then, so after an Auto escalation it is the pre-escalation route's")
 
 
+def _outline(outline: Mapping[str, Any], show: Callable[[Any], str], path: Callable[[str], str]) -> str:
+    """Plan 12.14 (D4): what the overflow outline stood in for, from its body-free metadata; the outline's own text is never kept."""
+    shown, omitted = outline.get("entries_shown"), outline.get("entries_omitted")
+    return (f"- outline only, full file not included: {path(str(outline.get('path', '')))}; {show(shown)} entries shown by line range and signature or heading, "
+            f"{show(omitted)} later entries and every body omitted; generator {show(outline.get('generator'))}; source sha256 {show(outline.get('source_sha256'))}, "
+            f"{show(outline.get('source_bytes'))} bytes; outline sha256 {show(outline.get('representation_sha256'))}; exact ranges must be read before relying on omitted details")
+
+
 def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str], str], name: Callable[[str], str]) -> list[str]:
     """Every line of the explanation, in order. Every recorded value goes through `show` (sanitized and escaped), `path` (that, after
     today's disclosure check of a file) or `name` (that, after today's check of a name a person typed); only the fixed words are the
@@ -195,6 +203,9 @@ def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str
         symbol = f" {show(item['symbol'])}" if item.get("symbol") and path(item["path"]) != WITHHELD else ""
         lines.append(f"- {number}. {path(item['path'])}{symbol}: {show(item.get('disclosure', 'unknown'))}"
                      + (f"; ranks: {ranks}" if ranks else "") + (f"; {show(item['reason'])}" if item.get("reason") else ""))
+    outline = (manifest or {}).get("outline")
+    if isinstance(outline, Mapping):
+        lines.append(_outline(outline, show, path))
     for facts in snapshot.contexts or ():
         for reference, ranked in facts.ranked:
             lines.append(f"- {name(reference)} was ambiguous, so nothing was chosen; candidates, most likely first:")

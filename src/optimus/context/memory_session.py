@@ -599,9 +599,11 @@ class MemoryTurn:
         return self._session.status()
 
     def assemble(self, *, run_id: str, task: str, selection_text: str, model_id: str, estimate: Callable[[str], int], usable_input_tokens: int,
-                 pack_budget: BudgetPolicy | None = None) -> WorkspaceContextResult:
+                 pack_budget: BudgetPolicy | None = None, overview_path: str | None = None) -> WorkspaceContextResult:
         """The turn's context. Blocking conditions are today's own, so each mode's handling of them is unchanged. An index that cannot
-        answer gives today's context plus a line saying so; required evidence that does not fit is never quietly dropped."""
+        answer gives today's context plus a line saying so; required evidence that does not fit is never quietly dropped. `overview_path`
+        is the file a direct summary task asked for (file_outline.summary_target): with a model-aware budget, the pack may outline it when
+        it alone is required and too large (Plan 12.14, D4), built from this turn's read, so an edit or unsaved buffer is current."""
         self._run_id = run_id
         policy = self._session.policy
         policy.forget_ignore_files()
@@ -614,7 +616,7 @@ class MemoryTurn:
                 return self._blocked(diagnostics, stop_reason, message)
             required = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED))
             self._capture_buffers(required)
-        retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task, target)
+        retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task, target, overview_path)
         if retrieval.state != "ok" or pack is None:
             return self._today(task=selection_text, retrieval=retrieval, prompt=task)
         if not pack.complete:
@@ -649,7 +651,8 @@ class MemoryTurn:
             if not _same_text(data, disk) and b"\x00" not in data and len(data) <= MAX_BUFFER_BYTES:
                 self._overlay[path] = data
 
-    def _retrieve(self, text: str, required: Sequence[str], estimate: Callable[[str], int], budget: int, task: str, target: int | None = None) -> tuple[Retrieval, Pack | None]:
+    def _retrieve(self, text: str, required: Sequence[str], estimate: Callable[[str], int], budget: int, task: str, target: int | None = None,
+                  overview_path: str | None = None) -> tuple[Retrieval, Pack | None]:
         query = text[:_QUERY_CHARS]
         symbols = named_symbols(task)
         pack: Pack | None = None
@@ -658,7 +661,8 @@ class MemoryTurn:
                 retrieval = self._retriever.retrieve(query, named_paths=required, named_symbols=symbols)
                 if retrieval.state != "ok":
                     return retrieval, None
-                pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget, target_tokens=target)
+                pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget, target_tokens=target,
+                                     overview_path=overview_path)
             # The wait below is outside: the worker gives way to a busy turn, so it could not do this repair while one was waiting for it.
             if not pack.stale_paths or attempt == _RECONCILE_ATTEMPTS or self._cancelled():
                 return retrieval, pack
@@ -724,6 +728,7 @@ class MemoryTurn:
             "selected": [asdict(item) for item in pack.selected],
             "stale_paths": list(pack.stale_paths),
             "unsaved_buffers": sorted(self._overlay),
+            "outline": None if pack.outline is None else dict(pack.outline),
             "grounding": None,
         }
 

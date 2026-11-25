@@ -227,6 +227,22 @@ def test_budget_gates_need_the_exact_eight_cases_both_arms_and_each_kinds_outcom
     assert ev.budget_gates(swapped)["checks"] == {"exact_case_set": True, "both_arms": True, "kinds_pinned": False} and not ev.budget_gates(swapped)["passes"]
 
 
+def test_with_the_outline_f_completes_exactly_the_outline_cases_with_one():
+    """Plan 12.14 Task 3: once the outline exists, F completes QO1/QO2 by outlining them, B/U never outlines, and no other row may."""
+    rows = _budget_rows()
+    for row in rows:
+        row["arms"]["F"]["complete"] = ev.OUTLINE_OUTCOMES[row["kind"]][1]
+        row["arms"]["F"]["outline"] = row["kind"] == "outline"
+        row["fits_q_cap"] = True
+    assert ev.budget_gates(rows, outline_available=True)["passes"]
+    assert not ev.budget_gates(rows)["passes"], "the pre-outline gates refuse an outlined F"
+    for broken, check in ((_with(rows, "QO1", F__outline=False), "outline_only_where_asked"), (_with(rows, "QO3", F__outline=True), "outline_only_where_asked"),
+                          (_with(rows, "QO2", BU__outline=True), "outline_only_where_asked"), (_with(rows, "QO1", F__complete=False), "each_kinds_outcome"),
+                          (_with(rows, "QO4", F__complete=True), "each_kinds_outcome")):
+        result = ev.budget_gates(broken, outline_available=True)
+        assert not result["passes"] and result["checks"][check] is False, check
+
+
 def test_the_released_budget_pass_meets_the_stricter_gates():
     report = json.loads((ROOT / "reports/plan12-memory-m2b/calibration-budget.json").read_text(encoding="utf-8"))
     assert ev.budget_gates(report["rows"])["passes"]

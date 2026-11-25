@@ -203,15 +203,15 @@ def test_the_memory_turns_assemble_passes_the_target_to_retrieval(monkeypatch):
     turn._scope = None  # noqa: SLF001
     turn._capture_buffers = lambda _r: None  # noqa: SLF001
 
-    def retrieve(text, required, estimate, budget, task, target=None):
-        seen.update(budget=budget, target=target)
+    def retrieve(text, required, estimate, budget, task, target=None, overview_path=None):
+        seen.update(budget=budget, target=target, overview=overview_path)
         return Retrieval("unavailable"), None
 
     turn._retrieve = retrieve  # noqa: SLF001
     turn._today = lambda **_k: "today"  # noqa: SLF001
     assert turn.assemble(run_id="r", task="t", selection_text="t", model_id="m", estimate=len, usable_input_tokens=229_376,
-                         pack_budget=BudgetPolicy("model-aware", 32_768, 13_107)) == "today"
-    assert seen == {"budget": 32_768, "target": 13_107}
+                         pack_budget=BudgetPolicy("model-aware", 32_768, 13_107), overview_path="big.py") == "today"
+    assert seen == {"budget": 32_768, "target": 13_107, "overview": "big.py"}  # Plan 12.14 Task 3: the summary target reaches the pack too
 
 
 def test_the_model_aware_ceiling_holds_for_the_whole_pack_including_its_joiners():

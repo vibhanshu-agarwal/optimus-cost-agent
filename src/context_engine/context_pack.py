@@ -13,6 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final
 
+from .file_outline import build_outline
 from .pack_utility import Candidate, select
 from .retrieval import Hit, Ranked, lexical_terms
 
@@ -33,7 +34,7 @@ class Selected:
     file_hash: str
     start_line: int | None
     end_line: int | None
-    disclosure: str  # "required", "signature", "body" or "omitted"
+    disclosure: str  # "required", "outline", "signature", "body" or "omitted"
     score: float = 0.0
     ranks: Mapping[str, int] = field(default_factory=dict)
     reason: str = ""
@@ -48,6 +49,7 @@ class Pack:
     file_sha256s: Mapping[str, str]
     missing_required: tuple[str, ...] = ()
     stale_paths: tuple[str, ...] = ()
+    outline: Mapping[str, object] | None = None  # Plan 12.14: the overflow outline's body-free metadata, when the pack carries one
 
     @property
     def complete(self) -> bool:
@@ -82,11 +84,14 @@ def _signature_line(hit: Hit) -> str | None:
 
 
 def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Callable[[str], bytes | None], estimate: Callable[[str], int], budget_tokens: int,
-                  policy: str = "baseline", task: str = "", protected: Sequence[str] = (), target_tokens: int | None = None) -> Pack:
+                  policy: str = "baseline", task: str = "", protected: Sequence[str] = (), target_tokens: int | None = None,
+                  overview_path: str | None = None) -> Pack:
     """`read` returns the file's current bytes, or None when policy no longer admits it. `estimate` is the route's token estimator.
     `policy` chooses which optional items fill each phase (pack_utility); `task` gives its terms and `protected` the quota places.
     With `target_tokens` (Plan 12.14), `budget_tokens` is the hard ceiling C: required text that fits it is whole, and optional room is
-    chosen_budget(C, target, required) less the required text. Without it, `budget_tokens` is the whole budget, as before."""
+    chosen_budget(C, target, required) less the required text. Without it, `budget_tokens` is the whole budget, as before.
+    `overview_path` (Plan 12.14, D4; with a target only) names the one required file a direct summary task asked for: when it is the whole
+    required set and its text is over C, a disclosed outline of it (file_outline) stands in for it if one fits; otherwise, as before."""
     selected: list[Selected] = []
     hashes: dict[str, str] = {}
     contents: dict[str, bytes | None] = {}
@@ -115,6 +120,15 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         selected.append(Selected(path, "file", None, file_hash, None, None, "required", reason="named by the task"))
     required_text = f"{SECTION_REQUIRED}\n" + "\n".join(blocks) if blocks else ""
     used = estimate(required_text) if required_text else 0
+    outline = None
+    if used > budget_tokens and target_tokens is not None and overview_path is not None and tuple(required) == (overview_path,) and not missing:
+        outline = build_outline(overview_path, contents[overview_path] or b"", estimate=estimate, max_tokens=budget_tokens)
+        if outline is not None and estimate(f"{SECTION_REQUIRED}\n{outline.text}") <= budget_tokens:
+            required_text = f"{SECTION_REQUIRED}\n{outline.text}"
+            used = estimate(required_text)
+            selected[0] = Selected(overview_path, "file", None, hashes[overview_path], None, None, "outline", reason="outline only: the whole file is over the budget")
+        else:
+            outline = None
     if used > budget_tokens:
         return Pack("", 0, budget_tokens, tuple(selected), {}, tuple(required))
     if missing:
@@ -177,7 +191,8 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         selected.append(Selected(hit.path, hit.kind, hit.symbol, hit.file_hash, hit.start_line, hit.end_line, disclosure, item.score, dict(item.ranks), _reason(item)))
 
     text = "\n".join(part for part in (required_text, signature_text, body_text) if part)
-    return Pack(text, estimate(text) if text else 0, budget_tokens, tuple(selected), hashes, (), tuple(stale))
+    return Pack(text, estimate(text) if text else 0, budget_tokens, tuple(selected), hashes, (), tuple(stale),
+                None if outline is None else outline.metadata(overview_path or ""))
 
 
 def _reason(item: Ranked) -> str:

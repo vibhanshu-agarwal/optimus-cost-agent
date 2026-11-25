@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from context_engine.context_pack import SECTION_BODIES, SECTION_REQUIRED, Pack, assemble_pack
+from context_engine.file_outline import summary_target
 from context_engine.pack_utility import POLICIES
 from context_engine.retrieval import Ranked, Retrieval, Retriever, read_catalogue, seed_map
 from optimus.context.context_budget import BudgetPolicy, legacy_budget, plan_budget
@@ -201,23 +202,25 @@ def required_tokens(paths: Sequence[str], read: Callable[[str], bytes | None], *
 
 
 def budget_case(case: Mapping[str, Any], retrieval: Retrieval, read: Callable[[str], bytes | None], *, policy: str, model_aware: BudgetPolicy,
-                legacy: int, full_input: Callable[[str], int], pack_estimate: Callable[[str], int] = estimate) -> dict[str, Any]:
+                legacy: int, full_input: Callable[[str], int], pack_estimate: Callable[[str], int] = estimate, outline: bool = False) -> dict[str, Any]:
     """One paid budget/outline case's packs under the legacy budget (B/U) and the model-aware one (F), and the full input F would send.
-    `pack_estimate` is the estimator the pack is given: production's route estimator in the budget phase (Codex CP1 round 122 finding 2)."""
+    `pack_estimate` is the estimator the pack is given: production's route estimator in the budget phase (Codex CP1 round 122 finding 2).
+    With `outline` (Task 3 delivered), F asks for the overflow outline exactly as a Chat turn does: the task's own summary target."""
     required = tuple(item["path"] for item in case["required_files"])
     r = required_tokens(required, read, estimate=pack_estimate)
     assert r is not None, case["case_id"]
     out: dict[str, Any] = {"case_id": case["case_id"], "kind": case.get("kind"), "R": r, "C": model_aware.ceiling, "T": model_aware.target, "legacy": legacy}
     arms = {}
+    overview = summary_target(case["task"]) if outline else None
     for arm, ceiling, target in (("BU", legacy, None), ("F", model_aware.ceiling, model_aware.target)):  # F packs exactly as production: C and T
         pack = assemble_pack(required=required, ranked=retrieval.ranked, read=read, estimate=pack_estimate, budget_tokens=ceiling, policy=policy, task=case["task"],
-                             protected=retrieval.protected, target_tokens=target)
+                             protected=retrieval.protected, target_tokens=target, overview_path=overview)
         budget = pack.budget_tokens
         optional = [(i.path, i.symbol, i.start_line, i.disclosure) for i in shown(pack)]
         arms[arm] = {"budget": budget, "complete": pack.complete, "tokens": pack.tokens, "optional_room": budget - r if pack.complete else None,
                      "optional_items": len(optional), "optional_digest": "hex:" + hashlib.sha256(json.dumps(optional).encode()).hexdigest(),
                      "pack_bytes": len(pack.text.encode("utf-8")), "pack_sha256": "hex:" + hashlib.sha256(pack.text.encode("utf-8")).hexdigest(),
-                     "full_input_tokens": full_input(pack.text) if pack.complete else None}
+                     "full_input_tokens": full_input(pack.text) if pack.complete else None, "outline": pack.outline is not None}
     out["arms"] = arms
     out["substantive_change"] = arms["BU"]["pack_sha256"] != arms["F"]["pack_sha256"] and (arms["BU"]["optional_digest"] != arms["F"]["optional_digest"] or arms["BU"]["complete"] != arms["F"]["complete"])
     full = arms["F"]["full_input_tokens"]
@@ -232,11 +235,15 @@ BUDGET_CASES: Final = tuple(BUDGET_KINDS)
 # Each kind's pack completeness in (B/U, F) before Task 3's outline: over-ceiling files are incomplete in both until then.
 BUDGET_OUTCOMES: Final = {"ordinary-fit": (True, True), "required-over-legacy": (False, True), "whole-summary": (True, True), "outline": (False, False),
                           "exact-over-ceiling": (False, False)}
+# Once Task 3's outline exists, F completes an outline case with it; B/U never outlines (a legacy budget has no hard ceiling to exceed).
+OUTLINE_OUTCOMES: Final = {**BUDGET_OUTCOMES, "outline": (False, True)}
 
 
-def budget_gates(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def budget_gates(rows: Sequence[Mapping[str, Any]], *, outline_available: bool = False) -> dict[str, Any]:
     """One measurement's eight budget/outline rows, each exactly once with both arms and its kind's own outcome (Codex CP1 round 122
-    finding 6; attempt 2 finding 6); apply it per repetition."""
+    finding 6; attempt 2 finding 6); apply it per repetition. With `outline_available` an outline case also needs F's pack to carry the
+    outline, and nothing else may (Plan 12.14 Task 3)."""
+    outcomes = OUTLINE_OUTCOMES if outline_available else BUDGET_OUTCOMES
     ids = sorted(row["case_id"] for row in rows)
     if ids != sorted(BUDGET_CASES):
         return {"checks": {"exact_case_set": False}, "passes": False, "case_ids": ids}
@@ -253,7 +260,9 @@ def budget_gates(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "two_ordinary_allocation_changes": len(ordinary) == 2 and all(row["substantive_change"] for row in ordinary),
         "two_r_in_legacy_to_ceiling": len(over) == 2 and all(row["r_in_legacy_to_ceiling"] for row in over),
         "three_r_over_ceiling": len(beyond) == 3 and all(row["R"] > row["C"] for row in beyond),
-        "each_kinds_outcome": all((row["arms"]["BU"]["complete"], row["arms"]["F"]["complete"]) == BUDGET_OUTCOMES[row["kind"]] for row in rows),
+        "each_kinds_outcome": all((row["arms"]["BU"]["complete"], row["arms"]["F"]["complete"]) == outcomes[row["kind"]] for row in rows),
+        "outline_only_where_asked": all(row["arms"]["BU"].get("outline") is not True and row["arms"]["F"].get("outline", False) == (outline_available and row["kind"] == "outline")
+                                        for row in rows),
         "every_complete_f_fits_q_cap": all(row["fits_q_cap"] for row in rows if row["arms"]["F"]["complete"]),
         "exact_case_set": True,
         "both_arms": True,
@@ -407,7 +416,7 @@ def _rotate(previous: Any, index: Any, work: Path, tree: Path) -> Any:
 
 
 def _budget_cases(config: Mapping[str, Any], repository: Path, work: Path, settings: Any, embedder: Any, cases_record: Mapping[str, Any], trees: list[dict[str, Any]], *,
-                  legacy: int, model_aware: BudgetPolicy) -> list[dict[str, Any]]:
+                  legacy: int, model_aware: BudgetPolicy, outline: bool = False) -> list[dict[str, Any]]:
     from optimus.agent.prompts import indexed_chat_prefix
 
     paid = [c for c in cases_record["paid_q"]["cases"] if c["category"] in {"budget", "outline"}]
@@ -424,7 +433,7 @@ def _budget_cases(config: Mapping[str, Any], repository: Path, work: Path, setti
     rows = []
     for case in paid:
         retrieval = production_retrieve(retriever, case["task"], named=[item["path"] for item in case["required_files"]])
-        rows.append(budget_case(case, retrieval, read, policy="baseline", model_aware=model_aware, legacy=legacy, pack_estimate=estimate_request,
+        rows.append(budget_case(case, retrieval, read, policy="baseline", model_aware=model_aware, legacy=legacy, pack_estimate=estimate_request, outline=outline,
                                 full_input=full_input(prefix, case["task"], estimate_request)))
     return rows
 
@@ -472,8 +481,11 @@ def run_budget(config: Mapping[str, Any], repository: Path, out: Path) -> dict[s
     try:
         embedder = m1_evaluate.CachedEmbedder(FastembedEmbedder(root, memory.embedding, directory=settings_file["embedding"]["artifact_directory"], threads=config["embedding_threads"]),
                                               embedding_cache(config, repository))
-        report["rows"] = _budget_cases(config, repository, work, settings, embedder, cases_record, report["trees"], legacy=legacy_policy.ceiling, model_aware=model_aware)
-        report["budget_gates"] = budget_gates(report["rows"])
+        outline = bool(config.get("outline_available", False))
+        report["outline_available"] = outline
+        report["rows"] = _budget_cases(config, repository, work, settings, embedder, cases_record, report["trees"], legacy=legacy_policy.ceiling, model_aware=model_aware,
+                                       outline=outline)
+        report["budget_gates"] = budget_gates(report["rows"], outline_available=outline)
         report["embedding"] = {"embedded": embedder.embedded, "reused": embedder.reused}
         _write(report, out)
     finally:

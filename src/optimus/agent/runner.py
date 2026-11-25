@@ -12,6 +12,7 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from context_engine.file_outline import summary_target
 from optimus.agent.directives import AgentDirectiveParseError, AgentEditDirective, bind_edit_base, parse_agent_plan, parse_index_tool_reply
 from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failure_text
 from optimus.agent.index_turn import LIMIT_NOTICE, LIMIT_OBSERVATION, MAX_INDEX_ROUNDS, keep_newest, run_index_tools
@@ -1936,6 +1937,8 @@ class AgentRunner:
                 estimate=context_packer.estimate_request,  # type: ignore[union-attr]
                 usable_input_tokens=context_packer.usable_input_tokens,  # type: ignore[union-attr]
                 pack_budget=getattr(context_packer, "pack_budget", None),
+                # Plan 12.14 (D4): only a Chat turn's own task may ask for an outline; Agent keeps its ranged reads of a too-large file.
+                overview_path=summary_target(request.task) if request.execution_mode is ExecutionMode.CHAT else None,
             )
         report = getattr(context_packer, "record_context", None)
         if report is not None:  # Plan 12.11: what the turn carried, for memory lineage

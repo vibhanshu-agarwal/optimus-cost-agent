@@ -116,6 +116,25 @@ def test_a_v2_manifest_names_its_budget_policy_and_the_pre_escalation_route():
     assert "- pack budget: legacy, ceiling 16384 tokens (policy m2b-v1)" in text and "target" not in text.split("pack budget:")[1].split("\n")[0]
 
 
+OUTLINE = {"path": "pkg/big.py", "generator": "m2b-outline-v1", "language": "python", "source_sha256": "a" * 64, "source_bytes": 20480,
+           "representation_sha256": "b" * 64, "ranges": [[1, 2], [5, 6]], "entries_shown": 2, "entries_omitted": 398, "bodies_omitted": True, "reread_required": True}
+
+
+def test_an_outline_says_what_it_stood_in_for_by_hashes_ranges_and_counts_never_its_text():
+    """Plan 12.14 Task 3: the outline's disclosure, generator, source and outline hashes, omissions and the reread requirement."""
+    manifest = {"selected": [{"path": "pkg/big.py", "disclosure": "outline", "ranks": {}, "reason": "outline only: the whole file is over the budget"}], "outline": OUTLINE}
+    text = _text(_snapshot(index="used", manifest=manifest))
+    assert "- 1. pkg/big.py: outline; outline only: the whole file is over the budget" in text
+    assert ("- outline only, full file not included: pkg/big.py; 2 entries shown by line range and signature or heading, 398 later entries and every "
+            f"body omitted; generator m2b-outline-v1; source sha256 {'a' * 64}, 20480 bytes; outline sha256 {'b' * 64}; exact ranges must be read "
+            "before relying on omitted details") in text
+
+
+def test_an_outline_of_a_file_refused_now_withholds_its_path():
+    text = _plain(_raw(_snapshot(index="used", manifest={"selected": [], "outline": OUTLINE}), admits=lambda path: path != "pkg/big.py"))
+    assert f"- outline only, full file not included: {_plain(why.WITHHELD)};" in text and "pkg/big.py" not in text
+
+
 def test_a_snapshot_is_immutable_once_captured():
     manifest = {"selected": [{"path": "pkg/a.py", "disclosure": "body", "ranks": {}}], "budget": {"tokens": 1, "budget_tokens": 2}}
     dispatches = [(1, 2)]
