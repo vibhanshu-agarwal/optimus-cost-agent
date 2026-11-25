@@ -4,6 +4,14 @@
 schema = "test-profiles-v1"
 
 [[rules]]
+tier = "gates"
+nodes = [
+  "tests/unit/tools/test_acp_instrumentation.py::test_current_owners_have_every_selected_callable_classified",
+  "tests/unit/tools/test_acp_instrumentation.py::test_new_method_in_an_owned_class_is_rejected",
+]
+why = "Read the current ACP boundary sources and verify source-derived diagnostic coverage and its negative control."
+
+[[rules]]
 tier = "core"
 paths = ["tests/unit/acp/test_session_retention.py", "tests/unit/acp/test_session_retirement.py"]
 why = "Cap-only retention ownership, real in-process adapter/writer custody and graph release; no external services or child processes."

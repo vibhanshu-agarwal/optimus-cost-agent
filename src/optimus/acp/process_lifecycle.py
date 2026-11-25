@@ -14,6 +14,8 @@ from enum import StrEnum
 from time import monotonic
 from types import FrameType
 
+from optimus.acp.debug_trace import observe_operation
+
 
 class StopReason(StrEnum):
     EOF = "eof"
@@ -148,6 +150,7 @@ class ProcessLifecycle:
             self._cancel_delivered = True
             task.cancel()
 
+    @observe_operation
     def begin_cleanup(self) -> None:
         if self._cleanup_started is None:
             self._cleanup_started = monotonic()
@@ -165,6 +168,7 @@ class ProcessLifecycle:
     def remaining(self, timeout: float = 10.0) -> float:
         return timeout if self._cleanup_started is None else max(0.0, timeout - (monotonic() - self._cleanup_started))
 
+    @observe_operation
     async def wait_for_stop(self) -> None:
         await self._stop.wait()
 
@@ -187,6 +191,7 @@ class ProcessLifecycle:
         if self._observation.complete:
             self._state = "COMPLETE"
 
+    @observe_operation
     def report_incomplete(self) -> None:
         observation = self._observation
         if self._reported or observation.complete or not observation.pending:
@@ -201,6 +206,7 @@ class ProcessLifecycle:
         self._consume_result()
 
     # The budget starts with cleanup; expiry reports and returns an incomplete observation instead of raising.
+    @observe_operation
     async def observe(self, timeout: float = 10.0) -> ShutdownObservation:  # noqa: ASYNC109
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("shutdown observation timeout must be positive and finite")

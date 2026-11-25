@@ -18,7 +18,14 @@ from time import monotonic
 from typing import Any, Protocol
 
 from optimus.acp.admission import DEFAULT_LIMITS, AdmissionAccount, AdmissionClass, AdmissionLimits, Reservation
-from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled, log_provenance_once, observe_request
+from optimus.acp.debug_trace import (
+    DiagnosticLevel,
+    acp_debug_log,
+    debug_trace_enabled,
+    log_provenance_once,
+    observe_operation,
+    observe_request,
+)
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.errors import (
     INTERNAL_ERROR,
@@ -534,6 +541,7 @@ class NdjsonOutboundChannel:
         if require_flushed and outcome is not None and outcome is not SendOutcome.FLUSHED:
             raise AcpOutboundError(code=INTERNAL_ERROR, message="outbound delivery unconfirmed")
 
+    @observe_operation
     async def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         request_id = next(self._agent_request_ids)
         self.last_outbound_request_id = request_id

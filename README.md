@@ -617,6 +617,12 @@ terminal record covers the request handler and response path. Work still
 owned by a retained request worker can finish afterward. Trusted session
 and run IDs appear once the host has established them.
 
+Selected request, delivery, lifecycle, and client MCP operations also emit
+one local completion record with a callable name, elapsed time, and outcome.
+Operation records omit arguments, return values, and exception text. The
+source-derived coverage test checks the instrumentation and documented
+exclusions at these boundaries.
+
 **Required after `pip install --user` on Windows:** Python installs scripts to
 `%APPDATA%\Python\Python<version>\Scripts` (for example
 `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts`). Windows does **not** add this

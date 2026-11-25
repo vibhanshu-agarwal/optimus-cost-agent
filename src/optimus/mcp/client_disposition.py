@@ -15,6 +15,7 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Literal, Protocol
 
+from optimus.acp.debug_trace import observe_operation
 from optimus.acp.shapes import build_client_mcp_permission_params
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest
 from optimus.mcp.client_catalog import (
@@ -318,6 +319,7 @@ class ClientMcpRuntime:
         if self.sdk_adapter is None:
             raise ValueError("sdk_adapter is required")
 
+    @observe_operation
     def close(self) -> ClientMcpShutdownOutcome:
         """Attempt every cleanup stage in order despite ordinary failures.
 

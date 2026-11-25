@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from optimus.acp.admission import DEFAULT_LIMITS, AdmissionAccount, AdmissionClass, AdmissionLimits, Reservation
+from optimus.acp.debug_trace import observe_operation
 from optimus.acp.lifecycle import SendCompletion, SendKey, TurnSendKey, WriterToken
 from optimus.acp.settlement import SendOutcome, SendState
 
@@ -134,6 +135,7 @@ class DedicatedOutboundWriter:
     def thread_alive(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    @observe_operation
     def start(self) -> None:
         if self._started:
             return
@@ -175,6 +177,7 @@ class DedicatedOutboundWriter:
                 callback()
         return item.source_future
 
+    @observe_operation
     def request_close(self) -> None:
         with self._join_lock:
             if self._closed:
@@ -192,6 +195,7 @@ class DedicatedOutboundWriter:
             self._joined = True
         return joined
 
+    @observe_operation
     def close_and_join(self) -> None:
         self.request_close()
         self.observe_closed(None)  # explicit blocking compatibility path; never under admission lock
