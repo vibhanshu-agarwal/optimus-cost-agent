@@ -1,9 +1,9 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v10",
+ "schema": "plan12-memory-m2b.evaluation-contract.v11",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "frozen_before": "Task 3 and any paid prompt; successor of v9 at Task 2's close",
+ "frozen_before": "CP2's reviews and any paid prompt; successor of v10 after Task 3",
  "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
  "inputs": {
   "cases": "reports/plan12-memory-m2b/cases.json",
@@ -175,10 +175,10 @@
   "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v9",
-  "sha256": "hex:3aeb45285cc7a34cc3dcd72c6e088c8a070f80e7a65acc3b2426be3ec0cd75e6",
-  "commit": "git:af66883",
-  "change": "Task 2: CP1's operator acceptance recorded (exception approved, the two controls UNRUN); the D3 field staged with its four hash approvals; the evaluator's budget pass retrieves as a Chat turn does; F's request-byte equality and B's pack-digest equality proved; the launcher conditions they need added to the Q-release gate"
+  "schema": "plan12-memory-m2b.evaluation-contract.v10",
+  "sha256": "hex:201eb51ee9f9a597e17308b2fd6e139cffe03427c1373e95b43205b22be63adb",
+  "commit": "git:e898b55",
+  "change": "Task 3: the overflow outline delivered (git:3d5c3b9); the evaluator re-pinned for its outline switches; the outline cases' released re-measurement added to the Q-release gate"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -262,9 +262,9 @@
   "fit_note": "a fit estimate, not request bytes: the released budget pass at git:8cf26df (calibration-budget.json) bounds F's full input with production's route estimator over a framing proxy (the indexed Chat prefix and map, the pack, a 600-byte scope-line allowance, the runner's limit observation and the task); the largest complete F input is 35,323 tokens against 65,536.. Task 2 proved the request bytes themselves (production_equivalence); the released figures stand because production's added symbol queries answer nothing for the eight cases (census below)",
   "evaluator": {
    "script": "tools/plan12_memory/m2b_evaluate.py",
-   "sha256": "hex:f8f73cebb6a2cec09225e201d270dc8e7842f1f98d8b5e6e594fdeb66523814f",
-   "git_blob": "git:ecab8f9d56688c9c1d6979e637fb9782cac03f88",
-   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: recorded as UNRUN by the operator's CP1 acceptance (Codex attempt 7 item A3). Task 2: production_routes takes legacy from the defaults minus the field line (the shipped route is model-aware now), and the budget pass retrieves with production_retrieve (the task's first _QUERY_CHARS, the named files and named_symbols(task), as MemoryTurn._retrieve); calibration's retrieve() is unchanged with its released evidence"
+   "sha256": "hex:6d21cc2b823fcd391d36d5ecf26630c40b0bc7033ae92c9aa56d697189df0e97",
+   "git_blob": "git:441da249115e7124b8fdc3922450fc4db8270dcb",
+   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: recorded as UNRUN by the operator's CP1 acceptance (Codex attempt 7 item A3). Task 2: production_routes takes legacy from the defaults minus the field line (the shipped route is model-aware now), and the budget pass retrieves with production_retrieve (the task's first _QUERY_CHARS, the named files and named_symbols(task), as MemoryTurn._retrieve); calibration's retrieve() is unchanged with its released evidence; Task 3: budget_case(outline=True) asks for the overflow outline as a Chat turn does (file_outline.summary_target of the case's task), and budget_gates(outline_available=True) needs F to complete exactly the two outline cases with an outline and B/U never to outline (OUTLINE_OUTCOMES); without the switches both are as released"
   },
   "producer_contract_463": "rows as m2b_paid (schema plan12-memory-m2b.paid-attempts.v2): per sent request its dispatch number and host request identity (receipt_base), bound route request id, input and prefix identity, finish reason and Gateway attempts; per host receipt every StageReceipt field under its own name (the reported cost as cost_usd) and the Gateway's normalized usage whole (total tokens included), the repriced uncached cost and tariff id, cache_write_tokens UNKNOWN; per physical attempt its matched receipt ids and dispositions; per row release, case, arm (U as an alias of B), position, logical request id, reconciliation problems, unclaimed and unforwarded receipt ids, any run error, its settlement (attempts, unknown-cost attempts, money-only charges, unknown charges, known USD), emitted_answer and the terminal classification (expected_zero_call, settled, failed, incomplete) with its reason; each charge counted once. Codex round 122 agreed the narrow producer contract and amended its implementation in attempts 2 and 3; broader commissioning and report integration stay under #463",
   "hard_ceiling": "Codex ruling 7: with a target, the whole pack including its section joiners stays within the chosen budget (tested); the legacy path is byte-equal to PR #562's delivered context_pack.py (tested)",
@@ -276,6 +276,15 @@
    "git:037bed2": "context manifest v2: config.budget_policy_version m2b-v1 and budget_policy; /why's pack budget line, a v1 manifest read as legacy or unknown",
    "git:ae3ff89": "an Auto escalation keeps the prepared context: prepared once before planning, none again after the switch",
    "git:bae48bd": "production_retrieve and the two production-bytes proofs"
+  },
+  "task3_delivered": {
+   "git:3d5c3b9": {
+    "module": "src/context_engine/file_outline.py (pure): summary_target, build_outline, OUTLINE_VERSION m2b-outline-v1, OUTLINE_MAX_TOKENS 2,048, DISCLOSURE",
+    "eligibility": "the whole task is exactly Summarize \"<path>\"; a Chat turn's own task only (AgentRunner._turn_context; Agent keeps its ranged reads); a model-aware budget (a legacy budget keeps M2a's refusal); the file is the whole required set and its text is over C; an outline fits C. A file that fits C is whole; otherwise REQUIRED_WORKSPACE_FILE_TOO_LARGE",
+    "representation": "rebuilt every turn from the bytes read (unsaved buffers and edits current) from the index parser's structure only; never generated, cached or kept; the disclosure line, source sha256, length and language, each entry's line range; no body; entries omitted past the cap counted",
+    "records": "manifest outline metadata (generator, source and outline sha256, ranges, shown and omitted counts, reread required), never its text; /why's outline line, its path withheld when the policy refuses the file now",
+    "evidence": "tests/unit/context_engine/test_file_outline.py (29), tests/unit/context/test_overflow_outline.py (9), the /why and gate tests; revert check 9/9 caught by assertion (optimus-handoff/p1214-task3/revert_outline.log); focused-t23 at git:3d5c3b9 (Task 2 and Task 3 commands, touched suites, inventories): 1,972 passed, 9 skipped, 0 failed, tree unchanged"
+   }
   }
  },
  "run1_limits": "reports/plan12-memory-m2b/calibration-addendum.json limits: pack jitter cause a hypothesis; poison reason confounded by run 1's mtimes; the 16,000 cap ill-posed and not relied on; the changed evaluator not yet run on a real index",
@@ -346,7 +355,8 @@
    "the #463 producer contract amended as Codex attempt 7 set out (paid-attempts.v2: row, release and answer identities, U aliases, request and prefix digests, raw receipts with both ids, attempt attribution and dispositions, normalized usage, tariff, separate actual and repriced fields; known actual USD only for a clean one-to-one reconciliation; on any anomaly raw evidence and attempt bounds kept, actual USD UNKNOWN, the row incomplete, the run stopped; affected evidence kept out of adoption and comparable-cost decisions) and re-agreed",
    "a predeclared operator hold for a suspected false screen failure, with no rescore",
    "Codex's (C) notes: the missing-attempt copy conflict, the unknown_charges reservation test and the money-only identity fall away with the money path's deletion; the standalone QO4 quote control stays unrun",
-   "the launcher conditions the production-bytes proofs assume, each checked on every memory row: the row's attached turn is prepared before its memory turn is joined, as the adapter does; the memory session's catalogue is ready for the row's epoch before the turn (a retrieval reporting the catalogue not ready makes the row incomplete); the row records its pack digest, and on the eight budget/outline cases B's and F's must equal calibration-budget.json's BU and F pack_sha256, otherwise the row is incomplete and the run stops"
+   "the launcher conditions the production-bytes proofs assume, each checked on every memory row: the row's attached turn is prepared before its memory turn is joined, as the adapter does; the memory session's catalogue is ready for the row's epoch before the turn (a retrieval reporting the catalogue not ready makes the row incomplete); the row records its pack digest, and on the eight budget/outline cases B's and F's must equal calibration-budget.json's BU and F pack_sha256, otherwise the row is incomplete and the run stops",
+   "a released budget pass with outline_available true before Q: the released 8cf26df rows predate the outline, so QO1's and QO2's F packs (and the every-complete-F-fits-the-Q-cap check over them) are measured afresh, and expected_calls runs with outline_available true (25 sends)"
   ],
   "evidence": [
    "the focused m2b tests at the gate's exact head",
