@@ -204,11 +204,25 @@ SCORER_SHA256: Final = "hex:" + hashlib.sha256(Path(__file__).read_bytes()).hexd
 SEALED_CASES_SHA256: Final = "hex:17a8e68d6fdac9acb91e4d885a4128a7609a411c5967a96e438d655c69e6ea36"  # pragma: allowlist secret - a content digest
 
 
-def audit_identity(case: Mapping[str, Any], arm: str, *, release: str | None, answer: str, cases_sha256: str | None) -> dict[str, Any]:
+def audit_identity(case: Mapping[str, Any], arm: str, *, release: str | None, answer: str, cases_sha256: str | None,
+                   input_sha256: str | None = None) -> dict[str, Any]:
     """What a support-audit ruling is bound to: exactly one answer's bytes in one release, case and arm, at one snapshot, under this
-    scorer and these cases (Codex CP1 attempt 4 finding 5)."""
+    scorer and these cases (Codex CP1 attempt 4 finding 5), and on a paid row the exact request the model received (Q-release gate item 15;
+    the pack is inside that request)."""
     return {"release": release, "case_id": case["case_id"], "arm": arm, "answer_sha256": _sha(answer), "snapshot": case["snapshot"],
-            "scorer_sha256": SCORER_SHA256, "cases_sha256": cases_sha256}
+            "scorer_sha256": SCORER_SHA256, "cases_sha256": cases_sha256, "input_sha256": input_sha256}
+
+
+def _quotes_received(audit: Mapping[str, Any] | None, delivered: str) -> bool:
+    """Every supported ruling quotes, verbatim, the evidence it relied on, and each quote is in what the model received (item 15): a
+    fact true of the repository but absent from the request does not support the answer."""
+    rulings = audit.get("rulings") if isinstance(audit, Mapping) else None
+    for ruling in rulings if isinstance(rulings, list | tuple) else ():
+        if isinstance(ruling, Mapping) and ruling.get("supported") is True:
+            quotes = ruling.get("quotes")
+            if not (isinstance(quotes, list | tuple) and quotes and all(isinstance(q, str) and q.strip() and q in delivered for q in quotes)):
+                return False
+    return True
 
 
 def _ruling_valid(ruling: Any) -> bool:
@@ -252,7 +266,7 @@ def answer_verdict(screen: str, audit: Mapping[str, Any] | None, identity: Mappi
 
 
 def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer: str | None, read: Read, audit: Mapping[str, Any] | None = None, *,
-              cases_sha256: str, release: str) -> dict[str, Any]:
+              cases_sha256: str, release: str, delivered_input: str | None) -> dict[str, Any]:
     """One paid (case, arm) row, scored against the producer's own record. A row the runner allowed no send (its own
     expected_logical_requests, so F on the outline cases before Task 3's outline too) scores only its boundary: a clean expected_zero_call
     terminal with the declared stop reason, zero Gateway requests and no emitted answer. Otherwise only a settled row's delivered answer is
@@ -261,7 +275,8 @@ def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer:
 
     The cases digest must be the sealed one, and `release` the release being scored: a row from any other release is INCOMPLETE (Codex CP1
     attempt 7, B). A boundary row must be the producer's own row for this case and arm, say explicitly that it emitted no answer, and
-    come with no answer text."""
+    come with no answer text. An answer is scored only with the request text the model received (`delivered_input`, from the sink
+    outside the repository), which must be the row's own sent input; a supported ruling must quote from it (item 15)."""
     if cases_sha256 != SEALED_CASES_SHA256:
         raise ValueError("paid scoring needs the verified cases digest")
     if not (isinstance(release, str) and release):
@@ -280,10 +295,16 @@ def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer:
     if answer is None or text is None or not settled or not producers:
         reason = "not the producer's answer" if answer is not None and settled and not producers else "no settled answer"
         return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": {"answer": UNKNOWN}, "reason": reason, "verdict": INCOMPLETE}
+    sent_input = (row.get("sent") or [{}])[0].get("input_sha256")
+    if delivered_input is None or sent_input is None or _sha(delivered_input) != sent_input:
+        return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": {"answer": UNKNOWN}, "reason": "the delivered input is not the row's",
+                "verdict": INCOMPLETE}
     checks = score_answer(case, text, read)
     screen = verdict(checks)
-    identity = audit_identity(case, arm, release=release, answer=answer, cases_sha256=cases_sha256)
+    identity = audit_identity(case, arm, release=release, answer=answer, cases_sha256=cases_sha256, input_sha256=sent_input)
     final, status = answer_verdict(screen, audit, identity)
+    if final == PASS and not _quotes_received(audit, delivered_input):
+        final, status = PENDING_AUDIT, "a supported ruling quotes nothing the model received"
     return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": checks, "screen": screen, "audit": status, "audit_identity": identity, "verdict": final}
 
 

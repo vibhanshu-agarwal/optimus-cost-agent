@@ -137,6 +137,7 @@ class Guard:
     refusal: str | None = None
     receipts_at_refusal: int | None = None  # receipts after this index are the host's own records of a request never forwarded
     expected_input_sha256: str | None = None  # the row's input from the launcher's dry preparation pass; anything else is refused (gate item 14)
+    write_input: Callable[[str, str], None] | None = None  # (input_sha256, text) to the sink outside the repository, before forwarding (item 15)
 
     def __post_init__(self) -> None:
         if self.allowance not in (0, 1):  # Fable 5.2, CP1: the intra-row multi-send path is deleted
@@ -171,6 +172,8 @@ class Guard:
         except CapRefused as refused:
             self._refused(f"reservation refused: {refused}")
             raise
+        if self.write_input is not None:  # the support audit reads what the model received; kept before the send, never in `sent`
+            self.write_input(_sha(text), text)
         prefix_chars = binding.cache_prefix_chars
         dispatch = len(self.sent) + 1
         # The host request identity the runner gives this send's receipts: the Q turn is one Chat request, so turn 1, wire attempt = dispatch
@@ -385,13 +388,14 @@ def terminal(row: Mapping[str, Any], *, expected_stop: str | None = None) -> tup
 
 
 def run_one(case: Mapping[str, Any], arm: str, *, position: int, gateway: Any, approved: Approved, model: str, packer: Any, binder: Any, workspace: Path,
-            ceiling: Ceiling, allowance: int, release: str = "Q", expected_input_sha256: str | None = None) -> dict[str, Any]:
+            ceiling: Ceiling, allowance: int, release: str = "Q", expected_input_sha256: str | None = None,
+            write_input: Callable[[str, str], None] | None = None) -> dict[str, Any]:
     """One logical request through the real runner, its Gateway client wrapped in the Guard. The frozen schedule allows at most one send
     per row, enforced by the Guard (Codex CP1 attempt 3 finding 3). Any failure of the run, an accounting integrity error included, still yields
     its row with every receipt the host reported, so the sink keeps it before the run stops (finding 4)."""
     receipts: list[Any] = []  # the Guard refuses any allowance but 0 or 1 at construction
     run_id = f"m2b-q-{case['case_id']}-{arm}"
-    guard = Guard(gateway, approved, ceiling, allowance, receipts, run_id, expected_input_sha256=expected_input_sha256)
+    guard = Guard(gateway, approved, ceiling, allowance, receipts, run_id, expected_input_sha256=expected_input_sha256, write_input=write_input)
     request = AgentRunRequest(run_id=run_id, task=case["task"], execution_mode=ExecutionMode.CHAT, workspace_root=workspace,
                               max_planning_turns=1, max_cost_usd=ceiling.usd_max)
     runner = AgentRunner(gateway_client=guard, model=model, state_store=InMemoryAgentStateStore())
@@ -422,7 +426,7 @@ def run_one(case: Mapping[str, Any], arm: str, *, position: int, gateway: Any, a
 def run(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_available: bool, gateway: Any, approved: Approved, model: str,
         packer_for: Callable[[Mapping[str, Any], str], Any], binder_for: Callable[[Mapping[str, Any], str], Any],
         workspace_for: Callable[[Mapping[str, Any]], Path], ceiling: Ceiling, write: Callable[[Mapping[str, Any]], None],
-        write_answers: Callable[[Mapping[str, Any]], None], release: str = "Q") -> dict[str, Any]:
+        write_answers: Callable[[Mapping[str, Any]], None], release: str = "Q", write_input: Callable[[str, str], None] | None = None) -> dict[str, Any]:
     """The whole release in its frozen order. Stops at the first row that is not settled or an expected zero call."""
     by_id = {case["case_id"]: case for case in cases}
     expected = expected_calls(cases, u_equals_b=u_equals_b, outline_available=outline_available)
@@ -431,7 +435,7 @@ def run(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_availab
     for case_id, arm, position in schedule(cases, u_equals_b=u_equals_b):
         case = by_id[case_id]
         row = run_one(case, arm, position=position, gateway=gateway, approved=approved, model=model, packer=packer_for(case, arm), binder=binder_for(case, arm),
-                      workspace=workspace_for(case), ceiling=ceiling, allowance=expected[(case_id, arm)], release=release)
+                      workspace=workspace_for(case), ceiling=ceiling, allowance=expected[(case_id, arm)], release=release, write_input=write_input)
         row["expected_logical_requests"] = expected[(case_id, arm)]
         answer = row.pop("answer")
         answers[f"{case_id}/{arm}"] = answer

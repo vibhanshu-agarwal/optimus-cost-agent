@@ -621,11 +621,18 @@ def test_an_answer_that_reverses_the_oracle_fails(name):
     assert sc.score(case, CONTRADICTIONS[name], _reader(case["snapshot"]))["verdict"] == sc.FAIL
 
 
+# What a paid row's model received (the sink outside the repository keeps it), and the evidence a supported ruling quotes from it.
+DELIVERED = "--- required files ---\n--- src/example.py ---\nRRF_K = 60  # the fusion constant, as the model received it\n"
+DELIVERED_SHA = "hex:" + hashlib.sha256(DELIVERED.encode()).hexdigest()
+QUOTE = "RRF_K = 60"
+
+
 def _audit(case: dict, answer: str, *, arm: str = "X", release: str | None = None, rulings: tuple[bool, ...] = (True, True),
-           cases_sha: str | None = None) -> dict[str, Any]:
-    """A support-audit record bound to exactly this answer, with both designated CP3 reviewers' rulings."""
-    return {"identity": sc.audit_identity(case, arm, release=release, answer=answer, cases_sha256=cases_sha),
-            "rulings": [{"reviewer": name, "supported": ruling, "reason": "checked against the oracle and the pinned snapshot"}
+           cases_sha: str | None = None, input_sha: str | None = None) -> dict[str, Any]:
+    """A support-audit record bound to exactly this answer (and on a paid row its request), with both designated CP3 reviewers'
+    rulings, each quoting the delivered evidence it relied on."""
+    return {"identity": sc.audit_identity(case, arm, release=release, answer=answer, cases_sha256=cases_sha, input_sha256=input_sha),
+            "rulings": [{"reviewer": name, "supported": ruling, "reason": "checked against the oracle and the pinned snapshot", "quotes": [QUOTE]}
                         for name, ruling in zip(("fable-5.2", "codex-gpt-6.2-sol"), rulings, strict=False)]}
 
 
@@ -698,15 +705,15 @@ def test_framing_named_with_an_unrelated_exclusion_still_passes_the_screen():
 def _answer_row(terminal: str, answer: str | None, finish: str = "stop", *, case_id: str = "QB1", arm: str = "F") -> dict[str, Any]:
     """A producer row as m2b_paid writes it: its case, arm, answer digest and terminal."""
     return {"release": "Q", "case_id": case_id, "arm": arm, "answer_sha256": None if answer is None else "hex:" + hashlib.sha256(answer.encode()).hexdigest(),
-            "expected_logical_requests": 1, "terminal": terminal, "sent": [{"finish_reason": finish}]}
+            "expected_logical_requests": 1, "terminal": terminal, "sent": [{"finish_reason": finish, "input_sha256": DELIVERED_SHA}]}
 
 
 def test_rows_score_their_status_before_their_text():
     case = BY_ID["QB1"]
     read = _reader(case["snapshot"])
     good = ANSWERS["QB1"]
-    audit = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA)
-    score = lambda arm, row, answer=good, audit=audit: sc.score_row(case, arm, row, answer, read, audit, cases_sha256=CASES_SHA, release="Q")  # noqa: E731
+    audit = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA, input_sha=DELIVERED_SHA)
+    score = lambda arm, row, answer=good, audit=audit: sc.score_row(case, arm, row, answer, read, audit, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)  # noqa: E731
     assert score("F", _answer_row("settled", good))["verdict"] == sc.PASS
     assert score("B", _answer_row("settled", good, arm="B"))["audit"] == "mismatched"  # bound to its arm
     assert score("F", _answer_row("settled", good), audit=None)["verdict"] == sc.PENDING_AUDIT
@@ -716,13 +723,13 @@ def test_rows_score_their_status_before_their_text():
     over = BY_ID["QB3"]
     refused = {"release": "Q", "case_id": "QB3", "arm": "B", "expected_logical_requests": 0, "terminal": "expected_zero_call", "stop_reason": TOO_LARGE,
                "logical_requests": 0, "emitted_answer": False}
-    boundary = lambda row: sc.score_row(over, "B", row, None, read, cases_sha256=CASES_SHA, release="Q")  # noqa: E731
+    boundary = lambda row: sc.score_row(over, "B", row, None, read, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)  # noqa: E731
     assert boundary(refused)["verdict"] == sc.PASS
     assert boundary({**refused, "logical_requests": 1})["verdict"] == sc.FAIL
     assert boundary({**refused, "stop_reason": "AGENT_SETUP_FAILED"})["verdict"] == sc.FAIL
     assert boundary({**refused, "terminal": "incomplete"})["verdict"] == sc.FAIL  # a clean terminal only
     outline = BY_ID["QO1"]  # F before Task 3's outline: the runner allows no send, so the row is a boundary, never an answer
-    row = sc.score_row(outline, "F", {**refused, "case_id": "QO1", "arm": "F"}, None, read, cases_sha256=CASES_SHA, release="Q")
+    row = sc.score_row(outline, "F", {**refused, "case_id": "QO1", "arm": "F"}, None, read, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)
     assert row["kind"] == "boundary" and row["verdict"] == sc.PASS
 
 
@@ -732,15 +739,15 @@ def test_a_paid_row_scores_only_the_answer_the_producer_recorded_under_the_verif
     read = _reader(case["snapshot"])
     _case_id, substituted = SEMANTIC_REVERSAL
     recorded = _answer_row("settled", ANSWERS["QB4"], case_id="QB4")
-    own_audit = _audit(case, substituted, arm="F", release="Q", cases_sha=CASES_SHA)  # otherwise valid, for the substituted bytes
-    result = sc.score_row(case, "F", recorded, substituted, read, own_audit, cases_sha256=CASES_SHA, release="Q")
+    own_audit = _audit(case, substituted, arm="F", release="Q", cases_sha=CASES_SHA, input_sha=DELIVERED_SHA)  # otherwise valid, for the substituted bytes
+    result = sc.score_row(case, "F", recorded, substituted, read, own_audit, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)
     assert result["verdict"] == sc.INCOMPLETE and result["reason"] == "not the producer's answer"
-    assert sc.score_row(case, "F", {**recorded, "case_id": "QB1"}, ANSWERS["QB4"], read, cases_sha256=CASES_SHA, release="Q")["verdict"] == sc.INCOMPLETE
+    assert sc.score_row(case, "F", {**recorded, "case_id": "QB1"}, ANSWERS["QB4"], read, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)["verdict"] == sc.INCOMPLETE
     for missing in (None, "", "0a16d5b8"):
         with pytest.raises(ValueError, match="verified cases digest"):
-            sc.score_row(case, "F", recorded, ANSWERS["QB4"], read, cases_sha256=missing, release="Q")
+            sc.score_row(case, "F", recorded, ANSWERS["QB4"], read, cases_sha256=missing, release="Q", delivered_input=DELIVERED)
     unverified = _audit(case, ANSWERS["QB4"], arm="F", release="Q", cases_sha=None)  # a ruling recorded without the cases digest
-    assert sc.score_row(case, "F", recorded, ANSWERS["QB4"], read, unverified, cases_sha256=CASES_SHA, release="Q")["audit"] == "mismatched"
+    assert sc.score_row(case, "F", recorded, ANSWERS["QB4"], read, unverified, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)["audit"] == "mismatched"
 
 
 def test_qo4_is_a_boundary_in_every_arm_and_a_quote_on_its_zero_call_row_fails():
@@ -748,8 +755,8 @@ def test_qo4_is_a_boundary_in_every_arm_and_a_quote_on_its_zero_call_row_fails()
     read = _reader(case["snapshot"])
     refused = {"release": "Q", "case_id": "QO4", "expected_logical_requests": 0, "terminal": "expected_zero_call", "stop_reason": TOO_LARGE,
                "logical_requests": 0, "emitted_answer": False}
-    assert all(sc.score_row(case, arm, {**refused, "arm": arm}, None, read, cases_sha256=CASES_SHA, release="Q")["verdict"] == sc.PASS for arm in ("N", "B", "U", "F"))
-    quoted = sc.score_row(case, "F", {**refused, "arm": "F", "emitted_answer": True}, "```python\ndef _project_child_env():\n```", read, cases_sha256=CASES_SHA, release="Q")
+    assert all(sc.score_row(case, arm, {**refused, "arm": arm}, None, read, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)["verdict"] == sc.PASS for arm in ("N", "B", "U", "F"))
+    quoted = sc.score_row(case, "F", {**refused, "arm": "F", "emitted_answer": True}, "```python\ndef _project_child_env():\n```", read, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)
     assert quoted["verdict"] == sc.FAIL
 
 
@@ -760,10 +767,10 @@ def test_qo4_is_a_boundary_in_every_arm_and_a_quote_on_its_zero_call_row_fails()
 def test_a_malformed_reviewer_field_holds_the_answer_pending_and_never_raises(reviewer):
     case = BY_ID["QB1"]
     good = ANSWERS["QB1"]
-    audit = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA)
+    audit = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA, input_sha=DELIVERED_SHA)
     audit["rulings"][0] = {**audit["rulings"][0], "reviewer": reviewer}
     try:
-        result = sc.score_row(case, "F", _answer_row("settled", good), good, _reader(case["snapshot"]), audit, cases_sha256=CASES_SHA, release="Q")
+        result = sc.score_row(case, "F", _answer_row("settled", good), good, _reader(case["snapshot"]), audit, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)
     except TypeError as error:
         pytest.fail(f"a malformed reviewer must not raise: {error!r}")
     assert (result["verdict"], result["audit"]) == (sc.PENDING_AUDIT, "incomplete ruling")
@@ -774,19 +781,19 @@ def test_paid_scoring_runs_only_against_the_sealed_cases_bytes():
     case = BY_ID["QB1"]
     for other in ("hex:", "hex:" + "0" * 64, CASES_SHA.upper()):
         with pytest.raises(ValueError, match="verified cases digest"):
-            sc.score_row(case, "F", _answer_row("settled", ANSWERS["QB1"]), ANSWERS["QB1"], _reader(case["snapshot"]), cases_sha256=other, release="Q")
+            sc.score_row(case, "F", _answer_row("settled", ANSWERS["QB1"]), ANSWERS["QB1"], _reader(case["snapshot"]), cases_sha256=other, release="Q", delivered_input=DELIVERED)
 
 
 def test_a_row_from_another_release_or_none_never_scores():
     case = BY_ID["QB1"]
     good = ANSWERS["QB1"]
     read = _reader(case["snapshot"])
-    audit = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA)
+    audit = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA, input_sha=DELIVERED_SHA)
     for release in (None, "R", ""):
-        result = sc.score_row(case, "F", {**_answer_row("settled", good), "release": release}, good, read, audit, cases_sha256=CASES_SHA, release="Q")
+        result = sc.score_row(case, "F", {**_answer_row("settled", good), "release": release}, good, read, audit, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)
         assert (result["verdict"], result.get("reason")) == (sc.INCOMPLETE, "another release"), release
     with pytest.raises(ValueError, match="expected release"):
-        sc.score_row(case, "F", _answer_row("settled", good), good, read, audit, cases_sha256=CASES_SHA, release=None)
+        sc.score_row(case, "F", _answer_row("settled", good), good, read, audit, cases_sha256=CASES_SHA, release=None, delivered_input=DELIVERED)
 
 
 def test_a_boundary_row_must_be_the_producers_own_with_an_explicit_no_answer():
@@ -794,28 +801,28 @@ def test_a_boundary_row_must_be_the_producers_own_with_an_explicit_no_answer():
     read = _reader(case["snapshot"])
     refused = {"release": "Q", "case_id": "QB3", "arm": "B", "expected_logical_requests": 0, "terminal": "expected_zero_call", "stop_reason": TOO_LARGE,
                "logical_requests": 0, "emitted_answer": False}
-    assert sc.score_row(case, "B", refused, None, read, cases_sha256=CASES_SHA, release="Q")["verdict"] == sc.PASS
+    assert sc.score_row(case, "B", refused, None, read, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)["verdict"] == sc.PASS
     without_flag = {k: v for k, v in refused.items() if k != "emitted_answer"}
     for row, answer, why in (({**refused, "case_id": "QB4"}, None, "another case"), ({**refused, "arm": "N"}, None, "another arm"),
                              (without_flag, None, "no explicit no-answer flag"), (refused, "Some supplied text.", "conflicting supplied text")):
-        assert sc.score_row(case, "B", row, answer, read, cases_sha256=CASES_SHA, release="Q")["verdict"] == sc.FAIL, why
+        assert sc.score_row(case, "B", row, answer, read, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)["verdict"] == sc.FAIL, why
 
 
 def test_an_operator_hold_removes_a_suspected_false_screen_failure_from_every_gate_without_rescoring():
     case = BY_ID["QB1"]
     read = _reader(case["snapshot"])
     wrong = CONTRADICTIONS["QB1"]
-    held = {**_audit(case, wrong, arm="F", release="Q", cases_sha=CASES_SHA), "operator_hold": {"reason": "the oracle phrase may be too narrow"}}
+    held = {**_audit(case, wrong, arm="F", release="Q", cases_sha=CASES_SHA, input_sha=DELIVERED_SHA), "operator_hold": {"reason": "the oracle phrase may be too narrow"}}
     row = _answer_row("settled", wrong)
-    result = sc.score_row(case, "F", row, wrong, read, held, cases_sha256=CASES_SHA, release="Q")
+    result = sc.score_row(case, "F", row, wrong, read, held, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)
     assert result["screen"] == sc.FAIL and (result["verdict"], result["audit"]) == (sc.HELD, "operator hold: suspected false screen failure, not rescored")
     for hold in ({"reason": " "}, {}, "yes"):
-        assert sc.score_row(case, "F", row, wrong, read, {**held, "operator_hold": hold}, cases_sha256=CASES_SHA, release="Q")["verdict"] == sc.FAIL
+        assert sc.score_row(case, "F", row, wrong, read, {**held, "operator_hold": hold}, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)["verdict"] == sc.FAIL
     unbound = {**held, "identity": {**held["identity"], "arm": "B"}}
-    assert sc.score_row(case, "F", row, wrong, read, unbound, cases_sha256=CASES_SHA, release="Q")["verdict"] == sc.FAIL
+    assert sc.score_row(case, "F", row, wrong, read, unbound, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)["verdict"] == sc.FAIL
     good = ANSWERS["QB1"]
-    on_pass = {**_audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA), "operator_hold": {"reason": "x"}}
-    assert sc.score_row(case, "F", _answer_row("settled", good), good, read, on_pass, cases_sha256=CASES_SHA, release="Q")["verdict"] == sc.PASS
+    on_pass = {**_audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA, input_sha=DELIVERED_SHA), "operator_hold": {"reason": "x"}}
+    assert sc.score_row(case, "F", _answer_row("settled", good), good, read, on_pass, cases_sha256=CASES_SHA, release="Q", delivered_input=DELIVERED)["verdict"] == sc.PASS
 
 
 def test_the_guard_forwards_only_the_input_the_dry_preparation_pass_prepared(tmp_path, snapshot):
@@ -844,3 +851,43 @@ def test_a_q_rows_summarizer_client_refuses_every_call():
         with pytest.raises(paid.GuardRefused, match="never summarizes"):
             client.create_response(model="anthropic/claude-haiku-5.5", input_text="history")
     assert client.calls == 2
+
+
+def test_an_answer_is_scored_only_with_the_request_its_model_received_and_rulings_quote_from_it():
+    """Q-release gate item 15: the support audit is bound to the delivered request, and a supported ruling must quote, verbatim, evidence
+    the model received; a fact true of the repository but absent from the request supports nothing."""
+    case, good = BY_ID["QB1"], ANSWERS["QB1"]
+    read = _reader(case["snapshot"])
+    audit = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA, input_sha=DELIVERED_SHA)
+    score = lambda delivered, audit=audit: sc.score_row(case, "F", _answer_row("settled", good), good, read, audit, cases_sha256=CASES_SHA,  # noqa: E731
+                                                        release="Q", delivered_input=delivered)
+    assert score(DELIVERED)["verdict"] == sc.PASS
+    for other in (None, DELIVERED + " ", "another request"):
+        assert (score(other)["verdict"], score(other).get("reason")) == (sc.INCOMPLETE, "the delivered input is not the row's"), other
+    for quotes in (["RRF_K = 61"], [], [" "], "RRF_K = 60", None):
+        unquoted = {**audit, "rulings": [{**r, "quotes": quotes} for r in audit["rulings"]]}
+        assert (score(DELIVERED, unquoted)["verdict"], score(DELIVERED, unquoted)["audit"]) == (sc.PENDING_AUDIT, "a supported ruling quotes nothing the model received"), quotes
+    other_request = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA, input_sha="hex:" + "1" * 64)
+    assert score(DELIVERED, other_request)["audit"] == "mismatched", "a ruling bound to another request"
+
+
+def test_the_guard_keeps_each_sent_request_in_the_sink_before_forwarding_and_never_a_refused_one(tmp_path, snapshot):
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    kept: list[tuple[str, str]] = []
+
+    class Watching:
+        def __init__(self, inner: Any) -> None:
+            self.inner = inner
+
+        def create_response(self, **kwargs: Any) -> Any:
+            assert kept and kept[-1][1] == kwargs["input_text"], "the request is kept before it is forwarded"
+            return self.inner.create_response(**kwargs)
+
+    for allowance in (1, 0):
+        gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["The answer."]))
+        row = paid.run_one({"case_id": "QX", "task": "What is x?"}, "N", position=1, gateway=Watching(_client(gateway)), approved=_approved(snapshot), model=STANDARD,
+                           packer=None, binder=_binder(snapshot), workspace=workspace, ceiling=_ceiling(), allowance=allowance, write_input=lambda sha, text: kept.append((sha, text)))
+        assert len(kept) == 1, "the refused row (allowance 0) keeps nothing"
+    sha, text = kept[0]
+    assert sha == "hex:" + hashlib.sha256(text.encode()).hexdigest() and all(text not in json.dumps(entry) for entry in row["sent"])
