@@ -172,7 +172,7 @@ class _SurfaceFinder(ast.NodeVisitor):
             self._add("exception_export")
         if call_name == "JsonRpcError" and _has_exception_attribute_argument(node):
             self._add("structured_exception_export")
-        if self.module == "optimus.acp.dispatcher" and scope == "JsonRpcDispatcher.dispatch" and call_name == "str":
+        if self.module == "optimus.acp.dispatcher" and scope in {"JsonRpcDispatcher.dispatch", "JsonRpcDispatcher._dispatch"} and call_name == "str":
             self._add("jsonrpc_error_response")
         if self.module == "optimus_gateway.responses" and self.function_name == "handle_responses_request" and call_name == "str":
             self._add("http_error_response")

@@ -12,6 +12,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log
+from optimus.acp.request_correlation import detached_request_context
 from optimus_security.failure_facts import exception_fact, host_session_id
 
 if TYPE_CHECKING:
@@ -262,7 +263,9 @@ class SessionRetentionOwner:
             return entry.result.status
         if entry.job is None:
             entry.phase, entry.reason = 'RETIRING', reason
-            entry.job = self._loop.create_task(self._retire(entry), name='optimus-session-retirement')
+            entry.job = self._loop.create_task(
+                self._retire(entry), name='optimus-session-retirement', context=detached_request_context(),
+            )
             self._log('retiring', entry)
         return RetirementStatus.DEFERRED if entry.uses else RetirementStatus.RETIRING
 
