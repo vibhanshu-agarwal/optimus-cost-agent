@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from decimal import Decimal
 
 import pytest
@@ -168,7 +169,11 @@ def test_an_agent_summary_of_the_oversized_file_plans_from_a_fresh_ranged_read(b
     assert len(gateway.calls) == 2, result.stop_reason
     first, second = (call["input_text"] for call in gateway.calls)
     assert DISCLOSURE not in first and BODY not in first and packer.memory.manifest.get("outline") is None
-    assert BIG.encode()[:60].decode() in second and BIG.encode()[:60].decode() not in first
+    assert f"- pkg/big.py: size {len(BIG.encode())} bytes;" in first, "the model sizes its ranged reads from the file's size line"
+    # Codex CP2 attempt 3: exactly one read block for the file, with the asked range, the source's hash, and exactly those bytes.
+    blocks = re.findall(r"^READ_BLOCK path=pkg/big\.py bytes=(\d+):(\d+) sha256=([0-9a-f]{64}) eol=\S+\n(.*?)\nEND_READ_BLOCK$", second, re.MULTILINE | re.DOTALL)
+    assert blocks == [("0", "60", hashlib.sha256(BIG.encode()).hexdigest(), BIG.encode()[:60].decode())], blocks
+    assert "READ_BLOCK" not in first
 
 
 def test_a_chat_summary_halted_after_its_outline_is_built_sends_nothing(big):
