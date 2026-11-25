@@ -14,7 +14,8 @@ class NetworkSafetyValidator:
         try:
             parsed = urlparse(url)
             hostname = parsed.hostname
-        except ValueError:  # urlparse and .hostname raise on a malformed URL; a URL that cannot be parsed is refused
+            _ = parsed.port  # a port that is not a number in range would otherwise pass on an allowed host
+        except ValueError:  # urlparse, .hostname and .port raise on a malformed URL; a URL that cannot be parsed is refused
             return ValidationResult(ValidationVerdict.BLOCK, "network.malformed_url", "network URL is malformed")
         if parsed.scheme != "https":
             return ValidationResult(ValidationVerdict.BLOCK, "network.insecure_transport", "network URLs must use HTTPS")
