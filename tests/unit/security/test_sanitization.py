@@ -238,6 +238,87 @@ class TestWhitespaceSecretAssignment:
         assert sanitize_for_persistence(text).value == text
 
 
+# Prose the whitespace rule must leave intact: the keyword is followed by a function word, never a value (#584).
+_PROSE_KEPT = [
+    *(f"The change to {name} was not made" for name in ("token", "config/secret", "password", "my-api_key", "api-key")),
+    "See src/token for details",
+    "The password was not stored: nothing was configured.",
+    "one-call approval token is not recognized",
+    "the store's credential is not set up.",
+    "a valid relative path with no secret or reserved part",
+    "the Gateway credential and is never handed over",
+]
+_HUNTER = "hunter" + "2"
+# (input, expected): still masked after #584. The last rows are ties between prose and a secret: secrecy wins.
+_STILL_MASKED = [
+    ("token abc123", "token **********"),
+    ("token is abc123", "token is **********"),
+    ("token = abc123", "token = **********"),
+    ("token is: abc123", "token is: **********"),
+    (f"password: {_HUNTER}", "password: **********"),
+    (f"token is:{_FAKE}", "token **********"),
+    (f"token not{_FAKE}", "token **********"),
+    (f"token and{_FAKE} rest", "token ********** rest"),
+    ("my password dragon", "my password **********"),
+    ("the password field is required", "the password ********** is required"),
+    ("EDIT not applied to token (EDIT_OLD_NOT_FOUND): x", "EDIT not applied to token ********** x"),
+    # A listed word after an explicit separator, capitalised, or with punctuation is a value (Codex review of #584).
+    ("password : Per!?!?. archived", "password : ********** archived"),
+    ("PASSWORD was: Per!?!?. archived", "PASSWORD was: ********** archived"),
+    ("PASSWORD = Per!?!?." + chr(0xA0) + "archived", "PASSWORD = **********" + chr(0xA0) + "archived"),
+    ("password = not archived", "password = ********** archived"),
+    ("token is: the rest", "token is: ********** rest"),
+    ("password Per archived", "password ********** archived"),
+    ("token Not made", "token ********** made"),
+    ("token not. made", "token ********** made"),
+    # Off the list since round 2 of the review: forms and determiners a one-word value could be.
+    ("password was being (expires Friday)", "password was ********** (expires Friday)"),
+    ("password been there", "password ********** there"),
+    ("token that rest", "token ********** rest"),
+]
+
+
+class TestWhitespaceRuleKeepsProse:
+    """The whitespace rule does not mask a function word after the keyword; values stay masked (#584)."""
+
+    @_WHITESPACE_RULE_POLICIES
+    @pytest.mark.parametrize("text", _PROSE_KEPT)
+    def test_prose_is_unchanged(self, policy, text: str) -> None:
+        assert sanitize_for_persistence(text, policy=policy).value == text
+
+    @_WHITESPACE_RULE_POLICIES
+    @pytest.mark.parametrize(("text", "expected"), _STILL_MASKED)
+    def test_values_stay_masked(self, policy, text: str, expected: str) -> None:
+        assert sanitize_for_persistence(text, policy=policy).value == expected
+
+    @pytest.mark.parametrize("text", _PROSE_KEPT)
+    def test_conversation_commit_path_keeps_prose(self, text: str) -> None:
+        from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs, ConversationState
+
+        state = ConversationState(ConversationSanitizer(ConversationSanitizerInputs((), (), ())))
+        assert state.sanitize_text(text) == text
+
+    def test_streaming_sanitizer_keeps_prose_and_masks_values(self) -> None:
+        stream = StreamingTextSanitizer(policy=EVIDENCE_REDACTION_POLICY)
+        out = stream.feed("The change to token was not made; token is ") + stream.feed(f"{_FAKE} end") + stream.finalize()
+        assert out == "The change to token was not made; token is ********** end"
+
+    def test_a_function_word_cut_at_a_stream_boundary_is_still_masked(self) -> None:
+        # The exemption needs whitespace after the word, so a value cut after "not" is masked, not released in clear.
+        assert sanitize_for_persistence("token not", policy=EVIDENCE_REDACTION_POLICY).value == "token **********"
+
+    @pytest.mark.parametrize(
+        ("head", "released"),
+        [("password : Per!?!?. ", "password : ********** "), ("password is not", "password is **********")],
+    )
+    def test_a_real_stream_release_keeps_the_mask(self, head: str, released: str) -> None:
+        # feed() releases everything beyond the default overlap, cutting the text right after head.
+        stream = StreamingTextSanitizer(policy=EVIDENCE_REDACTION_POLICY)
+        out = stream.feed(head + " " * stream.overlap_chars)
+        assert out == released
+        assert stream.finalize() == " " * stream.overlap_chars
+
+
 class TestDictKeyRedaction:
     """Dictionary keys that indicate secrets get their values redacted."""
 

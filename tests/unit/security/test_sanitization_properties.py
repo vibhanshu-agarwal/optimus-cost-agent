@@ -25,7 +25,11 @@ import string
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
-from optimus_security.sanitization import sanitize_for_persistence
+from optimus_security.sanitization import (
+    EVIDENCE_REDACTION_POLICY,
+    WORKSPACE_SUBJECT_SANITIZATION_POLICY,
+    sanitize_for_persistence,
+)
 
 REDACTED = "**********"
 SPIKE = settings(derandomize=True, database=None, max_examples=300, deadline=None)
@@ -125,3 +129,41 @@ def test_documented_counterexamples_behave_correctly():
     # case (the original oracle's mistake).
     assert sanitize_for_persistence("bearer abcdefgh").value == "bearer **********"
     assert sanitize_for_persistence("config password=password ok").value == "config password=********** ok"
+
+
+# The whitespace assignment rule (on under the evidence and workspace policies), both directions (#584).
+_WS_POLICIES = st.sampled_from([EVIDENCE_REDACTION_POLICY, WORKSPACE_SUBJECT_SANITIZATION_POLICY])
+_WS_KEYWORDS = st.sampled_from(["token", "password", "secret", "credential", "api_key", "api-key", "TOKEN", "Password"])
+_WS_FORMS = st.sampled_from(
+    ["{kw} {v}", "{kw} is {v}", "{kw} was {v}", "{kw} = {v}", "{kw} : {v}", "{kw} is: {v}", "{kw} was = {v}"]
+)
+# Function words that are not a bare copula ("token is X" is an assignment); a test-local list, independent of the rule's.
+_FUNCTION_WORDS = st.sampled_from(["not", "for", "and", "or", "the", "of", "to", "in", "never", "is not", "was not"])
+_SEPARATOR_FORMS = st.sampled_from(["{kw} = {v}", "{kw} : {v}", "{kw} is: {v}", "{kw} was = {v}", "{kw} is : {v}"])
+_benign_tail = st.lists(st.sampled_from(_SAFE_WORDS), min_size=0, max_size=6).map(" ".join)
+
+
+@SPIKE
+@given(_WS_POLICIES, _WS_KEYWORDS, _WS_FORMS, _secret, _known_benign)
+def test_whitespace_assignment_value_is_removed(policy, kw, form, secret, tail):
+    result = sanitize_for_persistence(f"{tail} {form.format(kw=kw, v=secret)} {tail}", policy=policy)
+    # Some forms ("api_key = X") are caught first by the env or header rule, so the mask is checked, not one counter.
+    assert secret not in result.value, f"sentinel value survived: {result.value!r}"
+    assert REDACTED in result.value
+
+
+@SPIKE
+@given(_WS_POLICIES, _WS_KEYWORDS, _SEPARATOR_FORMS, _FUNCTION_WORDS.filter(lambda w: " " not in w))
+def test_a_function_word_after_an_explicit_separator_is_masked(policy, kw, form, word):
+    # After "=" or ":" the word is an assigned value, whatever it is.
+    result = sanitize_for_persistence(f"{form.format(kw=kw, v=word)} done", policy=policy)
+    assert REDACTED in result.value
+    assert word not in result.value.split(), f"assigned value survived: {result.value!r}"
+
+
+@SPIKE
+@given(_WS_POLICIES, _WS_KEYWORDS, _FUNCTION_WORDS, _known_benign, _benign_tail)
+def test_keyword_before_a_function_word_is_preserved_exactly(policy, kw, word, head, tail):
+    text = f"{head} {kw} {word} {tail}".rstrip() + " ."
+    result = sanitize_for_persistence(text, policy=policy)
+    assert result.value == text, f"prose was altered: {result.value!r} (rules={dict(result.rule_counts)})"
