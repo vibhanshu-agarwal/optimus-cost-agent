@@ -16,6 +16,7 @@ from optimus.acp.errors import (
     MUTATION_FORBIDDEN,
     JsonRpcError,
     error_response,
+    select_acp_error,
     success_response,
 )
 from optimus.acp.request_correlation import RequestCorrelation, diagnostic_method
@@ -35,7 +36,7 @@ from optimus.evidence.models import (
 )
 from optimus.evidence.package_advisory import PackageAdvisoryService
 from optimus.gateway.client import GatewayClient
-from optimus.gateway.errors import GatewayError
+from optimus.gateway.errors import GatewayError, GatewayFailureFacts, GatewayFailureReason
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.gateway.tool_models import (
     GatewayToolContext,
@@ -186,12 +187,21 @@ class JsonRpcDispatcher:
                 from optimus.usage.operation_capture import captured_operation
 
                 gateway_client, model, input_text = self._gateway_client, params["model"], params["input"]
-                gateway_response = captured_operation(
-                    self._durable_capture,
-                    kind="gateway_passthrough",
-                    requested_model=model,
-                    call=lambda: gateway_client.create_response(model=model, input_text=input_text, metadata=metadata),
-                )
+                facts = GatewayFailureFacts()
+                try:
+                    gateway_response = captured_operation(
+                        self._durable_capture,
+                        kind="gateway_passthrough",
+                        requested_model=model,
+                        call=lambda: gateway_client.create_response(model=model, input_text=input_text, metadata=metadata),
+                        gateway_failure_facts=facts,
+                    )
+                except GatewayError as exc:
+                    reason = facts.consume(exc) or GatewayFailureReason.OUTCOME_UNCERTAIN
+                    return error_response(
+                        request_id=request_id,
+                        error=select_acp_error(reason),
+                    )
                 return success_response(
                     request_id=request_id,
                     result=_gateway_response_payload(gateway_response),

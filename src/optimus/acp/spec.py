@@ -148,7 +148,8 @@ from optimus.context.memory_backups import Scheduler as BackupScheduler
 from optimus.context.memory_continuity import Continuity, Settled
 from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
 from optimus.context.memory_recovery import Scheduler as RecoveryScheduler
-from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
+from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY, AttemptIntegrityError
+from optimus.gateway.errors import GatewayError, GatewayFailureFacts
 from optimus.guardrails.file_policy import FilePolicy
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_disposition import (
@@ -2411,13 +2412,18 @@ class AcpDuplexAdapter:
                 turn.planning_reads.extend(event.read_byte_counts)
                 lane.offer(event)
 
+            gateway_failure_facts = GatewayFailureFacts() if ownership_slot is not None else None
+            if ownership_slot is not None:
+                ownership_slot.gateway_failure_facts = gateway_failure_facts
             try:
                 planning_result = await self._in_worker(
                     session,
                     turn,
                     self._runner.run,
                     planning_request,
+                    gateway_failure_owner=gateway_failure_facts,
                     **self._runner_runtime_kwargs(
+                        gateway_failure_facts=gateway_failure_facts,
                         execution_mode=turn.execution_mode,
                         planning_progress_observer=_session_progress_observer,
                         session=session,
@@ -2438,6 +2444,8 @@ class AcpDuplexAdapter:
                     ),
                 )
             except asyncio.CancelledError:
+                if gateway_failure_facts is not None:
+                    gateway_failure_facts.discard()
                 progress.cancel()
                 raise
             finally:
@@ -2789,7 +2797,6 @@ class AcpDuplexAdapter:
             ClassifierOutcome,
         )
         from optimus.agent.auto_contract import build_classifier_input
-        from optimus.gateway.attempts import AttemptIntegrityError
 
         router = self._auto_router
         assert router is not None
@@ -3475,7 +3482,10 @@ class AcpDuplexAdapter:
             ),
         )
 
-    async def _in_worker(self, session: AcpSpecSession, turn: AcpPromptTurn, function: Any, *args: Any, **kwargs: Any) -> Any:
+    async def _in_worker(
+        self, session: AcpSpecSession, turn: AcpPromptTurn, function: Any, *args: Any,
+        gateway_failure_owner: GatewayFailureFacts | None = None, **kwargs: Any
+    ) -> Any:
         """Run `function` off the event loop as one invocation of this turn: the turn's cost stays
         incomplete while the worker runs, even after this coroutine stops waiting for it (transport
         teardown), and a worker that never started can never start later (Codex CP3 ruling R2)."""
@@ -3552,6 +3562,12 @@ class AcpDuplexAdapter:
                 raise
             outcome_observed = True
             if not succeeded:
+                if (
+                    gateway_failure_owner is not None
+                    and not turn.turn_control.transport_abandoned()
+                    and isinstance(result, (GatewayError, AttemptIntegrityError))
+                ):
+                    gateway_failure_owner.supply_uncertainty(result)
                 raise result
             return result
         finally:
@@ -3868,6 +3884,7 @@ class AcpDuplexAdapter:
         turn_model: str | None = None,
         model_stops: Any | None = None,
         recovery_escalation: Any | None = None,
+        gateway_failure_facts: GatewayFailureFacts | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -3904,6 +3921,8 @@ class AcpDuplexAdapter:
             _maybe("model_stops", model_stops)
         if recovery_escalation is not None:
             _maybe("recovery_escalation", recovery_escalation)
+        if gateway_failure_facts is not None:
+            _maybe("gateway_failure_facts", gateway_failure_facts)
         chat = (execution_mode or session.execution_mode) is ExecutionMode.CHAT
         _maybe("client_mcp_service", None if chat else _client_mcp_service(session))
         _maybe("mcp_permission_broker", None if chat else self._mcp_permission_broker_for(session))

@@ -25,6 +25,7 @@ from optimus.acp.settlement import (
     TurnSettlementSnapshot,
     compute_effect_state,
 )
+from optimus.gateway.errors import GatewayFailureFacts
 
 
 class _SettlementFields(TypedDict):
@@ -1159,6 +1160,7 @@ class ResponseOwnershipSlot:
 
     turn_control: TurnControl | None = None
     claimed: bool = False
+    gateway_failure_facts: GatewayFailureFacts | None = None
 
     def bind_turn(self, turn_control: TurnControl) -> None:
         if self.claimed:

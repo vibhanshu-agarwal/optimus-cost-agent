@@ -53,6 +53,7 @@ from optimus.gateway.attempts import (
     stops_experimental_route,
 )
 from optimus.gateway.client import CaptureIntent, GatewayClient, capturing
+from optimus.gateway.errors import GatewayFailureFacts
 from optimus.gateway.models import GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
@@ -65,7 +66,7 @@ from optimus.telemetry.events import TelemetryEvent
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
 from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS, WriteRefused, WriteSourceChanged
 from optimus.usage.accounting import UsageAccountingService
-from optimus.usage.turn_settlement import StageReceipt
+from optimus.usage.turn_settlement import StageReceipt, publish_accounting_conflict
 
 if TYPE_CHECKING:
     from optimus.agent.planning_loop import (
@@ -196,6 +197,7 @@ class _RunScope:
     integrity_failure: Callable[[str], None] | None = None
     model_stops: Callable[[str], None] | None = None
     recovery_escalation: PlanningEscalationCallback | None = None
+    gateway_failure_facts: GatewayFailureFacts | None = None
 
     def transport_abandoned(self) -> bool:
         return self.operation_control is not None and self.operation_control.transport_abandoned()
@@ -403,6 +405,7 @@ class AgentRunner:
         turn_model: str | None = None,
         model_stops: Callable[[str], None] | None = None,
         recovery_escalation: PlanningEscalationCallback | None = None,
+        gateway_failure_facts: GatewayFailureFacts | None = None,
     ) -> AgentRunResult:
         """`stage_receipts` receives every model attempt of this run, known or unknown, once (Plan 12.2
         Task 11). `route_binder` binds each request to the turn's captured trusted route; without it
@@ -433,6 +436,7 @@ class AgentRunner:
             integrity_failure=integrity_failure,
             model_stops=model_stops,
             recovery_escalation=recovery_escalation,
+            gateway_failure_facts=gateway_failure_facts,
         )
         try:
             result = self._run_once(
@@ -744,6 +748,7 @@ class AgentRunner:
             guard=guard,
             usage_callback=usage_callback,
             attempt_callback=attempt_callback,
+            gateway_failure_facts=scope.gateway_failure_facts,
             route_binder=scope.route,
             progress_observer=progress_observer,
             client_mcp_service=client_mcp_service,
@@ -1087,7 +1092,10 @@ class AgentRunner:
         except Exception as error:  # noqa: BLE001 - held with the others
             errors.append(error)
         if errors:
-            raise first_error(errors)
+            primary = first_error(errors)
+            if not scope.transport_abandoned():
+                publish_accounting_conflict(scope.gateway_failure_facts, primary, errors)
+            raise primary
         return attempts
 
     def _observe_attempts(

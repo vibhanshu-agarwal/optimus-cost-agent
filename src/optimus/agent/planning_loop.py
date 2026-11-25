@@ -58,7 +58,7 @@ from optimus.gateway.attempts import (
     stops_experimental_route,
 )
 from optimus.gateway.client import CaptureIntent, capturing
-from optimus.gateway.errors import GatewayError
+from optimus.gateway.errors import GatewayError, GatewayFailureFacts
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
@@ -73,6 +73,7 @@ from optimus.runtime.state import RuntimeContext
 from optimus.telemetry.events import TelemetryEvent
 from optimus.telemetry.subjects import sanitize_workspace_text
 from optimus.tools.line_endings import LineEndingStyle
+from optimus.usage.turn_settlement import publish_accounting_conflict
 from optimus_security.failure_facts import bounded
 
 if TYPE_CHECKING:
@@ -1145,6 +1146,7 @@ class PlanningLoopRunner:
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
+        gateway_failure_facts: GatewayFailureFacts | None = None,
         route_binder: TurnRouteBinder | None = None,
         recovery_checkin: PlanningCheckInCallback | None = None,
         loop_event_sink: Callable[[TelemetryEvent], None] | None = None,
@@ -1180,6 +1182,7 @@ class PlanningLoopRunner:
         self._operation_control = operation_control
         self._context_packer = context_packer
         self._attempt_callback = attempt_callback
+        self._gateway_failure_facts = gateway_failure_facts
         self._route_binder = route_binder
 
     def run(
@@ -1234,6 +1237,7 @@ class PlanningLoopRunner:
             memory_context=memory_context,
             context_packer=self._context_packer,
             attempt_callback=self._attempt_callback,
+            gateway_failure_facts=self._gateway_failure_facts,
             route_binder=self._route_binder,
             interactive=self._recovery_checkin is not None,
             escalates=self._recovery_escalation is not None,
@@ -1344,6 +1348,7 @@ class _PlanningIterationRunner:
         memory_context: str = "",
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
+        gateway_failure_facts: GatewayFailureFacts | None = None,
         route_binder: TurnRouteBinder | None = None,
         interactive: bool = False,
         escalates: bool = False,
@@ -1378,6 +1383,7 @@ class _PlanningIterationRunner:
         self._recovery_stop: tuple[str, str] | None = None  # (stop reason, the user's detail)
         self._refusal_detail = ""
         self._attempt_callback = attempt_callback
+        self._gateway_failure_facts = gateway_failure_facts
         self._route_binder = route_binder
         # Sticky: a Gateway failure proved this route stopped, and a stopped route never restarts (#400).
         self._route_stopped = False
@@ -1685,6 +1691,7 @@ class _PlanningIterationRunner:
         # funnel, never as a gateway failure (Fable CP3 correction review MINOR-1; Codex CP3 correction
         # ruling C1).
         integrity: list[Exception] = []
+        accounted = False
 
         def capture(action: Callable[[], Any]) -> None:
             try:
@@ -1725,6 +1732,8 @@ class _PlanningIterationRunner:
                 or, for a report that cannot be attributed, the records its integrity error carries,
                 with the request's `failure` for the diagnostic only. No failure stops the next step.
                 Returns None when anything failed."""
+                nonlocal accounted
+                accounted = True
                 held = len(integrity)
                 if usage is not None:
                     capture(lambda: self._record_reported_gateway_usage(usage, planning_turn, wire_attempt))
@@ -1829,7 +1838,10 @@ class _PlanningIterationRunner:
 
         retry_result = self._retry_controller.run(operation)
         if integrity:
-            raise first_error(integrity)
+            primary = first_error(integrity)
+            if accounted and (self._operation_control is None or not self._operation_control.transport_abandoned()):
+                publish_accounting_conflict(self._gateway_failure_facts, primary, integrity)
+            raise primary
 
         # Map RetryResult to planning outcomes.
         sequence_cost = self._total_cost_usd - cost_before
