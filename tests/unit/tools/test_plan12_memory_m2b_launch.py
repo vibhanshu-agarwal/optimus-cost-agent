@@ -80,9 +80,9 @@ def _composition(tree: Path, *, epoch: int = 3, **storage: Any) -> launch.Compos
     return launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {SNAP: _ready_session(tree, epoch, **storage)}, {SNAP: tree}, epochs={SNAP: epoch}, trees={SNAP: "git:t"})
 
 
-def _rehearse(composition: launch.Composition, *, budget_report: dict | None = None) -> dict[str, Any]:
+def _rehearse(composition: launch.Composition, *, budget_report: dict | None = None, cases: list[dict] | None = None) -> dict[str, Any]:
     with launch.loopback_gateway(composition.snapshot, composition.shared_secret) as (client, provider):
-        return launch.rehearse(_cases(), composition, gateway=client, provider=provider, u_equals_b=True, outline_available=True, budget_report=budget_report)
+        return launch.rehearse(cases or _cases(), composition, gateway=client, provider=provider, u_equals_b=True, outline_available=True, budget_report=budget_report)
 
 
 def _budget(record: dict[str, Any], *, complete: bool = True) -> dict[str, Any]:
@@ -95,7 +95,7 @@ def _budget(record: dict[str, Any], *, complete: bool = True) -> dict[str, Any]:
 def _gate() -> dict[str, Any]:
     return {"rows": 36, "sends": 36, "forced_refusals": 0, "attempts_max": 96, "usd_max": "6.00", "per_attempt_usd": "0.04608",
             "digests": {rel: "hex:" + hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() for rel in launch.PINNED_FILES},
-            "registry_hash": trusted_snapshot().effective_hash, "tariff_id": paid.D3_TARIFF.id}
+            "registry_hash": trusted_snapshot().effective_hash, "tariff": launch.tariff_record()}
 
 
 @pytest.fixture
@@ -194,14 +194,40 @@ def test_degraded_retrieval_fails_the_rehearsal(tree):
     assert launch.degraded({"retrieval": {"state": "unpublished"}})[:2] == ["retrieval state 'unpublished'", "index coverage incomplete"]
 
 
-def test_a_row_that_refused_before_its_manifest_says_so_explicitly(tree):
+def test_a_row_that_stopped_before_retrieval_says_so_explicitly(tree):
     composition = _composition(tree)
-    evidence = launch.Evidence(composition)
+    evidence = launch.Evidence(composition, _cases())
     composition.packers[("QB3", "B")] = SimpleNamespace(memory=SimpleNamespace(manifest={}))
     composition.packers[("QB3", "N")] = SimpleNamespace(memory=None)
     row = {"logical_request_id": "m2b-q-QB3-B", "sent": []}
-    assert evidence({"case_id": "QB3", "snapshot": SNAP}, "B", row)["retrieval_evidence"] == "none: the turn refused before writing a manifest"
+    assert evidence({"case_id": "QB3", "snapshot": SNAP}, "B", row)["retrieval_evidence"] == "none: the turn stopped before retrieval"
     assert evidence({"case_id": "QB3", "snapshot": SNAP}, "N", row)["retrieval_evidence"] == "no memory turn"
+
+
+BIG = "".join(f"def handler_{i}(event):\n    return 'big file body {i}'\n\n\n" for i in range(60))
+
+
+def _with_refusal(tree: Path) -> list[dict[str, Any]]:
+    """QB3 names a required file B's legacy budget cannot hold: production retrieves, packs, then refuses before its manifest."""
+    (tree / "pkg" / "big.py").write_text(BIG, encoding="utf-8", newline="\n")
+    cases = _cases()
+    qb3 = next(c for c in cases if c["case_id"] == "QB3")
+    qb3.update({"task": "Explain what pkg/big.py does.", "required_files": [{"path": "pkg/big.py"}], "forced_refusal": {**qb3["forced_refusal"], "B": True},
+                "boundary": {"stop_reason": "REQUIRED_WORKSPACE_FILE_TOO_LARGE", "gateway_requests": 0}})
+    return cases
+
+
+def test_a_refusal_after_retrieval_keeps_its_retrieval_evidence_and_fails_when_degraded(tree, monkeypatch):
+    """Codex round 124 attempt 2, A2: QB3/B's expected refusal comes after retrieval, so its epoch and degradation are still checked."""
+    monkeypatch.setattr(launch, "FROZEN_COUNTS", (36, 35, 1))
+    cases = _with_refusal(tree)
+    clean = _rehearse(_composition(tree), cases=cases)
+    assert clean["passes"], clean["problems"]
+    row = next(r for r in clean["rows"] if (r["case_id"], r["arm"]) == ("QB3", "B"))
+    assert (row["terminal"], row["sent"], row["retrieval_evidence"], row["epoch"], row["degraded"]) == (
+        "expected_zero_call", False, "retrieval, then a refusal before the manifest", 3, [])
+    degraded = _rehearse(_composition(tree, complete=False), cases=cases)
+    assert "QB3/B: index coverage incomplete" in degraded["problems"]
 
 
 def test_the_rehearsal_accounts_for_every_budget_case_and_arm_against_the_budget_report(tree):
@@ -244,17 +270,30 @@ def test_a_provider_call_the_schedule_did_not_send_fails_the_rehearsal(tree, mon
     assert _rehearse(_composition(tree))["problems"] == ["37 provider calls for 36 sends"]
 
 
+def test_a_request_that_does_not_carry_its_context_exactly_once_fails_the_rehearsal(tree, monkeypatch):
+    monkeypatch.setattr(launch, "masked_sha", lambda text, context: None)
+    problems = _rehearse(_composition(tree))["problems"]
+    assert len(problems) == 36 and all(p.endswith("the row's workspace context is not in its request exactly once") for p in problems)
+
+
 def test_a_summary_call_fails_the_rehearsal(tree):
     composition = _composition(tree)
     composition.summaries.calls = 1
     assert "1 summary calls; a Q row never summarizes" in _rehearse(composition)["problems"]
 
 
-def test_masking_hides_only_the_scope_lines_index_generation():
+def test_masking_hides_only_the_emitted_scope_lines_index_generation():
     line = "--- scope: index generation {}, complete, 2 of 2 files; ---"
-    assert launch.masked_sha("pack\n" + line.format(3)) == launch.masked_sha("pack\n" + line.format(41))
-    assert launch.masked_sha("pack\n" + line.format(3)) != launch.masked_sha("other\n" + line.format(3))
-    assert launch.masked_sha("index generation 3 in a file") != launch.masked_sha("index generation 4 in a file"), "a file's own text is never masked"
+
+    def request(pack: str, epoch: int) -> tuple[str, str]:
+        context = f"{pack}\n{line.format(epoch)}"
+        return f"prefix\n{context}\nthe task", context
+
+    assert launch.masked_sha(*request("pack", 3)) == launch.masked_sha(*request("pack", 41))
+    assert launch.masked_sha(*request("pack", 3)) != launch.masked_sha(*request("other", 3))
+    literal = line.format(5)  # a source file's own line, inside the pack, is never masked
+    assert launch.masked_sha(*request(f"code\n{literal}", 3)) != launch.masked_sha(*request(f"code\n{line.format(6)}", 3))
+    assert launch.masked_sha("no context here", "missing") is None, "a context not in the request exactly once has no masked digest"
 
 
 # --- the paid launch ---------------------------------------------------------------------------------------------------------------
@@ -279,6 +318,21 @@ def test_the_paid_launch_forwards_each_rows_dry_pass_input_only_after_every_row_
     assert all(row["guard_refusal"] is None and row["terminal"] == "settled" for row in report["rows"])
     assert all(row["epoch"] == (9 if row["arm"] != "N" else None) and row["tree"] == "git:t" for row in report["rows"]), "each paid row keeps its own evidence"
     assert all(row["pack_sha256"] == s["pack_sha256"] for row, s in zip(report["rows"], sealed["rows"], strict=True))
+
+
+def test_a_paid_row_whose_source_moved_after_the_dry_pass_is_refused_before_its_request(tree, frozen, gates_pass, monkeypatch):
+    sealed = _rehearse(_composition(tree))
+    real_run = paid.run
+
+    def moved(*args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("expected_inputs") is not None:  # the paid rows, after the dry pass compared clean
+            kwargs["packer_for"].__self__.trees[SNAP] = "git:moved"
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(launch.paid, "run", moved)
+    calls: list[int] = []
+    report = _launch(tree, sealed, _budget(sealed), calls)
+    assert calls == [0] and report["stopped"] is not None and report["rows"][0]["evidence_refusal"] == "the source tree is not the dry pass's"
 
 
 def test_the_paid_launch_refuses_before_any_send_on_a_sealed_difference(tree, frozen, gates_pass):
@@ -314,7 +368,7 @@ def test_a_row_the_dry_pass_did_not_prepare_or_split_elsewhere_is_refused_by_its
     ({"gate": {"digests": {}}}, "the gate does not pin tools/plan12_memory/m2b_launch.py"),
     ({"gate": {"digests": {**_gate()["digests"], "tools/plan12_memory/m2b_paid.py": "hex:" + "0" * 64}}}, "tools/plan12_memory/m2b_paid.py is not the gate's"),
     ({"gate": {"registry_hash": "0" * 64}}, "the registry is not the gate's"),
-    ({"gate": {"tariff_id": "another"}}, "the tariff is not the gate's"),
+    ({"gate": {"tariff": {**launch.tariff_record(), "output_usd_per_million": "2.00"}}}, "the tariff is not the gate's"),
     ({"gate": {"usd_max": "7.00"}}, "the gate's release bounds are not the frozen"),
     ({"gate": {"per_attempt_usd": "0.01"}}, "the gate's release bounds are not the frozen"),
     ({"frozen": (36, 25, 11)}, "not the frozen (36, 25, 11)"),
@@ -331,6 +385,9 @@ def test_the_preflight_refuses_unless_the_release_and_the_gate_hold(change, reas
     assert reason in str(refused.value)
 
 
+COMMENT = "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-"
+
+
 def _repository(tmp_path: Path, gate: dict | None) -> tuple[Path, dict[str, Any]]:
     repo = tmp_path / "repo"
     (repo / Path(launch.CONTRACT).parent).mkdir(parents=True)
@@ -339,14 +396,15 @@ def _repository(tmp_path: Path, gate: dict | None) -> tuple[Path, dict[str, Any]
     for args in (("init", "-q"), ("add", "-A"), ("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "c")):
         subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-    return repo, {"head": head, "contract_sha256": "hex:" + hashlib.sha256(data).hexdigest(), "reviews": {"fable": "#548 comment 1", "codex": "#548 comment 2"}}
+    return repo, {"head": head, "contract_sha256": "hex:" + hashlib.sha256(data).hexdigest(), "reviews": {"fable": COMMENT + "1", "codex": COMMENT + "2"}}
 
 
 def test_the_release_must_name_the_clean_head_the_contracts_bytes_and_both_reviews(tmp_path):
     repo, release = _repository(tmp_path, {"sends": 25})
     assert launch.verify_release(repo, release)[1] == {"sends": 25}
     for changed, reason in (({"head": "0" * 40}, "not the released head"), ({"contract_sha256": "hex:" + "0" * 64}, "not the released bytes"),
-                            ({"reviews": {"fable": "#548 comment 1"}}, "both review comments")):
+                            ({"reviews": {"fable": COMMENT + "1"}}, "both review comments"), ({"reviews": {"fable": COMMENT + "1", "codex": COMMENT + "1"}}, "distinct"),
+                            ({"reviews": {"fable": COMMENT + "1", "codex": "#548 comment 2"}}, "both review comments")):
         with pytest.raises(launch.LaunchRefused, match=reason):
             launch.verify_release(repo, {**release, **changed})
     (repo / launch.CONTRACT).write_text("{}", encoding="utf-8")
@@ -355,6 +413,38 @@ def test_the_release_must_name_the_clean_head_the_contracts_bytes_and_both_revie
     bare, bare_release = _repository(tmp_path / "bare", None)
     with pytest.raises(launch.LaunchRefused, match="no q_launch gate"):
         launch.verify_release(bare, bare_release)
+
+
+def _g2() -> dict[str, Any]:
+    gate = _gate()
+    return {"passes": True, "pinned": dict(gate["digests"]), "registry_hash": gate["registry_hash"], "tariff_id": paid.D3_TARIFF.id,
+            "cases_sha256": launch.sc.SEALED_CASES_SHA256}
+
+
+def test_the_paid_run_needs_a_passing_g2_report_that_ran_the_gates_files_and_composition():
+    gate = _gate()
+    for accepted in (_g2(), {**_g2(), "pinned": {**_g2()["pinned"], launch.SCORER: "hex:" + "1" * 64}}):  # the scorer may have its G3 successor pin
+        try:
+            launch.verify_g2(accepted, gate)
+        except launch.LaunchRefused as refused:
+            pytest.fail(f"a G2 report the gate accepts was refused: {refused}")
+    for changed, reason in (({"passes": False}, "did not pass"), ({"pinned": {**_g2()["pinned"], "tools/plan12_memory/m2b_launch.py": "hex:0"}}, "ran another tools/plan12_memory/m2b_launch.py"),
+                            ({"registry_hash": "0" * 64}, "another composition"), ({"cases_sha256": "hex:0"}, "another composition or cases")):
+        with pytest.raises(launch.LaunchRefused, match=reason):
+            launch.verify_g2({**_g2(), **changed}, gate)
+
+
+def test_at_paid_time_a_row_whose_pack_generation_or_tree_is_not_the_dry_passs_is_refused_before_its_request(tree):
+    composition = _composition(tree)
+    context = "the pack\n--- scope: index generation 3, complete; ---"
+    dry = {"case_id": "QR1", "arm": "B", "sent": True, "tree": "git:t", "epoch": 3, "pack_sha256": "hex:" + hashlib.sha256(b"the pack").hexdigest()}
+    launch.Evidence(composition, _cases(), expected=[dry]).observe(SimpleNamespace(run_id="m2b-q-QR1-B"), SimpleNamespace(text=context))
+    for changed, reason in (({"pack_sha256": "hex:0"}, "the pack is not the dry pass's"), ({"epoch": 4}, "the scope line's generation is not the dry pass's"),
+                            ({"tree": "git:other"}, "the source tree is not the dry pass's")):
+        evidence = launch.Evidence(composition, _cases(), expected=[{**dry, **changed}])
+        with pytest.raises(paid.GuardRefused, match=reason):
+            evidence.observe(SimpleNamespace(run_id="m2b-q-QR1-B"), SimpleNamespace(text=context))
+        assert evidence.refusals == {"m2b-q-QR1-B": reason}
 
 
 def test_a_gate_artifact_is_read_only_from_its_verified_bytes(tmp_path):
@@ -430,7 +520,8 @@ def driver(tmp_path, tree, monkeypatch):
 
     monkeypatch.setattr(launch, "open_sessions", open_sessions)
     monkeypatch.setattr(launch, "rehearse", lambda *a, **k: calls["rehearse"].append(1) or {"passes": True})
-    config = {"cases": "reports/plan12-memory-m2b/cases.json", "work_dir": str(tmp_path / "work"), "label": "test", "container": "p1214-x", "volume": "p1214-v"}
+    config = {"cases": "reports/plan12-memory-m2b/cases.json", "work_dir": str(tmp_path / "work"), "label": "test", "container": "p1214-x", "volume": "p1214-v",
+              "release_prefix": "p1214-"}
     return config, calls, tmp_path / "gate.json"
 
 
@@ -465,6 +556,60 @@ def test_a_failed_start_still_removes_the_container_and_keeps_why(driver, monkey
     else:
         pytest.fail("the failed start was swallowed")
     assert calls["removed"] == ["p1214-x"] and json.loads(out.read_text(encoding="utf-8"))["failed"] == "RuntimeError"
+
+
+@pytest.mark.parametrize(("listing", "reason"), [((0, "abc123\n"), "teardown left the released container behind"),
+                                                 ((1, ""), "teardown could not confirm the released container is gone")])
+def test_teardown_confirms_the_released_container_and_volume_are_gone(monkeypatch, listing, reason):
+    commands: list[list[str]] = []
+    left = [(0, "")]  # the first teardown finds nothing left
+
+    def docker(command: list[str], **_kw: Any) -> Any:
+        commands.append(command)
+        if command[1] == "ps":
+            return SimpleNamespace(returncode=left[-1][0], stdout=left[-1][1])
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(launch.subprocess, "run", docker)
+    launch._remove_container({"container": "p1214-x", "volume": "p1214-v"})  # noqa: SLF001 - nothing listed: both gone
+    assert commands[:2] == [["docker", "rm", "-f", "p1214-x"], ["docker", "volume", "rm", "-f", "p1214-v"]]
+    left.append(listing)
+    with pytest.raises(launch.LaunchRefused, match=reason):
+        launch._remove_container({"container": "p1214-x", "volume": "p1214-v"})  # noqa: SLF001
+
+
+def test_a_teardown_failure_after_a_passing_rehearsal_is_no_pass(driver, monkeypatch):
+    """Codex round 124 attempt 2, A3: the gate passes only once every resource is torn down and confirmed gone."""
+    config, calls, out = driver
+    monkeypatch.setattr(launch, "smoke", lambda *a, **k: {"passes": True})
+    monkeypatch.setattr(launch.ev, "_budget_cases", lambda *a, **k: [])
+    monkeypatch.setattr(launch.ev, "budget_gates", lambda rows, outline_available: {"passes": True})
+
+    def left_behind(config: dict) -> None:
+        calls["removed"].append(config["container"])
+        raise launch.LaunchRefused("teardown left the released container behind")
+
+    monkeypatch.setattr(launch, "_remove_container", left_behind)
+    try:
+        launch.run_gate(config, ROOT, out)
+    except launch.LaunchRefused as refused:
+        assert str(refused) == "teardown left the released container behind"
+    else:
+        pytest.fail("a run that left its container behind returned")
+    kept = json.loads(out.read_text(encoding="utf-8"))
+    assert calls["rehearse"] == [1] and calls["removed"] == ["p1214-x"] and (kept["passes"], kept["failed"]) == (False, "teardown left the released container behind")
+
+
+def test_unreleased_names_are_refused_before_anything_is_created_or_removed(driver, monkeypatch):
+    config, calls, out = driver
+    monkeypatch.setattr(launch.m1_scale, "_provision", lambda *a, **k: pytest.fail("provisioned under an unreleased name"))
+    try:
+        launch.run_gate({**config, "container": "someone-elses"}, ROOT, out)
+    except launch.LaunchRefused as refused:
+        assert str(refused) == "only the released container and volume"
+    else:
+        pytest.fail("ran under an unreleased name")
+    assert calls["removed"] == [], "nothing removed under a name the release does not cover"
 
 
 def test_the_driver_refuses_unsealed_cases_before_provisioning(driver, monkeypatch, tmp_path):

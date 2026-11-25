@@ -38,7 +38,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -72,16 +72,22 @@ ATTEMPTS_MAX: Final = 96
 USD_MAX: Final = Decimal("6.00")
 FROZEN_COUNTS: Final = (36, 25, 11)  # rows, sends, forced refusals, with U = B and the outline (cases.json paid_q.expected_sends)
 CONTRACT: Final = "reports/plan12-memory-m2b/evaluation-contract.json"
+CASES: Final = "reports/plan12-memory-m2b/cases.json"
+SCORER: Final = "tools/plan12_memory/m2b_score.py"  # G3 gives the scorer its own successor pin; every other file is the one G2 ran
 # The files whose bytes the gate must pin; a gate that leaves one out is refused (Codex round 124 B1).
 PINNED_FILES: Final = ("tools/plan12_memory/m2b_paid.py", "tools/plan12_memory/m2b_launch.py", "tools/plan12_memory/m2b_score.py",
-                       "tools/plan12_memory/m2b_evaluate.py", "reports/plan12-memory-m2b/cases.json")
+                       "tools/plan12_memory/m2b_evaluate.py", CASES)
 # The frozen schedule's worst case fits the frozen release: every send at MAX_ROUTE_ATTEMPTS attempts, each at the per-attempt bound.
 assert FROZEN_COUNTS[1] * MAX_ROUTE_ATTEMPTS <= ATTEMPTS_MAX and FROZEN_COUNTS[1] * MAX_ROUTE_ATTEMPTS * PER_ATTEMPT_USD <= USD_MAX
-GENERATION: Final = re.compile(r"(?m)^(--- scope: index generation )\d+")  # only the scope line's own number
+SCOPE_LINE: Final = re.compile(r"^(--- scope: index generation )(\d+)")  # matched on the emitted scope line only, never the pack's text
 EXPECTED_CHANNELS: Final = frozenset({"dense", "lexical", "memory", "recency", "structure"})
 # What a row must keep from the rehearsal to the paid run. Never the exact input (its scope line names the generation), the epoch or the
 # index revision: those are each run's own evidence.
-SEALED: Final = ("sent", "terminal", "input_masked_sha256", "pack_sha256", "prefix_sha256", "cache_prefix_chars", "binding", "limit_line", "retrieval_evidence")
+SEALED: Final = ("sent", "terminal", "input_masked_sha256", "pack_sha256", "prefix_sha256", "cache_prefix_chars", "binding", "limit_line", "retrieval_evidence",
+                  "tree")
+EVIDENCE_FIELDS: Final = ("pack_sha256", "epoch", "tree", "retrieval_evidence", "degraded", "evidence_refusal")
+RETRIEVED: Final = frozenset({"manifest", "retrieval, then a refusal before the manifest"})  # rows whose retrieval ran, so whose epoch must be the published one
+REVIEW_COMMENT: Final = re.compile(r"https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-\d+")
 REHEARSAL_REPLY: Final = "Rehearsal answer from the stub provider; no provider was called."
 INDEX_SECONDS: Final = 3_600
 PROVIDER_KEY_NAMES: Final = ("OPENROUTER_API_KEY", "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")
@@ -104,8 +110,26 @@ def _file_sha(path: Path) -> str:
     return _bytes_sha(path.read_bytes())
 
 
-def masked_sha(text: str) -> str:
-    return _sha(GENERATION.sub(r"\g<1><masked>", text))
+def _masked_context(context: str) -> str:
+    head, newline, line = context.rpartition("\n")
+    return f"{head}{newline}{SCOPE_LINE.sub(r'\g<1><masked>', line)}"
+
+
+def masked_sha(text: str, context: str | None) -> str | None:
+    """The request's digest with only the emitted scope line's generation masked: the row's own workspace context is replaced by itself
+    with its last line masked. None when that context is not in the request exactly once (Codex round 124 attempt 2, B2). An N row has no
+    memory turn, so no scope line: its context is None and its digest is the request's own (its attached turn may also trim today's
+    selection to fit, so that selection is not verbatim in the request)."""
+    if context is None:
+        return _sha(text)
+    if text.count(context) != 1:
+        return None
+    return _sha(text.replace(context, _masked_context(context)))
+
+
+def scope_generation(context: str) -> int | None:
+    found = SCOPE_LINE.match(context.rpartition("\n")[2])
+    return None if found is None else int(found.group(2))
 
 
 def schedule_counts(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_available: bool) -> tuple[int, int, int]:
@@ -151,12 +175,25 @@ class Composition:
                                         strategy=attachment.initial_strategy, mode=ExecutionMode.CHAT, checkpoint=None, current_prompt=case["task"], turn_seq=1,
                                         cancelled=lambda: False)
         if arm != "N":
-            attached.memory = self.sessions[case["snapshot"]].turn()
+            attached.memory = self.memory_turn(case["snapshot"])
         outcome = attached.prepare()
         if outcome.kind != "view":
             raise LaunchRefused(f"{case['case_id']}/{arm}: the attached turn prepared {outcome.kind!r}, not its history view")
         self.packers[(case["case_id"], arm)] = attached
         return attached
+
+    def memory_turn(self, snapshot: str) -> Any:
+        """The session's own turn, keeping the retrieval and pack production computed (`m2b_seen`), so a turn that refuses after retrieval and
+        before its manifest still has its evidence (Codex round 124 attempt 2, A2)."""
+        turn = self.sessions[snapshot].turn()
+        retrieve = turn._retrieve  # noqa: SLF001
+
+        def seen(*args: Any, **kwargs: Any) -> Any:
+            turn.m2b_seen = retrieve(*args, **kwargs)
+            return turn.m2b_seen
+
+        turn._retrieve, turn.m2b_seen = seen, None  # noqa: SLF001
+        return turn
 
     def binder(self, case: Mapping[str, Any], arm: str) -> Any:
         role = implementer_role(self.snapshot, self.model_id)
@@ -262,29 +299,61 @@ def degraded(manifest: Mapping[str, Any]) -> list[str]:
 
 
 class Evidence:
-    """What the runner showed each row: the request text (this process's memory only), its workspace context, and from its memory turn's
-    manifest the generation, retrieval and degradation; with the snapshot's tree id. Called by the paid runner before each row is written."""
+    """What the runner showed each row: the request text (this process's memory only), its workspace context, and what its memory turn
+    retrieved (generation, retrieval and degradation, kept even when the turn refuses before its manifest), with the snapshot's tree id.
+    Called by the paid runner before each row is written.
 
-    def __init__(self, composition: Composition) -> None:
+    With `expected` (the dry pass's rows, at paid time), the workspace-context observer, which runs before the request is built, refuses a
+    row whose pack, scope-line generation or source tree is not the dry pass's (Codex round 124 attempt 2, B2)."""
+
+    def __init__(self, composition: Composition, cases: Sequence[Mapping[str, Any]], expected: Sequence[Mapping[str, Any]] | None = None) -> None:
         self.composition = composition
+        self.snapshot_of = {case["case_id"]: case["snapshot"] for case in cases}
+        self.expected = None if expected is None else {f"m2b-q-{r['case_id']}-{r['arm']}": r for r in expected}
         self.inputs: dict[str, str] = {}
         self.contexts: dict[str, str] = {}
+        self.refusals: dict[str, str] = {}
 
     def keep(self, sha: str, text: str) -> None:
         self.inputs[sha] = text
 
     def observe(self, request: Any, result: Any) -> None:
         self.contexts[request.run_id] = result.text
+        want = None if self.expected is None else self.expected.get(request.run_id)
+        if want is not None and want["sent"]:
+            reason = self._differs(want, result.text)
+            if reason is not None:
+                self.refusals[request.run_id] = reason
+                raise paid.GuardRefused(reason)
+
+    def _differs(self, want: Mapping[str, Any], context: str) -> str | None:
+        if self.composition.trees.get(self.snapshot_of[want["case_id"]]) != want["tree"]:
+            return "the source tree is not the dry pass's"
+        if want["arm"] != "N" and _sha(context.rpartition("\n")[0]) != want["pack_sha256"]:
+            return "the pack is not the dry pass's"
+        if want["arm"] != "N" and scope_generation(context) != want["epoch"]:
+            return "the scope line's generation is not the dry pass's"
+        return None
 
     def __call__(self, case: Mapping[str, Any], arm: str, row: Mapping[str, Any]) -> dict[str, Any]:
         memory = self.composition.packers[(case["case_id"], arm)].memory
         manifest = None if memory is None else memory.manifest
+        seen = None if memory is None else getattr(memory, "m2b_seen", None)
         context = self.contexts.get(row["logical_request_id"])
-        sent = bool(row["sent"])
-        return {"pack_sha256": _sha(context.rpartition("\n")[0]) if sent and memory is not None and context is not None else None,  # minus its scope line
-                "epoch": (manifest.get("retrieval") or {}).get("generation") if manifest else None, "tree": self.composition.trees.get(case["snapshot"]),
-                "retrieval_evidence": "no memory turn" if memory is None else "manifest" if manifest else "none: the turn refused before writing a manifest",
-                "degraded": degraded(manifest) if manifest else []}
+        epoch, found = None, []
+        if memory is None:
+            evidence = "no memory turn"
+        elif seen is None:
+            evidence = "none: the turn stopped before retrieval"
+        else:
+            retrieval, pack = seen
+            view = {"retrieval": {"state": retrieval.state, "coverage": dict(retrieval.coverage), "channels": dict(retrieval.channels)},
+                    "stale_paths": [] if pack is None else list(pack.stale_paths)}
+            evidence = "manifest" if manifest else "retrieval, then a refusal before the manifest"
+            epoch, found = retrieval.epoch, degraded(view)
+        return {"pack_sha256": _sha(context.rpartition("\n")[0]) if row["sent"] and memory is not None and context is not None else None,  # minus its scope line
+                "epoch": epoch, "tree": self.composition.trees.get(case["snapshot"]), "retrieval_evidence": evidence, "degraded": found,
+                "evidence_refusal": self.refusals.get(row["logical_request_id"])}
 
 
 def _budget_problems(rows: Mapping[tuple[str, str], Mapping[str, Any]], budget_report: Mapping[str, Any]) -> list[str]:
@@ -307,7 +376,7 @@ def _budget_problems(rows: Mapping[tuple[str, str], Mapping[str, Any]], budget_r
 def rehearse(cases: Sequence[Mapping[str, Any]], composition: Composition, *, gateway: Any, provider: StubProvider, u_equals_b: bool, outline_available: bool,
              budget_report: Mapping[str, Any] | None, release: str = "rehearsal") -> dict[str, Any]:
     """The whole schedule through the paid runner against the stub provider, and per row what the paid run must reproduce."""
-    evidence = Evidence(composition)
+    evidence = Evidence(composition, cases)
     approved = composition.approved()
     before = len(provider.calls)
     report = paid.run(cases, u_equals_b=u_equals_b, outline_available=outline_available, gateway=gateway, approved=approved, model=composition.model_id,
@@ -319,10 +388,15 @@ def rehearse(cases: Sequence[Mapping[str, Any]], composition: Composition, *, ga
     rows: list[dict[str, Any]] = []
     problems: list[str] = [] if report["stopped"] is None else [f"stopped at {report['stopped']['at']}: {report['stopped']['reason']}"]
     for row in report["rows"]:
+        name = f"{row['case_id']}/{row['arm']}"
+        missing = [key for key in EVIDENCE_FIELDS if key not in row]
+        if missing:
+            problems.append(f"{name}: the row carries no launcher evidence ({', '.join(missing)})")
+            continue
         entry = row["sent"][0] if row["sent"] else None
         text = None if entry is None else evidence.inputs.get(entry["input_sha256"])
         record = {"case_id": row["case_id"], "arm": row["arm"], "position": row["position"], "terminal": row["terminal"], "sent": entry is not None,
-                  "input_sha256": None if entry is None else entry["input_sha256"], "input_masked_sha256": None if text is None else masked_sha(text),
+                  "input_sha256": None if entry is None else entry["input_sha256"], "input_masked_sha256": None if text is None else masked_sha(text, None if row["arm"] == "N" else evidence.contexts.get(row["logical_request_id"])),
                   "pack_sha256": row["pack_sha256"], "prefix_sha256": None if entry is None else entry["prefix_sha256"],
                   "cache_prefix_chars": None if entry is None else entry["cache_prefix_chars"],
                   # what the Guard checked before forwarding: it refuses any other model, hash or cap
@@ -330,14 +404,15 @@ def rehearse(cases: Sequence[Mapping[str, Any]], composition: Composition, *, ga
                   "limit_line": None if text is None else LIMIT_OBSERVATION in text,
                   "epoch": row["epoch"], "tree": row["tree"], "retrieval_evidence": row["retrieval_evidence"], "degraded": row["degraded"]}
         rows.append(record)
-        name = f"{row['case_id']}/{row['arm']}"
+        if text is not None and record["input_masked_sha256"] is None:
+            problems.append(f"{name}: the row's workspace context is not in its request exactly once")
         if row["terminal"] not in {"settled", "expected_zero_call"}:
             problems.append(f"{name}: {row['terminal']} ({row['terminal_reason']})")
         if record["sent"] and record["limit_line"] is not (row["arm"] != "N"):
             problems.append(f"{name}: the limit line is {'present' if record['limit_line'] else 'absent'}")
         problems.extend(f"{name}: {reason}" for reason in record["degraded"])
         published = composition.epochs.get(snapshot_of[row["case_id"]])
-        if record["epoch"] is not None and published is not None and record["epoch"] != published:
+        if record["retrieval_evidence"] in RETRIEVED and (published is None or record["epoch"] != published):
             problems.append(f"{name}: retrieval read generation {record['epoch']}, the session published {published}")
         if entry is not None:
             upstream = received.get(entry["input_sha256"])
@@ -390,8 +465,9 @@ def verify_release(repository: Path, release: Mapping[str, Any]) -> tuple[dict[s
     if _bytes_sha(data) != release.get("contract_sha256"):
         raise LaunchRefused("the contract is not the released bytes")
     reviews = release.get("reviews")
-    if not (isinstance(reviews, Mapping) and all(isinstance(reviews.get(name), str) and reviews[name].strip() for name in ("fable", "codex"))):
-        raise LaunchRefused("the release does not name both review comments")
+    named = [reviews.get(name) for name in ("fable", "codex")] if isinstance(reviews, Mapping) else []
+    if len(named) != 2 or not all(isinstance(url, str) and REVIEW_COMMENT.fullmatch(url) for url in named) or named[0] == named[1]:
+        raise LaunchRefused("the release does not name both review comments (two distinct #548 comment links)")
     contract = json.loads(data)
     gate = contract.get("q_launch")
     if not isinstance(gate, dict):
@@ -405,6 +481,23 @@ def load_artifact(repository: Path, spec: Mapping[str, Any]) -> Any:
     if _bytes_sha(data) != spec["sha256"]:
         raise LaunchRefused(f"{spec['path']} is not the gate's bytes")
     return json.loads(data)
+
+
+def tariff_record() -> dict[str, str]:
+    tariff = paid.D3_TARIFF
+    return {"id": tariff.id, "input_usd_per_million": str(tariff.input_usd_per_million), "output_usd_per_million": str(tariff.output_usd_per_million)}
+
+
+def verify_g2(g2: Mapping[str, Any], gate: Mapping[str, Any]) -> None:
+    """The sealed G2 report must have passed and have run exactly the gate's runner, launcher, evaluator, cases and composition; only the
+    scorer may have its G3 successor pin (Codex round 124 attempt 2, B1)."""
+    problems = [] if g2.get("passes") is True else ["the G2 report did not pass"]
+    pinned, digests = g2.get("pinned") or {}, gate.get("digests") or {}
+    problems.extend(f"the G2 report ran another {rel}" for rel in PINNED_FILES if rel != SCORER and pinned.get(rel) != digests.get(rel))
+    if (g2.get("registry_hash"), g2.get("tariff_id"), g2.get("cases_sha256")) != (gate.get("registry_hash"), (gate.get("tariff") or {}).get("id"), sc.SEALED_CASES_SHA256):
+        problems.append("the G2 report ran another composition or cases")
+    if problems:
+        raise LaunchRefused("G2: " + "; ".join(problems))
 
 
 def preflight(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_available: bool, budget_report: Mapping[str, Any], gate: Mapping[str, Any],
@@ -426,7 +519,7 @@ def preflight(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_a
     problems.extend(f"{rel} is not the gate's" for rel, digest in sorted(digests.items()) if _file_sha(repository / rel) != digest)
     if snapshot.effective_hash != gate.get("registry_hash"):
         problems.append("the registry is not the gate's")
-    if paid.D3_TARIFF.id != gate.get("tariff_id"):
+    if gate.get("tariff") != tariff_record():
         problems.append("the tariff is not the gate's")
     if budget_report.get("outline_available") is not outline_available:
         problems.append("the outline's availability is not the budget report's")
@@ -449,7 +542,7 @@ def paid_launch(cases: Sequence[Mapping[str, Any]], composition: Composition, *,
                        release="dry")
     expected = compare(sealed, dry)
     composition.packers.clear()
-    evidence = Evidence(composition)
+    evidence = Evidence(composition, cases, expected=[row for row in dry["rows"] if row["sent"]])
     return paid.run(cases, u_equals_b=u_equals_b, outline_available=outline_available, gateway=gateway, approved=composition.approved(), model=composition.model_id,
                     packer_for=composition.packer, binder_for=composition.binder, workspace_for=composition.workspace_for, ceiling=ceiling, write=write,
                     write_answers=write_answers, write_input=write_input, expected_inputs=expected, observe_context=evidence.observe, row_evidence=evidence)
@@ -507,7 +600,7 @@ def open_sessions(revisions: Sequence[str], *, repository: Path, work: Path, roo
 def smoke(cases: Sequence[Mapping[str, Any]], composition: Composition, snapshot: str, *, gateway: Any, provider: StubProvider) -> dict[str, Any]:
     """One F row on the first indexed snapshot, through the whole path, before the other snapshots are indexed (Codex round 124 A3)."""
     case = next(c for c in sorted(cases, key=lambda c: c["case_id"]) if c["snapshot"] == snapshot and not c["forced_refusal"]["F"])
-    evidence = Evidence(composition)
+    evidence = Evidence(composition, cases)
     before = len(provider.calls)
     row = paid.run_one(case, "F", position=0, gateway=gateway, approved=composition.approved(), model=composition.model_id, packer=composition.packer(case, "F"),
                        binder=composition.binder(case, "F"), workspace=composition.workspace_for(case),
@@ -527,28 +620,49 @@ def _embedder(config: Mapping[str, Any], repository: Path, root: Path, memory: A
                                       ev.embedding_cache(config, repository))
 
 
+def _released_names(config: Mapping[str, Any]) -> None:
+    """m1_scale._provision's own check, made before anything can be created or removed."""
+    prefix = config.get("release_prefix", "p1210-")
+    if not (config["container"].startswith(prefix) and config["volume"].startswith(prefix)):
+        raise LaunchRefused("only the released container and volume")
+
+
 def _remove_container(config: Mapping[str, Any]) -> None:
-    subprocess.run(["docker", "rm", "-f", config["container"]], capture_output=True, check=False)
-    subprocess.run(["docker", "volume", "rm", "-f", config["volume"]], capture_output=True, check=False)
+    """Remove the released container and volume, then confirm both are gone."""
+    container, volume = config["container"], config["volume"]
+    subprocess.run(["docker", "rm", "-f", container], capture_output=True, check=False)
+    subprocess.run(["docker", "volume", "rm", "-f", volume], capture_output=True, check=False)
+    for kind, command in (("container", ["docker", "ps", "-a", "-q", "--filter", f"name=^{container}$"]), ("volume", ["docker", "volume", "ls", "-q", "--filter", f"name=^{volume}$"])):
+        listed = subprocess.run(command, capture_output=True, text=True, check=False)
+        if listed.returncode != 0:
+            raise LaunchRefused(f"teardown could not confirm the released {kind} is gone")
+        if listed.stdout.strip():
+            raise LaunchRefused(f"teardown left the released {kind} behind")
+
+
+def _stop_gateway(gateway: Any) -> None:
+    gateway.kill()
+    gateway.wait(10)
+
+
+def _close_sessions(composition: Composition) -> None:
+    for session in composition.sessions.values():
+        session.close()
 
 
 @contextmanager
 def provisioned(config: Mapping[str, Any], repository: Path, work: Path, composition: Composition) -> Iterator[tuple[Path, Any, Any, Mapping[str, Any], Any]]:
-    """The released Redis and index Gateway; every session the composition holds, the Gateway and the container are removed however this
-    ends, a failed start included."""
-    client = gateway = None
-    try:
+    """The released Redis and index Gateway. Each resource's cleanup is registered where it is acquired and every one runs however this
+    ends, a failed start or a failed cleanup included (Codex round 124 attempt 2, A3): the sessions close, then the index Gateway and its
+    client stop, then the container and volume are removed and confirmed gone."""
+    _released_names(config)
+    with ExitStack() as stack:
+        stack.callback(_remove_container, config)  # first in, last out: _provision may create the container and then fail
         root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)  # noqa: SLF001
+        stack.callback(_stop_gateway, gateway)
+        stack.callback(client.close)
+        stack.callback(_close_sessions, composition)
         yield root, memory, settings, settings_file, _embedder(config, repository, root, memory, settings_file)
-    finally:
-        for session in composition.sessions.values():
-            session.close()
-        if client is not None:
-            client.close()
-        if gateway is not None:
-            gateway.kill()
-            gateway.wait(10)
-        _remove_container(config)
 
 
 def _sealed_cases(repository: Path, config: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -603,8 +717,9 @@ def run_gate(config: Mapping[str, Any], repository: Path, out: Path) -> dict[str
             report["rehearsal"] = rehearse(cases, composition, gateway=client, provider=provider, u_equals_b=u_equals_b, outline_available=True,
                                            budget_report=report["budget"])
             report["embedding"] = {"embedded": embedder.embedded, "reused": embedder.reused}
-            report["passes"] = report["rehearsal"]["passes"]
-            return report
+            passed = report["rehearsal"]["passes"]
+        report["passes"] = passed  # only once every resource is torn down and confirmed gone
+        return report
     except LaunchRefused as refused:
         report["failed"] = str(refused)
         raise
@@ -640,8 +755,11 @@ def run_paid(config: Mapping[str, Any], repository: Path, release: Mapping[str, 
     contract, gate = verify_release(repository, release)
     _no_provider_key()
     settings = OptimusGatewaySettings.from_env(os.environ)  # the operator-started Gateway
-    cases = load_artifact(repository, gate["cases"])["paid_q"]["cases"]
+    if (gate.get("digests") or {}).get(CASES) != sc.SEALED_CASES_SHA256:
+        raise LaunchRefused("the gate does not pin the sealed cases")
+    cases = load_artifact(repository, {"path": CASES, "sha256": sc.SEALED_CASES_SHA256})["paid_q"]["cases"]  # the one file the preflight checks
     g2 = load_artifact(repository, gate["g2_report"])
+    verify_g2(g2, gate)
     u_equals_b = contract["task1_freezes"]["selected_candidate"]["u_equals_b"]
     budget_report = g2["budget"]
     sink = _sink(Path(config["sink_dir"]), repository)
