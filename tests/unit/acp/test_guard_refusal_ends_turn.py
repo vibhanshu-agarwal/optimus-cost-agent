@@ -29,6 +29,7 @@ from tests.unit.agent.test_directive_path_characters import _SamePlan, _strings
 
 BS = chr(92)
 NIHONGO = chr(0x65E5) + chr(0x672C) + chr(0x8A9E)
+LOOKALIKE = "p" + chr(0x0443) + "test"  # Cyrillic u for y: the guard refuses it (#596 passes plain non-Latin names)
 WINDOWS_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="the guard refuses this path only under Windows path rules")
 
 
@@ -160,20 +161,20 @@ async def test_a_guard_refused_edit_ends_the_turn_with_fixed_text(tmp_path):
 async def test_a_guard_refused_test_ends_the_turn_with_fixed_text(tmp_path):
     (tmp_path / "small.py").write_text("old\n")
     before = _files(tmp_path)
-    token = f"tests/{NIHONGO}.py"
+    token = f"tests/{LOOKALIKE}.py"
 
     response, outbound, runner, records = await _drive(tmp_path, f"TEST pytest {token}\nTEST pytest -q\n")
 
-    _assert_ended_normally(response, outbound, runner, records, code=TEST_GUARD_REFUSED, token=NIHONGO)
+    _assert_ended_normally(response, outbound, runner, records, code=TEST_GUARD_REFUSED, token=LOOKALIKE)
     assert _files(tmp_path) == before
 
 
 async def test_a_guard_refused_test_after_an_applied_write_keeps_the_write(tmp_path):
     (tmp_path / "small.py").write_text("old\n")
 
-    response, outbound, runner, records = await _drive(tmp_path, f"WRITE small.py\nnew\nTEST pytest tests/{NIHONGO}.py\nTEST pytest -q\n")
+    response, outbound, runner, records = await _drive(tmp_path, f"WRITE small.py\nnew\nTEST pytest tests/{LOOKALIKE}.py\nTEST pytest -q\n")
 
-    _assert_ended_normally(response, outbound, runner, records, code=TEST_GUARD_REFUSED, token=NIHONGO)
+    _assert_ended_normally(response, outbound, runner, records, code=TEST_GUARD_REFUSED, token=LOOKALIKE)
     assert (tmp_path / "small.py").read_text() == "new\n"
 
 
@@ -188,14 +189,24 @@ async def test_the_refusal_cause_is_in_the_debug_trace_without_the_path(tmp_path
     monkeypatch.setattr(debug_trace, "acp_debug_log", record)  # the runner imports it at call time
     (tmp_path / "small.py").write_text("old\n")
 
-    await _drive(tmp_path, f"TEST pytest tests/{NIHONGO}.py\n")
+    await _drive(tmp_path, f"TEST pytest tests/{LOOKALIKE}.py\n")
     await _drive(tmp_path, "WRITE .optimus/state.txt\nnew\n")
 
     assert logged == [
         {"directive": "TEST", "error_type": "MutationForbidden", "cause_type": None, "reason": "Unicode confusable detected"},
         {"directive": "WRITE", "error_type": "GuardDenied", "cause_type": "MutationForbidden", "reason": "runtime tree writes are denied"},
     ]
-    assert not [s for s in _strings(logged) if NIHONGO in s or "state.txt" in s]
+    assert not [s for s in _strings(logged) if LOOKALIKE in s or "state.txt" in s]
+
+
+async def test_an_approved_test_with_a_plain_non_latin_file_name_reaches_the_runner(tmp_path):
+    """#596: a plain Japanese test file name is not a confusable; the runner gets the argument unchanged."""
+    (tmp_path / "small.py").write_text("old\n")
+
+    response, _outbound, runner, _records = await _drive(tmp_path, f"TEST pytest tests/{NIHONGO}.py\n")
+
+    assert response["result"]["stopReason"] == "end_turn", response
+    assert [command[-1] for command in runner.commands] == [f"tests/{NIHONGO}.py"]
 
 
 async def test_a_failure_that_is_not_a_guard_refusal_still_propagates(tmp_path):

@@ -102,13 +102,13 @@ def test_manifest_canary_scan_passes_clean_manifest() -> None:
     assert m.manifest_canary_scan(serialized, known_secrets=("nope-secret-value-xxxx",), known_pii=()) is True
 
 
-@pytest.mark.parametrize("policy_version", ["evidence-redaction-v1", "evidence-redaction-v2"])
+@pytest.mark.parametrize("policy_version", ["evidence-redaction-v1", "evidence-redaction-v2", "evidence-redaction-v3"])
 def test_historical_and_current_policy_manifests_both_verify(policy_version: str) -> None:
-    """#505 bumped the policy to v2; manifests recorded under v1 must still validate, serialize and scan clean."""
+    """#505 bumped the policy to v2, #584 to v3; manifests recorded under v1 or v2 must still validate, serialize and scan clean."""
     from optimus_security.sanitization import EVIDENCE_REDACTION_POLICY
 
     m = _manifest()
-    assert EVIDENCE_REDACTION_POLICY.version == "evidence-redaction-v2"
+    assert EVIDENCE_REDACTION_POLICY.version == "evidence-redaction-v3"
     fields = {
         "schema_version": m.MANIFEST_SCHEMA_VERSION,
         "sanitizer_policy_version": policy_version,

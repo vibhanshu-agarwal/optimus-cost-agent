@@ -36,3 +36,14 @@ def test_non_spoofing_nfkc_compatibility_text_is_not_dangerous():
 
 def test_cjk_fullwidth_punctuation_without_latin_is_not_dangerous():
     assert contains_dangerous_confusable("中文：测试（０１２）") is False
+
+
+def test_latin_lookalikes_only_passes_a_plain_non_latin_name_and_the_default_stays_strict():
+    """#596: the narrowed form is opt-in; punycode and fullwidth Latin still fire under it."""
+    han_name = "pytest tests/" + chr(0x6D4B) + chr(0x8BD5) + ".py"
+
+    assert contains_dangerous_confusable(han_name) is True
+    assert contains_dangerous_confusable(han_name, latin_lookalikes_only=True) is False
+    assert contains_dangerous_confusable("p" + chr(0x0443) + "test", latin_lookalikes_only=True) is True
+    assert contains_dangerous_confusable("p" + chr(0xFF59) + "test", latin_lookalikes_only=True) is True
+    assert contains_dangerous_confusable("curl xn--pple-43d.com", latin_lookalikes_only=True) is True
