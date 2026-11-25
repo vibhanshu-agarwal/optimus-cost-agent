@@ -1,16 +1,22 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v3",
+ "schema": "plan12-memory-m2b.evaluation-contract.v4",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "frozen_before": "Task 2 and any paid prompt; successor of v2 after the Fable 5.2 CP1 review",
+ "frozen_before": "Task 2 and any paid prompt; successor of v3 after Codex CP1 round 122",
  "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
  "inputs": {
   "cases": "reports/plan12-memory-m2b/cases.json",
   "manifest": "reports/plan12-memory-m2b/manifest.json",
   "binding": "every result names the sha256 of each input file and the git commit it ran at; a changed input invalidates earlier results",
-  "cases_sha256": "hex:f58665784c4badb0a9efb2c799f74708aa42aa4054f2615456ff072e4535ec04",
-  "calibration_addendum": "reports/plan12-memory-m2b/calibration-addendum.json (hex:d45d43bcaa7648a9b99a4c62388d3556a6a068f464b430a51c6cca0b68de3b57)"
+  "cases_sha256": "hex:0a16d5b8dfbfd75d162c1f9a64977067f360ec1d869fac8496a1d70fff40d2da",
+  "calibration_addendum": "reports/plan12-memory-m2b/calibration-addendum.json (hex:d45d43bcaa7648a9b99a4c62388d3556a6a068f464b430a51c6cca0b68de3b57)",
+  "fresh_fixture": {
+   "localization": "hex:49137b24683cbb68a0945f77a5db14ef5581898dd66d309f7c1f25071bf6ed37",
+   "splits": "hex:d0fab08abba0e3e2b63f6c9fcb896e71a7bd10f46b51cc43c8634aed1e400a5d",
+   "verified": "Codex round 122: 14 families, 44 requirements match the pool; five queries replaced verbatim"
+  },
+  "budget_evidence": "reports/plan12-memory-m2b/calibration-budget.json (hex:0e2c59f6cf879a3ba6c8d49fd6e127b4500f232629897029b0266dde2dd4404c), released pass at git:8cf26df with production's estimator, budgets and FilePolicy reader: budget_gates PASS"
  },
  "split_custody": {
   "development": "Task 1: three real-index repetitions from paired captured channel inputs; selects the baseline or one utility candidate before any fresh qualification; may be inspected",
@@ -94,7 +100,7 @@
   "rule": "CP1 proves budget cases fit C + map + framing; a failed preflight stops before paid prompts; no cap increase after results"
  },
  "cohorts": {
-  "forced_refusals": "cases.json paid_q.cases[].forced_refusal (predeclared from sizes alone); reported separately; excluded from superiority and comparable-cost wins",
+  "forced_refusals": "cases.json paid_q.cases[].forced_refusal and .boundary: N/B/U on QB3, QB4, QO1, QO2; every arm on QO4; F on QO1/QO2 until the outline; boundary PASS only with REQUIRED_WORKSPACE_FILE_TOO_LARGE and zero Gateway requests",
   "comparable": [
    "QR1",
    "QR2",
@@ -124,8 +130,16 @@
    "usd_max": "6.00",
    "gateway_attempts_per_logical": 2,
    "reservation": "2 physical attempts (MAX_ROUTE_ATTEMPTS) and their worst-case USD reserved before each logical request, unknown attempts priced at the worst case; an unreservable request stops the run, with no replacement",
-   "usd_bound_at_caps": "2.76",
-   "logical_sent": 30
+   "usd_bound_at_caps": "2.304",
+   "logical_sent": 25,
+   "rows": 36,
+   "per_arm_sent": {
+    "N": 7,
+    "B": 7,
+    "F": 11
+   },
+   "physical_max_forecast": 50,
+   "note": "Codex round 122 finding 1: N's engine-absent context also refuses QB3, QB4, QO1, QO2, QO4 before any call; without Task 3's outline F also refuses QO1 and QO2 (23 sends)"
   },
   "R": {
    "logical_intended": 4,
@@ -139,7 +153,7 @@
  },
  "cache_observations": "Q records reported cache usage and charges, prefix and request digests and order; cold and warm reported without attributing order discounts to policy; no production hit-rate or causal cache-savings claim",
  "producer_contract_463": {
-  "status": "rows implemented (m2b_paid.attempt_row, Fable finding 3); Codex agreement sought at CP1; no savings reader is built",
+  "status": "amended per Codex round 122 finding 4 and implemented; no savings reader is built",
   "record": "reports/plan12-memory-m2b/paid-attempts.json, schema plan12-memory-m2b.paid-attempts.v1, owned by this plan",
   "row": [
    "release",
@@ -160,10 +174,10 @@
   "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v2",
-  "sha256": "hex:b58d2accb44e6a0cc33d9fed47132e840617880ee5ffceecde6641c44d288d3c",
-  "commit": "git:0afb740",
-  "change": "Fable 5.2 CP1 review (ACCEPT WITH CHANGES, #548 comment 7146152040): the operator's ruling on the limit line, the hardened scorer and its digest, the #463 rows, the runner and evaluator digests, run 1's limits, one attempt topology; v1's cases, arms, orders, caps, cohorts and gates are unchanged"
+  "schema": "plan12-memory-m2b.evaluation-contract.v3",
+  "sha256": "hex:b1a3ec18027e21b983b6afd8296ea7132d6d4e3ee9a14209720461af59a30a28",
+  "commit": "git:e8d3131",
+  "change": "Codex CP1 round 122 (ACCEPT WITH CHANGES, #548 comment 7149453691): N's forced refusals; Codex's fresh queries and paid oracles (cases v2 schema); the claim-bound scorer; the Guard and Gateway-attempt accounting; the amended #463 rows; budget rows with production's estimator; Codex's rulings"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -183,16 +197,19 @@
   },
   "scoring": {
    "script": "tools/plan12_memory/m2b_score.py",
-   "sha256": "hex:21652ee17654ef3a71febbd3457ac432b5b14a175052162039bb4310fedf9973",
-   "git_blob": "git:1fb2c808e44a9b9d63d437e43f9035eb0744d94a",
+   "sha256": "hex:385620e7e1d2ceaedfce63fa7424236a5aad0434865eb0fd9f8b8ea8f19d6397",
+   "git_blob": "git:87a31f0885a601cbef35dc96653e60770de895b4",
    "selector": "m2b_score.select: the delivered final answer less the host's search-limit notice (optimus.agent.index_turn.LIMIT_NOTICE); its digest is the script's",
-   "hardening": "Fable CP1 finding 2: ordinary-word symbol names count only as code (backticks, a call) or by qualified name; numbers match whole; fences cut at the cap count; QO4's unfenced code-like lines must be the file's own; QB1 F2 drops hedge phrases; a path echo plus a hedge fails every case but QO4 (tested)"
+   "hardening": "Fable CP1 finding 2: ordinary-word symbol names count only as code (backticks, a call) or by qualified name; numbers match whole; fences cut at the cap count; QO4's unfenced code-like lines must be the file's own; QB1 F2 drops hedge phrases; a path echo plus a hedge fails every case but QO4 (tested)",
+   "v3": "Codex finding 5: claim-bound citations (path and code-form symbol in one clause, or a range of at most 40 lines overlapping the symbol); loci; fact groups; runner status first (stop reason or output at the cap: INCOMPLETE); boundary rows; the QO4 quote control needs the exact contiguous block"
   },
   "runner": {
    "script": "tools/plan12_memory/m2b_paid.py",
-   "sha256": "hex:5385429615101bf635adc68432ee787967d0fffc1ec79d323adf145195a50006",
-   "git_blob": "git:a11387602bbafc30e612e4f9527f9309b0e35d14",
-   "design": "optimus-handoff/p1214-task1/q-runner-design.md (Fable 5.2 consult)"
+   "sha256": "hex:03295312b54054dac59ae9e7c4cfd73a4a9c97a6ac0f0b9ccaf47cdd8c14cfc9",
+   "git_blob": "git:9019289496842255dc7665352d9ee523a962c44e",
+   "design": "optimus-handoff/p1214-task1/q-runner-design.md (Fable 5.2 consult)",
+   "guard": "Codex finding 3: the Guard refuses before forwarding unless the row's allowance, the approved hash and output cap, the input cap (the route's estimator), the previous send's reconciliation and the ceiling's reservation all hold",
+   "accounting": "physical attempts from the Gateway's route attempts (completed, uncertain, rejected; not_sent excluded), matched to host receipts by Gateway request id; none reported counts MAX_ROUTE_ATTEMPTS unknown attempts"
   },
   "intended_composition": {
    "registry": "src/optimus_model_policy/defaults.yaml plus models.anthropic/claude-haiku-5.5.context_budget.input_target_usd = \"0.008192\" (staged in Task 2 as defaults.yaml itself, not an override)",
@@ -227,12 +244,26 @@
   "fit_note": "calibration's full_input omits the runner's limit observation (about 130 bytes); the largest complete F input is QB4's, far under 65,536",
   "evaluator": {
    "script": "tools/plan12_memory/m2b_evaluate.py",
-   "sha256": "hex:bc42de7be48dbdf0e81ad22feff61e27fd390a2da3a1614e5ddfbb1e39757993",
-   "git_blob": "git:03445317383658214a8a1a1dc15e1437dc382b62",
-   "note": "run 1 ran at git:4f2a991; e861344 and 1972c40 changed it (shared cache, budget cases once, captures, mtime pin; F packs through target_tokens). Its first real-index run at this content is Task 4's."
+   "sha256": "hex:fd766144f0e495c424f4174dd3374cdd071dc48b960ba076d717a6fb281f1862",
+   "git_blob": "git:bb0721289b6b47c0edb28200ab8f8a4b093ceb52",
+   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates exact case set, per repetition (Codex findings 2, 6)"
   },
-  "joiners": "a pack may exceed its chosen budget by the newlines joining its sections (QB3 F 19,552 against 19,551), as delivered M1 packing already does; C bounds the required text, and the route fit and Gateway guard still check every full request (Fable finding 8)",
-  "producer_contract_463": "rows as m2b_paid.attempt_row: release, logical_request_id, attempt and Gateway/provider request ids, HTTP status, outcome, stage, cost_usd (None = UNKNOWN), repriced_uncached_usd, tariff_id, model/route/reasoning/registry hash, usage incl. cached tokens, cache hit and age, billing units, price snapshot; cache_write_tokens UNKNOWN (not reported); each sent request's prefix length and digest. Agreement sought from Codex at CP1"
+  "producer_contract_463": "rows as m2b_paid: per sent request the bound route request id, input and prefix identity, finish reason, Gateway attempts; per host receipt every reported field (recorded_at, post_teardown, outcome, cost, usage incl. model version and native unit, billing), repriced uncached cost and tariff id, cache_write_tokens UNKNOWN; per row release, case, arm, position, logical request id and terminal classification (expected_zero_call, settled, failed, incomplete) with reason; charges counted once from matched receipts. Codex round 122 agreed this narrow contract (finding 4); Codex confirms the implementation at CP1 attempt 2",
+  "hard_ceiling": "Codex ruling 7: with a target, the whole pack including its section joiners stays within the chosen budget (tested); the legacy path is byte-equal to PR #562's delivered context_pack.py (tested)"
  },
- "run1_limits": "reports/plan12-memory-m2b/calibration-addendum.json limits: pack jitter cause a hypothesis; poison reason confounded by run 1's mtimes; the 16,000 cap ill-posed and not relied on; the changed evaluator not yet run on a real index"
+ "run1_limits": "reports/plan12-memory-m2b/calibration-addendum.json limits: pack jitter cause a hypothesis; poison reason confounded by run 1's mtimes; the 16,000 cap ill-posed and not relied on; the changed evaluator not yet run on a real index",
+ "cp1_rulings_round_122": {
+  "1": "the 16,000 cap applies per development case to the candidate, beside the baseline comparison; the baseline exceeds it in 5 cases; confirm with the operator before reopening utility selection",
+  "2": "retain U = B; the 19 misses are not all assignable to retrieval; mtime jitter plausible; the changed evaluator's real-index calibration run is not yet run",
+  "3": "honour \"Keep the line\" and disclose it beside every N comparison; 2,048 is the plan's; compare F to the production tools-withdrawn builder with the same inputs",
+  "4": "2 attempts per bound request; forecast 25 sends, 50 attempts, USD 2.304; ceilings stay 96 and USD 6.00; bind R's own route before its release",
+  "5": "B host-side legacy accepted; a calibration digest is an oracle only when estimator, reader, retrieval inputs and serialization match",
+  "6": "external answer sink accepted, bound by digest",
+  "7": "the inactive field and seam accepted; hashes 4d2f637e... and b7fca195... reproduced; staging, re-pinning, integrated equivalence and hash approvals are Task 2",
+  "8": "fresh gold verified 44/44; replacements applied",
+  "9": "the amended producer contract (finding 4)",
+  "10": "M2a head-bound diff accepted",
+  "11": "gpt-6.2-sol high read-only",
+  "12": "focused CP1-CP3 checks, one Windows full suite at CP4"
+ }
 }
