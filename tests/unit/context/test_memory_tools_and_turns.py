@@ -356,8 +356,9 @@ def test_a_manifest_is_v2_and_records_the_budget_policy_the_pack_used(workspace)
 
     storage = _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE), lines=(6, 7), signature="def helper():")])
     session = _session(workspace, storage)
-    _assemble(session.turn())
-    legacy = json.loads(next((workspace.parent / f"{workspace.name}-manifests").rglob("run-1.json")).read_text(encoding="utf-8"))
+    first = session.turn()
+    _assemble(first)
+    legacy = first.manifest
     turn = session.turn()
     turn.assemble(run_id="run-2", task="how does helper work", selection_text="how does helper work", model_id="m", estimate=len, usable_input_tokens=40_000,
                   pack_budget=BudgetPolicy("model-aware", 10_000, 2_000))

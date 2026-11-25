@@ -1,4 +1,4 @@
-﻿"""Plan 12.14 Task 2: what the budget pass measures and what paid Q sends are production's own bytes, given matching inputs (Codex CP1
+"""Plan 12.14 Task 2: what the budget pass measures and what paid Q sends are production's own bytes, given matching inputs (Codex CP1
 attempts 2-3, finding 2).
 
 Production's side is the real MemorySession turn over the real file policy, its own retriever and its own required set, inside a real
