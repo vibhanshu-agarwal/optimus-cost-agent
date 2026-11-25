@@ -34,7 +34,7 @@ from optimus.acp import server as server_module
 from optimus.acp import session_retention as retention_module
 from optimus.acp import spec as spec_module
 from optimus.acp.debug_trace import configure_debug_trace
-from optimus.acp.errors import INTERNAL_ERROR, AcpOutboundError
+from optimus.acp.errors import INTERNAL_ERROR, AcpPeerResponseError
 from optimus.acp.lifecycle import TurnControl
 from optimus.acp.server import NdjsonOutboundChannel, StdioNdjsonLineReader, StdioNdjsonLineWriter
 from optimus.acp.spec import AcpPromptTurn
@@ -254,6 +254,7 @@ def _real_namespace(sink):
         acp_debug_log=sink,
         debug_trace_enabled=debug_trace.debug_trace_enabled,
         method="session/prompt", request_id=7, pending_permission_id=None, operation_id="op-1",
+        accepted_result={"approved": True},
         session_id="session-1", run_id="run-1", turn_seq=2,
         params={"z": 1, "a": 2}, message={"id": 7, "result": {"approved": True}},
         wire={"result": {"stopReason": "end_turn"}}, notification={"params": {"sessionId": "session-1"}},
@@ -276,10 +277,10 @@ EXPECTED = {
     HOT[0]: {"method": "session/prompt", "param_keys": ["a", "z"]},
     HOT[1]: {"request_id": 7, "method": "session/prompt", "param_keys": ["a", "z"], "has_toolCall": False},
     HOT[2]: {"request_id": 7, "has_result": True, "has_error": False, "mapped_to_cancelled": False,
-             "propagated_error": False, "result_keys": ["approved"]},
+             "propagated_error": False},
     HOT[3]: {"request_id": 7, "method": "session/prompt", "pending_permission_id": None, "operation_id": "op-1"},
     HOT[4]: {"request_id": 7, "method": "session/prompt", "has_error": False, "stop_reason": "end_turn"},
-    HOT[5]: {"id": 7, "has_result": True, "has_error": False, "error": None, "result": {"approved": True}},
+    HOT[5]: {"id": 7, "has_result": True, "has_error": False},
     HOT[6]: {"session_id": "session-1", "tool_call_id": "tool-1", "session_update": "tool_call",
              "tool_name": "file_writer", "status": "completed"},
     WARM[0]: {"request_id": 7, "method": "session/prompt", "pending_permission_id": None,
@@ -291,7 +292,7 @@ EXPECTED = {
               "metadata_keys": ["a", "z"], "top_level_keys": ["metadata", "outcome"]},
     WARM[5]: {"run_id": "run-1", "status": "completed", "mutation_count": 1, "tool_call_count": 1,
               "tool_names": ["file_writer"]},
-    WARM[6]: {"run_id": "run-1", "code": -32001, "message": "client rejected"},
+    WARM[6]: {"run_id": "run-1", "provenance": "peer", "reason": "CLIENT_REJECTED_OUTBOUND"},
     WARM[7]: {"session_id": "session-1", "run_id": "run-1", "param_keys": ["a", "z"], "has_toolCall": False},
     WARM[8]: {"session_id": "session-1", "update_keys": ["entries"], "has_entries": True},
     WARM[9]: {"session_id": "session-1", "plan_entry_count": 1, "message_preview": "done",
@@ -316,7 +317,7 @@ MESSAGES = {WARM[0]: "client request failed"}
 def _site_namespace(location, sink):
     namespace = _real_namespace(sink)
     if location == WARM[6]:
-        namespace["exc"] = AcpOutboundError(code=-32001, message="client rejected")
+        namespace["exc"] = AcpPeerResponseError()
     elif location == WARM[9]:
         namespace["message"] = "done"
     elif location == WARM[11]:
@@ -558,7 +559,7 @@ async def test_notification_preserves_wire_payload_and_only_inspects_keys_when_e
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-async def test_request_and_response_preserve_future_settlement_and_lazy_keys(enabled, tmp_path):
+async def test_request_and_response_preserve_future_settlement_and_keep_peer_keys_private(enabled, tmp_path):
     path = tmp_path / "request.ndjson"
     configure_debug_trace(enabled=enabled, log_path=path)
     params, result, writer = _CountingParams(), _CountingParams(), _Writer()
@@ -570,11 +571,12 @@ async def test_request_and_response_preserve_future_settlement_and_lazy_keys(ena
         channel.deliver_client_response({"id": 10000, "result": result})
         assert await task is result
         assert params.key_reads == int(enabled)
-        assert result.key_reads == int(enabled)
+        assert result.key_reads == 0
         if enabled:
             records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
             assert records[0]["data"]["param_keys"] == ["a", "z"]
-            assert records[1]["data"]["result_keys"] == ["a", "z"]
+            assert records[1]["data"]["has_result"] is True
+            assert "result_keys" not in records[1]["data"]
         else:
             assert not path.exists()
     finally:

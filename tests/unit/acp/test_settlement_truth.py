@@ -632,7 +632,7 @@ async def test_flushed_response_handoff_does_not_wait_for_owned_worker(tmp_path,
     original_reply = NdjsonOutboundChannel.deliver_client_response
     def reply(channel, message):
         result = original_reply(channel, message)
-        if message.get("id") == "reader-probe":
+        if message.get("id") == 1:
             replied.set()
         return result
     monkeypatch.setattr(NdjsonOutboundChannel, "deliver_client_response", reply)
@@ -646,7 +646,7 @@ async def test_flushed_response_handoff_does_not_wait_for_owned_worker(tmp_path,
             followup = {"jsonrpc": "2.0", "id": "followup", "method": "session/prompt", "params": {
                 "sessionId": h.session_id, "prompt": [{"type": "text", "text": "Continue"}]}}
             h.transport.loop.call_soon_threadsafe(h.reader._queue.put_nowait, (json.dumps(followup) + "\n").encode())
-            h.transport.loop.call_soon_threadsafe(h.reader._queue.put_nowait, b'{"id":"reader-probe","result":{}}\n')
+            h.transport.loop.call_soon_threadsafe(h.reader._queue.put_nowait, b'{"id":1,"result":{}}\n')
             assert publication_release.wait(5), "test must release the real writer at the handoff barrier"
             if not published:
                 original_publish(control, key, outcome)
@@ -755,7 +755,7 @@ async def test_followup_during_held_response_write_waits_for_truthful_retirement
     original_reply = NdjsonOutboundChannel.deliver_client_response
     def reply(channel, message):
         result = original_reply(channel, message)
-        if message.get("id") == "write-probe":
+        if message.get("id") == 2:
             probed.set()
         return result
     monkeypatch.setattr(NdjsonOutboundChannel, "deliver_client_response", reply)
@@ -766,7 +766,7 @@ async def test_followup_during_held_response_write_waits_for_truthful_retirement
         assert control.send_slot(TurnSendKey("protocol_response", "response")).authoritative is SendState.WRITE_STARTED
         await h.reader.send({"jsonrpc": "2.0", "id": "followup", "method": "session/prompt", "params": {
             "sessionId": h.session_id, "prompt": [{"type": "text", "text": "Continue"}]}})
-        await h.reader.send({"jsonrpc": "2.0", "id": "write-probe", "result": {}})
+        await h.reader.send({"jsonrpc": "2.0", "id": 2, "result": {}})
         await asyncio.wait_for(probed.wait(), 1)
         assert handled == [("prompt", 0)], "an in-flight response handoff queues the follow-up"
         assert h.server._inbound_admission.count == 2
@@ -823,7 +823,7 @@ async def test_deferred_followups_keep_fifo_across_prompt_capacity(tmp_path, mon
     original_reply = NdjsonOutboundChannel.deliver_client_response
     def reply(channel, message):
         result = original_reply(channel, message)
-        if message.get("id") == "queue-probe":
+        if message.get("id") == 3:
             probed.set()
         return result
     monkeypatch.setattr(NdjsonOutboundChannel, "deliver_client_response", reply)
@@ -842,7 +842,7 @@ async def test_deferred_followups_keep_fifo_across_prompt_capacity(tmp_path, mon
         for request_id, session_id in [("A1", h.session_id), ("B", other), ("A2", h.session_id)]:
             await h.reader.send({"jsonrpc": "2.0", "id": request_id, "method": "session/prompt", "params": {
                 "sessionId": session_id, "prompt": [{"type": "text", "text": request_id}]}})
-        await h.reader.send({"jsonrpc": "2.0", "id": "queue-probe", "result": {}})
+        await h.reader.send({"jsonrpc": "2.0", "id": 3, "result": {}})
         await asyncio.wait_for(probed.wait(), 1)
         assert h.server._inbound_admission.count == 4
         scheduler_release.set()
@@ -976,7 +976,7 @@ async def test_failed_finalizer_releases_prompt_slot_to_real_busy_refusal(tmp_pa
     original_reply = NdjsonOutboundChannel.deliver_client_response
     def reply(channel, message):
         result = original_reply(channel, message)
-        if message.get("id") == "slot-probe":
+        if message.get("id") == 4:
             probed.set()
         return result
     monkeypatch.setattr(NdjsonOutboundChannel, "deliver_client_response", reply)
@@ -995,7 +995,7 @@ async def test_failed_finalizer_releases_prompt_slot_to_real_busy_refusal(tmp_pa
         failed_control = h.adapter._active_turns[h.session_id].turn_control
         await h.reader.send({"jsonrpc": "2.0", "id": "followup", "method": "session/prompt", "params": {
             "sessionId": h.session_id, "prompt": [{"type": "text", "text": "Continue"}]}})
-        await h.reader.send({"jsonrpc": "2.0", "id": "slot-probe", "result": {}})
+        await h.reader.send({"jsonrpc": "2.0", "id": 4, "result": {}})
         await asyncio.wait_for(probed.wait(), 1)
         assert h.server._inbound_admission.count == 2
         publication_release.set()

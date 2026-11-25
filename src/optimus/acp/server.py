@@ -32,8 +32,10 @@ from optimus.acp.errors import (
     INVALID_REQUEST,
     REQUEST_CANCELLED,
     AcpOutboundError,
+    AcpPeerResponseError,
     JsonRpcError,
     error_response,
+    outbound_error_response,
     sanitize_protocol_error_message,
 )
 from optimus.acp.framing import FramingError, encode_message, read_message
@@ -118,8 +120,6 @@ def _inbound_response_payload(message: Mapping[str, object]) -> Callable[[], dic
             "id": message.get("id"),
             "has_result": "result" in message,
             "has_error": "error" in message,
-            "error": message.get("error") if "error" in message else None,
-            "result": message.get("result") if "result" in message else None,
         }
     return payload
 
@@ -580,6 +580,17 @@ class NdjsonOutboundChannel:
 
     def deliver_client_response(self, message: dict[str, Any]) -> None:
         request_id = message.get("id")
+        if type(request_id) is not int or ("result" not in message and "error" not in message):
+            return
+        future = self._futures.pop(request_id, None)
+        if future is None or future.done():
+            return
+        result = message.get("result")
+        accepted_result = result if isinstance(result, dict) and "error" not in message else None
+        if accepted_result is not None:
+            future.set_result(accepted_result)
+        else:
+            future.set_exception(AcpPeerResponseError())
         # region agent log
         if debug_trace_enabled():
             acp_debug_log(
@@ -590,25 +601,11 @@ class NdjsonOutboundChannel:
                     "has_result": "result" in message,
                     "has_error": "error" in message,
                     "mapped_to_cancelled": False,
-                    "propagated_error": "error" in message,
-                    "result_keys": sorted(message.get("result", {}).keys()) if isinstance(message.get("result"), dict) else [],
+                    "propagated_error": accepted_result is None,
                 },
                 hypothesis_id="H1",
             )
         # endregion
-        if request_id is None:
-            return
-        future = self._futures.pop(request_id, None)
-        if future is not None and not future.done():
-            if "result" in message and isinstance(message["result"], dict):
-                future.set_result(message["result"])
-            elif "error" in message:
-                error_payload = message["error"]
-                code = error_payload.get("code", INTERNAL_ERROR) if isinstance(error_payload, dict) else INTERNAL_ERROR
-                msg = error_payload.get("message", "client error") if isinstance(error_payload, dict) else "client error"
-                data = error_payload.get("data") if isinstance(error_payload, dict) else None
-                data_dict = data if isinstance(data, dict) else None
-                future.set_exception(AcpOutboundError(code=code, message=msg, data=data_dict))
 
 
 #: Per-call observation budget for the serving process's Redis teardown stage. Test-injectable.
@@ -1257,11 +1254,11 @@ class AcpStreamServer:
                             await asyncio.sleep(0)
                         continue
                     if "id" in message and ("result" in message or "error" in message) and "method" not in message:
-                        if isinstance(message.get("id"), (str, int)):
+                        if type(message.get("id")) is int:
                             if debug_trace_enabled():
                                 acp_debug_log(
                                     location="server.py:serve_ndjson:inbound_client_response_raw",
-                                    message="raw inbound id-bearing client response before deliver_client_response",
+                                    message="observed inbound client response",
                                     data=_inbound_response_payload(message),
                                     hypothesis_id="H2-REPLY",
                                 )
@@ -1477,11 +1474,7 @@ class AcpStreamServer:
                 raise
             except AcpOutboundError as exc:
                 seen.interrupted(cancelled=False)
-                error_payload = error_response(
-                    request_id=request_id,
-                    error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
-                )
-                await deliver_recovery(error_payload)
+                await deliver_recovery(outbound_error_response(request_id, exc))
             except Exception as exc:
                 seen.interrupted(cancelled=False)
                 # region agent log

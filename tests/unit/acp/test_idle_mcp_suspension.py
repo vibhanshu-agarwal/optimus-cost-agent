@@ -13,7 +13,7 @@ from unittest.mock import Mock
 import pytest
 
 from optimus.acp import launch_policy
-from optimus.acp.errors import AcpOutboundError
+from optimus.acp.errors import AcpPeerResponseError
 from optimus.acp.lifecycle import ResponseOwnershipSlot
 from optimus.acp.outbound_writer import SendOutcome
 from optimus.acp.server import NdjsonOutboundChannel
@@ -325,7 +325,7 @@ async def test_known_noncommit_normal_error_envelope_can_arm_after_flush(compose
     closed = []
     session.client_mcp_state.register_close_hook(lambda: closed.append("peer"), peer=True)
     def refused(*_args, **_kwargs):
-        raise AcpOutboundError(code=-32800, message="controlled refusal")
+        raise AcpPeerResponseError()
     monkeypatch.setattr(runner, "run", refused)
     envelope = await prompt(adapter, session, defer_response=True)
     assert "error" in envelope.response and not session.conversation.records

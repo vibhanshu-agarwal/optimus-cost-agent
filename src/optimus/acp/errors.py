@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from enum import StrEnum
+from typing import Any, assert_never
 
 from optimus_security.sanitization import sanitize_for_persistence
 
@@ -33,6 +34,22 @@ class JsonRpcError:
     data: dict[str, Any] | None = None
 
 
+class AcpErrorOutcome(StrEnum):
+    CLIENT_REJECTED_OUTBOUND = "CLIENT_REJECTED_OUTBOUND"
+
+
+def select_acp_error(outcome: AcpErrorOutcome) -> JsonRpcError:
+    """Select the host-owned wire error for a classified ACP outcome."""
+    match outcome:
+        case AcpErrorOutcome.CLIENT_REJECTED_OUTBOUND:
+            return JsonRpcError(
+                code=INTERNAL_ERROR,
+                message="client rejected outbound request",
+                data={"reason": outcome.value},
+            )
+    assert_never(outcome)
+
+
 @dataclass(frozen=True)
 class AcpOutboundError(Exception):
     """ACP outbound/application refusal with a protocol-safe structured reason."""
@@ -43,6 +60,23 @@ class AcpOutboundError(Exception):
 
     def __str__(self) -> str:
         return f"{self.code}: {self.message}"
+
+
+class AcpPeerResponseError(AcpOutboundError):
+    """A matching outbound request received a peer error or malformed reply."""
+
+    def __init__(self) -> None:
+        selected = select_acp_error(AcpErrorOutcome.CLIENT_REJECTED_OUTBOUND)
+        super().__init__(code=selected.code, message=selected.message, data=selected.data)
+
+
+def outbound_error_response(request_id: str | int | None, exc: AcpOutboundError) -> dict[str, Any]:
+    """Translate an outbound failure without treating peer fields as wire authority."""
+    if isinstance(exc, AcpPeerResponseError):
+        error = select_acp_error(AcpErrorOutcome.CLIENT_REJECTED_OUTBOUND)
+    else:
+        error = JsonRpcError(code=exc.code, message=exc.message, data=exc.data)
+    return error_response(request_id, error)
 
 
 def success_response(request_id: str | int | None, result: Any) -> dict[str, Any]:
