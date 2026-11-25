@@ -17,10 +17,6 @@ import pytest
 
 import optimus_gateway.responses as gateway_responses
 from optimus.agent.index_turn import LIMIT_NOTICE
-from optimus.agent.models import AgentRunRequest
-from optimus.agent.runner import AgentRunner
-from optimus.agent.state_store import InMemoryAgentStateStore
-from optimus.runtime.modes import ExecutionMode
 from tests.unit.agent.test_route_binding import STANDARD, InProcessGateway, Notices, ScriptedUpstream, _client, _policy
 from tests.unit.optimus_gateway.model_policy_support import CAP, verified_snapshot
 from tools.plan12_memory import m2b_paid as paid
@@ -123,7 +119,7 @@ def test_reconciliation_keys_each_attempt_by_gateway_id_ordinal_and_disposition(
 @pytest.mark.parametrize("receipts, problem, unclaimed", [
     ([], "no matching host receipt", 0),  # missing
     ([_receipt(1, "g1", "rejected", "0")], "no matching host receipt", 0),  # partial: the completed attempt's receipt is missing
-    ([_receipt(1, "g1", "rejected", "0"), _receipt(2, "g1", "completed", "0.01"), _receipt(2, "g1", "completed", "0.01")], "2 host receipts match (identical: one charge)", 0),  # duplicates kept, flagged
+    ([_receipt(1, "g1", "rejected", "0"), _receipt(2, "g1", "completed", "0.01"), _receipt(2, "g1", "completed", "0.01")], "2 host receipts match (charge unknown)", 0),  # duplicates kept, flagged
     ([_receipt(1, "g1", "rejected", "0"), _receipt(2, "g1", "completed", "0.01"), _receipt(3, "g9", "completed", "0.02")], "matches no Gateway attempt", 1),  # unattributed, kept
 ])
 def test_reconciliation_keeps_and_flags_missing_duplicate_and_unclaimed_records(receipts, problem, unclaimed):
@@ -151,52 +147,36 @@ def test_a_row_whose_run_raised_is_incomplete_even_when_its_receipts_reconcile()
     assert paid.terminal(row) == ("incomplete", "the run raised AttemptIntegrityError")
 
 
-def test_duplicate_receipts_are_kept_and_flagged_and_their_one_charge_counted_once():
-    """Codex CP1 attempt 3 finding 4: two identical charged receipts never settle twice."""
-    same = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g1", "completed", "0.01")])
-    assert same["problems"] == ["r1 attempt 1: 2 host receipts match (identical: one charge)"] and same["attempts"][0]["cost_usd"] == "0.01"
-    assert len(same["attempts"][0]["receipt_attempt_ids"]) == 2 and same["charges"] == []
-    differing = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g1", "completed", "0.02")])
-    assert differing["attempts"][0]["cost_usd"] is None and "differing: charge unknown" in differing["problems"][0]
-    ceiling = _ceiling()
-    ceiling.settle(same["attempts"], same["charges"])
-    assert ceiling.usd_settled == Decimal("0.01") and ceiling.attempts_used == 1
+def test_duplicate_receipts_are_kept_and_flagged_and_leave_the_charge_unknown():
+    """Fable 5.2's CP1 simplification: only a clean one-to-one match carries an amount. Two receipts for one attempt, identical or not, are
+    kept, flagged and priced at the worst case; the row is incomplete and the Gateway ledger is the authority."""
+    for second in ("0.01", "0.02"):
+        out = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g1", "completed", second)])
+        assert out["problems"] == ["r1 attempt 1: 2 host receipts match (charge unknown)"] and out["attempts"][0]["cost_usd"] is None
+        assert len(out["attempts"][0]["receipt_attempt_ids"]) == 2 and set(out) == {"attempts", "unclaimed_receipts", "problems"}
+        ceiling = _ceiling()
+        ceiling.settle(out["attempts"])
+        assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (1, 1, Decimal(0))
+        assert paid.settlement(out["attempts"], out["problems"])["usd_actual"] == "UNKNOWN"
 
 
-def test_unclaimed_charges_are_counted_once_each():
+def test_an_unclaimed_receipt_is_kept_and_flagged_and_never_charged():
+    """Fable 5.2's CP1 simplification: there is no money-only path. A receipt on no attempt is a problem; only the matched attempt settles."""
     foreign = {**_receipt(1, "g9", "completed", "0.02"), "attempt_id": "m2b-q-QX-N:answer:1:2:1"}
     out = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), foreign, dict(foreign)])
-    assert len(out["unclaimed_receipts"]) == 2 and out["charges"] == [{"attempt_id": foreign["attempt_id"], "outcome": "completed", "cost_usd": "0.02"}]
-    assert len(out["problems"]) == 2
+    assert len(out["unclaimed_receipts"]) == 2 and len(out["problems"]) == 2 and out["attempts"][0]["cost_usd"] == "0.01"
     ceiling = _ceiling()
-    ceiling.settle(out["attempts"], out["charges"])  # a charge on no attempt is money only (Codex CP1 attempt 4 finding 4)
-    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (1, 0, Decimal("0.03"))
+    ceiling.settle(out["attempts"])
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (1, 0, Decimal("0.01"))
+    assert paid.settlement(out["attempts"], out["problems"])["usd_actual"] == "UNKNOWN", "a flagged row's actual cost is the ledger's to say"
 
 
-def test_a_copy_of_a_settled_receipt_is_never_charged_again():
-    """Codex CP1 attempt 4 finding 4: a matching copy and a copy with a conflicting route request id settle one charge."""
+def test_a_conflicting_copy_of_a_matched_receipt_is_flagged_and_the_row_unknown():
+    """A matched receipt and a copy naming another route request: the copy is kept and flagged, so the row's actual cost is UNKNOWN."""
     match = _receipt(1, "g1", "completed", "0.01")
-    out = paid.reconcile(_sent((1, "g1", "completed")), [match, {**match, "usage": {"route_request_id": "r-other"}}])
-    assert out["attempts"][0]["cost_usd"] == "0.01" and len(out["unclaimed_receipts"]) == 1 and out["charges"] == [] and out["problems"]
-    ceiling = _ceiling()
-    ceiling.settle(out["attempts"], out["charges"])
-    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (1, 0, 0, Decimal("0.01"))
-
-
-def test_conflicting_amounts_for_one_receipt_leave_the_charge_unknown_on_either_path():
-    """Codex CP1 attempt 5 finding 4: a matched $0.01 and a conflicting $0.05 copy of the same receipt settle no known amount."""
-    match = _receipt(1, "g1", "completed", "0.01")
-    across = paid.reconcile(_sent((1, "g1", "completed")), [match, {**match, "cost_usd": "0.05", "usage": {"route_request_id": "r-other"}}])
-    assert across["attempts"][0]["cost_usd"] is None and any("conflicting copies" in p for p in across["problems"]) and across["charges"] == []
-    ceiling = _ceiling()
-    ceiling.settle(across["attempts"], across["charges"])
-    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (1, 1, 0, Decimal(0))
-    stray = {**_receipt(1, "g9", "completed", "0.02"), "attempt_id": "m2b-q-QX-N:answer:1:2:1"}
-    money = paid.reconcile(_sent((1, "g1", "completed")), [match, stray, {**stray, "cost_usd": "0.05"}])
-    assert money["charges"][0]["cost_usd"] is None and any("conflicting copies" in p for p in money["problems"])
-    ceiling = _ceiling()
-    ceiling.settle(money["attempts"], money["charges"])  # unknown money is kept apart from unknown attempts
-    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (1, 0, 1, Decimal("0.01"))
+    out = paid.reconcile(_sent((1, "g1", "completed")), [match, {**match, "cost_usd": "0.05", "usage": {"route_request_id": "r-other"}}])
+    assert out["attempts"][0]["cost_usd"] == "0.01" and len(out["unclaimed_receipts"]) == 1 and out["problems"]
+    assert paid.settlement(out["attempts"], out["problems"]) == {"attempts": 1, "attempts_unknown_cost": 0, "usd_actual": "UNKNOWN"}
 
 
 def test_a_send_without_its_host_request_identity_matches_nothing():
@@ -209,15 +189,15 @@ def test_a_send_with_no_gateway_attempt_reserves_its_unknown_attempts_once():
     """Codex CP1 attempt 4 finding 4: the host's own uncertain record of a transport loss is no third attempt."""
     lost = [{"route_request_id": "r1", "receipt_base": "m2b-q-QX-N:answer:1:1", "gateway_attempts": []}]
     out = paid.reconcile(lost, [{"attempt_id": "m2b-q-QX-N:answer:1:1", "gateway_request_id": None, "outcome": "uncertain", "cost_usd": None}])
-    assert len(out["attempts"]) == 2 and out["charges"] == [] and out["unclaimed_receipts"] == [] and out["attempts"][0]["receipt_attempt_ids"] == ["m2b-q-QX-N:answer:1:1"]
+    assert len(out["attempts"]) == 2 and out["unclaimed_receipts"] == [] and out["attempts"][0]["receipt_attempt_ids"] == ["m2b-q-QX-N:answer:1:1"]
     ceiling = _ceiling()
-    ceiling.settle(out["attempts"], out["charges"])
+    ceiling.settle(out["attempts"])
     assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (2, 2, Decimal(0))
     reported = paid.reconcile(lost, [{"attempt_id": "m2b-q-QX-N:answer:1:1", "gateway_request_id": "g1", "outcome": "completed", "cost_usd": "0.01"}])
-    assert len(reported["attempts"]) == 2 and reported["charges"] == [{"attempt_id": "m2b-q-QX-N:answer:1:1", "outcome": "completed", "cost_usd": "0.01"}]
+    assert len(reported["attempts"]) == 2 and reported["unclaimed_receipts"] == [] and reported["problems"]
     ceiling = _ceiling()
-    ceiling.settle(reported["attempts"], reported["charges"])  # attempt 5: the reported amount is kept, once, as money
-    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (2, 2, 0, Decimal("0.01"))
+    ceiling.settle(reported["attempts"])  # the reported amount is kept on the row, never settled: two worst-case attempts bound it
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (2, 2, Decimal(0))
 
 
 def test_a_receipt_must_belong_to_this_host_request():
@@ -280,7 +260,7 @@ def test_a_bound_request_is_settled_from_the_gateways_own_attempts(tmp_path, sna
     assert sent["route_request_id"] == gateway.payloads[0]["route_binding"]["request_id"] and sent["gateway_attempts"][0]["physical"]
     [attempt] = row["attempts"]
     assert attempt["gateway_request_id"] == row["host_receipts"][0]["gateway_request_id"] and attempt["cost_usd"] is not None
-    assert row["settlement"] == {"attempts": 1, "attempts_unknown_cost": 0, "charges": [], "charges_unknown": 0, "usd_known": attempt["cost_usd"]}
+    assert row["settlement"] == {"attempts": 1, "attempts_unknown_cost": 0, "usd_actual": attempt["cost_usd"]}
 
 
 def test_a_bound_resend_counts_two_physical_attempts_against_the_ceiling(tmp_path, snapshot):
@@ -337,46 +317,42 @@ class _Recording:
         return self.inner.create_response(**kwargs)
 
 
+def test_a_guard_allows_at_most_one_send():
+    """Fable 5.2's CP1 simplification: the intra-row multi-send path is deleted, so no Guard exists that could send twice."""
+    for allowance in (2, -1):
+        with pytest.raises(ValueError, match="at most one send per row"):
+            paid.Guard(object(), None, _ceiling(), allowance=allowance)
+
+
 @pytest.mark.parametrize("lose", ["all", "the completed attempt's"])
-def test_a_missing_or_partial_receipt_set_stops_the_next_send(tmp_path, snapshot, lose):
+def test_a_missing_or_partial_receipt_set_makes_the_row_incomplete_and_stops_the_run(tmp_path, snapshot, lose):
+    """The row after a send whose receipts do not reconcile never runs: the row is incomplete and the run stops there."""
     from optimus_gateway.upstream_client import UpstreamAttemptFailure
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
     gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["ok", "again"], attempts=[UpstreamAttemptFailure("rejected", http_status=429), None, None]))
-    inner, receipts = _Recording(_client(gateway)), []
-    guard = paid.Guard(inner, _approved(snapshot), _ceiling(), allowance=2, receipts=receipts, run_id="m2b-q-QX-N")
-    _first_send(guard, workspace, snapshot, receipts)
-    del receipts[0 if lose == "all" else 1 :]
-    with pytest.raises(paid.GuardRefused):
-        guard.create_response(**inner.calls[0])
-    assert len(gateway.payloads) == 1 and "not reconciled" in guard.refusal
+    rows: list[dict[str, Any]] = []
+    real_run_one = paid.run_one
 
+    def losing_run_one(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        row = real_run_one(*args, **kwargs)
+        if not rows:  # the first row's receipt set is lost after the fact, as a dropped sink would
+            keep = 0 if lose == "all" else 1
+            row["host_receipts"] = row["host_receipts"][:keep]
+            reconciled = paid.reconcile(row["sent"], row["host_receipts"])
+            row["reconciliation"]["problems"] = reconciled["problems"]
+        rows.append(row)
+        return row
 
-def _first_send(guard: paid.Guard, workspace: Path, snapshot, receipts: list[Any]) -> None:
-    runner = AgentRunner(gateway_client=guard, model=STANDARD, state_store=InMemoryAgentStateStore())
-    request = AgentRunRequest(run_id="m2b-q-QX-N", task="What is x?", execution_mode=ExecutionMode.CHAT, workspace_root=workspace, max_planning_turns=1, max_cost_usd=Decimal("6"))
-    with paid.zero_tools():
-        runner.run(request, context_packer=None, route_binder=_binder(snapshot), stage_receipts=receipts.append)
-    assert len(guard.sent) == 1 and len(receipts) == 2 and paid.reconcile(guard.sent, [paid.receipt_row(r) for r in receipts])["problems"] == []
-    assert guard.sent[0]["receipt_base"] == "m2b-q-QX-N:answer:1:1" and all(paid._base(r.attempt_id) == "m2b-q-QX-N:answer:1:1" for r in receipts)
+    import unittest.mock as um
 
-
-def test_a_later_send_reserves_against_the_earlier_sends_unsettled_attempts(tmp_path, snapshot):
-    """Codex CP1 attempt 3 finding 3: a row settles only after the runner returns, so the reservation counts its earlier sends."""
-    from optimus_gateway.upstream_client import UpstreamAttemptFailure
-
-    workspace = tmp_path / "ws"
-    workspace.mkdir()
-    gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["ok", "again"], attempts=[UpstreamAttemptFailure("rejected", http_status=429), None, None]))
-    inner, receipts = _Recording(_client(gateway)), []
-    ceiling = paid.Ceiling(attempts_max=3, usd_max=Decimal("6"), per_attempt_usd=Decimal("0.04608"))
-    guard = paid.Guard(inner, _approved(snapshot), ceiling, allowance=2, receipts=receipts, run_id="m2b-q-QX-N")
-    _first_send(guard, workspace, snapshot, receipts)
-    assert ceiling.attempts_used == 0  # nothing settled yet: 2 pending + 2 reserved > 3
-    with pytest.raises(paid.CapRefused):
-        guard.create_response(**inner.calls[0])
-    assert len(gateway.payloads) == 1 and guard.refusal.startswith("reservation refused: cannot reserve 2 attempts: 2 used of 3")
+    with um.patch.object(paid, "run_one", losing_run_one):
+        report = paid.run(CASES, u_equals_b=True, outline_available=True, gateway=_client(gateway), approved=_approved(snapshot), model=STANDARD,
+                          packer_for=lambda _c, _a: None, binder_for=lambda _c, _a: _binder(snapshot), workspace_for=lambda _c: workspace, ceiling=_ceiling(),
+                          write=lambda _r: None, write_answers=lambda _a: None)
+    assert len(rows) == 1 and report["rows"][0]["terminal"] == "incomplete" and report["stopped"]["at"] == ["QR1", "N"]
+    assert len(gateway.payloads) == 1, "nothing after the unreconciled row is sent"
 
 
 class _Unattributed(_Recording):
@@ -387,8 +363,8 @@ class _Unattributed(_Recording):
         return response.model_copy(update={"gateway_usage": response.gateway_usage.model_copy(update={"gateway_request_id": "settled-elsewhere"})})
 
 
-def test_an_accounting_integrity_error_keeps_its_row_and_its_charge(tmp_path, snapshot):
-    """Codex CP1 attempt 3 finding 4: the host raises after recording an unattributed receipt; the row and the charge survive."""
+def test_an_accounting_integrity_error_keeps_its_row_and_its_receipts(tmp_path, snapshot):
+    """Codex CP1 attempt 3 finding 4: the host raises after recording an unattributed receipt; the row and every receipt survive."""
     workspace = tmp_path / "ws"
     workspace.mkdir()
     gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["The answer."]))
@@ -401,9 +377,9 @@ def test_an_accounting_integrity_error_keeps_its_row_and_its_charge(tmp_path, sn
     row["expected_logical_requests"], row["emitted_answer"] = 1, bool(row["answer"])
     assert len(gateway.payloads) == 1 and row["error"] == "AttemptIntegrityError" and paid.terminal(row)[0] == "incomplete"
     unattributed = [r for r in row["host_receipts"] if r["outcome"] == "unattributed"]
-    # one physical attempt from the Gateway's evidence (its host record unsettled: unknown); the unattributed charge is money, no attempt
-    assert len(unattributed) == 1 and ceiling.attempts_used == len(row["attempts"]) == 1
-    assert ceiling.usd_settled == Decimal(unattributed[0]["cost_usd"]) > 0 and ceiling.unknown_attempts == 1
+    # one physical attempt from the Gateway's evidence, its charge unknown; the unattributed receipt is kept on the row, never settled
+    assert len(unattributed) == 1 and Decimal(unattributed[0]["cost_usd"]) > 0 and ceiling.attempts_used == len(row["attempts"]) == 1
+    assert (ceiling.unknown_attempts, ceiling.usd_settled) == (1, Decimal(0)) and row["settlement"]["usd_actual"] == "UNKNOWN"
     assert any("settled-elsewhere" in p or "matches no Gateway attempt" in p for p in row["reconciliation"]["problems"])
 
 
@@ -428,8 +404,9 @@ class _MalformedAttempts(_Recording):
         raise GatewayResponseError("route_attempts is malformed", gateway_usage=response.gateway_usage, audit_code="ROUTE_ATTEMPTS_MALFORMED")
 
 
-def test_valid_usage_with_malformed_attempt_evidence_keeps_its_charge_once(tmp_path, snapshot):
-    """Codex CP1 attempt 5 finding 4: two unknown attempt slots, and the reported amount settled once as money."""
+def test_valid_usage_with_malformed_attempt_evidence_is_two_unknown_attempts_and_its_receipt_kept(tmp_path, snapshot):
+    """Codex CP1 attempt 5 finding 4, under Fable's simplification: two worst-case attempt slots bound it; the reported amount stays on the
+    row for the ledger, never settled, and the row's actual cost is UNKNOWN."""
     workspace = tmp_path / "ws"
     workspace.mkdir()
     gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["The answer."]))
@@ -439,9 +416,8 @@ def test_valid_usage_with_malformed_attempt_evidence_keeps_its_charge_once(tmp_p
     row["expected_logical_requests"], row["emitted_answer"] = 1, bool(row["answer"])
     charged = [r for r in row["host_receipts"] if r["cost_usd"] not in (None, "0")]
     assert len(gateway.payloads) == 1 and len(row["attempts"]) == 2 and paid.terminal(row)[0] == "incomplete" and len(charged) == 1
-    assert row["settlement"]["charges"] == [{"attempt_id": charged[0]["attempt_id"], "outcome": charged[0]["outcome"], "cost_usd": charged[0]["cost_usd"]}]
-    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (2, 2, 0, Decimal(charged[0]["cost_usd"]))
-    assert row["settlement"]["usd_known"] == charged[0]["cost_usd"]
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (2, 2, Decimal(0))
+    assert row["settlement"] == {"attempts": 2, "attempts_unknown_cost": 2, "usd_actual": "UNKNOWN"}
 
 
 def test_a_transport_loss_reserves_two_unknown_attempts_and_no_third(tmp_path, snapshot):
