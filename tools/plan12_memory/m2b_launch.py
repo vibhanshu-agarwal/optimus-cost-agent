@@ -90,6 +90,7 @@ RETRIEVED: Final = frozenset({"manifest", "retrieval, then a refusal before the 
 REVIEW_COMMENT: Final = re.compile(r"https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-\d+")
 REHEARSAL_REPLY: Final = "Rehearsal answer from the stub provider; no provider was called."
 INDEX_SECONDS: Final = 3_600
+MAP_ATTEMPTS: Final = 5
 PROVIDER_KEY_NAMES: Final = ("OPENROUTER_API_KEY", "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY")
 PLACEHOLDER_PROVIDER_KEY: Final = "rehearsal-no-provider"  # pragma: allowlist secret - the loopback stub needs no key
 
@@ -455,6 +456,12 @@ def rehearse(cases: Sequence[Mapping[str, Any]], composition: Composition, *, ga
                 problems.append(f"{name}: the provider never received this request")
             elif upstream["cache_prefix_chars"] != entry["cache_prefix_chars"]:
                 problems.append(f"{name}: the provider's cached block ends at {upstream['cache_prefix_chars']}, the binding at {entry['cache_prefix_chars']}")
+    prefixes: dict[str, set[tuple[Any, Any]]] = {}
+    for r in rows:
+        if r["sent"] and r["arm"] != "N":
+            prefixes.setdefault(snapshot_of[r["case_id"]], set()).add((r["prefix_sha256"], r["cache_prefix_chars"]))
+    problems.extend(f"{snapshot.removeprefix('git:')[:12]}: its memory rows were sent with {len(seen)} different cached prefixes"
+                    for snapshot, seen in sorted(prefixes.items()) if len(seen) > 1)  # the map is the snapshot's own stable prefix
     sends = sum(1 for r in rows if r["sent"])  # a row sending other than its expected count is already incomplete above
     if len(provider.calls) - before != sends:
         problems.append(f"{len(provider.calls) - before} provider calls for {sends} sends")
@@ -607,6 +614,20 @@ def wait_indexed(session: Any, seconds: float = INDEX_SECONDS) -> int:
     return int(epoch)
 
 
+def prime_map(session: Any, attempts: int = MAP_ATTEMPTS) -> int:
+    """Build the session's repo map now and require it non-empty (G2 run 2: a session's first map can come back empty, which gave QR4/F a
+    606-character prefix where the other rows had 12,496). The map is the cached prefix; once held, a failed rebuild keeps it
+    (MemorySession.repo_map), so every row on this snapshot sees the same one. Returns its length."""
+    scope = session._current_scope()  # noqa: SLF001
+    for _ in range(attempts):
+        text = session.repo_map(scope)
+        if text:
+            return len(text)
+        session._map = None  # noqa: SLF001 - build afresh on the next attempt
+        time.sleep(1)
+    raise LaunchRefused(f"the repo map stayed empty after {attempts} builds: {session.status()}")
+
+
 def open_sessions(revisions: Sequence[str], *, repository: Path, work: Path, root: Path, memory: Any, settings: Any, settings_file: Mapping[str, Any], embedder: Any,
                   composition: Composition, trees: list[dict[str, Any]]) -> None:
     """Production's session for each snapshot, in the given order, each indexed to completion before the next starts. Each is registered
@@ -629,10 +650,11 @@ def open_sessions(revisions: Sequence[str], *, repository: Path, work: Path, roo
         started = time.perf_counter()
         session.start()
         composition.epochs[snapshot] = wait_indexed(session)
+        map_chars = prime_map(session)
         coverage = session._current_scope().storage.call("coverage")["current"]["coverage"]  # noqa: SLF001
         trees.append({"revision": snapshot, "tree": composition.trees[snapshot], "checkout_head": composition.heads[snapshot],
                       "checkout_tree": "git:" + _git(tree, "rev-parse", f"{composition.heads[snapshot].removeprefix('git:')}^{{tree}}"),  # the captured commit's own
-                      "epoch": composition.epochs[snapshot], "seconds": round(time.perf_counter() - started, 1), "coverage": coverage})
+                      "epoch": composition.epochs[snapshot], "map_chars": map_chars, "seconds": round(time.perf_counter() - started, 1), "coverage": coverage})
 
 
 def smoke(cases: Sequence[Mapping[str, Any]], composition: Composition, snapshot: str, *, gateway: Any, provider: StubProvider) -> dict[str, Any]:

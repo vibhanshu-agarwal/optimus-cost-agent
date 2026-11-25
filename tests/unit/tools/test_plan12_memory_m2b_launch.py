@@ -290,6 +290,32 @@ def test_a_request_that_does_not_carry_its_context_exactly_once_fails_the_rehear
     assert len(problems) == 36 and all(p.endswith("the row's workspace context is not in its request exactly once") for p in problems)
 
 
+def test_memory_rows_on_one_snapshot_sent_with_different_cached_prefixes_fail_the_rehearsal(tree, monkeypatch):
+    """G2 run 2: the first memory turn on a snapshot got an empty repo map. Every memory row on one snapshot must share its cached prefix."""
+    composition = _composition(tree)
+    session = composition.sessions[SNAP]
+    real = session.repo_map
+    asked: list[int] = []
+
+    def first_empty(scope: Any) -> str:
+        asked.append(1)
+        return "" if len(asked) == 1 else real(scope)
+
+    monkeypatch.setattr(session, "repo_map", first_empty)
+    problems = _rehearse(composition)["problems"]
+    assert [p for p in problems if "different cached prefixes" in p] == [f"{SNAP.removeprefix('git:')[:12]}: its memory rows were sent with 2 different cached prefixes"]
+
+
+def test_priming_builds_a_sessions_map_until_it_is_not_empty_and_refuses_one_that_stays_empty(monkeypatch):
+    monkeypatch.setattr(launch.time, "sleep", lambda seconds: None)
+    maps = iter(["", "", "the map"])
+    session = SimpleNamespace(_current_scope=lambda: "scope", repo_map=lambda scope: next(maps), _map="stale", status=lambda: "Context index: ready")
+    assert launch.prime_map(session) == len("the map") and session._map is None  # noqa: SLF001
+    empty = SimpleNamespace(_current_scope=lambda: "scope", repo_map=lambda scope: "", _map=None, status=lambda: "Context index: ready")
+    with pytest.raises(launch.LaunchRefused, match="the repo map stayed empty after 5 builds"):
+        launch.prime_map(empty)
+
+
 def test_a_summary_call_fails_the_rehearsal(tree):
     composition = _composition(tree)
     composition.summaries.calls = 1
@@ -653,6 +679,8 @@ def test_a_snapshot_is_bound_to_its_frozen_source_tree_and_its_checkout_to_the_c
     revision = subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
     session = _Waiting()
     session.start = lambda: None
+    built: list[Any] = []
+    session.repo_map = lambda scope: built.append(scope) or "the session's own repo map"
     session.storage = SimpleNamespace(call=lambda op: {"current": {"epoch": 7, "coverage": {"complete": True}}})
     monkeypatch.setattr("optimus.context.memory_session.session_factory", lambda **kwargs: lambda _ws: session)
     composition = launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {}, {})
@@ -664,7 +692,9 @@ def test_a_snapshot_is_bound_to_its_frozen_source_tree_and_its_checkout_to_the_c
     assert composition.trees[f"git:{revision}"] == source_tree != launch.checkout_tree(checkout), "the row seals the revision's own tree"
     assert composition.heads[f"git:{revision}"] == launch.checkout_head(checkout) and launch.checkout_drift(checkout, composition.heads[f"git:{revision}"]) is None
     [entry] = recorded
-    assert (entry["tree"], entry["checkout_head"], entry["checkout_tree"]) == (source_tree, launch.checkout_head(checkout), launch.checkout_tree(checkout))
+    assert (entry["tree"], entry["checkout_head"], entry["checkout_tree"], entry["map_chars"]) == (source_tree, launch.checkout_head(checkout), launch.checkout_tree(checkout),
+                                                                                                   len("the session's own repo map"))
+    assert len(built) == 1, "the map is built once, as soon as the snapshot is indexed"
 
 
 def test_an_index_gateway_that_dies_after_it_starts_is_still_stopped_with_its_client_and_container(tmp_path, monkeypatch):
