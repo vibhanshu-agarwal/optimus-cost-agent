@@ -17,13 +17,13 @@ from optimus.agent.directives import (
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
     MAX_PATH_CHARS,
-    READ_DIRECTIVE,
-    TEST_DIRECTIVE,
     WRITE_DIRECTIVE,
     AgentDirectiveParseError,
     AgentPlanDirectives,
     IndexToolRequest,
+    _unwrap_markdown_code_fence,
     directive_text,
+    is_directive_line,
     parse_agent_plan,
     parse_index_tool_reply,
     parse_mcp_call_line,
@@ -643,7 +643,7 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
-    lines = [stripped for line in _outside_edit_blocks(text) if (stripped := plan_line_text(line))]  # #407; #410 R1
+    lines = list(_directive_surface_lines(text))  # #407; #410 R1; #575: a WRITE body is content, never an MCP line
     if not lines:
         return None
     # #410 R1: classify by directive text, so a line holding a content separator never counts as MCP.
@@ -708,23 +708,34 @@ def _outside_edit_blocks(text: str) -> list[str]:
     return outside + plan_lines(pending)
 
 
-def _directive_surface_lines(text: str) -> tuple[str, ...]:
-    lines = _outside_edit_blocks(text)  # #407: EDIT blocks are opaque; #410 R1: LF and CRLF lines elsewhere
-    surface_lines: list[str] = []
+def _outside_write_bodies(text: str) -> str:
+    """#575: the reply without its WRITE bodies, as the final-plan parser reads it: its line split, its rule for
+    where a body ends (`is_directive_line`), and a fenced plan ending at its closing fence. A WRITE line inside an
+    EDIT block is that block's content. A reply without a WRITE is returned unchanged."""
+    lines = plan_lines(_unwrap_markdown_code_fence(text))
+    kept: list[str] = []
     index = 0
+    inside_edit = wrote = False
     while index < len(lines):
         line = lines[index]
-        normalized = _normalize_directive_surface_line(line)
-        if WRITE_DIRECTIVE.match(normalized) is not None:
-            index += 1
-            while index < len(lines) and not _is_final_directive_line(lines[index]):
-                index += 1
-            continue
-        stripped = plan_line_text(line)
-        if stripped:
-            surface_lines.append(stripped)
+        kept.append(line)
         index += 1
-    return tuple(surface_lines)
+        marker = line.strip()
+        if inside_edit:
+            inside_edit = marker != EDIT_END_MARKER
+        elif marker == EDIT_OLD_MARKER:
+            inside_edit = True
+        elif WRITE_DIRECTIVE.match(_normalize_directive_surface_line(line)) is not None:
+            wrote = True
+            while index < len(lines) and not is_directive_line(lines[index]):
+                index += 1
+    return "".join(kept) if wrote else text
+
+
+def _directive_surface_lines(text: str) -> tuple[str, ...]:
+    """The lines that can hold directives: outside WRITE bodies first (#575), then outside EDIT blocks (#407)."""
+    lines = _outside_edit_blocks(_outside_write_bodies(text))
+    return tuple(stripped for line in lines if (stripped := plan_line_text(line)))
 
 
 def _normalize_directive_surface_line(line: str) -> str:
@@ -736,19 +747,6 @@ def _normalize_directive_surface_line(line: str) -> str:
                 break
         else:
             return normalized
-
-
-def _is_final_directive_line(line: str) -> bool:
-    normalized = _normalize_directive_surface_line(line)
-    return (
-        READ_DIRECTIVE.match(normalized) is not None
-        or WRITE_DIRECTIVE.match(normalized) is not None
-        or TEST_DIRECTIVE.match(normalized) is not None
-        or normalized.startswith("MCP_LIST ")
-        or normalized.startswith("MCP_CALL ")
-        or normalized == "MCP_LIST"
-        or normalized == "MCP_CALL"
-    )
 
 
 def _surface_has_observe(surface_lines: tuple[str, ...]) -> bool:
