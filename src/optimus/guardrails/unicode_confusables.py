@@ -5,7 +5,7 @@ import unicodedata
 from confusable_homoglyphs import categories, confusables
 
 # #619: the non-ASCII Latin- and Common-script characters the library's table maps to a single ASCII character
-# (U+0131, U+2212, U+2019, U+2002). Accented Latin letters are not in the table.
+# (U+0131, U+2212, U+2019, U+2002). Accented letters such as U+00E7 or U+00DF have no single ASCII target and pass.
 _ASCII_LOOKALIKES = frozenset(
     char
     for char, entries in confusables.confusables_data.items()
