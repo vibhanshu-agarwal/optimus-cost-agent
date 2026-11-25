@@ -450,8 +450,10 @@ def _validate_relative_path(path_text: str) -> None:
         raise AgentDirectiveParseError("no valid agent directives")
 
 
-# pytest options whose value is not a path and may hold a colon (-p no:cacheprovider, -W error::UserWarning).
-_PYTEST_OPAQUE_OPTIONS = frozenset({"-k", "-m", "-o", "-p", "-W", "--cov-report", "--override-ini", "--pythonwarnings"})
+# #590: the pytest options whose value is one path, and the short flags that take no value. Any other option's value
+# is not judged here: it may be text that holds a colon or a wildcard (-p no:cacheprovider, --ignore-glob=*_slow.py).
+_PYTEST_PATH_OPTIONS = frozenset({"-c", "--rootdir", "--confcutdir", "--basetemp", "--junitxml", "--junit-xml", "--debug"})
+_PYTEST_BARE_FLAGS = re.compile(r"-[qvxsl]+")
 
 
 def _parse_test_command(command_text: str) -> tuple[str, ...]:
@@ -463,6 +465,7 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
         raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}") from exc
     if not tokens or tokens[0] != "pytest":
         raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
+    operands_only = False  # after a bare --, pytest reads every token as a file argument
     for previous, token in zip(tokens, tokens[1:], strict=False):
         if _SHELL_METACHARACTERS.search(token):
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
@@ -472,12 +475,24 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
         # format character. No blank space character either, which would read as two arguments.
         if unsafe_path_text(token) or any(c != " " and unicodedata.category(c) in ("Cf", "Zs") for c in token):
             raise AgentDirectiveParseError("unsafe TEST directive")
-        # #590: every argument and every --option=value follows the plan path rule, on the part before a node id's ::.
-        # The value of an option that does not take a path is left alone. -- and @file are refused: pytest would read
-        # arguments after them that this loop cannot classify.
-        # shortcut: a value glued to a short option (-cNUL) is not split out; upgrade if TEST ever runs unapproved.
-        option, _, value = token.partition("=") if token.startswith("-") else (previous, "", token)
-        shaped = option not in _PYTEST_OPAQUE_OPTIONS and windows_path_shape(value.strip("'" + '"').split("::", 1)[0])
-        if token == "--" or token.startswith("@") or shaped:
+        # #590: a file argument (the part before a node id's ::) and the value of a path option follow the plan path
+        # rule. @file is refused: pytest would read arguments from it that this loop never sees.
+        # shortcut: the value of an option outside the two sets above, or glued to a short option (-cNUL), is not
+        # judged; a person approves every TEST command. Upgrade if TEST ever runs unapproved.
+        if token == "--" and not operands_only:
+            operands_only = True
+            continue
+        bare = token.strip("'" + '"')
+        if operands_only or not token.startswith("-"):
+            if not operands_only and previous in _PYTEST_PATH_OPTIONS:
+                shaped = windows_path_shape(bare)
+            elif operands_only or not previous.startswith("-") or "=" in previous or _PYTEST_BARE_FLAGS.fullmatch(previous):
+                shaped = windows_path_shape(bare.split("::", 1)[0])
+            else:
+                shaped = False  # the value of an option this rule does not know
+        else:
+            option, _, value = token.partition("=")
+            shaped = option in _PYTEST_PATH_OPTIONS and windows_path_shape(value.strip("'" + '"'))
+        if token.startswith("@") or shaped:
             raise AgentDirectiveParseError("unsafe TEST directive")
     return tokens

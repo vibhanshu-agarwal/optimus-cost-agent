@@ -385,6 +385,7 @@ WINDOWS_TEST_ARGUMENTS = {
     "quoted-rooted": chr(0x22) + BS + "rooted.py" + chr(0x22),
     "option-value": "--debug=NUL",
     "option-value-stream": "--junitxml=out.xml:stream",
+    "option-value-is-not-a-node-id": "--junitxml=out.xml::report",
     "config-path": "-c " + BS + "rooted.ini",
     "long-option-path": "--rootdir aux",
     "after-separator": "-- -sample.py.",
@@ -409,6 +410,8 @@ def test_a_windows_shaped_test_argument_is_rejected_at_parse_time_without_quotin
         "pytest -k smoke:fast -m slow tests",
         "pytest --cov-report=xml:cov.xml --deselect=tests/test_a.py::test_x .",
         "pytest --cov-report xml:cov.xml --deselect tests/test_a.py::test_x[a:b] -n 2 tests",
+        "pytest --log-date-format=%H:%M:%S --ignore-glob=tests/*_slow.py tests",
+        "pytest --log-date-format %H:%M:%S -- tests/test_a.py",
         "pytest -o cache_dir=x -W error::UserWarning -c pytest.ini tests/unit",
     ],
 )
