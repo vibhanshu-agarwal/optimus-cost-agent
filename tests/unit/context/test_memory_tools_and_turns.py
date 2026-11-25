@@ -370,6 +370,19 @@ def test_a_manifest_is_v2_and_records_the_budget_policy_the_pack_used(workspace)
     assert aware["budget"]["budget_tokens"] <= 10_000
 
 
+def test_an_index_fallback_manifest_still_records_the_turns_budget_policy(workspace):
+    """Codex CP2 A3: with no usable generation no pack is built, but the v2 record keeps the policy the turn was prepared with."""
+    from optimus.context.context_budget import BudgetPolicy
+
+    for policy, expected in ((None, {"name": "legacy", "ceiling": 10_000, "target": None}),
+                             (BudgetPolicy("model-aware", 10_000, 2_000), {"name": "model-aware", "ceiling": 10_000, "target": 2_000})):
+        turn = _session(workspace, _Storage(current=False)).turn()
+        turn.assemble(run_id="run-3", task="how does helper work", selection_text="how does helper work", model_id="m", estimate=len,
+                      usable_input_tokens=40_000, pack_budget=policy)
+        assert turn.manifest["schema"] == "optimus.context-manifest.v2" and "budget" not in turn.manifest, "the pack stays unavailable"
+        assert turn.manifest.get("config") == {"budget_policy_version": "m2b-v1", "budget_policy": expected}
+
+
 def test_a_document_shown_only_by_its_signature_still_reaches_memory_lineage(workspace):
     """Codex CP2 review 3, finding 3: a document the pack shows by its signature alone has no body hash, so beside an attributed
     code file it would vanish from lineage; every file the text shows anything of is reported."""

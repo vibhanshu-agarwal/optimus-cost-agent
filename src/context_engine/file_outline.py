@@ -20,11 +20,14 @@ OUTLINE_VERSION: Final = "m2b-outline-v1"
 OUTLINE_MAX_TOKENS: Final = 2_048
 DISCLOSURE: Final = "Outline only; full file not included. Read exact ranges before relying on omitted details."
 _LINE_CHARS: Final = 160
-_SUMMARIZE: Final = re.compile(r'Summarize "([^"\r\n]+)"')
+# The path is only what the workspace resolver reads whole as one reference (workspace_context._FILE_REFERENCE_RE, forward slashes): a path
+# with a space or a non-ASCII name would be read by the resolver as some other reference, so it names no target (Codex CP2 A1).
+_SUMMARIZE: Final = re.compile(r'Summarize "((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.[A-Za-z0-9]+)"')
 
 
 def summary_target(task: str) -> str | None:
-    """The path a task asks to summarize, when the whole task is that request and nothing else: no other words, quotes or lines."""
+    """The path a task asks to summarize, when the whole task is that request and nothing else: no other words, quotes or lines, and a
+    path the workspace resolver resolves as the same whole reference."""
     match = _SUMMARIZE.fullmatch(task.strip())
     return match.group(1) if match else None
 

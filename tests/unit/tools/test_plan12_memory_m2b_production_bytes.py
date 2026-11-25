@@ -97,7 +97,8 @@ def test_each_arms_pack_in_the_budget_pass_is_the_pack_production_builds(workspa
 
 
 def _attached(root: Path, pack_budget: BudgetPolicy) -> AttachedTurn:
-    """A Q row's packer as a launch prepares one: a real attached turn with no history, then the memory turn the adapter joins to it."""
+    """A Q row's packer as a launch prepares one: a real attached turn with no history, the memory turn joined to it, then the history view
+    prepared, in the adapter's order (spec.py: _prepare_memory, then _prepare_attached_context; Codex CP2 A2)."""
     attachment = ContextAttachment(
         engine=ContextEngine(), parameters=parameters(), limits=limits(), source_max_bytes=1_000_000, record_reservation_bytes=0,
         usable_input_tokens=50_000, estimate_request=len, pack_budget=pack_budget, registry_hash="e" * 64, model_id=STANDARD,
@@ -107,8 +108,8 @@ def _attached(root: Path, pack_budget: BudgetPolicy) -> AttachedTurn:
     )
     attached = AttachedTurn.capture(attachment=attachment, session_key="q", records={}, approvals={}, generation=0, sanitizer=SANITIZER, strategy="compaction",
                                     mode=ExecutionMode.CHAT, checkpoint=None, current_prompt=TASK, turn_seq=1, cancelled=lambda: False)
-    assert attached.prepare().kind == "view"
     attached.memory = _session(root, _SymbolsOnly(_records())).turn()
+    assert attached.prepare().kind == "view"
     return attached
 
 

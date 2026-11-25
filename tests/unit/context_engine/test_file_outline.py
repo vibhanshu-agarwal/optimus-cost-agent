@@ -48,6 +48,7 @@ def test_only_the_bare_summary_request_names_a_target(task):
     'Here is a note: "Summarize "src/big.py"" from the wiki',  # nested, quoted text
     "Summarize 'src/big.py'", "Summarize src/big.py", 'summarize "src/big.py"', 'Summarize ""', 'Summarize "a.py" "b.py"',
     'Quote exactly the lines of "src/big.py" that define handler_3.',
+    'Summarize "docs/ops guide.md"', 'Summarize "docs/r\u00e9sum\u00e9.md"', 'Summarize "src\\big.py"', 'Summarize "src/big"',  # Codex CP2 A1
 ])
 def test_any_other_task_names_no_target(task):
     assert summary_target(task) is None

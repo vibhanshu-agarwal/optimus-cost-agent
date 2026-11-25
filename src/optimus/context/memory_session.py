@@ -608,6 +608,7 @@ class MemoryTurn:
         policy = self._session.policy
         policy.forget_ignore_files()
         budget, target = pack_limits(pack_budget, usable_input_tokens)
+        chosen = pack_budget or BudgetPolicy("legacy", budget, None)  # the policy this turn was prepared with, recorded on every manifest
         with self._session.foreground():
             diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(extract_file_references(selection_text)))
             diagnostics = rank_ambiguity(diagnostics, task, self._session.hints_for(self._scope))
@@ -618,12 +619,11 @@ class MemoryTurn:
             self._capture_buffers(required)
         retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task, target, overview_path)
         if retrieval.state != "ok" or pack is None:
-            return self._today(task=selection_text, retrieval=retrieval, prompt=task)
+            return self._today(task=selection_text, retrieval=retrieval, prompt=task, policy=chosen)
         if not pack.complete:
             return self._incomplete(diagnostics, pack)
         coverage_line = self._coverage_line(retrieval, pack)
         text = f"{pack.text}\n{coverage_line}" if pack.text else coverage_line
-        chosen = pack_budget or BudgetPolicy("legacy", budget, None)
         self.manifest = self._manifest(retrieval, pack, model_id=model_id, policy=chosen, task_terms=len(task.split()))
         self._session.write_manifest(run_id, self.manifest)
         omitted = tuple(dict.fromkeys(item.path for item in pack.selected if item.disclosure == "omitted"))
@@ -670,11 +670,13 @@ class MemoryTurn:
             time.sleep(_RECONCILE_WAIT_SECONDS)
         raise AssertionError("unreachable")
 
-    def _today(self, *, task: str, retrieval: Retrieval, prompt: str | None = None) -> WorkspaceContextResult:
+    def _today(self, *, task: str, retrieval: Retrieval, prompt: str | None = None, policy: BudgetPolicy | None = None) -> WorkspaceContextResult:
         self._overlay.clear()  # today's selection reads disk, so nothing else this turn may see other text
         result = assemble_workspace_context_for_prompt(self._session.policy.root, task=task, prompt=prompt)
         line = f"Context index: no usable generation ({retrieval.state}). These files are today's selection, not a ranked search."
         self.manifest = {"schema": MANIFEST_SCHEMA, "run_id": self._run_id, "retrieval": {"state": retrieval.state, "channels": dict(retrieval.channels)}}
+        if policy is not None:  # no pack was built, but the turn's budget policy is still its own (Codex CP2 A3)
+            self.manifest["config"] = {"budget_policy_version": POLICY_VERSION, "budget_policy": asdict(policy)}
         self._session.write_manifest(self._run_id, self.manifest)
         return WorkspaceContextResult(**{**vars(result), "text": f"{result.text}\n{line}" if result.text else line}) if result.blocking_stop_reason is None else result
 
