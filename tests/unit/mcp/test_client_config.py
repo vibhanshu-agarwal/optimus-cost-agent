@@ -354,6 +354,26 @@ def test_url_userinfo_and_fragment_are_rejected(tmp_path: Path) -> None:
     assert fragment.value.rule_id == "client_mcp.invalid_url_fragment"
 
 
+# Issue #603 row 5: the URL parser raises ValueError for these, at the split or at the port read.
+MALFORMED_ENDPOINTS = (
+    "https://[",
+    "https://[::1",
+    "https://[not-an-address]/x",
+    "https://host:65536/",
+    "https://host:abc/",
+)
+
+
+@pytest.mark.parametrize("url", MALFORMED_ENDPOINTS)
+def test_endpoint_the_url_parser_rejects_is_a_config_error(tmp_path: Path, url: str) -> None:
+    with pytest.raises(ClientMcpConfigError) as exc_info:
+        _normalize([_http_entry(url=url)], workspace_root=tmp_path, controlled_path=str(tmp_path))
+    assert exc_info.value.rule_id == "client_mcp.invalid_url"
+    # The parser's own message can repeat part of the endpoint; it must not travel with the error.
+    assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__
+
+
 def test_same_name_identity_drifts_when_canonical_target_changes(tmp_path: Path) -> None:
     first = _normalize(
         [_http_entry(name="shared", url="https://mcp.example.com/a")],

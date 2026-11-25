@@ -414,7 +414,12 @@ def _normcase_path(path: Path) -> str:
 
 
 def _canonicalize_url(url: str, *, hmac_key: bytes) -> tuple[str, tuple[str, ...]]:
-    parts = urlsplit(url)
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        # The parser's message can repeat part of the endpoint, so it is not chained.
+        raise ClientMcpConfigError("client_mcp.invalid_url") from None
     if parts.scheme.lower() not in {"http", "https"}:
         raise ClientMcpConfigError("client_mcp.invalid_url")
     if parts.username is not None or parts.password is not None:
@@ -426,7 +431,6 @@ def _canonicalize_url(url: str, *, hmac_key: bytes) -> tuple[str, tuple[str, ...
 
     scheme = parts.scheme.lower()
     host = _canonicalize_host(parts.hostname)
-    port = parts.port
     if (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
         port = None
     netloc = host if port is None else f"{host}:{port}"
