@@ -160,6 +160,16 @@ def _rounds(snapshot: Snapshot) -> list[str]:
     return lines
 
 
+def _budget_policy(config: Mapping[str, Any], show: Callable[[Any], str]) -> str:
+    """Plan 12.14: a v2 manifest names its pack budget's policy; a v1 manifest predates budget versions, so it reads as legacy or unknown."""
+    policy = config.get("budget_policy") if config.get("budget_policy_version") else None
+    if not isinstance(policy, Mapping):
+        return "- pack budget: legacy or unknown (recorded before budget versions)"
+    target = "" if policy.get("target") is None else f", target {show(policy['target'])}"
+    return (f"- pack budget: {show(policy.get('name'))}, ceiling {show(policy.get('ceiling'))}{target} tokens (policy {show(config['budget_policy_version'])}); "
+            "computed once before preparation for the route bound then, so after an Auto escalation it is the pre-escalation route's")
+
+
 def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str], str], name: Callable[[str], str]) -> list[str]:
     """Every line of the explanation, in order. Every recorded value goes through `show` (sanitized and escaped), `path` (that, after
     today's disclosure check of a file) or `name` (that, after today's check of a name a person typed); only the fixed words are the
@@ -205,6 +215,8 @@ def _entries(snapshot: Snapshot, show: Callable[[Any], str], path: Callable[[str
             lines.append(f"- required evidence: stopped with {show(facts.stop)}")
     budget = (manifest or {}).get("budget")
     lines.append(f"- index pack: {show(budget['tokens'])} of {show(budget['budget_tokens'])} tokens" if budget else "- index pack: unavailable")
+    if budget:
+        lines.append(_budget_policy(((manifest or {}).get("config") or {}), show))
     if snapshot.dispatches:
         tokens, capacity = max((item[0], item[1]) for item in snapshot.dispatches)
         lines.append(f"- largest request: about {tokens} of {capacity} usable input tokens")

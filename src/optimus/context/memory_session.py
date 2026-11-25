@@ -43,7 +43,7 @@ from optimus.agent.workspace_context import (
     verified_hints,
 )
 from optimus.config.gateway import OptimusGatewaySettings
-from optimus.context.context_budget import BudgetPolicy
+from optimus.context.context_budget import POLICY_VERSION, BudgetPolicy
 from optimus.context.index_tools import IndexTools
 from optimus.context.memory_workspace import (
     EmbedderUnavailableError,
@@ -59,6 +59,7 @@ from optimus_security.memory_index_config import MemoryIndexConfig
 
 PACK_SHARE: Final = 0.25  # of the route's usable input; history and evidence keep the rest
 PACK_MAX_TOKENS: Final = 16_384  # agent-selected, frozen before evaluation
+MANIFEST_SCHEMA: Final = "optimus.context-manifest.v2"  # Plan 12.14: v2 records the pack's budget policy; v1 reads as legacy or unknown
 MAP_CHARS: Final = 12_000
 RETRY_SECONDS: Final = 30.0
 # During a build each publication is a new epoch and names barely change between them. A catalogue only suggests what to ask for, and every
@@ -620,7 +621,8 @@ class MemoryTurn:
             return self._incomplete(diagnostics, pack)
         coverage_line = self._coverage_line(retrieval, pack)
         text = f"{pack.text}\n{coverage_line}" if pack.text else coverage_line
-        self.manifest = self._manifest(retrieval, pack, model_id=model_id, budget=budget, task_terms=len(task.split()))
+        chosen = pack_budget or BudgetPolicy("legacy", budget, None)
+        self.manifest = self._manifest(retrieval, pack, model_id=model_id, policy=chosen, task_terms=len(task.split()))
         self._session.write_manifest(run_id, self.manifest)
         omitted = tuple(dict.fromkeys(item.path for item in pack.selected if item.disclosure == "omitted"))
         shown = tuple(dict.fromkeys(item.path for item in pack.selected if item.disclosure != "omitted"))  # Codex CP2 review 3, finding 3
@@ -668,7 +670,7 @@ class MemoryTurn:
         self._overlay.clear()  # today's selection reads disk, so nothing else this turn may see other text
         result = assemble_workspace_context_for_prompt(self._session.policy.root, task=task, prompt=prompt)
         line = f"Context index: no usable generation ({retrieval.state}). These files are today's selection, not a ranked search."
-        self.manifest = {"schema": "optimus.context-manifest.v1", "run_id": self._run_id, "retrieval": {"state": retrieval.state, "channels": dict(retrieval.channels)}}
+        self.manifest = {"schema": MANIFEST_SCHEMA, "run_id": self._run_id, "retrieval": {"state": retrieval.state, "channels": dict(retrieval.channels)}}
         self._session.write_manifest(self._run_id, self.manifest)
         return WorkspaceContextResult(**{**vars(result), "text": f"{result.text}\n{line}" if result.text else line}) if result.blocking_stop_reason is None else result
 
@@ -710,12 +712,13 @@ class MemoryTurn:
             parts.append(f"shown from the editor's unsaved text, which differs from disk: {', '.join(sorted(self._overlay))}")
         return "; ".join(parts) + ". Saying something is absent covers only this scope. ---"
 
-    def _manifest(self, retrieval: Retrieval, pack: Pack, *, model_id: str, budget: int, task_terms: int) -> dict[str, Any]:
+    def _manifest(self, retrieval: Retrieval, pack: Pack, *, model_id: str, policy: BudgetPolicy, task_terms: int) -> dict[str, Any]:
         return {
-            "schema": "optimus.context-manifest.v1",
+            "schema": MANIFEST_SCHEMA,
             "run_id": self._run_id,
             "route": {"model_id": model_id},
-            "config": {"rrf_k": RRF_K, "weights": dict(WEIGHTS), "embedding": self._session._embedding_identity, "pack_share": PACK_SHARE, "pack_max_tokens": PACK_MAX_TOKENS},
+            "config": {"rrf_k": RRF_K, "weights": dict(WEIGHTS), "embedding": self._session._embedding_identity, "pack_share": PACK_SHARE, "pack_max_tokens": PACK_MAX_TOKENS,
+                       "budget_policy_version": POLICY_VERSION, "budget_policy": asdict(policy)},
             "retrieval": {"state": retrieval.state, "generation": retrieval.epoch, "revision": retrieval.revision, "coverage": dict(retrieval.coverage), "channels": dict(retrieval.channels)},
             "budget": {"tokens": pack.tokens, "budget_tokens": pack.budget_tokens, "task_words": task_terms},
             "selected": [asdict(item) for item in pack.selected],

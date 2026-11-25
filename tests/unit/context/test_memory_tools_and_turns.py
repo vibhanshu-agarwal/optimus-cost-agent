@@ -350,6 +350,25 @@ def test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodi
     assert "needle" not in written
 
 
+def test_a_manifest_is_v2_and_records_the_budget_policy_the_pack_used(workspace):
+    """Plan 12.14 Task 2: a new manifest names its budget policy, legacy when the route has none and the route's own otherwise."""
+    from optimus.context.context_budget import BudgetPolicy
+
+    storage = _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE), lines=(6, 7), signature="def helper():")])
+    session = _session(workspace, storage)
+    _assemble(session.turn())
+    legacy = json.loads(next((workspace.parent / f"{workspace.name}-manifests").rglob("run-1.json")).read_text(encoding="utf-8"))
+    turn = session.turn()
+    turn.assemble(run_id="run-2", task="how does helper work", selection_text="how does helper work", model_id="m", estimate=len, usable_input_tokens=40_000,
+                  pack_budget=BudgetPolicy("model-aware", 10_000, 2_000))
+    aware = turn.manifest
+    assert legacy["schema"] == aware["schema"] == "optimus.context-manifest.v2"
+    assert legacy["config"]["budget_policy_version"] == aware["config"]["budget_policy_version"] == "m2b-v1"
+    assert legacy["config"]["budget_policy"] == {"name": "legacy", "ceiling": 10_000, "target": None}
+    assert aware["config"]["budget_policy"] == {"name": "model-aware", "ceiling": 10_000, "target": 2_000}
+    assert aware["budget"]["budget_tokens"] <= 10_000
+
+
 def test_a_document_shown_only_by_its_signature_still_reaches_memory_lineage(workspace):
     """Codex CP2 review 3, finding 3: a document the pack shows by its signature alone has no body hash, so beside an attributed
     code file it would vanish from lineage; every file the text shows anything of is reported."""

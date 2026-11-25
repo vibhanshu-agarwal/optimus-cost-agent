@@ -96,12 +96,24 @@ def test_an_index_turn_shows_its_choices_ranks_fit_and_grounding_but_no_bodies()
     assert "- 1. pkg/a.py helper: body; ranks: dense 2, lexical 1; matched the task" in text
     assert "- 2. pkg/b.py: omitted; ranks: dense 7; over the budget" in text
     assert "index pack: 120 of 4096 tokens" in text and "largest request: about 1200 of 40000 usable input tokens" in text
+    assert "- pack budget: legacy or unknown (recorded before budget versions)" in text, "a v1 manifest reads as legacy or unknown"
     assert f"planning limits: observations {LIMITS[0]} bytes, new reads {LIMITS[1]} bytes" in text
     assert "planning reads: 2, returning 150 bytes" in text and "model requests sent: 2; planning rounds: 2" in text
     assert "retrieval: ok; generation 3, 2 of 2 files; channels: dense ok" in text
     assert "cited but not found: 1 symbol(s), not named here" in text and "gone.py" not in text
     assert "unsaved editor text: pkg/a.py" in text
     assert why.HISTORICAL in text
+
+
+def test_a_v2_manifest_names_its_budget_policy_and_the_pre_escalation_route():
+    """Plan 12.14 Task 2: the budget is computed once before preparation, so /why says whose route it is."""
+    config = {"budget_policy_version": "m2b-v1", "budget_policy": {"name": "model-aware", "ceiling": 32768, "target": 13107}}
+    text = _text(_snapshot(index="used", manifest={"schema": "optimus.context-manifest.v2", "config": config, "budget": {"tokens": 9000, "budget_tokens": 14131}}))
+    assert ("- pack budget: model-aware, ceiling 32768, target 13107 tokens (policy m2b-v1); computed once before preparation for the route "
+            "bound then, so after an Auto escalation it is the pre-escalation route's") in _plain(text)
+    legacy = {"budget_policy_version": "m2b-v1", "budget_policy": {"name": "legacy", "ceiling": 16384, "target": None}}
+    text = _plain(_text(_snapshot(index="used", manifest={"config": legacy, "budget": {"tokens": 1, "budget_tokens": 16384}})))
+    assert "- pack budget: legacy, ceiling 16384 tokens (policy m2b-v1)" in text and "target" not in text.split("pack budget:")[1].split("\n")[0]
 
 
 def test_a_snapshot_is_immutable_once_captured():
