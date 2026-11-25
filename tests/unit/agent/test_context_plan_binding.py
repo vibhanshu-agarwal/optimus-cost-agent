@@ -198,3 +198,15 @@ async def test_a_mode_or_strategy_change_while_waiting_cannot_alter_application(
     facts = session.context_approvals[max(conversation.records)]
     assert [fact.decision.value for fact in facts] == ["granted"]
     assert facts[0].artifact_hash == "hash-1"
+
+
+def test_a_stored_plan_that_no_longer_parses_asks_for_a_new_plan(tmp_path):
+    """#590: a plan stored before a path rule tightened (here a colon path) raised out of the run when approved."""
+    runner, gateway, store, _, planned = _plan(tmp_path)
+    record = store.load_plan(run_id="session-1:3", plan_hash=planned.plan_hash)
+    store.save_plan(record.model_copy(update={"plan_text": "WRITE example.py:stream" + chr(10) + "x" + chr(10)}))
+
+    result = runner.run(_request(tmp_path, digest="a" * 64, approval=_approval(planned)))
+
+    assert result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED"
+    assert result.mutation_count == 0 and len(gateway.calls) == 1

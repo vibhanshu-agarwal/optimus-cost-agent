@@ -1011,3 +1011,13 @@ def test_a_failed_edit_to_a_secret_like_name_does_not_block_the_next_request(tmp
 
     assert workspace_context.extract_file_references(task) == ()
     assert result.blocking_stop_reason is None
+
+
+@pytest.mark.parametrize("reference", ["NUL", "sub/aux.txt", "notes.", "a.py:stream"])
+def test_a_windows_reserved_reference_is_never_resolved(reference):
+    """#590: a typed reference that names a device or a second name for a file is not looked up on disk."""
+    assert workspace_context._safe_relative_reference(reference) is None
+
+
+def test_an_ordinary_reference_is_still_resolved():
+    assert workspace_context._safe_relative_reference("src/app.py") == Path("src/app.py")

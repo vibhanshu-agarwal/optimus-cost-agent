@@ -1277,6 +1277,13 @@ class AgentRunner:
         operation_control: TurnOperationControl | None,
     ) -> AgentRunResult:
 
+        try:
+            parse_agent_plan(record.plan_text)
+        except AgentDirectiveParseError as exc:
+            # #590: a plan stored before a parse rule tightened; nothing of it runs, the person plans again.
+            if "unsafe TEST directive" in str(exc):
+                return self._unsafe_test_directive_result(request)
+            return self._missing_plan_result(request)
         context = self._transition(context, AgentState.PLANNING)
         context = self._transition(context, AgentState.PLAN_READY)
         gate = _DirectiveGate(operation_control, run_id=request.run_id, phase="approved")

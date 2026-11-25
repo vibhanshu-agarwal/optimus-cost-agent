@@ -354,7 +354,7 @@ async def test_an_unsafe_token_reaches_neither_the_person_nor_the_history(direct
     assert "did not match the required directive grammar" in final
 
 
-@pytest.mark.parametrize("path", ["id_rsa.", "NUL"], ids=["trailing-dot", "device"])
+@pytest.mark.parametrize("path", ["id_rsa.", "NUL", "small.py:stream"], ids=["trailing-dot", "device", "stream"])
 async def test_a_reserved_windows_name_is_never_written_through_the_real_runner(path, tmp_path):
     """#590: an approved ``WRITE id_rsa.`` created ``id_rsa``, and ``WRITE NUL`` reported a write that was discarded."""
     result, outbound, _runner, _records = await _drive(tmp_path, _SamePlan(_plan("WRITE", path)))
@@ -371,3 +371,38 @@ def test_a_trailing_space_is_reserved_but_directive_padding_is_not_part_of_the_p
     assert parse_agent_plan(f"READ a.py {NL}", edit_base="forbidden").read_paths == ("a.py",)
     with pytest.raises(PlanningTurnParseError):
         parse_planning_turn(f"OBSERVE: the header{NL}READ: a.py #bytes=0:10{NL}")
+
+
+# #590: a positional TEST argument names a file (the part before a node id's ::), so it follows the plan path rule.
+WINDOWS_TEST_ARGUMENTS = {
+    "stream": "a.py:stream",
+    "stream-with-node-id": "a.py:s::test_x",
+    "drive-relative": "C:rel.py",
+    "rooted": BS + "rooted.py",
+    "device": "NUL",
+    "device-in-folder": "tests/aux.py",
+    "trailing-dot": "tests/test_a.py.",
+    "quoted-rooted": chr(0x22) + BS + "rooted.py" + chr(0x22),
+}
+
+
+@pytest.mark.parametrize("argument", WINDOWS_TEST_ARGUMENTS.values(), ids=WINDOWS_TEST_ARGUMENTS.keys())
+@pytest.mark.parametrize("prefix", ["pytest", "pytest -q", "pytest --tb=short tests"], ids=["first", "after-flag", "after-path"])
+def test_a_windows_shaped_test_argument_is_rejected_at_parse_time_without_quoting_it(prefix, argument):
+    with pytest.raises(AgentDirectiveParseError) as caught:
+        parse_agent_plan(f"TEST {prefix} {argument}{NL}", edit_base="forbidden")
+
+    assert str(caught.value) == "unsafe TEST directive"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pytest -p no:cacheprovider tests/test_a.py::test_x[a:b]",
+        "pytest -k smoke:fast -m slow tests",
+        "pytest --cov-report=xml:cov.xml --deselect=tests/test_a.py::test_x .",
+        "pytest -o cache_dir=x -W error::UserWarning -c pytest.ini tests/unit",
+    ],
+)
+def test_an_option_value_may_hold_a_colon(command):
+    assert parse_agent_plan(f"TEST {command}{NL}", edit_base="forbidden").tests == (tuple(command.split()),)

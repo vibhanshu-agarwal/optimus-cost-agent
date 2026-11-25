@@ -450,6 +450,9 @@ def _validate_relative_path(path_text: str) -> None:
         raise AgentDirectiveParseError("no valid agent directives")
 
 
+_PYTEST_VALUE_OPTIONS = frozenset({"-c", "-k", "-m", "-o", "-p", "-W"})  # pytest's short options that take a value
+
+
 def _parse_test_command(command_text: str) -> tuple[str, ...]:
     if _SHELL_METACHARACTERS.search(command_text):
         raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
@@ -459,7 +462,7 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
         raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}") from exc
     if not tokens or tokens[0] != "pytest":
         raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
-    for token in tokens[1:]:
+    for previous, token in zip(tokens, tokens[1:], strict=False):
         if _SHELL_METACHARACTERS.search(token):
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
         if ".." in Path(token).parts or _ABSOLUTE_PATH.match(token):
@@ -467,5 +470,10 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
         # #583: fixed text, the token is never quoted. No joiner exemption here: the shell guard refuses every
         # format character. No blank space character either, which would read as two arguments.
         if unsafe_path_text(token) or any(c != " " and unicodedata.category(c) in ("Cf", "Zs") for c in token):
+            raise AgentDirectiveParseError("unsafe TEST directive")
+        # #590: a positional argument names a file (the part before a node id's ::). An option and the value after a
+        # short option are left alone: they hold legitimate colons (-p no:cacheprovider, --cov-report=xml:path).
+        positional = not token.startswith("-") and previous not in _PYTEST_VALUE_OPTIONS
+        if positional and windows_path_shape(token.strip("'" + '"').split("::", 1)[0]):
             raise AgentDirectiveParseError("unsafe TEST directive")
     return tokens

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -380,7 +381,7 @@ def _extract_file_references(task: str) -> tuple[str, ...]:
 
 def _safe_relative_reference(reference: str) -> Path | None:
     candidate = Path(reference)
-    if candidate.is_absolute() or ".." in candidate.parts or ":" in reference:
+    if candidate.is_absolute() or ".." in candidate.parts or ":" in reference or ntpath.isreserved(reference):  # #590
         return None
     if any(char in reference for char in "*?[]"):
         return None
