@@ -219,7 +219,7 @@ _MAX_URL_BYTES = 2083
 
 def _https_hostname(url: str) -> str | None:
     try:
-        if len(url.encode()) > _MAX_URL_BYTES:
+        if len(url) > _MAX_URL_BYTES or len(url.encode()) > _MAX_URL_BYTES:
             return None
         parsed = urlparse(url)
         parsed.port  # noqa: B018

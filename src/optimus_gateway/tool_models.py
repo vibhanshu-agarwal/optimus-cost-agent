@@ -341,6 +341,7 @@ def package_lookup_result_payload(result: PackageProviderResult) -> dict[str, An
         "versions": [
             {"version": record.version, "released_at": record.released_at, "source_url": record.source_url}
             for record in result.versions
+            if _is_https_url(record.source_url)  # #610: a version page URL the agent would refuse is dropped
         ],
         "citations": list(result.citations),
     }
@@ -387,7 +388,7 @@ _MAX_URL_BYTES = 2083
 
 def _is_https_url(value: str) -> bool:
     try:
-        if len(value.encode()) > _MAX_URL_BYTES:
+        if len(value) > _MAX_URL_BYTES or len(value.encode()) > _MAX_URL_BYTES:
             return False
         parsed = urlparse(value)
         parsed.port  # noqa: B018

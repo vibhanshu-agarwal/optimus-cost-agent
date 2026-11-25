@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Protocol
 from urllib.parse import quote, urlparse
 from urllib.request import Request
@@ -152,7 +151,7 @@ _MAX_URL_BYTES = 2083
 
 def _is_https_url(value: str) -> bool:
     try:
-        if len(value.encode()) > _MAX_URL_BYTES:
+        if len(value) > _MAX_URL_BYTES or len(value.encode()) > _MAX_URL_BYTES:
             return False
         parsed = urlparse(value)
         parsed.port  # noqa: B018
@@ -160,6 +159,15 @@ def _is_https_url(value: str) -> bool:
         # #610: so is a URL that is too long or does not encode (a lone surrogate)
         return False
     return parsed.scheme == "https" and bool(parsed.hostname)
+
+
+def _encodes(text: str) -> bool:
+    # #610: quote() raises on text that does not encode (a lone surrogate from an escaped JSON string)
+    try:
+        text.encode()
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 class PackageRegistryToolProvider:
@@ -185,12 +193,6 @@ class PackageRegistryToolProvider:
         self._on_retry = on_retry
 
     def lookup(self, request: PackageLookupGatewayRequest) -> PackageProviderResult:
-        result = self._lookup(request)
-        # #610: a version page URL is built from the registry's version text; one the agent would refuse is dropped
-        kept = tuple(record for record in result.versions if _is_https_url(record.source_url))
-        return replace(result, versions=kept)
-
-    def _lookup(self, request: PackageLookupGatewayRequest) -> PackageProviderResult:
         if request.ecosystem == "pypi":
             return self._lookup_pypi(request)
         if request.ecosystem == "npm":
@@ -216,7 +218,7 @@ class PackageRegistryToolProvider:
                 released_at=_release_time(files),
             )
             for version, files in releases.items()
-            if isinstance(version, str) and isinstance(files, list)
+            if isinstance(version, str) and isinstance(files, list) and _encodes(version)
         )
         return PackageProviderResult(
             package=request.package,
@@ -246,7 +248,7 @@ class PackageRegistryToolProvider:
                 released_at=times.get(version) if isinstance(times, dict) and isinstance(times.get(version), str) else None,
             )
             for version in raw_versions
-            if isinstance(version, str)
+            if isinstance(version, str) and _encodes(version)
         )
         return PackageProviderResult(
             package=request.package,

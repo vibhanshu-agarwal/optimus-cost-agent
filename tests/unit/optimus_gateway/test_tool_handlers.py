@@ -4,8 +4,15 @@ import json
 from typing import Any
 
 import pytest
+from pydantic import TypeAdapter
 
-from optimus.gateway.tool_models import PackageLookupResult, WebSearchResultSet, parse_gateway_tool_envelope
+from optimus.gateway.tool_models import (
+    HttpsUrl,
+    PackageLookupResult,
+    WebExtractResultSet,
+    WebSearchResultSet,
+    parse_gateway_tool_envelope,
+)
 from optimus_gateway.models import GatewayServiceConfig, GatewayToolContext
 from optimus_gateway.tool_handlers import GatewayToolDependencies, handle_tool_request
 from optimus_gateway.tool_models import (
@@ -797,6 +804,7 @@ OVER_LONG_URLS = [
     pytest.param(_LONGEST_URL + "a", id="ascii-2084-bytes"),
     pytest.param(_URL_BASE + chr(0xE9) * 1033, id="non-ascii-1052-chars-2085-bytes"),
     pytest.param(_URL_BASE + chr(0xD800), id="lone-surrogate"),
+    pytest.param(" " + _LONGEST_URL, id="2083-bytes-plus-leading-space"),
 ]
 
 
@@ -857,17 +865,26 @@ def test_web_extract_answers_a_typed_400_for_an_over_long_url(url):
     assert web_provider.extract_calls == []
 
 
-def test_the_longest_url_the_agent_accepts_is_still_admitted_and_recorded():
+@pytest.mark.parametrize(
+    "url",
+    [
+        pytest.param(_LONGEST_URL, id="ascii-2083-bytes"),
+        pytest.param(_URL_BASE + chr(0xE9) * 1032, id="non-ascii-1051-chars-2083-bytes"),
+    ],
+)
+def test_the_longest_url_the_agent_accepts_is_searched_recorded_and_extracted(url):
     store = InMemoryGatewayToolStateStore()
-    web_provider = _tavily([{"url": _LONGEST_URL, "title": "Keep", "content": "Yes"}])
+    web_provider = _tavily([{"url": url, "title": "Keep", "content": "Yes"}])
+    deps = _dependencies(web_provider=web_provider, state_store=store)
 
-    status, body = _call(
-        "/v1/tools/web/search", _search_body(), _dependencies(web_provider=web_provider, state_store=store)
-    )
+    search_status, search = _call("/v1/tools/web/search", _search_body(), deps)
+    extract_status, extract = _call("/v1/tools/web/extract", _extract_body(urls=[url]), deps)
 
-    assert status == 200
-    assert store.search_result_urls(run_id="run-1") == frozenset({_LONGEST_URL})
-    assert _agent_result_urls(body) == [_LONGEST_URL]
+    assert search_status == 200 and extract_status == 200
+    assert store.search_result_urls(run_id="run-1") == frozenset({url})
+    assert _agent_result_urls(search) == [str(TypeAdapter(HttpsUrl).validate_python(url))]
+    extracted = parse_gateway_tool_envelope(json.loads(json.dumps(extract)), WebExtractResultSet)
+    assert [str(item.url) for item in extracted.result.items] == [str(TypeAdapter(HttpsUrl).validate_python(url))]
 
 
 @pytest.mark.parametrize("url", OVER_LONG_URLS)
@@ -895,7 +912,7 @@ def test_the_osv_adapter_drops_an_over_long_reference_url(url):
 
 
 def test_a_package_version_with_an_over_long_page_url_is_dropped_and_the_agent_reads_the_rest():
-    releases: dict[str, list[object]] = {"1.0.0": [], "9" * 2084: [], "2.0.0": []}
+    releases: dict[str, list[object]] = {"1.0.0": [], "9" * 2084: [], chr(0xD800): [], "2.0.0": []}
     package_provider = PackageRegistryToolProvider(
         pypi_base_url="https://pypi.example",
         npm_base_url="https://npm.example",
@@ -909,3 +926,24 @@ def test_a_package_version_with_an_over_long_page_url_is_dropped_and_the_agent_r
     assert status == 200
     envelope = parse_gateway_tool_envelope(json.loads(json.dumps(body)), PackageLookupResult)
     assert [record.version for record in envelope.result.versions] == ["1.0.0", "2.0.0"]
+
+
+def test_a_package_provider_version_url_over_the_limit_is_dropped_at_the_handler():
+    result = PackageProviderResult(
+        package="pytest-asyncio",
+        ecosystem="pypi",
+        usage=_usage(),
+        versions=(
+            PackageVersionRecord(version="1.0.0", source_url="https://pypi.org/project/pytest-asyncio/1.0.0/"),
+            PackageVersionRecord(version="2.0.0", source_url=_LONGEST_URL + "a"),
+        ),
+        citations=("https://pypi.org/project/pytest-asyncio/",),
+    )
+
+    status, body = _call(
+        "/v1/tools/package/lookup", _package_body(), _dependencies(package_provider=_FakePackageProvider(result=result))
+    )
+
+    assert status == 200
+    envelope = parse_gateway_tool_envelope(json.loads(json.dumps(body)), PackageLookupResult)
+    assert [record.version for record in envelope.result.versions] == ["1.0.0"]
