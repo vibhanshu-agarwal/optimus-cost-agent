@@ -1,0 +1,329 @@
+{
+ "budget": {
+  "C": 32768,
+  "T": 13107,
+  "legacy": 16384
+ },
+ "budget_gates": {
+  "checks": {
+   "all_four_change": true,
+   "every_complete_f_fits_q_cap": true,
+   "exact_case_set": true,
+   "two_ordinary_allocation_changes": true,
+   "two_r_in_legacy_to_ceiling": true
+  },
+  "passes": true
+ },
+ "cases_sha256": "hex:0a16d5b8dfbfd75d162c1f9a64977067f360ec1d869fac8496a1d70fff40d2da",
+ "embedding": {
+  "embedded": 0,
+  "reused": 32787
+ },
+ "estimator": "the D3 route's request estimator (attachment_limits)",
+ "head": "git:8cf26df5aa929a3da44088deb5a7a6299967df2a",
+ "label": "plan12.14-cp1-budget-pass",
+ "reader": "FilePolicy, purpose AUTOMATIC",
+ "rows": [
+  {
+   "C": 32768,
+   "R": 7431,
+   "T": 13107,
+   "arms": {
+    "BU": {
+     "budget": 16384,
+     "complete": true,
+     "full_input_tokens": 29377,
+     "optional_digest": "hex:166d54a54aa45aee72200027ab9f242c3c3d99d00ec6e6a817118a78d220617b",
+     "optional_items": 18,
+     "optional_room": 8953,
+     "pack_bytes": 15549,
+     "pack_sha256": "hex:28f8ab5bd33c6b282498ad71ee1ce72ebaa054647f4bad6d06e88634f1859055",
+     "tokens": 15821
+    },
+    "F": {
+     "budget": 13107,
+     "complete": true,
+     "full_input_tokens": 26052,
+     "optional_digest": "hex:fae2d0b4a160b67b96dc2892192b2a8e2c60f00be5e0d84cbe446bd18bb25e48",
+     "optional_items": 15,
+     "optional_room": 5676,
+     "pack_bytes": 12224,
+     "pack_sha256": "hex:e0016c5e71e230607371c9152139d9d79702e6b131865ecbb3019a819ec714cf",
+     "tokens": 12496
+    }
+   },
+   "case_id": "QB1",
+   "fits_q_cap": true,
+   "kind": "ordinary-fit",
+   "legacy": 16384,
+   "r_in_legacy_to_ceiling": false,
+   "substantive_change": true
+  },
+  {
+   "C": 32768,
+   "R": 14754,
+   "T": 13107,
+   "arms": {
+    "BU": {
+     "budget": 16384,
+     "complete": true,
+     "full_input_tokens": 29375,
+     "optional_digest": "hex:09a6529dd0e3212d2d611e0a13ef3508a80577bbd96f315222dcbbe1d0839454",
+     "optional_items": 5,
+     "optional_room": 1630,
+     "pack_bytes": 15559,
+     "pack_sha256": "hex:9fde16896c3e67eca2ee8a1b46a76f0cd4ff1e1e89797f58767734c4c969310f",
+     "tokens": 15831
+    },
+    "F": {
+     "budget": 15778,
+     "complete": true,
+     "full_input_tokens": 28983,
+     "optional_digest": "hex:d81f76cde49f9cea2c2053b395b00adbbb0a24bd2693c1b77b4e9f61722c5876",
+     "optional_items": 2,
+     "optional_room": 1024,
+     "pack_bytes": 15167,
+     "pack_sha256": "hex:39783a05bd6a87ef83a41cb2e735343bd2f0adf802007b39d5d220966213b30b",
+     "tokens": 15439
+    }
+   },
+   "case_id": "QB2",
+   "fits_q_cap": true,
+   "kind": "ordinary-fit",
+   "legacy": 16384,
+   "r_in_legacy_to_ceiling": false,
+   "substantive_change": true
+  },
+  {
+   "C": 32768,
+   "R": 18799,
+   "T": 13107,
+   "arms": {
+    "BU": {
+     "budget": 16384,
+     "complete": false,
+     "full_input_tokens": null,
+     "optional_digest": "hex:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "optional_items": 0,
+     "optional_room": null,
+     "pack_bytes": 0,
+     "pack_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "tokens": 0
+    },
+    "F": {
+     "budget": 19823,
+     "complete": true,
+     "full_input_tokens": 32993,
+     "optional_digest": "hex:7ed34d276d67394c582bba7626c5251b3f12e3ce55b45fbe7fca0f9634cd195f",
+     "optional_items": 2,
+     "optional_room": 1024,
+     "pack_bytes": 19216,
+     "pack_sha256": "hex:e13ef636cb26a204f56a830a87d872a1083f636236275c08bdd4ac3cbaef1e6a",
+     "tokens": 19488
+    }
+   },
+   "case_id": "QB3",
+   "fits_q_cap": true,
+   "kind": "required-over-legacy",
+   "legacy": 16384,
+   "r_in_legacy_to_ceiling": true,
+   "substantive_change": true
+  },
+  {
+   "C": 32768,
+   "R": 21053,
+   "T": 13107,
+   "arms": {
+    "BU": {
+     "budget": 16384,
+     "complete": false,
+     "full_input_tokens": null,
+     "optional_digest": "hex:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "optional_items": 0,
+     "optional_room": null,
+     "pack_bytes": 0,
+     "pack_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "tokens": 0
+    },
+    "F": {
+     "budget": 22077,
+     "complete": true,
+     "full_input_tokens": 35323,
+     "optional_digest": "hex:b3716df17fe6a39a875b5e8df66b1ff5bea9e35ba13a4e0994892cbc61324215",
+     "optional_items": 1,
+     "optional_room": 1024,
+     "pack_bytes": 21532,
+     "pack_sha256": "hex:fdf514e4cf9bcdaf90249a74a058868f49937840ccccee5bdd9288991ebe05b2",
+     "tokens": 21804
+    }
+   },
+   "case_id": "QB4",
+   "fits_q_cap": true,
+   "kind": "required-over-legacy",
+   "legacy": 16384,
+   "r_in_legacy_to_ceiling": true,
+   "substantive_change": true
+  },
+  {
+   "C": 32768,
+   "R": 49053,
+   "T": 13107,
+   "arms": {
+    "BU": {
+     "budget": 16384,
+     "complete": false,
+     "full_input_tokens": null,
+     "optional_digest": "hex:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "optional_items": 0,
+     "optional_room": null,
+     "pack_bytes": 0,
+     "pack_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "tokens": 0
+    },
+    "F": {
+     "budget": 32768,
+     "complete": false,
+     "full_input_tokens": null,
+     "optional_digest": "hex:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "optional_items": 0,
+     "optional_room": null,
+     "pack_bytes": 0,
+     "pack_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "tokens": 0
+    }
+   },
+   "case_id": "QO1",
+   "fits_q_cap": false,
+   "kind": "outline",
+   "legacy": 16384,
+   "r_in_legacy_to_ceiling": false,
+   "substantive_change": false
+  },
+  {
+   "C": 32768,
+   "R": 50727,
+   "T": 13107,
+   "arms": {
+    "BU": {
+     "budget": 16384,
+     "complete": false,
+     "full_input_tokens": null,
+     "optional_digest": "hex:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "optional_items": 0,
+     "optional_room": null,
+     "pack_bytes": 0,
+     "pack_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "tokens": 0
+    },
+    "F": {
+     "budget": 32768,
+     "complete": false,
+     "full_input_tokens": null,
+     "optional_digest": "hex:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "optional_items": 0,
+     "optional_room": null,
+     "pack_bytes": 0,
+     "pack_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "tokens": 0
+    }
+   },
+   "case_id": "QO2",
+   "fits_q_cap": false,
+   "kind": "outline",
+   "legacy": 16384,
+   "r_in_legacy_to_ceiling": false,
+   "substantive_change": false
+  },
+  {
+   "C": 32768,
+   "R": 4832,
+   "T": 13107,
+   "arms": {
+    "BU": {
+     "budget": 16384,
+     "complete": true,
+     "full_input_tokens": 29234,
+     "optional_digest": "hex:509bd5cd5d3d4d4f105a8c779a33089385f46944e771332d7ae830ed8897c70a",
+     "optional_items": 35,
+     "optional_room": 11552,
+     "pack_bytes": 15529,
+     "pack_sha256": "hex:0920438a5b0cfb94d229e5e44bcb857b3d2c399dfb8f83d7a06de80991184362",
+     "tokens": 15801
+    },
+    "F": {
+     "budget": 13107,
+     "complete": true,
+     "full_input_tokens": 25919,
+     "optional_digest": "hex:89346906259a2e9183e72fe56de33af15fab51d0b54f88a554b0bcaba2714dbe",
+     "optional_items": 24,
+     "optional_room": 8275,
+     "pack_bytes": 12214,
+     "pack_sha256": "hex:feeca60b76346e60ea06ca3927d2995f0537637641030688c334fb52feb82823",
+     "tokens": 12486
+    }
+   },
+   "case_id": "QO3",
+   "fits_q_cap": true,
+   "kind": "whole-summary",
+   "legacy": 16384,
+   "r_in_legacy_to_ceiling": false,
+   "substantive_change": true
+  },
+  {
+   "C": 32768,
+   "R": 49053,
+   "T": 13107,
+   "arms": {
+    "BU": {
+     "budget": 16384,
+     "complete": false,
+     "full_input_tokens": null,
+     "optional_digest": "hex:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "optional_items": 0,
+     "optional_room": null,
+     "pack_bytes": 0,
+     "pack_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "tokens": 0
+    },
+    "F": {
+     "budget": 32768,
+     "complete": false,
+     "full_input_tokens": null,
+     "optional_digest": "hex:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "optional_items": 0,
+     "optional_room": null,
+     "pack_bytes": 0,
+     "pack_sha256": "hex:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+     "tokens": 0
+    }
+   },
+   "case_id": "QO4",
+   "fits_q_cap": false,
+   "kind": "exact-over-ceiling",
+   "legacy": 16384,
+   "r_in_legacy_to_ceiling": false,
+   "substantive_change": false
+  }
+ ],
+ "schema": "plan12-memory-m2b.budget.v1",
+ "trees": [
+  {
+   "coverage": {
+    "complete": true,
+    "excluded": 0,
+    "files_indexed": 2033,
+    "files_total": 2033,
+    "parsed_loc": {
+     "markdown": 125179,
+     "python": 339703,
+     "text": 344
+    },
+    "records": 34812,
+    "unsupported": 400
+   },
+   "records": 34812,
+   "revision": "git:7abbaa262696c40409cea166569a93bd2feb6853",
+   "seconds": 101.0
+  }
+ ]
+}
