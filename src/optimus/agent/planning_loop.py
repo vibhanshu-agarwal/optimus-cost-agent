@@ -21,6 +21,7 @@ from optimus.agent.directives import (
     TEST_DIRECTIVE,
     WRITE_DIRECTIVE,
     AgentDirectiveParseError,
+    AgentDirectivePathError,
     AgentPlanDirectives,
     AgentWriteDirective,
     IndexToolRequest,
@@ -124,6 +125,9 @@ PLANNING_TURN_PARSE_CODES = frozenset(
         "REFUSE_NOT_ONE_LINE",
         "REFUSE_TOO_LONG",
         "REFUSE_HAS_DIRECTIVE_PREFIX",
+        "REFUSE_UNSAFE_TEXT",
+        "PLAN_PATH_UNSAFE",
+        "INDEX_ARGUMENT_UNSAFE",
         "MCP_MIXED_DIRECTIVES",
         "MCP_NOT_EXACTLY_ONE",
         "MCP_LIST_INVALID",
@@ -153,6 +157,14 @@ PLANNING_PARSE_FEEDBACK: dict[str, str] = {
     "REFUSE_NOT_ONE_LINE": "a REFUSE: reply must be a single non-empty line.",
     "REFUSE_TOO_LONG": "a REFUSE: reason must be at most 512 UTF-8 bytes.",
     "REFUSE_HAS_DIRECTIVE_PREFIX": "a REFUSE: reason must not contain directive prefixes.",
+    "REFUSE_UNSAFE_TEXT": "a REFUSE: reason must not hold control or invisible format characters.",
+    "PLAN_PATH_UNSAFE": (
+        f"each plan path must be workspace-relative, at most {MAX_PATH_CHARS} characters, with no control or invisible "
+        "format character, colon, leading backslash or reserved Windows name."
+    ),
+    "INDEX_ARGUMENT_UNSAFE": (
+        f"an index tool argument must be at most {MAX_PATH_CHARS} characters, with no control or invisible format characters."
+    ),
     "MCP_MIXED_DIRECTIVES": "an MCP_LIST or MCP_CALL line must be the whole reply, never mixed with other directives.",
     "MCP_NOT_EXACTLY_ONE": "an MCP turn must contain exactly one MCP_LIST or MCP_CALL line.",
     "MCP_LIST_INVALID": "the MCP_LIST line was malformed; use MCP_LIST <server>.",
@@ -168,8 +180,8 @@ PLANNING_PARSE_FEEDBACK: dict[str, str] = {
     "INTERMEDIATE_REQUIRES_READ": "an intermediate turn needs at least one ranged READ: line after its OBSERVE: line.",
     "OBSERVATION_TOO_LARGE": "the OBSERVE: note and its READ: requests exceeded the observation budget; keep the note shorter.",
     "READ_PATH_NOT_RELATIVE": (
-        f"each READ: path must be workspace-relative, at most {MAX_PATH_CHARS} characters, "
-        "with no control or invisible format characters."
+        f"each READ: path must be workspace-relative, at most {MAX_PATH_CHARS} characters, with no control or invisible "
+        "format character, colon, leading backslash or reserved Windows name."
     ),
     "READ_RANGES_DUPLICATE": "the READ: ranges must not repeat.",
     "READ_RANGES_OVERLAP": "the READ: ranges must not overlap.",
@@ -617,7 +629,10 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
     if not stripped:
         raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
     if index_tools:
-        requests = parse_index_tool_reply(stripped)
+        try:
+            requests = parse_index_tool_reply(stripped)
+        except AgentDirectivePathError as exc:
+            raise PlanningTurnParseError("INDEX_ARGUMENT_UNSAFE", "an index tool argument was refused") from exc
         if requests is not None:
             return PlanningTurnDecision(kind=PlanningTurnKind.INDEX_TOOL, index_requests=requests)
 
@@ -651,6 +666,8 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
     if _surface_has_ranged_read(surface_lines):
         return _parse_intermediate_turn(stripped)
 
+    if _final_plan_path_refused(text):
+        raise PlanningTurnParseError("PLAN_PATH_UNSAFE", "a plan path was refused")
     raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
 
@@ -912,8 +929,21 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
         raise PlanningTurnParseError("REFUSE_TOO_LONG", "REFUSE reason exceeds 512 UTF-8 bytes")
     if _REFUSE_REASON_DIRECTIVE_PREFIX.match(reason):
         raise PlanningTurnParseError("REFUSE_HAS_DIRECTIVE_PREFIX", "REFUSE reason must not contain directive prefixes")
+    if unsafe_path_text(reason):  # #583: the reason is the person's text and the committed history
+        raise PlanningTurnParseError("REFUSE_UNSAFE_TEXT", "REFUSE reason holds an unsafe character")
 
     return PlanningTurnDecision(kind=PlanningTurnKind.REFUSE, reason=reason)
+
+
+def _final_plan_path_refused(text: str) -> bool:
+    """#583: the reply failed as a final plan because of a path, so the notice can name that cause."""
+    try:
+        parse_agent_plan(text, edit_base="forbidden")
+    except AgentDirectivePathError:
+        return True
+    except AgentDirectiveParseError:
+        return False
+    return False
 
 
 def _try_parse_final_plan(text: str) -> PlanningTurnDecision | None:

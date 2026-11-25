@@ -12,7 +12,14 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from optimus.agent.directives import AgentDirectiveParseError, AgentEditDirective, bind_edit_base, parse_agent_plan, parse_index_tool_reply
+from optimus.agent.directives import (
+    AgentDirectiveParseError,
+    AgentDirectivePathError,
+    AgentEditDirective,
+    bind_edit_base,
+    parse_agent_plan,
+    parse_index_tool_reply,
+)
 from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failure_text
 from optimus.agent.index_turn import LIMIT_NOTICE, LIMIT_OBSERVATION, MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import (
@@ -1982,7 +1989,10 @@ class AgentRunner:
                 return reply
             spent += reply.cost_usd
             unknown_so_far += reply.unknown
-            requests = None if memory is None else parse_index_tool_reply(reply.answer)
+            try:
+                requests = None if memory is None else parse_index_tool_reply(reply.answer)
+            except AgentDirectivePathError:
+                requests = None  # #583: not a request; the reply is the answer, like any other prose
             if requests is None:
                 break
             if not tools_open:

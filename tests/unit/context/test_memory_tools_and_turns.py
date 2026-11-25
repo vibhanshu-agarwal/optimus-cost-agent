@@ -19,7 +19,7 @@ from context_engine.code_index import path_id
 from context_engine.index_worker import StorageRefusedError, StorageUnavailableError
 from context_engine.retrieval import CatalogueFile, Hit, Retriever
 from optimus.acp.trusted_paths import TrustedPathError
-from optimus.agent.directives import IndexToolRequest, parse_index_tool_reply
+from optimus.agent.directives import AgentDirectivePathError, IndexToolRequest, parse_index_tool_reply
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentRunRequest, AgentRunStatus
 from optimus.agent.prompts import (
@@ -1752,3 +1752,54 @@ def test_a_windows_shaped_index_path_is_refused_before_the_tool_runs(workspace, 
 
     assert ran.calls[0].authorization_outcome == "BLOCK"
     assert "Refused: the path is not a plain workspace-relative path" in ran.envelope
+
+
+# --- #583: an index tool argument holding a control or format character, or over-long, is never a request ----------
+
+ESC, NUL, RLO = chr(0x1B), chr(0x00), chr(0x202E)
+UNSAFE_ARGUMENTS = {"esc": f"pkg/a{ESC}[2J.py", "nul": f"pkg/a{NUL}.py", "rlo": f"pkg/a{RLO}yp.py", "too-long": "a" * 4097}
+INDEX_TOOLS = ("SEARCH", "OUTLINE", "SYMBOLS", "LIST")
+
+
+def _unsafe(text: str) -> bool:
+    return any(c in text for c in (ESC, NUL, RLO)) or "a" * 4097 in text
+
+
+@pytest.mark.parametrize("argument", UNSAFE_ARGUMENTS.values(), ids=UNSAFE_ARGUMENTS.keys())
+@pytest.mark.parametrize("tool", INDEX_TOOLS)
+def test_an_unsafe_index_tool_argument_is_refused_by_the_path_rule(tool, argument):
+    for reply in (f"{tool} {argument}", f"LIST .\n{tool} {argument}"):
+        with pytest.raises(AgentDirectivePathError, match="^unsafe index tool argument$"):
+            parse_index_tool_reply(reply)
+    assert parse_index_tool_reply(f"{tool} {argument}\nand some prose") is None  # prose is no request, as before
+
+
+@pytest.mark.parametrize("argument", UNSAFE_ARGUMENTS.values(), ids=UNSAFE_ARGUMENTS.keys())
+@pytest.mark.parametrize("tool", INDEX_TOOLS)
+def test_agent_never_runs_or_shows_an_unsafe_index_tool_argument(workspace, tool, argument):
+    """It reached the live card title, the call summary, telemetry and the model's next request."""
+    gateway = _Gateway([f"{tool} {argument}", "REFUSE: not enough evidence"])
+    packer = _Packer(_session(workspace, _Storage()).turn())
+    cards: list[tuple[str, ...]] = []
+    packer.memory.on_tool = lambda *card: cards.append(card)
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="change it", execution_mode=ExecutionMode.AGENT, workspace_root=workspace)
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+
+    assert result.tool_calls == () and cards == []
+    assert len(gateway.inputs) == 2 and not _unsafe(gateway.inputs[1]) and not _unsafe(result.output_text)
+    assert "index tool argument" in gateway.inputs[1]  # the fixed notice names the cause
+
+
+@pytest.mark.parametrize("argument", UNSAFE_ARGUMENTS.values(), ids=UNSAFE_ARGUMENTS.keys())
+@pytest.mark.parametrize("tool", INDEX_TOOLS)
+def test_chat_never_runs_an_unsafe_index_tool_argument(workspace, tool, argument):
+    gateway = _Gateway([f"{tool} {argument}"])
+    packer = _Packer(_session(workspace, _Storage()).turn())
+    cards: list[tuple[str, ...]] = []
+    packer.memory.on_tool = lambda *card: cards.append(card)
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="q", execution_mode=ExecutionMode.CHAT, workspace_root=workspace)
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+
+    assert result.tool_calls == () and cards == [] and len(gateway.inputs) == 1
