@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Protocol
 from urllib.parse import quote, urlparse
 from urllib.request import Request
@@ -145,11 +146,18 @@ def _usage() -> ProviderUsage:
     return ProviderUsage(provider="tavily", billing_units=0, cost_usd="0")
 
 
+# #610: the agent reads these URLs with pydantic's HttpUrl, which refuses more than 2083 UTF-8 bytes.
+_MAX_URL_BYTES = 2083
+
+
 def _is_https_url(value: str) -> bool:
     try:
+        if len(value.encode()) > _MAX_URL_BYTES:
+            return False
         parsed = urlparse(value)
         parsed.port  # noqa: B018
-    except ValueError:  # #603: a host or port the parser rejects (an unclosed bracket, port 65536) is no host
+    except ValueError:  # #603: a host or port the parser rejects (an unclosed bracket, port 65536) is no host;
+        # #610: so is a URL that is too long or does not encode (a lone surrogate)
         return False
     return parsed.scheme == "https" and bool(parsed.hostname)
 
@@ -177,6 +185,12 @@ class PackageRegistryToolProvider:
         self._on_retry = on_retry
 
     def lookup(self, request: PackageLookupGatewayRequest) -> PackageProviderResult:
+        result = self._lookup(request)
+        # #610: a version page URL is built from the registry's version text; one the agent would refuse is dropped
+        kept = tuple(record for record in result.versions if _is_https_url(record.source_url))
+        return replace(result, versions=kept)
+
+    def _lookup(self, request: PackageLookupGatewayRequest) -> PackageProviderResult:
         if request.ecosystem == "pypi":
             return self._lookup_pypi(request)
         if request.ecosystem == "npm":
