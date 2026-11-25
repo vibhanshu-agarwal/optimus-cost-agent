@@ -4,7 +4,7 @@ import contextlib
 import hashlib
 import subprocess
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -15,7 +15,17 @@ from typing import TYPE_CHECKING, Any
 from optimus.agent.directives import AgentDirectiveParseError, AgentEditDirective, bind_edit_base, parse_agent_plan, parse_index_tool_reply
 from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failure_text
 from optimus.agent.index_turn import LIMIT_NOTICE, LIMIT_OBSERVATION, MAX_INDEX_ROUNDS, keep_newest, run_index_tools
-from optimus.agent.models import TEST_STOP_REASONS, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall, ContextPacker
+from optimus.agent.models import (
+    GUARD_REFUSAL_TEXTS,
+    TEST_GUARD_REFUSED,
+    TEST_STOP_REASONS,
+    WRITE_GUARD_REFUSED,
+    AgentRunRequest,
+    AgentRunResult,
+    AgentRunStatus,
+    AgentToolCall,
+    ContextPacker,
+)
 from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_agent_planner_input, build_indexed_chat_input, indexed_chat_prefix
 from optimus.agent.state_store import (
@@ -23,7 +33,7 @@ from optimus.agent.state_store import (
     AgentStateStore,
     InMemoryAgentStateStore,
 )
-from optimus.agent.tools import AgentToolbox
+from optimus.agent.tools import AgentToolbox, GuardDenied
 from optimus.agent.workspace_context import (
     WorkspaceContextResult,
     WorkspaceReferenceStatus,
@@ -214,6 +224,7 @@ class _DirectiveGate:
         self.stopped: CommandStopped | None = None  # a TEST that timed out, was not contained or would not stop
         self.refused: WriteRefused | None = None  # a WRITE refused before any effect (#410)
         self.edit_failure: str | None = None  # an EDIT that could not be applied: nothing written, TESTs suppressed
+        self.guard_refused: str | None = None  # #589: the stop code of an approved WRITE or TEST a guard refused
 
     def halt_requested(self) -> bool:
         return self._control is not None and self._control.halt_requested()
@@ -274,6 +285,31 @@ def _run_gated(
         raise
     gate.complete(kind, operation_id, "succeeded")
     return True, result
+
+
+def _guard_refused(gate: _DirectiveGate, code: str, exc: BaseException, *, suppress: Iterable[tuple[Any, str]] = ()) -> None:
+    """#589: a guard refused an approved step before any effect. ``_run_gated`` settled it failed_no_effect; the plan
+    stops, its unstarted steps in ``suppress`` are suppressed, and the cause is logged by type and the guard's fixed
+    reason, never the path or command."""
+    gate.guard_refused = code
+    for kind, operation_id in suppress:
+        gate.complete(kind, operation_id, "suppressed")
+    from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log
+
+    cause = exc.__cause__
+    acp_debug_log(
+        location="runner.py:guard_refusal",
+        message="guard refused an approved step",
+        data=lambda: {
+            "directive": "TEST" if code == TEST_GUARD_REFUSED else "WRITE",
+            "error_type": type(exc).__name__,
+            "cause_type": None if cause is None else type(cause).__name__,
+            "reason": str(exc),
+        },
+        hypothesis_id="P589-GUARD",
+        run_id=gate.run_id,
+        level=DiagnosticLevel.WARNING,
+    )
 
 
 class AgentRunner:
@@ -958,6 +994,11 @@ class AgentRunner:
                 if "unsafe TEST directive" in str(exc):
                     return self._unsafe_test_directive_result(request)
                 raise
+        if gate.guard_refused is not None:
+            return self._guard_refused_result(
+                request=request, code=gate.guard_refused, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=total_cost_usd,
+                plan_hash=plan_hash, cost_complete=cost_complete, unknown_cost_attempt_count=unknown_cost_attempt_count,
+            )  # fmt: skip
         if gate.stopped is not None:
             return self._test_stopped_result(request=request, stop=gate.stopped, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=total_cost_usd, plan_hash=plan_hash)
         if gate.halted:
@@ -1284,6 +1325,11 @@ class AgentRunner:
                 if "unsafe TEST directive" in str(exc):
                     return self._unsafe_test_directive_result(request)
                 raise
+        if gate.guard_refused is not None:
+            return self._guard_refused_result(
+                request=request, code=gate.guard_refused, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=record.cost_usd,
+                plan_hash=record.plan_hash,
+            )  # fmt: skip
         if gate.stopped is not None:
             return self._test_stopped_result(request=request, stop=gate.stopped, tool_calls=tool_calls, mutation_count=mutation_count, total_cost_usd=record.cost_usd, plan_hash=record.plan_hash)
         if gate.halted:
@@ -1373,6 +1419,31 @@ class AgentRunner:
             total_cost_usd=total_cost_usd,
             plan_hash=plan_hash,
             stop_reason=refused.code,
+            **cost,
+        )
+
+    def _guard_refused_result(
+        self,
+        *,
+        request: AgentRunRequest,
+        code: str,
+        tool_calls: list[AgentToolCall],
+        mutation_count: int,
+        total_cost_usd: Decimal,
+        plan_hash: str | None,
+        **cost: Any,
+    ) -> AgentRunResult:
+        """#589: a guard refused an approved WRITE or TEST; the plan stops with a fixed text that quotes nothing."""
+        return self._build_result(
+            request=request,
+            status=AgentRunStatus.FAILED,
+            final_state="FAILED",
+            output_text=GUARD_REFUSAL_TEXTS[code],
+            tool_calls=tuple(tool_calls),
+            total_cost_usd=total_cost_usd,
+            mutation_count=mutation_count,
+            plan_hash=plan_hash,
+            stop_reason=code,
             **cost,
         )
 
@@ -1528,20 +1599,27 @@ class AgentRunner:
             return self._execute_edit_directive(directives.write, target=target, toolbox=toolbox, gate=gate)
         content = directives.write.content
         calls: list[AgentToolCall] = []
+        write_id = gate.operation_id("write", 0)
         if target.exists():
             read_id = gate.operation_id("read-before-write", 0)
             gate.register([(DirectiveKind.READ, read_id)])
-            started, read = _run_gated(
-                gate, DirectiveKind.READ, read_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
-            )
+            try:
+                started, read = _run_gated(
+                    gate, DirectiveKind.READ, read_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
+                )
+            except GuardDenied as denied:
+                _guard_refused(gate, WRITE_GUARD_REFUSED, denied, suppress=[(DirectiveKind.WRITE, write_id)])
+                return calls
             if not started:
                 return calls
             calls.append(read[1])
-        write_id = gate.operation_id("write", 0)
         try:
             started, write_call = _run_gated(
                 gate, DirectiveKind.WRITE, write_id, partial(toolbox.write_file, target, content, requested=relative_path), effectful=True
             )
+        except GuardDenied as denied:
+            _guard_refused(gate, WRITE_GUARD_REFUSED, denied)
+            return calls
         except WriteRefused as refused:
             # #410 R7: terminal for the plan, before any TEST; the registered TESTs are suppressed.
             gate.refused = refused
@@ -1589,6 +1667,9 @@ class AgentRunner:
             )
         except UnicodeDecodeError:
             return not_applicable("EDIT_NOT_UTF8")
+        except GuardDenied as denied:
+            _guard_refused(gate, WRITE_GUARD_REFUSED, denied, suppress=[(DirectiveKind.WRITE, write_id)])
+            return calls
         if not started:
             return calls
         text, read_call = read
@@ -1608,6 +1689,9 @@ class AgentRunner:
             # _run_gated has settled the WRITE as failed_no_effect: the check precedes the write.
             gate.edit_failure = "EDIT_SOURCE_CHANGED"
             _log_edit(gate.run_id, edit.path, "EDIT_SOURCE_CHANGED", base_sha256=edit.base_sha256)
+            return calls
+        except GuardDenied as denied:
+            _guard_refused(gate, WRITE_GUARD_REFUSED, denied)
             return calls
         if started:
             calls.append(write_call)
@@ -1630,8 +1714,8 @@ class AgentRunner:
         from optimus.acp.lifecycle import DirectiveKind
 
         directives = parse_agent_plan(plan_text)
-        if gate.edit_failure is not None:
-            # A plan's TESTs check its change; with the EDIT not applied, none of them runs.
+        if gate.edit_failure is not None or gate.guard_refused is not None:
+            # A plan's TESTs check its change; with the EDIT or WRITE not applied, none of them runs.
             for ordinal in range(len(directives.tests)):
                 gate.complete(DirectiveKind.TEST, gate.operation_id("test", ordinal), "suppressed")
             return []
@@ -1648,6 +1732,10 @@ class AgentRunner:
             )
             try:
                 started, call = _run_gated(gate, DirectiveKind.TEST, gate.operation_id("test", ordinal), run, effectful=True)
+            except MutationForbidden as denied:  # the mutation gate or the shell guard, before any process (#589)
+                unstarted = [(DirectiveKind.TEST, gate.operation_id("test", n)) for n in range(ordinal + 1, len(directives.tests))]
+                _guard_refused(gate, TEST_GUARD_REFUSED, denied, suppress=unstarted)
+                break
             except CommandStopped as stop:
                 calls.append(
                     AgentToolCall(tool_name="test_runner", summary=f"ran {' '.join(command)}: {stop}", authorization_outcome="ALLOW")

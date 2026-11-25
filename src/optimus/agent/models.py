@@ -158,6 +158,16 @@ TEST_STOP_REASONS = {
     "stop_unconfirmed": "TEST_STOP_UNCONFIRMED",
 }
 
+# #589: a guard refused a step of an approved plan. The text is fixed: it never quotes the refused path or command (#583).
+WRITE_GUARD_REFUSED = "WRITE_GUARD_REFUSED"
+TEST_GUARD_REFUSED = "TEST_GUARD_REFUSED"
+GUARD_REFUSAL_TEXTS = {
+    WRITE_GUARD_REFUSED: "A safety check refused the file change in the approved plan. The file was not changed, and no tests "
+    "from this plan ran.",
+    TEST_GUARD_REFUSED: "A safety check refused a test command in the approved plan. It did not run, and no later tests from "
+    "this plan ran. Any file change before it was kept.",
+}
+
 
 class AgentRunResult(BaseModel):
     model_config = ConfigDict(frozen=True)

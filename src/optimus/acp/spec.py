@@ -116,7 +116,15 @@ from optimus.acp.shapes import (
     new_tool_call_id,
     tool_kind_for_name,
 )
-from optimus.agent.models import TEST_STOP_REASONS, AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.models import (
+    GUARD_REFUSAL_TEXTS,
+    TEST_STOP_REASONS,
+    AgentApproval,
+    AgentRunRequest,
+    AgentRunResult,
+    AgentRunStatus,
+    AgentToolCall,
+)
 from optimus.agent.planning_loop import (
     PLANNING_NEW_READ_MAX_BYTES,
     PLANNING_OBSERVATION_MAX_BYTES,
@@ -4083,7 +4091,7 @@ _WRITE_NOT_EXECUTED_MESSAGE = (
 )
 
 # Stops whose plan's work was not done: they end as end_turn and send no completed-plan update (#559, #565).
-_UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED"})
+_UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED", *GUARD_REFUSAL_TEXTS})
 
 
 def _completion_message(result: AgentRunResult) -> str:
@@ -4091,8 +4099,8 @@ def _completion_message(result: AgentRunResult) -> str:
         return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
     if result.stop_reason == "EDIT_NOT_APPLICABLE":
         return result.output_text  # why the change was not made, that the plan made no changes, the next step and the code (#574)
-    if result.stop_reason == "UNSAFE_TEST_DIRECTIVE":
-        return result.output_text  # what was rejected and that nothing ran (#565)
+    if result.stop_reason == "UNSAFE_TEST_DIRECTIVE" or result.stop_reason in GUARD_REFUSAL_TEXTS:
+        return result.output_text  # what was rejected and that nothing ran (#565); a guard refusal's fixed text (#589)
     if result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED":
         return _WRITE_NOT_EXECUTED_MESSAGE
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:

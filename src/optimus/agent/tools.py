@@ -19,6 +19,11 @@ from optimus.tools.mutation_tools import write_file as exact_write_file
 from optimus.tools.mutation_tools import write_file_keeping_line_endings as guarded_write_file  # #410: a WRITE
 
 
+class GuardDenied(PermissionError):
+    """The guard or the mutation gate refused a file read or write before any effect (#589). Its text is the guard's fixed
+    reason; a write keeps the MutationForbidden as its cause."""
+
+
 class AgentToolbox:
     def __init__(
         self,
@@ -89,7 +94,7 @@ class AgentToolbox:
             )
         )
         if result.verdict is not PreToolVerdict.ALLOW or resolved is None:
-            raise PermissionError(result.reason)
+            raise GuardDenied(result.reason)
         target = resolved
         return target.read_text(encoding="utf-8", newline=newline), AgentToolCall(
             tool_name="file_reader",
@@ -174,7 +179,7 @@ class AgentToolbox:
         except WriteSourceChanged:
             raise
         except MutationForbidden as exc:
-            raise PermissionError(str(exc)) from exc
+            raise GuardDenied(str(exc)) from exc
         target = resolved if resolved is not None else Path(path)
         return AgentToolCall(
             tool_name="write_file",
