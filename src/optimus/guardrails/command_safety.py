@@ -14,7 +14,9 @@ from optimus.guardrails.validation import ValidationResult, ValidationVerdict
 _PIPE_TO_SHELL = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*\|\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _FETCH_THEN_EXEC = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*(&&|;)\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _ENV_ACCESS = re.compile(r"\b(printenv|env|set)\b|\bos\.environ\b|\$env:|%[A-Za-z_][A-Za-z0-9_]*%", re.IGNORECASE)
-_URL = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
+# #603: the scheme alone is a match, so a URL with no host after it (also one cut off at a quote or an angle
+# bracket) reaches the network rule and is refused there.
+_URL = re.compile(r"https?://[^\s'\"<>]*", re.IGNORECASE)
 _INTERPRETERS = {"bash", "sh", "zsh", "dash", "pwsh", "powershell", "python", "python3", "node", "ruby", "perl"}
 _INTERPRETER_PAYLOAD_FLAGS = {"-c", "-lc", "/c", "-command", "-e"}
 _NON_HTTP_EGRESS = {"scp", "sftp", "ssh", "ftp", "nc", "ncat", "netcat", "telnet"}

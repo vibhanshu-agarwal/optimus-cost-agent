@@ -1,6 +1,9 @@
 
 from optimus.guardrails.command_safety import CommandSafetyValidator
 from optimus.guardrails.path_safety import ValidationVerdict
+from optimus.guardrails.permissions import ToolSurface
+from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
+from optimus.runtime.modes import ExecutionMode, GenerationScope
 
 
 def validator(tmp_path):
@@ -328,3 +331,87 @@ def test_ordinary_and_lookalike_tokens_are_unaffected(tmp_path):
 
         assert result.verdict is ValidationVerdict.ALLOW, command
         assert result.rule_id == "shell.allowed", command
+
+
+# #603 row 4: a URL scheme with no host after it used to be skipped by the scanner, so it never reached the network rule.
+def test_a_url_scheme_with_no_host_is_refused(tmp_path):
+    for token in ("https://", "HTTPS://"):
+        result = validator(tmp_path).validate(("pytest", "-k", token))
+
+        assert result.verdict is ValidationVerdict.BLOCK
+        assert result.rule_id == "network.missing_host"
+
+
+def test_a_plain_http_scheme_with_no_host_is_refused_as_insecure(tmp_path):
+    result = validator(tmp_path).validate(("pytest", "-k", "http://"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "network.insecure_transport"
+
+
+def test_a_host_hidden_behind_a_quote_or_bracket_is_refused(tmp_path):
+    # The scanner stops at these characters, so the host after them was never judged; a shell would join the pieces.
+    for opener, closer in ((chr(0x22), chr(0x22)), (chr(0x27), chr(0x27)), ("<", ">")):
+        result = validator(tmp_path).validate(("curl", f"https://{opener}example.com{closer}"))
+
+        assert result.verdict is ValidationVerdict.BLOCK
+        assert result.rule_id == "network.missing_host"
+
+
+def test_a_command_without_a_url_scheme_is_still_allowed(tmp_path):
+    result = validator(tmp_path).validate(("pytest", "tests", "-k", "not slow and https"))
+
+    assert result.verdict is ValidationVerdict.ALLOW
+
+
+# #603 row 4, the web surface of the same guard (kept here: test_pre_tool_guard.py holds a fixture the secret-scan
+# hook rejects whenever that file is staged).
+def _web_request(target_path):
+    return PreToolRequest(
+        run_id="run-1",
+        session_id="session-1",
+        execution_mode=ExecutionMode.AGENT,
+        tool_surface=ToolSurface.WEB,
+        action="web_extract",
+        target_path=target_path,
+        generation_scope=GenerationScope.INLINE_SNIPPET,
+        approval_granted=True,
+    )
+
+
+def test_pre_tool_guard_refuses_an_empty_web_target(tmp_path):
+    """An explicitly empty target used to be treated like no target and skipped the network rule."""
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    result = guard.check(_web_request(""))
+
+    assert result.verdict is PreToolVerdict.BLOCK
+    assert result.rule_id == "network.insecure_transport"
+
+
+def test_pre_tool_guard_still_allows_a_web_request_with_no_target(tmp_path):
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    assert guard.check(_web_request(None)).verdict is PreToolVerdict.ALLOW
+    assert guard.check(_web_request("https://gateway.optimus.ai/x")).verdict is PreToolVerdict.ALLOW
+
+
+def test_pre_tool_guard_refuses_a_shell_command_holding_a_url_scheme_with_no_host(tmp_path):
+    """The same refusal at the boundary production uses: the guard hands a shell command to the validator above."""
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    result = guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.SHELL,
+            action="test",
+            command=("pytest", "-k", "https://"),
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=True,
+        )
+    )
+
+    assert result.verdict is PreToolVerdict.BLOCK
+    assert result.rule_id == "network.missing_host"

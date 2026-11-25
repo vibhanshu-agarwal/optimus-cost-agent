@@ -267,7 +267,8 @@ class PreToolGuard:
                 request.target_path, requested_relative_path=request.requested_relative_path, target_unresolved=request.target_unresolved
             )
             return _pre_tool_result(validation.verdict, validation.rule_id, validation.reason)
-        if request.tool_surface is ToolSurface.WEB and request.target_path:
+        # #603: a target that was given is judged even when it is empty; only a request with no target is not.
+        if request.tool_surface is ToolSurface.WEB and request.target_path is not None:
             validation = self._network_validator.validate_url(request.target_path)
             return _pre_tool_result(validation.verdict, validation.rule_id, validation.reason)
         if request.tool_surface is ToolSurface.MCP:
