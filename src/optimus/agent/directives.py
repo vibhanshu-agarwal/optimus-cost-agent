@@ -187,7 +187,7 @@ def _invents_an_edit(plan_text: str) -> bool:
         line = _normalize_directive_line(lines[index])
         if WRITE_DIRECTIVE.match(line) is not None:
             index += 1
-            while index < len(lines) and not _is_directive_line(lines[index]):
+            while index < len(lines) and not is_directive_line(lines[index]):
                 index += 1
             continue
         if _EDIT_PREFIX.match(line) is not None:
@@ -229,7 +229,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
             _validate_relative_path(path)
             index += 1
             content_lines = []
-            while index < len(lines) and not _is_directive_line(lines[index]):
+            while index < len(lines) and not is_directive_line(lines[index]):
                 content_lines.append(lines[index])
                 index += 1
             if not keepends:  # an exact EDIT parse: a WRITE here is never returned (the plan is re-parsed)
@@ -332,7 +332,9 @@ def _edit_block_lines(lines: list[str], index: int, *, until: str) -> tuple[tupl
     raise AgentDirectiveParseError("unterminated EDIT block")
 
 
-def _is_directive_line(line: str) -> bool:
+def is_directive_line(line: str) -> bool:
+    """Where a WRITE body ends: at the next line that is a whole READ, WRITE, TEST, MCP_LIST or MCP_CALL directive.
+    The planning turn uses this same rule (#575)."""
     normalized = _normalize_directive_line(line)
     return (
         READ_DIRECTIVE.match(normalized) is not None

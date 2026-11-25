@@ -22,8 +22,11 @@ from optimus.agent.directives import (
     WRITE_DIRECTIVE,
     AgentDirectiveParseError,
     AgentPlanDirectives,
+    AgentWriteDirective,
     IndexToolRequest,
+    _unwrap_markdown_code_fence,
     directive_text,
+    is_directive_line,
     parse_agent_plan,
     parse_index_tool_reply,
     parse_mcp_call_line,
@@ -624,15 +627,24 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
     if stripped.startswith("REFUSE:"):
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
-    mcp_decision = _try_parse_mcp_turn(stripped)
+    # #575: the final-plan parser decides where a WRITE body ends. The checks below read a body by their own, looser
+    # rules; when they would refuse a reply only for MCP-looking or OBSERVE lines that parser reads as WRITE content,
+    # its reading wins. It only ever lifts a refusal: nothing accepted before is refused or changes kind.
+    final_decision = _try_parse_final_plan(text)
+    only_in_the_body = _turn_markers_are_only_in_the_write_body(text, final_decision)
+    try:
+        mcp_decision = _try_parse_mcp_turn(stripped)
+    except PlanningTurnParseError:
+        if not only_in_the_body:
+            raise
+        mcp_decision = None
     if mcp_decision is not None:
         return mcp_decision
 
     surface_lines = _directive_surface_lines(stripped)
-    if _surface_has_observe(surface_lines):
+    if _surface_has_observe(surface_lines) and not only_in_the_body:
         return _parse_intermediate_turn(stripped)
 
-    final_decision = _try_parse_final_plan(text)
     if final_decision is not None:
         return final_decision
 
@@ -640,6 +652,37 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
         return _parse_intermediate_turn(stripped)
 
     raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
+
+
+_TURN_MARKERS = ("OBSERVE:", "MCP_LIST", "MCP_CALL")
+
+
+def _turn_markers_are_only_in_the_write_body(text: str, final_decision: PlanningTurnDecision | None) -> bool:
+    """#575: the final-plan parser reads the reply as a plan with a WRITE, and nothing outside that WRITE's body
+    starts like an OBSERVE or MCP line. The body is found as that parser finds it: its fence rule, its lines, from
+    the WRITE header to the next `is_directive_line`. Everything else in the reply is outside, text after a closing
+    fence included, and is tested piece by piece at every CR, LF and CRLF, so a marker the other checks see behind a
+    bare carriage return is seen here too."""
+    if final_decision is None or final_decision.directives is None:
+        return False
+    if not isinstance(final_decision.directives.write, AgentWriteDirective):
+        return False
+    plan = _unwrap_markdown_code_fence(text)
+    at = text.find(plan)
+    if at < 0:
+        return False
+    lines = plan_lines(plan)
+    outside = [text[:at], text[at + len(plan) :]]
+    index = 0
+    while index < len(lines):
+        outside.append(lines[index])
+        index += 1
+        if WRITE_DIRECTIVE.match(_normalize_directive_surface_line(outside[-1])) is not None:
+            while index < len(lines) and not is_directive_line(lines[index]):
+                index += 1
+    return not any(
+        piece.strip().startswith(_TURN_MARKERS) for part in outside for piece in split_cr_lf_keepends(part)
+    )
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
