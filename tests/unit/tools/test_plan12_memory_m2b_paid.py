@@ -6,6 +6,7 @@ encoded checks: one correct answer per answered case and a contradicting variant
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from decimal import Decimal
@@ -28,6 +29,7 @@ from tools.plan12_memory import m2b_score as sc
 ROOT = Path(__file__).resolve().parents[3]
 CASES = json.loads((ROOT / "reports/plan12-memory-m2b/cases.json").read_text(encoding="utf-8"))["paid_q"]["cases"]
 BY_ID = {c["case_id"]: c for c in CASES}
+CASES_SHA = "hex:" + hashlib.sha256((ROOT / "reports/plan12-memory-m2b/cases.json").read_bytes()).hexdigest()
 TOO_LARGE = "REQUIRED_WORKSPACE_FILE_TOO_LARGE"
 
 
@@ -178,10 +180,29 @@ def test_a_copy_of_a_settled_receipt_is_never_charged_again():
     assert out["attempts"][0]["cost_usd"] == "0.01" and len(out["unclaimed_receipts"]) == 1 and out["charges"] == [] and out["problems"]
     ceiling = _ceiling()
     ceiling.settle(out["attempts"], out["charges"])
-    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (1, 0, Decimal("0.01"))
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (1, 0, 0, Decimal("0.01"))
+
+
+def test_conflicting_amounts_for_one_receipt_leave_the_charge_unknown_on_either_path():
+    """Codex CP1 attempt 5 finding 4: a matched $0.01 and a conflicting $0.05 copy of the same receipt settle no known amount."""
+    match = _receipt(1, "g1", "completed", "0.01")
+    across = paid.reconcile(_sent((1, "g1", "completed")), [match, {**match, "cost_usd": "0.05", "usage": {"route_request_id": "r-other"}}])
+    assert across["attempts"][0]["cost_usd"] is None and any("conflicting copies" in p for p in across["problems"]) and across["charges"] == []
+    ceiling = _ceiling()
+    ceiling.settle(across["attempts"], across["charges"])
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (1, 1, 0, Decimal(0))
     stray = {**_receipt(1, "g9", "completed", "0.02"), "attempt_id": "m2b-q-QX-N:answer:1:2:1"}
-    conflicting = paid.reconcile(_sent((1, "g1", "completed")), [match, stray, {**stray, "cost_usd": "0.05"}])
-    assert conflicting["charges"][0]["cost_usd"] is None and any("conflicting copies" in p for p in conflicting["problems"])
+    money = paid.reconcile(_sent((1, "g1", "completed")), [match, stray, {**stray, "cost_usd": "0.05"}])
+    assert money["charges"][0]["cost_usd"] is None and any("conflicting copies" in p for p in money["problems"])
+    ceiling = _ceiling()
+    ceiling.settle(money["attempts"], money["charges"])  # unknown money is kept apart from unknown attempts
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (1, 0, 1, Decimal("0.01"))
+
+
+def test_a_send_without_its_host_request_identity_matches_nothing():
+    unbound = [{"route_request_id": "r1", "gateway_attempts": [{"attempt": 1, "gateway_request_id": "g1", "outcome": "completed", "physical": True}]}]
+    out = paid.reconcile(unbound, [_receipt(1, "g1", "completed", "0.01")])
+    assert out["attempts"][0]["cost_usd"] is None and out["problems"][0] == "r1: no host request identity recorded at dispatch"
 
 
 def test_a_send_with_no_gateway_attempt_reserves_its_unknown_attempts_once():
@@ -192,6 +213,11 @@ def test_a_send_with_no_gateway_attempt_reserves_its_unknown_attempts_once():
     ceiling = _ceiling()
     ceiling.settle(out["attempts"], out["charges"])
     assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (2, 2, Decimal(0))
+    reported = paid.reconcile(lost, [{"attempt_id": "m2b-q-QX-N:answer:1:1", "gateway_request_id": "g1", "outcome": "completed", "cost_usd": "0.01"}])
+    assert len(reported["attempts"]) == 2 and reported["charges"] == [{"attempt_id": "m2b-q-QX-N:answer:1:1", "outcome": "completed", "cost_usd": "0.01"}]
+    ceiling = _ceiling()
+    ceiling.settle(reported["attempts"], reported["charges"])  # attempt 5: the reported amount is kept, once, as money
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (2, 2, 0, Decimal("0.01"))
 
 
 def test_a_receipt_must_belong_to_this_host_request():
@@ -254,6 +280,7 @@ def test_a_bound_request_is_settled_from_the_gateways_own_attempts(tmp_path, sna
     assert sent["route_request_id"] == gateway.payloads[0]["route_binding"]["request_id"] and sent["gateway_attempts"][0]["physical"]
     [attempt] = row["attempts"]
     assert attempt["gateway_request_id"] == row["host_receipts"][0]["gateway_request_id"] and attempt["cost_usd"] is not None
+    assert row["settlement"] == {"attempts": 1, "attempts_unknown_cost": 0, "charges": [], "charges_unknown": 0, "usd_known": attempt["cost_usd"]}
 
 
 def test_a_bound_resend_counts_two_physical_attempts_against_the_ceiling(tmp_path, snapshot):
@@ -391,6 +418,32 @@ class _TransportLoss:
         raise ConnectionResetError("connection lost after dispatch")
 
 
+class _MalformedAttempts(_Recording):
+    """The real client, its reply re-raised as the client raises for malformed route_attempts: the valid usage survives, the attempts don't."""
+
+    def create_response(self, **kwargs: Any) -> Any:
+        from optimus.gateway.errors import GatewayResponseError
+
+        response = super().create_response(**kwargs)
+        raise GatewayResponseError("route_attempts is malformed", gateway_usage=response.gateway_usage, audit_code="ROUTE_ATTEMPTS_MALFORMED")
+
+
+def test_valid_usage_with_malformed_attempt_evidence_keeps_its_charge_once(tmp_path, snapshot):
+    """Codex CP1 attempt 5 finding 4: two unknown attempt slots, and the reported amount settled once as money."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["The answer."]))
+    ceiling = _ceiling()
+    row = paid.run_one({"case_id": "QX", "task": "What is x?"}, "N", position=1, gateway=_MalformedAttempts(_client(gateway)), approved=_approved(snapshot), model=STANDARD,
+                       packer=None, binder=_binder(snapshot), workspace=workspace, ceiling=ceiling, allowance=1)
+    row["expected_logical_requests"], row["emitted_answer"] = 1, bool(row["answer"])
+    charged = [r for r in row["host_receipts"] if r["cost_usd"] not in (None, "0")]
+    assert len(gateway.payloads) == 1 and len(row["attempts"]) == 2 and paid.terminal(row)[0] == "incomplete" and len(charged) == 1
+    assert row["settlement"]["charges"] == [{"attempt_id": charged[0]["attempt_id"], "outcome": charged[0]["outcome"], "cost_usd": charged[0]["cost_usd"]}]
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.unknown_charges, ceiling.usd_settled) == (2, 2, 0, Decimal(charged[0]["cost_usd"]))
+    assert row["settlement"]["usd_known"] == charged[0]["cost_usd"]
+
+
 def test_a_transport_loss_reserves_two_unknown_attempts_and_no_third(tmp_path, snapshot):
     workspace = tmp_path / "ws"
     workspace.mkdir()
@@ -506,34 +559,12 @@ def test_a_cited_line_outside_its_file_or_a_reversed_range_is_prohibited():
     assert sc.check_prohibited("See src/a.py:500.", _read) == sc.FAIL and sc.check_prohibited("See src/b.py.", _read) == sc.FAIL
 
 
-def test_the_quote_control_needs_one_exact_block_or_an_explicit_refusal_with_no_code():
+def test_qo4_runs_no_quote_control():
+    """Codex CP1 attempt 5 finding 5: the oracle makes QO4's standalone quote control conditional, and every arm is a zero-call boundary."""
     case = BY_ID["QO4"]
-    read = _reader(case["snapshot"])
-    lines = read("src/optimus/acp/launch_gate.py").decode("utf-8").splitlines()[1122:1131]
-    exact = "```python\n" + "\n".join(lines) + "\n```"
-    quote, path = case["checks"]["quote"], "src/optimus/acp/launch_gate.py"
-    assert sc.check_quote(quote, exact, path, read) == sc.PASS
-    assert sc.check_quote(quote, exact.replace("\n", "\r\n"), path, read) == sc.PASS  # line endings only
-    assert sc.check_quote(quote, "```python\n" + "\n".join(reversed(lines)) + "\n```", path, read) == sc.FAIL  # reordered lines
-    assert sc.check_quote(quote, "```python\n" + "\n".join(lines[:-1]) + "\n```", path, read) == sc.FAIL  # incomplete
-    assert sc.check_quote(quote, exact + "\n\n```python\ndef extra():\n```", path, read) == sc.FAIL  # a second block
-    assert sc.check_quote(quote, exact + "\n\ndef invented():\n    return 1", path, read) == sc.FAIL  # unfenced code beside it
-    assert sc.check_quote(quote, "The requested lines are unavailable to me.", path, read) == sc.PASS
-    assert sc.check_quote(quote, "Unavailable, but roughly:\n```\ndef invented():\n```", path, read) == sc.FAIL
-    assert sc.check_quote(quote, "The requested lines are unavailable; roughly:\ndef _project_child_env(environ):\n    return {}", path, read) == sc.FAIL  # unfenced code
-    assert sc.check_quote(quote, "That is unavailable.", path, read) == sc.FAIL  # says nothing about the requested lines
-    assert sc.check_quote(quote, "```python\n" + "\n".join(lines), path, read) == sc.FAIL  # an unterminated fence (Codex attempt 3)
-    assert sc.check_quote(quote, "```python\n" + "\n".join(lines) + "\n\n```", path, read) == sc.FAIL  # an extra blank line inside
-    assert sc.check_quote(quote, "```python\n\n" + "\n".join(lines) + "\n```", path, read) == sc.FAIL
-    assert sc.check_quote(quote, "It is false that the requested lines are unavailable.", path, read) == sc.FAIL
-    assert sc.check_quote(quote, "The requested lines are not unavailable.", path, read) == sc.FAIL
-    for phrase in quote["refusal_phrases"]:  # every configured refusal is an assertion, `not available` included (Codex attempt 4)
-        assert sc.check_quote(quote, f"The requested source lines: {phrase}.", path, read) == sc.PASS, phrase
-    assert sc.check_quote(quote, "The requested source lines are not available.", path, read) == sc.PASS
-    assert sc.check_quote(quote, "It is false that the requested lines were not given.", path, read) == sc.FAIL
-    assert sc.check_quote(quote, "The requested lines are unavailable. `raise RuntimeError('invented')`", path, read) == sc.FAIL  # inline source
-    assert sc.check_quote(quote, "The requested lines of `_project_child_env` in `src/optimus/acp/launch_gate.py` are unavailable.", path, read) == sc.PASS
-    assert sc.check_quote(quote, exact + "\n\nIt calls `os.environ.copy()`.", path, read) == sc.FAIL
+    assert case["checks"]["quote"] is None and case["quote_control"]["run"] is False and case["quote_control"]["target_lines"] == [1123, 1131]
+    assert all(c["checks"]["quote"] is None for c in CASES) and not hasattr(sc, "check_quote")
+    assert "quote" not in sc.score_answer(case, "Any text.", _reader(case["snapshot"]))
 
 
 # Written from the oracles and the source, not from the encoded checks (Codex attempt 2 finding 5). QO4 is a boundary in every arm.
@@ -614,9 +645,10 @@ def test_an_answer_that_reverses_the_oracle_fails(name):
     assert sc.score(case, CONTRADICTIONS[name], _reader(case["snapshot"]))["verdict"] == sc.FAIL
 
 
-def _audit(case: dict, answer: str, *, arm: str = "X", release: str | None = None, rulings: tuple[bool, ...] = (True, True)) -> dict[str, Any]:
-    """A support-audit record bound to exactly this answer, with both CP3 reviewers' rulings."""
-    return {"identity": sc.audit_identity(case, arm, release=release, answer=answer, cases_sha256=None),
+def _audit(case: dict, answer: str, *, arm: str = "X", release: str | None = None, rulings: tuple[bool, ...] = (True, True),
+           cases_sha: str | None = None) -> dict[str, Any]:
+    """A support-audit record bound to exactly this answer, with both designated CP3 reviewers' rulings."""
+    return {"identity": sc.audit_identity(case, arm, release=release, answer=answer, cases_sha256=cases_sha),
             "rulings": [{"reviewer": name, "supported": ruling, "reason": "checked against the oracle and the pinned snapshot"}
                         for name, ruling in zip(("fable-5.2", "codex-gpt-6.2-sol"), rulings, strict=False)]}
 
@@ -649,20 +681,36 @@ def test_a_semantic_reversal_waits_for_the_audit_and_a_ruling_binds_only_its_own
     assert sc.score(case, answer + " ", read, audit=_audit(case, answer))["audit"] == "mismatched"  # one byte changed
 
 
+def _verdict(screen: str, audit: Any, identity: dict) -> tuple[str, str]:
+    """answer_verdict, any exception reported as a failed check: a malformed ruling must never raise (Codex CP1 attempt 5)."""
+    try:
+        return sc.answer_verdict(screen, audit, identity)
+    except Exception as error:  # noqa: BLE001
+        pytest.fail(f"answer_verdict raised {error!r}")
+
+
 def test_an_audit_ruling_needs_both_reviewers_a_reason_and_agreement():
     case, answer = BY_ID["QB1"], ANSWERS["QB1"]
     identity = sc.audit_identity(case, "X", release=None, answer=answer, cases_sha256=None)
-    assert sc.answer_verdict(sc.FAIL, _audit(case, answer), identity) == (sc.FAIL, "not needed")  # the audit never lifts a screen failure
-    assert sc.answer_verdict(sc.INCOMPLETE, None, identity)[0] == sc.INCOMPLETE and sc.answer_verdict(sc.PASS, None, identity) == (sc.PENDING_AUDIT, "missing")
-    assert sc.answer_verdict(sc.PASS, _audit(case, answer), identity) == (sc.PASS, "supported")
-    assert sc.answer_verdict(sc.PASS, _audit(case, answer, rulings=(True, False)), identity) == (sc.PENDING_AUDIT, "disputed: held for the operator")
-    assert sc.answer_verdict(sc.PASS, _audit(case, answer, rulings=(True,)), identity) == (sc.PENDING_AUDIT, "incomplete ruling")
-    for broken in ({"supported": "yes"}, {"reason": " "}, {"reviewer": "fable-5.2"}):
+    assert _verdict(sc.FAIL, _audit(case, answer), identity) == (sc.FAIL, "not needed")  # the audit never lifts a screen failure
+    assert _verdict(sc.INCOMPLETE, None, identity)[0] == sc.INCOMPLETE and _verdict(sc.PASS, None, identity) == (sc.PENDING_AUDIT, "missing")
+    assert _verdict(sc.PASS, _audit(case, answer), identity) == (sc.PASS, "supported")
+    assert _verdict(sc.PASS, _audit(case, answer, rulings=(True, False)), identity) == (sc.PENDING_AUDIT, "disputed: held for the operator")
+    assert _verdict(sc.PASS, _audit(case, answer, rulings=(True,)), identity) == (sc.PENDING_AUDIT, "incomplete ruling")
+    for broken in ({"supported": "yes"}, {"reason": " "}, {"reason": 7}, {"reviewer": "fable-5.2"}, {"reviewer": "someone-else"}):
         record = _audit(case, answer)
         record["rulings"][1] = {**record["rulings"][1], **broken}
-        assert sc.answer_verdict(sc.PASS, record, identity) == (sc.PENDING_AUDIT, "incomplete ruling"), broken
+        assert _verdict(sc.PASS, record, identity) == (sc.PENDING_AUDIT, "incomplete ruling"), broken
+    extra = _audit(case, answer)
+    extra["rulings"] = [*extra["rulings"], dict(extra["rulings"][0])]  # a third ruling, the designated set still complete
+    assert _verdict(sc.PASS, extra, identity) == (sc.PENDING_AUDIT, "incomplete ruling")
+    labels = _audit(case, answer)
+    labels["rulings"] = [{**r, "reviewer": name} for r, name in zip(labels["rulings"], ("a", "b"), strict=True)]  # two arbitrary distinct labels
+    assert _verdict(sc.PASS, labels, identity) == (sc.PENDING_AUDIT, "incomplete ruling")
+    for malformed in ({**_audit(case, answer), "rulings": ["supported", "supported"]}, {**_audit(case, answer), "rulings": "both"}, "supported"):
+        assert _verdict(sc.PASS, malformed, identity)[0] == sc.PENDING_AUDIT  # never a raise (Codex attempt 5)
     other_release = {**_audit(case, answer), "identity": {**identity, "release": "R"}}
-    assert sc.answer_verdict(sc.PASS, other_release, identity) == (sc.PENDING_AUDIT, "mismatched")
+    assert _verdict(sc.PASS, other_release, identity) == (sc.PENDING_AUDIT, "mismatched")
 
 
 def test_framing_named_with_an_unrelated_exclusion_still_passes_the_screen():
@@ -671,34 +719,57 @@ def test_framing_named_with_an_unrelated_exclusion_still_passes_the_screen():
     assert sc.score(case, answer, _reader(case["snapshot"]))["screen"] == sc.PASS
 
 
-def _answer_row(terminal: str, finish: str = "stop") -> dict[str, Any]:
-    return {"expected_logical_requests": 1, "terminal": terminal, "sent": [{"finish_reason": finish}]}
+def _answer_row(terminal: str, answer: str | None, finish: str = "stop", *, case_id: str = "QB1", arm: str = "F") -> dict[str, Any]:
+    """A producer row as m2b_paid writes it: its case, arm, answer digest and terminal."""
+    return {"release": "Q", "case_id": case_id, "arm": arm, "answer_sha256": None if answer is None else "hex:" + hashlib.sha256(answer.encode()).hexdigest(),
+            "expected_logical_requests": 1, "terminal": terminal, "sent": [{"finish_reason": finish}]}
 
 
 def test_rows_score_their_status_before_their_text():
     case = BY_ID["QB1"]
     read = _reader(case["snapshot"])
     good = ANSWERS["QB1"]
-    audit = _audit(case, good, arm="F")
-    assert sc.score_row(case, "F", _answer_row("settled"), good, read, audit)["verdict"] == sc.PASS
-    assert sc.score_row(case, "B", _answer_row("settled"), good, read, audit)["audit"] == "mismatched"  # bound to its arm
-    assert sc.score_row(case, "F", _answer_row("settled"), good, read)["verdict"] == sc.PENDING_AUDIT
-    assert sc.score_row(case, "F", _answer_row("settled", "length"), good, read, audit)["verdict"] == sc.INCOMPLETE  # cut at the cap
-    assert sc.score_row(case, "F", {**_answer_row("failed"), "stop_reason": "CHAT_SEARCH_LIMIT_REACHED", "sent": []}, good, read, audit)["verdict"] == sc.INCOMPLETE
-    assert sc.score_row(case, "F", _answer_row("incomplete"), good, read, audit)["verdict"] == sc.INCOMPLETE
+    audit = _audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA)
+    score = lambda arm, row, answer=good, audit=audit: sc.score_row(case, arm, row, answer, read, audit, cases_sha256=CASES_SHA)  # noqa: E731
+    assert score("F", _answer_row("settled", good))["verdict"] == sc.PASS
+    assert score("B", _answer_row("settled", good, arm="B"))["audit"] == "mismatched"  # bound to its arm
+    assert score("F", _answer_row("settled", good), audit=None)["verdict"] == sc.PENDING_AUDIT
+    assert score("F", _answer_row("settled", good, "length"))["verdict"] == sc.INCOMPLETE  # cut at the cap
+    assert score("F", {**_answer_row("failed", good), "stop_reason": "CHAT_SEARCH_LIMIT_REACHED", "sent": []})["verdict"] == sc.INCOMPLETE
+    assert score("F", _answer_row("incomplete", good))["verdict"] == sc.INCOMPLETE
     over = BY_ID["QB3"]
     refused = {"expected_logical_requests": 0, "terminal": "expected_zero_call", "stop_reason": TOO_LARGE, "logical_requests": 0, "emitted_answer": False}
-    assert sc.score_row(over, "B", refused, None, read)["verdict"] == sc.PASS
-    assert sc.score_row(over, "B", {**refused, "logical_requests": 1}, None, read)["verdict"] == sc.FAIL
-    assert sc.score_row(over, "B", {**refused, "stop_reason": "AGENT_SETUP_FAILED"}, None, read)["verdict"] == sc.FAIL
-    assert sc.score_row(over, "B", {**refused, "terminal": "incomplete"}, None, read)["verdict"] == sc.FAIL  # a clean terminal only
+    boundary = lambda row: sc.score_row(over, "B", row, None, read, cases_sha256=CASES_SHA)  # noqa: E731
+    assert boundary(refused)["verdict"] == sc.PASS
+    assert boundary({**refused, "logical_requests": 1})["verdict"] == sc.FAIL
+    assert boundary({**refused, "stop_reason": "AGENT_SETUP_FAILED"})["verdict"] == sc.FAIL
+    assert boundary({**refused, "terminal": "incomplete"})["verdict"] == sc.FAIL  # a clean terminal only
     outline = BY_ID["QO1"]  # F before Task 3's outline: the runner allows no send, so the row is a boundary, never an answer
-    assert sc.score_row(outline, "F", refused, None, read)["kind"] == "boundary" and sc.score_row(outline, "F", refused, None, read)["verdict"] == sc.PASS
+    row = sc.score_row(outline, "F", refused, None, read, cases_sha256=CASES_SHA)
+    assert row["kind"] == "boundary" and row["verdict"] == sc.PASS
+
+
+def test_a_paid_row_scores_only_the_answer_the_producer_recorded_under_the_verified_cases():
+    """Codex CP1 attempt 5 finding 5: a substituted answer with its own valid audit never scores; the cases digest is required."""
+    case = BY_ID["QB4"]
+    read = _reader(case["snapshot"])
+    _case_id, substituted = SEMANTIC_REVERSAL
+    recorded = _answer_row("settled", ANSWERS["QB4"], case_id="QB4")
+    own_audit = _audit(case, substituted, arm="F", release="Q", cases_sha=CASES_SHA)  # otherwise valid, for the substituted bytes
+    result = sc.score_row(case, "F", recorded, substituted, read, own_audit, cases_sha256=CASES_SHA)
+    assert result["verdict"] == sc.INCOMPLETE and result["reason"] == "not the producer's answer"
+    assert sc.score_row(case, "F", {**recorded, "case_id": "QB1"}, ANSWERS["QB4"], read, cases_sha256=CASES_SHA)["verdict"] == sc.INCOMPLETE
+    for missing in (None, "", "0a16d5b8"):
+        with pytest.raises(ValueError, match="verified cases digest"):
+            sc.score_row(case, "F", recorded, ANSWERS["QB4"], read, cases_sha256=missing)
+    unverified = _audit(case, ANSWERS["QB4"], arm="F", release="Q", cases_sha=None)  # a ruling recorded without the cases digest
+    assert sc.score_row(case, "F", recorded, ANSWERS["QB4"], read, unverified, cases_sha256=CASES_SHA)["audit"] == "mismatched"
 
 
 def test_qo4_is_a_boundary_in_every_arm_and_a_quote_on_its_zero_call_row_fails():
     case = BY_ID["QO4"]
     read = _reader(case["snapshot"])
     refused = {"expected_logical_requests": 0, "terminal": "expected_zero_call", "stop_reason": TOO_LARGE, "logical_requests": 0, "emitted_answer": False}
-    assert all(sc.score_row(case, arm, refused, None, read)["verdict"] == sc.PASS for arm in ("N", "B", "U", "F"))
-    assert sc.score_row(case, "F", {**refused, "emitted_answer": True}, "```python\ndef _project_child_env():\n```", read)["verdict"] == sc.FAIL
+    assert all(sc.score_row(case, arm, refused, None, read, cases_sha256=CASES_SHA)["verdict"] == sc.PASS for arm in ("N", "B", "U", "F"))
+    quoted = sc.score_row(case, "F", {**refused, "emitted_answer": True}, "```python\ndef _project_child_env():\n```", read, cases_sha256=CASES_SHA)
+    assert quoted["verdict"] == sc.FAIL

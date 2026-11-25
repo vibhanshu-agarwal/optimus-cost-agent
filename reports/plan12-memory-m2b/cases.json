@@ -3,7 +3,7 @@
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "state": "DRAFT v6: Codex CP1 round 122 verified the fresh gold (44/44) and replaced five fresh queries and every paid oracle verbatim; attempt 2 set the encoding table applied here (relationships tied to loci in one paragraph, negation, forbidden extras, QR loci at their snapshots); attempt 3 made the checks a screen (a screen PASS waits for the CP3 support audit) and added forbidden phrases for its literal reversals (attempt 4 narrowed QB3's to the framing reversal); N refuses the oversized cases; sealed after Codex confirms this encoding",
+ "state": "DRAFT v7: Codex CP1 round 122 verified the fresh gold (44/44) and replaced five fresh queries and every paid oracle verbatim; attempt 2 set the encoding table applied here (relationships tied to loci in one paragraph, negation, forbidden extras, QR loci at their snapshots); attempt 3 made the checks a screen (a screen PASS waits for the CP3 support audit) and added forbidden phrases for its literal reversals (attempt 4 narrowed QB3's to the framing reversal; attempt 5: QO4 runs no quote control and the audit binds to the producer's answer); N refuses the oversized cases; sealed after Codex confirms this encoding",
  "authority": "operator 2026-11-24 \"Approve sampling\" (Claude's chat, Plan 12.14 thread) of optimus-handoff/p1214-task0/sampling-proposal.md, sha256 hex:ee232629b668773faa3342c6fc0669e82c8165a6f917eed5a17df4cc992c2054",
  "builders": {
   "fresh": "optimus-handoff/p1214-task0/m2b_fresh3_pool.py + m2b_fresh3_build.py",
@@ -233,7 +233,7 @@
   "check_rules": {
    "citation": "claim-bound (Codex round 122 finding 5): a requirement passes when one line or sentence of the reply names its path and its symbol as code (qualified name, or a last segment with an underscore or capital, or an ordinary-word segment in backticks or as a call), or cites path:start-end of at most 40 lines overlapping the symbol's span in the pinned blob; a path requirement needs its path cited",
    "locus": "a cited locus passes when one of its names is written as code (as for citations), or a forward path:start-end citation of at most 40 lines covers its line in the pinned blob (QR loci at their own snapshots)",
-   "fact": "a relationship (Codex CP1 attempt 2): one paragraph of the reply holds a phrase of every group (case-insensitive; numbers as whole numbers) and its supporting locus; no sentence carrying a group phrase is negated (not, never, neither, nor, n't) unless the fact is itself a negation; no forbidden phrase in that paragraph; at_least n of: n distinct names as whole words; every fact has a group with no phrase in the case's task text. The checks are a screen (Codex CP1 attempt 3): a screen FAIL or INCOMPLETE is final; a screen PASS is PENDING_AUDIT until the CP3 support audit records a reviewer's ruling on that answer against its oracle and snapshot: supported is PASS, unsupported FAIL",
+   "fact": "a relationship (Codex CP1 attempt 2): one paragraph of the reply holds a phrase of every group (case-insensitive; numbers as whole numbers) and its supporting locus; no sentence carrying a group phrase is negated (not, never, neither, nor, n't) unless the fact is itself a negation; no forbidden phrase in that paragraph; at_least n of: n distinct names as whole words; every fact has a group with no phrase in the case's task text. The checks are a screen (Codex CP1 attempt 3): a screen FAIL or INCOMPLETE is final; a screen PASS is PENDING_AUDIT until the CP3 support audit holds both designated reviewers' rulings (Fable 5.2 and one Codex CLI review), each a boolean with a reason, bound to the exact answer the producer recorded (release, case, arm, answer digest, snapshot, scorer and cases digests): both supported is PASS, both unsupported FAIL, a dispute held for the operator",
    "prohibited": "any cited repository path absent from the case's snapshot, a cited line beyond that file's length, or a reversed range fails the case",
    "status": "only a settled row is an answer; any other row (a stop reason, an output at the cap, a filtered output) is INCOMPLETE; an expected refusal is scored only as its boundary: PASS when the row's stop reason is the declared one, zero Gateway requests were sent and no answer was emitted",
    "verdict": "the screen: FAIL on any FAIL, INCOMPLETE on any UNKNOWN, otherwise PENDING_AUDIT; the CP3 support audit then makes it PASS or FAIL; a boundary is PASS only on a clean expected_zero_call row (the runner's own allowance) with the declared stop, zero requests and no emitted answer; no paid grader, no repair",
@@ -1340,21 +1340,15 @@
      "citations": [],
      "loci": [],
      "facts": [],
-     "quote": {
-      "target_lines": [
-       1123,
-       1131
-      ],
-      "refusal_phrases": [
-       "not available",
-       "unavailable",
-       "not provided",
-       "was not given",
-       "were not given",
-       "not included"
-      ],
-      "pass": "a scorer control only: exactly one fenced block equal to lines 1123-1131 (line endings normalized) and no other code; or a sentence that names the requested lines or source and says they are unavailable, with no fenced block and no code-like line"
-     }
+     "quote": null
+    },
+    "quote_control": {
+     "run": false,
+     "target_lines": [
+      1123,
+      1131
+     ],
+     "reason": "not tested: the oracle makes the scorer control conditional (`If an independently supplied quote is tested as a scorer control`) and no Q row is ever scored against it, since QO4 is a zero-call boundary in every arm"
     },
     "boundary": {
      "stop_reason": "REQUIRED_WORKSPACE_FILE_TOO_LARGE",

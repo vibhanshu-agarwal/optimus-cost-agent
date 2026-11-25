@@ -1,4 +1,4 @@
-"""Plan 12.14 paid Q scoring (cases.json paid_q.check_rules, v6 after Codex CP1 round 122 attempt 4). Its digest and the selector's are
+"""Plan 12.14 paid Q scoring (cases.json paid_q.check_rules, v7 after Codex CP1 round 122 attempt 5). Its digest and the selector's are
 frozen before any paid prompt; a change after that is a new scorer, never a rescore of the same release.
 
 The selector takes the reply text the host delivered as the turn's final answer and removes host-added text: the search-limit notice the
@@ -7,7 +7,8 @@ boundary; an answer is scored only on a settled row. Deterministic checks are a 
 and its supporting locus in one paragraph of the reply, no sentence carrying it negated (unless the fact is itself a negation), no forbidden
 extra. Every check is PASS, FAIL or UNKNOWN; the screen FAILs on any FAIL and is INCOMPLETE on any UNKNOWN, and those are final. A screen
 PASS is PENDING_AUDIT: lexical checks cannot establish what a claim asserts (Codex CP1 attempt 3 finding 5), so only the plan's CP3 support
-audit, both reviewers' recorded rulings bound to that exact answer, makes it PASS (supported) or FAIL (unsupported). No
+audit, both designated reviewers' rulings bound to that exact answer, which must be the one the producer recorded, makes it PASS
+(supported) or FAIL (unsupported). No
 model grades anything inside this script.
 """
 
@@ -16,7 +17,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Final
 
@@ -30,12 +31,9 @@ PENDING_AUDIT: Final = "PENDING_AUDIT"
 MAX_CITED_LINES: Final = 40  # a range wider than this names a file region, not a locus
 # A cited repository path, optionally with :line or :start-end. Paths start at a top-level folder of this repository.
 CITED: Final = re.compile(r"(?<![\w./-])((?:src|tests|tools|docs|reports)/[\w./-]*[\w-]\.[A-Za-z0-9]+)(?::(\d+)(?:-(\d+))?)?")
-FENCE: Final = re.compile(r"```[^\n]*\n(.*?)(?:```|\Z)", re.S)  # an unterminated fence (a reply cut at the cap) still counts
 SENTENCE: Final = re.compile(r"(?<=[.;!?])\s+|\n+")
 PARAGRAPH: Final = re.compile(r"\n\s*\n")
 NEGATION: Final = re.compile(r"\b(?:not|never|neither|nor)\b|n't\b", re.I)
-# A line that reads as Python code, fenced or not: in an exact-quotation reply it must be the file's own.
-CODE_LINE: Final = re.compile(r"^\s*(?:def |class |return\b|for |if |elif |while |with |import |from \S+ import |[A-Za-z_][\w.\[\]\"']*\s*[+-]?=\s)")
 
 Read = Callable[[str], bytes | None]
 
@@ -172,50 +170,9 @@ def check_prohibited(text: str, read: Read) -> str:
     return PASS
 
 
-UNTRUE: Final = re.compile(r"\b(?:false|untrue|incorrect|wrong)\b", re.I)
-INLINE_CODE: Final = re.compile(r"`([^`\n]+)`")
-NAME_ONLY: Final = re.compile(r"[\w./:-]+")  # an inline span that only names a symbol or path, never purported source
-
-
-def _purported_source(text: str) -> bool:
-    """Code-like lines outside a fence, or inline code that is more than a bare name or path (Codex CP1 attempt 4 finding 5)."""
-    outside = FENCE.sub("", text)
-    return any(CODE_LINE.match(line) for line in outside.splitlines()) or any(not NAME_ONLY.fullmatch(span) for span in INLINE_CODE.findall(outside))
-
-
-def _refusal(sentence: str, phrases: Sequence[str]) -> bool:
-    """A configured refusal asserted about the requested lines: the phrase itself may say `not` (`not available`), but the rest of the
-    sentence may not negate or deny it (`not unavailable`, `it is false that ...`)."""
-    low = sentence.lower()
-    found = [phrase for phrase in phrases if phrase in low]
-    if not found or not re.search(r"\b(?:lines?|source|requested|quote)\b", low):
-        return False
-    rest = low
-    for phrase in found:
-        rest = rest.replace(phrase, " ")
-    return not NEGATION.search(rest) and not UNTRUE.search(rest)
-
-
-def check_quote(quote: Mapping[str, Any], text: str, path: str, read: Read) -> str:
-    """A scorer control (QO4 is a zero-call boundary in every arm): exactly one closed fenced block equal to the target lines with only
-    line endings normalized, and no other purported source; or a sentence asserting a configured refusal about the requested lines, with
-    no fence and no purported source (Codex CP1 attempts 3-4, finding 5)."""
-    source = read(path)
-    if source is None:
-        return UNKNOWN
-    if text.count("```") % 2:
-        return FAIL  # an unterminated fence is never a complete quote
-    first, last = quote["target_lines"]
-    target = "\n".join(source.decode("utf-8").splitlines()[first - 1:last])
-    blocks = [block.removesuffix("\n") for block in FENCE.findall(text.replace("\r\n", "\n"))]
-    if _purported_source(text):
-        return FAIL
-    if blocks:
-        return PASS if len(blocks) == 1 and blocks[0] == target else FAIL
-    return PASS if any(_refusal(s, quote["refusal_phrases"]) for s in sentences(text)) else FAIL
-
-
 def score_answer(case: Mapping[str, Any], text: str, read: Read) -> dict[str, str]:
+    """Every screen check of one answer. No quote control runs: QO4 is a zero-call boundary in every arm, and its oracle makes the
+    standalone quote control conditional, so none is tested (Codex CP1 attempt 5 finding 5)."""
     checks: dict[str, str] = {}
     loci = {locus["locus_id"]: locus for locus in case["checks"].get("loci", [])}
     for requirement in case["checks"]["citations"]:
@@ -225,8 +182,6 @@ def score_answer(case: Mapping[str, Any], text: str, read: Read) -> dict[str, st
     for fact in case["checks"]["facts"]:
         checks[f"fact:{fact['fact_id']}"] = check_fact(fact, text, loci)
     checks["prohibited"] = check_prohibited(text, read)
-    if case["checks"]["quote"] is not None:
-        checks["quote"] = check_quote(case["checks"]["quote"], text, case["required_files"][0]["path"], read)
     return checks
 
 
@@ -236,7 +191,7 @@ def verdict(checks: Mapping[str, str]) -> str:
     return FAIL if FAIL in values else (PASS if values == {PASS} else INCOMPLETE)
 
 
-AUDIT_REVIEWERS: Final = 2  # the plan's CP3 reviewers: Fable 5.2, then one Codex CLI review
+AUDIT_REVIEWERS: Final = frozenset({"fable-5.2", "codex-gpt-6.2-sol"})  # the plan's CP3 reviewers: Fable 5.2, then one Codex CLI review
 
 
 def _sha(text: str) -> str:
@@ -253,20 +208,25 @@ def audit_identity(case: Mapping[str, Any], arm: str, *, release: str | None, an
             "scorer_sha256": SCORER_SHA256, "cases_sha256": cases_sha256}
 
 
+def _ruling_valid(ruling: Any) -> bool:
+    return (isinstance(ruling, Mapping) and ruling.get("reviewer") in AUDIT_REVIEWERS and isinstance(ruling.get("supported"), bool)
+            and isinstance(ruling.get("reason"), str) and bool(ruling["reason"].strip()))
+
+
 def answer_verdict(screen: str, audit: Mapping[str, Any] | None, identity: Mapping[str, Any]) -> tuple[str, str]:
     """(verdict, audit status). A screen FAIL or INCOMPLETE is final. A screen PASS becomes PASS only when the audit record is bound to
-    this exact answer (`identity`) and both CP3 reviewers recorded a boolean ruling with a reason and agree it is supported; both
-    unsupported is FAIL. A missing, mismatched, incomplete or disputed ruling stays PENDING_AUDIT and contributes to no gate."""
+    this exact answer (`identity`) and holds one valid ruling from each designated CP3 reviewer (a boolean `supported` and a non-blank
+    string reason), both supported; both unsupported is FAIL. A missing, mismatched, malformed, incomplete or disputed ruling stays
+    PENDING_AUDIT and contributes to no gate (Codex CP1 attempts 4-5, finding 5)."""
     if screen != PASS:
         return screen, "not needed"
-    if audit is None:
+    if not isinstance(audit, Mapping):
         return PENDING_AUDIT, "missing"
-    if dict(audit.get("identity") or {}) != dict(identity):
+    if audit.get("identity") != dict(identity):
         return PENDING_AUDIT, "mismatched"
-    rulings = list(audit.get("rulings") or [])
-    reviewers = {r.get("reviewer") for r in rulings}
-    if (len(rulings) != AUDIT_REVIEWERS or len(reviewers) != AUDIT_REVIEWERS or None in reviewers or "" in reviewers
-            or any(not isinstance(r.get("supported"), bool) or not str(r.get("reason") or "").strip() for r in rulings)):
+    rulings = audit.get("rulings")
+    if (not isinstance(rulings, list | tuple) or len(rulings) != len(AUDIT_REVIEWERS) or not all(_ruling_valid(r) for r in rulings)
+            or {r["reviewer"] for r in rulings} != AUDIT_REVIEWERS):
         return PENDING_AUDIT, "incomplete ruling"
     supported = {r["supported"] for r in rulings}
     if supported == {True}:
@@ -277,11 +237,14 @@ def answer_verdict(screen: str, audit: Mapping[str, Any] | None, identity: Mappi
 
 
 def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer: str | None, read: Read, audit: Mapping[str, Any] | None = None, *,
-              cases_sha256: str | None = None) -> dict[str, Any]:
-    """One (case, arm) row. A row the runner allowed no send (its own expected_logical_requests, so F on the outline cases before Task 3's
-    outline too) scores only its boundary: a clean expected_zero_call terminal with the declared stop reason, zero Gateway requests and no
-    emitted answer. Otherwise only a settled row's delivered answer is scored, screen first, then its bound support audit; any other row is
-    INCOMPLETE."""
+              cases_sha256: str) -> dict[str, Any]:
+    """One paid (case, arm) row, scored against the producer's own record. A row the runner allowed no send (its own
+    expected_logical_requests, so F on the outline cases before Task 3's outline too) scores only its boundary: a clean expected_zero_call
+    terminal with the declared stop reason, zero Gateway requests and no emitted answer. Otherwise only a settled row's delivered answer is
+    scored, and only when it is the answer the producer recorded (its case, arm and answer_sha256; Codex CP1 attempt 5 finding 5): screen
+    first, then its bound support audit under the verified cases digest. Any other row is INCOMPLETE."""
+    if not (isinstance(cases_sha256, str) and cases_sha256.startswith("hex:")):
+        raise ValueError("paid scoring needs the verified cases digest")
     if row["expected_logical_requests"] == 0:
         boundary = case.get("boundary") or {}
         ok = (row.get("terminal") == "expected_zero_call" and row.get("stop_reason") == boundary.get("stop_reason")
@@ -289,8 +252,10 @@ def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer:
         return {"case_id": case["case_id"], "arm": arm, "kind": "boundary", "checks": {"boundary": PASS if ok else FAIL}, "verdict": PASS if ok else FAIL}
     text = select(answer)
     settled = row.get("terminal") == "settled" and not any(sent.get("finish_reason") in {"length", "content_filter"} for sent in row.get("sent", []))
-    if answer is None or text is None or not settled:
-        return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": {"answer": UNKNOWN}, "verdict": INCOMPLETE}
+    producers = answer is not None and (row.get("case_id"), row.get("arm"), row.get("answer_sha256")) == (case["case_id"], arm, _sha(answer))
+    if answer is None or text is None or not settled or not producers:
+        reason = "not the producer's answer" if answer is not None and settled and not producers else "no settled answer"
+        return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": {"answer": UNKNOWN}, "reason": reason, "verdict": INCOMPLETE}
     checks = score_answer(case, text, read)
     screen = verdict(checks)
     identity = audit_identity(case, arm, release=row.get("release"), answer=answer, cases_sha256=cases_sha256)
