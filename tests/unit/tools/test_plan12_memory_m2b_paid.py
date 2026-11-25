@@ -104,7 +104,8 @@ def test_the_ceiling_reserves_the_route_attempts_and_prices_unknowns_at_the_wors
 
 
 def _sent(*attempts: tuple[int, str, str]) -> list[dict[str, Any]]:
-    return [{"route_request_id": "r1", "gateway_attempts": [{"attempt": n, "gateway_request_id": g, "outcome": o, "physical": o in paid.PHYSICAL} for n, g, o in attempts]}]
+    return [{"route_request_id": "r1", "receipt_base": "m2b-q-QX-N:answer:1:1",
+             "gateway_attempts": [{"attempt": n, "gateway_request_id": g, "outcome": o, "physical": o in paid.PHYSICAL} for n, g, o in attempts]}]
 
 
 def _receipt(ordinal: int, gateway_id: str | None, outcome: str, cost: str | None) -> dict[str, Any]:
@@ -152,33 +153,64 @@ def test_duplicate_receipts_are_kept_and_flagged_and_their_one_charge_counted_on
     """Codex CP1 attempt 3 finding 4: two identical charged receipts never settle twice."""
     same = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g1", "completed", "0.01")])
     assert same["problems"] == ["r1 attempt 1: 2 host receipts match (identical: one charge)"] and same["attempts"][0]["cost_usd"] == "0.01"
-    assert len(same["attempts"][0]["receipt_attempt_ids"]) == 2 and same["unclaimed_charges"] == []
+    assert len(same["attempts"][0]["receipt_attempt_ids"]) == 2 and same["charges"] == []
     differing = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g1", "completed", "0.02")])
     assert differing["attempts"][0]["cost_usd"] is None and "differing: charge unknown" in differing["problems"][0]
     ceiling = _ceiling()
-    ceiling.settle(same["attempts"] + same["unclaimed_charges"])
+    ceiling.settle(same["attempts"], same["charges"])
     assert ceiling.usd_settled == Decimal("0.01") and ceiling.attempts_used == 1
 
 
 def test_unclaimed_charges_are_counted_once_each():
     foreign = {**_receipt(1, "g9", "completed", "0.02"), "attempt_id": "m2b-q-QX-N:answer:1:2:1"}
     out = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), foreign, dict(foreign)])
-    assert len(out["unclaimed_receipts"]) == 2 and out["unclaimed_charges"] == [foreign] and len(out["problems"]) == 2
+    assert len(out["unclaimed_receipts"]) == 2 and out["charges"] == [{"attempt_id": foreign["attempt_id"], "outcome": "completed", "cost_usd": "0.02"}]
+    assert len(out["problems"]) == 2
+    ceiling = _ceiling()
+    ceiling.settle(out["attempts"], out["charges"])  # a charge on no attempt is money only (Codex CP1 attempt 4 finding 4)
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (1, 0, Decimal("0.03"))
+
+
+def test_a_copy_of_a_settled_receipt_is_never_charged_again():
+    """Codex CP1 attempt 4 finding 4: a matching copy and a copy with a conflicting route request id settle one charge."""
+    match = _receipt(1, "g1", "completed", "0.01")
+    out = paid.reconcile(_sent((1, "g1", "completed")), [match, {**match, "usage": {"route_request_id": "r-other"}}])
+    assert out["attempts"][0]["cost_usd"] == "0.01" and len(out["unclaimed_receipts"]) == 1 and out["charges"] == [] and out["problems"]
+    ceiling = _ceiling()
+    ceiling.settle(out["attempts"], out["charges"])
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (1, 0, Decimal("0.01"))
+    stray = {**_receipt(1, "g9", "completed", "0.02"), "attempt_id": "m2b-q-QX-N:answer:1:2:1"}
+    conflicting = paid.reconcile(_sent((1, "g1", "completed")), [match, stray, {**stray, "cost_usd": "0.05"}])
+    assert conflicting["charges"][0]["cost_usd"] is None and any("conflicting copies" in p for p in conflicting["problems"])
+
+
+def test_a_send_with_no_gateway_attempt_reserves_its_unknown_attempts_once():
+    """Codex CP1 attempt 4 finding 4: the host's own uncertain record of a transport loss is no third attempt."""
+    lost = [{"route_request_id": "r1", "receipt_base": "m2b-q-QX-N:answer:1:1", "gateway_attempts": []}]
+    out = paid.reconcile(lost, [{"attempt_id": "m2b-q-QX-N:answer:1:1", "gateway_request_id": None, "outcome": "uncertain", "cost_usd": None}])
+    assert len(out["attempts"]) == 2 and out["charges"] == [] and out["unclaimed_receipts"] == [] and out["attempts"][0]["receipt_attempt_ids"] == ["m2b-q-QX-N:answer:1:1"]
+    ceiling = _ceiling()
+    ceiling.settle(out["attempts"], out["charges"])
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (2, 2, Decimal(0))
 
 
 def test_a_receipt_must_belong_to_this_host_request():
-    """Codex CP1 attempt 3 finding 4: the same Gateway id, ordinal and disposition from another run or another send never match."""
-    other_run = {**_receipt(1, "g1", "completed", "0.01"), "attempt_id": "m2b-q-QY-N:answer:1:1:1"}
-    assert paid.reconcile(_sent((1, "g1", "completed")), [other_run], run_id="m2b-q-QX-N")["attempts"][0]["cost_usd"] is None
+    """Codex CP1 attempts 3-4 finding 4: the same Gateway id, ordinal and disposition under any other host request never match."""
+    for other in ("m2b-q-QY-N:answer:1:1:1", "m2b-q-QX-N:answer:2:1:1", "m2b-q-QX-N:answer:1:2:1"):  # another run, turn, or wire attempt
+        stray = {**_receipt(1, "g1", "completed", "0.01"), "attempt_id": other}
+        assert paid.reconcile(_sent((1, "g1", "completed")), [stray])["attempts"][0]["cost_usd"] is None, other
+    wrong_attempt = {**_receipt(1, "g1", "completed", "0.01"), "usage": {"attempt": 2}}
+    assert paid.reconcile(_sent((1, "g1", "completed")), [wrong_attempt])["attempts"][0]["cost_usd"] is None
     conflicting = {**_receipt(1, "g1", "completed", "0.01"), "usage": {"route_request_id": "r-other"}}
     assert paid.reconcile(_sent((1, "g1", "completed")), [conflicting])["attempts"][0]["cost_usd"] is None
     agreeing = {**_receipt(1, "g1", "completed", "0.01"), "usage": {"route_request_id": "r1"}}
     assert paid.reconcile(_sent((1, "g1", "completed")), [agreeing])["problems"] == []
-    two_sends = [*_sent((1, "g1", "completed")), {"route_request_id": "r2", "gateway_attempts": [{"attempt": 1, "gateway_request_id": "g2", "outcome": "completed", "physical": True}]}]
+    two_sends = [*_sent((1, "g1", "completed")), {"route_request_id": "r2", "receipt_base": "m2b-q-QX-N:answer:1:2",
+                                                     "gateway_attempts": [{"attempt": 1, "gateway_request_id": "g2", "outcome": "completed", "physical": True}]}]
     shared = [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g2", "completed", "0.01")]  # both under one request part
     out = paid.reconcile(two_sends, shared)
     assert out["attempts"][1]["cost_usd"] is None and out["problems"] == ["r2 attempt 1: no matching host receipt", "host receipt m2b-q-QX-N:answer:1:1:1 (completed) matches no Gateway attempt"]
-    own = [_receipt(1, "g1", "completed", "0.01"), {**_receipt(1, "g2", "completed", "0.01"), "attempt_id": "m2b-q-QX-N:answer:2:1:1"}]
+    own = [_receipt(1, "g1", "completed", "0.01"), {**_receipt(1, "g2", "completed", "0.01"), "attempt_id": "m2b-q-QX-N:answer:1:2:1"}]
     assert paid.reconcile(two_sends, own)["problems"] == []
 
 
@@ -206,8 +238,9 @@ def test_a_receipt_row_keeps_every_reported_field():
                            strategy="s", revision_digest="d")
     row = paid.receipt_row(receipt)
     assert row["repriced_uncached_usd"] == "0.00075" and row["cache_write_tokens"] == "UNKNOWN" and row["post_teardown"] is False
-    assert row["usage"]["model_version"] == "v" and row["usage"]["native_unit"] == "tokens" and row["usage"]["total_tokens"] == 1100 and row["recorded_at"]
-    assert row["role"] == "easy" and row["quantizations"] == ["fp8"] and row["strategy"] == "s" and row["revision_digest"] == "d"
+    usage_row = row.get("usage") or {}
+    assert usage_row.get("model_version") == "v" and usage_row.get("native_unit") == "tokens" and usage_row.get("total_tokens") == 1100 and row.get("recorded_at")
+    assert row.get("role") == "easy" and row.get("quantizations") == ["fp8"] and row.get("strategy") == "s" and row.get("revision_digest") == "d"
     assert set(row) >= {f for f in StageReceipt.__slots__ if f not in {"gateway_usage", "reported_cost_usd"}} and set(row["usage"]) == set(GatewayUsage.model_fields)
 
 
@@ -298,7 +331,8 @@ def _first_send(guard: paid.Guard, workspace: Path, snapshot, receipts: list[Any
     request = AgentRunRequest(run_id="m2b-q-QX-N", task="What is x?", execution_mode=ExecutionMode.CHAT, workspace_root=workspace, max_planning_turns=1, max_cost_usd=Decimal("6"))
     with paid.zero_tools():
         runner.run(request, context_packer=None, route_binder=_binder(snapshot), stage_receipts=receipts.append)
-    assert len(guard.sent) == 1 and len(receipts) == 2 and paid.reconcile(guard.sent, [paid.receipt_row(r) for r in receipts], run_id="m2b-q-QX-N")["problems"] == []
+    assert len(guard.sent) == 1 and len(receipts) == 2 and paid.reconcile(guard.sent, [paid.receipt_row(r) for r in receipts])["problems"] == []
+    assert guard.sent[0]["receipt_base"] == "m2b-q-QX-N:answer:1:1" and all(paid._base(r.attempt_id) == "m2b-q-QX-N:answer:1:1" for r in receipts)
 
 
 def test_a_later_send_reserves_against_the_earlier_sends_unsettled_attempts(tmp_path, snapshot):
@@ -332,13 +366,41 @@ def test_an_accounting_integrity_error_keeps_its_row_and_its_charge(tmp_path, sn
     workspace.mkdir()
     gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["The answer."]))
     ceiling = _ceiling()
-    row = paid.run_one({"case_id": "QX", "task": "What is x?"}, "N", position=1, gateway=_Unattributed(_client(gateway)), approved=_approved(snapshot), model=STANDARD,
-                       packer=None, binder=_binder(snapshot), workspace=workspace, ceiling=ceiling, allowance=1)
+    try:
+        row = paid.run_one({"case_id": "QX", "task": "What is x?"}, "N", position=1, gateway=_Unattributed(_client(gateway)), approved=_approved(snapshot), model=STANDARD,
+                           packer=None, binder=_binder(snapshot), workspace=workspace, ceiling=ceiling, allowance=1)
+    except Exception as error:  # noqa: BLE001 - the row must survive any failure of the run
+        pytest.fail(f"run_one raised {error!r}")
     row["expected_logical_requests"], row["emitted_answer"] = 1, bool(row["answer"])
     assert len(gateway.payloads) == 1 and row["error"] == "AttemptIntegrityError" and paid.terminal(row)[0] == "incomplete"
     unattributed = [r for r in row["host_receipts"] if r["outcome"] == "unattributed"]
-    assert len(unattributed) == 1 and ceiling.usd_settled == Decimal(unattributed[0]["cost_usd"]) > 0
+    # one physical attempt from the Gateway's evidence (its host record unsettled: unknown); the unattributed charge is money, no attempt
+    assert len(unattributed) == 1 and ceiling.attempts_used == len(row["attempts"]) == 1
+    assert ceiling.usd_settled == Decimal(unattributed[0]["cost_usd"]) > 0 and ceiling.unknown_attempts == 1
     assert any("settled-elsewhere" in p or "matches no Gateway attempt" in p for p in row["reconciliation"]["problems"])
+
+
+class _TransportLoss:
+    """A client whose connection drops after dispatch: no Gateway report, so the host records one uncertain attempt."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def create_response(self, **kwargs: Any) -> Any:
+        self.calls += 1
+        raise ConnectionResetError("connection lost after dispatch")
+
+
+def test_a_transport_loss_reserves_two_unknown_attempts_and_no_third(tmp_path, snapshot):
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    ceiling, lossy = _ceiling(), _TransportLoss()
+    row = paid.run_one({"case_id": "QX", "task": "What is x?"}, "N", position=1, gateway=lossy, approved=_approved(snapshot), model=STANDARD, packer=None,
+                       binder=_binder(snapshot), workspace=workspace, ceiling=ceiling, allowance=1)
+    row["expected_logical_requests"], row["emitted_answer"] = 1, bool(row["answer"])
+    assert lossy.calls == 1 and row["logical_requests"] == 1 and len(row["attempts"]) == 2 and paid.terminal(row)[0] == "incomplete"
+    assert [r["outcome"] for r in row["host_receipts"]] == ["uncertain"] and row["reconciliation"]["unclaimed_receipt_ids"] == []
+    assert (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (2, 2, Decimal(0))
 
 
 def test_a_refused_row_sends_nothing_through_the_real_runner(tmp_path, snapshot):
@@ -465,6 +527,13 @@ def test_the_quote_control_needs_one_exact_block_or_an_explicit_refusal_with_no_
     assert sc.check_quote(quote, "```python\n\n" + "\n".join(lines) + "\n```", path, read) == sc.FAIL
     assert sc.check_quote(quote, "It is false that the requested lines are unavailable.", path, read) == sc.FAIL
     assert sc.check_quote(quote, "The requested lines are not unavailable.", path, read) == sc.FAIL
+    for phrase in quote["refusal_phrases"]:  # every configured refusal is an assertion, `not available` included (Codex attempt 4)
+        assert sc.check_quote(quote, f"The requested source lines: {phrase}.", path, read) == sc.PASS, phrase
+    assert sc.check_quote(quote, "The requested source lines are not available.", path, read) == sc.PASS
+    assert sc.check_quote(quote, "It is false that the requested lines were not given.", path, read) == sc.FAIL
+    assert sc.check_quote(quote, "The requested lines are unavailable. `raise RuntimeError('invented')`", path, read) == sc.FAIL  # inline source
+    assert sc.check_quote(quote, "The requested lines of `_project_child_env` in `src/optimus/acp/launch_gate.py` are unavailable.", path, read) == sc.PASS
+    assert sc.check_quote(quote, exact + "\n\nIt calls `os.environ.copy()`.", path, read) == sc.FAIL
 
 
 # Written from the oracles and the source, not from the encoded checks (Codex attempt 2 finding 5). QO4 is a boundary in every arm.
@@ -528,8 +597,8 @@ def test_every_answered_case_passes_an_independent_correct_answer_and_fails_non_
     case = BY_ID[case_id]
     read = _reader(case["snapshot"])
     result = sc.score(case, ANSWERS[case_id], read)
-    assert result["screen"] == sc.PASS and result["verdict"] == sc.PENDING_AUDIT, result["checks"]  # only the support audit makes PASS
-    assert sc.score(case, ANSWERS[case_id], read, audit={"supported": True, "reviewer": "CP3"})["verdict"] == sc.PASS
+    assert result["screen"] == sc.PASS and result["verdict"] == sc.PENDING_AUDIT and result["audit"] == "missing", result["checks"]
+    assert sc.score(case, ANSWERS[case_id], read, audit=_audit(case, ANSWERS[case_id]))["verdict"] == sc.PASS  # only a bound audit makes PASS
     paths = sorted({e.partition(":")[2].partition("::")[0] for r in case["checks"]["citations"] for e in r["any_of"]} | {f["path"] for f in case["required_files"]})
     hedge = f"{' '.join(paths)}: I could not inspect these files, so details are missing and this answer is incomplete."
     assert sc.score(case, hedge, read)["verdict"] == sc.FAIL
@@ -545,27 +614,61 @@ def test_an_answer_that_reverses_the_oracle_fails(name):
     assert sc.score(case, CONTRADICTIONS[name], _reader(case["snapshot"]))["verdict"] == sc.FAIL
 
 
-# Codex CP1 attempt 3 finding 5: replies that keep every phrase and locus and still assert the opposite.
-LEXICAL_REVERSALS = {
+def _audit(case: dict, answer: str, *, arm: str = "X", release: str | None = None, rulings: tuple[bool, ...] = (True, True)) -> dict[str, Any]:
+    """A support-audit record bound to exactly this answer, with both CP3 reviewers' rulings."""
+    return {"identity": sc.audit_identity(case, arm, release=release, answer=answer, cases_sha256=None),
+            "rulings": [{"reviewer": name, "supported": ruling, "reason": "checked against the oracle and the pinned snapshot"}
+                        for name, ruling in zip(("fable-5.2", "codex-gpt-6.2-sol"), rulings, strict=False)]}
+
+
+# Codex CP1 attempts 3-4 finding 5: the screen catches the literal reversals it encodes; a semantic one waits for the audit.
+SCREENED_REVERSALS = {
     "QB2": "`RRF_K` is the reciprocal-rank fusion constant: 60.\n\n`QUOTA` starts with lexical. Some descriptions say dense first.",
     "QB3": "`MAX_ENTRIES` caps one page at 40 entries.\n\n`MAX_PAGE_BYTES` is 12,288 bytes excluding framing.",
 }
+SEMANTIC_REVERSAL = ("QB4", "`MAX_CONTEXT_CEILING_TOKENS` is 262,144 tokens, the total context ceiling.\n\n"
+                            "`IMPLEMENTER_ROLES` is easy, medium, complex, escalation and administrator.")
 
 
-@pytest.mark.parametrize("case_id", sorted(LEXICAL_REVERSALS))
-def test_a_reversal_the_screen_cannot_see_never_passes_without_the_support_audit(case_id):
+@pytest.mark.parametrize("case_id", sorted(SCREENED_REVERSALS))
+def test_a_reversal_the_screen_encodes_fails_at_the_screen(case_id):
+    case = BY_ID[case_id]
+    result = sc.score(case, SCREENED_REVERSALS[case_id], _reader(case["snapshot"]), audit=_audit(case, SCREENED_REVERSALS[case_id]))
+    assert result["screen"] == sc.FAIL and result["verdict"] == sc.FAIL  # a supported ruling never lifts a screen failure
+
+
+def test_a_semantic_reversal_waits_for_the_audit_and_a_ruling_binds_only_its_own_answer():
+    case_id, answer = SEMANTIC_REVERSAL
     case = BY_ID[case_id]
     read = _reader(case["snapshot"])
-    assert sc.score(case, LEXICAL_REVERSALS[case_id], read)["verdict"] in {sc.PENDING_AUDIT, sc.FAIL}
-    assert sc.score(case, LEXICAL_REVERSALS[case_id], read, audit={"supported": False, "reviewer": "CP3"})["verdict"] == sc.FAIL
+    pending = sc.score(case, answer, read)
+    assert pending["screen"] == sc.PASS and pending["verdict"] == sc.PENDING_AUDIT
+    assert sc.score(case, answer, read, audit=_audit(case, answer, rulings=(False, False)))["verdict"] == sc.FAIL
+    replayed = sc.score(case, answer, read, audit=_audit(case, ANSWERS[case_id]))  # a supported ruling for the correct answer's bytes
+    assert replayed["verdict"] == sc.PENDING_AUDIT and replayed["audit"] == "mismatched"
+    assert sc.score(case, answer + " ", read, audit=_audit(case, answer))["audit"] == "mismatched"  # one byte changed
 
 
-def test_an_audit_ruling_needs_a_reviewer_and_a_boolean():
-    assert sc.answer_verdict(sc.FAIL, {"supported": True, "reviewer": "CP3"}) == sc.FAIL  # the audit never lifts a screen failure
-    assert sc.answer_verdict(sc.INCOMPLETE, None) == sc.INCOMPLETE and sc.answer_verdict(sc.PASS, None) == sc.PENDING_AUDIT
-    for bad in ({"supported": "yes", "reviewer": "CP3"}, {"supported": True}):
-        with pytest.raises(ValueError):
-            sc.answer_verdict(sc.PASS, bad)
+def test_an_audit_ruling_needs_both_reviewers_a_reason_and_agreement():
+    case, answer = BY_ID["QB1"], ANSWERS["QB1"]
+    identity = sc.audit_identity(case, "X", release=None, answer=answer, cases_sha256=None)
+    assert sc.answer_verdict(sc.FAIL, _audit(case, answer), identity) == (sc.FAIL, "not needed")  # the audit never lifts a screen failure
+    assert sc.answer_verdict(sc.INCOMPLETE, None, identity)[0] == sc.INCOMPLETE and sc.answer_verdict(sc.PASS, None, identity) == (sc.PENDING_AUDIT, "missing")
+    assert sc.answer_verdict(sc.PASS, _audit(case, answer), identity) == (sc.PASS, "supported")
+    assert sc.answer_verdict(sc.PASS, _audit(case, answer, rulings=(True, False)), identity) == (sc.PENDING_AUDIT, "disputed: held for the operator")
+    assert sc.answer_verdict(sc.PASS, _audit(case, answer, rulings=(True,)), identity) == (sc.PENDING_AUDIT, "incomplete ruling")
+    for broken in ({"supported": "yes"}, {"reason": " "}, {"reviewer": "fable-5.2"}):
+        record = _audit(case, answer)
+        record["rulings"][1] = {**record["rulings"][1], **broken}
+        assert sc.answer_verdict(sc.PASS, record, identity) == (sc.PENDING_AUDIT, "incomplete ruling"), broken
+    other_release = {**_audit(case, answer), "identity": {**identity, "release": "R"}}
+    assert sc.answer_verdict(sc.PASS, other_release, identity) == (sc.PENDING_AUDIT, "mismatched")
+
+
+def test_framing_named_with_an_unrelated_exclusion_still_passes_the_screen():
+    case = BY_ID["QB3"]
+    answer = "`MAX_ENTRIES` caps one page at 40 entries.\n\n`MAX_PAGE_BYTES` caps it at 12,288 UTF-8 bytes, including framing, excluding unrelated files."
+    assert sc.score(case, answer, _reader(case["snapshot"]))["screen"] == sc.PASS
 
 
 def _answer_row(terminal: str, finish: str = "stop") -> dict[str, Any]:
@@ -576,8 +679,9 @@ def test_rows_score_their_status_before_their_text():
     case = BY_ID["QB1"]
     read = _reader(case["snapshot"])
     good = ANSWERS["QB1"]
-    audit = {"supported": True, "reviewer": "CP3"}
+    audit = _audit(case, good, arm="F")
     assert sc.score_row(case, "F", _answer_row("settled"), good, read, audit)["verdict"] == sc.PASS
+    assert sc.score_row(case, "B", _answer_row("settled"), good, read, audit)["audit"] == "mismatched"  # bound to its arm
     assert sc.score_row(case, "F", _answer_row("settled"), good, read)["verdict"] == sc.PENDING_AUDIT
     assert sc.score_row(case, "F", _answer_row("settled", "length"), good, read, audit)["verdict"] == sc.INCOMPLETE  # cut at the cap
     assert sc.score_row(case, "F", {**_answer_row("failed"), "stop_reason": "CHAT_SEARCH_LIMIT_REACHED", "sent": []}, good, read, audit)["verdict"] == sc.INCOMPLETE

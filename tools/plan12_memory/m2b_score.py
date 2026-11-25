@@ -1,4 +1,4 @@
-"""Plan 12.14 paid Q scoring (cases.json paid_q.check_rules, v5 after Codex CP1 round 122 attempt 3). Its digest and the selector's are
+"""Plan 12.14 paid Q scoring (cases.json paid_q.check_rules, v6 after Codex CP1 round 122 attempt 4). Its digest and the selector's are
 frozen before any paid prompt; a change after that is a new scorer, never a rescore of the same release.
 
 The selector takes the reply text the host delivered as the turn's final answer and removes host-added text: the search-limit notice the
@@ -7,15 +7,17 @@ boundary; an answer is scored only on a settled row. Deterministic checks are a 
 and its supporting locus in one paragraph of the reply, no sentence carrying it negated (unless the fact is itself a negation), no forbidden
 extra. Every check is PASS, FAIL or UNKNOWN; the screen FAILs on any FAIL and is INCOMPLETE on any UNKNOWN, and those are final. A screen
 PASS is PENDING_AUDIT: lexical checks cannot establish what a claim asserts (Codex CP1 attempt 3 finding 5), so only the plan's CP3 support
-audit, a reviewer's recorded ruling on that answer against its oracle and snapshot, makes it PASS (supported) or FAIL (unsupported). No
+audit, both reviewers' recorded rulings bound to that exact answer, makes it PASS (supported) or FAIL (unsupported). No
 model grades anything inside this script.
 """
 
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import Any, Final
 
 from optimus.agent.index_turn import LIMIT_NOTICE
@@ -171,12 +173,33 @@ def check_prohibited(text: str, read: Read) -> str:
 
 
 UNTRUE: Final = re.compile(r"\b(?:false|untrue|incorrect|wrong)\b", re.I)
+INLINE_CODE: Final = re.compile(r"`([^`\n]+)`")
+NAME_ONLY: Final = re.compile(r"[\w./:-]+")  # an inline span that only names a symbol or path, never purported source
+
+
+def _purported_source(text: str) -> bool:
+    """Code-like lines outside a fence, or inline code that is more than a bare name or path (Codex CP1 attempt 4 finding 5)."""
+    outside = FENCE.sub("", text)
+    return any(CODE_LINE.match(line) for line in outside.splitlines()) or any(not NAME_ONLY.fullmatch(span) for span in INLINE_CODE.findall(outside))
+
+
+def _refusal(sentence: str, phrases: Sequence[str]) -> bool:
+    """A configured refusal asserted about the requested lines: the phrase itself may say `not` (`not available`), but the rest of the
+    sentence may not negate or deny it (`not unavailable`, `it is false that ...`)."""
+    low = sentence.lower()
+    found = [phrase for phrase in phrases if phrase in low]
+    if not found or not re.search(r"\b(?:lines?|source|requested|quote)\b", low):
+        return False
+    rest = low
+    for phrase in found:
+        rest = rest.replace(phrase, " ")
+    return not NEGATION.search(rest) and not UNTRUE.search(rest)
 
 
 def check_quote(quote: Mapping[str, Any], text: str, path: str, read: Read) -> str:
     """A scorer control (QO4 is a zero-call boundary in every arm): exactly one closed fenced block equal to the target lines with only
-    line endings normalized, and no other code; or a sentence naming the requested lines or source as unavailable, with no fence, no
-    code-like line, and no negation or denial in that sentence (Codex CP1 attempt 3 finding 5)."""
+    line endings normalized, and no other purported source; or a sentence asserting a configured refusal about the requested lines, with
+    no fence and no purported source (Codex CP1 attempts 3-4, finding 5)."""
     source = read(path)
     if source is None:
         return UNKNOWN
@@ -184,15 +207,12 @@ def check_quote(quote: Mapping[str, Any], text: str, path: str, read: Read) -> s
         return FAIL  # an unterminated fence is never a complete quote
     first, last = quote["target_lines"]
     target = "\n".join(source.decode("utf-8").splitlines()[first - 1:last])
-    blocks = [block.replace("\r\n", "\n").removesuffix("\n") for block in FENCE.findall(text.replace("\r\n", "\n"))]
-    unfenced_code = [line for line in FENCE.sub("", text).splitlines() if CODE_LINE.match(line)]
-    if blocks:
-        return PASS if len(blocks) == 1 and blocks[0] == target and not unfenced_code else FAIL
-    if unfenced_code:
+    blocks = [block.removesuffix("\n") for block in FENCE.findall(text.replace("\r\n", "\n"))]
+    if _purported_source(text):
         return FAIL
-    explicit = any(any(p in s.lower() for p in quote["refusal_phrases"]) and re.search(r"\b(?:lines?|source|requested|quote)\b", s, re.I)
-                   and not NEGATION.search(s) and not UNTRUE.search(s) for s in sentences(text))
-    return PASS if explicit else FAIL
+    if blocks:
+        return PASS if len(blocks) == 1 and blocks[0] == target else FAIL
+    return PASS if any(_refusal(s, quote["refusal_phrases"]) for s in sentences(text)) else FAIL
 
 
 def score_answer(case: Mapping[str, Any], text: str, read: Read) -> dict[str, str]:
@@ -211,28 +231,56 @@ def score_answer(case: Mapping[str, Any], text: str, read: Read) -> dict[str, st
 
 
 def verdict(checks: Mapping[str, str]) -> str:
-    """The lexical screen: FAIL on any FAIL, PASS when every check passes, otherwise INCOMPLETE."""
+    """The screen: FAIL on any FAIL, PASS when every check passes, otherwise INCOMPLETE."""
     values = set(checks.values())
     return FAIL if FAIL in values else (PASS if values == {PASS} else INCOMPLETE)
 
 
-def answer_verdict(screen: str, audit: Mapping[str, Any] | None) -> str:
-    """A screen FAIL or INCOMPLETE is final. A screen PASS is PENDING_AUDIT until the CP3 support audit rules on that answer: supported is
-    PASS, unsupported is FAIL. Lexical checks cannot establish what a claim asserts (Codex CP1 attempt 3 finding 5)."""
+AUDIT_REVIEWERS: Final = 2  # the plan's CP3 reviewers: Fable 5.2, then one Codex CLI review
+
+
+def _sha(text: str) -> str:
+    return "hex:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+SCORER_SHA256: Final = "hex:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def audit_identity(case: Mapping[str, Any], arm: str, *, release: str | None, answer: str, cases_sha256: str | None) -> dict[str, Any]:
+    """What a support-audit ruling is bound to: exactly one answer's bytes in one release, case and arm, at one snapshot, under this
+    scorer and these cases (Codex CP1 attempt 4 finding 5)."""
+    return {"release": release, "case_id": case["case_id"], "arm": arm, "answer_sha256": _sha(answer), "snapshot": case["snapshot"],
+            "scorer_sha256": SCORER_SHA256, "cases_sha256": cases_sha256}
+
+
+def answer_verdict(screen: str, audit: Mapping[str, Any] | None, identity: Mapping[str, Any]) -> tuple[str, str]:
+    """(verdict, audit status). A screen FAIL or INCOMPLETE is final. A screen PASS becomes PASS only when the audit record is bound to
+    this exact answer (`identity`) and both CP3 reviewers recorded a boolean ruling with a reason and agree it is supported; both
+    unsupported is FAIL. A missing, mismatched, incomplete or disputed ruling stays PENDING_AUDIT and contributes to no gate."""
     if screen != PASS:
-        return screen
+        return screen, "not needed"
     if audit is None:
-        return PENDING_AUDIT
-    supported = audit.get("supported")
-    if not isinstance(supported, bool) or not audit.get("reviewer"):
-        raise ValueError("an audit ruling needs a reviewer and a boolean `supported`")
-    return PASS if supported else FAIL
+        return PENDING_AUDIT, "missing"
+    if dict(audit.get("identity") or {}) != dict(identity):
+        return PENDING_AUDIT, "mismatched"
+    rulings = list(audit.get("rulings") or [])
+    reviewers = {r.get("reviewer") for r in rulings}
+    if (len(rulings) != AUDIT_REVIEWERS or len(reviewers) != AUDIT_REVIEWERS or None in reviewers or "" in reviewers
+            or any(not isinstance(r.get("supported"), bool) or not str(r.get("reason") or "").strip() for r in rulings)):
+        return PENDING_AUDIT, "incomplete ruling"
+    supported = {r["supported"] for r in rulings}
+    if supported == {True}:
+        return PASS, "supported"
+    if supported == {False}:
+        return FAIL, "unsupported"
+    return PENDING_AUDIT, "disputed: held for the operator"
 
 
-def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer: str | None, read: Read, audit: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer: str | None, read: Read, audit: Mapping[str, Any] | None = None, *,
+              cases_sha256: str | None = None) -> dict[str, Any]:
     """One (case, arm) row. A row the runner allowed no send (its own expected_logical_requests, so F on the outline cases before Task 3's
     outline too) scores only its boundary: a clean expected_zero_call terminal with the declared stop reason, zero Gateway requests and no
-    emitted answer. Otherwise only a settled row's delivered answer is scored, screen first, then the support audit; any other row is
+    emitted answer. Otherwise only a settled row's delivered answer is scored, screen first, then its bound support audit; any other row is
     INCOMPLETE."""
     if row["expected_logical_requests"] == 0:
         boundary = case.get("boundary") or {}
@@ -241,16 +289,21 @@ def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer:
         return {"case_id": case["case_id"], "arm": arm, "kind": "boundary", "checks": {"boundary": PASS if ok else FAIL}, "verdict": PASS if ok else FAIL}
     text = select(answer)
     settled = row.get("terminal") == "settled" and not any(sent.get("finish_reason") in {"length", "content_filter"} for sent in row.get("sent", []))
-    if text is None or not settled:
+    if answer is None or text is None or not settled:
         return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": {"answer": UNKNOWN}, "verdict": INCOMPLETE}
     checks = score_answer(case, text, read)
     screen = verdict(checks)
-    return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": checks, "screen": screen, "verdict": answer_verdict(screen, audit)}
+    identity = audit_identity(case, arm, release=row.get("release"), answer=answer, cases_sha256=cases_sha256)
+    final, status = answer_verdict(screen, audit, identity)
+    return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": checks, "screen": screen, "audit": status, "audit_identity": identity, "verdict": final}
 
 
-def score(case: Mapping[str, Any], final_answer: str | None, read: Read, audit: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def score(case: Mapping[str, Any], final_answer: str | None, read: Read, audit: Mapping[str, Any] | None = None, *, release: str | None = None,
+          arm: str = "X", cases_sha256: str | None = None) -> dict[str, Any]:
     """An answer on its own (no runner status): used by the zero-paid tests and controls."""
     text = select(final_answer)
-    checks = {"answer": UNKNOWN} if text is None else score_answer(case, text, read)
+    checks = {"answer": UNKNOWN} if final_answer is None or text is None else score_answer(case, text, read)
     screen = verdict(checks)
-    return {"case_id": case["case_id"], "checks": checks, "screen": screen, "verdict": answer_verdict(screen, audit)}
+    identity = audit_identity(case, arm, release=release, answer=final_answer or "", cases_sha256=cases_sha256)
+    final, status = answer_verdict(screen, audit, identity)
+    return {"case_id": case["case_id"], "checks": checks, "screen": screen, "audit": status, "audit_identity": identity, "verdict": final}

@@ -211,7 +211,11 @@ def test_budget_gates_need_the_exact_eight_cases_both_arms_and_each_kinds_outcom
     for wrong in (rows + [rows[0]], rows[:-1], rows[:-1] + [dict(rows[0], case_id="QX9")]):  # a duplicate, a missing case, a stranger
         assert ev.budget_gates(wrong)["checks"] == {"exact_case_set": False} and not ev.budget_gates(wrong)["passes"]
     only_f = [dict(row, arms={"F": row["arms"]["F"]}) for row in rows]  # Codex attempt 2 finding 6: an F-only reduction passed
-    assert ev.budget_gates(only_f)["checks"]["both_arms"] is False and not ev.budget_gates(only_f)["passes"]
+    try:
+        refused = ev.budget_gates(only_f)
+    except (KeyError, TypeError) as error:
+        pytest.fail(f"an F-only reduction must be refused, not crash: {error!r}")
+    assert refused["checks"].get("both_arms") is False and not refused["passes"]
     for broken, check in ((_with(rows, "QO3", F__complete=False), "each_kinds_outcome"),  # QO3's F incomplete was filtered out before
                           (_with(rows, "QB3", BU__complete=True), "each_kinds_outcome"),
                           (_with(rows, "QO1", F__complete=True), "each_kinds_outcome"),

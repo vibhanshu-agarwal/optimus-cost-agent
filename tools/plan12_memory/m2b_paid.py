@@ -17,7 +17,7 @@ The Guard is the only client the runner holds. Before it forwards a request it r
 binding to the approved registry hash and output cap (the hash fixes that model's route), an input within the cap, every earlier send
 reconciled with its host receipts, and the ceiling's reservation counting those earlier sends; otherwise it records why and raises before
 anything is sent (Codex CP1 attempts 2-3, finding 3). A row sends at most once. Physical attempts are counted from the Gateway's own route
-attempts. Each Gateway attempt is matched to exactly one host receipt of the same host request, by its run and request identity, attempt
+attempts. Each Gateway attempt is matched to the host receipts of exactly the host request it served, recorded at dispatch, by attempt
 ordinal, Gateway request id and disposition; a duplicate, unmatched, foreign or unattributed record, or a send with no Gateway attempt, is
 kept and makes the row incomplete, which stops the run, and each charge is settled once (finding 4). Answers go to a separate sink kept
 outside the repository; the record keeps ids, digests and counts, never source or request bodies or credentials.
@@ -82,10 +82,12 @@ class Ceiling:
         if used + MAX_ROUTE_ATTEMPTS > self.attempts_max or bound > self.usd_max:
             raise CapRefused(f"cannot reserve {MAX_ROUTE_ATTEMPTS} attempts: {used} used of {self.attempts_max}, worst case USD {bound} of {self.usd_max}")
 
-    def settle(self, attempts: Sequence[Mapping[str, Any]]) -> None:
+    def settle(self, attempts: Sequence[Mapping[str, Any]], charges: Sequence[Mapping[str, Any]] = ()) -> None:
+        """Attempts from Gateway evidence count against the attempt bound; a charge on no attempt (an unattributed or unclaimed receipt)
+        is money only. An unknown amount is priced at the worst case either way."""
         self.attempts_used += len(attempts)
-        for attempt in attempts:
-            cost = attempt.get("cost_usd")
+        for item in (*attempts, *charges):
+            cost = item.get("cost_usd")
             if cost is None:
                 self.unknown_attempts += 1
             else:
@@ -135,7 +137,7 @@ class Guard:
     ceiling: Ceiling
     allowance: int
     receipts: list[Any] = field(default_factory=list)  # the row's host receipt sink, as the runner reports them
-    run_id: str | None = None  # the host request identity each receipt id starts with
+    run_id: str | None = None  # the run whose host request identities the sends record
     sent: list[dict[str, Any]] = field(default_factory=list)
     refusal: str | None = None
     receipts_at_refusal: int | None = None  # receipts after this index are the host's own records of a request never forwarded
@@ -164,7 +166,7 @@ class Guard:
             self._refuse(f"input of {tokens} estimated tokens over the cap of {self.approved.input_cap}")
         pending: list[dict[str, Any]] = []
         if self.sent:
-            earlier = reconcile(self.sent, [receipt_row(r) for r in self.receipts], run_id=self.run_id)
+            earlier = reconcile(self.sent, [receipt_row(r) for r in self.receipts])
             if earlier["problems"]:
                 self._refuse(f"an earlier send is not reconciled: {earlier['problems'][0]}")
             pending = earlier["attempts"]
@@ -174,7 +176,11 @@ class Guard:
             self._refused(f"reservation refused: {refused}")
             raise
         prefix_chars = binding.cache_prefix_chars
-        entry: dict[str, Any] = {"dispatch": len(self.sent) + 1, "route_request_id": binding.request_id, "input_sha256": _sha(text), "input_tokens_estimated": tokens,
+        dispatch = len(self.sent) + 1
+        # The host request identity the runner gives this send's receipts: the Q turn is one Chat request, so turn 1, wire attempt = dispatch
+        # (AgentRunner._report_receipts; Codex CP1 attempt 4 finding 4).
+        receipt_base = None if self.run_id is None else f"{self.run_id}:answer:1:{dispatch}"
+        entry: dict[str, Any] = {"dispatch": dispatch, "receipt_base": receipt_base, "route_request_id": binding.request_id, "input_sha256": _sha(text), "input_tokens_estimated": tokens,
                                  "cache_prefix_chars": prefix_chars, "prefix_sha256": None if prefix_chars is None else _sha(text[:prefix_chars]),
                                  "started": round(time.time(), 3), "finish_reason": None, "gateway_attempts": [], "error": None}
         self.sent.append(entry)
@@ -232,45 +238,56 @@ def _disposition_matches(gateway: str, host: str) -> bool:
     return host == gateway or (gateway == "completed" and host == "uncertain")
 
 
-def _receipt_key(receipt: Mapping[str, Any]) -> tuple[Any, ...]:
-    return (receipt["attempt_id"], receipt["gateway_request_id"], receipt["outcome"], receipt["cost_usd"])
+def _identity(receipt: Mapping[str, Any]) -> tuple[Any, ...]:
+    return (receipt["attempt_id"], receipt["gateway_request_id"])
 
 
-def reconcile(sent: Sequence[Mapping[str, Any]], receipts: Sequence[Mapping[str, Any]], *, run_id: str | None = None) -> dict[str, Any]:
-    """Each Gateway attempt matched to exactly one host receipt of the same host request (Codex CP1 attempt 2 and 3, finding 4).
+def _of_send(receipt: Mapping[str, Any], base: str | None) -> bool:
+    """The receipt belongs to the host request this send dispatched (its routed id, or the unrouted id the host gives a request it
+    could not attribute to a route attempt)."""
+    return base is None or receipt["attempt_id"] == base or _base(receipt["attempt_id"]) == base
 
-    A receipt matches when its id belongs to this run, its id's request part is the one this send's other receipts share (and no other
-    send's), its attempt ordinal, Gateway request id and disposition agree, and any route request id its usage names is this send's. A
-    physical attempt carries the matched receipt's charge and id (None when unmatched). Identical duplicate receipts are kept and flagged,
-    their one charge counted once; differing candidates leave the charge unknown. A send the Gateway reported nothing for counts as
-    MAX_ROUTE_ATTEMPTS unknown attempts. Unclaimed receipts are kept and flagged; `unclaimed_charges` holds each distinct charged one once."""
+
+def reconcile(sent: Sequence[Mapping[str, Any]], receipts: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Each Gateway attempt matched to the host receipts of exactly the host request it served (Codex CP1 attempts 2-4, finding 4).
+
+    Each send records its host request identity at dispatch (`receipt_base`, the id the runner gives that request's receipts). A receipt
+    matches an attempt when its id is that request's with the attempt's ordinal, its Gateway id and disposition agree (a completed attempt
+    the host records as uncertain keeps both, its charge unknown), and any route request id or attempt number its usage names agrees.
+
+    Attempts come only from Gateway evidence: each physical Gateway attempt is one attempt, carrying its matched receipt's charge (None
+    when unmatched or contested); a send the Gateway reported nothing for is MAX_ROUTE_ATTEMPTS unknown attempts, once, its host records
+    kept beside them and never counted again. Identical copies of a matched receipt are kept and flagged, their one charge counted once;
+    differing copies leave it unknown. A receipt matching no attempt is kept and flagged; `charges` settles each distinct receipt identity
+    not already settled once, as money only (an unattributed charge is no attempt), and conflicting copies of one identity are flagged."""
     claimed: set[int] = set()
-    bases: dict[int, str] = {}  # dispatch -> its receipts' request part
+    settled_identities: set[tuple[Any, ...]] = set()
     attempts: list[dict[str, Any]] = []
     problems: list[str] = []
-    for number, entry in enumerate(sent, start=1):
-        rid = entry["route_request_id"]
+    for entry in sent:
+        rid, base = entry["route_request_id"], entry.get("receipt_base")
         if not entry["gateway_attempts"]:
+            own = [i for i, r in enumerate(receipts) if i not in claimed and _of_send(r, base)]
+            claimed.update(own)
+            settled_identities.update(_identity(receipts[i]) for i in own)
             problems.append(f"{rid}: no Gateway attempt reported")
-            attempts.extend({"route_request_id": rid, "attempt": None, "gateway_request_id": None, "outcome": None, "receipt_attempt_ids": [], "cost_usd": None,
-                             "reason": "no Gateway attempt reported"} for _ in range(MAX_ROUTE_ATTEMPTS))
+            attempts.extend({"route_request_id": rid, "attempt": None, "gateway_request_id": None, "outcome": None, "receipt_attempt_ids": [receipts[i]["attempt_id"] for i in own],
+                             "cost_usd": None, "reason": "no Gateway attempt reported"} for _ in range(MAX_ROUTE_ATTEMPTS))
             continue
         for attempt in entry["gateway_attempts"]:
 
-            def fits(r: Mapping[str, Any], attempt: Mapping[str, Any] = attempt, number: int = number, rid: str = rid) -> bool:
-                usage_rid = (r.get("usage") or {}).get("route_request_id")
-                base = _base(r["attempt_id"])
-                return ((run_id is None or r["attempt_id"].startswith(f"{run_id}:")) and bases.get(number, base) == base
-                        and base not in {b for n, b in bases.items() if n != number} and _ordinal(r["attempt_id"]) == str(attempt["attempt"])
-                        and r["gateway_request_id"] == attempt["gateway_request_id"] and _disposition_matches(attempt["outcome"], r["outcome"])
-                        and usage_rid in (None, rid))
+            def fits(r: Mapping[str, Any], attempt: Mapping[str, Any] = attempt, base: str | None = base, rid: str = rid) -> bool:
+                usage = r.get("usage") or {}
+                return (_base(r["attempt_id"]) == base if base is not None else True) and _ordinal(r["attempt_id"]) == str(attempt["attempt"]) \
+                    and r["gateway_request_id"] == attempt["gateway_request_id"] and _disposition_matches(attempt["outcome"], r["outcome"]) \
+                    and usage.get("route_request_id") in (None, rid) and usage.get("attempt") in (None, attempt["attempt"])
 
             matches = [i for i, r in enumerate(receipts) if i not in claimed and fits(r)]
             cost, reason = None, None
             if matches:
                 claimed.update(matches)
-                bases.setdefault(number, _base(receipts[matches[0]]["attempt_id"]))
-                if len({_receipt_key(receipts[i]) for i in matches}) == 1:
+                settled_identities.update(_identity(receipts[i]) for i in matches)
+                if len({(receipts[i]["outcome"], receipts[i]["cost_usd"]) for i in matches}) == 1:
                     cost = receipts[matches[0]]["cost_usd"]
                 if len(matches) > 1:
                     reason = f"{len(matches)} host receipts match" + (" (identical: one charge)" if cost is not None else " (differing: charge unknown)")
@@ -284,8 +301,17 @@ def reconcile(sent: Sequence[Mapping[str, Any]], receipts: Sequence[Mapping[str,
                                  "cost_usd": cost, "reason": reason})
     unclaimed = [r for i, r in enumerate(receipts) if i not in claimed]
     problems.extend(f"host receipt {r['attempt_id']} ({r['outcome']}) matches no Gateway attempt" for r in unclaimed)
-    charges = list({_receipt_key(r): r for r in unclaimed if r["outcome"] in CHARGED}.values())
-    return {"attempts": attempts, "unclaimed_receipts": unclaimed, "unclaimed_charges": charges, "problems": problems}
+    charges: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for receipt in unclaimed:
+        identity = _identity(receipt)
+        if receipt["outcome"] not in CHARGED or identity in settled_identities:
+            continue  # a copy of a receipt already settled through its attempt is never charged again
+        if identity in charges and charges[identity]["cost_usd"] != receipt["cost_usd"]:
+            problems.append(f"host receipt {receipt['attempt_id']}: conflicting copies")
+            charges[identity] = {**charges[identity], "cost_usd": None}
+        else:
+            charges.setdefault(identity, {"attempt_id": receipt["attempt_id"], "outcome": receipt["outcome"], "cost_usd": receipt["cost_usd"]})
+    return {"attempts": attempts, "unclaimed_receipts": unclaimed, "charges": list(charges.values()), "problems": problems}
 
 
 def schedule(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool) -> list[tuple[str, str, int]]:
@@ -386,8 +412,8 @@ def run_one(case: Mapping[str, Any], arm: str, *, position: int, gateway: Any, a
     host = [receipt_row(r) for r in receipts]
     cut = guard.receipts_at_refusal
     forwarded, unforwarded = (host, []) if cut is None else (host[:cut], host[cut:])  # the host's own record of a refused request is no charge
-    reconciled = reconcile(guard.sent, forwarded, run_id=run_id)
-    ceiling.settle(reconciled["attempts"] + reconciled["unclaimed_charges"])  # each charge once
+    reconciled = reconcile(guard.sent, forwarded)
+    ceiling.settle(reconciled["attempts"], reconciled["charges"])  # attempts from Gateway evidence; each other charge once, as money
     return {"release": release, "case_id": case["case_id"], "arm": arm, "position": position, "logical_request_id": run_id,
             "logical_requests": len(guard.sent), "sent": guard.sent, "host_receipts": host, "attempts": reconciled["attempts"],
             "reconciliation": {"unclaimed_receipt_ids": [r["attempt_id"] for r in reconciled["unclaimed_receipts"]], "problems": reconciled["problems"],

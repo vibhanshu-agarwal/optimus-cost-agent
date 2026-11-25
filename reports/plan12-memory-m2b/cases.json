@@ -3,7 +3,7 @@
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "state": "DRAFT v5: Codex CP1 round 122 verified the fresh gold (44/44) and replaced five fresh queries and every paid oracle verbatim; attempt 2 set the encoding table applied here (relationships tied to loci in one paragraph, negation, forbidden extras, QR loci at their snapshots); attempt 3 made the checks a screen (a screen PASS waits for the CP3 support audit) and added forbidden phrases for its literal reversals; N refuses the oversized cases; sealed after Codex confirms this encoding",
+ "state": "DRAFT v6: Codex CP1 round 122 verified the fresh gold (44/44) and replaced five fresh queries and every paid oracle verbatim; attempt 2 set the encoding table applied here (relationships tied to loci in one paragraph, negation, forbidden extras, QR loci at their snapshots); attempt 3 made the checks a screen (a screen PASS waits for the CP3 support audit) and added forbidden phrases for its literal reversals (attempt 4 narrowed QB3's to the framing reversal); N refuses the oversized cases; sealed after Codex confirms this encoding",
  "authority": "operator 2026-11-24 \"Approve sampling\" (Claude's chat, Plan 12.14 thread) of optimus-handoff/p1214-task0/sampling-proposal.md, sha256 hex:ee232629b668773faa3342c6fc0669e82c8165a6f917eed5a17df4cc992c2054",
  "builders": {
   "fresh": "optimus-handoff/p1214-task0/m2b_fresh3_pool.py + m2b_fresh3_build.py",
@@ -924,7 +924,11 @@
        "locus": "L2",
        "negated": false,
        "forbid": [
-        "exclud"
+        "excluding framing",
+        "excludes framing",
+        "framing excluded",
+        "excluding the framing",
+        "without framing"
        ]
       }
      ],
