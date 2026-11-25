@@ -1,7 +1,7 @@
 {
  "schema": "plan12-memory-m2b.run-config.v1",
  "label": "plan12.14-q-release-gate-g2",
- "authorization": "pending: the operator's G2 release (Docker Desktop, the dedicated index Redis p1214-index-test-redis and the configured embedding artifact; no paid call is possible)",
+ "authorization": "operator, Claude chat 2026-11-26: \"Release G2\" (Docker Desktop, the dedicated index Redis p1214-index-test-redis and its volume, the configured embedding artifact; reruns of the same command that day; no paid call is possible)",
  "cases": "reports/plan12-memory-m2b/cases.json",
  "release_prefix": "p1214-",
  "container": "p1214-index-test-redis",
