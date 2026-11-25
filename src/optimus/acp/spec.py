@@ -42,6 +42,7 @@ from optimus.acp.debug_trace import (
     log_memory_served,
     log_pre_run_refusal,
     log_prompt_refusal,
+    observe_operation,
 )
 from optimus.acp.errors import (
     INTERNAL_ERROR,
@@ -1079,6 +1080,7 @@ class AcpDuplexAdapter:
         idle.phase = "IDLE_CANDIDATE"
         idle.deadline = self._monotonic_clock() + self._mcp_idle_seconds
 
+    @observe_operation
     def start_idle_mcp_sweeper(self) -> None:
         if self._mcp_idle_seconds is None or self._closed or self._idle_sweeper is not None:
             return
@@ -1089,6 +1091,7 @@ class AcpDuplexAdapter:
                 await self.sweep_idle_mcp_once()
         self._idle_sweeper = asyncio.create_task(sweep(), name="optimus-idle-mcp-sweeper", context=detached_request_context())
 
+    @observe_operation
     async def stop_idle_mcp_sweeper(self) -> None:
         task = self._idle_sweeper
         if task is not None:
@@ -1192,6 +1195,7 @@ class AcpDuplexAdapter:
                 self._outbound.cancel_request(turn.pending_permission_request_id, {"outcome": {"outcome": "cancelled"}})
                 turn.pending_permission_request_id = None
 
+    @observe_operation
     async def aclose(self) -> None:
         if self._shutdown_task is None:
             self._shutdown_task = asyncio.create_task(
@@ -1455,6 +1459,7 @@ class AcpDuplexAdapter:
             ownership_slot,
         )
 
+    @observe_operation
     async def _handle_savings(self, request: dict[str, Any], session_id: str, command: SavingsCommand | str,
                               ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
         """Plan 12.9 `/savings`: answered locally, before admission or classification. It enters no conversation,
@@ -1477,6 +1482,7 @@ class AcpDuplexAdapter:
         return await self._answer_locally(request, session_id, compute, ownership_slot, "the usage report could not be delivered",
                                           cancelled=cancelled)
 
+    @observe_operation
     async def _handle_memory_command(self, request: dict[str, Any], session_id: str, command: MemoryCommand | str,
                                      ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
         """Plan 12.11 v4 D10: a memory command, answered locally like `/savings` and calling no model. A change's notice is a
@@ -1523,6 +1529,7 @@ class AcpDuplexAdapter:
         return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered",
                                           cancelled=cancelled)
 
+    @observe_operation
     async def _handle_why(self, request: dict[str, Any], session_id: str, page: int | str,
                           ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
         """Plan 12.13 `/why`: the session's last turn's recorded explanation, answered locally like `/savings`. It reads the
@@ -1720,6 +1727,7 @@ class AcpDuplexAdapter:
                          for name, (description, hint) in MEMORY_COMMAND_DESCRIPTIONS.items()]
         return commands
 
+    @observe_operation
     def close_all(self) -> None:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
         if self._sessions._retention is not None:
@@ -1729,6 +1737,7 @@ class AcpDuplexAdapter:
         self._cancel_loop_work()
         self._sessions.close_all()
 
+    @observe_operation
     async def handle_client_notification(self, notification: dict[str, Any]) -> None:
         if notification.get("method") != "session/cancel":
             return
@@ -1764,6 +1773,7 @@ class AcpDuplexAdapter:
         elif turn.pending_permission_request_id is not None:
             self._outbound.cancel_request(turn.pending_permission_request_id, {"outcome": {"outcome": "cancelled"}})
 
+    @observe_operation
     def _handle_initialize(self, request: dict[str, Any]) -> dict[str, Any]:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("protocolVersion"), int):
@@ -1807,6 +1817,7 @@ class AcpDuplexAdapter:
         """Every advertised selector's current value (Plan 12.2 Task 10)."""
         return SessionConfigSnapshot(mode_id=_ID_BY_MODE[session.execution_mode], strategy=session.context_strategy)
 
+    @observe_operation
     async def _handle_config_change(self, request: dict[str, Any], *, method: str) -> dict[str, Any]:
         """One validation-and-update path for ``session/set_mode`` and ``session/set_config_option``.
 
@@ -1907,6 +1918,7 @@ class AcpDuplexAdapter:
         )
         publication.confirmed(revision)
 
+    @observe_operation
     async def _handle_session_new(self, request: dict[str, Any]) -> dict[str, Any]:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("cwd"), str):
@@ -2009,6 +2021,7 @@ class AcpDuplexAdapter:
                 with contextlib.suppress(BaseException):
                     await self.retention.wait_retired(session.session_id)
 
+    @observe_operation
     async def _handle_session_prompt(
         self,
         request: dict[str, Any],
