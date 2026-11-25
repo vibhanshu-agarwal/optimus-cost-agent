@@ -115,7 +115,7 @@ def test_a_spaced_path_names_no_target_so_the_turn_is_m2as_own(big):
 def _runner_packer(root):
     from tests.unit.tools.test_plan12_memory_m2b_production_bytes import _attached
 
-    return _attached(root, AWARE)
+    return _attached(root, AWARE, prompt=TASK)
 
 
 class _NoCalls:
@@ -131,29 +131,44 @@ def _run(root, task, mode, **kwargs):
     return AgentRunner(gateway_client=_NoCalls(), model="m").run(request, context_packer=packer, **kwargs), packer
 
 
-def test_an_exact_chat_follow_up_on_the_outlined_file_refuses_without_dispatch_or_the_outline(big):
-    """Codex CP2 A4: the outline turn's permission ends with it. The next exact request on the same file is TOO_LARGE, sends nothing, and
-    nothing of the earlier outline is reused."""
-    first = _session(big, _Storage()).turn()
-    _assemble(first)
-    assert first.manifest["outline"] is not None
-    result, packer = _run(big, 'Quote lines 1-4 of "pkg/big.py" exactly.', ExecutionMode.CHAT)
+def _attached_request(packer, task: str, mode: ExecutionMode, root) -> AgentRunRequest:
+    """The request the adapter builds from an attached turn: its own prompt, envelope and selection text (spec.py planning_fields)."""
+    admitted = packer.admitted
+    return AgentRunRequest(run_id="r", task=task, execution_mode=mode, workspace_root=root, max_planning_turns=2, max_cost_usd=Decimal("1"),
+                           conversation_envelope=admitted.conversation_envelope, selection_text=admitted.selection_text, context_digest=admitted.digest)
+
+
+def test_an_exact_chat_follow_up_after_the_outline_turn_refuses_without_dispatch_or_the_outline(big):
+    """Codex CP2 A4 (attempt 2): the outline turn is in this turn's history, so the follow-up selects from it. The outline's permission ended
+    with its turn: the exact follow-up on the same file is TOO_LARGE, sends nothing, and reuses nothing of the outline."""
+    from tests.unit.agent.test_context_selection import turn as conversation_turn
+    from tests.unit.tools.test_plan12_memory_m2b_production_bytes import _attached
+
+    follow_up = 'Quote lines 1-4 of "pkg/big.py" exactly.'
+    packer = _attached(big, AWARE, records={1: conversation_turn(TASK, completion="The file defines 400 handlers (from an outline only).")}, prompt=follow_up)
+    request = _attached_request(packer, follow_up, ExecutionMode.CHAT, big)
+    assert TASK in request.selection_text, "the arrangement: the outline turn is in the selection window"
+    result = AgentRunner(gateway_client=_NoCalls(), model="m").run(request, context_packer=packer)
     assert result.stop_reason == "REQUIRED_WORKSPACE_FILE_TOO_LARGE" and DISCLOSURE not in (result.output_text or "")
     assert packer.memory.manifest.get("outline") is None
 
 
-def test_an_agent_summary_of_the_oversized_file_goes_to_fresh_ranged_reads(big, monkeypatch):
-    """Codex CP2 A4: an Agent turn is never outlined; it reaches multi-turn planning with nothing shown and the file's size for ranged reads."""
-    seen: dict = {}
+def test_an_agent_summary_of_the_oversized_file_plans_from_a_fresh_ranged_read(big):
+    """Codex CP2 A4 (attempt 2): through the real planner. Agent is never outlined; the model asks for a range and the next request carries
+    exactly those bytes, read from disk now."""
+    from tests.unit.agent.test_runner import ScriptingGateway
+    from tests.unit.tools.test_plan12_memory_m2b_production_bytes import _attached
 
-    def planning(self, **kwargs):  # noqa: ANN001, ANN202
-        seen.update(kwargs)
-        return "planned"
-
-    monkeypatch.setattr(AgentRunner, "_run_multi_turn_planning", planning)
-    result, packer = _run(big, TASK, ExecutionMode.AGENT)
-    assert result == "planned" and seen["initial_workspace_context"] == "" and seen["required_file_sizes"] == {"pkg/big.py": len(BIG.encode())}
-    assert packer.memory.manifest.get("outline") is None
+    gateway = ScriptingGateway([("OBSERVE: need the first handler\nREAD: pkg/big.py#bytes=0:60\n", Decimal("0.001"), "gw-1"),
+                                ("READ pkg/big.py\nWRITE notes.md\nhandlers: 400\n", Decimal("0.001"), "gw-2")])
+    packer = _attached(big, AWARE, mode=ExecutionMode.AGENT, prompt=TASK)
+    request = _attached_request(packer, TASK, ExecutionMode.AGENT, big)
+    assert request.selection_text.strip().endswith(TASK), "the arrangement: the turn selects from the summary task"
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+    assert len(gateway.calls) == 2, result.stop_reason
+    first, second = (call["input_text"] for call in gateway.calls)
+    assert DISCLOSURE not in first and BODY not in first and packer.memory.manifest.get("outline") is None
+    assert BIG.encode()[:60].decode() in second and BIG.encode()[:60].decode() not in first
 
 
 def test_a_chat_summary_halted_after_its_outline_is_built_sends_nothing(big):

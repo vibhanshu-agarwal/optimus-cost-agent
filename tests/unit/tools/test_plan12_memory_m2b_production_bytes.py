@@ -96,9 +96,10 @@ def test_each_arms_pack_in_the_budget_pass_is_the_pack_production_builds(workspa
     assert (row["arms"]["BU"]["optional_items"], row["arms"]["F"]["optional_items"]) == (0, 1) and row["arms"]["BU"]["complete"], "the arrangement"
 
 
-def _attached(root: Path, pack_budget: BudgetPolicy) -> AttachedTurn:
-    """A Q row's packer as a launch prepares one: a real attached turn with no history, the memory turn joined to it, then the history view
-    prepared, in the adapter's order (spec.py: _prepare_memory, then _prepare_attached_context; Codex CP2 A2)."""
+def _attached(root: Path, pack_budget: BudgetPolicy, *, records: dict | None = None, prompt: str = TASK, mode: ExecutionMode = ExecutionMode.CHAT) -> AttachedTurn:
+    """A Q row's packer as a launch prepares one: a real attached turn (no history unless `records` gives some), the memory turn joined to
+    it, then the history view prepared, in the adapter's order (spec.py: _prepare_memory, then _prepare_attached_context; Codex CP2 A2)."""
+    records = records or {}
     attachment = ContextAttachment(
         engine=ContextEngine(), parameters=parameters(), limits=limits(), source_max_bytes=1_000_000, record_reservation_bytes=0,
         usable_input_tokens=50_000, estimate_request=len, pack_budget=pack_budget, registry_hash="e" * 64, model_id=STANDARD,
@@ -106,8 +107,8 @@ def _attached(root: Path, pack_budget: BudgetPolicy) -> AttachedTurn:
         summarizer_route=SummarizerRoute(model_id="test/summarizer", role="summarizer", route=("p",), reasoning=None, quantizations=("fp8",)),
         record_receipt=[].append, max_repacks=2,
     )
-    attached = AttachedTurn.capture(attachment=attachment, session_key="q", records={}, approvals={}, generation=0, sanitizer=SANITIZER, strategy="compaction",
-                                    mode=ExecutionMode.CHAT, checkpoint=None, current_prompt=TASK, turn_seq=1, cancelled=lambda: False)
+    attached = AttachedTurn.capture(attachment=attachment, session_key="q", records=records, approvals={}, generation=len(records), sanitizer=SANITIZER,
+                                    strategy="compaction", mode=mode, checkpoint=None, current_prompt=prompt, turn_seq=len(records) + 1, cancelled=lambda: False)
     attached.memory = _session(root, _SymbolsOnly(_records())).turn()
     assert attached.prepare().kind == "view"
     return attached

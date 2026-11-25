@@ -1,9 +1,9 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v12",
+ "schema": "plan12-memory-m2b.evaluation-contract.v13",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "frozen_before": "CP2 acceptance and any paid prompt; successor of v11 after CP2's first reviews",
+ "frozen_before": "CP2 acceptance and any paid prompt; successor of v12 after CP2 attempt 2",
  "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
  "inputs": {
   "cases": "reports/plan12-memory-m2b/cases.json",
@@ -175,10 +175,10 @@
   "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v11",
-  "sha256": "hex:ff80c0ee70e248d643898dc7bad7c8f9caae22b3f5283b2d2e9cdcfb93f025d4",
-  "commit": "git:7f1dc19",
-  "change": "CP2 attempt 1: the launcher's preparation order corrected; Codex's (B) and Fable's gate items added to the Q-release gate; review dispositions and follow-ups recorded"
+  "schema": "plan12-memory-m2b.evaluation-contract.v12",
+  "sha256": "hex:d389ecc7decaf735bd4fece947bcf2cbeb83f1224be667ba1181bec64f66d62e",
+  "commit": "git:a9b5660",
+  "change": "CP2 attempt 2: v12's A4 disposition corrected (it overstated the Agent test); the A4 evidence completed and recorded"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -404,12 +404,16 @@
   },
   "fixed": {
    "git:c26147e": "Fable findings 1-3 (no content-free outline; no shown-file hash for an outline; a withheld file's outline details withheld); revert 4/4",
-   "git:2d0b590": "Codex A1 (summary path in the resolver's own grammar), A2 (the fixture's order), A3 (the fallback manifest's policy; manifest-v2 mutants re-run by assertion), A4 (exact follow-up refuses without dispatch or outline; Agent reaches ranged reads; a halt after the outline sends nothing); revert 8/8 by named assertion"
+   "git:2d0b590": "Codex A1 (summary path in the resolver's own grammar), A2 (the fixture's order), A3 (the fallback manifest's policy; manifest-v2 mutants re-run by assertion), A4 in part (a halt after the outline sends nothing; the exact follow-up and Agent tests were incomplete, Codex attempt 2: the follow-up had no history and the Agent test stubbed the planner); revert 8/8 by named assertion"
   },
   "to_the_q_release_gate": "Fable 4, 6, 7, 8's prefix assertion and Codex's (B) items (q_release_gate.contents)",
   "follow_ups": [
    "the workspace resolver binds a spaced or non-ASCII path's basename to another file (M2a behaviour for any task; Codex CP2 A1's remainder): a follow-up issue, operator OK owed",
    "Task 5 docs: the outline needs a clean selection window, a follow-up exact turn on the same file is TOO_LARGE in Chat (use Agent for ranged reads), Summarize is case-sensitive with a forward-slash path; Q's outline evidence is first-turn, tools-withdrawn (Fable CP2 finding 5)"
   ]
+ },
+ "cp2_attempt_2": {
+  "review": "Codex gpt-6.2-sol high, round 123 attempt 2, ACCEPT WITH CHANGES, #548 comment 7165327891: A1-A3 closed; A4 open; v12 overstated A4",
+  "fixed": "the exact Chat follow-up now carries the outline turn in its history (the selection window holds it) and still refuses as TOO_LARGE with zero dispatch and no outline; the Agent summary runs through the real planner with a scripted ranged read, and the next request carries exactly those bytes read from disk, with no outline before; revert checks by named assertion: optimus-handoff/p1214-task3/revert_cp2_codex_a4.log (2/2: history enabling the outline, Agent outlined) and revert_cp2_codex-r2.log (8/8 re-run at the new tests)"
  }
 }
