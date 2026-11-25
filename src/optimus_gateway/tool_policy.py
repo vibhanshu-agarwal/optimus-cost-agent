@@ -214,14 +214,20 @@ def _optional_string(metadata: Mapping[str, Any], key: str) -> str | None:
 
 
 def _https_hostname(url: str) -> str | None:
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+    except ValueError:  # #603: a host the parser rejects (an unclosed bracket) is no host
+        return None
     if parsed.scheme != "https" or parsed.hostname is None:
         return None
     return parsed.hostname.lower().rstrip(".")
 
 
 def _normalize_domain(value: str) -> str:
-    parsed = urlparse(value)
+    try:
+        parsed = urlparse(value)
+    except ValueError:  # #603: a host the parser rejects (an unclosed bracket) is no host
+        return ""
     if parsed.scheme and parsed.netloc:
         if parsed.hostname is None:
             return ""

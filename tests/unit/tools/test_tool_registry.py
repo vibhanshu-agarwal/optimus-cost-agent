@@ -163,3 +163,25 @@ def test_extract_rejects_non_https_url_before_provenance_match():
         )
 
     assert registry.call_count("run-1") == 0
+
+
+@pytest.mark.parametrize("target_url", ["https://[", "https://[::1", "https://[not-an-address]/x"])
+def test_web_extract_with_a_url_the_parser_rejects_is_refused_not_raised(target_url):
+    """#603: urllib raises ValueError for these; the policy answers as for any URL that is not HTTPS."""
+    registry = ToolRegistry()
+    registry.record_search_results(run_id="run-1", urls=(target_url,))
+
+    with pytest.raises(ToolCallRejected, match="https URL required for web extract"):
+        registry.authorize_and_record_call(
+            ToolInvocationRequest(
+                run_id="run-1",
+                tool_class=ToolClass.WEB_EXTRACT,
+                execution_mode=ExecutionMode.PLAN,
+                policy_signal=ToolPolicySignal.APPROVED_SEARCH_RESULT_PROVENANCE,
+                reason=EvidenceReasonCode.USER_REQUESTED,
+                target_url=target_url,
+                prior_search_result_urls=registry.search_result_urls("run-1"),
+            )
+        )
+
+    assert registry.call_count("run-1") == 0

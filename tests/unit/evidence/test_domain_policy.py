@@ -38,3 +38,30 @@ def test_domain_policy_rejects_off_allowlist_urls():
     assert policy.url_allowed("https://evil.com/a", effective) is False
     with pytest.raises(EvidenceDomainRejected, match="URL host not in effective allowed domains"):
         policy.assert_url_allowed("https://evil.com/a", effective)
+
+
+# #603: each of these makes urllib's parser raise ValueError (an unclosed or invalid bracketed host).
+MALFORMED_URLS = ["https://[", "https://[::1", "https://[not-an-address]/x"]
+
+
+@pytest.mark.parametrize("value", MALFORMED_URLS)
+def test_a_malformed_requested_domain_is_rejected_like_any_unlisted_domain(value):
+    policy = EvidenceDomainPolicy(configured_allowed_domains=("example.com",))
+
+    with pytest.raises(EvidenceDomainRejected, match="allowed_domains not in configured evidence allowlist"):
+        policy.effective_allowed_domains((value,))
+    assert policy.effective_allowed_domains((value, "example.com")) == ("example.com",)
+
+
+@pytest.mark.parametrize("value", MALFORMED_URLS)
+def test_a_malformed_url_is_not_an_allowed_url(value):
+    policy = EvidenceDomainPolicy(configured_allowed_domains=("example.com",))
+
+    assert policy.url_allowed(value, ("example.com",)) is False
+    with pytest.raises(EvidenceDomainRejected, match="URL host not in effective allowed domains"):
+        policy.assert_url_allowed(value, ("example.com",))
+
+
+def test_a_malformed_configured_domain_counts_as_no_domain():
+    with pytest.raises(ValueError, match="configured_allowed_domains must not be empty"):
+        EvidenceDomainPolicy(configured_allowed_domains=("https://[",))
