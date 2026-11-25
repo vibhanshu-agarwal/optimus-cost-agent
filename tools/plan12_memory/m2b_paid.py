@@ -52,6 +52,7 @@ CATEGORIES: Final = ("ranking", "budget", "outline")
 OUTPUT_CAP: Final = 2_048
 INPUT_CAP: Final = 65_536
 PHYSICAL: Final = frozenset({"completed", "uncertain", "rejected"})  # left the Gateway for a provider; not_sent did not
+UNCHECKED: Final = object()  # no dry-pass prefix boundary to hold the send to
 
 
 class CapRefused(Exception):
@@ -138,6 +139,7 @@ class Guard:
     receipts_at_refusal: int | None = None  # receipts after this index are the host's own records of a request never forwarded
     expected_input_sha256: str | None = None  # the row's input from the launcher's dry preparation pass; anything else is refused (gate item 14)
     write_input: Callable[[str, str], None] | None = None  # (input_sha256, text) to the sink outside the repository, before forwarding (item 15)
+    expected_cache_prefix_chars: Any = UNCHECKED  # the dry pass's cached-prefix boundary: the same text split elsewhere is refused (Codex round 124 B2)
 
     def __post_init__(self) -> None:
         if self.allowance not in (0, 1):  # Fable 5.2, CP1: the intra-row multi-send path is deleted
@@ -164,6 +166,8 @@ class Guard:
             self._refuse("the binding is not the approved composition and output cap")
         if self.expected_input_sha256 is not None and _sha(text) != self.expected_input_sha256:
             self._refuse("the input is not the one the dry preparation pass prepared")
+        if self.expected_cache_prefix_chars is not UNCHECKED and binding.cache_prefix_chars != self.expected_cache_prefix_chars:
+            self._refuse("the cached prefix is not the one the dry preparation pass bound")
         tokens = self.approved.estimate_request(text)
         if tokens > self.approved.input_cap:
             self._refuse(f"input of {tokens} estimated tokens over the cap of {self.approved.input_cap}")
@@ -389,14 +393,16 @@ def terminal(row: Mapping[str, Any], *, expected_stop: str | None = None) -> tup
 
 def run_one(case: Mapping[str, Any], arm: str, *, position: int, gateway: Any, approved: Approved, model: str, packer: Any, binder: Any, workspace: Path,
             ceiling: Ceiling, allowance: int, release: str = "Q", expected_input_sha256: str | None = None,
-            write_input: Callable[[str, str], None] | None = None, observe_context: Callable[[Any, Any], None] | None = None) -> dict[str, Any]:
+            write_input: Callable[[str, str], None] | None = None, observe_context: Callable[[Any, Any], None] | None = None,
+            expected_cache_prefix_chars: Any = UNCHECKED) -> dict[str, Any]:
     """One logical request through the real runner, its Gateway client wrapped in the Guard. The frozen schedule allows at most one send
     per row, enforced by the Guard (Codex CP1 attempt 3 finding 3). Any failure of the run, an accounting integrity error included, still yields
     its row with every receipt the host reported, so the sink keeps it before the run stops (finding 4). `observe_context` is the runner's
     own workspace-context observer, through which the launcher takes the row's pack."""
     receipts: list[Any] = []  # the Guard refuses any allowance but 0 or 1 at construction
     run_id = f"m2b-q-{case['case_id']}-{arm}"
-    guard = Guard(gateway, approved, ceiling, allowance, receipts, run_id, expected_input_sha256=expected_input_sha256, write_input=write_input)
+    guard = Guard(gateway, approved, ceiling, allowance, receipts, run_id, expected_input_sha256=expected_input_sha256, write_input=write_input,
+                  expected_cache_prefix_chars=expected_cache_prefix_chars)
     request = AgentRunRequest(run_id=run_id, task=case["task"], execution_mode=ExecutionMode.CHAT, workspace_root=workspace,
                               max_planning_turns=1, max_cost_usd=ceiling.usd_max)
     runner = AgentRunner(gateway_client=guard, model=model, state_store=InMemoryAgentStateStore(), workspace_context_observer=observe_context)
@@ -428,26 +434,31 @@ def run(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_availab
         packer_for: Callable[[Mapping[str, Any], str], Any], binder_for: Callable[[Mapping[str, Any], str], Any],
         workspace_for: Callable[[Mapping[str, Any]], Path], ceiling: Ceiling, write: Callable[[Mapping[str, Any]], None],
         write_answers: Callable[[Mapping[str, Any]], None], release: str = "Q", write_input: Callable[[str, str], None] | None = None,
-        expected_inputs: Mapping[tuple[str, str], str] | None = None, observe_context: Callable[[Any, Any], None] | None = None) -> dict[str, Any]:
+        expected_inputs: Mapping[tuple[str, str], Mapping[str, Any]] | None = None, observe_context: Callable[[Any, Any], None] | None = None,
+        row_evidence: Callable[[Mapping[str, Any], str, Mapping[str, Any]], Mapping[str, Any]] | None = None) -> dict[str, Any]:
     """The whole release in its frozen order. Stops at the first row that is not settled or an expected zero call. With `expected_inputs`
-    (the launcher's dry preparation pass, gate item 14), each row's Guard forwards only that row's input; a row the pass did not prepare
-    has none, so it is refused."""
+    (the launcher's dry preparation pass, gate item 14), each row's Guard forwards only that row's input with that row's prefix boundary;
+    a row the pass did not prepare has none, so it is refused. `row_evidence` adds the launcher's observation (pack, epoch, tree) to each
+    row before it is written."""
     by_id = {case["case_id"]: case for case in cases}
     expected = expected_calls(cases, u_equals_b=u_equals_b, outline_available=outline_available)
     report: dict[str, Any] = {"schema": "plan12-memory-m2b.paid-attempts.v2", "release": release, "u_equals_b": u_equals_b, "rows": [], "stopped": None}
     answers: dict[str, str | None] = {}
     for case_id, arm, position in schedule(cases, u_equals_b=u_equals_b):
         case = by_id[case_id]
+        prepared = None if expected_inputs is None else expected_inputs.get((case_id, arm))
         row = run_one(case, arm, position=position, gateway=gateway, approved=approved, model=model, packer=packer_for(case, arm), binder=binder_for(case, arm),
                       workspace=workspace_for(case), ceiling=ceiling, allowance=expected[(case_id, arm)], release=release, write_input=write_input,
-                      expected_input_sha256=None if expected_inputs is None else expected_inputs.get((case_id, arm), "not prepared by the dry pass"),
-                      observe_context=observe_context)
+                      expected_input_sha256=None if expected_inputs is None else (prepared or {}).get("input_sha256", "not prepared by the dry pass"),
+                      expected_cache_prefix_chars=UNCHECKED if prepared is None else prepared["cache_prefix_chars"], observe_context=observe_context)
         row["expected_logical_requests"] = expected[(case_id, arm)]
         answer = row.pop("answer")
         answers[f"{case_id}/{arm}"] = answer
         row["emitted_answer"] = emitted_answer(row["stop_reason"], answer, [item["path"] for item in case.get("required_files", [])])
         row["answer_sha256"] = None if answer is None else _sha(answer)
         row["terminal"], row["terminal_reason"] = terminal(row, expected_stop=(case.get("boundary") or {}).get("stop_reason"))
+        if row_evidence is not None:
+            row.update(row_evidence(case, arm, row))
         report["rows"].append(row)
         write_answers(answers)
         write(report)

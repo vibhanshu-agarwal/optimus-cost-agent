@@ -186,6 +186,7 @@ def test_an_outline_rows_pack_in_the_budget_pass_is_the_pack_productions_chat_tu
     assert DISCLOSURE in packs[1].text and "OUTLINE_BODY" not in packs[1].text
     v = packs[1].outline["section_tokens"]
     assert 0 < v <= MODEL_AWARE.ceiling and row["arms"]["F"]["optional_room"] == row["arms"]["F"]["budget"] - v >= 0
+    assert (row["arms"]["F"]["outline_section_tokens"], row["arms"]["BU"]["outline_section_tokens"]) == (v, None), "the report carries V (Codex round 124 A5)"
 
 
 def test_fs_paid_outline_request_carries_exactly_the_measured_outline_pack(tmp_path, workspace, snapshot, packs):  # noqa: F811

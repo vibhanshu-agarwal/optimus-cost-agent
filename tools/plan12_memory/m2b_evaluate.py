@@ -221,7 +221,8 @@ def budget_case(case: Mapping[str, Any], retrieval: Retrieval, read: Callable[[s
         arms[arm] = {"budget": budget, "complete": pack.complete, "tokens": pack.tokens, "optional_room": budget - v if pack.complete else None,
                      "optional_items": len(optional), "optional_digest": "hex:" + hashlib.sha256(json.dumps(optional).encode()).hexdigest(),
                      "pack_bytes": len(pack.text.encode("utf-8")), "pack_sha256": "hex:" + hashlib.sha256(pack.text.encode("utf-8")).hexdigest(),
-                     "full_input_tokens": full_input(pack.text) if pack.complete else None, "outline": pack.outline is not None}
+                     "full_input_tokens": full_input(pack.text) if pack.complete else None, "outline": pack.outline is not None,
+                     "outline_section_tokens": v if pack.outline is not None else None}  # V, so item 11's optional_room = budget - V is checkable
     out["arms"] = arms
     out["substantive_change"] = arms["BU"]["pack_sha256"] != arms["F"]["pack_sha256"] and (arms["BU"]["optional_digest"] != arms["F"]["optional_digest"] or arms["BU"]["complete"] != arms["F"]["complete"])
     full = arms["F"]["full_input_tokens"]
