@@ -266,7 +266,7 @@ def validate_web_extract_body(body: Mapping[str, Any]) -> WebExtractFields:
         raise GatewayToolValidationError("INVALID_URLS", "urls must contain only non-empty strings")
     for url in urls_raw:
         if not _is_https_url(url):
-            raise GatewayToolValidationError("NON_HTTPS_URL", f"URL is not HTTPS: {url}")
+            raise GatewayToolValidationError("NON_HTTPS_URL", "URL is not HTTPS")
     if len(set(urls_raw)) != len(urls_raw):
         raise GatewayToolValidationError("DUPLICATE_URL", "urls must not contain duplicates")
 
@@ -382,5 +382,9 @@ def _is_plain_int(value: Any) -> bool:
 
 
 def _is_https_url(value: str) -> bool:
-    parsed = urlparse(value)
+    try:
+        parsed = urlparse(value)
+        parsed.port  # noqa: B018
+    except ValueError:  # #603: a host or port the parser rejects (an unclosed bracket, port 65536) is no host
+        return False
     return parsed.scheme == "https" and bool(parsed.hostname)
