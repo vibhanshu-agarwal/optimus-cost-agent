@@ -203,3 +203,13 @@ UNCHANGED_BY_575 = {
 @pytest.mark.parametrize(("reply", "outcome"), UNCHANGED_BY_575.values(), ids=UNCHANGED_BY_575.keys())
 def test_replies_whose_classification_575_must_not_change(reply: str, outcome: str) -> None:
     assert _classify(reply) == outcome
+
+
+def test_a_fenced_write_is_lifted_only_when_nothing_outside_its_body_starts_like_a_turn() -> None:
+    # Review round 3: without the first case, switching the #575 rule off for every fenced reply would pass unseen.
+    fenced = "```\r\nWRITE a.txt\r\nMCP_LIST a b\r\n```\r\n"
+    lifted = fenced + "- MCP_LIST demo\r\n- OBSERVE: x\r\n"  # bulleted, so neither line starts like a turn
+    assert _classify(lifted) == FINAL
+    assert parse_planning_turn(lifted).directives.write.content == "MCP_LIST a b\r\n"
+    assert parse_agent_plan(lifted, edit_base="forbidden").write.content == "MCP_LIST a b\r\n"
+    assert _classify(fenced + "MCP_LIST demo\r\n") == "MCP_MIXED_DIRECTIVES"
