@@ -107,7 +107,7 @@ def _budget(record: dict[str, Any], *, complete: bool = True) -> dict[str, Any]:
 def _gate() -> dict[str, Any]:
     return {"rows": 36, "sends": 36, "forced_refusals": 0, "attempts_max": 96, "usd_max": "6.00", "per_attempt_usd": "0.04608",
             "digests": {rel: "hex:" + hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() for rel in launch.PINNED_FILES},
-            "registry_hash": trusted_snapshot().effective_hash, "tariff": launch.tariff_record()}
+            "registry_hash": "hex:" + trusted_snapshot().effective_hash, "tariff": launch.tariff_record()}
 
 
 @pytest.fixture
@@ -149,7 +149,7 @@ def test_the_rehearsal_sends_every_row_once_through_the_http_gateway_and_seals_w
     for row in record["rows"]:
         memory = row["arm"] != "N"
         assert row["sent"] and row["limit_line"] is memory and (row["pack_sha256"] is not None) is memory, row
-        assert row["binding"] == {"registry_hash": trusted_snapshot().effective_hash, "model": launch.D3_MODEL, "output_cap": paid.OUTPUT_CAP}
+        assert row["binding"] == {"registry_hash": "hex:" + trusted_snapshot().effective_hash, "model": launch.D3_MODEL, "output_cap": paid.OUTPUT_CAP}
         assert (row["cache_prefix_chars"] is not None) is memory, "the indexed prefix is cached, and the provider received exactly that split"
         assert (row["epoch"], row["tree"], row["retrieval_evidence"]) == ((3, launch.checkout_tree(tree), "manifest") if memory else (None, launch.checkout_tree(tree), "no memory turn"))
         assert row["input_masked_sha256"] != row["input_sha256"] or not memory, "a memory row's scope line names its generation"

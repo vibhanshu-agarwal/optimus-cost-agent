@@ -106,6 +106,11 @@ def _bytes_sha(data: bytes) -> str:
     return "hex:" + hashlib.sha256(data).hexdigest()
 
 
+def _registry(snapshot: RegistrySnapshot) -> str:
+    """The registry hash as every record and contract writes it: a bare 64-hex string is a secret-scan finding."""
+    return "hex:" + snapshot.effective_hash
+
+
 def _file_sha(path: Path) -> str:
     return _bytes_sha(path.read_bytes())
 
@@ -430,7 +435,7 @@ def rehearse(cases: Sequence[Mapping[str, Any]], composition: Composition, *, ga
                   "pack_sha256": row["pack_sha256"], "prefix_sha256": None if entry is None else entry["prefix_sha256"],
                   "cache_prefix_chars": None if entry is None else entry["cache_prefix_chars"],
                   # what the Guard checked before forwarding: it refuses any other model, hash or cap
-                  "binding": None if entry is None else {"registry_hash": approved.registry_hash, "model": approved.model_id, "output_cap": approved.output_cap},
+                  "binding": None if entry is None else {"registry_hash": "hex:" + approved.registry_hash, "model": approved.model_id, "output_cap": approved.output_cap},
                   "limit_line": None if text is None else LIMIT_OBSERVATION in text,
                   "epoch": row["epoch"], "tree": row["tree"], "retrieval_evidence": row["retrieval_evidence"], "degraded": row["degraded"]}
         rows.append(record)
@@ -547,7 +552,7 @@ def preflight(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_a
     digests = gate.get("digests") or {}
     problems.extend(f"the gate does not pin {rel}" for rel in PINNED_FILES if rel not in digests)
     problems.extend(f"{rel} is not the gate's" for rel, digest in sorted(digests.items()) if not (repository / rel).is_file() or _file_sha(repository / rel) != digest)
-    if snapshot.effective_hash != gate.get("registry_hash"):
+    if _registry(snapshot) != gate.get("registry_hash"):
         problems.append("the registry is not the gate's")
     if gate.get("tariff") != tariff_record():
         problems.append("the tariff is not the gate's")
@@ -725,7 +730,7 @@ def run_gate(config: Mapping[str, Any], repository: Path, out: Path) -> dict[str
     work = repository / config["work_dir"] / "gate"
     legacy, model_aware, _estimate = ev.production_routes(work)
     report: dict[str, Any] = {"schema": "plan12-memory-m2b.gate-g2.v2", "head": f"git:{head}", "label": config["label"], "cases_sha256": sc.SEALED_CASES_SHA256,
-                              "pinned": {rel: _file_sha(repository / rel) for rel in PINNED_FILES}, "registry_hash": trusted_snapshot().effective_hash,
+                              "pinned": {rel: _file_sha(repository / rel) for rel in PINNED_FILES}, "registry_hash": _registry(trusted_snapshot()),
                               "tariff_id": paid.D3_TARIFF.id, "counts": dict(zip(("rows", "sends", "forced_refusals"), FROZEN_COUNTS, strict=True)),
                               "rehearsal_gateway": "the production HTTP Gateway server and client; its real upstream client posts to a loopback stub provider",
                               "trees": [], "passes": False}
