@@ -213,11 +213,18 @@ def _optional_string(metadata: Mapping[str, Any], key: str) -> str | None:
     return value
 
 
+# #610: the agent reads these URLs with pydantic's HttpUrl, which refuses more than 2083 UTF-8 bytes.
+_MAX_URL_BYTES = 2083
+
+
 def _https_hostname(url: str) -> str | None:
     try:
+        if len(url) > _MAX_URL_BYTES or len(url.encode()) > _MAX_URL_BYTES:
+            return None
         parsed = urlparse(url)
         parsed.port  # noqa: B018
-    except ValueError:  # #603: a host or port the parser rejects (an unclosed bracket, port 65536) is no host
+    except ValueError:  # #603: a host or port the parser rejects (an unclosed bracket, port 65536) is no host;
+        # #610: so is a URL that is too long or does not encode (a lone surrogate)
         return None
     if parsed.scheme != "https" or parsed.hostname is None:
         return None

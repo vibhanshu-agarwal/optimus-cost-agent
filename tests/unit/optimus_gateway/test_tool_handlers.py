@@ -4,7 +4,15 @@ import json
 from typing import Any
 
 import pytest
+from pydantic import TypeAdapter
 
+from optimus.gateway.tool_models import (
+    HttpsUrl,
+    PackageLookupResult,
+    WebExtractResultSet,
+    WebSearchResultSet,
+    parse_gateway_tool_envelope,
+)
 from optimus_gateway.models import GatewayServiceConfig, GatewayToolContext
 from optimus_gateway.tool_handlers import GatewayToolDependencies, handle_tool_request
 from optimus_gateway.tool_models import (
@@ -23,7 +31,11 @@ from optimus_gateway.tool_models import (
     WebSearchResult,
 )
 from optimus_gateway.tool_policy import GatewayToolPolicy
-from optimus_gateway.tool_providers import OsvAdvisoryToolProvider, TavilyWebToolProvider
+from optimus_gateway.tool_providers import (
+    OsvAdvisoryToolProvider,
+    PackageRegistryToolProvider,
+    TavilyWebToolProvider,
+)
 from optimus_gateway.tool_state import GatewayToolStateUnavailable, InMemoryGatewayToolStateStore
 
 _SHARED_SECRET = "tool-test-secret"  # pragma: allowlist secret - fixed unit fixture
@@ -782,3 +794,181 @@ def test_the_osv_adapter_drops_reference_urls_the_parser_rejects():
     )
 
     assert provider.lookup(request).advisories[0].citations == ("https://github.com/advisories/GHSA-xxxx-yyyy-zzzz",)
+
+
+# #610: the agent reads a result URL with pydantic's HttpUrl, which refuses more than 2083 UTF-8 bytes (and a lone
+# surrogate), and then drops the whole response. The Gateway must not admit, record or return such a URL.
+_URL_BASE = "https://python.org/"
+_LONGEST_URL = _URL_BASE + "a" * (2083 - len(_URL_BASE))
+OVER_LONG_URLS = [
+    pytest.param(_LONGEST_URL + "a", id="ascii-2084-bytes"),
+    pytest.param(_URL_BASE + chr(0xE9) * 1033, id="non-ascii-1052-chars-2085-bytes"),
+    pytest.param(_URL_BASE + chr(0xD800), id="lone-surrogate"),
+    pytest.param(" " + _LONGEST_URL, id="2083-bytes-plus-leading-space"),
+]
+
+
+def _agent_result_urls(body: dict[str, Any]) -> list[str]:
+    envelope = parse_gateway_tool_envelope(json.loads(json.dumps(body)), WebSearchResultSet)
+    return [str(result.url) for result in envelope.result.results]
+
+
+@pytest.mark.parametrize("url", OVER_LONG_URLS)
+def test_an_over_long_result_url_is_dropped_before_provenance_and_the_agent_reads_the_rest(url):
+    store = InMemoryGatewayToolStateStore()
+    web_provider = _tavily(
+        [
+            {"url": url, "title": "Drop", "content": "No"},
+            {"url": "https://python.org/docs", "title": "Docs", "content": "A snippet"},
+        ]
+    )
+
+    status, body = _call(
+        "/v1/tools/web/search", _search_body(), _dependencies(web_provider=web_provider, state_store=store)
+    )
+
+    assert status == 200
+    assert store.search_result_urls(run_id="run-1") == frozenset({"https://python.org/docs"})
+    assert body["provenance"]["source_urls"] == ["https://python.org/docs"]
+    assert _agent_result_urls(body) == ["https://python.org/docs"]
+
+
+@pytest.mark.parametrize("url", OVER_LONG_URLS)
+def test_policy_refuses_an_over_long_result_url_an_adapter_let_through(url):
+    store = InMemoryGatewayToolStateStore()
+    web_provider = _FakeWebProvider(
+        search_result=_web_search_result(urls=("https://python.org/a", url)), extract_result=_web_extract_result()
+    )
+
+    status, body = _call(
+        "/v1/tools/web/search", _search_body(), _dependencies(web_provider=web_provider, state_store=store)
+    )
+
+    assert status == 403
+    assert body["rule_id"] == "NON_HTTPS_URL"
+    assert url not in str(body)
+    assert store.search_result_urls(run_id="run-1") == frozenset()
+
+
+@pytest.mark.parametrize("url", OVER_LONG_URLS)
+def test_web_extract_answers_a_typed_400_for_an_over_long_url(url):
+    web_provider = _FakeWebProvider(search_result=_web_search_result(), extract_result=_web_extract_result())
+
+    status, body = _call(
+        "/v1/tools/web/extract",
+        _extract_body(urls=["https://python.org/a", url]),
+        _dependencies(web_provider=web_provider),
+    )
+
+    assert status == 400
+    assert body == {"error": "URL is not HTTPS"}
+    assert web_provider.extract_calls == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        pytest.param(_LONGEST_URL, id="ascii-2083-bytes"),
+        pytest.param(_URL_BASE + chr(0xE9) * 1032, id="non-ascii-1051-chars-2083-bytes"),
+    ],
+)
+def test_the_longest_url_the_agent_accepts_is_searched_and_recorded(url):
+    store = InMemoryGatewayToolStateStore()
+    web_provider = _tavily([{"url": url, "title": "Keep", "content": "Yes"}])
+
+    status, body = _call(
+        "/v1/tools/web/search", _search_body(), _dependencies(web_provider=web_provider, state_store=store)
+    )
+
+    assert status == 200
+    assert store.search_result_urls(run_id="run-1") == frozenset({url})
+    assert _agent_result_urls(body) == [str(TypeAdapter(HttpsUrl).validate_python(url))]
+
+
+def test_the_longest_ascii_url_round_trips_from_search_to_extract_as_the_agent_sends_it():
+    # The agent sends the URL it parsed; for ASCII that is the raw text. A URL the agent rewrites (percent-encoding
+    # non-ASCII, dropping tabs) misses the recorded set: a parser-parity gap recorded on #610, not closed here.
+    web_provider = _tavily([{"url": _LONGEST_URL, "title": "Keep", "content": "Yes"}])
+    deps = _dependencies(web_provider=web_provider, state_store=InMemoryGatewayToolStateStore())
+
+    _, search = _call("/v1/tools/web/search", _search_body(), deps)
+    status, extract = _call("/v1/tools/web/extract", _extract_body(urls=_agent_result_urls(search)), deps)
+
+    assert status == 200
+    extracted = parse_gateway_tool_envelope(json.loads(json.dumps(extract)), WebExtractResultSet)
+    assert [str(item.url) for item in extracted.result.items] == [_LONGEST_URL]
+
+
+@pytest.mark.parametrize("url", OVER_LONG_URLS)
+def test_the_tavily_extract_adapter_drops_an_over_long_result_url(url):
+    results = [{"url": url, "raw_content": "drop"}, {"url": "https://python.org/", "title": "Python", "raw_content": "kept"}]
+    request = WebExtractGatewayRequest(context=_ADAPTER_CONTEXT, urls=("https://python.org/",), max_chars_per_source=10)
+
+    assert [item.url for item in _tavily(results).extract(request).items] == ["https://python.org/"]
+
+
+@pytest.mark.parametrize("url", OVER_LONG_URLS)
+def test_the_osv_adapter_drops_an_over_long_reference_url(url):
+    references = [{"url": url}, {"url": "https://github.com/advisories/GHSA-xxxx-yyyy-zzzz"}]
+    provider = OsvAdvisoryToolProvider(
+        base_url="https://osv.example",
+        api_key=_ADAPTER_KEY,
+        urlopen=lambda request, *, timeout: _JsonResponse({"vulns": [{"id": "GHSA-xxxx-yyyy-zzzz", "references": references}]}),
+        sleep=lambda _: None,
+    )
+    request = SecurityAdvisoryGatewayRequest(
+        context=_ADAPTER_CONTEXT, identifier="demo-package", ecosystem="npm", version="1.2.3"
+    )
+
+    assert provider.lookup(request).advisories[0].citations == ("https://github.com/advisories/GHSA-xxxx-yyyy-zzzz",)
+
+
+_BAD_VERSIONS = ("1.0.0", "9" * 2084, chr(0xD800), "2.0.0")
+_REGISTRY_BODIES = {
+    "pypi": {"info": {"version": "2.0.0"}, "releases": {version: [] for version in _BAD_VERSIONS}},
+    "npm": {"dist-tags": {"latest": "2.0.0"}, "versions": {version: {} for version in _BAD_VERSIONS}},
+}
+
+
+@pytest.mark.parametrize("ecosystem", ["pypi", "npm"])
+def test_a_package_version_with_an_over_long_page_url_is_dropped_and_the_agent_reads_the_rest(ecosystem):
+    package_provider = PackageRegistryToolProvider(
+        pypi_base_url="https://pypi.example",
+        npm_base_url="https://npm.example",
+        maven_base_url="https://maven.example",
+        urlopen=lambda request, *, timeout: _JsonResponse(_REGISTRY_BODIES[ecosystem]),
+        sleep=lambda _: None,
+    )
+
+    status, body = _call(
+        "/v1/tools/package/lookup",
+        _package_body(ecosystem=ecosystem),
+        _dependencies(
+            package_provider=package_provider, policy=GatewayToolPolicy(allowed_domains=("pypi.org", "npmjs.com"))
+        ),
+    )
+
+    assert status == 200
+    envelope = parse_gateway_tool_envelope(json.loads(json.dumps(body)), PackageLookupResult)
+    assert [record.version for record in envelope.result.versions] == ["1.0.0", "2.0.0"]
+
+
+def test_a_package_provider_version_url_over_the_limit_is_dropped_at_the_handler():
+    result = PackageProviderResult(
+        package="pytest-asyncio",
+        ecosystem="pypi",
+        usage=_usage(),
+        versions=(
+            PackageVersionRecord(version="1.0.0", source_url="https://pypi.org/project/pytest-asyncio/1.0.0/"),
+            PackageVersionRecord(version="2.0.0", source_url=_LONGEST_URL + "a"),
+        ),
+        citations=("https://pypi.org/project/pytest-asyncio/",),
+    )
+
+    status, body = _call(
+        "/v1/tools/package/lookup", _package_body(), _dependencies(package_provider=_FakePackageProvider(result=result))
+    )
+
+    assert status == 200
+    envelope = parse_gateway_tool_envelope(json.loads(json.dumps(body)), PackageLookupResult)
+    assert [record.version for record in envelope.result.versions] == ["1.0.0"]
