@@ -662,6 +662,7 @@ paths = [
   "tests/unit/acp/test_auto_launch_composition.py",
   "tests/unit/acp/test_evidence_redaction_adapter.py",
   "tests/unit/acp/test_failure_telemetry.py",
+  "tests/unit/acp/test_guard_refusal_ends_turn.py",
   "tests/unit/acp/test_launch_approvals_lock_failures.py",
   "tests/unit/acp/test_launch_approvals_multipart.py",
   "tests/unit/acp/test_launch_audit.py",

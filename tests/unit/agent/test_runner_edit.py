@@ -239,9 +239,9 @@ def test_a_guard_denied_edit_keeps_the_typed_no_effect_classification(tmp_path: 
     planned = runner.run(_request(tmp_path, "Change small.py"))
     approval = AgentApproval(approved=True, approval_id="approval-1", plan_hash=planned.plan_hash)
 
-    with pytest.raises(PermissionError):
-        runner.run(_request(tmp_path, "Change small.py", approval), operation_control=control)
+    result = runner.run(_request(tmp_path, "Change small.py", approval), operation_control=control)
 
+    assert (result.status, result.stop_reason) == (AgentRunStatus.FAILED, "WRITE_GUARD_REFUSED")  # #589: the turn ends
     assert (tmp_path / "small.py").read_text(encoding="utf-8") == "a = 1\n"
     assert control.directive_state(DirectiveKind.WRITE, "run-1:approved:write:0") == "failed_no_effect"
 
