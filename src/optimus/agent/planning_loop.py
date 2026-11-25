@@ -628,24 +628,21 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
     # #575: the final-plan parser decides where a WRITE body ends. The checks below read a body by their own, looser
-    # rules; when they would refuse a reply for a line that parser reads as WRITE content, its reading wins. It only
-    # ever lifts a refusal: nothing accepted before is refused, and no reply becomes an MCP turn because of it.
+    # rules; when they would refuse a reply only for MCP-looking or OBSERVE lines that parser reads as WRITE content,
+    # its reading wins. It only ever lifts a refusal: nothing accepted before is refused or changes kind.
     final_decision = _try_parse_final_plan(text)
-    outside_body = _outside_the_write_body(text, final_decision)
+    only_in_the_body = _turn_markers_are_only_in_the_write_body(text, final_decision)
     try:
         mcp_decision = _try_parse_mcp_turn(stripped)
     except PlanningTurnParseError:
-        if outside_body is None or _try_parse_mcp_turn(outside_body) is not None:
+        if not only_in_the_body:
             raise
         mcp_decision = None
     if mcp_decision is not None:
         return mcp_decision
 
     surface_lines = _directive_surface_lines(stripped)
-    observes = _surface_has_observe(surface_lines)
-    if observes and outside_body is not None:
-        observes = _surface_has_observe(_directive_surface_lines(outside_body))
-    if observes:
+    if _surface_has_observe(surface_lines) and not only_in_the_body:
         return _parse_intermediate_turn(stripped)
 
     if final_decision is not None:
@@ -657,24 +654,35 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
     raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
 
-def _outside_the_write_body(text: str, final_decision: PlanningTurnDecision | None) -> str | None:
-    """#575: the reply without its WRITE body, when the final-plan parser reads it as a plan with a WRITE; None
-    otherwise. The walk mirrors that parser for such a plan: its fence rule, its lines, and a body running from the
-    WRITE header to the next `is_directive_line`."""
+_TURN_MARKERS = ("OBSERVE:", "MCP_LIST", "MCP_CALL")
+
+
+def _turn_markers_are_only_in_the_write_body(text: str, final_decision: PlanningTurnDecision | None) -> bool:
+    """#575: the final-plan parser reads the reply as a plan with a WRITE, and nothing outside that WRITE's body
+    starts like an OBSERVE or MCP line. The body is found as that parser finds it: its fence rule, its lines, from
+    the WRITE header to the next `is_directive_line`. Everything else in the reply is outside, text after a closing
+    fence included, and is tested piece by piece at every CR, LF and CRLF, so a marker the other checks see behind a
+    bare carriage return is seen here too."""
     if final_decision is None or final_decision.directives is None:
-        return None
+        return False
     if not isinstance(final_decision.directives.write, AgentWriteDirective):
-        return None
-    lines = plan_lines(_unwrap_markdown_code_fence(text))
-    kept: list[str] = []
+        return False
+    plan = _unwrap_markdown_code_fence(text)
+    at = text.find(plan)
+    if at < 0:
+        return False
+    lines = plan_lines(plan)
+    outside = [text[:at], text[at + len(plan) :]]
     index = 0
     while index < len(lines):
-        kept.append(lines[index])
+        outside.append(lines[index])
         index += 1
-        if WRITE_DIRECTIVE.match(_normalize_directive_surface_line(kept[-1])) is not None:
+        if WRITE_DIRECTIVE.match(_normalize_directive_surface_line(outside[-1])) is not None:
             while index < len(lines) and not is_directive_line(lines[index]):
                 index += 1
-    return "".join(kept)
+    return not any(
+        piece.strip().startswith(_TURN_MARKERS) for part in outside for piece in split_cr_lf_keepends(part)
+    )
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:

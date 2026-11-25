@@ -148,14 +148,6 @@ def test_a_write_body_holding_an_edit_example_and_a_bare_cr_is_kept_whole() -> N
     assert parse_agent_plan(reply, edit_base="forbidden").write.content == body
 
 
-@pytest.mark.parametrize("postscript", ["- MCP_LIST\tserver", "- MCP_LIST server", "READ b.txt"])
-def test_text_after_a_fenced_write_is_not_part_of_the_plan_in_either_parser(postscript: str) -> None:
-    reply = f"```\nWRITE a.txt\nbody\n```\n{postscript}\nOBSERVE: x\n"
-    assert _classify(reply) == FINAL
-    assert parse_planning_turn(reply).directives.write.content == "body\n"
-    assert parse_agent_plan(reply, edit_base="forbidden").write.content == "body\n"
-
-
 def test_a_write_line_inside_an_edit_block_does_not_hide_what_follows_the_block() -> None:
     # The WRITE text is the EDIT block's content, so the OBSERVE after the block is still seen and the turn is refused
     # with the same code as before #575.
@@ -181,6 +173,25 @@ UNCHANGED_BY_575 = {
     "write-body-opening-an-edit-example-crlf": (
         "WRITE a.txt\r\n<<<<<<< OLD\r\nREAD b.txt\r\nMCP_LISTING things\r\n",
         FINAL,
+    ),
+    "fenced-write-then-tab-mcp-and-observe": ("```\nWRITE a.txt\nbody\n```\n- MCP_LIST\tserver\nOBSERVE: x\n", FINAL),
+    "fenced-write-then-mcp-and-observe": (
+        "```\nWRITE a.txt\nbody\n```\n- MCP_LIST server\nOBSERVE: x\n",
+        "INTERMEDIATE_UNRECOGNIZED_CONTENT",
+    ),
+    "fenced-write-then-mcp": ("```\nWRITE a.txt\nbody\n```\nMCP_LIST demo\n", "MCP_MIXED_DIRECTIVES"),
+    "fenced-write-then-read-and-observe": (
+        "```\nWRITE a.txt\nbody\n```\nREAD b.txt\nOBSERVE: x\nREAD: c.txt#bytes=0:1\n",
+        "INTERMEDIATE_UNRECOGNIZED_CONTENT",
+    ),
+    "fenced-malformed-mcp-before-write": ("```\nMCP_LIST a b\nWRITE a.txt\nbody\n```\n", "MCP_MIXED_DIRECTIVES"),
+    "observe-after-a-body-that-is-an-end-marker": (
+        f"<<<<<<< OLD{CR}x\nWRITE a.txt\n>>>>>>> END\r\nREAD b.txt\nOBSERVE: x\nREAD: c.txt#bytes=0:1\n",
+        "INTERMEDIATE_UNRECOGNIZED_CONTENT",
+    ),
+    "observe-behind-a-bare-cr-before-the-write": (
+        f"<<<<<<< OLD{CR}x\n>>>>>>> END{CR}OBSERVE: x\nWRITE a.txt\nbody\n",
+        "INTERMEDIATE_UNRECOGNIZED_CONTENT",
     ),
     "edit-with-cr-marker-and-write-text": (
         f"EDIT a.py{CR}<<<<<<< OLD\nWRITE x.txt\n======= NEW\nb\n>>>>>>> END\nOBSERVE: x\nREAD: b.py#bytes=0:1\n",
