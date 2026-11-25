@@ -27,6 +27,10 @@ from urllib.parse import urlparse
 # Maximum length of a secret that the sanitizer guarantees to catch in streaming
 # mode. Secrets longer than this are rejected at launch time.
 MAX_SECRET_TEXT_CHARS = 65_536
+# Longest single rule match a stream release may hold back past its tentative cut before the stream is refused.
+MAX_STREAM_HOLD_CHARS = 4 * MAX_SECRET_TEXT_CHARS
+# How far before a match's end a label that reaches past it can start (see _safe_release_boundary).
+_LABEL_REACH = 1024
 
 _REDACTED = "**********"
 REDACTION_MASK = _REDACTED  # what every redaction leaves in place of what it removed
@@ -73,9 +77,14 @@ _WHITESPACE_SECRET_ASSIGNMENT_RE = re.compile(
 )
 _API_KEY_HEADER_RE = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
 _X_API_KEY_HEADER_RE = re.compile(r"(?i)x-api-key:\s*\S+")
-_URL_USERINFO_RE = re.compile(r"(?i)(\w+://)[^/\s:@]*:[^@\s/]+@")
+# The leading \b keeps a long word run linear: without it every position in the run retries the scheme (#622).
+_URL_USERINFO_RE = re.compile(r"(?i)\b(\w+://)[^/\s:@]*:[^@\s/]+@")
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 _TOKEN_CANDIDATE_RE = re.compile(r"[A-Za-z0-9._+:/-]{24,256}")
+_PREFIX_RES = tuple(
+    re.compile(rf"(?<![A-Za-z0-9_-]){re.escape(prefix)}[A-Za-z0-9_-]{{{_PREFIX_SUFFIX_MIN},{_PREFIX_SUFFIX_MAX}}}(?![A-Za-z0-9_-])")
+    for prefix in _RECOGNIZED_PREFIXES
+)
 
 _ID_VALUE = r"[A-Za-z0-9._:-]{1,128}"
 _MODEL_VALUE = r"[A-Za-z0-9._:+/-]{1,128}"
@@ -155,9 +164,10 @@ class SanitizationPolicy:
 COMPATIBILITY_SANITIZATION_POLICY = SanitizationPolicy(version="compatibility-v1")
 
 # v2 (#505): the whitespace assignment rule masks the value after a copula. v3 (#584): it no longer masks a function
-# word after the keyword ("the token was not made"). Manifests recorded as v1 or v2 stay valid.
+# word after the keyword ("the token was not made"). v4 (#622): a stream release never cuts a label from its value,
+# and a stream with one match past the hold-back limit is refused. Manifests recorded as v1 to v3 stay valid.
 EVIDENCE_REDACTION_POLICY = SanitizationPolicy(
-    version="evidence-redaction-v3",
+    version="evidence-redaction-v4",
     enable_whitespace_secret_assignment=True,
     enable_prefix_detection=True,
     enable_entropy_detection=True,
@@ -454,22 +464,28 @@ def _apply_path_aliases(text: str, path_aliases: list[PathAliasRule], counter: _
     # Slash-normalize for matching; Windows may case-fold, POSIX must not.
     normalized = text.replace("\\", "/")
     result = normalized
-    flags = re.IGNORECASE if sys.platform == "win32" else 0
     for rule in path_aliases:
-        root = rule.source_root.replace("\\", "/").rstrip("/")
-        if not root:
+        pattern = _path_alias_pattern(rule)
+        if pattern is None:
             continue
-        # Segment boundaries: reject mid-token suffix matches such as
-        # ``backup<rooted-path>/file``, while allowing whitespace/start prefixes.
-        pattern = re.compile(
-            rf'(?<![A-Za-z0-9_]){re.escape(root)}(?=[/\\"\']|\s|$)',
-            flags,
-        )
         replaced, count = pattern.subn(rule.alias, result)
         if count:
             result = replaced
             counter.inc("path_alias_replacement")
     return result
+
+
+def _path_alias_pattern(rule: PathAliasRule) -> re.Pattern[str] | None:
+    """Match a path alias root in slash-normalized text; ``None`` for an empty root."""
+    root = rule.source_root.replace("\\", "/").rstrip("/")
+    if not root:
+        return None
+    # Segment boundaries: reject mid-token suffix matches such as
+    # ``backup<rooted-path>/file``, while allowing whitespace/start prefixes.
+    return re.compile(
+        rf'(?<![A-Za-z0-9_]){re.escape(root)}(?=[/\\"\']|\s|$)',
+        re.IGNORECASE if sys.platform == "win32" else 0,
+    )
 
 
 def _protected_spans(text: str) -> tuple[tuple[int, int], ...]:
@@ -498,10 +514,7 @@ def _apply_prefix_redaction(
     counter: _RuleCounter,
 ) -> str:
     matches: list[tuple[int, int]] = []
-    for prefix in _RECOGNIZED_PREFIXES:
-        pattern = re.compile(
-            rf"(?<![A-Za-z0-9_-]){re.escape(prefix)}[A-Za-z0-9_-]{{{_PREFIX_SUFFIX_MIN},{_PREFIX_SUFFIX_MAX}}}(?![A-Za-z0-9_-])"
-        )
+    for pattern in _PREFIX_RES:
         for match in pattern.finditer(text):
             if _span_protected(match.start(), match.end(), protected):
                 continue
@@ -589,8 +602,15 @@ def validate_secret_length(secret: str, *, max_chars: int = MAX_SECRET_TEXT_CHAR
         raise ValueError(f"secret length {len(secret)} exceeds the maximum of {max_chars} characters")
 
 
+class StreamHoldBackExceededError(ValueError):
+    """A release would cut through a rule match held back over ``max_hold_chars``; the stream must be refused."""
+
+
 class StreamingTextSanitizer:
-    """Bounded-overlap streaming sanitizer for incrementally-arriving text."""
+    """Bounded-overlap streaming sanitizer for incrementally-arriving text.
+
+    A release never cuts through a match of any rule the policy applies, so a label leaves with its value (#622).
+    """
 
     def __init__(
         self,
@@ -600,14 +620,41 @@ class StreamingTextSanitizer:
         path_aliases: Sequence[PathAliasRule] = (),
         policy: SanitizationPolicy = COMPATIBILITY_SANITIZATION_POLICY,
         max_secret_chars: int = MAX_SECRET_TEXT_CHARS,
+        max_hold_chars: int = MAX_STREAM_HOLD_CHARS,
     ) -> None:
         self._sorted_secrets = sorted((s for s in known_secrets if s), key=len, reverse=True)
         self._sorted_pii = sorted((s for s in known_pii if s), key=len, reverse=True)
         self._path_aliases = _normalize_path_aliases(path_aliases)
         self._policy = policy
         self.overlap_chars = max(0, max_secret_chars - 1)
+        self.max_hold_chars = max_hold_chars
         self._pending = ""
         self._counter = _RuleCounter()
+        # Every rule _sanitize_text applies under this policy; a release never cuts through one of their matches.
+        self._exact_needles = self._sorted_secrets + self._sorted_pii
+        patterns: list[re.Pattern[str]] = []
+        if policy.enable_uri_userinfo:
+            patterns.append(_URL_USERINFO_RE)
+        if policy.enable_bearer_header_assignment:
+            patterns += [
+                _BEARER_TOKEN_RE,
+                _ENV_ASSIGNMENT_RE,
+                _GENERIC_SECRET_ASSIGNMENT_RE,
+                _API_KEY_HEADER_RE,
+                _X_API_KEY_HEADER_RE,
+            ]
+        if policy.enable_whitespace_secret_assignment:
+            patterns.append(_WHITESPACE_SECRET_ASSIGNMENT_RE)
+        if policy.enable_email_masking:
+            patterns.append(_EMAIL_RE)
+        self._boundary_patterns = tuple(patterns)
+        # Token rules match at most 256 characters; scanning their every overlap would cost a match per character.
+        self._bounded_patterns = (_PREFIX_RES if policy.enable_prefix_detection else ()) + (
+            (_TOKEN_CANDIDATE_RE,) if policy.enable_entropy_detection else ()
+        )
+        self._alias_patterns = (
+            tuple(p for p in map(_path_alias_pattern, self._path_aliases) if p is not None) if policy.enable_path_aliases else ()
+        )
 
     @property
     def rule_counts(self) -> Mapping[str, int]:
@@ -619,6 +666,10 @@ class StreamingTextSanitizer:
             return ""
         tentative_boundary = len(self._pending) - self.overlap_chars
         boundary = self._safe_release_boundary(tentative_boundary)
+        if tentative_boundary - boundary > self.max_hold_chars:
+            # A match (or chain of overlapping matches) past the cap: releasing part of it could expose its value,
+            # and holding it is unbounded, so the stream is refused.
+            raise StreamHoldBackExceededError("a rule match exceeds the streaming hold-back limit")
         if boundary <= 0:
             return ""
         to_release, self._pending = self._pending[:boundary], self._pending[boundary:]
@@ -632,21 +683,36 @@ class StreamingTextSanitizer:
         )
 
     def _safe_release_boundary(self, tentative_boundary: int) -> int:
+        """Pull the cut back until no rule match spans it, so a label leaves with its value (#622)."""
+        pending = self._pending
+        spans: list[tuple[int, int]] = []
+        for needle in self._exact_needles:
+            idx = pending.find(needle)
+            while idx != -1:
+                spans.append((idx, idx + len(needle)))
+                idx = pending.find(needle, idx + 1)
+        # A stand-in for the text still to come: a label followed only by whitespace to the end of the buffer
+        # then matches through it, so the label waits for its value.
+        probed = pending + "x"
+        for pattern in self._boundary_patterns:
+            # Overlapping matches: one match's value can be the next one's label ("password= password : abc").
+            # Only a label near a match's end can reach past it; restarting there keeps "token=token=..." linear.
+            # shortcut: an env label longer than _LABEL_REACH at a value's end is not re-found; widen it if one is seen.
+            match = pattern.search(probed)
+            while match is not None:
+                spans.append(match.span())
+                match = pattern.search(probed, max(match.start() + 1, match.end() - _LABEL_REACH))
+        for pattern in self._bounded_patterns:
+            spans.extend(match.span() for match in pattern.finditer(probed))
+        if self._alias_patterns:
+            normalized = pending.replace("\\", "/")
+            for pattern in self._alias_patterns:
+                spans.extend(match.span() for match in pattern.finditer(normalized))
+        # Latest start first: once the cut moves to a span's start, no span already visited can contain it.
         boundary = tentative_boundary
-        changed = True
-        while changed:
-            changed = False
-            for secret in self._sorted_secrets:
-                start = 0
-                while True:
-                    idx = self._pending.find(secret, start)
-                    if idx == -1:
-                        break
-                    end = idx + len(secret)
-                    if idx < boundary < end:
-                        boundary = idx
-                        changed = True
-                    start = idx + 1
+        for start, end in sorted(spans, reverse=True):
+            if start < boundary < end:
+                boundary = start
         return boundary
 
     def finalize(self) -> str:

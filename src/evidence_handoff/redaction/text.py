@@ -12,6 +12,7 @@ from pathlib import Path
 from optimus_security.sanitization import (
     EVIDENCE_REDACTION_POLICY,
     PathAliasRule,
+    StreamHoldBackExceededError,
     StreamingTextSanitizer,
 )
 
@@ -124,6 +125,9 @@ def sanitize_text_artifact(
     except _Utf8Error:
         _abort_staging(handle, staging_path)
         return _quarantine("invalid_utf8", rule_counts=sanitizer.rule_counts)
+    except StreamHoldBackExceededError:
+        _abort_staging(handle, staging_path)
+        return _quarantine("text_match_too_long", rule_counts=sanitizer.rule_counts)
     except PrivateFileError:
         _abort_staging(handle, staging_path)
         return _quarantine("private_staging_failed", rule_counts=sanitizer.rule_counts)
