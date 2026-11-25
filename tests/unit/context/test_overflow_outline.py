@@ -39,7 +39,7 @@ def test_a_chat_summary_of_a_file_over_the_ceiling_gets_a_disclosed_outline_reco
     turn = _session(big, _Storage()).turn()
     result = _assemble(turn)
     assert result.blocking_stop_reason is None and DISCLOSURE in result.text and BODY not in result.text
-    assert "--- pkg/big.py (outline: 400 entries) ---" in result.text and result.file_sha256s["pkg/big.py"] == hashlib.sha256(BIG.encode()).hexdigest()
+    assert "--- pkg/big.py (outline: 400 entries) ---" in result.text and "pkg/big.py" not in result.file_sha256s and "pkg/big.py" in result.shown_paths
     outline = turn.manifest["outline"]
     assert outline is not None, "the manifest records the outline's metadata"
     assert (outline["path"], outline["generator"], outline["reread_required"]) == ("pkg/big.py", OUTLINE_VERSION, True)

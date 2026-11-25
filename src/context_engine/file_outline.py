@@ -51,8 +51,13 @@ def build_outline(path: str, data: bytes, *, estimate: Callable[[str], int], max
     even the first entry fits. Entries are kept in file order until the next would not fit; the rest are counted as omitted."""
     limit = min(max_tokens, OUTLINE_MAX_TOKENS)
     parsed = parse_file(path, data)
-    entries = sorted((record for record in parsed.records if record.kind != "file" and record.start_line is not None),
-                     key=lambda record: (record.start_line or 0, record.symbol or ""))
+    # An entry is a signature or a heading; a section with neither, or the further pieces of one long section, says nothing (Fable CP2 finding 1).
+    found: dict[tuple[int, int, str], None] = {}
+    for record in parsed.records:
+        text = " ".join((record.signature or record.symbol or "").split())[:_LINE_CHARS]
+        if record.kind != "file" and record.start_line is not None and text:
+            found.setdefault((record.start_line, record.end_line or record.start_line, text))
+    entries = sorted(found)
     if not entries:
         return None
     source = hashlib.sha256(data).hexdigest()
@@ -65,9 +70,7 @@ def build_outline(path: str, data: bytes, *, estimate: Callable[[str], int], max
         tail = [f"Omitted: the {omitted} later entries, not listed here."] if omitted else []
         return "\n".join([*head, *shown, *tail])
 
-    for record in entries:
-        start, end = record.start_line or 0, record.end_line or record.start_line or 0
-        label = " ".join((record.signature or record.symbol or record.kind).split())[:_LINE_CHARS]
+    for start, end, label in entries:
         candidate = [*lines, f"{start}-{end} {label}"]
         if estimate(render(candidate, len(entries) - len(candidate))) > limit:
             break

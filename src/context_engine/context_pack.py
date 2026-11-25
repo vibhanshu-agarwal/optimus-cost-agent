@@ -126,7 +126,8 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         if outline is not None and estimate(f"{SECTION_REQUIRED}\n{outline.text}") <= budget_tokens:
             required_text = f"{SECTION_REQUIRED}\n{outline.text}"
             used = estimate(required_text)
-            selected[0] = Selected(overview_path, "file", None, hashes[overview_path], None, None, "outline", reason="outline only: the whole file is over the budget")
+            # file_sha256s names files whose bytes the text shows; an outline shows none, so its hash stays on the row only (Fable CP2 finding 2).
+            selected[0] = Selected(overview_path, "file", None, hashes.pop(overview_path), None, None, "outline", reason="outline only: the whole file is over the budget")
         else:
             outline = None
     if used > budget_tokens:

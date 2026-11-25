@@ -81,9 +81,19 @@ def test_a_document_is_outlined_by_its_headings():
     assert outline is not None and "Guide" in outline.text and "Install" in outline.text and "BODY" not in outline.text
 
 
-@pytest.mark.parametrize(("path", "data"), [("src/big.rs", b"fn main() {}\n" * 10), ("src/big.py", b"\xff\xfe not utf-8"), ("src/flat.py", b"x = 1\n" * 50)])
+@pytest.mark.parametrize(("path", "data"), [("src/big.rs", b"fn main() {}\n" * 10), ("src/big.py", b"\xff\xfe not utf-8"), ("src/flat.py", b"x = 1\n" * 50),
+                                           ("logs/run.txt", b"2026-11-25 a log line with no heading\n" * 3_000),  # Fable CP2 finding 1
+                                           ("docs/plain.md", b"Prose without a single heading.\n" * 2_000)],
+                         ids=["rust", "not-utf8", "flat-python", "headingless-text", "headingless-markdown"])
 def test_without_a_structure_the_parser_understands_there_is_no_outline(path, data):
     assert build_outline(path, data, estimate=tokens, max_tokens=OUTLINE_MAX_TOKENS) is None
+
+
+def test_a_long_section_is_one_entry_not_one_per_piece():
+    """Fable CP2 finding 1: the parser splits a long section into pieces with one heading and range; the outline lists it once."""
+    data = b"# Guide\n\n" + b"Prose BODY line.\n" * 2_000 + b"\n## Install\n\nSteps.\n"
+    outline = build_outline("docs/guide.md", data, estimate=tokens, max_tokens=OUTLINE_MAX_TOKENS)
+    assert outline is not None and "(outline: 2 entries)" in outline.text and outline.text.count(" Guide") == 1 and len(outline.ranges) == 2
 
 
 def test_an_outline_whose_first_entry_does_not_fit_is_none():
@@ -105,7 +115,8 @@ def test_over_the_ceiling_the_summary_target_is_outlined_disclosed_and_optional_
     assert pack.complete and BODY_MARKER not in pack.text and pack.text.startswith(f"{SECTION_REQUIRED}\n--- src/big.py (outline: 400 entries) ---\n{DISCLOSURE}")
     first = pack.selected[0]
     assert (first.path, first.disclosure, first.file_hash) == ("src/big.py", "outline", hashlib.sha256(data).hexdigest())
-    assert pack.file_sha256s["src/big.py"] == hashlib.sha256(data).hexdigest() and pack.outline["source_sha256"] == hashlib.sha256(data).hexdigest()
+    # Fable CP2 finding 2: file_sha256s names files whose bytes the text shows; the outline's source hash stays on its row and metadata.
+    assert "src/big.py" not in pack.file_sha256s and pack.outline["source_sha256"] == hashlib.sha256(data).hexdigest()
     assert "class Loader:" in pack.text and pack.tokens <= pack.budget_tokens <= 4_000, "the chosen budget still governs the rest"
 
 

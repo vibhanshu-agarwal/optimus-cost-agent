@@ -173,7 +173,10 @@ def _budget_policy(config: Mapping[str, Any], show: Callable[[Any], str]) -> str
 def _outline(outline: Mapping[str, Any], show: Callable[[Any], str], path: Callable[[str], str]) -> str:
     """Plan 12.14 (D4): what the overflow outline stood in for, from its body-free metadata; the outline's own text is never kept."""
     shown, omitted = outline.get("entries_shown"), outline.get("entries_omitted")
-    return (f"- outline only, full file not included: {path(str(outline.get('path', '')))}; {show(shown)} entries shown by line range and signature or heading, "
+    where = path(str(outline.get("path", "")))
+    if where == WITHHELD:  # a file refused now keeps its derived details too (Fable CP2 finding 3)
+        return f"- outline only, full file not included: {where}"
+    return (f"- outline only, full file not included: {where}; {show(shown)} entries shown by line range and signature or heading, "
             f"{show(omitted)} later entries and every body omitted; generator {show(outline.get('generator'))}; source sha256 {show(outline.get('source_sha256'))}, "
             f"{show(outline.get('source_bytes'))} bytes; outline sha256 {show(outline.get('representation_sha256'))}; exact ranges must be read before relying on omitted details")
 

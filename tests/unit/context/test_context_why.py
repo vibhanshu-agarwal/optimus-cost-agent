@@ -132,7 +132,8 @@ def test_an_outline_says_what_it_stood_in_for_by_hashes_ranges_and_counts_never_
 
 def test_an_outline_of_a_file_refused_now_withholds_its_path():
     text = _plain(_raw(_snapshot(index="used", manifest={"selected": [], "outline": OUTLINE}), admits=lambda path: path != "pkg/big.py"))
-    assert f"- outline only, full file not included: {_plain(why.WITHHELD)};" in text and "pkg/big.py" not in text
+    assert f"- outline only, full file not included: {_plain(why.WITHHELD)}\n" in text and "pkg/big.py" not in text
+    assert "a" * 64 not in text and "20480" not in text, "a withheld file keeps its hash and size too (Fable CP2 finding 3)"
 
 
 def test_a_snapshot_is_immutable_once_captured():
