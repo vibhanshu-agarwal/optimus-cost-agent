@@ -62,6 +62,12 @@ def test_a_malformed_url_is_not_an_allowed_url(value):
         policy.assert_url_allowed(value, ("example.com",))
 
 
+def test_a_url_with_an_out_of_range_port_is_not_an_allowed_url():
+    policy = EvidenceDomainPolicy(configured_allowed_domains=("example.com",))
+
+    assert policy.url_allowed("https://example.com:65536/a", ("example.com",)) is False
+
+
 def test_a_malformed_configured_domain_counts_as_no_domain():
     with pytest.raises(ValueError, match="configured_allowed_domains must not be empty"):
         EvidenceDomainPolicy(configured_allowed_domains=("https://[",))

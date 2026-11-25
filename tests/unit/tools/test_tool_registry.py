@@ -165,7 +165,9 @@ def test_extract_rejects_non_https_url_before_provenance_match():
     assert registry.call_count("run-1") == 0
 
 
-@pytest.mark.parametrize("target_url", ["https://[", "https://[::1", "https://[not-an-address]/x"])
+@pytest.mark.parametrize(
+    "target_url", ["https://[", "https://[::1", "https://[not-an-address]/x", "https://docs.example.com:65536/a"]
+)
 def test_web_extract_with_a_url_the_parser_rejects_is_refused_not_raised(target_url):
     """#603: urllib raises ValueError for these; the policy answers as for any URL that is not HTTPS."""
     registry = ToolRegistry()

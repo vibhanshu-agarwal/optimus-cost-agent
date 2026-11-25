@@ -148,7 +148,8 @@ def _usage() -> ProviderUsage:
 def _is_https_url(value: str) -> bool:
     try:
         parsed = urlparse(value)
-    except ValueError:  # #603: a host the parser rejects (an unclosed bracket) is no host
+        parsed.port  # noqa: B018
+    except ValueError:  # #603: a host or port the parser rejects (an unclosed bracket, port 65536) is no host
         return False
     return parsed.scheme == "https" and bool(parsed.hostname)
 

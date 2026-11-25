@@ -147,7 +147,7 @@ class GatewayToolPolicy:
                 return GatewayToolDecision(
                     allowed=False,
                     rule_id="NON_HTTPS_URL",
-                    reason=f"URL is not HTTPS: {url}",
+                    reason="URL is not HTTPS",
                     effective_domains=effective_domains,
                 )
             allowlist = effective_domains or self._allowed_domains
@@ -216,7 +216,8 @@ def _optional_string(metadata: Mapping[str, Any], key: str) -> str | None:
 def _https_hostname(url: str) -> str | None:
     try:
         parsed = urlparse(url)
-    except ValueError:  # #603: a host the parser rejects (an unclosed bracket) is no host
+        parsed.port  # noqa: B018
+    except ValueError:  # #603: a host or port the parser rejects (an unclosed bracket, port 65536) is no host
         return None
     if parsed.scheme != "https" or parsed.hostname is None:
         return None
