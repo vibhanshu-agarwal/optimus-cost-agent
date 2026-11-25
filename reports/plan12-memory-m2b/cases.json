@@ -3,7 +3,7 @@
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "state": "DRAFT v7: Codex CP1 round 122 verified the fresh gold (44/44) and replaced five fresh queries and every paid oracle verbatim; attempt 2 set the encoding table applied here (relationships tied to loci in one paragraph, negation, forbidden extras, QR loci at their snapshots); attempt 3 made the checks a screen (a screen PASS waits for the CP3 support audit) and added forbidden phrases for its literal reversals (attempt 4 narrowed QB3's to the framing reversal; attempt 5: QO4 runs no quote control and the audit binds to the producer's answer); N refuses the oversized cases; sealed after Codex confirms this encoding",
+ "state": "SEALED at CP1 (2026-11-25; Codex CP1 round 122 attempt 7, item A1), the DRAFT v7 encoding unchanged: Codex CP1 round 122 verified the fresh gold (44/44) and replaced five fresh queries and every paid oracle verbatim; attempt 2 set the encoding table applied here (relationships tied to loci in one paragraph, negation, forbidden extras, QR loci at their snapshots); attempt 3 made the checks a screen (a screen PASS waits for the CP3 support audit) and added forbidden phrases for its literal reversals (attempt 4 narrowed QB3's to the framing reversal; attempt 5: QO4 runs no quote control and the audit binds to the producer's answer); N refuses the oversized cases; sealed after Codex confirms this encoding; any change after this seal is a successor record, never an edit",
  "authority": "operator 2026-11-24 \"Approve sampling\" (Claude's chat, Plan 12.14 thread) of optimus-handoff/p1214-task0/sampling-proposal.md, sha256 hex:ee232629b668773faa3342c6fc0669e82c8165a6f917eed5a17df4cc992c2054",
  "builders": {
   "fresh": "optimus-handoff/p1214-task0/m2b_fresh3_pool.py + m2b_fresh3_build.py",
@@ -1364,7 +1364,7 @@
    }
   ],
   "forced_refusal_rule": "predeclared from sizes alone: N's engine-absent context and B/U's legacy 16,384 budget refuse a named file over their limits before any call (REQUIRED_WORKSPACE_FILE_TOO_LARGE); every arm refuses the exact-over-ceiling request; F refuses QO1/QO2 until Task 3's outline; those rows are boundary outcomes, reported separately and excluded from superiority and comparable-cost wins",
-  "expected_sends": "25 of 36 rows with the outline (7 N, 7 B, 11 F); at most 50 physical attempts, USD 2.304 at the caps",
+  "expected_sends": "36 rows: 25 sends with Task 3's outline (7 N, 7 B, 11 F), 23 without it (F also refuses QO1 and QO2); at most 50 physical attempts, USD 2.304 at the caps, against the release ceilings of 96 attempts and USD 6.00",
   "comparable_cohort": [
    "QR1",
    "QR2",

@@ -1,22 +1,23 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v8",
+ "schema": "plan12-memory-m2b.evaluation-contract.v9",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "frozen_before": "Task 2 and any paid prompt; successor of v7 after Codex CP1 round 122 attempt 5",
+ "frozen_before": "Task 2 and any paid prompt; successor of v8 at CP1 close-out (Codex CP1 round 122 attempts 6-7; Fable 5.2 deferral consult)",
  "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
  "inputs": {
   "cases": "reports/plan12-memory-m2b/cases.json",
   "manifest": "reports/plan12-memory-m2b/manifest.json",
   "binding": "every result names the sha256 of each input file and the git commit it ran at; a changed input invalidates earlier results",
-  "cases_sha256": "hex:cf954cdf7e466cf498ab12b71f342531a9af230398c7d9a58df12792a9a09cb0",
+  "cases_sha256": "hex:17a8e68d6fdac9acb91e4d885a4128a7609a411c5967a96e438d655c69e6ea36",
   "calibration_addendum": "reports/plan12-memory-m2b/calibration-addendum.json (hex:d45d43bcaa7648a9b99a4c62388d3556a6a068f464b430a51c6cca0b68de3b57)",
   "fresh_fixture": {
    "localization": "hex:49137b24683cbb68a0945f77a5db14ef5581898dd66d309f7c1f25071bf6ed37",
    "splits": "hex:d0fab08abba0e3e2b63f6c9fcb896e71a7bd10f46b51cc43c8634aed1e400a5d",
    "verified": "Codex round 122: 14 families, 44 requirements match the pool; five queries replaced verbatim"
   },
-  "budget_evidence": "reports/plan12-memory-m2b/calibration-budget.json (hex:0e2c59f6cf879a3ba6c8d49fd6e127b4500f232629897029b0266dde2dd4404c), released pass at git:8cf26df with production's estimator, budgets and FilePolicy reader: budget_gates PASS; recomputed offline under attempt 2's stricter gates (both arms, each kind's outcome, three R over C): PASS, no new run (tests/unit/tools/test_plan12_memory_m2b.py::test_the_released_budget_pass_meets_the_stricter_gates)"
+  "budget_evidence": "reports/plan12-memory-m2b/calibration-budget.json (hex:0e2c59f6cf879a3ba6c8d49fd6e127b4500f232629897029b0266dde2dd4404c), released pass at git:8cf26df with production's estimator, budgets and FilePolicy reader: budget_gates PASS; recomputed offline under attempt 2's stricter gates (both arms, each kind's outcome, three R over C): PASS, no new run (tests/unit/tools/test_plan12_memory_m2b.py::test_the_released_budget_pass_meets_the_stricter_gates)",
+  "cases_state": "SEALED at CP1 (2026-11-25), Codex CP1 attempt 7 item A1; the DRAFT v7 encoding unchanged"
  },
  "split_custody": {
   "development": "Task 1: three real-index repetitions from paired captured channel inputs; selects the baseline or one utility candidate before any fresh qualification; may be inspected",
@@ -174,10 +175,10 @@
   "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v7",
-  "sha256": "hex:30555f41e44b6ec2b11dcf908b561ceffa45a6720f75de8cc4fb2dd5fdfc33ab",
-  "commit": "git:aa39da0",
-  "change": "Codex CP1 round 122 attempt 5 (ACCEPT WITH CHANGES, #548 comment 7155289780): a reported amount survives missing attempt evidence; conflicting amounts stay unknown across both paths; unknown money apart from unknown attempts; the host request identity required; each row's settlement recorded; paid scoring bound to the producer's answer and the verified cases digest with the two designated reviewers; the conditional QO4 quote control not run"
+  "schema": "plan12-memory-m2b.evaluation-contract.v8",
+  "sha256": "hex:28c2ff2b74ae68375ad601fc7f1da3e26b7cebed2f6f4ad32c62c79a4e03c9c1",
+  "commit": "git:6c9d82d",
+  "change": "CP1 close-out: the cases sealed (encoding unchanged); the schedule wording corrected; the paid-harness items Codex classified as blocking the Q release (none blocks Task 2) carried, with Fable 5.2's launcher, preflight and simplifications, to a Q-release gate; the operator's exception and the denial and wrong-scope disposition requested"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -240,8 +241,8 @@
   "attempt_topology": {
    "correction": "a bound model request makes at most MAX_ROUTE_ATTEMPTS = 2 physical attempts (src/optimus_model_policy/binding.py:225); manifest.json's 3 is the legacy unbound loop (upstream_client.py:39) and is superseded here",
    "reservation": "before each logical request: attempts_used + 2 <= 96 and settled USD + 0.04608 x (unknown attempts + 2) <= 6.00",
-   "sent_requests": "25 of 36 rows (7 N, 7 B, 11 F); predeclared refusals send nothing: N and B on QB3, QB4, QO1, QO2, QO4; F on QO4, and on QO1 and QO2 until Task 3's outline (then 23 sends)",
-   "worst_case": "50 physical attempts, USD 2.304 at the caps; the release ceilings stay 96 attempts and USD 6.00",
+   "sent_requests": "36 rows: 25 sends with Task 3's outline (7 N, 7 B, 11 F) and 23 without it (F also refuses QO1 and QO2); predeclared refusals send nothing: N and B on QB3, QB4, QO1, QO2, QO4; F on QO4",
+   "worst_case": "at most 50 physical attempts and USD 2.304 at the caps (25 sends x 2 attempts x USD 0.04608), against the release ceilings of 96 attempts and USD 6.00",
    "note": "the single topology, as expected_attempts.Q: 2 attempts per logical request. v2 said 3 attempts and USD 4.42 (Fable finding 5); v4 still carried 30 sends, 60 attempts and USD 2.76 here (Codex attempt 2 finding 1), corrected in v5"
   },
   "answers_custody": "answers are written only to a separate sink outside the repository (optimus-handoff/p1214-q-*), archived and hashed; paid-attempts.json keeps each answer's digest",
@@ -251,7 +252,7 @@
    "script": "tools/plan12_memory/m2b_evaluate.py",
    "sha256": "hex:b9bfd70bd124bbedf9d0a60a420455f24a41d282334656785591e6134b861b0f",
    "git_blob": "git:fedfba2b805d43e7a323f99f55cf16a2ef64be0c",
-   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: unrun; the operator's recorded disposition is owed at CP1"
+   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: unrun; the operator's recorded disposition is requested at CP1 acceptance (Codex attempt 7 item A3)"
   },
   "producer_contract_463": "rows as m2b_paid (schema plan12-memory-m2b.paid-attempts.v2): per sent request its dispatch number and host request identity (receipt_base), bound route request id, input and prefix identity, finish reason and Gateway attempts; per host receipt every StageReceipt field under its own name (the reported cost as cost_usd) and the Gateway's normalized usage whole (total tokens included), the repriced uncached cost and tariff id, cache_write_tokens UNKNOWN; per physical attempt its matched receipt ids and dispositions; per row release, case, arm (U as an alias of B), position, logical request id, reconciliation problems, unclaimed and unforwarded receipt ids, any run error, its settlement (attempts, unknown-cost attempts, money-only charges, unknown charges, known USD), emitted_answer and the terminal classification (expected_zero_call, settled, failed, incomplete) with its reason; each charge counted once. Codex round 122 agreed the narrow producer contract and amended its implementation in attempts 2 and 3; broader commissioning and report integration stay under #463",
   "hard_ceiling": "Codex ruling 7: with a target, the whole pack including its section joiners stays within the chosen budget (tested); the legacy path is byte-equal to PR #562's delivered context_pack.py (tested)",
@@ -259,7 +260,8 @@
   "task2_owes": [
    "integrated request-byte equality with the production builder (Codex attempts 2-3 finding 2)",
    "the B pack-digest comparison with matching inputs (attempt 3 finding 2)"
-  ]
+  ],
+  "paid_scripts_status": "PROVISIONAL at CP1, by operator exception (requested; see cp1_exception): the runner and scorer digests above are the CP1 heads, not the Q freeze. They are re-frozen at the Q-release gate on its final bytes, before any paid prompt (plan line 262)"
  },
  "run1_limits": "reports/plan12-memory-m2b/calibration-addendum.json limits: pack jitter cause a hypothesis; poison reason confounded by run 1's mtimes; the 16,000 cap ill-posed and not relied on; the changed evaluator not yet run on a real index",
  "cp1_rulings_round_122": {
@@ -317,5 +319,50 @@
    "5": "producer-bound paid scoring (case, arm, answer digest) with the verified cases digest required; designated reviewers, string reasons, malformed records pending and never raising; substituted-answer control; the conditional QO4 quote control not run (QO4 stays a zero-call boundary in every arm)",
    "7": "focused-6 at git:aa39da0 reported beside this package; revert: 57 of 57 had an assertion failure in their named test's pytest run (revert-cp1-r6b.log 55/58: two equivalent mutants re-pointed or dropped with the redundant check removed, one gap closed with a three-ruling test; r6c 57/57; r6.log was cut short by a host restart)"
   }
+ },
+ "q_release_gate": {
+  "blocks": "Task 4's paid Q step (and the paid R step's shared harness); no paid prompt before it closes",
+  "when": "once, after Task 3, on the final bytes (the outline's availability and the launcher both exist then)",
+  "contents": [
+   "every item Codex CP1 attempt 7 classified (B), blocking the Q release: the malformed reviewer field (PENDING_AUDIT, never a raise), the cases digest verified against the sealed cases bytes at the scoring entry, the producer row's release checked against the expected one, and boundary rows bound to the producer row's release, case and arm with an explicit no-answer flag and agreement with the producer's answer record",
+   "Fable 5.2's simplifications, accepted by Codex attempt 7: the money-only settlement path deleted (an anomalous row's actual USD is UNKNOWN, the row incomplete, the run stopped before the next send, the Gateway ledger the authority) and the intra-row multi-send path deleted; the pre-dispatch allowance check and the reservation kept as a backstop",
+   "a launcher that refuses to start unless a preflight holds: sends x 2 x per-attempt USD <= the cap, attempts <= 96, and the scorer, selector, runner, cases and contract digests, the registry hash and the tariff match the gate's sealed values",
+   "a successor contract re-freezing the script and selector digests and the final send count",
+   "the #463 producer contract amended as Codex attempt 7 set out (paid-attempts.v2: row, release and answer identities, U aliases, request and prefix digests, raw receipts with both ids, attempt attribution and dispositions, normalized usage, tariff, separate actual and repriced fields; known actual USD only for a clean one-to-one reconciliation; on any anomaly raw evidence and attempt bounds kept, actual USD UNKNOWN, the row incomplete, the run stopped; affected evidence kept out of adoption and comparable-cost decisions) and re-agreed",
+   "a predeclared operator hold for a suspected false screen failure, with no rescore",
+   "Codex's (C) notes: the missing-attempt copy conflict, the unknown_charges reservation test and the money-only identity fall away with the money path's deletion; the standalone QO4 quote control stays unrun"
+  ],
+  "evidence": [
+   "the focused m2b tests at the gate's exact head",
+   "revert checks on the Guard refusals, the one-send rule and the settle-or-stop rule",
+   "a zero-paid run of the full schedule through the real runner against a local upstream: the expected send count and zero unintended calls"
+  ],
+  "review": "Fable 5.2, then one Codex CLI round, both posted verbatim on #548",
+  "binding": "the operator's Q release names the gate's head, the successor contract's digest and both verdicts; the launcher refuses to start otherwise"
+ },
+ "cp1_exception": {
+  "status": "requested of the operator at CP1 acceptance",
+  "deviation": "plan Task 1's third bullet freezes the script and selector digests at CP1; they are provisional until the Q-release gate",
+  "reasons": [
+   "nothing in Task 2 or Task 3 imports the paid runner or scorer, and no test pins their digests (verified by grep)",
+   "their digests would be re-pinned anyway: Task 3 settles the send count, and no launcher or preflight exists yet",
+   "the USD cap is held statically on the real schedule (one send per row, the bound model and output cap, the input cap, two attempts: at most 50 attempts and USD 2.304 against 96 and USD 6.00), so the reservation never refuses",
+   "every remaining item changes a figure on a row that already stops the run, or is a scoring check that cannot run before a paid prompt",
+   "Codex CP1 attempt 7 and Fable 5.2 agree: none of the remaining paid-harness defects blocks Task 2"
+  ],
+  "agreement": "Fable 5.2 AGREE WITH CONDITIONS (#548 comment 7156928374); Codex attempt 7 agrees once its three (A) items are recorded (#548 comment 7157015422)"
+ },
+ "cp1_attempts_6_7": {
+  "reviews": {
+   "6": "Codex gpt-6.2-sol high, ACCEPT WITH CHANGES, #548 comment 7156892274",
+   "7": "classification of the open findings, #548 comment 7157015422",
+   "fable": "Fable 5.2 deferral consult, AGREE WITH CONDITIONS, #548 comment 7156928374"
+  },
+  "codex_class_A_before_task_2": {
+   "A1 seal the cases": "done: cases.json SEALED (this contract's inputs.cases_sha256)",
+   "A2 exact-head focused evidence": "focused-8 at this contract's commit, reported with the CP1 acceptance request (focused-7 at git:6c9d82d was stopped at 38% when the head moved to the seal)",
+   "A3 the denial and wrong-scope disposition": "requested of the operator"
+  },
+  "codex_class_B_and_C": "carried to the Q-release gate (q_release_gate.contents)"
  }
 }
