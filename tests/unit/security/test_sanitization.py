@@ -271,6 +271,10 @@ _STILL_MASKED = [
     ("password Per archived", "password ********** archived"),
     ("token Not made", "token ********** made"),
     ("token not. made", "token ********** made"),
+    # Off the list since round 2 of the review: forms and determiners a one-word value could be.
+    ("password was being (expires Friday)", "password was ********** (expires Friday)"),
+    ("password been there", "password ********** there"),
+    ("token that rest", "token ********** rest"),
 ]
 
 

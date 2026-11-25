@@ -56,12 +56,12 @@ _RECOGNIZED_PREFIXES: tuple[str, ...] = (
 _BEARER_TOKEN_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)\S+")
 _ENV_ASSIGNMENT_RE = re.compile(r"(?i)\b([A-Z_][A-Z0-9_]*(?:_KEY|_SECRET|_TOKEN|_PASSWORD))\s*=\s*\S+")
 _GENERIC_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(token|password|secret|credential|api[_-]?key)((?:=|:)\s*)\S+")
-# Closed-class English words (no names, no content words): after a keyword they are prose, not a value (#584).
+# The fewest closed-class English words prose puts after a keyword (#584): each one exempted is a one-word value that
+# could leave in clear, so the list holds only articles, common prepositions and conjunctions, plain copulas and
+# auxiliaries, and negation (no names, pronouns, determiners, modals or forms such as "being" or "been").
 _PROSE_FUNCTION_WORDS = (
-    "a an the this that these those its their our your my no any each every some all both it they we you which who what "
-    "of in on at to for from with without by into over under about after before between through during via as than "
-    "within and or nor but yet if because while when where unless until then whether is are was were be been being am "
-    "has have had do does did could shall should must not never also only still here there now too just"
+    "a an the of in on at to for from with by into via as than under over and or nor but if when while "
+    "is are was were has have had does did not never only also"
 ).split()
 # Group 2 keeps an optional copula and/or separator ("token is X", "token = X", "token is: X") so the mask lands on the
 # value (#505). Groups 3 and 4 record a "=" or ":" separator. Only with none ("token X", "token is X") may the value be
