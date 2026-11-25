@@ -3023,7 +3023,9 @@ class AcpDuplexAdapter:
             sequence=max(1, int(turn.turn_seq)), run_id=turn.run_id, outcome=str(outcome.value).lower(), prompt=sanitized_user_prompt,
             plan_hash=plan_hash if re.fullmatch(r"[0-9a-f]{64}", plan_hash) else "",
             verification=tuple(item.ref for item in evidence_from(turn.run_id, result.tool_calls) if item.kind == "verification"),
-            pending=result.status is AgentRunStatus.AWAITING_APPROVAL, responded=result.stop_reason == "PLANNING_MODEL_REFUSED")
+            # #598: pending means a request went out and was cancelled unanswered; a refused plan or a host's answer is not pending.
+            pending=result.status is AgentRunStatus.AWAITING_APPROVAL and turn.permission_tool_call_id is not None
+            and outcome is ConversationOutcome.CANCELLED, responded=result.stop_reason == "PLANNING_MODEL_REFUSED")
         continuity.submit(settled)  # one ordered writer per session, off the turn's path
 
     async def _emit_memory_notices(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
