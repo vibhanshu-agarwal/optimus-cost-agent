@@ -618,21 +618,50 @@ def test_teardown_confirms_the_released_container_and_volume_are_gone(monkeypatc
         launch._remove_container({"container": "p1214-x", "volume": "p1214-v"})  # noqa: SLF001
 
 
-def test_every_session_closes_even_if_one_fails_to(tree):
+def test_every_session_closes_even_if_others_fail_to_and_each_failure_is_named(tree):
     closed: list[str] = []
 
-    def failing() -> None:
-        closed.append("first")
-        raise RuntimeError("the first session would not close")
+    def failing(name: str, error: type[Exception]) -> Any:
+        def close() -> None:
+            closed.append(name)
+            raise error("would not close")
+        return close
 
-    composition = launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {"a": SimpleNamespace(close=failing), "b": SimpleNamespace(close=lambda: closed.append("second"))}, {})
+    sessions = {"git:" + "a" * 40: SimpleNamespace(close=failing("a", RuntimeError)), "git:" + "b" * 40: SimpleNamespace(close=lambda: closed.append("b")),
+                "git:" + "c" * 40: SimpleNamespace(close=failing("c", OSError))}
     try:
-        launch._close_sessions(composition)  # noqa: SLF001
-    except RuntimeError as failure:
-        assert str(failure) == "the first session would not close"
+        launch._close_sessions(launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, sessions, {}))  # noqa: SLF001
+    except launch.LaunchRefused as refused:
+        assert str(refused) == f"sessions did not close: {'a' * 12} (RuntimeError), {'c' * 12} (OSError)"
+    except Exception as other:  # noqa: BLE001 - a session's own error escaping means the rest were never closed
+        pytest.fail(f"a session's {type(other).__name__} escaped before every session was closed")
     else:
-        pytest.fail("a session that would not close was not reported")
-    assert closed == ["first", "second"]
+        pytest.fail("sessions that would not close were not reported")
+    assert closed == ["a", "b", "c"]
+
+
+def test_a_snapshot_is_bound_to_its_frozen_source_tree_and_its_checkout_to_the_commit_made_when_materialized(tmp_path, monkeypatch):
+    """Codex round 124 attempt 4: an export-ignored file (7abbaa2's PDFs) makes the archive-made checkout's tree differ from the revision's;
+    the row seals the revision's own tree, and the drift check holds the checkout to the commit materialize made."""
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "kept.py").write_text("x = 1\n", encoding="utf-8")
+    (source / "paper.pdf").write_bytes(b"%PDF")
+    (source / ".gitattributes").write_text("*.pdf export-ignore\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(source), "init", "-q"], check=True, capture_output=True)
+    _commit(source)
+    revision = subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    session = _Waiting()
+    session.start = lambda: None
+    session.storage = SimpleNamespace(call=lambda op: {"current": {"epoch": 7, "coverage": {"complete": True}}})
+    monkeypatch.setattr("optimus.context.memory_session.session_factory", lambda **kwargs: lambda _ws: session)
+    composition = launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {}, {})
+    launch.open_sessions([f"git:{revision}"], repository=source, work=tmp_path / "work", root=tmp_path, memory=None, settings=None,
+                         settings_file={"embedding": {"artifact_directory": "a"}}, embedder=None, composition=composition, trees=[])
+    checkout = composition.workspaces[f"git:{revision}"]
+    source_tree = "git:" + subprocess.run(["git", "-C", str(source), "rev-parse", f"{revision}^{{tree}}"], check=True, capture_output=True, text=True).stdout.strip()
+    assert composition.trees[f"git:{revision}"] == source_tree != launch.checkout_tree(checkout), "the row seals the revision's own tree"
+    assert composition.heads[f"git:{revision}"] == launch.checkout_head(checkout) and launch.checkout_drift(checkout, composition.heads[f"git:{revision}"]) is None
 
 
 def test_an_index_gateway_that_dies_after_it_starts_is_still_stopped_with_its_client_and_container(tmp_path, monkeypatch):

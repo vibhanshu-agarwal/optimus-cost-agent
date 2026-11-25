@@ -175,8 +175,8 @@ class Composition:
     workspaces: dict[str, Path]  # case snapshot -> its tree
     model_id: str = D3_MODEL
     epochs: dict[str, int] = field(default_factory=dict)  # case snapshot -> the generation its session published and its catalogue holds
-    trees: dict[str, str] = field(default_factory=dict)  # case snapshot -> its checkout's tree id when opened
-    heads: dict[str, str] = field(default_factory=dict)  # case snapshot -> its checkout's commit when opened
+    trees: dict[str, str] = field(default_factory=dict)  # case snapshot -> its frozen source tree (the revision's own), sealed per row
+    heads: dict[str, str] = field(default_factory=dict)  # case snapshot -> its materialized checkout's commit, taken right after materializing
     verify_checkout: Callable[[Path, str], str | None] = checkout_drift
     summaries: paid.NoSummaries = field(default_factory=paid.NoSummaries)
     packers: dict[tuple[str, str], AttachedTurn] = field(default_factory=dict)  # each row's, read after it for its manifest
@@ -613,6 +613,9 @@ def open_sessions(revisions: Sequence[str], *, repository: Path, work: Path, roo
         revision = snapshot.removeprefix("git:")
         tree = work / "trees" / revision[:12]
         m1_evaluate.materialize(repository, revision, tree, branch=f"q-{revision[:12]}")
+        # The frozen source tree is the row's sealed identity (gate design); the archive-made checkout's own tree can differ (an export-ignored
+        # file), so it is bound to by its commit, taken before anything else touches it (Codex round 124 attempt 4).
+        composition.trees[snapshot], composition.heads[snapshot] = "git:" + _git(repository, "rev-parse", f"{revision}^{{tree}}"), checkout_head(tree)
         session = factory(tree)
         if session is None:
             raise LaunchRefused(f"{revision[:12]}: the workspace could not be registered")
@@ -621,9 +624,8 @@ def open_sessions(revisions: Sequence[str], *, repository: Path, work: Path, roo
         started = time.perf_counter()
         session.start()
         composition.epochs[snapshot] = wait_indexed(session)
-        composition.trees[snapshot], composition.heads[snapshot] = checkout_tree(tree), checkout_head(tree)
         coverage = session._current_scope().storage.call("coverage")["current"]["coverage"]  # noqa: SLF001
-        trees.append({"revision": snapshot, "source_tree": "git:" + _git(repository, "rev-parse", f"{revision}^{{tree}}"), "tree": composition.trees[snapshot],
+        trees.append({"revision": snapshot, "tree": composition.trees[snapshot], "checkout_head": composition.heads[snapshot], "checkout_tree": checkout_tree(tree),
                       "epoch": composition.epochs[snapshot], "seconds": round(time.perf_counter() - started, 1), "coverage": coverage})
 
 
@@ -671,15 +673,16 @@ def _remove_container(config: Mapping[str, Any]) -> None:
 
 
 def _close_sessions(composition: Composition) -> None:
-    """Every session closes even if one fails to; the first failure is raised after all have been tried."""
-    failures: list[BaseException] = []
-    for session in composition.sessions.values():
+    """Every session closes even if one fails to; once all have been tried, one refusal names each that failed, by snapshot, with its
+    error's type (Codex round 124 attempt 4)."""
+    failed: list[str] = []
+    for snapshot, session in composition.sessions.items():
         try:
             session.close()
-        except Exception as failure:  # noqa: BLE001 - kept and raised once every session has been asked to close
-            failures.append(failure)
-    if failures:
-        raise failures[0]
+        except Exception as failure:  # noqa: BLE001 - kept, and reported once every session has been asked to close
+            failed.append(f"{snapshot.removeprefix('git:')[:12]} ({type(failure).__name__})")
+    if failed:
+        raise LaunchRefused(f"sessions did not close: {', '.join(failed)}")
 
 
 @contextmanager
