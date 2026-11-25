@@ -122,7 +122,9 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
     used = estimate(required_text) if required_text else 0
     outline = None
     if used > budget_tokens and target_tokens is not None and overview_path is not None and tuple(required) == (overview_path,) and not missing:
-        outline = build_outline(overview_path, contents[overview_path] or b"", estimate=estimate, max_tokens=budget_tokens)
+        # The section header is charged first, so an outline sized to its room still fits C once wrapped (gate item 10 found the gap).
+        room_for_outline = budget_tokens - estimate(f"{SECTION_REQUIRED}\n")
+        outline = build_outline(overview_path, contents[overview_path] or b"", estimate=estimate, max_tokens=room_for_outline)
         if outline is not None and estimate(f"{SECTION_REQUIRED}\n{outline.text}") <= budget_tokens:
             required_text = f"{SECTION_REQUIRED}\n{outline.text}"
             used = estimate(required_text)
@@ -193,7 +195,7 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
 
     text = "\n".join(part for part in (required_text, signature_text, body_text) if part)
     return Pack(text, estimate(text) if text else 0, budget_tokens, tuple(selected), hashes, (), tuple(stale),
-                None if outline is None else outline.metadata(overview_path or ""))
+                None if outline is None else {**outline.metadata(overview_path or ""), "section_tokens": used})  # V: the outline section's cost
 
 
 def _reason(item: Ranked) -> str:

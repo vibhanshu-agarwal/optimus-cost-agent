@@ -152,3 +152,53 @@ def test_fs_paid_request_is_productions_final_round_request_carrying_the_measure
     build = runner_module._chat_builder(request, context.text, memory=packer.memory, repo_map=packer.memory.repo_map(), index_results="", tools_open=False)  # noqa: SLF001
     assert payload["input"] == packer.fit(build)
     assert sent["sent"][0]["input_sha256"] == _digest(payload["input"])
+
+
+# --- the outline row in both proofs (Q-release gate item 10: Fable CP2 finding 4) ------------------------------------------------
+
+BIG = "".join(f"def handler_{i}(event, context):\n    return 'OUTLINE_BODY {i}'\n\n\n" for i in range(200))
+SUMMARY = 'Summarize "pkg/big.py"'
+
+
+def _measured_outline(root: Path, storage: _Storage) -> dict[str, Any]:
+    (root / "pkg" / "big.py").write_text(BIG, encoding="utf-8", newline="\n")
+    case = {"case_id": "QO-X", "kind": "outline", "task": SUMMARY, "required_files": [{"path": "pkg/big.py"}]}
+    retrieval = ev.production_retrieve(Retriever(storage, None), SUMMARY, named=["pkg/big.py"])
+    return ev.budget_case(case, retrieval, ev.policy_reader(root), policy="baseline", model_aware=MODEL_AWARE, legacy=legacy_budget(USABLE),
+                          full_input=len, pack_estimate=len, outline=True)
+
+
+def test_an_outline_rows_pack_in_the_budget_pass_is_the_pack_productions_chat_turn_builds(workspace, packs):  # noqa: F811
+    """The evaluator's outline arm (the case's required file and summary target) and production's Chat turn (its resolver and the runner's
+    Chat-only target) build the same F outline pack; B refuses in both. optional_room is the chosen budget less V (Fable CP2 finding 6)."""
+    from context_engine.file_outline import DISCLOSURE, summary_target
+
+    measured = _SymbolsOnly(_records())
+    row = _measured_outline(workspace, measured)
+    turns = []
+    for policy in (None, MODEL_AWARE):
+        turns.append(_SymbolsOnly(_records()))
+        _session(workspace, turns[-1]).turn().assemble(run_id="r", task=SUMMARY, selection_text=SUMMARY, model_id="m", estimate=len,
+                                                       usable_input_tokens=USABLE, pack_budget=policy, overview_path=summary_target(SUMMARY))
+    assert _queries(measured) == _queries(turns[0]) == _queries(turns[1])
+    assert [_digest(pack.text) for pack in packs] == [row["arms"]["BU"]["pack_sha256"], row["arms"]["F"]["pack_sha256"]]
+    assert (row["arms"]["BU"]["complete"], row["arms"]["F"]["complete"], row["arms"]["F"]["outline"]) == (False, True, True)
+    assert DISCLOSURE in packs[1].text and "OUTLINE_BODY" not in packs[1].text
+    v = packs[1].outline["section_tokens"]
+    assert 0 < v <= MODEL_AWARE.ceiling and row["arms"]["F"]["optional_room"] == row["arms"]["F"]["budget"] - v >= 0
+
+
+def test_fs_paid_outline_request_carries_exactly_the_measured_outline_pack(tmp_path, workspace, snapshot, packs):  # noqa: F811
+    """Through the real runner, Guard, binder and in-process Gateway: F's summary request carries the outline pack whose digest the budget
+    pass recorded, with its disclosure and no body."""
+    from context_engine.file_outline import DISCLOSURE
+
+    row = _measured_outline(workspace, _SymbolsOnly(_records()))
+    gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["An outline-based summary."]))
+    sent = paid.run_one({"case_id": "QO-X", "task": SUMMARY}, "F", position=1, gateway=_client(gateway), approved=_approved(snapshot), model=STANDARD,
+                        packer=_attached(workspace, MODEL_AWARE, prompt=SUMMARY), binder=_binder(snapshot), workspace=workspace, ceiling=_ceiling(), allowance=1)
+    assert sent["logical_requests"] == 1 and sent["reconciliation"]["problems"] == []
+    [payload] = gateway.payloads
+    [pack] = packs
+    assert pack.outline is not None and _digest(pack.text) == row["arms"]["F"]["pack_sha256"] and pack.text in payload["input"]
+    assert DISCLOSURE in payload["input"] and "OUTLINE_BODY" not in payload["input"]

@@ -217,7 +217,8 @@ def budget_case(case: Mapping[str, Any], retrieval: Retrieval, read: Callable[[s
                              protected=retrieval.protected, target_tokens=target, overview_path=overview)
         budget = pack.budget_tokens
         optional = [(i.path, i.symbol, i.start_line, i.disclosure) for i in shown(pack)]
-        arms[arm] = {"budget": budget, "complete": pack.complete, "tokens": pack.tokens, "optional_room": budget - r if pack.complete else None,
+        v = pack.outline["section_tokens"] if pack.outline is not None else r  # an outline row's required cost is its outline, not R (Fable CP2 finding 6)
+        arms[arm] = {"budget": budget, "complete": pack.complete, "tokens": pack.tokens, "optional_room": budget - v if pack.complete else None,
                      "optional_items": len(optional), "optional_digest": "hex:" + hashlib.sha256(json.dumps(optional).encode()).hexdigest(),
                      "pack_bytes": len(pack.text.encode("utf-8")), "pack_sha256": "hex:" + hashlib.sha256(pack.text.encode("utf-8")).hexdigest(),
                      "full_input_tokens": full_input(pack.text) if pack.complete else None, "outline": pack.outline is not None}

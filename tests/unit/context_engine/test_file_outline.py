@@ -147,3 +147,10 @@ def test_each_pack_outlines_the_bytes_read_now():
     second = _pack({"src/big.py": after}, ("src/big.py",), overview="src/big.py")
     assert "renamed_entry" not in first.text and "1-2 def renamed_entry(event)\n" in second.text
     assert first.outline["source_sha256"] != second.outline["source_sha256"] == hashlib.sha256(after).hexdigest()
+
+
+def test_under_a_small_ceiling_the_outline_is_sized_to_fit_once_its_section_header_is_added():
+    """A ceiling below the 2,048-token cap: the outline is sized to the room left after the section header, so it still fits C wrapped
+    (an outline sized to all of C overflowed once the header was added; found by the Q-release gate's outline proofs)."""
+    pack = _pack({"src/big.py": _big(), "other.py": OTHER}, ("src/big.py",), overview="src/big.py", budget=600, target=500)
+    assert pack.complete and pack.outline is not None and pack.outline["section_tokens"] <= 600 and pack.tokens <= pack.budget_tokens <= 600
