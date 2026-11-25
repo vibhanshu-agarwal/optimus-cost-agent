@@ -328,3 +328,34 @@ def test_ordinary_and_lookalike_tokens_are_unaffected(tmp_path):
 
         assert result.verdict is ValidationVerdict.ALLOW, command
         assert result.rule_id == "shell.allowed", command
+
+
+# #603 row 4: a URL scheme with no host after it used to be skipped by the scanner, so it never reached the network rule.
+def test_a_url_scheme_with_no_host_is_refused(tmp_path):
+    for token in ("https://", "HTTPS://"):
+        result = validator(tmp_path).validate(("pytest", "-k", token))
+
+        assert result.verdict is ValidationVerdict.BLOCK
+        assert result.rule_id == "network.missing_host"
+
+
+def test_a_plain_http_scheme_with_no_host_is_refused_as_insecure(tmp_path):
+    result = validator(tmp_path).validate(("pytest", "-k", "http://"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "network.insecure_transport"
+
+
+def test_a_host_hidden_behind_a_quote_or_bracket_is_refused(tmp_path):
+    # The scanner stops at these characters, so the host after them was never judged; a shell would join the pieces.
+    for opener, closer in ((chr(0x22), chr(0x22)), (chr(0x27), chr(0x27)), ("<", ">")):
+        result = validator(tmp_path).validate(("curl", f"https://{opener}example.com{closer}"))
+
+        assert result.verdict is ValidationVerdict.BLOCK
+        assert result.rule_id == "network.missing_host"
+
+
+def test_a_command_without_a_url_scheme_is_still_allowed(tmp_path):
+    result = validator(tmp_path).validate(("pytest", "tests", "-k", "not slow and https"))
+
+    assert result.verdict is ValidationVerdict.ALLOW
