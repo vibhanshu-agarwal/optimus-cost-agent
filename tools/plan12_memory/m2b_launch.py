@@ -625,7 +625,8 @@ def open_sessions(revisions: Sequence[str], *, repository: Path, work: Path, roo
         session.start()
         composition.epochs[snapshot] = wait_indexed(session)
         coverage = session._current_scope().storage.call("coverage")["current"]["coverage"]  # noqa: SLF001
-        trees.append({"revision": snapshot, "tree": composition.trees[snapshot], "checkout_head": composition.heads[snapshot], "checkout_tree": checkout_tree(tree),
+        trees.append({"revision": snapshot, "tree": composition.trees[snapshot], "checkout_head": composition.heads[snapshot],
+                      "checkout_tree": "git:" + _git(tree, "rev-parse", f"{composition.heads[snapshot].removeprefix('git:')}^{{tree}}"),  # the captured commit's own
                       "epoch": composition.epochs[snapshot], "seconds": round(time.perf_counter() - started, 1), "coverage": coverage})
 
 

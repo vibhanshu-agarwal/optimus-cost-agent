@@ -656,12 +656,15 @@ def test_a_snapshot_is_bound_to_its_frozen_source_tree_and_its_checkout_to_the_c
     session.storage = SimpleNamespace(call=lambda op: {"current": {"epoch": 7, "coverage": {"complete": True}}})
     monkeypatch.setattr("optimus.context.memory_session.session_factory", lambda **kwargs: lambda _ws: session)
     composition = launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {}, {})
+    recorded: list[dict] = []
     launch.open_sessions([f"git:{revision}"], repository=source, work=tmp_path / "work", root=tmp_path, memory=None, settings=None,
-                         settings_file={"embedding": {"artifact_directory": "a"}}, embedder=None, composition=composition, trees=[])
+                         settings_file={"embedding": {"artifact_directory": "a"}}, embedder=None, composition=composition, trees=recorded)
     checkout = composition.workspaces[f"git:{revision}"]
     source_tree = "git:" + subprocess.run(["git", "-C", str(source), "rev-parse", f"{revision}^{{tree}}"], check=True, capture_output=True, text=True).stdout.strip()
     assert composition.trees[f"git:{revision}"] == source_tree != launch.checkout_tree(checkout), "the row seals the revision's own tree"
     assert composition.heads[f"git:{revision}"] == launch.checkout_head(checkout) and launch.checkout_drift(checkout, composition.heads[f"git:{revision}"]) is None
+    [entry] = recorded
+    assert (entry["tree"], entry["checkout_head"], entry["checkout_tree"]) == (source_tree, launch.checkout_head(checkout), launch.checkout_tree(checkout))
 
 
 def test_an_index_gateway_that_dies_after_it_starts_is_still_stopped_with_its_client_and_container(tmp_path, monkeypatch):
