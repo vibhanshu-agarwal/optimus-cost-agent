@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
-from optimus.agent.directives import MAX_PATH_CHARS, AgentDirectiveParseError, parse_agent_plan, unsafe_path_text
+from optimus.agent.directives import MAX_PATH_CHARS, AgentDirectiveParseError, parse_agent_plan, unsafe_path_text, windows_path_shape
 from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK, PlanningTurnKind, PlanningTurnParseError, parse_planning_turn
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
@@ -357,7 +357,17 @@ async def test_an_unsafe_token_reaches_neither_the_person_nor_the_history(direct
 @pytest.mark.parametrize("path", ["id_rsa.", "NUL"], ids=["trailing-dot", "device"])
 async def test_a_reserved_windows_name_is_never_written_through_the_real_runner(path, tmp_path):
     """#590: an approved ``WRITE id_rsa.`` created ``id_rsa``, and ``WRITE NUL`` reported a write that was discarded."""
-    result, _outbound, _runner, _records = await _drive(tmp_path, _SamePlan(_plan("WRITE", path)))
+    result, outbound, _runner, _records = await _drive(tmp_path, _SamePlan(_plan("WRITE", path)))
 
     assert result["_meta"]["runStopReason"] == "PLANNING_UNPARSEABLE_RESPONSE"
+    # The loop check-in may ask to continue; no plan approval is asked, so nothing is written.
+    assert [r for r in outbound.requests if not r["params"]["_meta"].get("loopCheckIn")] == []
     assert not (tmp_path / "id_rsa").exists()
+
+
+def test_a_trailing_space_is_reserved_but_directive_padding_is_not_part_of_the_path():
+    """A directive line cannot carry a space inside its path token; padding after the token is dropped, as before."""
+    assert windows_path_shape("a.py ") and windows_path_shape("dir /a.py")
+    assert parse_agent_plan(f"READ a.py {NL}", edit_base="forbidden").read_paths == ("a.py",)
+    with pytest.raises(PlanningTurnParseError):
+        parse_planning_turn(f"OBSERVE: the header{NL}READ: a.py #bytes=0:10{NL}")
