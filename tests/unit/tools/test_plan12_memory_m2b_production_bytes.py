@@ -96,7 +96,8 @@ def test_each_arms_pack_in_the_budget_pass_is_the_pack_production_builds(workspa
     assert (row["arms"]["BU"]["optional_items"], row["arms"]["F"]["optional_items"]) == (0, 1) and row["arms"]["BU"]["complete"], "the arrangement"
 
 
-def _attached(root: Path, pack_budget: BudgetPolicy, *, records: dict | None = None, prompt: str = TASK, mode: ExecutionMode = ExecutionMode.CHAT) -> AttachedTurn:
+def _attached(root: Path, pack_budget: BudgetPolicy, *, records: dict | None = None, prompt: str = TASK, mode: ExecutionMode = ExecutionMode.CHAT,
+              memory: bool = True) -> AttachedTurn:
     """A Q row's packer as a launch prepares one: a real attached turn (no history unless `records` gives some), the memory turn joined to
     it, then the history view prepared, in the adapter's order (spec.py: _prepare_memory, then _prepare_attached_context; Codex CP2 A2)."""
     records = records or {}
@@ -109,9 +110,28 @@ def _attached(root: Path, pack_budget: BudgetPolicy, *, records: dict | None = N
     )
     attached = AttachedTurn.capture(attachment=attachment, session_key="q", records=records, approvals={}, generation=len(records), sanitizer=SANITIZER,
                                     strategy="compaction", mode=mode, checkpoint=None, current_prompt=prompt, turn_seq=len(records) + 1, cancelled=lambda: False)
-    attached.memory = _session(root, _SymbolsOnly(_records())).turn()
+    if memory:
+        attached.memory = _session(root, _SymbolsOnly(_records())).turn()
     assert attached.prepare().kind == "view"
     return attached
+
+
+def test_n_must_run_on_the_attached_turn_because_a_bare_runner_is_not_productions_no_index_request(tmp_path, workspace, snapshot):  # noqa: F811
+    """Fable gate consult, question 2: production attaches whenever the registry has a summarizer, so its no-index first turn is an attached
+    turn with no memory, fitted through the packer. A bare runner (no packer) sends a different request: the attached turn carries its
+    conversation envelope even with no history. So Q's N runs on the attached turn without a memory turn, not with packer None."""
+    _measured(workspace)
+    sent = []
+    for packer in (None, _attached(workspace, BudgetPolicy("legacy", 500, None), memory=False)):
+        gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["An answer."]))
+        row = paid.run_one({"case_id": "QX", "task": TASK}, "N", position=1, gateway=_client(gateway), approved=_approved(snapshot), model=STANDARD,
+                           packer=packer, binder=_binder(snapshot), workspace=workspace, ceiling=_ceiling(), allowance=1)
+        assert row["logical_requests"] == 1 and row["reconciliation"]["problems"] == []
+        [payload] = gateway.payloads
+        sent.append(payload["input"])
+    bare, attached = sent
+    assert bare != attached and "pkg/a.py" in bare and "pkg/a.py" in attached
+    assert "Prior conversation" in attached and "Prior conversation" not in bare, "the difference is production's own envelope"
 
 
 def test_fs_paid_request_is_productions_final_round_request_carrying_the_measured_pack(tmp_path, workspace, snapshot, packs):  # noqa: F811
