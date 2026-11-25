@@ -63,7 +63,8 @@ class CommandSafetyValidator:
                 "shell.unicode_bidi_control",
                 "Unicode bidi or format control character detected",
             )
-        # #596: the rules below match Latin text, so only a Latin look-alike can spoof one; plain non-Latin names pass.
+        # #596: a plain non-Latin name passes; a non-Latin character that maps to a Latin or Common one is refused.
+        # Latin- or Common-script look-alikes of ASCII (U+0131, U+2212) are not caught here, as on main without a second script.
         if contains_dangerous_confusable(raw_text, latin_lookalikes_only=True):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.unicode_confusable", "Unicode confusable detected")
         if _is_recursive_force_delete(command, lowered):

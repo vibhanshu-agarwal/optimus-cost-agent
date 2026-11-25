@@ -8,8 +8,9 @@ from confusable_homoglyphs import confusables
 def contains_dangerous_confusable(text: str, *, latin_lookalikes_only: bool = False) -> bool:
     """True for punycode, fullwidth Latin beside Latin, or mixed scripts holding a confusable character.
 
-    ``latin_lookalikes_only`` (#596) counts only characters that look like Latin or common ones, so a plain
-    non-Latin name beside Latin text passes; the default keeps the strict any-script form.
+    ``latin_lookalikes_only`` (#596) skips characters of the Latin and Common scripts and flags any other character
+    that maps to a Latin or Common one, so a plain non-Latin name beside Latin text passes. Latin- or Common-script
+    look-alikes of ASCII (U+0131, U+2212) are not flagged. The default keeps the strict any-script form.
     """
     if not text:
         return False
