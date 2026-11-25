@@ -1737,7 +1737,9 @@ def test_an_index_turns_retry_never_requires_a_candidate_only_the_stop_listed(wo
     assert [item.candidates[0] for item in result.diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED] == ["src/x/config.py"]
 
 
-@pytest.mark.parametrize("argument", ["a.py:stream", "NUL", "pkg/a.py.", chr(0x5C) + "rooted.py", "pkg/aux.py"])
+@pytest.mark.parametrize(
+    "argument", ["a.py:stream", "NUL", "pkg/a.py.", chr(0x5C) + "rooted.py", "pkg/aux.py", "//./NUL", "/rooted.py"]
+)
 @pytest.mark.parametrize("tool", ["OUTLINE", "LIST"])
 def test_a_windows_shaped_index_path_is_refused_before_the_tool_runs(workspace, tool, argument):
     """#590: the same path rule as a plan path; the tool is never run on a stream, a device or a second name."""

@@ -450,7 +450,8 @@ def _validate_relative_path(path_text: str) -> None:
         raise AgentDirectiveParseError("no valid agent directives")
 
 
-_PYTEST_VALUE_OPTIONS = frozenset({"-c", "-k", "-m", "-o", "-p", "-W"})  # pytest's short options that take a value
+# pytest options whose value is not a path and may hold a colon (-p no:cacheprovider, -W error::UserWarning).
+_PYTEST_OPAQUE_OPTIONS = frozenset({"-k", "-m", "-o", "-p", "-W", "--cov-report", "--override-ini", "--pythonwarnings"})
 
 
 def _parse_test_command(command_text: str) -> tuple[str, ...]:
@@ -471,9 +472,12 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
         # format character. No blank space character either, which would read as two arguments.
         if unsafe_path_text(token) or any(c != " " and unicodedata.category(c) in ("Cf", "Zs") for c in token):
             raise AgentDirectiveParseError("unsafe TEST directive")
-        # #590: a positional argument names a file (the part before a node id's ::). An option and the value after a
-        # short option are left alone: they hold legitimate colons (-p no:cacheprovider, --cov-report=xml:path).
-        positional = not token.startswith("-") and previous not in _PYTEST_VALUE_OPTIONS
-        if positional and windows_path_shape(token.strip("'" + '"').split("::", 1)[0]):
+        # #590: every argument and every --option=value follows the plan path rule, on the part before a node id's ::.
+        # The value of an option that does not take a path is left alone. -- and @file are refused: pytest would read
+        # arguments after them that this loop cannot classify.
+        # shortcut: a value glued to a short option (-cNUL) is not split out; upgrade if TEST ever runs unapproved.
+        option, _, value = token.partition("=") if token.startswith("-") else (previous, "", token)
+        shaped = option not in _PYTEST_OPAQUE_OPTIONS and windows_path_shape(value.strip("'" + '"').split("::", 1)[0])
+        if token == "--" or token.startswith("@") or shaped:
             raise AgentDirectiveParseError("unsafe TEST directive")
     return tokens

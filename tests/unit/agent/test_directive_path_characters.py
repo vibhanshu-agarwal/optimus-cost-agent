@@ -383,6 +383,13 @@ WINDOWS_TEST_ARGUMENTS = {
     "device-in-folder": "tests/aux.py",
     "trailing-dot": "tests/test_a.py.",
     "quoted-rooted": chr(0x22) + BS + "rooted.py" + chr(0x22),
+    "option-value": "--debug=NUL",
+    "option-value-stream": "--junitxml=out.xml:stream",
+    "config-path": "-c " + BS + "rooted.ini",
+    "long-option-path": "--rootdir aux",
+    "after-separator": "-- -sample.py.",
+    "separator-then-option": "-- -k NUL",
+    "response-file": "@args.txt",
 }
 
 
@@ -401,6 +408,7 @@ def test_a_windows_shaped_test_argument_is_rejected_at_parse_time_without_quotin
         "pytest -p no:cacheprovider tests/test_a.py::test_x[a:b]",
         "pytest -k smoke:fast -m slow tests",
         "pytest --cov-report=xml:cov.xml --deselect=tests/test_a.py::test_x .",
+        "pytest --cov-report xml:cov.xml --deselect tests/test_a.py::test_x[a:b] -n 2 tests",
         "pytest -o cache_dir=x -W error::UserWarning -c pytest.ini tests/unit",
     ],
 )

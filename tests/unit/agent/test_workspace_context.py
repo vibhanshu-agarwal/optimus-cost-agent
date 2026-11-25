@@ -1013,11 +1013,14 @@ def test_a_failed_edit_to_a_secret_like_name_does_not_block_the_next_request(tmp
     assert result.blocking_stop_reason is None
 
 
-@pytest.mark.parametrize("reference", ["NUL", "sub/aux.txt", "notes.", "a.py:stream"])
-def test_a_windows_reserved_reference_is_never_resolved(reference):
-    """#590: a typed reference that names a device or a second name for a file is not looked up on disk."""
-    assert workspace_context._safe_relative_reference(reference) is None
+@pytest.mark.parametrize("reference", ["aux.txt", "sub/aux.txt", "sub/con.py"])
+def test_a_typed_reference_to_a_windows_device_name_is_refused_on_every_host(tmp_path, reference):
+    """#590: refused by name, visibly, without a lookup; on Linux the same name would be an ordinary file."""
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "app.py").write_text("x = 1" + chr(10), encoding="utf-8")
 
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Show me {reference}")
 
-def test_an_ordinary_reference_is_still_resolved():
-    assert workspace_context._safe_relative_reference("src/app.py") == Path("src/app.py")
+    assert result.diagnostics[0].reference == reference
+    assert result.diagnostics[0].status is WorkspaceReferenceStatus.NOT_READABLE
+    assert result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"

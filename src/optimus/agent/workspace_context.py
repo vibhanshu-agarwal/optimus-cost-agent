@@ -381,7 +381,7 @@ def _extract_file_references(task: str) -> tuple[str, ...]:
 
 def _safe_relative_reference(reference: str) -> Path | None:
     candidate = Path(reference)
-    if candidate.is_absolute() or ".." in candidate.parts or ":" in reference or ntpath.isreserved(reference):  # #590
+    if candidate.is_absolute() or ".." in candidate.parts or ":" in reference:
         return None
     if any(char in reference for char in "*?[]"):
         return None
@@ -411,6 +411,8 @@ def _resolve_reference(
     safe = _safe_relative_reference(reference)
     if safe is None:
         return None
+    if ntpath.isreserved(reference):  # #590: a device or a second name for a file, refused by name and never looked up
+        return WorkspaceReferenceDiagnostic(reference=reference, status=WorkspaceReferenceStatus.NOT_READABLE, candidates=())
 
     normalized = Path(*safe.parts)
     relative_posix = normalized.as_posix()
