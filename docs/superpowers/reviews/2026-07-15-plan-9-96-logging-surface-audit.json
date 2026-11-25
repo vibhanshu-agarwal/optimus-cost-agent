@@ -593,17 +593,33 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:exception_export",
+      "key": "optimus.acp.request_correlation:add_trusted_request_identity:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "The matched set call replaces an in-process ContextVar value with host-validated session and run identifiers. It does not access Redis or persist data.",
+      "sanitizer": "in-process ContextVar with no persistence",
+      "test_node": "tests/unit/acp/test_request_correlation.py::test_task_context_keeps_the_owned_snapshot_and_clears_detached_identity",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.debug_trace:observe_request:redis_hash_write",
+      "policy": "safe-by-construction",
+      "rationale": "The matched set call sets an in-process ContextVar to a bounded diagnostic identity. It does not access Redis or persist data.",
+      "sanitizer": "in-process ContextVar with no persistence",
+      "test_node": "tests/unit/acp/test_request_correlation.py::test_terminating_a_nested_request_restores_its_parent",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.acp.dispatcher:JsonRpcDispatcher._dispatch:exception_export",
       "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.dispatcher:JsonRpcDispatcher._dispatch:exception_export before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:jsonrpc_error_response",
+      "key": "optimus.acp.dispatcher:JsonRpcDispatcher._dispatch:jsonrpc_error_response",
       "policy": "shared-sanitize",
-      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:jsonrpc_error_response before this persistence or export boundary; sanitizer failure has no raw fallback.",
+      "rationale": "Shared sanitizer protects runtime-controlled diagnostic content at optimus.acp.dispatcher:JsonRpcDispatcher._dispatch:jsonrpc_error_response before this persistence or export boundary; sanitizer failure has no raw fallback.",
       "sanitizer": "optimus_security.sanitization.sanitize_for_persistence",
       "test_node": "tests/unit/tools/test_verify_plan996_logging_surfaces.py::test_discovers_representative_live_persistence_and_protocol_sinks",
       "evidence_tier": "unit"

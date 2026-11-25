@@ -608,6 +608,15 @@ The levelled NDJSON records include `schemaVersion` and `level`. This file
 stays local. Use `--debug-trace` alone with evidence tools that require the
 original NDJSON format.
 
+At `--diagnostic-level debug`, framed dispatch and scheduled NDJSON requests
+emit a request start and terminal record with a host-generated operation ID.
+The terminal record includes elapsed time and the handler outcome. NDJSON
+also reports observed delivery and any fallback response separately. Framed
+dispatch completes before the transport writes its response. The NDJSON
+terminal record covers the request handler and response path. Work still
+owned by a retained request worker can finish afterward. Trusted session
+and run IDs appear once the host has established them.
+
 **Required after `pip install --user` on Windows:** Python installs scripts to
 `%APPDATA%\Python\Python<version>\Scripts` (for example
 `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts`). Windows does **not** add this

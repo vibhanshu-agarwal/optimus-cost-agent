@@ -3,9 +3,11 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from pydantic import ValidationError
 
+from optimus.acp.debug_trace import observe_request
 from optimus.acp.errors import (
     DUPLICATE_REQUEST_ID,
     INTERNAL_ERROR,
@@ -16,6 +18,7 @@ from optimus.acp.errors import (
     error_response,
     success_response,
 )
+from optimus.acp.request_correlation import RequestCorrelation, diagnostic_method
 from optimus.acp.request_ids import DuplicateRequestId, RequestIdTracker
 from optimus.agent.models import GOAL_LOOP_RETIRED, AgentRunRequest, AgentRunResult
 from optimus.agent.runner import AgentRunner
@@ -112,6 +115,15 @@ class JsonRpcDispatcher:
         return self._pre_tool_guard.audit_events_dropped
 
     def dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
+        if "id" not in request or "method" not in request:
+            return self._dispatch(request)
+        correlation = RequestCorrelation(uuid4().hex, "framed", diagnostic_method(request["method"], "framed"))
+        with observe_request(correlation) as seen:
+            response = self._dispatch(request)
+            seen.returned(has_error="error" in response)
+            return response
+
+    def _dispatch(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("id")
         try:
             self._request_ids.remember(request_id)

@@ -80,6 +80,39 @@ def test_uncertain_owner_release_retains_opaque_pending_identity(supervisor, unc
             logger.addHandler(observer)
 
 
+
+def test_lifetime_owner_clears_request_correlation_but_preserves_other_context(supervisor):
+    from contextvars import ContextVar
+
+    from optimus.acp.debug_trace import observe_request
+    from optimus.acp.request_correlation import RequestCorrelation, request_correlation
+
+    state = ContextVar("test_mcp_owner_state", default="missing")
+    observed = []
+
+    class Transport(ControlledRemoteTransportContext):
+        async def __aenter__(self):
+            observed.append((request_correlation.get(), state.get()))
+            return await super().__aenter__()
+
+    adapter = _adapter_with_owned_sdk_contexts(
+        supervisor, transport=Transport(), session=ControlledRemoteSessionContext(FakeSession()),
+    )
+    initiating = RequestCorrelation("request-opening-mcp", "ndjson", "session/new")
+    token = state.set("preserved")
+    try:
+        with observe_request(initiating) as seen:
+            connection = adapter.open(_capability(), session_id="scope")
+            try:
+                assert request_correlation.get() is initiating
+                assert observed == [(None, "preserved")]
+                seen.returned(has_error=False)
+            finally:
+                adapter.close(connection)
+    finally:
+        state.reset(token)
+
+
 def test_diagnostic_overflow_does_not_erase_survivor_latch(supervisor):
     adapter = _adapter(supervisor)
     for _ in range(300):

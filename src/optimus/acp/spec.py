@@ -70,6 +70,7 @@ from optimus.acp.memory_commands import DESCRIPTIONS as MEMORY_COMMAND_DESCRIPTI
 from optimus.acp.memory_commands import PURGE_CANCEL, Confirmation, MemoryAnswer, MemoryCommand, MemoryCommands, PurgeRequest
 from optimus.acp.memory_commands import READ_ONLY as MEMORY_READ_ONLY
 from optimus.acp.memory_commands import parse_command as parse_memory_command
+from optimus.acp.request_correlation import add_trusted_request_identity, detached_request_context
 from optimus.acp.session_config import (
     SLIDING_ACTIVE_TEXT,
     STRATEGY_CONFIG_ID,
@@ -867,7 +868,7 @@ def _in_own_thread(call: Callable[[], Any]) -> asyncio.Future[Any]:
         with contextlib.suppress(RuntimeError):  # the loop has closed, so nobody is waiting
             loop.call_soon_threadsafe(deliver, result, error)
 
-    threading.Thread(target=copy_context().run, args=(run,), name="context-index-prepare", daemon=True).start()
+    threading.Thread(target=detached_request_context().run, args=(run,), name="context-index-prepare", daemon=True).start()
     return future
 
 
@@ -1086,7 +1087,7 @@ class AcpDuplexAdapter:
             while True:
                 await asyncio.sleep(min(60, self._mcp_idle_seconds))
                 await self.sweep_idle_mcp_once()
-        self._idle_sweeper = asyncio.create_task(sweep(), name="optimus-idle-mcp-sweeper")
+        self._idle_sweeper = asyncio.create_task(sweep(), name="optimus-idle-mcp-sweeper", context=detached_request_context())
 
     async def stop_idle_mcp_sweeper(self) -> None:
         task = self._idle_sweeper
@@ -1163,7 +1164,7 @@ class AcpDuplexAdapter:
                         idle.phase = "MCP_SUSPENDED"
                     else:
                         self._quarantine_idle_mcp(session_id, idle, failures)
-                job = asyncio.create_task(close_peer(), name="optimus-idle-mcp-close")
+                job = asyncio.create_task(close_peer(), name="optimus-idle-mcp-close", context=detached_request_context())
                 self._mcp_close_tasks.add(job)
                 budget = max(1, len(state.server_names())) * runtime.sdk_adapter._operation_timeout_seconds
                 try:
@@ -1193,7 +1194,9 @@ class AcpDuplexAdapter:
 
     async def aclose(self) -> None:
         if self._shutdown_task is None:
-            self._shutdown_task = asyncio.create_task(self._shutdown_retained_sessions(), name='optimus-session-shutdown')
+            self._shutdown_task = asyncio.create_task(
+                self._shutdown_retained_sessions(), name='optimus-session-shutdown', context=detached_request_context(),
+            )
             self._mcp_close_tasks.add(self._shutdown_task)
         job = self._shutdown_task
         cancelled = False
@@ -1989,12 +1992,13 @@ class AcpDuplexAdapter:
                         backlog=session.memory_backlog)
                     if recovery is not None:
                         session.recovery_scheduler = RecoveryScheduler(recovery)
-                        session.recovery_scheduler.start()
+                        detached_request_context().run(session.recovery_scheduler.start)
                     if getattr(extractor, "backups", None) is not None:
                         session.backup_scheduler = BackupScheduler(extractor.backups)
-                        session.backup_scheduler.start()
+                        detached_request_context().run(session.backup_scheduler.start)
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
+            add_trusted_request_identity(session_id=session.session_id)
             completed = True
             return success_response(request_id=request.get('id'), result=result)
         finally:
@@ -2191,6 +2195,7 @@ class AcpDuplexAdapter:
         if cancelled:  # as the cancel handler does: the gate closes before any model call
             turn_control.request_session_cancel()
         run_id = turn.run_id
+        add_trusted_request_identity(session_id=session.session_id, run_id=run_id)
         # region agent log
         acp_debug_log(
             location="spec.py:_handle_session_prompt:entry",

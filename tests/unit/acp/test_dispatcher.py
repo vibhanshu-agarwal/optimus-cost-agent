@@ -988,3 +988,40 @@ def test_dispatcher_write_file_writes_the_clients_bytes_exactly(tmp_path):
 
     assert response["result"] == {"written": str(tmp_path / "mixed.txt")}
     assert (tmp_path / "mixed.txt").read_bytes() == b"lf\ncrlf\r\nend"
+
+
+def test_dispatcher_versioned_request_trace_carries_handler_result_and_error(tmp_path):
+    import json
+
+    from optimus.acp.debug_trace import DiagnosticLevel, configure_debug_trace
+
+    trace = tmp_path / "framed.ndjson"
+    configure_debug_trace(enabled=True, log_path=trace, minimum_level=DiagnosticLevel.DEBUG)
+    dispatcher = JsonRpcDispatcher(workspace_root=tmp_path)
+    ping = dispatcher.dispatch({"id": "client-chosen-id", "jsonrpc": "2.0", "method": "optimus.ping"})
+    missing = dispatcher.dispatch({"id": 2, "jsonrpc": "2.0", "method": "client-chosen-method"})
+    dispatcher.dispatch({"jsonrpc": "2.0", "method": "optimus.ping"})
+    dispatcher.dispatch({"id": 3, "jsonrpc": "2.0", "result": None})
+
+    assert ping["result"] == {"message": "pong"}
+    assert missing["error"]["code"] == METHOD_NOT_FOUND
+    assert trace.is_file(), "framed request diagnostics must reach the authorized local sink"
+    records = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    opened, closed, failed_open, failed_close = records
+    assert [row["location"] for row in records] == [
+        "request_correlation:start",
+        "request_correlation:terminal",
+        "request_correlation:start",
+        "request_correlation:terminal",
+    ]
+    assert opened["correlation"] == closed["correlation"]
+    assert failed_open["correlation"] == failed_close["correlation"]
+    assert opened["correlation"]["operationId"] != failed_open["correlation"]["operationId"]
+    assert opened["correlation"]["transport"] == "framed"
+    assert opened["correlation"]["method"] == "optimus.ping"
+    assert failed_open["correlation"]["method"] == "unknown"
+    assert closed["data"]["handler"] == "returned_result"
+    assert failed_close["data"]["handler"] == "returned_error"
+    assert closed["data"]["delivery"] == failed_close["data"]["delivery"] == "outside_dispatch"
+    assert all(row["data"]["durationNs"] >= 0 for row in (closed, failed_close))
+    assert "client-chosen" not in str(records)

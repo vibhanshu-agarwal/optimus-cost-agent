@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Never, SupportsIndex, TypeVar
 from urllib.parse import urlparse
 
+from optimus.acp.request_correlation import detached_request_context
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject, TrustScanVerdict
 from optimus.mcp.client_config import ClientMcpRuntimeCapability
 from optimus.mcp.client_supervisor import (
@@ -482,7 +483,9 @@ class ClientMcpSdkAdapter:
                 _warning_context.reset(warning_token)
 
         connection.owner_request = request
-        connection.owner_task = asyncio.create_task(owner(), name="optimus-mcp-lifetime-owner")
+        connection.owner_task = asyncio.create_task(
+            owner(), name="optimus-mcp-lifetime-owner", context=detached_request_context(),
+        )
         self._connections[identity_key] = connection
         try:
             await asyncio.shield(ready)
