@@ -136,6 +136,7 @@ class Guard:
     sent: list[dict[str, Any]] = field(default_factory=list)
     refusal: str | None = None
     receipts_at_refusal: int | None = None  # receipts after this index are the host's own records of a request never forwarded
+    expected_input_sha256: str | None = None  # the row's input from the launcher's dry preparation pass; anything else is refused (gate item 14)
 
     def __post_init__(self) -> None:
         if self.allowance not in (0, 1):  # Fable 5.2, CP1: the intra-row multi-send path is deleted
@@ -160,6 +161,8 @@ class Guard:
             self._refuse("an unbound request")
         if binding.registry_hash != self.approved.registry_hash or binding.output_cap != self.approved.output_cap:
             self._refuse("the binding is not the approved composition and output cap")
+        if self.expected_input_sha256 is not None and _sha(text) != self.expected_input_sha256:
+            self._refuse("the input is not the one the dry preparation pass prepared")
         tokens = self.approved.estimate_request(text)
         if tokens > self.approved.input_cap:
             self._refuse(f"input of {tokens} estimated tokens over the cap of {self.approved.input_cap}")
@@ -189,6 +192,19 @@ class Guard:
             raise
         finally:
             entry["seconds"] = round(time.perf_counter() - started, 3)
+
+
+class NoSummaries:
+    """The Gateway client a Q row's attachment summarizes through: it refuses every call. A Q turn has no history, so production's
+    summarizer never runs; this makes that impossible rather than assumed, since the D3 model is also the first eligible summarizer and the
+    Guard could not tell its call from the answer (Fable gate consult recommendation 2). `calls` lets the rehearsal assert none."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def create_response(self, **kwargs: Any) -> Any:
+        self.calls += 1
+        raise GuardRefused("a Q row never summarizes")
 
 
 def _gateway_attempt(item: Any) -> dict[str, Any]:
@@ -369,13 +385,13 @@ def terminal(row: Mapping[str, Any], *, expected_stop: str | None = None) -> tup
 
 
 def run_one(case: Mapping[str, Any], arm: str, *, position: int, gateway: Any, approved: Approved, model: str, packer: Any, binder: Any, workspace: Path,
-            ceiling: Ceiling, allowance: int, release: str = "Q") -> dict[str, Any]:
+            ceiling: Ceiling, allowance: int, release: str = "Q", expected_input_sha256: str | None = None) -> dict[str, Any]:
     """One logical request through the real runner, its Gateway client wrapped in the Guard. The frozen schedule allows at most one send
     per row, enforced by the Guard (Codex CP1 attempt 3 finding 3). Any failure of the run, an accounting integrity error included, still yields
     its row with every receipt the host reported, so the sink keeps it before the run stops (finding 4)."""
     receipts: list[Any] = []  # the Guard refuses any allowance but 0 or 1 at construction
     run_id = f"m2b-q-{case['case_id']}-{arm}"
-    guard = Guard(gateway, approved, ceiling, allowance, receipts, run_id)
+    guard = Guard(gateway, approved, ceiling, allowance, receipts, run_id, expected_input_sha256=expected_input_sha256)
     request = AgentRunRequest(run_id=run_id, task=case["task"], execution_mode=ExecutionMode.CHAT, workspace_root=workspace,
                               max_planning_turns=1, max_cost_usd=ceiling.usd_max)
     runner = AgentRunner(gateway_client=guard, model=model, state_store=InMemoryAgentStateStore())

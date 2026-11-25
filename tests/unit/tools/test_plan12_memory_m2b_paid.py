@@ -816,3 +816,31 @@ def test_an_operator_hold_removes_a_suspected_false_screen_failure_from_every_ga
     good = ANSWERS["QB1"]
     on_pass = {**_audit(case, good, arm="F", release="Q", cases_sha=CASES_SHA), "operator_hold": {"reason": "x"}}
     assert sc.score_row(case, "F", _answer_row("settled", good), good, read, on_pass, cases_sha256=CASES_SHA, release="Q")["verdict"] == sc.PASS
+
+
+def test_the_guard_forwards_only_the_input_the_dry_preparation_pass_prepared(tmp_path, snapshot):
+    """Q-release gate item 14 (Fable gate consult recommendation 1): the paid launcher's dry pass fixes each row's exact input digest, and
+    the Guard refuses any other input before anything is sent."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+
+    def row(expected: str | None) -> tuple[dict[str, Any], InProcessGateway]:
+        gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["The answer."]))
+        out = paid.run_one({"case_id": "QX", "task": "What is x?"}, "N", position=1, gateway=_client(gateway), approved=_approved(snapshot), model=STANDARD,
+                           packer=None, binder=_binder(snapshot), workspace=workspace, ceiling=_ceiling(), allowance=1, expected_input_sha256=expected)
+        return out, gateway
+
+    prepared, _ = row(None)
+    digest = prepared["sent"][0]["input_sha256"]
+    same, gateway = row(digest)
+    assert same["guard_refusal"] is None and len(gateway.payloads) == 1 and same["sent"][0]["input_sha256"] == digest
+    other, gateway = row("hex:" + "0" * 64)
+    assert gateway.payloads == [] and other["logical_requests"] == 0 and other["guard_refusal"] == "the input is not the one the dry preparation pass prepared"
+
+
+def test_a_q_rows_summarizer_client_refuses_every_call():
+    client = paid.NoSummaries()
+    for _ in range(2):
+        with pytest.raises(paid.GuardRefused, match="never summarizes"):
+            client.create_response(model="anthropic/claude-haiku-5.5", input_text="history")
+    assert client.calls == 2

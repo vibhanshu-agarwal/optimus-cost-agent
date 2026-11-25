@@ -202,3 +202,28 @@ def test_fs_paid_outline_request_carries_exactly_the_measured_outline_pack(tmp_p
     [pack] = packs
     assert pack.outline is not None and _digest(pack.text) == row["arms"]["F"]["pack_sha256"] and pack.text in payload["input"]
     assert DISCLOSURE in payload["input"] and "OUTLINE_BODY" not in payload["input"]
+
+
+def test_a_bound_outline_request_keeps_the_whole_file_requests_cache_prefix(tmp_path, workspace, packs):  # noqa: F811
+    """Q-release gate item 13 (Fable CP2 finding 8): on a route approved to cache a prefix, with the same map and tool state, a bound outline
+    request and a bound whole-file request share the prefix digest and cache_prefix_chars; the outline and its disclosure sit after it."""
+    from context_engine.file_outline import DISCLOSURE
+    from tests.unit.optimus_gateway.model_policy_support import verified_snapshot
+    from tests.unit.optimus_gateway.test_prompt_cache import _with_cache
+
+    (tmp_path / "cached").mkdir()
+    cached = verified_snapshot(tmp_path / "cached", _with_cache("prefix"))
+    _measured_outline(workspace, _SymbolsOnly(_records()))
+    sent = {}
+    for name, task in (("outline", SUMMARY), ("whole", 'Summarize "pkg/a.py"')):
+        gateway = InProcessGateway(cached, ScriptedUpstream(replies=["A summary."]))
+        row = paid.run_one({"case_id": f"QO-{name}", "task": task}, "F", position=1, gateway=_client(gateway), approved=_approved(cached), model=STANDARD,
+                           packer=_attached(workspace, MODEL_AWARE, prompt=task), binder=_binder(cached), workspace=workspace, ceiling=_ceiling(), allowance=1)
+        [entry] = row["sent"]
+        [payload] = gateway.payloads
+        sent[name] = (entry, payload["input"])
+    (outline, outline_input), (whole, whole_input) = sent["outline"], sent["whole"]
+    assert packs[0].outline is not None and packs[1].outline is None, "the arrangement: one outline turn, one whole-file turn"
+    assert outline["cache_prefix_chars"] is not None and outline["cache_prefix_chars"] == whole["cache_prefix_chars"]
+    assert outline["prefix_sha256"] == whole["prefix_sha256"] and outline_input[: outline["cache_prefix_chars"]] == whole_input[: whole["cache_prefix_chars"]]
+    assert DISCLOSURE in outline_input[outline["cache_prefix_chars"]:] and DISCLOSURE not in outline_input[: outline["cache_prefix_chars"]]
