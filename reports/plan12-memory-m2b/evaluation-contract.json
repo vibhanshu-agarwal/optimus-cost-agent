@@ -1,15 +1,15 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v5",
+ "schema": "plan12-memory-m2b.evaluation-contract.v6",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "frozen_before": "Task 2 and any paid prompt; successor of v4 after Codex CP1 round 122 attempt 2",
+ "frozen_before": "Task 2 and any paid prompt; successor of v5 after Codex CP1 round 122 attempt 3",
  "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
  "inputs": {
   "cases": "reports/plan12-memory-m2b/cases.json",
   "manifest": "reports/plan12-memory-m2b/manifest.json",
   "binding": "every result names the sha256 of each input file and the git commit it ran at; a changed input invalidates earlier results",
-  "cases_sha256": "hex:8495d48bc173182ae03bf4d015567a278c94576df15746a1be86be205f1cbff6",
+  "cases_sha256": "hex:357b152b5efc058af1aa0596a2a088e62a82f65534f3fdc987a4505c48a95a85",
   "calibration_addendum": "reports/plan12-memory-m2b/calibration-addendum.json (hex:d45d43bcaa7648a9b99a4c62388d3556a6a068f464b430a51c6cca0b68de3b57)",
   "fresh_fixture": {
    "localization": "hex:49137b24683cbb68a0945f77a5db14ef5581898dd66d309f7c1f25071bf6ed37",
@@ -174,10 +174,10 @@
   "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v4",
-  "sha256": "hex:97f12233e14eb60382adadcef37d3cd2b3eae2127946556767c8b465f41e8a44",
-  "commit": "git:d2898d8",
-  "change": "Codex CP1 round 122 attempt 2 (ACCEPT WITH CHANGES, #548 comment 7151144144): one topology (25 sends, 50 attempts, USD 2.304); the fit note names the released pass and its proxy; paid-attempts schema v2 throughout; the #463 producer contract amended (reconciliation key, kept records, total_tokens); scorer v4 (relationships tied to loci, negation, strict QO4); Guard model binding and strict zero-call rows; evaluator outcomes per kind and both arms; cases DRAFT v4"
+  "schema": "plan12-memory-m2b.evaluation-contract.v5",
+  "sha256": "hex:ff883de2f60fe3fe04a1d36d070d2bc6b3818edd214ea070c3b30528ecb8d41e",
+  "commit": "git:710937e",
+  "change": "Codex CP1 round 122 attempt 3 (ACCEPT WITH CHANGES, #548 comment 7153116255): one send per row and reservations that count earlier sends; receipts bound to their host request, both dispositions kept, each charge once, integrity failures persisted, every receipt field; the deterministic checks become a screen whose PASS waits for the CP3 support audit; clean boundaries on the runner's own allowance; strict QO4 control; budget kinds pinned by case id; named-test revert checks"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -197,20 +197,21 @@
   },
   "scoring": {
    "script": "tools/plan12_memory/m2b_score.py",
-   "sha256": "hex:27aa5451a9cb4851bd75d67ed679566384263e047bf572740cf810fabe58ebbe",
-   "git_blob": "git:23c8bb7598518037b5ff19e3a2634e26071608ea",
+   "sha256": "hex:b14964df5b292a8f815194305bb58472a2fa70ecb12c0bf1666e9dd1afcbf8d1",
+   "git_blob": "git:9354443280dc039bfd66fb7b195626996d9bd092",
    "selector": "m2b_score.select: the delivered final answer less the host's search-limit notice (optimus.agent.index_turn.LIMIT_NOTICE); its digest is the script's",
    "hardening": "Fable CP1 finding 2: ordinary-word symbol names count only as code (backticks, a call) or by qualified name; numbers match whole; fences cut at the cap count; QO4's unfenced code-like lines must be the file's own; QB1 F2 drops hedge phrases; a path echo plus a hedge fails every case but QO4 (tested)",
    "v3": "Codex finding 5: claim-bound citations (path and code-form symbol in one clause, or a range of at most 40 lines overlapping the symbol); loci; fact groups; runner status first (stop reason or output at the cap: INCOMPLETE); boundary rows; the QO4 quote control needs the exact contiguous block",
-   "v4": "Codex attempt 2 finding 5: a fact is a relationship, every group and its supporting locus in one paragraph, no carrying sentence negated unless the fact is a negation, forbidden extras absent; loci name code or a forward narrow range; reversed ranges fail; an answer is scored only on a settled row; a boundary needs the declared stop, zero requests and no emitted answer; the QO4 control needs exactly one exact fenced block and no other code, or a sentence naming the requested lines or source as unavailable with no code. Tested with independently written answers and contradictions, including Codex's QB2 example"
+   "v4": "Codex attempt 2 finding 5: a fact is a relationship, every group and its supporting locus in one paragraph, no carrying sentence negated unless the fact is a negation, forbidden extras absent; loci name code or a forward narrow range; reversed ranges fail; an answer is scored only on a settled row; a boundary needs the declared stop, zero requests and no emitted answer; the QO4 control needs exactly one exact fenced block and no other code, or a sentence naming the requested lines or source as unavailable with no code. Tested with independently written answers and contradictions, including Codex's QB2 example",
+   "v5": "Codex attempt 3 finding 5 (lexical matching cannot establish what a claim asserts): the deterministic checks are a screen. A screen FAIL or INCOMPLETE is final; a screen PASS is PENDING_AUDIT and becomes PASS only by a recorded support-audit ruling `supported` (FAIL when `unsupported`). Forbidden phrases catch the literal reversals Codex listed (QB2 lexical-first, QB3 excluding framing, QR2 unset, QO1 discard/skip, QO3 ignore/truncate). A boundary needs a clean expected_zero_call row on the runner's own allowance (so F on QO1/QO2 before the outline is a boundary), the declared stop, zero requests and no emitted answer. The QO4 control needs one closed exact block with only line endings normalized, or a non-negated sentence naming the requested lines as unavailable with no code"
   },
   "runner": {
    "script": "tools/plan12_memory/m2b_paid.py",
-   "sha256": "hex:8b2ad89bd9c289d84f6dd205d51da83074efdce026879410c2dd569f64f837d9",
-   "git_blob": "git:baec1994e98420de6d562829f9b6a66921b016f6",
+   "sha256": "hex:a86e59b9bc842a966776742e380cb32662a03489e9878d9a591076debefd492e",
+   "git_blob": "git:af586ad55ce8e8cb9eab6e42d19e2f8be3fc73ce",
    "design": "optimus-handoff/p1214-task1/q-runner-design.md (Fable 5.2 consult)",
-   "guard": "Codex findings 3 (round 122, attempt 2): the Guard refuses before forwarding unless the row's allowance, the released model (Approved.model_id; the approved hash fixes its route), the approved hash and output cap, the input cap (the route's estimator), every earlier send reconciled with its host receipts, and the ceiling's reservation all hold; each refusal, the reservation's included, is recorded on the row",
-   "accounting": "physical attempts from the Gateway's route attempts (completed, uncertain, rejected; not_sent excluded); each Gateway attempt matched to exactly one host receipt by Gateway request id, attempt ordinal and disposition; duplicate, unmatched and unclaimed records kept, each a reconciliation problem that makes the row incomplete and stops the run; a send with no Gateway attempt counts MAX_ROUTE_ATTEMPTS unknown attempts; unclaimed physical receipts are still settled against the ceiling",
+   "guard": "Codex findings 3 (round 122, attempts 2-3): the Guard refuses before forwarding unless the row's allowance (at most one send per row, enforced by run_one), the released model (the approved hash fixes its route), the approved hash and output cap, the input cap (the route's estimator), every earlier send reconciled, and the ceiling's reservation counting those earlier sends' unsettled attempts all hold; each refusal is recorded, and the host's own record of a refused request is kept apart (unforwarded_receipt_ids), never charged",
+   "accounting": "physical attempts from the Gateway's route attempts (completed, uncertain, rejected; not_sent excluded); each matched to the host receipts of the same host request: the receipt id belongs to this run, its request part is this send's alone, its attempt ordinal, Gateway id and disposition agree (a completed attempt the host records as uncertain keeps both, its charge unknown), and any route request id its usage names is this send's; the matched receipt ids are on the attempt row. Identical duplicates are kept and flagged, their one charge counted once; differing candidates leave the charge unknown. Unclaimed receipts are kept and flagged, each distinct charged one (unattributed included) settled once. Any failure of the run, an accounting integrity error included, keeps its row and receipts and stops the run",
    "terminal": "expected_zero_call only with the case's declared stop reason and no emitted answer: the delivered text is exactly production's too-large notice for a required file (workspace_context.blocking_from_diagnostics); otherwise incomplete"
   },
   "intended_composition": {
@@ -246,12 +247,17 @@
   "fit_note": "a fit estimate, not request bytes: the released budget pass at git:8cf26df (calibration-budget.json) bounds F's full input with production's route estimator over a framing proxy (the indexed Chat prefix and map, the pack, a 600-byte scope-line allowance, the runner's limit observation and the task); the largest complete F input is 35,323 tokens against 65,536. Task 2 owes integrated request-byte equality (Codex attempt 2 finding 2)",
   "evaluator": {
    "script": "tools/plan12_memory/m2b_evaluate.py",
-   "sha256": "hex:62cd117ae01939f3b42f117d36bd63ddd130ac2b74d5bc5ee03fccb968925376",
-   "git_blob": "git:b12fe9251424bc93286e8e6f231d81d2b811691d",
-   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each kind's (B/U, F) completeness and three R over C, per repetition (Codex round 122 finding 6, attempt 2 finding 6); development scoring now reads through the same admitted FilePolicy reader. Denial and wrong-scope controls: not run; Codex allows a recorded operator disposition since U = B (requested at CP1)"
+   "sha256": "hex:b9bfd70bd124bbedf9d0a60a420455f24a41d282334656785591e6134b861b0f",
+   "git_blob": "git:fedfba2b805d43e7a323f99f55cf16a2ef64be0c",
+   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: unrun; the operator's recorded disposition is owed at CP1"
   },
-  "producer_contract_463": "rows as m2b_paid (schema plan12-memory-m2b.paid-attempts.v2): per sent request the bound route request id, input and prefix identity, finish reason and Gateway attempts; per host receipt every reported field (recorded_at, post_teardown, outcome, cost, usage incl. total tokens, model version and native unit, billing), repriced uncached cost and tariff id, cache_write_tokens UNKNOWN; per row release, case, arm (U as an alias of B), position, logical request id, reconciliation problems and unclaimed receipt ids, emitted_answer, and the terminal classification (expected_zero_call, settled, failed, incomplete) with its reason; charges counted once from receipts matched by Gateway id, attempt ordinal and disposition. Codex round 122 agreed the narrow producer contract (finding 4) and attempt 2 amended its implementation; broader commissioning and report integration stay under #463",
-  "hard_ceiling": "Codex ruling 7: with a target, the whole pack including its section joiners stays within the chosen budget (tested); the legacy path is byte-equal to PR #562's delivered context_pack.py (tested)"
+  "producer_contract_463": "rows as m2b_paid (schema plan12-memory-m2b.paid-attempts.v2): per sent request its dispatch number, bound route request id, input and prefix identity, finish reason and Gateway attempts; per host receipt every StageReceipt field under its own name (the reported cost as cost_usd) and the Gateway's normalized usage whole (total tokens included), the repriced uncached cost and tariff id, cache_write_tokens UNKNOWN; per physical attempt its matched receipt ids and dispositions; per row release, case, arm (U as an alias of B), position, logical request id, reconciliation problems, unclaimed and unforwarded receipt ids, any run error, emitted_answer and the terminal classification (expected_zero_call, settled, failed, incomplete) with its reason; each charge counted once. Codex round 122 agreed the narrow producer contract and amended its implementation in attempts 2 and 3; broader commissioning and report integration stay under #463",
+  "hard_ceiling": "Codex ruling 7: with a target, the whole pack including its section joiners stays within the chosen budget (tested); the legacy path is byte-equal to PR #562's delivered context_pack.py (tested)",
+  "support_audit": "the plan's CP3 support audit (Task 4, after paid Q): the checkpoint reviewers, Fable 5.2 then one Codex CLI review, read every screen-PASS answer against its case's oracle and pinned snapshot and record per answer supported or unsupported with a one-line reason; the rulings are posted verbatim on #548 and frozen in reports/plan12-memory-m2b/support-audit.json before any adoption gate is computed; a reviewer disagreement holds that answer for the operator. The audit can only confirm or fail a screen PASS: it never lifts a screen FAIL or INCOMPLETE",
+  "task2_owes": [
+   "integrated request-byte equality with the production builder (Codex attempts 2-3 finding 2)",
+   "the B pack-digest comparison with matching inputs (attempt 3 finding 2)"
+  ]
  },
  "run1_limits": "reports/plan12-memory-m2b/calibration-addendum.json limits: pack jitter cause a hypothesis; poison reason confounded by run 1's mtimes; the 16,000 cap ill-posed and not relied on; the changed evaluator not yet run on a real index",
  "cp1_rulings_round_122": {
@@ -278,6 +284,18 @@
    "5": "scorer v4 and cases DRAFT v4 per Codex's encoding table; independent positive answers and contradictions",
    "6": "reducer requires both arms and each kind's outcome; admitted reader in development scoring; denial and wrong-scope controls go to the operator as a recorded disposition",
    "7": "focused-3 at git:d2898d8: 8522 passed, 20 skipped, 0 failed (optimus-handoff/p1214-cp1/focused-3.*); the attempt-3 head gets its own focused run"
+  }
+ },
+ "cp1_attempt_3": {
+  "review": "Codex gpt-6.2-sol high, ACCEPT WITH CHANGES, #548 comment 7153116255",
+  "dispositions": {
+   "1": "verified by Codex; no change",
+   "2": "closed for CP1; Task 2 owes request-byte equality and the B pack-digest comparison (task1_freezes.task2_owes)",
+   "3": "one send per row enforced in run_one; the reservation counts earlier sends' unsettled attempts; the host's record of a refused request is never charged",
+   "4": "receipts bound to their host request (run, request part, usage route request id); both dispositions kept; duplicates and unclaimed charges counted once; integrity failures persisted; every receipt field kept",
+   "5": "the screen-and-audit model (task1_freezes.scoring.v5, support_audit); clean boundaries on the runner's allowance; strict QO4 control; forbidden phrases for the listed reversals; cases DRAFT v5",
+   "6": "budget kinds pinned by case id, the QO1/QO3 swap a negative control; the denial and wrong-scope disposition goes to the operator",
+   "7": "revert checks now run each mutant's named test and require an assertion failure; focused-4 at git:710937e reported beside this package"
   }
  }
 }
