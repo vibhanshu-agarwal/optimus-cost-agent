@@ -1,3 +1,5 @@
+import pytest
+
 from optimus.guardrails.network_safety import NetworkSafetyValidator, ValidationVerdict
 
 
@@ -43,3 +45,23 @@ def test_literal_loopback_target_is_blocked():
 
     assert result.verdict is ValidationVerdict.BLOCK
     assert result.rule_id == "network.loopback_target"
+
+
+MALFORMED_PORTS = ["https://gateway.optimus.ai:abc/", "https://gateway.optimus.ai:65536/"]  # on an allowed host
+
+
+def test_an_allowed_host_with_a_valid_port_is_still_allowed():
+    validator = NetworkSafetyValidator(allowed_hosts=("gateway.optimus.ai",))
+
+    assert validator.validate_url("https://gateway.optimus.ai:8443/v1").verdict is ValidationVerdict.ALLOW
+
+
+@pytest.mark.parametrize("url", ["https://[", "https://[::1", "http://[", "https://a[b/", "https://" + chr(0x2100) + "/", *MALFORMED_PORTS])
+def test_a_url_that_cannot_be_parsed_is_blocked_not_raised(url):
+    validator = NetworkSafetyValidator(allowed_hosts=("gateway.optimus.ai",))
+
+    result = validator.validate_url(url)
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "network.malformed_url"
+    assert url not in result.reason
