@@ -99,15 +99,12 @@ def _assert_ended_normally(response, outbound, runner, records, *, code: str, to
     assert not [u for u in updates if u["sessionUpdate"] == "plan" and any(e.get("status") == "completed" for e in u.get("entries", []))]
 
 
-# (plan path, a secret file that already exists or None). The secret rule judges the resolved target, and Windows
-# resolves "id_rsa." to the secret's own name only when it exists (see the #589 report). The issue's drive, rooted and
-# alternate-data-stream rows never reach the guard since #590: test_directive_path_characters.py pins their
-# parse-time rejection.
+# (plan path, a secret file that already exists or None). The issue's drive, rooted, alternate-data-stream and
+# trailing-dot ("id_rsa.", ".env.") rows never reach the guard since #590: test_directive_path_characters.py pins
+# their parse-time rejection.
 WRITE_ROWS = {
     "runtime-tree-posix-separator": pytest.param(".optimus/state.txt", None),
     "runtime-tree": pytest.param(f".optimus{BS}state.txt", None, marks=WINDOWS_ONLY),
-    "secret-id_rsa-trailing-dot": pytest.param("id_rsa.", "id_rsa", marks=WINDOWS_ONLY),
-    "secret-env-trailing-dot": pytest.param(".env.", None),  # the lexical ".env." rule, on every platform
 }
 
 

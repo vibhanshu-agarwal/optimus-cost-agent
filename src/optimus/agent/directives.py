@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ntpath
 import re
 import shlex
 import unicodedata
@@ -433,8 +434,10 @@ def unsafe_path_text(path_text: str) -> bool:
 
 
 def windows_path_shape(path_text: str) -> bool:
-    """#590: a colon (drive letter, alternate data stream) or a leading backslash (drive root); not for TEST tokens (pytest node ids hold ::)."""
-    return ":" in path_text or path_text.startswith(chr(0x5C))
+    """#590: a colon (drive letter, alternate data stream), a leading backslash (drive root), or a part Windows reserves:
+    a device name (NUL, aux.txt), a trailing dot or space (a second name for the same file), or one of ``*?"<>|``.
+    Applied on every host, so a plan means the same file everywhere. Not for TEST tokens (pytest node ids hold ::)."""
+    return ":" in path_text or path_text.startswith(chr(0x5C)) or ntpath.isreserved(path_text)
 
 
 def _validate_relative_path(path_text: str) -> None:
