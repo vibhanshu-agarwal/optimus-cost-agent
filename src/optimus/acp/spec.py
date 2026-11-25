@@ -3361,9 +3361,11 @@ class AcpDuplexAdapter:
         completion_text: str | None = None,
     ) -> None:
         turn.turn_control.record_outcome(Settlement(outcome.value))
+        run_outcome = outcome
         if turn.turn_control.settlement is Settlement.CANCELLED:
-            # #558: an accepted cancel settles the turn cancelled whatever the handler passed; the record, the
-            # checkpoint, memory and Auto routing below follow the settlement.
+            # #558: an accepted cancel settles the turn cancelled whatever the handler passed; the record, memory and
+            # Auto routing below follow the settlement. The checkpoint keeps what the run did, so a finished run is
+            # not briefed as unfinished.
             outcome = ConversationOutcome.CANCELLED
         raw_plan = result.candidate_plan_text or ""
         plan_text = conversation.sanitize_text(raw_plan) if raw_plan else ""
@@ -3388,7 +3390,7 @@ class AcpDuplexAdapter:
             await self._emit_exit_cost_alerts(turn)
             return
         with contextlib.suppress(Exception):  # a checkpoint never fails the turn
-            self._checkpoint_turn(turn, sanitized_user_prompt, result, outcome)
+            self._checkpoint_turn(turn, sanitized_user_prompt, result, run_outcome)
         if outcome is ConversationOutcome.COMPLETED:
             self._submit_memory(turn, sanitized_user_prompt, result, completion)
         if turn.auto_decision is not None and outcome in (ConversationOutcome.COMPLETED, ConversationOutcome.REJECTED):
