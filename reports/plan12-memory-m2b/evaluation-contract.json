@@ -1,14 +1,16 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v2",
+ "schema": "plan12-memory-m2b.evaluation-contract.v3",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "frozen_before": "Task 2 and any paid prompt; Task 1's successor of v1",
+ "frozen_before": "Task 2 and any paid prompt; successor of v2 after the Fable 5.2 CP1 review",
  "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
  "inputs": {
   "cases": "reports/plan12-memory-m2b/cases.json",
   "manifest": "reports/plan12-memory-m2b/manifest.json",
-  "binding": "every result names the sha256 of each input file and the git commit it ran at; a changed input invalidates earlier results"
+  "binding": "every result names the sha256 of each input file and the git commit it ran at; a changed input invalidates earlier results",
+  "cases_sha256": "hex:f58665784c4badb0a9efb2c799f74708aa42aa4054f2615456ff072e4535ec04",
+  "calibration_addendum": "reports/plan12-memory-m2b/calibration-addendum.json (hex:d45d43bcaa7648a9b99a4c62388d3556a6a068f464b430a51c6cca0b68de3b57)"
  },
  "split_custody": {
   "development": "Task 1: three real-index repetitions from paired captured channel inputs; selects the baseline or one utility candidate before any fresh qualification; may be inspected",
@@ -120,22 +122,24 @@
    "logical_if_U_equals_B": 36,
    "physical_max": 96,
    "usd_max": "6.00",
-   "gateway_attempts_per_logical": 3,
-   "reservation": "3 physical attempts reserved before each logical request; the run stops when a reservation cannot be made inside 96, so retries may prevent completing intended requests",
-   "usd_bound_at_caps": "4.42"
+   "gateway_attempts_per_logical": 2,
+   "reservation": "2 physical attempts (MAX_ROUTE_ATTEMPTS) and their worst-case USD reserved before each logical request, unknown attempts priced at the worst case; an unreservable request stops the run, with no replacement",
+   "usd_bound_at_caps": "2.76",
+   "logical_sent": 30
   },
   "R": {
    "logical_intended": 4,
    "physical_max": 12,
    "usd_max": "0.50",
    "usd_bound_at_caps": "0.14",
-   "cases": "four development cases, one configured top-12 reranker; output must permute the supplied ids exactly"
+   "cases": "four development cases, one configured top-12 reranker; output must permute the supplied ids exactly",
+   "gateway_attempts_per_logical": 2
   },
   "unintended_calls": "none: no host retry, fallback, classifier, extraction, maintenance, repair or replacement; any is a breach recorded and stops the run"
  },
  "cache_observations": "Q records reported cache usage and charges, prefix and request digests and order; cold and warm reported without attributing order discounts to policy; no production hit-rate or causal cache-savings claim",
  "producer_contract_463": {
-  "status": "drafted by Claude; Codex agreement sought at CP1; no savings reader is built",
+  "status": "rows implemented (m2b_paid.attempt_row, Fable finding 3); Codex agreement sought at CP1; no savings reader is built",
   "record": "reports/plan12-memory-m2b/paid-attempts.json, schema plan12-memory-m2b.paid-attempts.v1, owned by this plan",
   "row": [
    "release",
@@ -156,10 +160,10 @@
   "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v1",
-  "sha256": "hex:e950d4bbcbc6ed17656a0fbc87d892b317b4eed9d56741e15a76c7ed99643016",
-  "commit": "git:eb23d96",
-  "change": "adds the Task 1 freezes (frozen_in_task_1) and corrects the attempt topology; nothing in v1's cases, arms, orders, caps, cohorts or gates changes"
+  "schema": "plan12-memory-m2b.evaluation-contract.v2",
+  "sha256": "hex:b58d2accb44e6a0cc33d9fed47132e840617880ee5ffceecde6641c44d288d3c",
+  "commit": "git:0afb740",
+  "change": "Fable 5.2 CP1 review (ACCEPT WITH CHANGES, #548 comment 7146152040): the operator's ruling on the limit line, the hardened scorer and its digest, the #463 rows, the runner and evaluator digests, run 1's limits, one attempt topology; v1's cases, arms, orders, caps, cohorts and gates are unchanged"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -179,14 +183,15 @@
   },
   "scoring": {
    "script": "tools/plan12_memory/m2b_score.py",
-   "sha256": "hex:abb0db0977b9ff5f90edf478d2c9f5afc9e49d01f7cc41690d0a061a7ea4abd7",
-   "git_blob": "git:250e33e4fe9b089c235f34aa84c5428a98397357",
-   "selector": "m2b_score.select: the delivered final answer less the host's search-limit notice (optimus.agent.index_turn.LIMIT_NOTICE); its digest is the script's"
+   "sha256": "hex:21652ee17654ef3a71febbd3457ac432b5b14a175052162039bb4310fedf9973",
+   "git_blob": "git:1fb2c808e44a9b9d63d437e43f9035eb0744d94a",
+   "selector": "m2b_score.select: the delivered final answer less the host's search-limit notice (optimus.agent.index_turn.LIMIT_NOTICE); its digest is the script's",
+   "hardening": "Fable CP1 finding 2: ordinary-word symbol names count only as code (backticks, a call) or by qualified name; numbers match whole; fences cut at the cap count; QO4's unfenced code-like lines must be the file's own; QB1 F2 drops hedge phrases; a path echo plus a hedge fails every case but QO4 (tested)"
   },
   "runner": {
    "script": "tools/plan12_memory/m2b_paid.py",
-   "sha256": "hex:3dc623bb90cea045e056374945c87ae44eda79e354fd86b16766cc6e79b00e07",
-   "git_blob": "git:64879daf2f35d51e45e153f08df8d1cb54c6f931",
+   "sha256": "hex:5385429615101bf635adc68432ee787967d0fffc1ec79d323adf145195a50006",
+   "git_blob": "git:a11387602bbafc30e612e4f9527f9309b0e35d14",
    "design": "optimus-handoff/p1214-task1/q-runner-design.md (Fable 5.2 consult)"
   },
   "intended_composition": {
@@ -202,6 +207,11 @@
     "N": "no memory turn",
     "B": "memory turn, pack budget forced to the legacy policy host-side (same snapshot, binder and Gateway)",
     "F": "memory turn, the route's own budget from the staged composition"
+   },
+   "limit_line": {
+    "ruling": "operator, Claude chat 2026-11-25: \"Keep the line\"",
+    "meaning": "B and F send the runner's own tools-withdrawn request, including optimus.agent.index_turn.LIMIT_OBSERVATION; N (no memory) has none. F stays byte-equal to a production final-round request; the one-line difference against N is disclosed beside every N comparison; the selector removes LIMIT_NOTICE from answers",
+    "fable_finding": 1
    }
   },
   "production_equivalence": "Task 2: F's recorded request equals an unpatched runner's final-round request on the same turn, and B's pack digest equals calibration's BU pack_sha256 for the same case",
@@ -209,10 +219,20 @@
    "correction": "a bound model request makes at most MAX_ROUTE_ATTEMPTS = 2 physical attempts (src/optimus_model_policy/binding.py:225); manifest.json's 3 is the legacy unbound loop (upstream_client.py:39) and is superseded here",
    "reservation": "before each logical request: attempts_used + 2 <= 96 and settled USD + 0.04608 x (unknown attempts + 2) <= 6.00",
    "sent_requests": "30 of 36 rows (12 N, 7 B, 11 F); predeclared refusals send nothing: B on QB3, QB4, QO1, QO2, QO4; F on QO4 (and on QO1, QO2 until Task 3's outline)",
-   "worst_case": "60 physical attempts, USD 2.76 at the caps"
+   "worst_case": "60 physical attempts, USD 2.76 at the caps",
+   "note": "the single topology: 2 attempts per logical request; v2's expected_attempts said 3 and USD 4.42, corrected here (Fable finding 5)"
   },
   "answers_custody": "answers are written only to a separate sink outside the repository (optimus-handoff/p1214-q-*), archived and hashed; paid-attempts.json keeps each answer's digest",
   "prefix_identity": "src/optimus/agent/prompts.py is unchanged from git:7abbaa2; budget and outline disclosure go only inside the dynamic pack (Task 3 tests prefix digests)",
-  "fit_note": "calibration's full_input omits the runner's limit observation (about 130 bytes); the largest complete F input is QB4's, far under 65,536"
- }
+  "fit_note": "calibration's full_input omits the runner's limit observation (about 130 bytes); the largest complete F input is QB4's, far under 65,536",
+  "evaluator": {
+   "script": "tools/plan12_memory/m2b_evaluate.py",
+   "sha256": "hex:bc42de7be48dbdf0e81ad22feff61e27fd390a2da3a1614e5ddfbb1e39757993",
+   "git_blob": "git:03445317383658214a8a1a1dc15e1437dc382b62",
+   "note": "run 1 ran at git:4f2a991; e861344 and 1972c40 changed it (shared cache, budget cases once, captures, mtime pin; F packs through target_tokens). Its first real-index run at this content is Task 4's."
+  },
+  "joiners": "a pack may exceed its chosen budget by the newlines joining its sections (QB3 F 19,552 against 19,551), as delivered M1 packing already does; C bounds the required text, and the route fit and Gateway guard still check every full request (Fable finding 8)",
+  "producer_contract_463": "rows as m2b_paid.attempt_row: release, logical_request_id, attempt and Gateway/provider request ids, HTTP status, outcome, stage, cost_usd (None = UNKNOWN), repriced_uncached_usd, tariff_id, model/route/reasoning/registry hash, usage incl. cached tokens, cache hit and age, billing units, price snapshot; cache_write_tokens UNKNOWN (not reported); each sent request's prefix length and digest. Agreement sought from Codex at CP1"
+ },
+ "run1_limits": "reports/plan12-memory-m2b/calibration-addendum.json limits: pack jitter cause a hypothesis; poison reason confounded by run 1's mtimes; the 16,000 cap ill-posed and not relied on; the changed evaluator not yet run on a real index"
 }
