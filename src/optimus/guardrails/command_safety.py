@@ -63,7 +63,8 @@ class CommandSafetyValidator:
                 "shell.unicode_bidi_control",
                 "Unicode bidi or format control character detected",
             )
-        if contains_dangerous_confusable(raw_text):
+        # #596: the rules below match Latin text, so only a Latin look-alike can spoof one; plain non-Latin names pass.
+        if contains_dangerous_confusable(raw_text, latin_lookalikes_only=True):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.unicode_confusable", "Unicode confusable detected")
         if _is_recursive_force_delete(command, lowered):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.destructive.rm_rf", "recursive force delete denied")

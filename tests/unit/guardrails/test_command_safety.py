@@ -415,3 +415,58 @@ def test_pre_tool_guard_refuses_a_shell_command_holding_a_url_scheme_with_no_hos
 
     assert result.verdict is PreToolVerdict.BLOCK
     assert result.rule_id == "network.missing_host"
+
+
+# #596: the confusable rule flags only characters that look like Latin or common ones, through the real guard.
+def _approved_test_command(tmp_path, *command):
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+    return guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.SHELL,
+            action="test",
+            command=command,
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=True,
+        )
+    )
+
+
+def _name(*code_points):
+    return "".join(chr(point) for point in code_points)
+
+
+def test_an_approved_test_command_with_a_plain_non_latin_file_name_runs(tmp_path):
+    names = (
+        _name(0x6D4B, 0x8BD5, 0x6587),  # Han
+        _name(0x30C7, 0x30FC, 0x30BF),  # Katakana with the long-vowel mark
+        _name(0x30ED),  # Katakana RO, which looks like Han, not Latin
+        _name(0x3066, 0x3059, 0x3068),  # Hiragana
+        _name(0xD14C, 0xC2A4, 0xD2B8),  # Hangul
+        _name(0x0627, 0x062E, 0x062A),  # Arabic
+        _name(0x092A, 0x0930, 0x0940),  # Devanagari
+    )
+
+    results = {name: _approved_test_command(tmp_path, "pytest", f"tests/{name}.py") for name in names}
+
+    assert {name: (r.verdict, r.rule_id) for name, r in results.items()} == {
+        name: (PreToolVerdict.ALLOW, "allow.shell.pytest") for name in names
+    }
+
+
+def test_latin_lookalikes_in_an_approved_test_command_are_still_refused(tmp_path):
+    commands = (
+        ("pytest", "tests/p" + chr(0x0443) + "test.py"),  # Cyrillic u for y
+        ("pyt" + chr(0x0435) + "st", "tests"),  # Cyrillic ie for e
+        ("pyth" + chr(0x03BF) + "n", "-m", "pytest"),  # Greek omicron for o
+        ("p" + chr(0xFF59) + "test", "tests"),  # fullwidth y
+        ("pytest", chr(0x4E00) + "q", "tests"),  # U+4E00 used as a dash
+        ("pyth" + chr(0x0585) + "n", "-m", "pytest"),  # Armenian oh for o
+        ("pytest", "tests/" + _name(0x0442, 0x0435, 0x0441, 0x0442) + ".py"),  # a Cyrillic name: its letters look Latin
+    )
+
+    results = [_approved_test_command(tmp_path, *command) for command in commands]
+
+    assert [(r.verdict, r.rule_id) for r in results] == [(PreToolVerdict.BLOCK, "shell.unicode_confusable")] * len(commands)
