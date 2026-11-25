@@ -186,11 +186,12 @@ async def test_record_settled_usage_divergent_duplicate_raises_and_writes_no_sec
 
 
 async def test_record_settled_usage_removes_claim_when_timeseries_write_fails():
-    client = FakeRedis()
-
     class FailingTsAddRedis(FakeRedis):
+        failed = False
+
         async def execute_command(self, *args: object):
-            if args[0] == "TS.ADD":
+            if args[0] == "TS.ADD" and not self.failed:
+                self.failed = True
                 self.commands.append(args)
                 raise RuntimeError("connection reset")
             return await super().execute_command(*args)
@@ -209,10 +210,10 @@ async def test_record_settled_usage_removes_claim_when_timeseries_write_fails():
         )
 
     assert ("HDEL", "optimus:usage:claims", "gw-1") in client.commands
-    # A retried attempt after the claim is released must succeed cleanly.
-    client2 = FakeRedis()
-    adapter2 = RedisTelemetryAdapter(client=client2)
-    await adapter2.record_settled_usage(
+    assert "gw-1" not in client._hashes["optimus:usage:claims"]
+    # A retry against the same Redis state, by another adapter, claims again and writes both points.
+    before = len(client.commands)
+    await RedisTelemetryAdapter(client=client).record_settled_usage(
         run_id="run-1",
         gateway_request_id="gw-1",
         provider="tavily",
@@ -220,7 +221,8 @@ async def test_record_settled_usage_removes_claim_when_timeseries_write_fails():
         billing_units=10,
         cost_usd=Decimal("0.002"),
     )
-    assert sum(1 for command in client2.commands if command[0] == "TS.ADD") == 2
+    assert sum(1 for command in client.commands[before:] if command[0] == "TS.ADD") == 2
+    assert "gw-1" in client._hashes["optimus:usage:claims"]
 
 
 async def test_record_settled_usage_reuses_existing_series_for_second_request_in_same_run():
