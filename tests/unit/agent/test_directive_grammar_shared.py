@@ -67,9 +67,8 @@ def test_a_bare_write_keyword_inside_a_write_body_stays_body_text() -> None:
     assert turn.directives.write.content == "body\nWRITE\nOBSERVE: x"
 
 
-# #575: the planner no longer matches READ and TEST lines itself; it asks the plan parser's is_directive_line.
-@pytest.mark.parametrize("name", ["WRITE_DIRECTIVE", "is_directive_line"])
-def test_planning_loop_uses_the_directives_own_line_rules(name: str) -> None:
+@pytest.mark.parametrize("name", ["READ_DIRECTIVE", "WRITE_DIRECTIVE", "TEST_DIRECTIVE", "is_directive_line"])
+def test_planning_loop_uses_the_directives_compiled_patterns(name: str) -> None:
     assert getattr(planning_loop, name) is getattr(directives, name)
 
 
@@ -87,7 +86,7 @@ def test_a_bulleted_directive_line_ends_a_write_body_in_both_modules(bullet: str
     assert _classify(f"WRITE a.txt\nbody\n{bullet}READ b.txt\nOBSERVE: x") == "INTERMEDIATE_UNSUPPORTED_DIRECTIVE"
 
 
-# #575: the final-plan parser decides where a WRITE body ends, and the planning turn uses its rule. Each case sends
+# #575: the final-plan parser decides where a WRITE body ends, and the planning turn defers to it. Each case sends
 # the SAME reply to both real parsers. A whole MCP directive ends the body, so both reject the reply; any other line
 # that only starts like one is file content, and both keep the same body.
 NBSP = chr(0xA0)
@@ -168,3 +167,28 @@ def test_a_write_line_inside_an_edit_block_does_not_hide_what_follows_the_block(
 def test_an_mcp_line_next_to_a_write_is_still_refused(line: str) -> None:
     assert _classify(f"{line}\nWRITE a.txt\nbody\n") == "MCP_NOT_EXACTLY_ONE"
     assert _classify(f"READ: a.py\n{line}\n") == "MCP_MIXED_DIRECTIVES"
+
+
+# Replies found in review of #575 where the planner's own line scans and the final parser's lines differ (EDIT markers
+# and bare carriage returns). Each must be classified exactly as before #575: the final parser's reading may lift a
+# refusal, and nothing else.
+CR = chr(13)
+UNCHANGED_BY_575 = {
+    "fenced-mcp-with-hidden-write": (f"```\nMCP_LIST demo\n<<<<<<< OLD{CR}text\nWRITE a.txt\n```\n", "MCP_MIXED_DIRECTIVES"),
+    "mcp-after-lf-end-marker": (f"<<<<<<< OLD{CR}text\nWRITE a.txt\n>>>>>>> END\nMCP_LIST demo\n", "MCP_TOOL"),
+    "mcp-after-cr-end-marker": (f"<<<<<<< OLD{CR}text\nWRITE a.txt\n>>>>>>> END{CR}MCP_LIST demo\n", "MCP_TOOL"),
+    "write-body-opening-an-edit-example": ("WRITE a.txt\n<<<<<<< OLD\nREAD b.txt\nOBSERVE: x\n", FINAL),
+    "write-body-opening-an-edit-example-crlf": (
+        "WRITE a.txt\r\n<<<<<<< OLD\r\nREAD b.txt\r\nMCP_LISTING things\r\n",
+        FINAL,
+    ),
+    "edit-with-cr-marker-and-write-text": (
+        f"EDIT a.py{CR}<<<<<<< OLD\nWRITE x.txt\n======= NEW\nb\n>>>>>>> END\nOBSERVE: x\nREAD: b.py#bytes=0:1\n",
+        "INTERMEDIATE_UNRECOGNIZED_CONTENT",
+    ),
+}
+
+
+@pytest.mark.parametrize(("reply", "outcome"), UNCHANGED_BY_575.values(), ids=UNCHANGED_BY_575.keys())
+def test_replies_whose_classification_575_must_not_change(reply: str, outcome: str) -> None:
+    assert _classify(reply) == outcome

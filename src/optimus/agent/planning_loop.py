@@ -17,9 +17,12 @@ from optimus.agent.directives import (
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
     MAX_PATH_CHARS,
+    READ_DIRECTIVE,
+    TEST_DIRECTIVE,
     WRITE_DIRECTIVE,
     AgentDirectiveParseError,
     AgentPlanDirectives,
+    AgentWriteDirective,
     IndexToolRequest,
     _unwrap_markdown_code_fence,
     directive_text,
@@ -624,15 +627,27 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
     if stripped.startswith("REFUSE:"):
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
-    mcp_decision = _try_parse_mcp_turn(stripped)
+    # #575: the final-plan parser decides where a WRITE body ends. The checks below read a body by their own, looser
+    # rules; when they would refuse a reply for a line that parser reads as WRITE content, its reading wins. It only
+    # ever lifts a refusal: nothing accepted before is refused, and no reply becomes an MCP turn because of it.
+    final_decision = _try_parse_final_plan(text)
+    outside_body = _outside_the_write_body(text, final_decision)
+    try:
+        mcp_decision = _try_parse_mcp_turn(stripped)
+    except PlanningTurnParseError:
+        if outside_body is None or _try_parse_mcp_turn(outside_body) is not None:
+            raise
+        mcp_decision = None
     if mcp_decision is not None:
         return mcp_decision
 
     surface_lines = _directive_surface_lines(stripped)
-    if _surface_has_observe(surface_lines):
+    observes = _surface_has_observe(surface_lines)
+    if observes and outside_body is not None:
+        observes = _surface_has_observe(_directive_surface_lines(outside_body))
+    if observes:
         return _parse_intermediate_turn(stripped)
 
-    final_decision = _try_parse_final_plan(text)
     if final_decision is not None:
         return final_decision
 
@@ -642,8 +657,28 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
     raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
 
 
+def _outside_the_write_body(text: str, final_decision: PlanningTurnDecision | None) -> str | None:
+    """#575: the reply without its WRITE body, when the final-plan parser reads it as a plan with a WRITE; None
+    otherwise. The walk mirrors that parser for such a plan: its fence rule, its lines, and a body running from the
+    WRITE header to the next `is_directive_line`."""
+    if final_decision is None or final_decision.directives is None:
+        return None
+    if not isinstance(final_decision.directives.write, AgentWriteDirective):
+        return None
+    lines = plan_lines(_unwrap_markdown_code_fence(text))
+    kept: list[str] = []
+    index = 0
+    while index < len(lines):
+        kept.append(lines[index])
+        index += 1
+        if WRITE_DIRECTIVE.match(_normalize_directive_surface_line(kept[-1])) is not None:
+            while index < len(lines) and not is_directive_line(lines[index]):
+                index += 1
+    return "".join(kept)
+
+
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
-    lines = list(_directive_surface_lines(text))  # #407; #410 R1; #575: a WRITE body is content, never an MCP line
+    lines = [stripped for line in _outside_edit_blocks(text) if (stripped := plan_line_text(line))]  # #407; #410 R1
     if not lines:
         return None
     # #410 R1: classify by directive text, so a line holding a content separator never counts as MCP.
@@ -708,34 +743,23 @@ def _outside_edit_blocks(text: str) -> list[str]:
     return outside + plan_lines(pending)
 
 
-def _outside_write_bodies(text: str) -> str:
-    """#575: the reply without its WRITE bodies, as the final-plan parser reads it: its line split, its rule for
-    where a body ends (`is_directive_line`), and a fenced plan ending at its closing fence. A WRITE line inside an
-    EDIT block is that block's content. A reply without a WRITE is returned unchanged."""
-    lines = plan_lines(_unwrap_markdown_code_fence(text))
-    kept: list[str] = []
+def _directive_surface_lines(text: str) -> tuple[str, ...]:
+    lines = _outside_edit_blocks(text)  # #407: EDIT blocks are opaque; #410 R1: LF and CRLF lines elsewhere
+    surface_lines: list[str] = []
     index = 0
-    inside_edit = wrote = False
     while index < len(lines):
         line = lines[index]
-        kept.append(line)
-        index += 1
-        marker = line.strip()
-        if inside_edit:
-            inside_edit = marker != EDIT_END_MARKER
-        elif marker == EDIT_OLD_MARKER:
-            inside_edit = True
-        elif WRITE_DIRECTIVE.match(_normalize_directive_surface_line(line)) is not None:
-            wrote = True
-            while index < len(lines) and not is_directive_line(lines[index]):
+        normalized = _normalize_directive_surface_line(line)
+        if WRITE_DIRECTIVE.match(normalized) is not None:
+            index += 1
+            while index < len(lines) and not _is_final_directive_line(lines[index]):
                 index += 1
-    return "".join(kept) if wrote else text
-
-
-def _directive_surface_lines(text: str) -> tuple[str, ...]:
-    """The lines that can hold directives: outside WRITE bodies first (#575), then outside EDIT blocks (#407)."""
-    lines = _outside_edit_blocks(_outside_write_bodies(text))
-    return tuple(stripped for line in lines if (stripped := plan_line_text(line)))
+            continue
+        stripped = plan_line_text(line)
+        if stripped:
+            surface_lines.append(stripped)
+        index += 1
+    return tuple(surface_lines)
 
 
 def _normalize_directive_surface_line(line: str) -> str:
@@ -747,6 +771,19 @@ def _normalize_directive_surface_line(line: str) -> str:
                 break
         else:
             return normalized
+
+
+def _is_final_directive_line(line: str) -> bool:
+    normalized = _normalize_directive_surface_line(line)
+    return (
+        READ_DIRECTIVE.match(normalized) is not None
+        or WRITE_DIRECTIVE.match(normalized) is not None
+        or TEST_DIRECTIVE.match(normalized) is not None
+        or normalized.startswith("MCP_LIST ")
+        or normalized.startswith("MCP_CALL ")
+        or normalized == "MCP_LIST"
+        or normalized == "MCP_CALL"
+    )
 
 
 def _surface_has_observe(surface_lines: tuple[str, ...]) -> bool:
