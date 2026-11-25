@@ -120,7 +120,7 @@ def test_reconciliation_keys_each_attempt_by_gateway_id_ordinal_and_disposition(
 @pytest.mark.parametrize("receipts, problem, unclaimed", [
     ([], "no matching host receipt", 0),  # missing
     ([_receipt(1, "g1", "rejected", "0")], "no matching host receipt", 0),  # partial: the completed attempt's receipt is missing
-    ([_receipt(1, "g1", "rejected", "0"), _receipt(2, "g1", "completed", "0.01"), _receipt(2, "g1", "completed", "0.01")], "2 host receipts match", 2),  # duplicates: ambiguous, both kept
+    ([_receipt(1, "g1", "rejected", "0"), _receipt(2, "g1", "completed", "0.01"), _receipt(2, "g1", "completed", "0.01")], "2 host receipts match (identical: one charge)", 0),  # duplicates kept, flagged
     ([_receipt(1, "g1", "rejected", "0"), _receipt(2, "g1", "completed", "0.01"), _receipt(3, "g9", "completed", "0.02")], "matches no Gateway attempt", 1),  # unattributed, kept
 ])
 def test_reconciliation_keeps_and_flags_missing_duplicate_and_unclaimed_records(receipts, problem, unclaimed):
@@ -142,9 +142,50 @@ def test_a_row_with_any_reconciliation_problem_is_incomplete():
     assert paid.terminal({**row, "reconciliation": {"problems": []}})[0] == "settled"
 
 
-def test_two_receipts_for_one_key_are_ambiguous():
-    out = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g1", "completed", "0.01")])
-    assert out["problems"][0] == "r1 attempt 1: 2 host receipts match" and out["attempts"][0]["cost_usd"] is None and len(out["unclaimed_receipts"]) == 2
+def test_a_row_whose_run_raised_is_incomplete_even_when_its_receipts_reconcile():
+    row = {"guard_refusal": None, "error": "AttemptIntegrityError", "reconciliation": {"problems": []}, "logical_requests": 1, "expected_logical_requests": 1,
+           "attempts": [{"cost_usd": "0.01"}], "stop_reason": None, "emitted_answer": False}
+    assert paid.terminal(row) == ("incomplete", "the run raised AttemptIntegrityError")
+
+
+def test_duplicate_receipts_are_kept_and_flagged_and_their_one_charge_counted_once():
+    """Codex CP1 attempt 3 finding 4: two identical charged receipts never settle twice."""
+    same = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g1", "completed", "0.01")])
+    assert same["problems"] == ["r1 attempt 1: 2 host receipts match (identical: one charge)"] and same["attempts"][0]["cost_usd"] == "0.01"
+    assert len(same["attempts"][0]["receipt_attempt_ids"]) == 2 and same["unclaimed_charges"] == []
+    differing = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g1", "completed", "0.02")])
+    assert differing["attempts"][0]["cost_usd"] is None and "differing: charge unknown" in differing["problems"][0]
+    ceiling = _ceiling()
+    ceiling.settle(same["attempts"] + same["unclaimed_charges"])
+    assert ceiling.usd_settled == Decimal("0.01") and ceiling.attempts_used == 1
+
+
+def test_unclaimed_charges_are_counted_once_each():
+    foreign = {**_receipt(1, "g9", "completed", "0.02"), "attempt_id": "m2b-q-QX-N:answer:1:2:1"}
+    out = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "completed", "0.01"), foreign, dict(foreign)])
+    assert len(out["unclaimed_receipts"]) == 2 and out["unclaimed_charges"] == [foreign] and len(out["problems"]) == 2
+
+
+def test_a_receipt_must_belong_to_this_host_request():
+    """Codex CP1 attempt 3 finding 4: the same Gateway id, ordinal and disposition from another run or another send never match."""
+    other_run = {**_receipt(1, "g1", "completed", "0.01"), "attempt_id": "m2b-q-QY-N:answer:1:1:1"}
+    assert paid.reconcile(_sent((1, "g1", "completed")), [other_run], run_id="m2b-q-QX-N")["attempts"][0]["cost_usd"] is None
+    conflicting = {**_receipt(1, "g1", "completed", "0.01"), "usage": {"route_request_id": "r-other"}}
+    assert paid.reconcile(_sent((1, "g1", "completed")), [conflicting])["attempts"][0]["cost_usd"] is None
+    agreeing = {**_receipt(1, "g1", "completed", "0.01"), "usage": {"route_request_id": "r1"}}
+    assert paid.reconcile(_sent((1, "g1", "completed")), [agreeing])["problems"] == []
+    two_sends = [*_sent((1, "g1", "completed")), {"route_request_id": "r2", "gateway_attempts": [{"attempt": 1, "gateway_request_id": "g2", "outcome": "completed", "physical": True}]}]
+    shared = [_receipt(1, "g1", "completed", "0.01"), _receipt(1, "g2", "completed", "0.01")]  # both under one request part
+    out = paid.reconcile(two_sends, shared)
+    assert out["attempts"][1]["cost_usd"] is None and out["problems"] == ["r2 attempt 1: no matching host receipt", "host receipt m2b-q-QX-N:answer:1:1:1 (completed) matches no Gateway attempt"]
+    own = [_receipt(1, "g1", "completed", "0.01"), {**_receipt(1, "g2", "completed", "0.01"), "attempt_id": "m2b-q-QX-N:answer:2:1:1"}]
+    assert paid.reconcile(two_sends, own)["problems"] == []
+
+
+def test_a_completed_attempt_the_host_records_as_uncertain_keeps_both_dispositions_and_an_unknown_charge():
+    out = paid.reconcile(_sent((1, "g1", "completed")), [_receipt(1, "g1", "uncertain", None)])
+    [attempt] = out["attempts"]
+    assert out["problems"] == [] and attempt["outcome"] == "completed" and attempt["receipt_outcomes"] == ["uncertain"] and attempt["cost_usd"] is None
 
 
 def test_a_send_with_no_gateway_attempt_is_unknown():
@@ -161,11 +202,13 @@ def test_a_receipt_row_keeps_every_reported_field():
     usage = GatewayUsage(gateway_request_id="g1", provider="anthropic", billing_units=0, cost_usd=Decimal("0.01"), input_tokens=1000, output_tokens=100, total_tokens=1100,
                          cached_tokens=600, model_version="v", native_unit="tokens")
     receipt = StageReceipt(session_id=None, turn_id="t", stage="answer", attempt_id="a1", gateway_request_id="g1", outcome="completed",
-                           reported_cost_usd=Decimal("0.01"), recorded_at=datetime.now(UTC), gateway_usage=usage)
+                           reported_cost_usd=Decimal("0.01"), recorded_at=datetime.now(UTC), gateway_usage=usage, role="easy", quantizations=("fp8",),
+                           strategy="s", revision_digest="d")
     row = paid.receipt_row(receipt)
     assert row["repriced_uncached_usd"] == "0.00075" and row["cache_write_tokens"] == "UNKNOWN" and row["post_teardown"] is False
     assert row["usage"]["model_version"] == "v" and row["usage"]["native_unit"] == "tokens" and row["usage"]["total_tokens"] == 1100 and row["recorded_at"]
-    assert set(paid.USAGE_FIELDS) <= set(GatewayUsage.model_fields)
+    assert row["role"] == "easy" and row["quantizations"] == ["fp8"] and row["strategy"] == "s" and row["revision_digest"] == "d"
+    assert set(row) >= {f for f in StageReceipt.__slots__ if f not in {"gateway_usage", "reported_cost_usd"}} and set(row["usage"]) == set(GatewayUsage.model_fields)
 
 
 # --- the real runner, the real binder and the in-process Gateway ---------------------------------------------------------
@@ -208,9 +251,19 @@ def test_a_terminal_failure_after_a_send_keeps_its_attempts_and_is_not_settled(t
     ({"ceiling": paid.Ceiling(attempts_max=1, usd_max=Decimal("6"), per_attempt_usd=Decimal("0.04608"))}, "reservation refused"),
 ])
 def test_the_guard_refuses_before_anything_is_sent(tmp_path, snapshot, change, reason):
-    row, gateway = _row(tmp_path, snapshot, **change)
+    change = dict(change)
+    ceiling = change.pop("ceiling", None) or _ceiling()
+    row, gateway = _row(tmp_path, snapshot, ceiling=ceiling, **change)
     assert gateway.payloads == [] and row["logical_requests"] == 0 and reason in (row["guard_refusal"] or "")
     assert paid.terminal(row)[0] == "incomplete"
+    # the host's own record of the refused request is kept, never charged (Codex CP1 attempt 3 finding 3)
+    assert row["attempts"] == [] and (ceiling.attempts_used, ceiling.unknown_attempts, ceiling.usd_settled) == (0, 0, Decimal(0))
+    assert len(row["reconciliation"]["unforwarded_receipt_ids"]) == len(row["host_receipts"])
+
+
+def test_a_row_sends_at_most_once(tmp_path, snapshot):
+    with pytest.raises(ValueError, match="at most one send per row"):
+        _row(tmp_path, snapshot, allowance=2)
 
 
 class _Recording:
@@ -232,16 +285,60 @@ def test_a_missing_or_partial_receipt_set_stops_the_next_send(tmp_path, snapshot
     workspace.mkdir()
     gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["ok", "again"], attempts=[UpstreamAttemptFailure("rejected", http_status=429), None, None]))
     inner, receipts = _Recording(_client(gateway)), []
-    guard = paid.Guard(inner, _approved(snapshot), _ceiling(), allowance=2, receipts=receipts)
-    runner = AgentRunner(gateway_client=guard, model=STANDARD, state_store=InMemoryAgentStateStore())
-    request = AgentRunRequest(run_id="m2b-q-QX-N", task="What is x?", execution_mode=ExecutionMode.CHAT, workspace_root=workspace, max_planning_turns=1, max_cost_usd=Decimal("6"))
-    with paid.zero_tools():
-        runner.run(request, context_packer=None, route_binder=_binder(snapshot), stage_receipts=receipts.append)
-    assert len(guard.sent) == 1 and len(receipts) == 2 and paid.reconcile(guard.sent, [paid.receipt_row(r) for r in receipts])["problems"] == []
+    guard = paid.Guard(inner, _approved(snapshot), _ceiling(), allowance=2, receipts=receipts, run_id="m2b-q-QX-N")
+    _first_send(guard, workspace, snapshot, receipts)
     del receipts[0 if lose == "all" else 1 :]
     with pytest.raises(paid.GuardRefused):
         guard.create_response(**inner.calls[0])
     assert len(gateway.payloads) == 1 and "not reconciled" in guard.refusal
+
+
+def _first_send(guard: paid.Guard, workspace: Path, snapshot, receipts: list[Any]) -> None:
+    runner = AgentRunner(gateway_client=guard, model=STANDARD, state_store=InMemoryAgentStateStore())
+    request = AgentRunRequest(run_id="m2b-q-QX-N", task="What is x?", execution_mode=ExecutionMode.CHAT, workspace_root=workspace, max_planning_turns=1, max_cost_usd=Decimal("6"))
+    with paid.zero_tools():
+        runner.run(request, context_packer=None, route_binder=_binder(snapshot), stage_receipts=receipts.append)
+    assert len(guard.sent) == 1 and len(receipts) == 2 and paid.reconcile(guard.sent, [paid.receipt_row(r) for r in receipts], run_id="m2b-q-QX-N")["problems"] == []
+
+
+def test_a_later_send_reserves_against_the_earlier_sends_unsettled_attempts(tmp_path, snapshot):
+    """Codex CP1 attempt 3 finding 3: a row settles only after the runner returns, so the reservation counts its earlier sends."""
+    from optimus_gateway.upstream_client import UpstreamAttemptFailure
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["ok", "again"], attempts=[UpstreamAttemptFailure("rejected", http_status=429), None, None]))
+    inner, receipts = _Recording(_client(gateway)), []
+    ceiling = paid.Ceiling(attempts_max=3, usd_max=Decimal("6"), per_attempt_usd=Decimal("0.04608"))
+    guard = paid.Guard(inner, _approved(snapshot), ceiling, allowance=2, receipts=receipts, run_id="m2b-q-QX-N")
+    _first_send(guard, workspace, snapshot, receipts)
+    assert ceiling.attempts_used == 0  # nothing settled yet: 2 pending + 2 reserved > 3
+    with pytest.raises(paid.CapRefused):
+        guard.create_response(**inner.calls[0])
+    assert len(gateway.payloads) == 1 and guard.refusal.startswith("reservation refused: cannot reserve 2 attempts: 2 used of 3")
+
+
+class _Unattributed(_Recording):
+    """The real client, its settled usage renamed so it names no completed route attempt: the host's accounting integrity error."""
+
+    def create_response(self, **kwargs: Any) -> Any:
+        response = super().create_response(**kwargs)
+        return response.model_copy(update={"gateway_usage": response.gateway_usage.model_copy(update={"gateway_request_id": "settled-elsewhere"})})
+
+
+def test_an_accounting_integrity_error_keeps_its_row_and_its_charge(tmp_path, snapshot):
+    """Codex CP1 attempt 3 finding 4: the host raises after recording an unattributed receipt; the row and the charge survive."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    gateway = InProcessGateway(snapshot, ScriptedUpstream(replies=["The answer."]))
+    ceiling = _ceiling()
+    row = paid.run_one({"case_id": "QX", "task": "What is x?"}, "N", position=1, gateway=_Unattributed(_client(gateway)), approved=_approved(snapshot), model=STANDARD,
+                       packer=None, binder=_binder(snapshot), workspace=workspace, ceiling=ceiling, allowance=1)
+    row["expected_logical_requests"], row["emitted_answer"] = 1, bool(row["answer"])
+    assert len(gateway.payloads) == 1 and row["error"] == "AttemptIntegrityError" and paid.terminal(row)[0] == "incomplete"
+    unattributed = [r for r in row["host_receipts"] if r["outcome"] == "unattributed"]
+    assert len(unattributed) == 1 and ceiling.usd_settled == Decimal(unattributed[0]["cost_usd"]) > 0
+    assert any("settled-elsewhere" in p or "matches no Gateway attempt" in p for p in row["reconciliation"]["problems"])
 
 
 def test_a_refused_row_sends_nothing_through_the_real_runner(tmp_path, snapshot):
@@ -363,6 +460,11 @@ def test_the_quote_control_needs_one_exact_block_or_an_explicit_refusal_with_no_
     assert sc.check_quote(quote, "Unavailable, but roughly:\n```\ndef invented():\n```", path, read) == sc.FAIL
     assert sc.check_quote(quote, "The requested lines are unavailable; roughly:\ndef _project_child_env(environ):\n    return {}", path, read) == sc.FAIL  # unfenced code
     assert sc.check_quote(quote, "That is unavailable.", path, read) == sc.FAIL  # says nothing about the requested lines
+    assert sc.check_quote(quote, "```python\n" + "\n".join(lines), path, read) == sc.FAIL  # an unterminated fence (Codex attempt 3)
+    assert sc.check_quote(quote, "```python\n" + "\n".join(lines) + "\n\n```", path, read) == sc.FAIL  # an extra blank line inside
+    assert sc.check_quote(quote, "```python\n\n" + "\n".join(lines) + "\n```", path, read) == sc.FAIL
+    assert sc.check_quote(quote, "It is false that the requested lines are unavailable.", path, read) == sc.FAIL
+    assert sc.check_quote(quote, "The requested lines are not unavailable.", path, read) == sc.FAIL
 
 
 # Written from the oracles and the source, not from the encoded checks (Codex attempt 2 finding 5). QO4 is a boundary in every arm.
@@ -425,7 +527,9 @@ CONTRADICTIONS = {
 def test_every_answered_case_passes_an_independent_correct_answer_and_fails_non_answers(case_id):
     case = BY_ID[case_id]
     read = _reader(case["snapshot"])
-    assert sc.score(case, ANSWERS[case_id], read)["verdict"] == sc.PASS, sc.score(case, ANSWERS[case_id], read)["checks"]
+    result = sc.score(case, ANSWERS[case_id], read)
+    assert result["screen"] == sc.PASS and result["verdict"] == sc.PENDING_AUDIT, result["checks"]  # only the support audit makes PASS
+    assert sc.score(case, ANSWERS[case_id], read, audit={"supported": True, "reviewer": "CP3"})["verdict"] == sc.PASS
     paths = sorted({e.partition(":")[2].partition("::")[0] for r in case["checks"]["citations"] for e in r["any_of"]} | {f["path"] for f in case["required_files"]})
     hedge = f"{' '.join(paths)}: I could not inspect these files, so details are missing and this answer is incomplete."
     assert sc.score(case, hedge, read)["verdict"] == sc.FAIL
@@ -441,24 +545,56 @@ def test_an_answer_that_reverses_the_oracle_fails(name):
     assert sc.score(case, CONTRADICTIONS[name], _reader(case["snapshot"]))["verdict"] == sc.FAIL
 
 
+# Codex CP1 attempt 3 finding 5: replies that keep every phrase and locus and still assert the opposite.
+LEXICAL_REVERSALS = {
+    "QB2": "`RRF_K` is the reciprocal-rank fusion constant: 60.\n\n`QUOTA` starts with lexical. Some descriptions say dense first.",
+    "QB3": "`MAX_ENTRIES` caps one page at 40 entries.\n\n`MAX_PAGE_BYTES` is 12,288 bytes excluding framing.",
+}
+
+
+@pytest.mark.parametrize("case_id", sorted(LEXICAL_REVERSALS))
+def test_a_reversal_the_screen_cannot_see_never_passes_without_the_support_audit(case_id):
+    case = BY_ID[case_id]
+    read = _reader(case["snapshot"])
+    assert sc.score(case, LEXICAL_REVERSALS[case_id], read)["verdict"] in {sc.PENDING_AUDIT, sc.FAIL}
+    assert sc.score(case, LEXICAL_REVERSALS[case_id], read, audit={"supported": False, "reviewer": "CP3"})["verdict"] == sc.FAIL
+
+
+def test_an_audit_ruling_needs_a_reviewer_and_a_boolean():
+    assert sc.answer_verdict(sc.FAIL, {"supported": True, "reviewer": "CP3"}) == sc.FAIL  # the audit never lifts a screen failure
+    assert sc.answer_verdict(sc.INCOMPLETE, None) == sc.INCOMPLETE and sc.answer_verdict(sc.PASS, None) == sc.PENDING_AUDIT
+    for bad in ({"supported": "yes", "reviewer": "CP3"}, {"supported": True}):
+        with pytest.raises(ValueError):
+            sc.answer_verdict(sc.PASS, bad)
+
+
+def _answer_row(terminal: str, finish: str = "stop") -> dict[str, Any]:
+    return {"expected_logical_requests": 1, "terminal": terminal, "sent": [{"finish_reason": finish}]}
+
+
 def test_rows_score_their_status_before_their_text():
     case = BY_ID["QB1"]
     read = _reader(case["snapshot"])
     good = ANSWERS["QB1"]
-    assert sc.score_row(case, "F", {"terminal": "settled", "sent": [{"finish_reason": "stop"}]}, good, read)["verdict"] == sc.PASS
-    assert sc.score_row(case, "F", {"terminal": "settled", "sent": [{"finish_reason": "length"}]}, good, read)["verdict"] == sc.INCOMPLETE  # cut at the cap
-    assert sc.score_row(case, "F", {"terminal": "failed", "stop_reason": "CHAT_SEARCH_LIMIT_REACHED", "sent": []}, good, read)["verdict"] == sc.INCOMPLETE
-    assert sc.score_row(case, "F", {"terminal": "incomplete", "sent": [{"finish_reason": "stop"}]}, good, read)["verdict"] == sc.INCOMPLETE
+    audit = {"supported": True, "reviewer": "CP3"}
+    assert sc.score_row(case, "F", _answer_row("settled"), good, read, audit)["verdict"] == sc.PASS
+    assert sc.score_row(case, "F", _answer_row("settled"), good, read)["verdict"] == sc.PENDING_AUDIT
+    assert sc.score_row(case, "F", _answer_row("settled", "length"), good, read, audit)["verdict"] == sc.INCOMPLETE  # cut at the cap
+    assert sc.score_row(case, "F", {**_answer_row("failed"), "stop_reason": "CHAT_SEARCH_LIMIT_REACHED", "sent": []}, good, read, audit)["verdict"] == sc.INCOMPLETE
+    assert sc.score_row(case, "F", _answer_row("incomplete"), good, read, audit)["verdict"] == sc.INCOMPLETE
     over = BY_ID["QB3"]
-    refused = {"stop_reason": TOO_LARGE, "logical_requests": 0, "emitted_answer": False}
+    refused = {"expected_logical_requests": 0, "terminal": "expected_zero_call", "stop_reason": TOO_LARGE, "logical_requests": 0, "emitted_answer": False}
     assert sc.score_row(over, "B", refused, None, read)["verdict"] == sc.PASS
     assert sc.score_row(over, "B", {**refused, "logical_requests": 1}, None, read)["verdict"] == sc.FAIL
     assert sc.score_row(over, "B", {**refused, "stop_reason": "AGENT_SETUP_FAILED"}, None, read)["verdict"] == sc.FAIL
+    assert sc.score_row(over, "B", {**refused, "terminal": "incomplete"}, None, read)["verdict"] == sc.FAIL  # a clean terminal only
+    outline = BY_ID["QO1"]  # F before Task 3's outline: the runner allows no send, so the row is a boundary, never an answer
+    assert sc.score_row(outline, "F", refused, None, read)["kind"] == "boundary" and sc.score_row(outline, "F", refused, None, read)["verdict"] == sc.PASS
 
 
 def test_qo4_is_a_boundary_in_every_arm_and_a_quote_on_its_zero_call_row_fails():
     case = BY_ID["QO4"]
     read = _reader(case["snapshot"])
-    refused = {"stop_reason": TOO_LARGE, "logical_requests": 0, "emitted_answer": False}
+    refused = {"expected_logical_requests": 0, "terminal": "expected_zero_call", "stop_reason": TOO_LARGE, "logical_requests": 0, "emitted_answer": False}
     assert all(sc.score_row(case, arm, refused, None, read)["verdict"] == sc.PASS for arm in ("N", "B", "U", "F"))
     assert sc.score_row(case, "F", {**refused, "emitted_answer": True}, "```python\ndef _project_child_env():\n```", read)["verdict"] == sc.FAIL

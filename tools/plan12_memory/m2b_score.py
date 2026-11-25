@@ -1,12 +1,14 @@
-"""Plan 12.14 paid Q scoring: deterministic checks only (cases.json paid_q.check_rules, v4 after Codex CP1 round 122 attempt 2). Its digest and
-the selector's are frozen before any paid prompt; a change after that is a new scorer, never a rescore of the same release.
+"""Plan 12.14 paid Q scoring (cases.json paid_q.check_rules, v5 after Codex CP1 round 122 attempt 3). Its digest and the selector's are
+frozen before any paid prompt; a change after that is a new scorer, never a rescore of the same release.
 
 The selector takes the reply text the host delivered as the turn's final answer and removes host-added text: the search-limit notice the
-runner appends to an indexed answer (optimus.agent.index_turn.LIMIT_NOTICE). An answer is scored only on a settled row; a predeclared refusal
-is scored only as its boundary. A fact is a relationship: every one of its groups, and its supporting locus, in one paragraph of the reply,
-and no sentence carrying it negated (unless the fact is itself a negation). Lexical checks are necessary, not sufficient: the plan's CP3
-reviewers audit unsupported claims, and unresolved material support holds acceptance for the operator. Every check is PASS, FAIL or UNKNOWN;
-a case is PASS only when every applicable check passes, FAIL on any FAIL, otherwise INCOMPLETE. No model grades anything.
+runner appends to an indexed answer (optimus.agent.index_turn.LIMIT_NOTICE). A row the runner allowed no send is scored only as its
+boundary; an answer is scored only on a settled row. Deterministic checks are a screen: a fact is a relationship, every one of its groups
+and its supporting locus in one paragraph of the reply, no sentence carrying it negated (unless the fact is itself a negation), no forbidden
+extra. Every check is PASS, FAIL or UNKNOWN; the screen FAILs on any FAIL and is INCOMPLETE on any UNKNOWN, and those are final. A screen
+PASS is PENDING_AUDIT: lexical checks cannot establish what a claim asserts (Codex CP1 attempt 3 finding 5), so only the plan's CP3 support
+audit, a reviewer's recorded ruling on that answer against its oracle and snapshot, makes it PASS (supported) or FAIL (unsupported). No
+model grades anything inside this script.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ PASS: Final = "PASS"
 FAIL: Final = "FAIL"
 UNKNOWN: Final = "UNKNOWN"
 INCOMPLETE: Final = "INCOMPLETE"
+PENDING_AUDIT: Final = "PENDING_AUDIT"
 MAX_CITED_LINES: Final = 40  # a range wider than this names a file region, not a locus
 # A cited repository path, optionally with :line or :start-end. Paths start at a top-level folder of this repository.
 CITED: Final = re.compile(r"(?<![\w./-])((?:src|tests|tools|docs|reports)/[\w./-]*[\w-]\.[A-Za-z0-9]+)(?::(\d+)(?:-(\d+))?)?")
@@ -167,21 +170,28 @@ def check_prohibited(text: str, read: Read) -> str:
     return PASS
 
 
+UNTRUE: Final = re.compile(r"\b(?:false|untrue|incorrect|wrong)\b", re.I)
+
+
 def check_quote(quote: Mapping[str, Any], text: str, path: str, read: Read) -> str:
-    """A scorer control (QO4 is a zero-call boundary in every arm): exactly one fenced block equal to the target lines (line endings
-    normalized) and no other code; or a sentence saying the requested lines are unavailable, with no fenced block and no code-like line."""
+    """A scorer control (QO4 is a zero-call boundary in every arm): exactly one closed fenced block equal to the target lines with only
+    line endings normalized, and no other code; or a sentence naming the requested lines or source as unavailable, with no fence, no
+    code-like line, and no negation or denial in that sentence (Codex CP1 attempt 3 finding 5)."""
     source = read(path)
     if source is None:
         return UNKNOWN
+    if text.count("```") % 2:
+        return FAIL  # an unterminated fence is never a complete quote
     first, last = quote["target_lines"]
-    target = "\n".join(source.decode("utf-8").splitlines()[first - 1:last]).strip("\n")
-    blocks = [block.replace("\r\n", "\n").strip("\n") for block in FENCE.findall(text)]
+    target = "\n".join(source.decode("utf-8").splitlines()[first - 1:last])
+    blocks = [block.replace("\r\n", "\n").removesuffix("\n") for block in FENCE.findall(text.replace("\r\n", "\n"))]
     unfenced_code = [line for line in FENCE.sub("", text).splitlines() if CODE_LINE.match(line)]
     if blocks:
         return PASS if len(blocks) == 1 and blocks[0] == target and not unfenced_code else FAIL
     if unfenced_code:
         return FAIL
-    explicit = any(any(p in s.lower() for p in quote["refusal_phrases"]) and re.search(r"\b(?:lines?|source|requested|quote)\b", s, re.I) for s in sentences(text))
+    explicit = any(any(p in s.lower() for p in quote["refusal_phrases"]) and re.search(r"\b(?:lines?|source|requested|quote)\b", s, re.I)
+                   and not NEGATION.search(s) and not UNTRUE.search(s) for s in sentences(text))
     return PASS if explicit else FAIL
 
 
@@ -201,29 +211,46 @@ def score_answer(case: Mapping[str, Any], text: str, read: Read) -> dict[str, st
 
 
 def verdict(checks: Mapping[str, str]) -> str:
+    """The lexical screen: FAIL on any FAIL, PASS when every check passes, otherwise INCOMPLETE."""
     values = set(checks.values())
     return FAIL if FAIL in values else (PASS if values == {PASS} else INCOMPLETE)
 
 
-def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer: str | None, read: Read) -> dict[str, Any]:
-    """One (case, arm) row. A predeclared refusal scores only its boundary: the declared stop reason, zero Gateway requests and no emitted
-    answer. Otherwise only a settled row's delivered answer is scored; any other row is INCOMPLETE."""
-    if case["forced_refusal"][arm]:
+def answer_verdict(screen: str, audit: Mapping[str, Any] | None) -> str:
+    """A screen FAIL or INCOMPLETE is final. A screen PASS is PENDING_AUDIT until the CP3 support audit rules on that answer: supported is
+    PASS, unsupported is FAIL. Lexical checks cannot establish what a claim asserts (Codex CP1 attempt 3 finding 5)."""
+    if screen != PASS:
+        return screen
+    if audit is None:
+        return PENDING_AUDIT
+    supported = audit.get("supported")
+    if not isinstance(supported, bool) or not audit.get("reviewer"):
+        raise ValueError("an audit ruling needs a reviewer and a boolean `supported`")
+    return PASS if supported else FAIL
+
+
+def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer: str | None, read: Read, audit: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """One (case, arm) row. A row the runner allowed no send (its own expected_logical_requests, so F on the outline cases before Task 3's
+    outline too) scores only its boundary: a clean expected_zero_call terminal with the declared stop reason, zero Gateway requests and no
+    emitted answer. Otherwise only a settled row's delivered answer is scored, screen first, then the support audit; any other row is
+    INCOMPLETE."""
+    if row["expected_logical_requests"] == 0:
         boundary = case.get("boundary") or {}
-        ok = (row.get("stop_reason") == boundary.get("stop_reason") and row.get("logical_requests") == boundary.get("gateway_requests", 0)
-              and not row.get("emitted_answer"))
+        ok = (row.get("terminal") == "expected_zero_call" and row.get("stop_reason") == boundary.get("stop_reason")
+              and row.get("logical_requests") == boundary.get("gateway_requests", 0) and not row.get("emitted_answer"))
         return {"case_id": case["case_id"], "arm": arm, "kind": "boundary", "checks": {"boundary": PASS if ok else FAIL}, "verdict": PASS if ok else FAIL}
     text = select(answer)
     settled = row.get("terminal") == "settled" and not any(sent.get("finish_reason") in {"length", "content_filter"} for sent in row.get("sent", []))
     if text is None or not settled:
         return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": {"answer": UNKNOWN}, "verdict": INCOMPLETE}
     checks = score_answer(case, text, read)
-    return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": checks, "verdict": verdict(checks)}
+    screen = verdict(checks)
+    return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": checks, "screen": screen, "verdict": answer_verdict(screen, audit)}
 
 
-def score(case: Mapping[str, Any], final_answer: str | None, read: Read) -> dict[str, Any]:
+def score(case: Mapping[str, Any], final_answer: str | None, read: Read, audit: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """An answer on its own (no runner status): used by the zero-paid tests and controls."""
     text = select(final_answer)
     checks = {"answer": UNKNOWN} if text is None else score_answer(case, text, read)
-    return {"case_id": case["case_id"], "checks": checks, "verdict": verdict(checks)}
-
+    screen = verdict(checks)
+    return {"case_id": case["case_id"], "checks": checks, "screen": screen, "verdict": answer_verdict(screen, audit)}

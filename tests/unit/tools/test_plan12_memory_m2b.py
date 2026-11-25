@@ -219,6 +219,8 @@ def test_budget_gates_need_the_exact_eight_cases_both_arms_and_each_kinds_outcom
                           (_with(rows, "QB1", substantive_change=False), "two_ordinary_allocation_changes")):
         result = ev.budget_gates(broken)
         assert not result["passes"] and result["checks"][check] is False, check
+    swapped = [dict(row, case_id={"QO1": "QO3", "QO3": "QO1"}.get(row["case_id"], row["case_id"])) for row in rows]  # Codex attempt 3 finding 6
+    assert ev.budget_gates(swapped)["checks"] == {"exact_case_set": True, "both_arms": True, "kinds_pinned": False} and not ev.budget_gates(swapped)["passes"]
 
 
 def test_the_released_budget_pass_meets_the_stricter_gates():

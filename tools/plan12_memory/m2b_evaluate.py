@@ -226,7 +226,9 @@ def budget_case(case: Mapping[str, Any], retrieval: Retrieval, read: Callable[[s
     return out
 
 
-BUDGET_CASES: Final = ("QB1", "QB2", "QB3", "QB4", "QO1", "QO2", "QO3", "QO4")
+BUDGET_KINDS: Final = {"QB1": "ordinary-fit", "QB2": "ordinary-fit", "QB3": "required-over-legacy", "QB4": "required-over-legacy", "QO1": "outline", "QO2": "outline",
+                       "QO3": "whole-summary", "QO4": "exact-over-ceiling"}  # pinned by id: a row's own kind is never trusted (Codex CP1 attempt 3 finding 6)
+BUDGET_CASES: Final = tuple(BUDGET_KINDS)
 # Each kind's pack completeness in (B/U, F) before Task 3's outline: over-ceiling files are incomplete in both until then.
 BUDGET_OUTCOMES: Final = {"ordinary-fit": (True, True), "required-over-legacy": (False, True), "whole-summary": (True, True), "outline": (False, False),
                           "exact-over-ceiling": (False, False)}
@@ -240,6 +242,8 @@ def budget_gates(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         return {"checks": {"exact_case_set": False}, "passes": False, "case_ids": ids}
     if any(set(row.get("arms", {})) != {"BU", "F"} for row in rows):
         return {"checks": {"exact_case_set": True, "both_arms": False}, "passes": False}
+    if any(row.get("kind") != BUDGET_KINDS[row["case_id"]] for row in rows):
+        return {"checks": {"exact_case_set": True, "both_arms": True, "kinds_pinned": False}, "passes": False}
     budget = [row for row in rows if row["case_id"].startswith("QB")]
     ordinary = [row for row in budget if row["kind"] == "ordinary-fit"]
     over = [row for row in budget if row["kind"] == "required-over-legacy"]
@@ -253,6 +257,7 @@ def budget_gates(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "every_complete_f_fits_q_cap": all(row["fits_q_cap"] for row in rows if row["arms"]["F"]["complete"]),
         "exact_case_set": True,
         "both_arms": True,
+        "kinds_pinned": True,
     }
     return {"checks": checks, "passes": all(checks.values())}
 
