@@ -432,8 +432,13 @@ def unsafe_path_text(path_text: str) -> bool:
     )
 
 
+def windows_path_shape(path_text: str) -> bool:
+    """#590: a colon (drive letter, alternate data stream) or a leading backslash (drive root); not for TEST tokens (pytest node ids hold ::)."""
+    return ":" in path_text or path_text.startswith(chr(0x5C))
+
+
 def _validate_relative_path(path_text: str) -> None:
-    if not path_text or unsafe_path_text(path_text):
+    if not path_text or unsafe_path_text(path_text) or windows_path_shape(path_text):
         raise AgentDirectiveParseError("no valid agent directives")
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
