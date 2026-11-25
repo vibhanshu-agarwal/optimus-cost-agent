@@ -100,22 +100,18 @@ def _assert_ended_normally(response, outbound, runner, records, *, code: str, to
 
 
 # (plan path, a secret file that already exists or None). The secret rule judges the resolved target, and Windows
-# resolves "id_rsa." and ".env::$DATA" to the secret's own name only when it exists (see the #589 report).
+# resolves "id_rsa." to the secret's own name only when it exists (see the #589 report). The issue's drive, rooted and
+# alternate-data-stream rows never reach the guard since #590: test_directive_path_characters.py pins their
+# parse-time rejection.
 WRITE_ROWS = {
     "runtime-tree-posix-separator": pytest.param(".optimus/state.txt", None),
     "runtime-tree": pytest.param(f".optimus{BS}state.txt", None, marks=WINDOWS_ONLY),
     "secret-id_rsa-trailing-dot": pytest.param("id_rsa.", "id_rsa", marks=WINDOWS_ONLY),
     "secret-env-trailing-dot": pytest.param(".env.", None),  # the lexical ".env." rule, on every platform
 }
-# #590 will reject these at parse time; drop or convert this group when #590 lands
-WRITE_ROWS_GROUP_B = {
-    "drive-relative": pytest.param(f"D:x{BS}y.py", None, marks=WINDOWS_ONLY),
-    "rooted": pytest.param(f"{BS}rooted.py", None, marks=WINDOWS_ONLY),
-    "alternate-data-stream": pytest.param(".env::$DATA", ".env", marks=WINDOWS_ONLY),
-}
 
 
-@pytest.mark.parametrize(("path", "secret"), [*WRITE_ROWS.values(), *WRITE_ROWS_GROUP_B.values()], ids=[*WRITE_ROWS, *WRITE_ROWS_GROUP_B])
+@pytest.mark.parametrize(("path", "secret"), WRITE_ROWS.values(), ids=WRITE_ROWS)
 async def test_a_guard_refused_write_ends_the_turn_with_fixed_text(path, secret, tmp_path):
     (tmp_path / "small.py").write_text("old\n")
     if secret is not None:
