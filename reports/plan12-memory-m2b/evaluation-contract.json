@@ -1,5 +1,5 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v14",
+ "schema": "plan12-memory-m2b.evaluation-contract.v15",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
@@ -168,7 +168,7 @@
   "row": [
    "release, case_id, arm, position, logical_request_id",
    "logical_requests and expected_logical_requests (the frozen schedule's allowance)",
-   "sent: per dispatch the host request identity, route request id, input and prefix digests, cache_prefix_chars, estimated input tokens, finish reason, the Gateway's route attempts (attempt, gateway request id, outcome, HTTP status, provider request id, physical) and any error type",
+   "sent: per dispatch its number, start time and duration, the host request identity, route request id, input and prefix digests, cache_prefix_chars, estimated input tokens, finish reason, the Gateway's route attempts (attempt, gateway request id, outcome, HTTP status, provider request id, physical) and any error type",
    "host_receipts: every StageReceipt field, the reported cost as cost_usd, the Gateway's normalized usage, repriced_uncached_usd, tariff_id, cache_write_tokens UNKNOWN",
    "attempts: each physical Gateway attempt matched one-to-one to its host receipts, with its cost or none",
    "reconciliation: unclaimed and unforwarded receipt ids, and every problem",
@@ -186,10 +186,10 @@
   ]
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v13",
-  "sha256": "hex:2c1a27abed4610151bc045e68f72201bbecf43f1a30eda028789318fb8d3d99b",
-  "commit": "git:a5d4d35",
-  "change": "the Q-release gate: the q_launch gate file, the re-frozen scorer, the amended #463 producer contract, every gate item's disposition"
+  "schema": "plan12-memory-m2b.evaluation-contract.v14",
+  "sha256": "hex:c37edd68dcc66bc824efcefdde91597ca43707169c67317ae4dac354af41cc49",
+  "commit": "git:f91c751",
+  "change": "Fable 5.2's formal review: the scorer re-frozen after B1, the superseded freezes corrected, the release conditions and the obligations before CP3 scoring and Task 5"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -209,8 +209,8 @@
   },
   "scoring": {
    "script": "tools/plan12_memory/m2b_score.py",
-   "sha256": "hex:36935f9ca3a644fcb74c015cf70172dc4dff587f9a840b03ef8c4755991d83eb",
-   "git_blob": "git:071ae2b6c2280f7c3cc57ec276abc2130cd7bca1",
+   "sha256": "hex:0217ea3d0815a4032061124ae09dadb289e4d4a3ae7acd15586ef19b83b92bd9",
+   "git_blob": "git:9e476624785cb0b82bfcb8deae139236ed6b53ef",
    "selector": "m2b_score.select: the delivered final answer less the host's search-limit notice (optimus.agent.index_turn.LIMIT_NOTICE); its digest is the script's",
    "hardening": "Fable CP1 finding 2: ordinary-word symbol names count only as code (backticks, a call) or by qualified name; numbers match whole; fences cut at the cap count; QO4's unfenced code-like lines must be the file's own; QB1 F2 drops hedge phrases; a path echo plus a hedge fails every case but QO4 (tested)",
    "v3": "Codex finding 5: claim-bound citations (path and code-form symbol in one clause, or a range of at most 40 lines overlapping the symbol); loci; fact groups; runner status first (stop reason or output at the cap: INCOMPLETE); boundary rows; the QO4 quote control needs the exact contiguous block",
@@ -218,16 +218,18 @@
    "v5": "Codex attempt 3 finding 5 (lexical matching cannot establish what a claim asserts): the deterministic checks are a screen. A screen FAIL or INCOMPLETE is final; a screen PASS is PENDING_AUDIT and becomes PASS only by a recorded support-audit ruling `supported` (FAIL when `unsupported`). Forbidden phrases catch the literal reversals Codex listed (QB2 lexical-first, QB3 excluding framing, QR2 unset, QO1 discard/skip, QO3 ignore/truncate). A boundary needs a clean expected_zero_call row on the runner's own allowance (so F on QO1/QO2 before the outline is a boundary), the declared stop, zero requests and no emitted answer. The QO4 control needs one closed exact block with only line endings normalized, or a non-negated sentence naming the requested lines as unavailable with no code",
    "v6": "Codex attempt 4 finding 5: an audit record carries `identity` (release, case, arm, the delivered answer's SHA-256, snapshot, scorer and cases digests; m2b_score.audit_identity) and `rulings`, one per CP3 reviewer (two, distinct), each a boolean `supported` with a non-empty reason. A screen PASS is PASS only when the identity matches exactly and both rulings are supported, FAIL when both are unsupported; missing, mismatched, incomplete or disputed rulings stay PENDING_AUDIT (a dispute is held for the operator) and contribute to no gate. QO4: each configured refusal phrase is an assertion (`not available` included); the rest of its sentence may not negate or deny it; inline code beyond a bare name or path is purported source and fails, as do code-like unfenced lines. QB3's forbidden phrases name only the framing reversal",
    "v7": "Codex attempt 5 finding 5: score_row scores a paid answer only when it is the one the producer recorded (the row's case, arm and answer_sha256) and requires the verified cases digest; an audit record needs exactly one valid ruling from each designated reviewer (fable-5.2, codex-gpt-6.2-sol): a boolean `supported` and a non-blank string reason; anything else, malformed records included, stays PENDING_AUDIT and never raises. The QO4 quote control is not run: its oracle makes it conditional and every arm is a zero-call boundary, so no Q row is ever scored against it (cases.json QO4 quote_control)",
-   "v8": "Q-release gate G3 (Codex round 124 B3 and B4, be517b7): paid scoring reads the cases from their sealed bytes (verify_cases) and each row's allowance from the frozen schedule; a clean refusal scores with production's own too-large notice, bound to the recorded answer digest, or with no answer; a support ruling rules on each material claim (each citation and fact check), supported only when every claim is, each supported claim quoting what the model received; the audit identity binds the request and the pack; an operator hold needs the operator's #548 comment as its authority"
+   "v8": "Q-release gate G3 (Codex round 124 B3 and B4, be517b7): paid scoring reads the cases from their sealed bytes (verify_cases) and each row's allowance from the frozen schedule; a clean refusal scores with production's own too-large notice, bound to the recorded answer digest, or with no answer; a support ruling rules on each material claim (each citation and fact check), supported only when every claim is, each supported claim quoting what the model received; the audit identity binds the request and the pack; an operator hold needs the operator's #548 comment as its authority",
+   "v9": "Fable 5.2 formal review B1 (f69bd70): an unsupported ruling has a listed claim unsupported or names in unlisted_claims the unsupported material claims the answer makes beyond the case's list; a supported ruling still needs every listed claim supported"
   },
   "runner": {
    "script": "tools/plan12_memory/m2b_paid.py",
-   "sha256": "hex:b5c6746978d50a0c04454c6e672bae8c82106e55f8fc9b5b3f8a31730b41b48c",
-   "git_blob": "git:b147fe3e80a8f56448943d9580a85fae50d27014",
+   "sha256": "hex:975f1088e10528accac1b453b585f2f804cf3b6424f14b4c60f44a5f4e009f0f",
+   "git_blob": "git:e3053fbf3d3845f48b9b3d61fd64760321ba84b6",
    "design": "optimus-handoff/p1214-task1/q-runner-design.md (Fable 5.2 consult)",
    "guard": "Codex findings 3 (round 122, attempts 2-3): the Guard refuses before forwarding unless the row's allowance (at most one send per row, enforced by run_one), the released model (the approved hash fixes its route), the approved hash and output cap, the input cap (the route's estimator), every earlier send reconciled, and the ceiling's reservation counting those earlier sends' unsettled attempts all hold; each refusal is recorded, and the host's own record of a refused request is kept apart (unforwarded_receipt_ids), never charged",
    "accounting": "each send records at dispatch the host request identity the runner gives its receipts (`receipt_base`, `<run>:answer:1:<dispatch>` for Q's one-request Chat turn); a receipt matches a Gateway attempt only under that identity with the attempt's ordinal, Gateway id and disposition (a completed attempt the host records as uncertain keeps both, its charge unknown), and any route request id or attempt number its usage names must agree. Attempts come only from Gateway evidence: each physical Gateway attempt is one attempt; a send the Gateway reported nothing for is MAX_ROUTE_ATTEMPTS unknown attempts once, its host records kept beside them and never counted again. Identical matched copies are one charge; differing copies leave it unknown. A receipt matching no attempt is kept and flagged; each distinct receipt identity not already settled is charged once as money only (an unattributed charge creates no attempt), conflicting copies flagged. Any failure of the run keeps its row and receipts and stops the run; attempt 5: a send without its recorded host request identity matches nothing; a send with no Gateway attempt keeps its two unknown attempt slots and any amount its own host records report, settled once as money; copies of one receipt with differing amounts leave it unknown whether the copies arrive through the attempt path or the money path; the ceiling keeps unknown money (unknown_charges) apart from unknown attempts, each priced at one attempt's worst case; each row records its settlement (attempts, unknown-cost attempts, money charges, unknown charges, known USD)",
-   "terminal": "expected_zero_call only with the case's declared stop reason and no emitted answer: the delivered text is exactly production's too-large notice for a required file (workspace_context.blocking_from_diagnostics); otherwise incomplete"
+   "terminal": "expected_zero_call only with the case's declared stop reason and no emitted answer: the delivered text is exactly production's too-large notice for a required file (workspace_context.blocking_from_diagnostics); otherwise incomplete",
+   "q_release_gate": "re-frozen at the Q-release gate: these are the bytes G2 ran and q_launch pins (Fable formal review B3)"
   },
   "intended_composition": {
    "registry": "src/optimus_model_policy/defaults.yaml with models.anthropic/claude-haiku-5.5.context_budget.input_target_usd = \"0.008192\", staged in defaults.yaml itself at git:e3506a7 (Plan 12.14 Task 2)",
@@ -274,14 +276,15 @@
   "fit_note": "a fit estimate, not request bytes: the released budget pass at git:8cf26df (calibration-budget.json) bounds F's full input with production's route estimator over a framing proxy (the indexed Chat prefix and map, the pack, a 600-byte scope-line allowance, the runner's limit observation and the task); the largest complete F input is 35,323 tokens against 65,536.. Task 2 proved the request bytes themselves (production_equivalence); the released figures stand because production's added symbol queries answer nothing for the eight cases (census below)",
   "evaluator": {
    "script": "tools/plan12_memory/m2b_evaluate.py",
-   "sha256": "hex:6d21cc2b823fcd391d36d5ecf26630c40b0bc7033ae92c9aa56d697189df0e97",
-   "git_blob": "git:441da249115e7124b8fdc3922450fc4db8270dcb",
-   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: recorded as UNRUN by the operator's CP1 acceptance (Codex attempt 7 item A3). Task 2: production_routes takes legacy from the defaults minus the field line (the shipped route is model-aware now), and the budget pass retrieves with production_retrieve (the task's first _QUERY_CHARS, the named files and named_symbols(task), as MemoryTurn._retrieve); calibration's retrieve() is unchanged with its released evidence; Task 3: budget_case(outline=True) asks for the overflow outline as a Chat turn does (file_outline.summary_target of the case's task), and budget_gates(outline_available=True) needs F to complete exactly the two outline cases with an outline and B/U never to outline (OUTLINE_OUTCOMES); without the switches both are as released"
+   "sha256": "hex:956a1cb15062219c8e5e795bd2aff4a75355b4c099f33e80057991048f873f40",
+   "git_blob": "git:f5cc1e1ef192cf2ddb85809e26d3eb573ca98f47",
+   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: recorded as UNRUN by the operator's CP1 acceptance (Codex attempt 7 item A3). Task 2: production_routes takes legacy from the defaults minus the field line (the shipped route is model-aware now), and the budget pass retrieves with production_retrieve (the task's first _QUERY_CHARS, the named files and named_symbols(task), as MemoryTurn._retrieve); calibration's retrieve() is unchanged with its released evidence; Task 3: budget_case(outline=True) asks for the overflow outline as a Chat turn does (file_outline.summary_target of the case's task), and budget_gates(outline_available=True) needs F to complete exactly the two outline cases with an outline and B/U never to outline (OUTLINE_OUTCOMES); without the switches both are as released",
+   "q_release_gate": "re-frozen at the Q-release gate: these are the bytes G2 ran and q_launch pins (Fable formal review B3)"
   },
-  "producer_contract_463": "rows as m2b_paid (schema plan12-memory-m2b.paid-attempts.v2): per sent request its dispatch number and host request identity (receipt_base), bound route request id, input and prefix identity, finish reason and Gateway attempts; per host receipt every StageReceipt field under its own name (the reported cost as cost_usd) and the Gateway's normalized usage whole (total tokens included), the repriced uncached cost and tariff id, cache_write_tokens UNKNOWN; per physical attempt its matched receipt ids and dispositions; per row release, case, arm (U as an alias of B), position, logical request id, reconciliation problems, unclaimed and unforwarded receipt ids, any run error, its settlement (attempts, unknown-cost attempts, money-only charges, unknown charges, known USD), emitted_answer and the terminal classification (expected_zero_call, settled, failed, incomplete) with its reason; each charge counted once. Codex round 122 agreed the narrow producer contract and amended its implementation in attempts 2 and 3; broader commissioning and report integration stay under #463",
+  "producer_contract_463": "superseded by the top-level producer_contract_463 as amended at the Q-release gate (item 5): no money-only path, no unknown charges",
   "hard_ceiling": "Codex ruling 7: with a target, the whole pack including its section joiners stays within the chosen budget (tested); the legacy path is byte-equal to PR #562's delivered context_pack.py (tested)",
-  "support_audit": "the plan's CP3 support audit (Task 4, after paid Q): the designated checkpoint reviewers, fable-5.2 then codex-gpt-6.2-sol, each read every screen-PASS answer against its case's oracle and pinned snapshot and record `supported` (boolean) with a one-line reason; the records, bound by m2b_score.audit_identity to the exact answer bytes the producer recorded, release, case, arm, snapshot, scorer and cases, are frozen in reports/plan12-memory-m2b/support-audit.json and posted verbatim on #548 before any adoption gate is computed; a disagreement holds that answer for the operator. The audit can only confirm or fail a screen PASS: it never lifts a screen FAIL or INCOMPLETE",
-  "paid_scripts_status": "PROVISIONAL at CP1, by operator exception (approved 2026-11-25; see cp1_exception): the runner and scorer digests above are the CP1 heads, not the Q freeze. They are re-frozen at the Q-release gate on its final bytes, before any paid prompt (plan line 262)",
+  "support_audit": "the plan's CP3 support audit (Task 4, after paid Q): the designated reviewers, fable-5.2 then codex-gpt-6.2-sol, each rule on every screen-PASS answer claim by claim (each of the case's citation and fact checks, m2b_score.material_claims), each supported claim quoting verbatim the request the model received (the input sink), an unsupported ruling naming any unlisted invented claim; the records, bound by m2b_score.audit_identity to the exact answer, request and pack, release, case, arm, snapshot, scorer and cases, are frozen in reports/plan12-memory-m2b/support-audit.json and posted verbatim on #548 before any adoption gate is computed; a disagreement holds that answer for the operator. The audit only confirms or fails a screen PASS",
+  "paid_scripts_status": "FROZEN at the Q-release gate (contract v15 q_launch): the runner, launcher, evaluator, scorer and cases digests are the Q freeze; the CP1 heads above them were provisional by operator exception (cp1_exception)",
   "task2_delivered": {
    "git:e3506a7": "the D3 field staged in defaults.yaml; the three approved hashes re-pinned; removing the field restores 4d2f637e and the legacy budget",
    "git:6b828c5": "the Auto composition and golden display digest re-pinned; production_routes' legacy arm from the pre-change composition",
@@ -382,7 +385,7 @@
    "a zero-paid run of the full schedule through the real runner against a local upstream: the expected send count and zero unintended calls"
   ],
   "review": "Fable 5.2, then one Codex CLI round, both posted verbatim on #548",
-  "binding": "the operator's Q release names the gate's head, the successor contract's digest and both verdicts; the launcher refuses to start otherwise",
+  "binding": "the operator's Q release names the gate's head, this contract's digest and both review comment links on #548 (verify_release checks two distinct #548 comment links, not their verdicts); the launcher refuses to start otherwise",
   "dispositions": {
    "1": "be517b7 and debd597: malformed reviewers PENDING_AUDIT never a raise; cases read from their sealed bytes at the scoring entry (verify_cases); the row's release checked; boundary rows bound to the producer row's case, arm and release with an explicit no-answer flag and the recorded answer digest",
    "2": "d9ae03f: the money-only settlement path and the multi-send path deleted; allowance 0 or 1 checked at the Guard's construction; reserve() kept",
@@ -391,7 +394,7 @@
    "5": "producer_contract_463 above: money-only fields and unknown charges removed; re-agreed in the gate's formal Codex round",
    "6": "be517b7: an operator hold is bound to the exact answer, with a reason and the operator's #548 comment as authority; HELD is excluded from every gate and never rescored",
    "7": "the money path's deletion retires the missing-attempt copy conflict, the unknown_charges reservation test and the money-only identity; the standalone QO4 quote control stays unrun",
-   "8": "m2b_launch: the memory turn joined before the history view is prepared; the catalogue epoch is the generation the session's catalogue holds (wait_indexed), every row whose retrieval ran must have read it; each row records its pack digest, and the eight budget/outline cases' B and F rows must match the budget report (G2: all match)",
+   "8": "m2b_launch: the memory turn joined before the history view is prepared; the catalogue epoch is the generation the session's catalogue holds (wait_indexed), every row whose retrieval ran must have read it; each row records its pack digest, and the eight budget/outline cases' B and F rows must match the budget report (G2: all match); the budget packs are compared against the G2 budget report, not calibration-budget.json, whose rows predate the outline (item 9; Fable formal review C6)",
    "9": "G2 (gate-g2.json): the budget pass with outline_available true on the main snapshot's own session; QO1 and QO2 outline in F; expected_calls gives 25 sends",
    "10": "f3e66ae: an outline row in both production-bytes proofs",
    "11": "f3e66ae and 92e9af5: optional_room = chosen budget - V, and V reported as outline_section_tokens (G2: 2,049 and 2,050)",
@@ -410,7 +413,19 @@
     "attempt 5: ACCEPT at 62e3444, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7174410104"
    ],
    "g2": "passed 2026-11-26; runs 1-4 (fixes 358064a, 884b7b9 between them); runs 3 and 4 reproduce through m2b_launch.compare; result posted, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7176732364",
-   "formal": "Fable 5.2, then one Codex CLI round on this contract and the gate head, both posted verbatim on #548"
+   "formal": "Fable 5.2, then one Codex CLI round on this contract and the gate head, both posted verbatim on #548",
+   "fable_formal": "Fable 5.2 ACCEPT WITH CHANGES at f91c751 (one A on the release wording, five B), https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7177612471; B1 and B3 fixed here, A1 and B5 in release_conditions, B2 and B4 in obligations"
+  },
+  "release_conditions": {
+   "one_launch": "the release covers one launch: the ceiling is per launch, so a second launch could exceed 96 attempts or USD 6.00 and would overwrite the record; a stopped run is not relaunched without a new operator decision (Fable formal review A1)",
+   "fresh_paths": "the output reports/plan12-memory-m2b/paid-attempts.json and the sink optimus-handoff/p1214-q-sinks/q-1 (reports/plan12-memory-m2b/q-config.json) are new and empty, and the release names them",
+   "released_head": "the released head differs from the reviewed head by records only, if at all (Fable formal review C1)",
+   "first_execution": "run_paid past its preflight (the sink, the composition on the operator's Gateway secret, the call into paid_launch, the writers) first executes on the paid day; any failure there comes before the first send or leaves the row written (Fable formal review B5)",
+   "expected_stops": "a stop on a paid row is the designed outcome of any accounting anomaly or dispatch difference, not a fault"
+  },
+  "obligations": {
+   "before_cp3_scoring": "the scoring driver: reads paid-attempts.json, both sinks and the support audit; computes the adoption and cost gates, the comparable cohort and the forced-refusal exclusions; a HELD or PENDING_AUDIT row makes every gate that needs it unavailable, never computed without it; committed and reviewed before any answer is read (Fable formal review B2)",
+   "before_task5": "production's first repo map on a fresh session can come back empty with nothing logged (MemorySession.repo_map; G2 run 2): its cause established and the path made to persist it before Task 5's adoption decision; Q measures primed maps (Fable formal review B4)"
   }
  },
  "cp1_exception": {
@@ -468,7 +483,7 @@
   "digests": {
    "tools/plan12_memory/m2b_paid.py": "hex:975f1088e10528accac1b453b585f2f804cf3b6424f14b4c60f44a5f4e009f0f",
    "tools/plan12_memory/m2b_launch.py": "hex:119da3700b2f13a2d8d066cba6d7dab0ebdbedd010eecffaaa6a3bc380c480e2",
-   "tools/plan12_memory/m2b_score.py": "hex:36935f9ca3a644fcb74c015cf70172dc4dff587f9a840b03ef8c4755991d83eb",
+   "tools/plan12_memory/m2b_score.py": "hex:0217ea3d0815a4032061124ae09dadb289e4d4a3ae7acd15586ef19b83b92bd9",
    "tools/plan12_memory/m2b_evaluate.py": "hex:956a1cb15062219c8e5e795bd2aff4a75355b4c099f33e80057991048f873f40",
    "reports/plan12-memory-m2b/cases.json": "hex:17a8e68d6fdac9acb91e4d885a4128a7609a411c5967a96e438d655c69e6ea36"
   },
@@ -484,6 +499,6 @@
    "head": "git:884b7b9a69529030ed5dd7829623d8fad82a7d7e",
    "authorization": "operator, 2026-11-26: \"Release G2\" (reports/plan12-memory-m2b/gate-config.json)"
   },
-  "frozen_at": "git:be517b7fa2da533040bab88e3e88b5bda1dc7c8a"
+  "frozen_at": "git:f69bd70e531c0936bfeb1ff76efab1128917e4a5"
  }
 }
