@@ -179,13 +179,51 @@ def test_a_capture_keeps_ids_and_ranks_never_text(tmp_path):
     assert digest == "hex:" + hashlib.sha256((tmp_path / "c.json").read_bytes()).hexdigest()
 
 
-def test_budget_gates_need_the_exact_eight_cases_once():
-    row = {"substantive_change": True, "fits_q_cap": True, "arms": {"F": {"complete": True}}}
-    kinds = {"QB1": ("ordinary-fit", False), "QB2": ("ordinary-fit", False), "QB3": ("required-over-legacy", True), "QB4": ("required-over-legacy", True)}
-    rows = [{**row, "case_id": c, "kind": kinds.get(c, ("outline", False))[0], "r_in_legacy_to_ceiling": kinds.get(c, ("outline", False))[1]} for c in ev.BUDGET_CASES]
+KINDS = {"QB1": "ordinary-fit", "QB2": "ordinary-fit", "QB3": "required-over-legacy", "QB4": "required-over-legacy", "QO1": "outline", "QO2": "outline",
+         "QO3": "whole-summary", "QO4": "exact-over-ceiling"}
+R = {"ordinary-fit": 7_000, "required-over-legacy": 20_000, "outline": 50_000, "whole-summary": 5_000, "exact-over-ceiling": 50_000}
+
+
+def _budget_rows() -> list[dict]:
+    rows = []
+    for case_id, kind in KINDS.items():
+        bu, f = ev.BUDGET_OUTCOMES[kind]
+        rows.append({"case_id": case_id, "kind": kind, "R": R[kind], "C": 32_768, "substantive_change": case_id.startswith("QB"), "fits_q_cap": f,
+                     "r_in_legacy_to_ceiling": kind == "required-over-legacy", "arms": {"BU": {"complete": bu}, "F": {"complete": f}}})
+    return rows
+
+
+def _with(rows: list[dict], case_id: str, **changes) -> list[dict]:
+    out = [dict(row, arms={arm: dict(values) for arm, values in row["arms"].items()}) for row in rows]
+    row = next(r for r in out if r["case_id"] == case_id)
+    for key, value in changes.items():
+        arm, _, field = key.partition("__")
+        if field:
+            row["arms"][arm][field] = value
+        else:
+            row[key] = value
+    return out
+
+
+def test_budget_gates_need_the_exact_eight_cases_both_arms_and_each_kinds_outcome():
+    rows = _budget_rows()
     assert ev.budget_gates(rows)["passes"]
-    assert ev.budget_gates(rows)["checks"]["exact_case_set"]
-    assert not ev.budget_gates(rows + [rows[0]])["passes"] and not ev.budget_gates(rows[:-1])["passes"]
+    for wrong in (rows + [rows[0]], rows[:-1], rows[:-1] + [dict(rows[0], case_id="QX9")]):  # a duplicate, a missing case, a stranger
+        assert ev.budget_gates(wrong)["checks"] == {"exact_case_set": False} and not ev.budget_gates(wrong)["passes"]
+    only_f = [dict(row, arms={"F": row["arms"]["F"]}) for row in rows]  # Codex attempt 2 finding 6: an F-only reduction passed
+    assert ev.budget_gates(only_f)["checks"]["both_arms"] is False and not ev.budget_gates(only_f)["passes"]
+    for broken, check in ((_with(rows, "QO3", F__complete=False), "each_kinds_outcome"),  # QO3's F incomplete was filtered out before
+                          (_with(rows, "QB3", BU__complete=True), "each_kinds_outcome"),
+                          (_with(rows, "QO1", F__complete=True), "each_kinds_outcome"),
+                          (_with(rows, "QO4", R=30_000), "three_r_over_ceiling"),
+                          (_with(rows, "QB1", substantive_change=False), "two_ordinary_allocation_changes")):
+        result = ev.budget_gates(broken)
+        assert not result["passes"] and result["checks"][check] is False, check
+
+
+def test_the_released_budget_pass_meets_the_stricter_gates():
+    report = json.loads((ROOT / "reports/plan12-memory-m2b/calibration-budget.json").read_text(encoding="utf-8"))
+    assert ev.budget_gates(report["rows"])["passes"]
 
 
 def test_the_production_routes_give_the_forecast_budgets_and_the_routes_estimator(tmp_path):

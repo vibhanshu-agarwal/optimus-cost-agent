@@ -3,7 +3,7 @@
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "state": "DRAFT v3: Codex CP1 round 122 verified the fresh gold (44/44) and replaced five fresh queries and every paid oracle verbatim (encoded here as deterministic checks); N refuses the oversized cases; sealed after Codex confirms this encoding",
+ "state": "DRAFT v4: Codex CP1 round 122 verified the fresh gold (44/44) and replaced five fresh queries and every paid oracle verbatim; attempt 2 set the encoding table applied here (relationships tied to loci in one paragraph, negation, forbidden extras, QR loci at their snapshots); N refuses the oversized cases; sealed after Codex confirms this encoding",
  "authority": "operator 2026-11-24 \"Approve sampling\" (Claude's chat, Plan 12.14 thread) of optimus-handoff/p1214-task0/sampling-proposal.md, sha256 hex:ee232629b668773faa3342c6fc0669e82c8165a6f917eed5a17df4cc992c2054",
  "builders": {
   "fresh": "optimus-handoff/p1214-task0/m2b_fresh3_pool.py + m2b_fresh3_build.py",
@@ -232,10 +232,10 @@
   "turn": "fresh zero-tool Chat turn, no memory, no history; matched source, route, reasoning, output cap and stopping rule across arms",
   "check_rules": {
    "citation": "claim-bound (Codex round 122 finding 5): a requirement passes when one line or sentence of the reply names its path and its symbol as code (qualified name, or a last segment with an underscore or capital, or an ordinary-word segment in backticks or as a call), or cites path:start-end of at most 40 lines overlapping the symbol's span in the pinned blob; a path requirement needs its path cited",
-   "locus": "a cited locus passes when one of its names is written as code, or a path:start-end citation of at most 40 lines covers its line in the pinned blob",
-   "fact": "every group of a fact needs one phrase in the reply (case-insensitive; numbers as whole numbers); at_least n of: n distinct names as whole words; no phrase appears in the case's own task text",
-   "prohibited": "any cited repository path absent from the case's snapshot, or a cited line beyond that file's length, fails the case",
-   "status": "a reply the runner did not complete (a stop reason, or an output at the cap) is not an answer: INCOMPLETE; an expected refusal is scored only as its boundary: PASS when the row's stop reason is the declared one and zero Gateway requests were sent",
+   "locus": "a cited locus passes when one of its names is written as code (as for citations), or a forward path:start-end citation of at most 40 lines covers its line in the pinned blob (QR loci at their own snapshots)",
+   "fact": "a relationship (Codex CP1 attempt 2): one paragraph of the reply holds a phrase of every group (case-insensitive; numbers as whole numbers) and its supporting locus; no sentence carrying a group phrase is negated (not, never, neither, nor, n't) unless the fact is itself a negation; no forbidden phrase in that paragraph; at_least n of: n distinct names as whole words; every fact has a group with no phrase in the case's task text. Lexical checks are necessary, not sufficient: the CP3 support audit settles meaning",
+   "prohibited": "any cited repository path absent from the case's snapshot, a cited line beyond that file's length, or a reversed range fails the case",
+   "status": "only a settled row is an answer; any other row (a stop reason, an output at the cap, a filtered output) is INCOMPLETE; an expected refusal is scored only as its boundary: PASS when the row's stop reason is the declared one, zero Gateway requests were sent and no answer was emitted",
    "verdict": "PASS only when every applicable check passes; any FAIL is FAIL; an UNKNOWN check makes the case INCOMPLETE; no paid grader, no repair",
    "selector": "the reply text the host delivers as the turn's final answer, host-added text excluded (LIMIT_NOTICE); its digest and the scoring script's digest are frozen before any paid prompt"
   },
@@ -258,7 +258,18 @@
        ]
       }
      ],
-     "loci": [],
+     "loci": [
+      {
+       "locus_id": "L1",
+       "path": "src/optimus/acp/server.py",
+       "names": [
+        "add_done_callback",
+        "process_request",
+        "serve_ndjson"
+       ],
+       "line": 552
+      }
+     ],
      "facts": [
       {
        "fact_id": "F1",
@@ -267,20 +278,11 @@
          "add_done_callback",
          "done callback",
          "done-callback"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F2",
-       "groups": [
+        ],
         [
-         "discard"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F3",
-       "groups": [
+         "discard",
+         "remov"
+        ],
         [
          "never retriev",
          "not retriev",
@@ -295,7 +297,9 @@
          "never inspect",
          "not inspected"
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": true
       }
      ],
      "quote": null
@@ -340,7 +344,34 @@
        ]
       }
      ],
-     "loci": [],
+     "loci": [
+      {
+       "locus_id": "L1",
+       "path": "src/optimus/mcp/client_disposition.py",
+       "names": [
+        "ClientMcpRuntime.close",
+        "ClientMcpRuntime"
+       ],
+       "line": 138
+      },
+      {
+       "locus_id": "L2",
+       "path": "src/optimus/mcp/client_supervisor.py",
+       "names": [
+        "MCPAsyncSupervisor.close",
+        "MCPAsyncSupervisor"
+       ],
+       "line": 107
+      },
+      {
+       "locus_id": "L3",
+       "path": "src/optimus/acp/server.py",
+       "names": [
+        "serve_ndjson"
+       ],
+       "line": 324
+      }
+     ],
      "facts": [
       {
        "fact_id": "F1",
@@ -353,7 +384,9 @@
          "first stage that raises",
          "stops on the first"
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": false
       },
       {
        "fact_id": "F2",
@@ -366,8 +399,19 @@
          "5-second",
          "join times out",
          "join timed out"
+        ],
+        [
+         "dead"
+        ],
+        [
+         "alive",
+         "still running",
+         "keeps running",
+         "remain"
         ]
-       ]
+       ],
+       "locus": "L2",
+       "negated": false
       },
       {
        "fact_id": "F3",
@@ -385,7 +429,9 @@
          "return value is ignored",
          "never looks at"
         ]
-       ]
+       ],
+       "locus": "L3",
+       "negated": true
       }
      ],
      "quote": null
@@ -439,34 +485,64 @@
        ]
       }
      ],
-     "loci": [],
+     "loci": [
+      {
+       "locus_id": "L1",
+       "path": "src/optimus/mcp/client_config.py",
+       "names": [
+        "constructed_child_environ",
+        "_resolve_stdio_command"
+       ],
+       "line": 105
+      },
+      {
+       "locus_id": "L2",
+       "path": "src/optimus/acp/bootstrap.py",
+       "names": [
+        "build_client_mcp_runtime",
+        "build_configured_server"
+       ],
+       "line": 168
+      }
+     ],
      "facts": [
       {
        "fact_id": "F1",
        "groups": [
         [
-         "os.environ"
+         "stops",
+         "stop being",
+         "not passed",
+         "isn't passed",
+         "no longer",
+         "dropped",
+         "drops",
+         "lost"
         ]
-       ]
+       ],
+       "locus": "L2",
+       "negated": true
       },
       {
        "fact_id": "F2",
        "groups": [
         [
+         "os.environ"
+        ],
+        [
          "SystemRoot",
          "SYSTEMROOT",
          "PATHEXT"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F3",
-       "groups": [
+        ],
         [
-         "constructed_child_environ",
-         "_resolve_stdio_command"
+         "child",
+         "subprocess",
+         "resolv",
+         "construct"
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": false
       }
      ],
      "quote": null
@@ -528,40 +604,64 @@
        ]
       }
      ],
-     "loci": [],
+     "loci": [
+      {
+       "locus_id": "L1",
+       "path": "src/optimus/acp/debug_trace.py",
+       "names": [
+        "acp_debug_log",
+        "redact_for_telemetry"
+       ],
+       "line": 186
+      }
+     ],
      "facts": [
       {
        "fact_id": "F1",
        "groups": [
         [
-         "debug_trace_enabled",
-         ".enabled"
+         "redact_for_telemetry"
+        ],
+        [
+         "outside",
+         "before the lock",
+         "before acquiring",
+         "unguarded",
+         "not inside",
+         "not within"
+        ],
+        [
+         "write",
+         "lock",
+         "guard"
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": true
       },
       {
        "fact_id": "F2",
        "groups": [
         [
-         "redact_for_telemetry"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F3",
-       "groups": [
+         "debug_trace_enabled",
+         ".enabled",
+         "enabled check"
+        ],
         [
-         "before the sink checks",
-         "before it checks",
-         "before checking",
-         "built before",
-         "constructed before",
+         "before",
          "eagerly",
-         "regardless of whether",
-         "even when tracing is off",
-         "even when it is off"
+         "regardless",
+         "already built",
+         "already constructed"
+        ],
+        [
+         "payload",
+         "data",
+         "message"
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": false
       }
      ],
      "quote": null
@@ -619,24 +719,34 @@
          "0.25",
          "a quarter",
          "one quarter"
+        ],
+        [
+         "signature"
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": false
       },
       {
        "fact_id": "F2",
        "groups": [
         [
          "empty"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F3",
-       "groups": [
+        ],
         [
          "missing"
+        ],
+        [
+         "exceed",
+         "over the",
+         "larger than",
+         "more than",
+         "too large",
+         "bigger"
         ]
-       ]
+       ],
+       "locus": "L2",
+       "negated": false
       }
      ],
      "quote": null
@@ -691,22 +801,18 @@
        "groups": [
         [
          "60"
+        ],
+        [
+         "constant",
+         "RRF",
+         "k "
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": false
       },
       {
        "fact_id": "F2",
-       "groups": [
-        [
-         "dense"
-        ],
-        [
-         "lexical"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F3",
        "groups": [
         [
          "dense first",
@@ -715,12 +821,12 @@
          "begins with dense",
          "dense, then lexical",
          "dense then lexical",
-         "dense-1",
-         "dense 1",
-         "dense comes first",
-         "first dense"
+         "dense 1, lexical 1",
+         "dense-1, lexical-1"
         ]
-       ]
+       ],
+       "locus": "L2",
+       "negated": false
       }
      ],
      "quote": null
@@ -775,8 +881,13 @@
        "groups": [
         [
          "40"
+        ],
+        [
+         "entr"
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": false
       },
       {
        "fact_id": "F2",
@@ -787,19 +898,20 @@
          "12 KiB",
          "12KiB",
          "12 * 1024"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F3",
-       "groups": [
+        ],
+        [
+         "byte"
+        ],
         [
          "framing",
          "header",
          "navigation",
-         "markers"
+         "marker",
+         "includ"
         ]
-       ]
+       ],
+       "locus": "L2",
+       "negated": false
       }
      ],
      "quote": null
@@ -859,8 +971,13 @@
          "262144",
          "262,144",
          "262_144"
+        ],
+        [
+         "token"
         ]
-       ]
+       ],
+       "locus": "L1",
+       "negated": false
       },
       {
        "fact_id": "F2",
@@ -877,6 +994,13 @@
         [
          "escalation"
         ]
+       ],
+       "locus": "L2",
+       "negated": false,
+       "forbid": [
+        "summarizer",
+        "reviewer",
+        "classifier"
        ]
       }
      ],
@@ -916,7 +1040,8 @@
        "locus_id": "L1",
        "path": "src/optimus/acp/launch_gate.py",
        "names": [
-        "resolve_launch_candidate"
+        "resolve_launch_candidate",
+        "LaunchCandidate"
        ],
        "line": 502
       },
@@ -924,14 +1049,15 @@
        "locus_id": "L2",
        "path": "src/optimus/acp/launch_gate.py",
        "names": [
-        "authorize_launch"
+        "authorize_launch",
+        "AuthorizedLaunch"
        ],
        "line": 891
       }
      ],
      "facts": [
       {
-       "fact_id": "F1",
+       "fact_id": "F0",
        "at_least": 2,
        "of": [
         "resolve_launch_candidate",
@@ -939,6 +1065,21 @@
         "LaunchCandidate",
         "AuthorizedLaunch"
        ]
+      },
+      {
+       "fact_id": "F1",
+       "groups": [
+        [
+         "config"
+        ],
+        [
+         "security",
+         "identity",
+         "credential"
+        ]
+       ],
+       "locus": "L1",
+       "negated": false
       },
       {
        "fact_id": "F2",
@@ -950,16 +1091,13 @@
          "one-shot",
          "one shot",
          "monotonic"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F3",
-       "groups": [
+        ],
         [
-         "approval"
+         "approv"
         ]
-       ]
+       ],
+       "locus": "L2",
+       "negated": false
       }
      ],
      "quote": null
@@ -998,37 +1136,45 @@
        "locus_id": "L1",
        "path": "src/optimus/context/memory_import.py",
        "names": [
-        "preview_text",
-        "Preview"
+        "Importer.preview"
        ],
-       "line": 874
+       "line": 658
       },
       {
        "locus_id": "L2",
        "path": "src/optimus/context/memory_import.py",
        "names": [
-        "Importer"
+        "Importer.apply"
        ],
-       "line": 638
+       "line": 684
       }
      ],
      "facts": [
       {
        "fact_id": "F1",
-       "at_least": 2,
-       "of": [
-        "Importer",
-        "Reader",
-        "Preview",
-        "preview_text",
-        "ImportLog"
-       ]
+       "groups": [
+        [
+         "preview"
+        ],
+        [
+         "before",
+         "without writ",
+         "nothing is written",
+         "no write",
+         "prior"
+        ]
+       ],
+       "locus": "L1",
+       "negated": true
       },
       {
        "fact_id": "F2",
        "groups": [
         [
-         "preview"
+         "appl"
+        ],
+        [
+         "confirm"
         ],
         [
          "digest",
@@ -1036,9 +1182,14 @@
          "hash"
         ],
         [
-         "confirm"
+         "recheck",
+         "re-check",
+         "check",
+         "verif"
         ]
-       ]
+       ],
+       "locus": "L2",
+       "negated": false
       }
      ],
      "quote": null
@@ -1093,39 +1244,40 @@
      "facts": [
       {
        "fact_id": "F1",
-       "at_least": 2,
-       "of": [
-        "build_repo_map",
-        "rank",
-        "neighbours",
-        "imports_of",
-        "MapFile",
-        "RepoMap"
-       ]
+       "groups": [
+        [
+         "rank"
+        ],
+        [
+         "import"
+        ],
+        [
+         "edge",
+         "observ",
+         "graph"
+        ]
+       ],
+       "locus": "L1",
+       "negated": false
       },
       {
        "fact_id": "F2",
        "groups": [
         [
-         "import"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F3",
-       "groups": [
-        [
-         "budget"
-        ]
-       ]
-      },
-      {
-       "fact_id": "F4",
-       "groups": [
+         "whole",
+         "entire",
+         "complete"
+        ],
         [
          "symbol"
+        ],
+        [
+         "budget",
+         "character"
         ]
-       ]
+       ],
+       "locus": "L2",
+       "negated": false
       }
      ],
      "quote": null
@@ -1171,7 +1323,7 @@
        "were not given",
        "not included"
       ],
-      "pass": "a scorer control only: one contiguous block equal to lines 1123-1131 (line endings normalized), or an explicit statement that the requested lines are unavailable with no purported quote"
+      "pass": "a scorer control only: exactly one fenced block equal to lines 1123-1131 (line endings normalized) and no other code; or a sentence that names the requested lines or source and says they are unavailable, with no fenced block and no code-like line"
      }
     },
     "boundary": {

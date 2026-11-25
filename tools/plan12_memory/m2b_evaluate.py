@@ -227,22 +227,32 @@ def budget_case(case: Mapping[str, Any], retrieval: Retrieval, read: Callable[[s
 
 
 BUDGET_CASES: Final = ("QB1", "QB2", "QB3", "QB4", "QO1", "QO2", "QO3", "QO4")
+# Each kind's pack completeness in (B/U, F) before Task 3's outline: over-ceiling files are incomplete in both until then.
+BUDGET_OUTCOMES: Final = {"ordinary-fit": (True, True), "required-over-legacy": (False, True), "whole-summary": (True, True), "outline": (False, False),
+                          "exact-over-ceiling": (False, False)}
 
 
 def budget_gates(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """One measurement's eight budget/outline rows, each exactly once (Codex CP1 round 122 finding 6); apply it per repetition."""
+    """One measurement's eight budget/outline rows, each exactly once with both arms and its kind's own outcome (Codex CP1 round 122
+    finding 6; attempt 2 finding 6); apply it per repetition."""
     ids = sorted(row["case_id"] for row in rows)
     if ids != sorted(BUDGET_CASES):
         return {"checks": {"exact_case_set": False}, "passes": False, "case_ids": ids}
+    if any(set(row.get("arms", {})) != {"BU", "F"} for row in rows):
+        return {"checks": {"exact_case_set": True, "both_arms": False}, "passes": False}
     budget = [row for row in rows if row["case_id"].startswith("QB")]
     ordinary = [row for row in budget if row["kind"] == "ordinary-fit"]
     over = [row for row in budget if row["kind"] == "required-over-legacy"]
+    beyond = [row for row in rows if row["kind"] in {"outline", "exact-over-ceiling"}]
     checks = {
         "all_four_change": len(budget) == 4 and all(row["substantive_change"] for row in budget),
-        "two_ordinary_allocation_changes": len(ordinary) == 2 and all(row["substantive_change"] and row["arms"]["F"]["complete"] for row in ordinary),
-        "two_r_in_legacy_to_ceiling": len(over) == 2 and all(row["r_in_legacy_to_ceiling"] and row["arms"]["F"]["complete"] for row in over),
+        "two_ordinary_allocation_changes": len(ordinary) == 2 and all(row["substantive_change"] for row in ordinary),
+        "two_r_in_legacy_to_ceiling": len(over) == 2 and all(row["r_in_legacy_to_ceiling"] for row in over),
+        "three_r_over_ceiling": len(beyond) == 3 and all(row["R"] > row["C"] for row in beyond),
+        "each_kinds_outcome": all((row["arms"]["BU"]["complete"], row["arms"]["F"]["complete"]) == BUDGET_OUTCOMES[row["kind"]] for row in rows),
         "every_complete_f_fits_q_cap": all(row["fits_q_cap"] for row in rows if row["arms"]["F"]["complete"]),
         "exact_case_set": True,
+        "both_arms": True,
     }
     return {"checks": checks, "passes": all(checks.values())}
 
@@ -278,14 +288,6 @@ def policy_reader(root: Path) -> Callable[[str], bytes | None]:
     def read(path: str) -> bytes | None:
         decision, data = policy.read(path, purpose=FilePurpose.AUTOMATIC)
         return data if decision.allowed else None
-
-    return read
-
-
-def _reader(root: Path) -> Callable[[str], bytes | None]:
-    def read(path: str) -> bytes | None:
-        file = m1_scale.long_path(root) / path
-        return file.read_bytes() if file.is_file() else None
 
     return read
 
@@ -331,7 +333,7 @@ def _repetition(config: Mapping[str, Any], repository: Path, snapshots: Mapping[
             m1_evaluate.materialize(repository, revision, tree, branch=f"cutoff-{revision[:12]}")
             inject(tree, injection)
             index = _index(tree, settings, embedder, trees, revision)
-            retriever, read = Retriever(index.storage, embedder), _reader(tree)
+            retriever, read = Retriever(index.storage, embedder), policy_reader(tree)  # production's admitted reader (Codex CP1 attempt 2 finding 6)
             for case in [*group, control_case(injection, f"git:{revision}", group[0].cutoff.isoformat())]:
                 query = next(item.text for item in case.inputs if item.actor == "user" and item.text)
                 retrieval = retrieve(retriever, query)
