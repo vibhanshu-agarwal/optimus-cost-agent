@@ -16,12 +16,16 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
 import re
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Final
 
 from optimus.agent.index_turn import LIMIT_NOTICE
+from tools.plan12_memory import m2b_paid as paid
 
 PASS: Final = "PASS"
 FAIL: Final = "FAIL"
@@ -202,49 +206,83 @@ def _sha(text: str) -> str:
 SCORER_SHA256: Final = "hex:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 # The sealed cases (evaluation contract inputs.cases_sha256, CP1): paid scoring runs against exactly these bytes (Codex CP1 attempt 7, B).
 SEALED_CASES_SHA256: Final = "hex:17a8e68d6fdac9acb91e4d885a4128a7609a411c5967a96e438d655c69e6ea36"  # pragma: allowlist secret - a content digest
+# Where the operator's authority for a hold is recorded: a comment on the plan's issue (Codex round 124 B4).
+OPERATOR_COMMENT: Final = re.compile(r"https://github\.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-\d+")
+
+
+@dataclass(frozen=True)
+class VerifiedCases:
+    """The paid cases as read from their sealed bytes, with each row's allowance from the frozen schedule (Codex round 124 B3): the scorer
+    never takes a caller's digest string or a row's own allowance on trust."""
+
+    sha256: str
+    by_id: Mapping[str, Mapping[str, Any]]
+    allowance: Mapping[tuple[str, str], int]
+
+
+def verify_cases(data: bytes, *, u_equals_b: bool, outline_available: bool) -> VerifiedCases:
+    digest = "hex:" + hashlib.sha256(data).hexdigest()
+    if digest != SEALED_CASES_SHA256:
+        raise ValueError("paid scoring needs the sealed cases bytes")
+    cases = json.loads(data)["paid_q"]["cases"]
+    return VerifiedCases(digest, MappingProxyType({case["case_id"]: case for case in cases}),
+                         MappingProxyType(paid.expected_calls(cases, u_equals_b=u_equals_b, outline_available=outline_available)))
+
+
+def material_claims(case: Mapping[str, Any]) -> tuple[str, ...]:
+    """The claims a support ruling must rule on, one by one: each of the screen's citation and fact checks (Codex round 124 B4)."""
+    return (*(f"citation:{r['requirement_id']}" for r in case["checks"]["citations"]), *(f"fact:{f['fact_id']}" for f in case["checks"]["facts"]))
 
 
 def audit_identity(case: Mapping[str, Any], arm: str, *, release: str | None, answer: str, cases_sha256: str | None,
-                   input_sha256: str | None = None) -> dict[str, Any]:
+                   input_sha256: str | None = None, pack_sha256: str | None = None) -> dict[str, Any]:
     """What a support-audit ruling is bound to: exactly one answer's bytes in one release, case and arm, at one snapshot, under this
-    scorer and these cases (Codex CP1 attempt 4 finding 5), and on a paid row the exact request the model received (Q-release gate item 15;
-    the pack is inside that request)."""
+    scorer and these cases (Codex CP1 attempt 4 finding 5), and on a paid row the exact request the model received (Q-release gate item 15)
+    and the pack it carried (Codex round 124 B4)."""
     return {"release": release, "case_id": case["case_id"], "arm": arm, "answer_sha256": _sha(answer), "snapshot": case["snapshot"],
-            "scorer_sha256": SCORER_SHA256, "cases_sha256": cases_sha256, "input_sha256": input_sha256}
+            "scorer_sha256": SCORER_SHA256, "cases_sha256": cases_sha256, "input_sha256": input_sha256, "pack_sha256": pack_sha256}
 
 
-def _quotes_received(audit: Mapping[str, Any] | None, delivered: str) -> bool:
-    """Every supported ruling quotes, verbatim, the evidence it relied on, and each quote is in what the model received (item 15): a
-    fact true of the repository but absent from the request does not support the answer."""
+def _claims_quoted(audit: Mapping[str, Any] | None, delivered: str) -> bool:
+    """Every claim a ruling supports quotes, verbatim, the evidence it relied on, and each quote is in what the model received (item 15;
+    Codex round 124 B4, per material claim): a fact true of the repository but absent from the request supports nothing."""
     rulings = audit.get("rulings") if isinstance(audit, Mapping) else None
     for ruling in rulings if isinstance(rulings, list | tuple) else ():
-        if isinstance(ruling, Mapping) and ruling.get("supported") is True:
-            quotes = ruling.get("quotes")
-            if not (isinstance(quotes, list | tuple) and quotes and all(isinstance(q, str) and q.strip() and q in delivered for q in quotes)):
-                return False
+        for claim in ruling.get("claims") or () if isinstance(ruling, Mapping) else ():
+            if isinstance(claim, Mapping) and claim.get("supported") is True:
+                quotes = claim.get("quotes")
+                if not (isinstance(quotes, list | tuple) and quotes and all(isinstance(q, str) and q.strip() and q in delivered for q in quotes)):
+                    return False
     return True
 
 
-def _ruling_valid(ruling: Any) -> bool:
-    """A reviewer named by a string (a list or dict is malformed, never a raise: Codex CP1 attempt 7, B), a boolean `supported` and a
-    non-blank string reason."""
-    return (isinstance(ruling, Mapping) and isinstance(ruling.get("reviewer"), str) and ruling["reviewer"] in AUDIT_REVIEWERS
-            and isinstance(ruling.get("supported"), bool) and isinstance(ruling.get("reason"), str) and bool(ruling["reason"].strip()))
+def _ruling_valid(ruling: Any, claims: Sequence[str]) -> bool:
+    """A reviewer named by a string (a list or dict is malformed, never a raise: Codex CP1 attempt 7, B), a boolean `supported`, a
+    non-blank string reason, and one ruling per material claim, exactly those claims, the ruling supported only when every claim is
+    (Codex round 124 B4)."""
+    if not (isinstance(ruling, Mapping) and isinstance(ruling.get("reviewer"), str) and ruling["reviewer"] in AUDIT_REVIEWERS
+            and isinstance(ruling.get("supported"), bool) and isinstance(ruling.get("reason"), str) and bool(ruling["reason"].strip())):
+        return False
+    ruled = ruling.get("claims")
+    if not (isinstance(ruled, list | tuple) and all(isinstance(c, Mapping) and isinstance(c.get("check"), str) and isinstance(c.get("supported"), bool) for c in ruled)):
+        return False
+    return sorted(c["check"] for c in ruled) == sorted(claims) and ruling["supported"] == all(c["supported"] for c in ruled)
 
 
 def _held(audit: Mapping[str, Any] | None, identity: Mapping[str, Any]) -> bool:
     """The operator's predeclared hold on a suspected false screen failure (Q-release gate item 6): bound to this exact answer, with a
-    non-blank reason. It only removes the answer from every gate; nothing is rescored."""
+    non-blank reason and the operator's authority, a link to their comment on #548 (Codex round 124 B4). It only removes the answer from
+    every gate; nothing is rescored."""
     hold = audit.get("operator_hold") if isinstance(audit, Mapping) else None
-    return (isinstance(hold, Mapping) and audit.get("identity") == dict(identity) and isinstance(hold.get("reason"), str)
-            and bool(hold["reason"].strip()))
+    return (isinstance(hold, Mapping) and audit.get("identity") == dict(identity) and isinstance(hold.get("reason"), str) and bool(hold["reason"].strip())
+            and hold.get("by") == "operator" and isinstance(hold.get("authority"), str) and OPERATOR_COMMENT.fullmatch(hold["authority"]) is not None)
 
 
-def answer_verdict(screen: str, audit: Mapping[str, Any] | None, identity: Mapping[str, Any]) -> tuple[str, str]:
+def answer_verdict(screen: str, audit: Mapping[str, Any] | None, identity: Mapping[str, Any], claims: Sequence[str]) -> tuple[str, str]:
     """(verdict, audit status). A screen FAIL or INCOMPLETE is final. A screen PASS becomes PASS only when the audit record is bound to
-    this exact answer (`identity`) and holds one valid ruling from each designated CP3 reviewer (a boolean `supported` and a non-blank
-    string reason), both supported; both unsupported is FAIL. A missing, mismatched, malformed, incomplete or disputed ruling stays
-    PENDING_AUDIT and contributes to no gate (Codex CP1 attempts 4-5, finding 5)."""
+    this exact answer (`identity`) and holds one valid ruling from each designated CP3 reviewer (a boolean `supported`, a non-blank
+    string reason and a ruling on each of `claims`), both supported; both unsupported is FAIL. A missing, mismatched, malformed, incomplete
+    or disputed ruling stays PENDING_AUDIT and contributes to no gate (Codex CP1 attempts 4-5, finding 5)."""
     if screen == FAIL and _held(audit, identity):
         return HELD, "operator hold: suspected false screen failure, not rescored"
     if screen != PASS:
@@ -254,7 +292,7 @@ def answer_verdict(screen: str, audit: Mapping[str, Any] | None, identity: Mappi
     if audit.get("identity") != dict(identity):
         return PENDING_AUDIT, "mismatched"
     rulings = audit.get("rulings")
-    if (not isinstance(rulings, list | tuple) or len(rulings) != len(AUDIT_REVIEWERS) or not all(_ruling_valid(r) for r in rulings)
+    if (not isinstance(rulings, list | tuple) or len(rulings) != len(AUDIT_REVIEWERS) or not all(_ruling_valid(r, claims) for r in rulings)
             or {r["reviewer"] for r in rulings} != AUDIT_REVIEWERS):
         return PENDING_AUDIT, "incomplete ruling"
     supported = {r["supported"] for r in rulings}
@@ -265,29 +303,44 @@ def answer_verdict(screen: str, audit: Mapping[str, Any] | None, identity: Mappi
     return PENDING_AUDIT, "disputed: held for the operator"
 
 
+def _boundary_text(case: Mapping[str, Any], row: Mapping[str, Any], answer: str | None) -> bool:
+    """What a clean refusal delivered: nothing, or exactly production's too-large notice for one of the case's required files, which is
+    what the producer stores for a refused row (Codex round 124 B3); either way bound to the producer's recorded answer digest."""
+    if answer is None:
+        return row.get("answer_sha256") is None
+    required = [item["path"] for item in case.get("required_files", [])]
+    return row.get("answer_sha256") == _sha(answer) and not paid.emitted_answer(row.get("stop_reason"), answer, required)
+
+
 def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer: str | None, read: Read, audit: Mapping[str, Any] | None = None, *,
-              cases_sha256: str, release: str, delivered_input: str | None) -> dict[str, Any]:
+              cases: VerifiedCases, release: str, delivered_input: str | None) -> dict[str, Any]:
     """One paid (case, arm) row, scored against the producer's own record. A row the runner allowed no send (its own
     expected_logical_requests, so F on the outline cases before Task 3's outline too) scores only its boundary: a clean expected_zero_call
     terminal with the declared stop reason, zero Gateway requests and no emitted answer. Otherwise only a settled row's delivered answer is
     scored, and only when it is the answer the producer recorded (its case, arm and answer_sha256; Codex CP1 attempt 5 finding 5): screen
     first, then its bound support audit under the verified cases digest. Any other row is INCOMPLETE.
 
-    The cases digest must be the sealed one, and `release` the release being scored: a row from any other release is INCOMPLETE (Codex CP1
-    attempt 7, B). A boundary row must be the producer's own row for this case and arm, say explicitly that it emitted no answer, and
-    come with no answer text. An answer is scored only with the request text the model received (`delivered_input`, from the sink
-    outside the repository), which must be the row's own sent input; a supported ruling must quote from it (item 15)."""
-    if cases_sha256 != SEALED_CASES_SHA256:
-        raise ValueError("paid scoring needs the verified cases digest")
+    `cases` is read from the sealed bytes (verify_cases) and `case` must be its own (Codex round 124 B3); the row's allowance must be the
+    frozen schedule's, never just the producer's. `release` is the release being scored: a row from any other release is INCOMPLETE (Codex
+    CP1 attempt 7, B). A boundary row must be the producer's own row for this case and arm, say explicitly that it emitted no answer, and
+    carry no answer text beyond production's own refusal notice. An answer is scored only with the request text the model received
+    (`delivered_input`, from the sink outside the repository), which must be the row's own sent input; each supported claim must quote
+    from it (item 15)."""
+    if not isinstance(cases, VerifiedCases) or cases.by_id.get(case.get("case_id")) != case:
+        raise ValueError("paid scoring needs the case read from the sealed cases bytes")
     if not (isinstance(release, str) and release):
         raise ValueError("paid scoring needs the expected release")
     if row.get("release") != release:
         return {"case_id": case["case_id"], "arm": arm, "kind": "row", "checks": {"release": UNKNOWN}, "reason": "another release", "verdict": INCOMPLETE}
-    if row["expected_logical_requests"] == 0:
+    allowance = cases.allowance.get((case["case_id"], arm))
+    if allowance is None or row.get("expected_logical_requests") != allowance:
+        return {"case_id": case["case_id"], "arm": arm, "kind": "row", "checks": {"allowance": UNKNOWN}, "reason": "the row's allowance is not the frozen schedule's",
+                "verdict": INCOMPLETE}
+    if allowance == 0:
         boundary = case.get("boundary") or {}
         ok = ((row.get("case_id"), row.get("arm")) == (case["case_id"], arm) and row.get("terminal") == "expected_zero_call"
               and row.get("stop_reason") == boundary.get("stop_reason") and row.get("logical_requests") == boundary.get("gateway_requests", 0)
-              and row.get("emitted_answer") is False and answer is None)
+              and row.get("emitted_answer") is False and _boundary_text(case, row, answer))
         return {"case_id": case["case_id"], "arm": arm, "kind": "boundary", "checks": {"boundary": PASS if ok else FAIL}, "verdict": PASS if ok else FAIL}
     text = select(answer)
     settled = row.get("terminal") == "settled" and not any(sent.get("finish_reason") in {"length", "content_filter"} for sent in row.get("sent", []))
@@ -301,10 +354,10 @@ def score_row(case: Mapping[str, Any], arm: str, row: Mapping[str, Any], answer:
                 "verdict": INCOMPLETE}
     checks = score_answer(case, text, read)
     screen = verdict(checks)
-    identity = audit_identity(case, arm, release=release, answer=answer, cases_sha256=cases_sha256, input_sha256=sent_input)
-    final, status = answer_verdict(screen, audit, identity)
-    if final == PASS and not _quotes_received(audit, delivered_input):
-        final, status = PENDING_AUDIT, "a supported ruling quotes nothing the model received"
+    identity = audit_identity(case, arm, release=release, answer=answer, cases_sha256=cases.sha256, input_sha256=sent_input, pack_sha256=row.get("pack_sha256"))
+    final, status = answer_verdict(screen, audit, identity, material_claims(case))
+    if final == PASS and not _claims_quoted(audit, delivered_input):
+        final, status = PENDING_AUDIT, "a supported claim quotes nothing the model received"
     return {"case_id": case["case_id"], "arm": arm, "kind": "answer", "checks": checks, "screen": screen, "audit": status, "audit_identity": identity, "verdict": final}
 
 
@@ -315,5 +368,5 @@ def score(case: Mapping[str, Any], final_answer: str | None, read: Read, audit: 
     checks = {"answer": UNKNOWN} if final_answer is None or text is None else score_answer(case, text, read)
     screen = verdict(checks)
     identity = audit_identity(case, arm, release=release, answer=final_answer or "", cases_sha256=cases_sha256)
-    final, status = answer_verdict(screen, audit, identity)
+    final, status = answer_verdict(screen, audit, identity, material_claims(case))
     return {"case_id": case["case_id"], "checks": checks, "screen": screen, "audit": status, "audit_identity": identity, "verdict": final}
