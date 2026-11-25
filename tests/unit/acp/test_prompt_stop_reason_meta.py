@@ -264,8 +264,8 @@ async def test_the_record_of_a_cancel_accepted_before_the_oversized_plan_termina
 
     assert result["_meta"]["outcome"] == "cancelled" == turn.settlement_event_outcome()
     [record] = turn.records().values()  # a record is committed for the turn
-    # #558: today the record keeps failed while the settlement is cancelled; the ruling on which is authoritative is pending.
-    assert record.outcome is ConversationOutcome.FAILED
+    # #558: the record follows the settlement (operator ruling, 2026-11-25); the handler had passed failed.
+    assert record.outcome is ConversationOutcome.CANCELLED
     assert record.plan_text == "", "the oversized plan itself is not kept"
     assert CONTEXT_PLAN_TOO_LARGE_TEXT in record.completion_text, "the refusal text is kept as the completion"
 
@@ -278,6 +278,6 @@ async def test_the_record_of_a_cancel_accepted_while_the_approved_run_is_in_flig
 
     assert result["_meta"]["outcome"] == "cancelled" == turn.settlement_event_outcome()
     [record] = turn.records().values()  # a record is committed for the turn
-    # #558: today the record keeps completed while the settlement is cancelled; the ruling on which is authoritative is pending.
-    assert record.outcome is ConversationOutcome.COMPLETED
+    # #558: the record follows the settlement (operator ruling, 2026-11-25); the handler had passed completed.
+    assert record.outcome is ConversationOutcome.CANCELLED
     assert record.completion_text == "Turn completed."

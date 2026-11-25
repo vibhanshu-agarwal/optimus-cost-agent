@@ -3361,6 +3361,10 @@ class AcpDuplexAdapter:
         completion_text: str | None = None,
     ) -> None:
         turn.turn_control.record_outcome(Settlement(outcome.value))
+        if turn.turn_control.settlement is Settlement.CANCELLED:
+            # #558: an accepted cancel settles the turn cancelled whatever the handler passed; the record, the
+            # checkpoint, memory and Auto routing below follow the settlement.
+            outcome = ConversationOutcome.CANCELLED
         raw_plan = result.candidate_plan_text or ""
         plan_text = conversation.sanitize_text(raw_plan) if raw_plan else ""
         completion = conversation.sanitize_text(
