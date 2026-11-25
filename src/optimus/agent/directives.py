@@ -454,6 +454,7 @@ def _validate_relative_path(path_text: str) -> None:
 # is not judged here: it may be text that holds a colon or a wildcard (-p no:cacheprovider, --ignore-glob=*_slow.py).
 _PYTEST_PATH_OPTIONS = frozenset({"-c", "--rootdir", "--confcutdir", "--basetemp", "--junitxml", "--junit-xml", "--debug"})
 _PYTEST_BARE_FLAGS = re.compile(r"-[qvxsl]+")
+_PYTEST_GROUPED_CONFIG = re.compile(r"-[qvxsl]+c")  # -qc NUL
 
 
 def _parse_test_command(command_text: str) -> tuple[str, ...]:
@@ -482,17 +483,17 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
         if token == "--" and not operands_only:
             operands_only = True
             continue
-        bare = token.strip("'" + '"')
+        # The token is judged as pytest receives it: the split keeps quotes, so a quoted path is a path with quotes.
         if operands_only or not token.startswith("-"):
-            if not operands_only and previous in _PYTEST_PATH_OPTIONS:
-                shaped = windows_path_shape(bare)
+            if not operands_only and (previous in _PYTEST_PATH_OPTIONS or _PYTEST_GROUPED_CONFIG.fullmatch(previous)):
+                shaped = windows_path_shape(token)
             elif operands_only or not previous.startswith("-") or "=" in previous or _PYTEST_BARE_FLAGS.fullmatch(previous):
-                shaped = windows_path_shape(bare.split("::", 1)[0])
+                shaped = windows_path_shape(token.split("::", 1)[0])
             else:
                 shaped = False  # the value of an option this rule does not know
         else:
             option, _, value = token.partition("=")
-            shaped = option in _PYTEST_PATH_OPTIONS and windows_path_shape(value.strip("'" + '"'))
+            shaped = option in _PYTEST_PATH_OPTIONS and windows_path_shape(value)
         if token.startswith("@") or shaped:
             raise AgentDirectiveParseError("unsafe TEST directive")
     return tokens
