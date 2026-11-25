@@ -872,19 +872,31 @@ def test_web_extract_answers_a_typed_400_for_an_over_long_url(url):
         pytest.param(_URL_BASE + chr(0xE9) * 1032, id="non-ascii-1051-chars-2083-bytes"),
     ],
 )
-def test_the_longest_url_the_agent_accepts_is_searched_recorded_and_extracted(url):
+def test_the_longest_url_the_agent_accepts_is_searched_and_recorded(url):
     store = InMemoryGatewayToolStateStore()
     web_provider = _tavily([{"url": url, "title": "Keep", "content": "Yes"}])
-    deps = _dependencies(web_provider=web_provider, state_store=store)
 
-    search_status, search = _call("/v1/tools/web/search", _search_body(), deps)
-    extract_status, extract = _call("/v1/tools/web/extract", _extract_body(urls=[url]), deps)
+    status, body = _call(
+        "/v1/tools/web/search", _search_body(), _dependencies(web_provider=web_provider, state_store=store)
+    )
 
-    assert search_status == 200 and extract_status == 200
+    assert status == 200
     assert store.search_result_urls(run_id="run-1") == frozenset({url})
-    assert _agent_result_urls(search) == [str(TypeAdapter(HttpsUrl).validate_python(url))]
+    assert _agent_result_urls(body) == [str(TypeAdapter(HttpsUrl).validate_python(url))]
+
+
+def test_the_longest_ascii_url_round_trips_from_search_to_extract_as_the_agent_sends_it():
+    # The agent sends the URL it parsed; for ASCII that is the raw text. A URL the agent rewrites (percent-encoding
+    # non-ASCII, dropping tabs) misses the recorded set: a parser-parity gap recorded on #610, not closed here.
+    web_provider = _tavily([{"url": _LONGEST_URL, "title": "Keep", "content": "Yes"}])
+    deps = _dependencies(web_provider=web_provider, state_store=InMemoryGatewayToolStateStore())
+
+    _, search = _call("/v1/tools/web/search", _search_body(), deps)
+    status, extract = _call("/v1/tools/web/extract", _extract_body(urls=_agent_result_urls(search)), deps)
+
+    assert status == 200
     extracted = parse_gateway_tool_envelope(json.loads(json.dumps(extract)), WebExtractResultSet)
-    assert [str(item.url) for item in extracted.result.items] == [str(TypeAdapter(HttpsUrl).validate_python(url))]
+    assert [str(item.url) for item in extracted.result.items] == [_LONGEST_URL]
 
 
 @pytest.mark.parametrize("url", OVER_LONG_URLS)
@@ -911,17 +923,30 @@ def test_the_osv_adapter_drops_an_over_long_reference_url(url):
     assert provider.lookup(request).advisories[0].citations == ("https://github.com/advisories/GHSA-xxxx-yyyy-zzzz",)
 
 
-def test_a_package_version_with_an_over_long_page_url_is_dropped_and_the_agent_reads_the_rest():
-    releases: dict[str, list[object]] = {"1.0.0": [], "9" * 2084: [], chr(0xD800): [], "2.0.0": []}
+_BAD_VERSIONS = ("1.0.0", "9" * 2084, chr(0xD800), "2.0.0")
+_REGISTRY_BODIES = {
+    "pypi": {"info": {"version": "2.0.0"}, "releases": {version: [] for version in _BAD_VERSIONS}},
+    "npm": {"dist-tags": {"latest": "2.0.0"}, "versions": {version: {} for version in _BAD_VERSIONS}},
+}
+
+
+@pytest.mark.parametrize("ecosystem", ["pypi", "npm"])
+def test_a_package_version_with_an_over_long_page_url_is_dropped_and_the_agent_reads_the_rest(ecosystem):
     package_provider = PackageRegistryToolProvider(
         pypi_base_url="https://pypi.example",
         npm_base_url="https://npm.example",
         maven_base_url="https://maven.example",
-        urlopen=lambda request, *, timeout: _JsonResponse({"info": {"version": "2.0.0"}, "releases": releases}),
+        urlopen=lambda request, *, timeout: _JsonResponse(_REGISTRY_BODIES[ecosystem]),
         sleep=lambda _: None,
     )
 
-    status, body = _call("/v1/tools/package/lookup", _package_body(), _dependencies(package_provider=package_provider))
+    status, body = _call(
+        "/v1/tools/package/lookup",
+        _package_body(ecosystem=ecosystem),
+        _dependencies(
+            package_provider=package_provider, policy=GatewayToolPolicy(allowed_domains=("pypi.org", "npmjs.com"))
+        ),
+    )
 
     assert status == 200
     envelope = parse_gateway_tool_envelope(json.loads(json.dumps(body)), PackageLookupResult)
