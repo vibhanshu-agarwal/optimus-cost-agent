@@ -279,7 +279,18 @@ def full_input(prefix: str, task: str, estimate_request: Callable[[str], int] | 
 
 
 def retrieve(retriever: Retriever, query: str, *, named: Sequence[str] = ()) -> Retrieval:
+    """Calibration's call, frozen with its released evidence. The budget pass uses production_retrieve."""
     retrieval = retriever.retrieve(query, named_paths=named)
+    assert retrieval.state == "ok", retrieval.state
+    return retrieval
+
+
+def production_retrieve(retriever: Retriever, task: str, *, named: Sequence[str]) -> Retrieval:
+    """A Chat turn's own call (MemoryTurn._retrieve, whose selection text is the task): the task's first _QUERY_CHARS, the named files and
+    the symbols the task names, so the budget pass packs what production packs (Codex CP1 attempt 3 finding 2)."""
+    from optimus.context.memory_session import _QUERY_CHARS, named_symbols
+
+    retrieval = retriever.retrieve(task[:_QUERY_CHARS], named_paths=named, named_symbols=named_symbols(task))
     assert retrieval.state == "ok", retrieval.state
     return retrieval
 
@@ -412,7 +423,7 @@ def _budget_cases(config: Mapping[str, Any], repository: Path, work: Path, setti
     prefix = indexed_chat_prefix(repo_map=seed_map(index.storage, epoch, read_catalogue(index.storage, epoch), budget_chars=MAP_CHARS).text, tools_enabled=False)
     rows = []
     for case in paid:
-        retrieval = retrieve(retriever, case["task"], named=[item["path"] for item in case["required_files"]])
+        retrieval = production_retrieve(retriever, case["task"], named=[item["path"] for item in case["required_files"]])
         rows.append(budget_case(case, retrieval, read, policy="baseline", model_aware=model_aware, legacy=legacy, pack_estimate=estimate_request,
                                 full_input=full_input(prefix, case["task"], estimate_request)))
     return rows
