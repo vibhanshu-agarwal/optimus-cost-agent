@@ -368,6 +368,7 @@ MALFORMED_ENDPOINTS = (
     "https://host/" + LONE_SURROGATE,
     "https://host/?q=" + LONE_SURROGATE,
     "https://host/?" + LONE_SURROGATE + "=v",
+    "https://" + LONE_SURROGATE + "/",
 )
 
 
@@ -409,6 +410,32 @@ def test_named_value_that_cannot_be_encoded_is_a_config_error(tmp_path: Path, en
         _normalize([entry], workspace_root=tmp_path, controlled_path=str(tmp_path))
     assert exc_info.value.rule_id == "client_mcp.invalid_named_values"
     assert exc_info.value.__suppress_context__
+
+
+@pytest.mark.parametrize(
+    ("entry", "rule_id"),
+    [
+        (None, "client_mcp.invalid_server_name"),
+        ([], "client_mcp.invalid_server_name"),
+        ("tools", "client_mcp.invalid_server_name"),
+        (1, "client_mcp.invalid_server_name"),
+        (False, "client_mcp.invalid_server_name"),
+        ({"name": "tools", "type": []}, "client_mcp.invalid_transport"),
+        ({"name": "tools", "type": {}}, "client_mcp.invalid_transport"),
+        (_stdio_entry(command="/opt/mcp" + chr(0) + "x"), "client_mcp.invalid_stdio_command"),
+        (_stdio_entry(command="mcp" + chr(0) + "x"), "client_mcp.invalid_stdio_command"),
+        (_stdio_entry(command="/opt/mcp" + LONE_SURROGATE), "client_mcp.invalid_stdio_command"),
+    ],
+    ids=[
+        "null", "array", "string", "number", "boolean", "type-array", "type-object",
+        "absolute-command-nul", "bare-command-nul", "command-surrogate",
+    ],
+)
+def test_entry_of_the_wrong_shape_is_a_config_error(tmp_path: Path, entry: object, rule_id: str) -> None:
+    """Issue #603 row 5, review round 2: JSON-decodable entries that raised another exception type."""
+    with pytest.raises(ClientMcpConfigError) as exc_info:
+        _normalize([entry], workspace_root=tmp_path, controlled_path=str(tmp_path))  # type: ignore[list-item]
+    assert exc_info.value.rule_id == rule_id
 
 
 def test_same_name_identity_drifts_when_canonical_target_changes(tmp_path: Path) -> None:

@@ -185,6 +185,8 @@ class ClientMcpConfigNormalizer:
         if entries is None or len(entries) == 0:
             return ()
 
+        if not all(isinstance(entry, Mapping) for entry in entries):  # an entry that is not an object has no name
+            raise ClientMcpConfigError("client_mcp.invalid_server_name")
         names = [_require_str(entry.get("name"), rule_id="client_mcp.invalid_server_name") for entry in entries]
         _reject_duplicate_names(names)
 
@@ -222,6 +224,12 @@ class ClientMcpConfigNormalizer:
 
         if transport == "stdio":
             command = _require_str(entry.get("command"), rule_id="client_mcp.invalid_stdio_command")
+            try:  # the filesystem refuses a NUL or an unencodable name, on POSIX before any lookup
+                command.encode("utf-8")
+            except UnicodeEncodeError:
+                raise ClientMcpConfigError("client_mcp.invalid_stdio_command") from None
+            if "\0" in command:
+                raise ClientMcpConfigError("client_mcp.invalid_stdio_command")
             args_raw = entry.get("args", [])
             if not isinstance(args_raw, list) or not all(isinstance(item, str) for item in args_raw):
                 raise ClientMcpConfigError("client_mcp.invalid_stdio_args")
@@ -322,7 +330,7 @@ def _parse_transport(entry: Mapping[str, object]) -> str:
     if "type" not in entry:
         return "stdio"
     transport = entry.get("type")
-    if transport in {"http", "sse"}:
+    if isinstance(transport, str) and transport in {"http", "sse"}:
         return str(transport)
     raise ClientMcpConfigError("client_mcp.invalid_transport")
 
