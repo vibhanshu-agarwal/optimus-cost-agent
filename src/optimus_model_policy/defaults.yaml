@@ -45,6 +45,9 @@ models:
     # shares the 512-token memory cap, so it can end at the cap before any text (CP4 ON P7). The `low` summary receipt
     # below covers context summaries only, never these calls.
     purpose_reasoning: {memory.extract_user: none, memory.extract_agent: none, memory.compaction: none}
+    # Plan 12.14 D3 (operator-approved 2026-11-23): the model-aware context budget's input target, USD 0.008192 per prepared
+    # request at this entry's input price (T = 13,107 tokens with cache writes; the ceiling C = 32,768 is the shipped policy's).
+    context_budget: {input_target_usd: "0.008192"}
     route:
       estimator: haiku-5-5-empirical
       prompt_cache: prefix  # ADR-041 (#485): the stable start through the map is cached; only indexed turns name it
