@@ -1,9 +1,9 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v9",
+ "schema": "plan12-memory-m2b.evaluation-contract.v10",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
- "frozen_before": "Task 2 and any paid prompt; successor of v8 at CP1 close-out (Codex CP1 round 122 attempts 6-7; Fable 5.2 deferral consult)",
+ "frozen_before": "Task 3 and any paid prompt; successor of v9 at Task 2's close",
  "authority": "Plan 12.14 (sha256 hex:c2b80ad598d833da16b162d388aee234595f61d2aecc0b20f9f7dbb6d1af0bbc, D1-D7 approved 2026-11-23), sections Design choices, Evaluation and releases; sampling approved 2026-11-24 (\"Approve sampling\")",
  "inputs": {
   "cases": "reports/plan12-memory-m2b/cases.json",
@@ -175,10 +175,10 @@
   "rules": "ADR-012/034/035: actual charges distinct from uncached repricing; overhead counted once; unknowns and negative savings retained; late, discarded, failed and unknown receipts kept; #463 may read this record later and owns any report integration"
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v8",
-  "sha256": "hex:28c2ff2b74ae68375ad601fc7f1da3e26b7cebed2f6f4ad32c62c79a4e03c9c1",
-  "commit": "git:6c9d82d",
-  "change": "CP1 close-out: the cases sealed (encoding unchanged); the schedule wording corrected; the paid-harness items Codex classified as blocking the Q release (none blocks Task 2) carried, with Fable 5.2's launcher, preflight and simplifications, to a Q-release gate; the operator's exception and the denial and wrong-scope disposition requested"
+  "schema": "plan12-memory-m2b.evaluation-contract.v9",
+  "sha256": "hex:3aeb45285cc7a34cc3dcd72c6e088c8a070f80e7a65acc3b2426be3ec0cd75e6",
+  "commit": "git:af66883",
+  "change": "Task 2: CP1's operator acceptance recorded (exception approved, the two controls UNRUN); the D3 field staged with its four hash approvals; the evaluator's budget pass retrieves as a Chat turn does; F's request-byte equality and B's pack-digest equality proved; the launcher conditions they need added to the Q-release gate"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -218,10 +218,9 @@
    "terminal": "expected_zero_call only with the case's declared stop reason and no emitted answer: the delivered text is exactly production's too-large notice for a required file (workspace_context.blocking_from_diagnostics); otherwise incomplete"
   },
   "intended_composition": {
-   "registry": "src/optimus_model_policy/defaults.yaml plus models.anthropic/claude-haiku-5.5.context_budget.input_target_usd = \"0.008192\" (staged in Task 2 as defaults.yaml itself, not an override)",
+   "registry": "src/optimus_model_policy/defaults.yaml with models.anthropic/claude-haiku-5.5.context_budget.input_target_usd = \"0.008192\", staged in defaults.yaml itself at git:e3506a7 (Plan 12.14 Task 2)",
    "effective_hash": "hex:b7fca195e22c4884109540c8c0d8acf2f23ec70534994d4136445a7408906e3a",
-   "shipped_hash_today": "hex:4d2f637e822841c23ae617d352c81a6472d11771fd7cd7011b3052c12b506338",
-   "approval": "the operator approves this effective hash (D5's fresh hash approval) before Q; on gate failure the field is removed and the pre-change hash proven",
+   "approval": "approved by the operator 2026-11-25 (\"Approve all three\"), #548 comment 7159307909: shipped defaults and the attached profile 4d2f637e... -> b7fca195...6e3a, qualification profile a015e40e... -> 16f6dc6a...c1f3, evaluation profile c235fb1a... -> 94873ae9...03a4; on gate failure the field is removed and the pre-change hash proven (tests/unit/model_policy/test_context_budget_field.py)",
    "deltas_from_shipping_production": [
     "index tools withdrawn: optimus.agent.runner.MAX_INDEX_ROUNDS = 0, so an indexed Chat turn is one zero-tool request carrying the runner's own limit observation",
     "output cap 2,048 bound through RoutePolicy (production binds the implementer reserve, 32,768)"
@@ -235,9 +234,22 @@
     "ruling": "operator, Claude chat 2026-11-25: \"Keep the line\"",
     "meaning": "B and F send the runner's own tools-withdrawn request, including optimus.agent.index_turn.LIMIT_OBSERVATION; N (no memory) has none. F stays byte-equal to a production final-round request; the one-line difference against N is disclosed beside every N comparison; the selector removes LIMIT_NOTICE from answers",
     "fable_finding": 1
+   },
+   "pre_change_hash": "hex:4d2f637e822841c23ae617d352c81a6472d11771fd7cd7011b3052c12b506338",
+   "shipped_hash": "hex:b7fca195e22c4884109540c8c0d8acf2f23ec70534994d4136445a7408906e3a",
+   "auto_composition": {
+    "effective_hash": "hex:43b9762c108ed377b3c70212e23e6b70f2e389e65f4901ae69622237c981e872",
+    "pre_change_hash": "hex:526153c5c682d8ffbde091869ec83e72a4b1545c555356a77c8e84b1fc85b3d2",
+    "why": "the Auto composition is the shipped defaults then auto_overlay.yaml, so the field changes it too; the field is the only cause (optimus-handoff/p1214-task2/auto-hash-check.txt); the census before the three approvals missed it",
+    "approval": "approved by the operator 2026-11-25 (\"Approve Auto hash\"), recorded at git:6b828c5; an Auto launch must be re-approved"
    }
   },
-  "production_equivalence": "Task 2: F's recorded request equals an unpatched runner's final-round request on the same turn, and B's pack digest equals calibration's BU pack_sha256 for the same case",
+  "production_equivalence": {
+   "claim": "F's paid request is production's own final-round Chat request on the same turn, carrying exactly the pack the budget pass measured; B's and F's packs in the budget pass are the packs production's memory turn builds from matching inputs",
+   "proof": "tests/unit/tools/test_plan12_memory_m2b_production_bytes.py at git:bae48bd: (1) the evaluator and the real MemorySession turn send the same index queries and build each arm's pack with the same digest; (2) m2b_paid.run_one for F through the real AgentRunner, Guard, binder and in-process Gateway forwards a request equal to production's Chat builder with tools withdrawn (the enumerated delta) fitted by an identically prepared attached turn, containing the pack whose digest the budget pass recorded, and the Guard records that request's digest; revert check 4/4 caught by assertion (optimus-handoff/p1214-task2/revert_production_bytes.log)",
+   "scope": "final round means the request an unpatched runner sends once tools are withdrawn and no index results were gathered, which is Q's one-request turn",
+   "released_budget_pass": "git:8cf26df stands: the budget pass's earlier retrieval lacked production's symbol queries, but parsing every file at git:7abbaa2 with the real indexer (2,130 files, 34,909 records) finds no symbol named any of the eight tasks' names, so those queries answer nothing and the structure channel is unchanged (optimus-handoff/p1214-task2/symbol-census-parse.txt, named-symbols-census.txt)"
+  },
   "attempt_topology": {
    "correction": "a bound model request makes at most MAX_ROUTE_ATTEMPTS = 2 physical attempts (src/optimus_model_policy/binding.py:225); manifest.json's 3 is the legacy unbound loop (upstream_client.py:39) and is superseded here",
    "reservation": "before each logical request: attempts_used + 2 <= 96 and settled USD + 0.04608 x (unknown attempts + 2) <= 6.00",
@@ -247,21 +259,24 @@
   },
   "answers_custody": "answers are written only to a separate sink outside the repository (optimus-handoff/p1214-q-*), archived and hashed; paid-attempts.json keeps each answer's digest",
   "prefix_identity": "src/optimus/agent/prompts.py is unchanged from git:7abbaa2; budget and outline disclosure go only inside the dynamic pack (Task 3 tests prefix digests)",
-  "fit_note": "a fit estimate, not request bytes: the released budget pass at git:8cf26df (calibration-budget.json) bounds F's full input with production's route estimator over a framing proxy (the indexed Chat prefix and map, the pack, a 600-byte scope-line allowance, the runner's limit observation and the task); the largest complete F input is 35,323 tokens against 65,536. Task 2 owes integrated request-byte equality (Codex attempt 2 finding 2)",
+  "fit_note": "a fit estimate, not request bytes: the released budget pass at git:8cf26df (calibration-budget.json) bounds F's full input with production's route estimator over a framing proxy (the indexed Chat prefix and map, the pack, a 600-byte scope-line allowance, the runner's limit observation and the task); the largest complete F input is 35,323 tokens against 65,536.. Task 2 proved the request bytes themselves (production_equivalence); the released figures stand because production's added symbol queries answer nothing for the eight cases (census below)",
   "evaluator": {
    "script": "tools/plan12_memory/m2b_evaluate.py",
-   "sha256": "hex:b9bfd70bd124bbedf9d0a60a420455f24a41d282334656785591e6134b861b0f",
-   "git_blob": "git:fedfba2b805d43e7a323f99f55cf16a2ef64be0c",
-   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: unrun; the operator's recorded disposition is requested at CP1 acceptance (Codex attempt 7 item A3)"
+   "sha256": "hex:f8f73cebb6a2cec09225e201d270dc8e7842f1f98d8b5e6e594fdeb66523814f",
+   "git_blob": "git:ecab8f9d56688c9c1d6979e637fb9782cac03f88",
+   "note": "budget phase: production's estimator, budgets and FilePolicy reader; budget_gates: the exact eight cases once, both arms, each case's kind pinned by its id (BUDGET_KINDS) with its (B/U, F) completeness, three R over C, per repetition (Codex round 122 finding 6, attempts 2-3 finding 6); development scoring reads through the admitted FilePolicy reader. Denial and wrong-scope controls: recorded as UNRUN by the operator's CP1 acceptance (Codex attempt 7 item A3). Task 2: production_routes takes legacy from the defaults minus the field line (the shipped route is model-aware now), and the budget pass retrieves with production_retrieve (the task's first _QUERY_CHARS, the named files and named_symbols(task), as MemoryTurn._retrieve); calibration's retrieve() is unchanged with its released evidence"
   },
   "producer_contract_463": "rows as m2b_paid (schema plan12-memory-m2b.paid-attempts.v2): per sent request its dispatch number and host request identity (receipt_base), bound route request id, input and prefix identity, finish reason and Gateway attempts; per host receipt every StageReceipt field under its own name (the reported cost as cost_usd) and the Gateway's normalized usage whole (total tokens included), the repriced uncached cost and tariff id, cache_write_tokens UNKNOWN; per physical attempt its matched receipt ids and dispositions; per row release, case, arm (U as an alias of B), position, logical request id, reconciliation problems, unclaimed and unforwarded receipt ids, any run error, its settlement (attempts, unknown-cost attempts, money-only charges, unknown charges, known USD), emitted_answer and the terminal classification (expected_zero_call, settled, failed, incomplete) with its reason; each charge counted once. Codex round 122 agreed the narrow producer contract and amended its implementation in attempts 2 and 3; broader commissioning and report integration stay under #463",
   "hard_ceiling": "Codex ruling 7: with a target, the whole pack including its section joiners stays within the chosen budget (tested); the legacy path is byte-equal to PR #562's delivered context_pack.py (tested)",
   "support_audit": "the plan's CP3 support audit (Task 4, after paid Q): the designated checkpoint reviewers, fable-5.2 then codex-gpt-6.2-sol, each read every screen-PASS answer against its case's oracle and pinned snapshot and record `supported` (boolean) with a one-line reason; the records, bound by m2b_score.audit_identity to the exact answer bytes the producer recorded, release, case, arm, snapshot, scorer and cases, are frozen in reports/plan12-memory-m2b/support-audit.json and posted verbatim on #548 before any adoption gate is computed; a disagreement holds that answer for the operator. The audit can only confirm or fail a screen PASS: it never lifts a screen FAIL or INCOMPLETE",
-  "task2_owes": [
-   "integrated request-byte equality with the production builder (Codex attempts 2-3 finding 2)",
-   "the B pack-digest comparison with matching inputs (attempt 3 finding 2)"
-  ],
-  "paid_scripts_status": "PROVISIONAL at CP1, by operator exception (requested; see cp1_exception): the runner and scorer digests above are the CP1 heads, not the Q freeze. They are re-frozen at the Q-release gate on its final bytes, before any paid prompt (plan line 262)"
+  "paid_scripts_status": "PROVISIONAL at CP1, by operator exception (approved 2026-11-25; see cp1_exception): the runner and scorer digests above are the CP1 heads, not the Q freeze. They are re-frozen at the Q-release gate on its final bytes, before any paid prompt (plan line 262)",
+  "task2_delivered": {
+   "git:e3506a7": "the D3 field staged in defaults.yaml; the three approved hashes re-pinned; removing the field restores 4d2f637e and the legacy budget",
+   "git:6b828c5": "the Auto composition and golden display digest re-pinned; production_routes' legacy arm from the pre-change composition",
+   "git:037bed2": "context manifest v2: config.budget_policy_version m2b-v1 and budget_policy; /why's pack budget line, a v1 manifest read as legacy or unknown",
+   "git:ae3ff89": "an Auto escalation keeps the prepared context: prepared once before planning, none again after the switch",
+   "git:bae48bd": "production_retrieve and the two production-bytes proofs"
+  }
  },
  "run1_limits": "reports/plan12-memory-m2b/calibration-addendum.json limits: pack jitter cause a hypothesis; poison reason confounded by run 1's mtimes; the 16,000 cap ill-posed and not relied on; the changed evaluator not yet run on a real index",
  "cp1_rulings_round_122": {
@@ -330,7 +345,8 @@
    "a successor contract re-freezing the script and selector digests and the final send count",
    "the #463 producer contract amended as Codex attempt 7 set out (paid-attempts.v2: row, release and answer identities, U aliases, request and prefix digests, raw receipts with both ids, attempt attribution and dispositions, normalized usage, tariff, separate actual and repriced fields; known actual USD only for a clean one-to-one reconciliation; on any anomaly raw evidence and attempt bounds kept, actual USD UNKNOWN, the row incomplete, the run stopped; affected evidence kept out of adoption and comparable-cost decisions) and re-agreed",
    "a predeclared operator hold for a suspected false screen failure, with no rescore",
-   "Codex's (C) notes: the missing-attempt copy conflict, the unknown_charges reservation test and the money-only identity fall away with the money path's deletion; the standalone QO4 quote control stays unrun"
+   "Codex's (C) notes: the missing-attempt copy conflict, the unknown_charges reservation test and the money-only identity fall away with the money path's deletion; the standalone QO4 quote control stays unrun",
+   "the launcher conditions the production-bytes proofs assume, each checked on every memory row: the row's attached turn is prepared before its memory turn is joined, as the adapter does; the memory session's catalogue is ready for the row's epoch before the turn (a retrieval reporting the catalogue not ready makes the row incomplete); the row records its pack digest, and on the eight budget/outline cases B's and F's must equal calibration-budget.json's BU and F pack_sha256, otherwise the row is incomplete and the run stops"
   ],
   "evidence": [
    "the focused m2b tests at the gate's exact head",
@@ -341,7 +357,7 @@
   "binding": "the operator's Q release names the gate's head, the successor contract's digest and both verdicts; the launcher refuses to start otherwise"
  },
  "cp1_exception": {
-  "status": "requested of the operator at CP1 acceptance",
+  "status": "approved by the operator 2026-11-25 (\"Accept as proposed\"), #548 comment 7158350437, once focused-8 at af66883 passed (8,569 passed, 20 skipped, 0 failed)",
   "deviation": "plan Task 1's third bullet freezes the script and selector digests at CP1; they are provisional until the Q-release gate",
   "reasons": [
    "nothing in Task 2 or Task 3 imports the paid runner or scorer, and no test pins their digests (verified by grep)",
