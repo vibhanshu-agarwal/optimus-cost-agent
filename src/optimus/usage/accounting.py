@@ -85,8 +85,8 @@ class UsageAccountingService:
     ) -> ProviderUsageLedger:
         """Record settled provider usage under caller-supplied persistence context.
 
-        Idempotent on an identical ``gateway_usage.gateway_request_id``; a same-ID record
-        with divergent accounting or attribution raises
+        Idempotent on a ``gateway_usage.gateway_request_id`` already recorded with the same
+        settled facts, under any run (``optimus.usage.ledger.append_settled``); divergent facts raise
         :class:`~optimus.usage.errors.DuplicateGatewayRequestError` and never reaches
         ``event_sink``. Every accepted attempt -- whether newly appended or an identical
         replay -- emits one ``TelemetryEvent.gateway_usage`` to ``event_sink`` when configured.
