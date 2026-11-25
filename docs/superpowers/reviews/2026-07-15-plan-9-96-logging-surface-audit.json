@@ -6617,11 +6617,27 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m2b_evaluate:production_routes:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the fixed one-field registry override (the D3 model id and its frozen target) into the evaluator's own work folder; nothing from a record, a reply or an exception.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_production_routes_give_the_forecast_budgets_and_the_routes_estimator",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:run_budget:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the frozen cases record; the budget report it writes goes through _write (counts, budgets, hashes, case ids, repository-relative paths).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_development_set_loads_from_its_frozen_fixtures",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m2b_paid:run:text_write",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: builds the stop reason from the ceiling's counts and USD bounds and the expected request count; no reply, source or credential text.",
+      "rationale": "Inspection: builds a row's terminal reason and the run's stop reason from counts, the Guard's refusal reason and the expected request count; no reply, source or credential text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_when_the_ceiling_cannot_reserve",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_at_the_first_row_that_is_not_settled",
       "evidence_tier": "unit"
     },
     {
@@ -6629,7 +6645,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes the paid-attempt record of case ids, arms, positions, attempt and Gateway request ids, outcomes, reported costs, usage counts, request digests and byte counts, and each answer's digest; answers go only to the caller's separate sink; no source body, credential or exception text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_at_an_unknown_cost_and_never_replaces_a_request",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_at_the_first_row_that_is_not_settled",
       "evidence_tier": "unit"
     },
     {
@@ -6637,7 +6653,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes the paid-attempt record of case ids, arms, positions, attempt and Gateway request ids, outcomes, reported costs, usage counts, request digests and byte counts, and each answer's digest; answers go only to the caller's separate sink; no source body, credential or exception text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_at_an_unknown_cost_and_never_replaces_a_request",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_at_the_first_row_that_is_not_settled",
       "evidence_tier": "unit"
     },
     {

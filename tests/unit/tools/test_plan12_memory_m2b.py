@@ -177,3 +177,25 @@ def test_a_capture_keeps_ids_and_ranks_never_text(tmp_path):
     text = (tmp_path / "c.json").read_text(encoding="utf-8")
     assert "secret words" not in text and "body" not in text and json.loads(text)["protected"] == ["h"]
     assert digest == "hex:" + hashlib.sha256((tmp_path / "c.json").read_bytes()).hexdigest()
+
+
+def test_budget_gates_need_the_exact_eight_cases_once():
+    row = {"substantive_change": True, "fits_q_cap": True, "arms": {"F": {"complete": True}}}
+    kinds = {"QB1": ("ordinary-fit", False), "QB2": ("ordinary-fit", False), "QB3": ("required-over-legacy", True), "QB4": ("required-over-legacy", True)}
+    rows = [{**row, "case_id": c, "kind": kinds.get(c, ("outline", False))[0], "r_in_legacy_to_ceiling": kinds.get(c, ("outline", False))[1]} for c in ev.BUDGET_CASES]
+    assert ev.budget_gates(rows)["passes"]
+    assert ev.budget_gates(rows)["checks"]["exact_case_set"]
+    assert not ev.budget_gates(rows + [rows[0]])["passes"] and not ev.budget_gates(rows[:-1])["passes"]
+
+
+def test_the_production_routes_give_the_forecast_budgets_and_the_routes_estimator(tmp_path):
+    legacy, model_aware, estimate_request = ev.production_routes(tmp_path)
+    assert (legacy.ceiling, model_aware.ceiling, model_aware.target) == (16_384, 32_768, 13_107)
+    assert estimate_request("x" * 1000) == 1000 + 272  # 16 per message and 256 fixed on D3's estimator
+
+
+def test_the_policy_reader_refuses_what_production_would_not_read(tmp_path):
+    (tmp_path / ".env").write_text("SECRET=1\n", encoding="utf-8")
+    (tmp_path / "a.py").write_bytes(b"x = 1\n")
+    read = ev.policy_reader(tmp_path)
+    assert read("a.py") == b"x = 1\n" and read(".env") is None

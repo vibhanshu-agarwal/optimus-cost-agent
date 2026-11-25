@@ -119,10 +119,11 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         return Pack("", 0, budget_tokens, tuple(selected), {}, tuple(required))
     if missing:
         return Pack(required_text, used, budget_tokens, tuple(selected), hashes, tuple(missing))
+    room = budget_tokens - used
     if target_tokens is not None:
         budget_tokens = chosen_budget(budget_tokens, target_tokens, used)
-
-    room = budget_tokens - used
+        # A hard ceiling holds for the whole pack: the two newlines joining its three sections are charged here (legacy is unchanged).
+        room = max(0, budget_tokens - used - max(0, estimate("\n\n") - estimate("")))
     signatures_room = int(room * SIGNATURE_SHARE)
     named = set(required)
     stale: list[str] = []

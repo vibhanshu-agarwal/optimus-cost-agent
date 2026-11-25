@@ -23,7 +23,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from context_engine.context_pack import SECTION_BODIES, SECTION_REQUIRED, Pack, assemble_pack
 from context_engine.pack_utility import POLICIES
@@ -189,7 +189,7 @@ def select_candidate(repetitions: Sequence[Mapping[str, dict[str, Any]]]) -> dic
     return {"selected": selected, "u_equals_b": selected == "baseline", "verdicts": verdicts}
 
 
-def required_tokens(paths: Sequence[str], read: Callable[[str], bytes | None]) -> int | None:
+def required_tokens(paths: Sequence[str], read: Callable[[str], bytes | None], *, estimate: Callable[[str], int] = estimate) -> int | None:
     """R: the required text exactly as the pack serializes it, or None when a file cannot be read."""
     blocks = []
     for path in paths:
@@ -201,15 +201,16 @@ def required_tokens(paths: Sequence[str], read: Callable[[str], bytes | None]) -
 
 
 def budget_case(case: Mapping[str, Any], retrieval: Retrieval, read: Callable[[str], bytes | None], *, policy: str, model_aware: BudgetPolicy,
-                legacy: int, full_input: Callable[[str], int]) -> dict[str, Any]:
-    """One paid budget/outline case's packs under the legacy budget (B/U) and the model-aware one (F), and the full input F would send."""
+                legacy: int, full_input: Callable[[str], int], pack_estimate: Callable[[str], int] = estimate) -> dict[str, Any]:
+    """One paid budget/outline case's packs under the legacy budget (B/U) and the model-aware one (F), and the full input F would send.
+    `pack_estimate` is the estimator the pack is given: production's route estimator in the budget phase (Codex CP1 round 122 finding 2)."""
     required = tuple(item["path"] for item in case["required_files"])
-    r = required_tokens(required, read)
+    r = required_tokens(required, read, estimate=pack_estimate)
     assert r is not None, case["case_id"]
     out: dict[str, Any] = {"case_id": case["case_id"], "kind": case.get("kind"), "R": r, "C": model_aware.ceiling, "T": model_aware.target, "legacy": legacy}
     arms = {}
     for arm, ceiling, target in (("BU", legacy, None), ("F", model_aware.ceiling, model_aware.target)):  # F packs exactly as production: C and T
-        pack = assemble_pack(required=required, ranked=retrieval.ranked, read=read, estimate=estimate, budget_tokens=ceiling, policy=policy, task=case["task"],
+        pack = assemble_pack(required=required, ranked=retrieval.ranked, read=read, estimate=pack_estimate, budget_tokens=ceiling, policy=policy, task=case["task"],
                              protected=retrieval.protected, target_tokens=target)
         budget = pack.budget_tokens
         optional = [(i.path, i.symbol, i.start_line, i.disclosure) for i in shown(pack)]
@@ -225,7 +226,14 @@ def budget_case(case: Mapping[str, Any], retrieval: Retrieval, read: Callable[[s
     return out
 
 
+BUDGET_CASES: Final = ("QB1", "QB2", "QB3", "QB4", "QO1", "QO2", "QO3", "QO4")
+
+
 def budget_gates(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """One measurement's eight budget/outline rows, each exactly once (Codex CP1 round 122 finding 6); apply it per repetition."""
+    ids = sorted(row["case_id"] for row in rows)
+    if ids != sorted(BUDGET_CASES):
+        return {"checks": {"exact_case_set": False}, "passes": False, "case_ids": ids}
     budget = [row for row in rows if row["case_id"].startswith("QB")]
     ordinary = [row for row in budget if row["kind"] == "ordinary-fit"]
     over = [row for row in budget if row["kind"] == "required-over-legacy"]
@@ -234,20 +242,44 @@ def budget_gates(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "two_ordinary_allocation_changes": len(ordinary) == 2 and all(row["substantive_change"] and row["arms"]["F"]["complete"] for row in ordinary),
         "two_r_in_legacy_to_ceiling": len(over) == 2 and all(row["r_in_legacy_to_ceiling"] and row["arms"]["F"]["complete"] for row in over),
         "every_complete_f_fits_q_cap": all(row["fits_q_cap"] for row in rows if row["arms"]["F"]["complete"]),
+        "exact_case_set": True,
     }
     return {"checks": checks, "passes": all(checks.values())}
 
 
-def full_input(prefix: str, task: str) -> Callable[[str], int]:
-    """The request F would send, as the D3 estimator counts it: the indexed Chat prefix with its map, the pack and the task, plus framing.
-    Task 2 proves the production builder's bytes; this bounds the input against Q's cap before any paid prompt."""
-    return lambda pack_text: estimate(f"{prefix}\n{pack_text}\n{task}") + FRAMING_TOKENS
+COVERAGE_LINE_ALLOWANCE: Final = "x" * 600  # an upper bound on the memory turn's scope line, which this proxy does not render
+
+
+def full_input(prefix: str, task: str, estimate_request: Callable[[str], int] | None = None) -> Callable[[str], int]:
+    """The request F would send: the indexed Chat prefix with its map, the pack, the scope-line allowance, the runner's limit observation and
+    the task. With the route's estimator its framing is its own; without one, the byte count plus FRAMING_TOKENS. Task 2 proves the
+    production builder's bytes; this bounds the input against Q's cap before any paid prompt."""
+    from optimus.agent.index_turn import LIMIT_OBSERVATION
+
+    def tokens(pack_text: str) -> int:
+        text = f"{prefix}\n{pack_text}\n{COVERAGE_LINE_ALLOWANCE}\n{LIMIT_OBSERVATION}\n{task}"
+        return estimate_request(text) if estimate_request is not None else estimate(text) + FRAMING_TOKENS
+
+    return tokens
 
 
 def retrieve(retriever: Retriever, query: str, *, named: Sequence[str] = ()) -> Retrieval:
     retrieval = retriever.retrieve(query, named_paths=named)
     assert retrieval.state == "ok", retrieval.state
     return retrieval
+
+
+def policy_reader(root: Path) -> Callable[[str], bytes | None]:
+    """Production's admitted reader (MemoryTurn._read): the includable-files policy decides, so a denied or ignored file is never read."""
+    from optimus.guardrails.file_policy import FilePolicy, FilePurpose
+
+    policy = FilePolicy(root)  # the plain root, as a launch has it: a long-path prefix fails its identity check
+
+    def read(path: str) -> bytes | None:
+        decision, data = policy.read(path, purpose=FilePurpose.AUTOMATIC)
+        return data if decision.allowed else None
+
+    return read
 
 
 def _reader(root: Path) -> Callable[[str], bytes | None]:
@@ -276,7 +308,8 @@ def run_calibration(config: Mapping[str, Any], repository: Path, out: Path) -> d
         report["repetitions"].append({"number": number, "trees": trees, "cases": rows, "totals": totals([r for r in rows if not r["case_id"].startswith("Q")])})
         _write(report, out)
     report["selection"] = select_candidate([rep["totals"] for rep in report["repetitions"]])
-    report["budget_gates"] = budget_gates([r for rep in report["repetitions"] for r in rep["cases"] if r["case_id"].startswith("Q")])
+    report["budget_gates"] = [{"repetition": rep["number"], **budget_gates([r for r in rep["cases"] if r["case_id"].startswith("Q")])}
+                              for rep in report["repetitions"] if any(r["case_id"].startswith("Q") for r in rep["cases"])]
     _write(report, out)
     return report
 
@@ -365,15 +398,70 @@ def _budget_cases(config: Mapping[str, Any], repository: Path, work: Path, setti
     tree = work / "trees" / f"main-{revision[:12]}"
     m1_evaluate.materialize(repository, revision, tree, branch=f"main-{revision[:12]}")
     index = _index(tree, settings, embedder, trees, revision)
-    read = _reader(tree)
+    read = policy_reader(tree)  # production's admitted reader (Codex CP1 round 122 finding 6)
+    estimate_request = production_estimator()
     retriever = Retriever(index.storage, embedder)
     epoch = index.storage.call("coverage")["current"]["epoch"]
     prefix = indexed_chat_prefix(repo_map=seed_map(index.storage, epoch, read_catalogue(index.storage, epoch), budget_chars=MAP_CHARS).text, tools_enabled=False)
     rows = []
     for case in paid:
         retrieval = retrieve(retriever, case["task"], named=[item["path"] for item in case["required_files"]])
-        rows.append(budget_case(case, retrieval, read, policy="baseline", model_aware=model_aware, legacy=legacy, full_input=full_input(prefix, case["task"])))
+        rows.append(budget_case(case, retrieval, read, policy="baseline", model_aware=model_aware, legacy=legacy, pack_estimate=estimate_request,
+                                full_input=full_input(prefix, case["task"], estimate_request)))
     return rows
+
+
+D3_MODEL: Final = "anthropic/claude-haiku-5.5"
+D3_OVERRIDE: Final = f'models:\n  {D3_MODEL}:\n    context_budget: {{input_target_usd: "{D3_TARGET_USD}"}}\n'
+
+
+def production_routes(work: Path) -> tuple[BudgetPolicy, BudgetPolicy, Callable[[str], int]]:
+    """The shipped route's legacy budget, the staged composition's model-aware budget and the route's own request estimator, all from
+    attachment_limits exactly as a launch computes them."""
+    from optimus.context.shipped_policy import attachment_limits
+    from optimus_model_policy.binding import packaged_defaults, trusted_snapshot
+    from optimus_model_policy.registry import load_registry
+
+    override = work / "d3-override.yaml"
+    override.parent.mkdir(parents=True, exist_ok=True)
+    override.write_text(D3_OVERRIDE, encoding="utf-8")
+    shipped = attachment_limits(trusted_snapshot(), D3_MODEL)
+    staged = attachment_limits(load_registry(packaged_defaults(), override), D3_MODEL)
+    return shipped.pack_budget, staged.pack_budget, shipped.estimate_request
+
+
+def production_estimator() -> Callable[[str], int]:
+    from optimus.context.shipped_policy import attachment_limits
+    from optimus_model_policy.binding import trusted_snapshot
+
+    return attachment_limits(trusted_snapshot(), D3_MODEL).estimate_request
+
+
+def run_budget(config: Mapping[str, Any], repository: Path, out: Path) -> dict[str, Any]:
+    """One measurement of the eight budget/outline cases on main's tree with production's estimator, budgets and admitted reader."""
+    cases_record = json.loads((repository / config["cases"]).read_text(encoding="utf-8"))
+    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    work = repository / config["work_dir"] / "budget"
+    legacy_policy, model_aware, _estimate = production_routes(work)
+    assert legacy_policy.name == "legacy" and model_aware.name == "model-aware"
+    report: dict[str, Any] = {"schema": "plan12-memory-m2b.budget.v1", "head": f"git:{head}", "label": config["label"], "estimator": "the D3 route's request estimator (attachment_limits)",
+                              "reader": "FilePolicy, purpose AUTOMATIC", "budget": {"legacy": legacy_policy.ceiling, "C": model_aware.ceiling, "T": model_aware.target},
+                              "cases_sha256": "hex:" + hashlib.sha256((repository / config["cases"]).read_bytes()).hexdigest(), "trees": []}
+    root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)
+    try:
+        embedder = m1_evaluate.CachedEmbedder(FastembedEmbedder(root, memory.embedding, directory=settings_file["embedding"]["artifact_directory"], threads=config["embedding_threads"]),
+                                              embedding_cache(config, repository))
+        report["rows"] = _budget_cases(config, repository, work, settings, embedder, cases_record, report["trees"], legacy=legacy_policy.ceiling, model_aware=model_aware)
+        report["budget_gates"] = budget_gates(report["rows"])
+        report["embedding"] = {"embedded": embedder.embedded, "reused": embedder.reused}
+        _write(report, out)
+    finally:
+        client.close()
+        gateway.kill()
+        gateway.wait(10)
+        subprocess.run(["docker", "rm", "-f", config["container"]], capture_output=True, check=False)
+        subprocess.run(["docker", "volume", "rm", "-f", config["volume"]], capture_output=True, check=False)
+    return report
 
 
 def _write(report: Mapping[str, Any], out: Path) -> None:
@@ -383,13 +471,17 @@ def _write(report: Mapping[str, Any], out: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument("--phase", required=True, choices=("calibration", "qualification"))
+    parser.add_argument("--phase", required=True, choices=("calibration", "budget", "qualification"))
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     repository = Path.cwd()
     config = json.loads((repository / args.config).read_text(encoding="utf-8"))
     if args.phase == "qualification":
         raise FreshRefused("qualification opens in Task 4, after CP1")
+    if args.phase == "budget":
+        report = run_budget(config, repository, repository / args.output)
+        print(json.dumps({"budget_gates": report["budget_gates"]["passes"]}))
+        return 0
     report = run_calibration(config, repository, repository / args.output)
     print(json.dumps({"selection": report["selection"]["selected"], "repetitions": len(report["repetitions"])}))
     return 0

@@ -183,3 +183,38 @@ def test_the_runner_hands_the_packers_budget_to_the_memory_turn(tmp_path):
     request = AgentRunRequest(run_id="r", task="t", execution_mode=ExecutionMode.CHAT, workspace_root=tmp_path, max_cost_usd=Decimal("0"))
     runner._turn_context(request, "t", packer)  # noqa: SLF001
     assert seen["pack_budget"] is budget
+
+
+def test_the_memory_turns_assemble_passes_the_target_to_retrieval(monkeypatch):
+    """Codex CP1 round 122 finding 7: through MemoryTurn.assemble itself, not only its helpers."""
+    import contextlib
+
+    from context_engine.retrieval import Retrieval
+    from optimus.context import memory_session
+
+    monkeypatch.setattr(memory_session, "resolve_task_references", lambda *_a, **_k: ())
+    monkeypatch.setattr(memory_session, "rank_ambiguity", lambda diagnostics, *_a, **_k: diagnostics)
+    monkeypatch.setattr(memory_session, "blocking_from_diagnostics", lambda _d: (None, None))
+    seen: dict = {}
+    turn = object.__new__(memory_session.MemoryTurn)
+    policy = type("P", (), {"forget_ignore_files": staticmethod(lambda: None)})()
+    turn._session = type("S", (), {"policy": policy, "foreground": staticmethod(contextlib.nullcontext), "listing_for": staticmethod(lambda _r: ()),  # noqa: SLF001
+                                   "hints_for": staticmethod(lambda _s: ())})()
+    turn._scope = None  # noqa: SLF001
+    turn._capture_buffers = lambda _r: None  # noqa: SLF001
+
+    def retrieve(text, required, estimate, budget, task, target=None):
+        seen.update(budget=budget, target=target)
+        return Retrieval("unavailable"), None
+
+    turn._retrieve = retrieve  # noqa: SLF001
+    turn._today = lambda **_k: "today"  # noqa: SLF001
+    assert turn.assemble(run_id="r", task="t", selection_text="t", model_id="m", estimate=len, usable_input_tokens=229_376,
+                         pack_budget=BudgetPolicy("model-aware", 32_768, 13_107)) == "today"
+    assert seen == {"budget": 32_768, "target": 13_107}
+
+
+def test_the_model_aware_ceiling_holds_for_the_whole_pack_including_its_joiners():
+    """Sizes chosen so that some pack fills its optional room exactly: without the joiner charge one of them goes over (QB3's 19,552 of 19,551)."""
+    over = [n for n in range(1_000, 1_060) if (pack := _pack(n, budget=32_768, target=13_107)).tokens > pack.budget_tokens or not pack.complete]
+    assert over == []

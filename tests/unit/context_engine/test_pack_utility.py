@@ -142,3 +142,33 @@ def test_quota_ids_are_the_places_fuse_puts_first():
     assert tuple(item.hit.id for item in fuse(channels))[:3] == quota_ids(channels)
     assert quota_ids(channels, named=("x.py",)) == ()
     assert quota_ids({**channels, "structure": [_hit("s")]}) == ()
+
+
+def _delivered_m2a_pack_module():
+    """PR #562's merge (delivered M2a) context_pack.py, loaded beside today's package: the byte oracle for the default pack."""
+    import importlib.util
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[3]
+    source = subprocess.run(["git", "-C", str(root), "show", "5467386be9ede1374c471cd6fffdd037fe5a673e:src/context_engine/context_pack.py"],  # pragma: allowlist secret (a git commit)
+                            capture_output=True, check=True).stdout.decode("utf-8")
+    spec = importlib.util.spec_from_loader("context_engine._m2a_context_pack", loader=None)
+    module = importlib.util.module_from_spec(spec)
+    module.__package__ = "context_engine"
+    sys.modules[spec.name] = module
+    exec(compile(source, "m2a_context_pack.py", "exec"), module.__dict__)  # noqa: S102 - this repository's own delivered source
+    return module
+
+
+@pytest.mark.parametrize("budget", [40, 90, 150, 400, 10_000])
+@pytest.mark.parametrize("required", [(), ("a.py",)])
+def test_the_default_pack_equals_delivered_m2a_byte_for_byte(budget, required):
+    m2a = _delivered_m2a_pack_module()
+    close = [_ranked("1", "first", (1, 2), 0.012), _ranked("2", "second", (4, 5), 0.011), _ranked("3", "third", (7, 8), 0.010)]
+    for ranked in (RANKED, close, list(reversed(RANKED))):
+        now = assemble_pack(required=required, ranked=ranked, read=_read, estimate=_estimate, budget_tokens=budget)
+        then = m2a.assemble_pack(required=required, ranked=ranked, read=_read, estimate=_estimate, budget_tokens=budget)
+        assert (now.text, now.tokens, now.budget_tokens, now.missing_required, now.stale_paths) == (then.text, then.tokens, then.budget_tokens, then.missing_required, then.stale_paths)
+        assert [(s.path, s.symbol, s.disclosure, s.reason) for s in now.selected] == [(s.path, s.symbol, s.disclosure, s.reason) for s in then.selected]
