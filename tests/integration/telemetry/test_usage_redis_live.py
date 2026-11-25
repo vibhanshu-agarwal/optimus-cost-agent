@@ -79,6 +79,8 @@ def live_usage_redis(redis_key_namespace: str):
         async def _cleanup() -> None:
             async for key in client.scan_iter(match=f"optimus:usage:{run_id}:*"):
                 await client.delete(key)
+            # The claims hash is global (#573), so only this run's claim is removed from it.
+            await client.hdel("optimus:usage:claims", f"gw-{run_id}")
             await client.aclose()
 
         sync_await(_cleanup())
@@ -94,9 +96,10 @@ def test_live_redis_provider_usage_persistence_matches_response_and_ledger(
     accounting = UsageAccountingService(event_sink=RedisTelemetryEventSink(adapter, submit=lambda operation: sync_await(operation())))
     occurred_at = datetime(2026, 7, 28, tzinfo=UTC)
 
-    response = _gateway_usage("gw-live-1", "0.0025", 10)
-    identical_replay = _gateway_usage("gw-live-1", "0.0025", 10)
-    divergent = _gateway_usage("gw-live-1", "0.0099", 999)
+    # A Gateway request id is unique across runs (#573); one per live run keeps reruns independent.
+    response = _gateway_usage(f"gw-{run_id}", "0.0025", 10)
+    identical_replay = _gateway_usage(f"gw-{run_id}", "0.0025", 10)
+    divergent = _gateway_usage(f"gw-{run_id}", "0.0099", 999)
 
     accounting.record_gateway_usage(
         response,
