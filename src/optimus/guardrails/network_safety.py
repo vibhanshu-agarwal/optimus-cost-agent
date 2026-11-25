@@ -11,10 +11,14 @@ class NetworkSafetyValidator:
         self._allowed_hosts = frozenset(host.lower().rstrip(".") for host in allowed_hosts if host)
 
     def validate_url(self, url: str) -> ValidationResult:
-        parsed = urlparse(url)
+        try:
+            parsed = urlparse(url)
+            hostname = parsed.hostname
+        except ValueError:  # urlparse and .hostname raise on a malformed URL; a URL that cannot be parsed is refused
+            return ValidationResult(ValidationVerdict.BLOCK, "network.malformed_url", "network URL is malformed")
         if parsed.scheme != "https":
             return ValidationResult(ValidationVerdict.BLOCK, "network.insecure_transport", "network URLs must use HTTPS")
-        host = (parsed.hostname or "").lower().rstrip(".")
+        host = (hostname or "").lower().rstrip(".")
         if not host:
             return ValidationResult(ValidationVerdict.BLOCK, "network.missing_host", "network URL missing host")
         literal_ip_result = _literal_ip_target_result(host)
