@@ -56,10 +56,19 @@ _RECOGNIZED_PREFIXES: tuple[str, ...] = (
 _BEARER_TOKEN_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)\S+")
 _ENV_ASSIGNMENT_RE = re.compile(r"(?i)\b([A-Z_][A-Z0-9_]*(?:_KEY|_SECRET|_TOKEN|_PASSWORD))\s*=\s*\S+")
 _GENERIC_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(token|password|secret|credential|api[_-]?key)((?:=|:)\s*)\S+")
+# Closed-class English words (no names, no content words): after a keyword they are prose, never a value (#584).
+_PROSE_FUNCTION_WORDS = (
+    "a an the this that these those its their our your my no any each every some all both it they we you which who what "
+    "of in on at to for from with without by into over under about after before between through during per via as than "
+    "within and or nor but yet if because while when where unless until then whether is are was were be been being am "
+    "has have had do does did can could shall should must not never also only still here there now too just"
+).split()
 # Group 2 keeps an optional copula and/or separator ("token is X", "token = X", "token is: X") so the mask lands on the
-# value (#505).
+# value (#505). The copula is possessive, so a value that is a function word ("token was not made") fails the match
+# instead of masking the copula. The word must be followed by whitespace: a value cut at a stream boundary stays masked.
 _WHITESPACE_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was)(?:\s*[=:])?\s+|[=:]\s+)?)\S+"
+    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was)(?:\s*[=:])?\s+|[=:]\s+)?+)"
+    r"(?!(?:" + "|".join(_PROSE_FUNCTION_WORDS) + r")[,.;!?]*\s)\S+"
 )
 _API_KEY_HEADER_RE = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
 _X_API_KEY_HEADER_RE = re.compile(r"(?i)x-api-key:\s*\S+")
@@ -144,9 +153,10 @@ class SanitizationPolicy:
 
 COMPATIBILITY_SANITIZATION_POLICY = SanitizationPolicy(version="compatibility-v1")
 
-# v2 (#505): the whitespace assignment rule masks the value after a copula. Manifests recorded as v1 stay valid.
+# v2 (#505): the whitespace assignment rule masks the value after a copula. v3 (#584): it no longer masks a function
+# word after the keyword ("the token was not made"). Manifests recorded as v1 or v2 stay valid.
 EVIDENCE_REDACTION_POLICY = SanitizationPolicy(
-    version="evidence-redaction-v2",
+    version="evidence-redaction-v3",
     enable_whitespace_secret_assignment=True,
     enable_prefix_detection=True,
     enable_entropy_detection=True,
@@ -158,10 +168,10 @@ EVIDENCE_REDACTION_POLICY = SanitizationPolicy(
 
 # Workspace subjects enable the shared whitespace assignment rule without
 # changing the default compatibility contract used by redact_for_telemetry.
-# Its own identity since #505 changed that rule's output; before it, this policy reported compatibility-v1.
+# Its own identity since #505 changed that rule's output; before it, this policy reported compatibility-v1. v3: #584.
 WORKSPACE_SUBJECT_SANITIZATION_POLICY = replace(
     COMPATIBILITY_SANITIZATION_POLICY,
-    version="workspace-subject-v2",
+    version="workspace-subject-v3",
     enable_whitespace_secret_assignment=True,
 )
 
