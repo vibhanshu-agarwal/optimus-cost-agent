@@ -56,19 +56,20 @@ _RECOGNIZED_PREFIXES: tuple[str, ...] = (
 _BEARER_TOKEN_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)\S+")
 _ENV_ASSIGNMENT_RE = re.compile(r"(?i)\b([A-Z_][A-Z0-9_]*(?:_KEY|_SECRET|_TOKEN|_PASSWORD))\s*=\s*\S+")
 _GENERIC_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(token|password|secret|credential|api[_-]?key)((?:=|:)\s*)\S+")
-# Closed-class English words (no names, no content words): after a keyword they are prose, never a value (#584).
+# Closed-class English words (no names, no content words): after a keyword they are prose, not a value (#584).
 _PROSE_FUNCTION_WORDS = (
     "a an the this that these those its their our your my no any each every some all both it they we you which who what "
-    "of in on at to for from with without by into over under about after before between through during per via as than "
+    "of in on at to for from with without by into over under about after before between through during via as than "
     "within and or nor but yet if because while when where unless until then whether is are was were be been being am "
-    "has have had do does did can could shall should must not never also only still here there now too just"
+    "has have had do does did could shall should must not never also only still here there now too just"
 ).split()
 # Group 2 keeps an optional copula and/or separator ("token is X", "token = X", "token is: X") so the mask lands on the
-# value (#505). The copula is possessive, so a value that is a function word ("token was not made") fails the match
-# instead of masking the copula. The word must be followed by whitespace: a value cut at a stream boundary stays masked.
+# value (#505). Groups 3 and 4 record a "=" or ":" separator. Only with none ("token X", "token is X") may the value be
+# exempt, and only as a lowercase function word followed directly by whitespace, so "token was not made" keeps "not"
+# while "password = not", "password Per" and a word cut at a stream boundary stay masked.
 _WHITESPACE_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was)(?:\s*[=:])?\s+|[=:]\s+)?+)"
-    r"(?!(?:" + "|".join(_PROSE_FUNCTION_WORDS) + r")[,.;!?]*\s)\S+"
+    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was)(?:\s*([=:]))?\s+|([=:])\s+)?)"
+    r"(?(3)|(?(4)|(?!(?-i:" + "|".join(_PROSE_FUNCTION_WORDS) + r")\s)))\S+"
 )
 _API_KEY_HEADER_RE = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
 _X_API_KEY_HEADER_RE = re.compile(r"(?i)x-api-key:\s*\S+")

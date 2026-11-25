@@ -262,6 +262,15 @@ _STILL_MASKED = [
     ("my password dragon", "my password **********"),
     ("the password field is required", "the password ********** is required"),
     ("EDIT not applied to token (EDIT_OLD_NOT_FOUND): x", "EDIT not applied to token ********** x"),
+    # A listed word after an explicit separator, capitalised, or with punctuation is a value (Codex review of #584).
+    ("password : Per!?!?. archived", "password : ********** archived"),
+    ("PASSWORD was: Per!?!?. archived", "PASSWORD was: ********** archived"),
+    ("PASSWORD = Per!?!?." + chr(0xA0) + "archived", "PASSWORD = **********" + chr(0xA0) + "archived"),
+    ("password = not archived", "password = ********** archived"),
+    ("token is: the rest", "token is: ********** rest"),
+    ("password Per archived", "password ********** archived"),
+    ("token Not made", "token ********** made"),
+    ("token not. made", "token ********** made"),
 ]
 
 
@@ -293,6 +302,17 @@ class TestWhitespaceRuleKeepsProse:
     def test_a_function_word_cut_at_a_stream_boundary_is_still_masked(self) -> None:
         # The exemption needs whitespace after the word, so a value cut after "not" is masked, not released in clear.
         assert sanitize_for_persistence("token not", policy=EVIDENCE_REDACTION_POLICY).value == "token **********"
+
+    @pytest.mark.parametrize(
+        ("head", "released"),
+        [("password : Per!?!?. ", "password : ********** "), ("password is not", "password is **********")],
+    )
+    def test_a_real_stream_release_keeps_the_mask(self, head: str, released: str) -> None:
+        # feed() releases everything beyond the default overlap, cutting the text right after head.
+        stream = StreamingTextSanitizer(policy=EVIDENCE_REDACTION_POLICY)
+        out = stream.feed(head + " " * stream.overlap_chars)
+        assert out == released
+        assert stream.finalize() == " " * stream.overlap_chars
 
 
 class TestDictKeyRedaction:

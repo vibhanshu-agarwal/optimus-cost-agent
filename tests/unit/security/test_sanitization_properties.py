@@ -138,7 +138,8 @@ _WS_FORMS = st.sampled_from(
     ["{kw} {v}", "{kw} is {v}", "{kw} was {v}", "{kw} = {v}", "{kw} : {v}", "{kw} is: {v}", "{kw} was = {v}"]
 )
 # Function words that are not a bare copula ("token is X" is an assignment); a test-local list, independent of the rule's.
-_FUNCTION_WORDS = st.sampled_from(["not", "for", "and", "or", "the", "of", "to", "in", "never", "is not", "was not", "Not"])
+_FUNCTION_WORDS = st.sampled_from(["not", "for", "and", "or", "the", "of", "to", "in", "never", "is not", "was not"])
+_SEPARATOR_FORMS = st.sampled_from(["{kw} = {v}", "{kw} : {v}", "{kw} is: {v}", "{kw} was = {v}", "{kw} is : {v}"])
 _benign_tail = st.lists(st.sampled_from(_SAFE_WORDS), min_size=0, max_size=6).map(" ".join)
 
 
@@ -149,6 +150,15 @@ def test_whitespace_assignment_value_is_removed(policy, kw, form, secret, tail):
     # Some forms ("api_key = X") are caught first by the env or header rule, so the mask is checked, not one counter.
     assert secret not in result.value, f"sentinel value survived: {result.value!r}"
     assert REDACTED in result.value
+
+
+@SPIKE
+@given(_WS_POLICIES, _WS_KEYWORDS, _SEPARATOR_FORMS, _FUNCTION_WORDS.filter(lambda w: " " not in w))
+def test_a_function_word_after_an_explicit_separator_is_masked(policy, kw, form, word):
+    # After "=" or ":" the word is an assigned value, whatever it is.
+    result = sanitize_for_persistence(f"{form.format(kw=kw, v=word)} done", policy=policy)
+    assert REDACTED in result.value
+    assert word not in result.value.split(), f"assigned value survived: {result.value!r}"
 
 
 @SPIKE
