@@ -394,3 +394,24 @@ def test_pre_tool_guard_still_allows_a_web_request_with_no_target(tmp_path):
 
     assert guard.check(_web_request(None)).verdict is PreToolVerdict.ALLOW
     assert guard.check(_web_request("https://gateway.optimus.ai/x")).verdict is PreToolVerdict.ALLOW
+
+
+def test_pre_tool_guard_refuses_a_shell_command_holding_a_url_scheme_with_no_host(tmp_path):
+    """The same refusal at the boundary production uses: the guard hands a shell command to the validator above."""
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    result = guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.SHELL,
+            action="test",
+            command=("pytest", "-k", "https://"),
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=True,
+        )
+    )
+
+    assert result.verdict is PreToolVerdict.BLOCK
+    assert result.rule_id == "network.missing_host"
