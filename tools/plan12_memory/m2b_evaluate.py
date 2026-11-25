@@ -419,22 +419,25 @@ def _budget_cases(config: Mapping[str, Any], repository: Path, work: Path, setti
 
 
 D3_MODEL: Final = "anthropic/claude-haiku-5.5"
-D3_OVERRIDE: Final = f'models:\n  {D3_MODEL}:\n    context_budget: {{input_target_usd: "{D3_TARGET_USD}"}}\n'
+D3_FIELD_LINE: Final = f'    context_budget: {{input_target_usd: "{D3_TARGET_USD}"}}\n'
 
 
 def production_routes(work: Path) -> tuple[BudgetPolicy, BudgetPolicy, Callable[[str], int]]:
-    """The shipped route's legacy budget, the staged composition's model-aware budget and the route's own request estimator, all from
-    attachment_limits exactly as a launch computes them."""
+    """The legacy budget of the composition before Task 2 (the shipped defaults with only the D3 field line removed), the shipped
+    route's model-aware budget and the route's own request estimator, all from attachment_limits exactly as a launch computes them."""
     from optimus.context.shipped_policy import attachment_limits
     from optimus_model_policy.binding import packaged_defaults, trusted_snapshot
     from optimus_model_policy.registry import load_registry
 
-    override = work / "d3-override.yaml"
-    override.parent.mkdir(parents=True, exist_ok=True)
-    override.write_text(D3_OVERRIDE, encoding="utf-8")
+    text = packaged_defaults().read_text(encoding="utf-8")
+    if text.count(D3_FIELD_LINE) != 1:
+        raise ValueError("the packaged defaults do not carry the D3 field line exactly once")
+    before = work / "defaults-without-d3.yaml"
+    before.parent.mkdir(parents=True, exist_ok=True)
+    before.write_text(text.replace(D3_FIELD_LINE, ""), encoding="utf-8")
     shipped = attachment_limits(trusted_snapshot(), D3_MODEL)
-    staged = attachment_limits(load_registry(packaged_defaults(), override), D3_MODEL)
-    return shipped.pack_budget, staged.pack_budget, shipped.estimate_request
+    legacy = attachment_limits(load_registry(before), D3_MODEL)
+    return legacy.pack_budget, shipped.pack_budget, shipped.estimate_request
 
 
 def production_estimator() -> Callable[[str], int]:

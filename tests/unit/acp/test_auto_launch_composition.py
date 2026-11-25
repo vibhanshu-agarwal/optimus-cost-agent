@@ -43,7 +43,8 @@ from tests.unit.acp.test_local_infra_model_registry import _spawned_args
 from tests.unit.acp.test_operator_registry_override import LUNA_OVERRIDE, _run_gateway, _write_override
 from tests.unit.optimus_gateway.test_main_model_registry import _manifest, started  # noqa: F401 - fixture
 
-AUTO_HASH = "526153c5c682d8ffbde091869ec83e72a4b1545c555356a77c8e84b1fc85b3d2"  # pragma: allowlist secret - registry identity (CA2), not a credential
+# Plan 12.14 Task 2: the D3 field in the shipped defaults (operator approval 2026-11-25; was 526153c5... under CA2).
+AUTO_HASH = "43b9762c108ed377b3c70212e23e6b70f2e389e65f4901ae69622237c981e872"  # pragma: allowlist secret - registry identity, not a credential
 _BASE = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
     "OPTIMUS_API_KEY": "test-key",  # pragma: allowlist secret - synthetic test fixture
