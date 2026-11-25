@@ -144,6 +144,26 @@ def check_schedule(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outl
         raise LaunchRefused(f"the schedule has {counts[0]} rows, {counts[1]} sends and {counts[2]} forced refusals, not the frozen {FROZEN_COUNTS}")
 
 
+def checkout_tree(workspace: Path) -> str:
+    return "git:" + _git(workspace, "rev-parse", "HEAD^{tree}")
+
+
+def checkout_head(workspace: Path) -> str:
+    return "git:" + _git(workspace, "rev-parse", "HEAD")
+
+
+def checkout_drift(workspace: Path, head: str) -> str | None:
+    """Why a row's checkout is not the one it was opened at: any tracked or untracked change, or another commit (Codex round 124 attempt 3,
+    B2). A file outside the row's selected context counts too, since the request bytes alone would not show it. One git process: porcelain
+    v2 gives the commit and every change."""
+    lines = _git(workspace, "status", "--porcelain=v2", "--branch", "--untracked-files=all").splitlines()
+    if any(not line.startswith("# ") for line in lines):
+        return "the checkout has changed since it was opened"
+    if f"# branch.oid {head.removeprefix('git:')}" not in lines:
+        return "the checkout is not the commit it was opened at"
+    return None
+
+
 @dataclass
 class Composition:
     """Production's Q composition for one process: each row's packer and binder are built fresh, as a launch builds them per turn."""
@@ -155,7 +175,9 @@ class Composition:
     workspaces: dict[str, Path]  # case snapshot -> its tree
     model_id: str = D3_MODEL
     epochs: dict[str, int] = field(default_factory=dict)  # case snapshot -> the generation its session published and its catalogue holds
-    trees: dict[str, str] = field(default_factory=dict)  # case snapshot -> its git tree id
+    trees: dict[str, str] = field(default_factory=dict)  # case snapshot -> its checkout's tree id when opened
+    heads: dict[str, str] = field(default_factory=dict)  # case snapshot -> its checkout's commit when opened
+    verify_checkout: Callable[[Path, str], str | None] = checkout_drift
     summaries: paid.NoSummaries = field(default_factory=paid.NoSummaries)
     packers: dict[tuple[str, str], AttachedTurn] = field(default_factory=dict)  # each row's, read after it for its manifest
 
@@ -181,6 +203,9 @@ class Composition:
             raise LaunchRefused(f"{case['case_id']}/{arm}: the attached turn prepared {outcome.kind!r}, not its history view")
         self.packers[(case["case_id"], arm)] = attached
         return attached
+
+    def checkout_drift(self, snapshot: str) -> str | None:
+        return self.verify_checkout(self.workspaces[snapshot], self.heads[snapshot])
 
     def memory_turn(self, snapshot: str) -> Any:
         """The session's own turn, keeping the retrieval and pack production computed (`m2b_seen`), so a turn that refuses after retrieval and
@@ -309,6 +334,7 @@ class Evidence:
     def __init__(self, composition: Composition, cases: Sequence[Mapping[str, Any]], expected: Sequence[Mapping[str, Any]] | None = None) -> None:
         self.composition = composition
         self.snapshot_of = {case["case_id"]: case["snapshot"] for case in cases}
+        self.run_snapshot = {f"m2b-q-{case['case_id']}-{arm}": case["snapshot"] for case in cases for arm in "NBUF"}
         self.expected = None if expected is None else {f"m2b-q-{r['case_id']}-{r['arm']}": r for r in expected}
         self.inputs: dict[str, str] = {}
         self.contexts: dict[str, str] = {}
@@ -318,13 +344,17 @@ class Evidence:
         self.inputs[sha] = text
 
     def observe(self, request: Any, result: Any) -> None:
+        """Runs before the row's request is built: the checkout must still be the tree it was opened at, and at paid time the row must be
+        the dry row; otherwise the row is refused before anything is sent."""
         self.contexts[request.run_id] = result.text
         want = None if self.expected is None else self.expected.get(request.run_id)
-        if want is not None and want["sent"]:
+        snapshot = self.run_snapshot.get(request.run_id)
+        reason = None if snapshot is None else self.composition.checkout_drift(snapshot)
+        if reason is None and want is not None and want["sent"]:
             reason = self._differs(want, result.text)
-            if reason is not None:
-                self.refusals[request.run_id] = reason
-                raise paid.GuardRefused(reason)
+        if reason is not None:
+            self.refusals[request.run_id] = reason
+            raise paid.GuardRefused(reason)
 
     def _differs(self, want: Mapping[str, Any], context: str) -> str | None:
         if self.composition.trees.get(self.snapshot_of[want["case_id"]]) != want["tree"]:
@@ -516,7 +546,7 @@ def preflight(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_a
         problems.append("the gate's release bounds are not the frozen 96 attempts, USD 6.00 and USD 0.04608 an attempt")
     digests = gate.get("digests") or {}
     problems.extend(f"the gate does not pin {rel}" for rel in PINNED_FILES if rel not in digests)
-    problems.extend(f"{rel} is not the gate's" for rel, digest in sorted(digests.items()) if _file_sha(repository / rel) != digest)
+    problems.extend(f"{rel} is not the gate's" for rel, digest in sorted(digests.items()) if not (repository / rel).is_file() or _file_sha(repository / rel) != digest)
     if snapshot.effective_hash != gate.get("registry_hash"):
         problems.append("the registry is not the gate's")
     if gate.get("tariff") != tariff_record():
@@ -591,10 +621,10 @@ def open_sessions(revisions: Sequence[str], *, repository: Path, work: Path, roo
         started = time.perf_counter()
         session.start()
         composition.epochs[snapshot] = wait_indexed(session)
-        composition.trees[snapshot] = "git:" + _git(repository, "rev-parse", f"{revision}^{{tree}}")
+        composition.trees[snapshot], composition.heads[snapshot] = checkout_tree(tree), checkout_head(tree)
         coverage = session._current_scope().storage.call("coverage")["current"]["coverage"]  # noqa: SLF001
-        trees.append({"revision": snapshot, "tree": composition.trees[snapshot], "epoch": composition.epochs[snapshot], "seconds": round(time.perf_counter() - started, 1),
-                      "coverage": coverage})
+        trees.append({"revision": snapshot, "source_tree": "git:" + _git(repository, "rev-parse", f"{revision}^{{tree}}"), "tree": composition.trees[snapshot],
+                      "epoch": composition.epochs[snapshot], "seconds": round(time.perf_counter() - started, 1), "coverage": coverage})
 
 
 def smoke(cases: Sequence[Mapping[str, Any]], composition: Composition, snapshot: str, *, gateway: Any, provider: StubProvider) -> dict[str, Any]:
@@ -640,27 +670,27 @@ def _remove_container(config: Mapping[str, Any]) -> None:
             raise LaunchRefused(f"teardown left the released {kind} behind")
 
 
-def _stop_gateway(gateway: Any) -> None:
-    gateway.kill()
-    gateway.wait(10)
-
-
 def _close_sessions(composition: Composition) -> None:
+    """Every session closes even if one fails to; the first failure is raised after all have been tried."""
+    failures: list[BaseException] = []
     for session in composition.sessions.values():
-        session.close()
+        try:
+            session.close()
+        except Exception as failure:  # noqa: BLE001 - kept and raised once every session has been asked to close
+            failures.append(failure)
+    if failures:
+        raise failures[0]
 
 
 @contextmanager
 def provisioned(config: Mapping[str, Any], repository: Path, work: Path, composition: Composition) -> Iterator[tuple[Path, Any, Any, Mapping[str, Any], Any]]:
     """The released Redis and index Gateway. Each resource's cleanup is registered where it is acquired and every one runs however this
-    ends, a failed start or a failed cleanup included (Codex round 124 attempt 2, A3): the sessions close, then the index Gateway and its
-    client stop, then the container and volume are removed and confirmed gone."""
+    ends, a failed start or a failed cleanup included (Codex round 124 attempts 2 and 3, A3): the sessions close, then the index Gateway
+    and its client stop (registered by _provision the moment each exists), then the container and volume are removed and confirmed gone."""
     _released_names(config)
     with ExitStack() as stack:
         stack.callback(_remove_container, config)  # first in, last out: _provision may create the container and then fail
-        root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)  # noqa: SLF001
-        stack.callback(_stop_gateway, gateway)
-        stack.callback(client.close)
+        root, memory, _password, _client, _gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work, cleanup=stack)  # noqa: SLF001
         stack.callback(_close_sessions, composition)
         yield root, memory, settings, settings_file, _embedder(config, repository, root, memory, settings_file)
 
@@ -720,14 +750,23 @@ def run_gate(config: Mapping[str, Any], repository: Path, out: Path) -> dict[str
             passed = report["rehearsal"]["passes"]
         report["passes"] = passed  # only once every resource is torn down and confirmed gone
         return report
-    except LaunchRefused as refused:
-        report["failed"] = str(refused)
-        raise
     except Exception as failure:
-        report["failed"] = type(failure).__name__  # only the type: another error's text may hold a path
+        report["failures"] = failures(failure)  # a failed teardown and the failure it followed, both kept
+        report["failed"] = report["failures"][0]
         raise
     finally:
         ev._write(report, out)  # noqa: SLF001
+
+
+def failures(failure: BaseException) -> list[str]:
+    """The failure and every one it followed, newest first: our refusals by their text, any other error by its type only (its text may hold
+    a path)."""
+    chain: list[str] = []
+    current: BaseException | None = failure
+    while current is not None and len(chain) < 8:
+        chain.append(str(current) if isinstance(current, LaunchRefused) else type(current).__name__)
+        current = current.__cause__ or current.__context__
+    return chain
 
 
 def _sink(path: Path, repository: Path) -> Path:
@@ -762,6 +801,8 @@ def run_paid(config: Mapping[str, Any], repository: Path, release: Mapping[str, 
     verify_g2(g2, gate)
     u_equals_b = contract["task1_freezes"]["selected_candidate"]["u_equals_b"]
     budget_report = g2["budget"]
+    preflight(cases, u_equals_b=u_equals_b, outline_available=budget_report["outline_available"], budget_report=budget_report, gate=gate, snapshot=trusted_snapshot(),
+              repository=repository)  # before anything is provisioned or indexed (Codex round 124 attempt 3, B1); paid_launch repeats it
     sink = _sink(Path(config["sink_dir"]), repository)
     work = repository / config["work_dir"] / "paid"
     legacy, _model_aware, _estimate = ev.production_routes(work)

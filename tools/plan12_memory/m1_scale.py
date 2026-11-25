@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -466,8 +467,15 @@ def _bulk(index: _Index, store: memory_index.IndexStore, *, batches: int, dimens
             "proxy_seconds": round(proxy_seconds, 3), "native_seconds": round(native_seconds, 3)}
 
 
-def _provision(config: dict[str, Any], repository: Path, work: Path, *, prepare: Callable[[Path], None] | None = None) -> tuple[Path, Any, str, redis.Redis, subprocess.Popen[str], OptimusGatewaySettings, dict[str, Any]]:
-    """The released Redis made the way a real launch makes it, and a real Gateway process in front of it."""
+def _stop_process(process: subprocess.Popen[str]) -> None:
+    process.kill()
+    process.wait(10)
+
+
+def _provision(config: dict[str, Any], repository: Path, work: Path, *, prepare: Callable[[Path], None] | None = None,
+               cleanup: ExitStack | None = None) -> tuple[Path, Any, str, redis.Redis, subprocess.Popen[str], OptimusGatewaySettings, dict[str, Any]]:
+    """The released Redis made the way a real launch makes it, and a real Gateway process in front of it. With `cleanup`, the client's close
+    and the Gateway process's stop are registered the moment each exists, so a failure later in startup still releases them."""
     work.mkdir(parents=True, exist_ok=True)
     container, volume = config["container"], config["volume"]
     prefix = config.get("release_prefix", "p1210-")  # each plan names its own released resources
@@ -500,6 +508,8 @@ def _provision(config: dict[str, Any], repository: Path, work: Path, *, prepare:
     status = local_infra.ensure_memory_redis(root)
     assert status.state == "ready", status
     client = memory_index.connect(memory_index.IndexEndpoint("127.0.0.1", memory.port, memory.user, password, memory.resource))
+    if cleanup is not None:
+        cleanup.callback(client.close)
     deadline = time.monotonic() + 30
     while True:
         try:
@@ -510,6 +520,8 @@ def _provision(config: dict[str, Any], repository: Path, work: Path, *, prepare:
             time.sleep(0.5)
 
     gateway = subprocess.Popen([sys.executable, "-c", _GATEWAY_SCRIPT], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    if cleanup is not None:
+        cleanup.callback(_stop_process, gateway)
     assert gateway.stdin is not None and gateway.stdout is not None
     gateway.stdin.write(json.dumps({"port": memory.port, "user": memory.user, "password": password, "resource": memory.resource, "secret": _SECRET, "gateway_port": config.get("gateway_port", 0)}) + "\n")
     gateway.stdin.flush()

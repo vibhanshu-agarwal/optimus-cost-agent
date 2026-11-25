@@ -55,9 +55,17 @@ def _cases() -> list[dict[str, Any]]:
             for category, prefix in (("ranking", "QR"), ("budget", "QB"), ("outline", "QO")) for n in range(1, 5)]
 
 
+def _commit(tree: Path) -> None:
+    for args in (("add", "-A"), ("-c", "user.email=t@t", "-c", "user.name=t", "-c", "core.autocrlf=false", "commit", "-q", "-m", "c")):
+        subprocess.run(["git", "-C", str(tree), *args], check=True, capture_output=True)
+
+
 @pytest.fixture
 def tree(workspace: Path) -> Path:  # noqa: F811
+    """A materialized checkout: its own repository, committed, as m1_evaluate.materialize leaves one."""
     (workspace / "pkg" / "b.py").write_text(LOADER, encoding="utf-8", newline="\n")
+    subprocess.run(["git", "-C", str(workspace), "init", "-q", "-b", "q"], check=True, capture_output=True)
+    _commit(workspace)
     return workspace
 
 
@@ -76,8 +84,12 @@ def _ready_session(tree: Path, epoch: int, **storage: Any) -> Any:
     return session
 
 
-def _composition(tree: Path, *, epoch: int = 3, **storage: Any) -> launch.Composition:
-    return launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {SNAP: _ready_session(tree, epoch, **storage)}, {SNAP: tree}, epochs={SNAP: epoch}, trees={SNAP: "git:t"})
+def _composition(tree: Path, *, epoch: int = 3, checked: bool = False, **storage: Any) -> launch.Composition:
+    """`checked` runs the real git checkout check before each request; elsewhere it is doubled (a git process per row is slow on Windows),
+    and the tests about the checkout run it for real."""
+    return launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {SNAP: _ready_session(tree, epoch, **storage)}, {SNAP: tree}, epochs={SNAP: epoch},
+                              trees={SNAP: launch.checkout_tree(tree)}, heads={SNAP: launch.checkout_head(tree)},
+                              verify_checkout=launch.checkout_drift if checked else lambda _ws, _head: None)
 
 
 def _rehearse(composition: launch.Composition, *, budget_report: dict | None = None, cases: list[dict] | None = None) -> dict[str, Any]:
@@ -131,7 +143,7 @@ def test_each_arm_is_productions_d3_composition_with_only_bs_pack_budget_replace
 # --- the rehearsal ---------------------------------------------------------------------------------------------------------------
 
 def test_the_rehearsal_sends_every_row_once_through_the_http_gateway_and_seals_what_the_paid_run_must_reproduce(tree):
-    record = _rehearse(_composition(tree))
+    record = _rehearse(_composition(tree, checked=True))  # the real checkout check on every row of a clean checkout
     assert record["passes"], record["problems"]
     assert (record["sends"], record["provider_calls"], record["summary_calls"]) == (36, 36, 0)
     for row in record["rows"]:
@@ -139,7 +151,7 @@ def test_the_rehearsal_sends_every_row_once_through_the_http_gateway_and_seals_w
         assert row["sent"] and row["limit_line"] is memory and (row["pack_sha256"] is not None) is memory, row
         assert row["binding"] == {"registry_hash": trusted_snapshot().effective_hash, "model": launch.D3_MODEL, "output_cap": paid.OUTPUT_CAP}
         assert (row["cache_prefix_chars"] is not None) is memory, "the indexed prefix is cached, and the provider received exactly that split"
-        assert (row["epoch"], row["tree"], row["retrieval_evidence"]) == ((3, "git:t", "manifest") if memory else (None, "git:t", "no memory turn"))
+        assert (row["epoch"], row["tree"], row["retrieval_evidence"]) == ((3, launch.checkout_tree(tree), "manifest") if memory else (None, launch.checkout_tree(tree), "no memory turn"))
         assert row["input_masked_sha256"] != row["input_sha256"] or not memory, "a memory row's scope line names its generation"
     by_arm = {row["arm"]: row["pack_sha256"] for row in record["rows"] if row["case_id"] == "QB1"}
     assert by_arm["B"] != by_arm["F"], "B packs under the legacy budget, F under the route's own"
@@ -210,6 +222,7 @@ BIG = "".join(f"def handler_{i}(event):\n    return 'big file body {i}'\n\n\n" f
 def _with_refusal(tree: Path) -> list[dict[str, Any]]:
     """QB3 names a required file B's legacy budget cannot hold: production retrieves, packs, then refuses before its manifest."""
     (tree / "pkg" / "big.py").write_text(BIG, encoding="utf-8", newline="\n")
+    _commit(tree)
     cases = _cases()
     qb3 = next(c for c in cases if c["case_id"] == "QB3")
     qb3.update({"task": "Explain what pkg/big.py does.", "required_files": [{"path": "pkg/big.py"}], "forced_refusal": {**qb3["forced_refusal"], "B": True},
@@ -254,7 +267,8 @@ def test_a_row_whose_limit_line_is_not_its_arms_fails_the_rehearsal(tree):
             return attached
 
     plain = _composition(tree)
-    record = _rehearse(NWithMemory(plain.snapshot, plain.shared_secret, LEGACY, plain.sessions, plain.workspaces, epochs=plain.epochs, trees=plain.trees))
+    record = _rehearse(NWithMemory(plain.snapshot, plain.shared_secret, LEGACY, plain.sessions, plain.workspaces, epochs=plain.epochs, trees=plain.trees,
+                               heads=plain.heads, verify_checkout=plain.verify_checkout))
     assert {p for p in record["problems"] if p.endswith("limit line is present")} == {f"{c['case_id']}/N: the limit line is present" for c in _cases()}
 
 
@@ -299,7 +313,7 @@ def test_masking_hides_only_the_emitted_scope_lines_index_generation():
 # --- the paid launch ---------------------------------------------------------------------------------------------------------------
 
 def _launch(tree: Path, sealed: dict, budget: dict, provider_calls: list[int], *, gate: dict | None = None) -> dict:
-    composition = _composition(tree, epoch=9)
+    composition = _composition(tree, epoch=9, checked=True)
     kept: list[tuple[str, str]] = []
     with launch.loopback_gateway(composition.snapshot, composition.shared_secret) as (client, provider):  # the operator Gateway's stand-in
         try:
@@ -316,23 +330,49 @@ def test_the_paid_launch_forwards_each_rows_dry_pass_input_only_after_every_row_
     report = _launch(tree, sealed, _budget(sealed), calls)
     assert report["stopped"] is None and calls == [36]
     assert all(row["guard_refusal"] is None and row["terminal"] == "settled" for row in report["rows"])
-    assert all(row["epoch"] == (9 if row["arm"] != "N" else None) and row["tree"] == "git:t" for row in report["rows"]), "each paid row keeps its own evidence"
+    assert all(row["epoch"] == (9 if row["arm"] != "N" else None) and row["tree"] == launch.checkout_tree(tree) for row in report["rows"]), "each paid row keeps its own evidence"
     assert all(row["pack_sha256"] == s["pack_sha256"] for row, s in zip(report["rows"], sealed["rows"], strict=True))
 
 
-def test_a_paid_row_whose_source_moved_after_the_dry_pass_is_refused_before_its_request(tree, frozen, gates_pass, monkeypatch):
+@pytest.mark.parametrize(("move", "reason"), [
+    (lambda tree: (tree / "notes.md").write_text("# Edited after the dry pass\n", encoding="utf-8"), "the checkout has changed since it was opened"),
+    (lambda tree: ((tree / "notes.md").write_text("# Committed after the dry pass\n", encoding="utf-8"), _commit(tree)), "the checkout is not the commit it was opened at"),
+    (lambda tree: (tree / "untracked.txt").write_text("new\n", encoding="utf-8"), "the checkout has changed since it was opened"),
+])
+def test_a_paid_row_whose_checkout_moved_after_the_dry_pass_is_refused_before_its_request(tree, frozen, gates_pass, monkeypatch, move, reason):
+    """Codex round 124 attempt 3, B2: a change to a file outside every row's selected context leaves the request bytes the same, so the
+    checkout itself is verified before each request."""
     sealed = _rehearse(_composition(tree))
     real_run = paid.run
 
     def moved(*args: Any, **kwargs: Any) -> Any:
         if kwargs.get("expected_inputs") is not None:  # the paid rows, after the dry pass compared clean
-            kwargs["packer_for"].__self__.trees[SNAP] = "git:moved"
+            move(tree)
         return real_run(*args, **kwargs)
 
     monkeypatch.setattr(launch.paid, "run", moved)
     calls: list[int] = []
     report = _launch(tree, sealed, _budget(sealed), calls)
-    assert calls == [0] and report["stopped"] is not None and report["rows"][0]["evidence_refusal"] == "the source tree is not the dry pass's"
+    assert calls == [0] and report["stopped"] is not None and report["rows"][0]["evidence_refusal"] == reason
+
+
+def test_a_paid_row_on_a_newer_index_generation_than_the_dry_pass_is_refused_before_its_request(tree, frozen, gates_pass, monkeypatch):
+    """A background pass that publishes between the dry pass and the paid rows leaves the checkout clean but moves the scope line: the
+    paid row is held to its dry row and refused before anything is sent."""
+    sealed = _rehearse(_composition(tree))
+    real_run = paid.run
+
+    def republished(*args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("expected_inputs") is not None:
+            kwargs["packer_for"].__self__.sessions[SNAP]._storage_for("scope").epoch = 10  # noqa: SLF001 - the fake index publishes again
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(launch.paid, "run", republished)
+    calls: list[int] = []
+    report = _launch(tree, sealed, _budget(sealed), calls)
+    first_memory = next(row for row in report["rows"] if row["arm"] != "N")
+    assert calls == [first_memory["position"] - 1] and report["stopped"] is not None
+    assert first_memory["evidence_refusal"] == "the scope line's generation is not the dry pass's"
 
 
 def test_the_paid_launch_refuses_before_any_send_on_a_sealed_difference(tree, frozen, gates_pass):
@@ -437,7 +477,7 @@ def test_the_paid_run_needs_a_passing_g2_report_that_ran_the_gates_files_and_com
 def test_at_paid_time_a_row_whose_pack_generation_or_tree_is_not_the_dry_passs_is_refused_before_its_request(tree):
     composition = _composition(tree)
     context = "the pack\n--- scope: index generation 3, complete; ---"
-    dry = {"case_id": "QR1", "arm": "B", "sent": True, "tree": "git:t", "epoch": 3, "pack_sha256": "hex:" + hashlib.sha256(b"the pack").hexdigest()}
+    dry = {"case_id": "QR1", "arm": "B", "sent": True, "tree": composition.trees[SNAP], "epoch": 3, "pack_sha256": "hex:" + hashlib.sha256(b"the pack").hexdigest()}
     launch.Evidence(composition, _cases(), expected=[dry]).observe(SimpleNamespace(run_id="m2b-q-QR1-B"), SimpleNamespace(text=context))
     for changed, reason in (({"pack_sha256": "hex:0"}, "the pack is not the dry pass's"), ({"epoch": 4}, "the scope line's generation is not the dry pass's"),
                             ({"tree": "git:other"}, "the source tree is not the dry pass's")):
@@ -508,7 +548,7 @@ def test_a_refused_index_worker_stops_the_wait_with_its_reason():
 def driver(tmp_path, tree, monkeypatch):
     """run_gate with its infrastructure doubled: provisioning, the embedder and the index sessions; everything else is the real path."""
     calls: dict[str, list] = {"open": [], "removed": [], "rehearse": []}
-    monkeypatch.setattr(launch.m1_scale, "_provision", lambda config, repository, work: (tmp_path, SimpleNamespace(), None, SimpleNamespace(close=lambda: None),
+    monkeypatch.setattr(launch.m1_scale, "_provision", lambda config, repository, work, **_kw: (tmp_path, SimpleNamespace(), None, SimpleNamespace(close=lambda: None),
                                                                                          SimpleNamespace(kill=lambda: None, wait=lambda s: None), None, {}))
     monkeypatch.setattr(launch, "_embedder", lambda *a: SimpleNamespace(embedded=0, reused=0))
     monkeypatch.setattr(launch, "_remove_container", lambda config: calls["removed"].append(config["container"]))
@@ -545,7 +585,7 @@ def test_the_driver_stops_after_failed_budget_gates_before_the_rehearsal(driver,
 def test_a_failed_start_still_removes_the_container_and_keeps_why(driver, monkeypatch):
     config, calls, out = driver
 
-    def fails(*_a: Any) -> Any:
+    def fails(*_a: Any, **_k: Any) -> Any:
         raise RuntimeError("the container never answered")
 
     monkeypatch.setattr(launch.m1_scale, "_provision", fails)
@@ -576,6 +616,110 @@ def test_teardown_confirms_the_released_container_and_volume_are_gone(monkeypatc
     left.append(listing)
     with pytest.raises(launch.LaunchRefused, match=reason):
         launch._remove_container({"container": "p1214-x", "volume": "p1214-v"})  # noqa: SLF001
+
+
+def test_every_session_closes_even_if_one_fails_to(tree):
+    closed: list[str] = []
+
+    def failing() -> None:
+        closed.append("first")
+        raise RuntimeError("the first session would not close")
+
+    composition = launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {"a": SimpleNamespace(close=failing), "b": SimpleNamespace(close=lambda: closed.append("second"))}, {})
+    try:
+        launch._close_sessions(composition)  # noqa: SLF001
+    except RuntimeError as failure:
+        assert str(failure) == "the first session would not close"
+    else:
+        pytest.fail("a session that would not close was not reported")
+    assert closed == ["first", "second"]
+
+
+def test_an_index_gateway_that_dies_after_it_starts_is_still_stopped_with_its_client_and_container(tmp_path, monkeypatch):
+    """Codex round 124 attempt 3, A3: through the real m1_scale._provision, a failure after the Gateway process starts but before it
+    reports its port still stops it, closes the Redis client and removes the container, in that order."""
+    events: list[str] = []
+    (tmp_path / "artifacts" / "snapshot").mkdir(parents=True)
+    memory = SimpleNamespace(port=1, user="u", resource="r", credential_name="c")
+    scale = launch.m1_scale
+    monkeypatch.setattr(scale.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=""))
+    monkeypatch.setattr("optimus.acp.memory_setup.shipped_defaults", lambda: {})
+    monkeypatch.setattr(scale, "run_setup", lambda config_root, *, keyring_backend, **_k: keyring_backend.set_password(scale.KEYRING_SERVICE, "c", "pw"))
+    monkeypatch.setattr(scale, "memory_index_root", lambda root: tmp_path)
+    monkeypatch.setattr(scale, "read", lambda root: (None, memory, None))
+    monkeypatch.setattr(scale.local_infra, "ensure_memory_redis", lambda root: SimpleNamespace(state="ready"))
+    monkeypatch.setattr(scale.memory_index, "connect", lambda endpoint: SimpleNamespace(ping=lambda: True, close=lambda: events.append("client closed")))
+
+    class Dies:  # starts, then exits before saying its port
+        stdin = SimpleNamespace(write=lambda text: None, flush=lambda: None)
+        stdout = SimpleNamespace(readline=lambda: "")
+
+        def kill(self) -> None:
+            events.append("gateway stopped")
+
+        def wait(self, seconds: float) -> int:
+            return 1
+
+    monkeypatch.setattr(scale.subprocess, "Popen", lambda *a, **k: Dies())
+    monkeypatch.setattr(launch, "_remove_container", lambda config: events.append("container removed"))
+    config = {"container": "p1214-x", "volume": "p1214-v", "release_prefix": "p1214-", "artifact_cache": str(tmp_path / "artifacts"), "port": 1, "maxmemory_mb": 1}
+    try:
+        with launch.provisioned(config, tmp_path, tmp_path / "work", launch.Composition(trusted_snapshot(), "s" * 64, LEGACY, {}, {})):
+            pytest.fail("provisioned with a dead index Gateway")
+    except ValueError:
+        pass
+    assert events == ["gateway stopped", "client closed", "container removed"]
+
+
+def test_a_failed_run_whose_teardown_also_fails_keeps_both_failures(driver, monkeypatch):
+    config, calls, out = driver
+
+    def broken(*_a: Any, **_k: Any) -> Any:
+        raise launch.LaunchRefused("the smoke row could not be prepared")
+
+    def left_behind(config: dict) -> None:
+        raise launch.LaunchRefused("teardown left the released container behind")
+
+    monkeypatch.setattr(launch, "smoke", broken)
+    monkeypatch.setattr(launch, "_remove_container", left_behind)
+    try:
+        launch.run_gate(config, ROOT, out)
+    except launch.LaunchRefused:
+        pass
+    else:
+        pytest.fail("a failed run returned")
+    kept = json.loads(out.read_text(encoding="utf-8"))
+    assert (kept["passes"], kept["failures"]) == (False, ["teardown left the released container behind", "the smoke row could not be prepared"])
+
+
+def test_the_paid_entry_refuses_a_failing_preflight_before_provisioning_anything(tmp_path, monkeypatch):
+    """Codex round 124 attempt 3, B1: the release, the gate, the G2 report and the whole preflight are checked before any container or index."""
+    gate = {**_gate(), "tariff": {**launch.tariff_record(), "output_usd_per_million": "9.99"}, "g2_report": {"path": "g2.json", "sha256": ""}}
+    gate["digests"][launch.CASES] = launch.sc.SEALED_CASES_SHA256
+    g2 = json.dumps({"passes": True, "pinned": gate["digests"], "registry_hash": gate["registry_hash"], "tariff_id": paid.D3_TARIFF.id, "cases_sha256": launch.sc.SEALED_CASES_SHA256,
+                     "budget": {"outline_available": True, "rows": []}}).encode()
+    gate["g2_report"]["sha256"] = "hex:" + hashlib.sha256(g2).hexdigest()
+    repo = tmp_path / "repo"
+    (repo / Path(launch.CASES).parent).mkdir(parents=True)
+    (repo / launch.CASES).write_bytes((ROOT / launch.CASES).read_bytes())
+    (repo / "g2.json").write_bytes(g2)
+    contract = json.dumps({"q_launch": gate, "task1_freezes": {"selected_candidate": {"u_equals_b": True}}}).encode()
+    (repo / launch.CONTRACT).write_bytes(contract)
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, capture_output=True)
+    _commit(repo)
+    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    release = {"head": head, "contract_sha256": "hex:" + hashlib.sha256(contract).hexdigest(), "reviews": {"fable": COMMENT + "1", "codex": COMMENT + "2"}}
+    monkeypatch.setenv("OPTIMUS_API_KEY", "k" * 32)
+    monkeypatch.setattr(launch.m1_scale, "_provision", lambda *a, **k: pytest.fail("provisioned before the preflight held"))
+    monkeypatch.setattr(launch, "_remove_container", lambda config: pytest.fail("touched Docker before the preflight held"))
+    try:
+        launch.run_paid({"sink_dir": str(tmp_path / "sink"), "work_dir": str(tmp_path / "work")}, repo, release, tmp_path / "paid.json")
+    except launch.LaunchRefused as refused:
+        assert str(refused).startswith("preflight: ") and "the tariff is not the gate's" in str(refused)
+    except Exception as other:  # noqa: BLE001 - anything else means the preflight did not come first
+        pytest.fail(f"the paid entry went on past a failing preflight and raised {type(other).__name__}")
+    else:
+        pytest.fail("the paid entry went on past a failing preflight")
 
 
 def test_a_teardown_failure_after_a_passing_rehearsal_is_no_pass(driver, monkeypatch):
