@@ -260,10 +260,15 @@ class ClientMcpConfigNormalizer:
                         value=header_value,
                     )
                 )
-            canonical_target, query_fingerprints = _canonicalize_url(url, hmac_key=hmac_key)
+            try:
+                canonical_target, query_fingerprints = _canonicalize_url(url, hmac_key=hmac_key)
+                query_names = [name for name, _ in parse_qsl(urlsplit(canonical_target).query, keep_blank_values=True)]
+            except ValueError:
+                # The URL parser, a port read or text encoding refused the endpoint; its message can
+                # repeat part of the endpoint, so it is not chained.
+                raise ClientMcpConfigError("client_mcp.invalid_url") from None
             fingerprints.extend(query_fingerprints)
-            for query_name, _ in parse_qsl(urlsplit(canonical_target).query, keep_blank_values=True):
-                credential_names.append(query_name)
+            credential_names.extend(query_names)
             scan_chunks.extend([canonical_target, *credential_names])
 
         # `_meta` is intentionally ignored and never enters identity or scan text.
@@ -346,6 +351,11 @@ def _parse_named_values(
         value = item.get("value")
         if not isinstance(value, str):
             raise ClientMcpConfigError("client_mcp.invalid_named_values")
+        try:  # a lone surrogate cannot be fingerprinted, sent or put in a child environment
+            name.encode("utf-8")
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ClientMcpConfigError("client_mcp.invalid_named_values") from None
         key = name.casefold() if case_insensitive else name
         if key in seen:
             raise ClientMcpConfigError(duplicate_rule)
@@ -414,12 +424,7 @@ def _normcase_path(path: Path) -> str:
 
 
 def _canonicalize_url(url: str, *, hmac_key: bytes) -> tuple[str, tuple[str, ...]]:
-    try:
-        parts = urlsplit(url)
-        port = parts.port
-    except ValueError:
-        # The parser's message can repeat part of the endpoint, so it is not chained.
-        raise ClientMcpConfigError("client_mcp.invalid_url") from None
+    parts = urlsplit(url)
     if parts.scheme.lower() not in {"http", "https"}:
         raise ClientMcpConfigError("client_mcp.invalid_url")
     if parts.username is not None or parts.password is not None:
@@ -431,6 +436,7 @@ def _canonicalize_url(url: str, *, hmac_key: bytes) -> tuple[str, tuple[str, ...
 
     scheme = parts.scheme.lower()
     host = _canonicalize_host(parts.hostname)
+    port = parts.port
     if (scheme == "http" and port == 80) or (scheme == "https" and port == 443):
         port = None
     netloc = host if port is None else f"{host}:{port}"
@@ -457,8 +463,8 @@ def _canonicalize_host(hostname: str) -> str:
         pass
     try:
         return hostname.encode("idna").decode("ascii").lower()
-    except UnicodeError as exc:
-        raise ClientMcpConfigError("client_mcp.invalid_url") from exc
+    except UnicodeError:
+        raise ClientMcpConfigError("client_mcp.invalid_url") from None
 
 
 def _canonicalize_path(path: str) -> str:

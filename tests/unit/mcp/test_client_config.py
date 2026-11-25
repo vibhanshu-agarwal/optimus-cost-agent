@@ -354,13 +354,20 @@ def test_url_userinfo_and_fragment_are_rejected(tmp_path: Path) -> None:
     assert fragment.value.rule_id == "client_mcp.invalid_url_fragment"
 
 
-# Issue #603 row 5: the URL parser raises ValueError for these, at the split or at the port read.
+# Issue #603 row 5: the URL parser or text encoding raises ValueError for these: at the split, at the
+# port read, at the reparse of the canonical form (fullwidth brackets become ASCII under IDNA), or when
+# a lone surrogate in the path or query is encoded.
+LONE_SURROGATE = chr(0xD800)
 MALFORMED_ENDPOINTS = (
     "https://[",
     "https://[::1",
     "https://[not-an-address]/x",
     "https://host:65536/",
     "https://host:abc/",
+    "https://" + chr(0xFF3B) + "x" + chr(0xFF3D) + "/",
+    "https://host/" + LONE_SURROGATE,
+    "https://host/?q=" + LONE_SURROGATE,
+    "https://host/?" + LONE_SURROGATE + "=v",
 )
 
 
@@ -371,6 +378,36 @@ def test_endpoint_the_url_parser_rejects_is_a_config_error(tmp_path: Path, url: 
     assert exc_info.value.rule_id == "client_mcp.invalid_url"
     # The parser's own message can repeat part of the endpoint; it must not travel with the error.
     assert exc_info.value.__cause__ is None
+    assert exc_info.value.__suppress_context__
+
+
+@pytest.mark.parametrize(
+    ("url", "rule_id"),
+    [
+        ("https://user@host:abc/", "client_mcp.invalid_url_userinfo"),
+        ("https://host:abc/#f", "client_mcp.invalid_url_fragment"),
+    ],
+)
+def test_userinfo_and_fragment_are_judged_before_the_port(tmp_path: Path, url: str, rule_id: str) -> None:
+    with pytest.raises(ClientMcpConfigError) as exc_info:
+        _normalize([_http_entry(url=url)], workspace_root=tmp_path, controlled_path=str(tmp_path))
+    assert exc_info.value.rule_id == rule_id
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        _http_entry(headers=[{"name": "X-Key", "value": LONE_SURROGATE}]),
+        _http_entry(headers=[{"name": "X-" + LONE_SURROGATE, "value": "v"}]),
+        _stdio_entry(env=[{"name": "ISSUE603_ENV", "value": LONE_SURROGATE}]),
+        _stdio_entry(env=[{"name": "ISSUE603_" + LONE_SURROGATE, "value": "v"}]),
+    ],
+    ids=["header-value", "header-name", "env-value", "env-name"],
+)
+def test_named_value_that_cannot_be_encoded_is_a_config_error(tmp_path: Path, entry: dict[str, object]) -> None:
+    with pytest.raises(ClientMcpConfigError) as exc_info:
+        _normalize([entry], workspace_root=tmp_path, controlled_path=str(tmp_path))
+    assert exc_info.value.rule_id == "client_mcp.invalid_named_values"
     assert exc_info.value.__suppress_context__
 
 

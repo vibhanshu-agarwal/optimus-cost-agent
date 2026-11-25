@@ -1535,7 +1535,15 @@ async def test_session_new_malformed_mcp_servers_removes_provisional_session(tmp
 
 @pytest.mark.parametrize(
     "url",
-    ["https://[", "https://[::1", "https://[not-an-address]/x", "https://host:65536/", "https://host:abc/"],
+    [
+        "https://[",
+        "https://[::1",
+        "https://[not-an-address]/x",
+        "https://host:65536/",
+        "https://host:abc/",
+        "https://" + chr(0xFF3B) + "x" + chr(0xFF3D) + "/",
+        "https://host/?q=" + chr(0xD800),
+    ],
 )
 async def test_session_new_endpoint_the_url_parser_rejects_is_an_invalid_request(tmp_path, url):
     """Issue #603 row 5: the fixed response, no session kept, no permission asked."""
