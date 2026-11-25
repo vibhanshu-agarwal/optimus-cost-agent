@@ -258,15 +258,22 @@ def _claims_quoted(audit: Mapping[str, Any] | None, delivered: str) -> bool:
 
 def _ruling_valid(ruling: Any, claims: Sequence[str]) -> bool:
     """A reviewer named by a string (a list or dict is malformed, never a raise: Codex CP1 attempt 7, B), a boolean `supported`, a
-    non-blank string reason, and one ruling per material claim, exactly those claims, the ruling supported only when every claim is
-    (Codex round 124 B4)."""
+    non-blank string reason, and one ruling per material claim, exactly those claims (Codex round 124 B4). A supported ruling has every
+    claim supported. An unsupported one has a listed claim unsupported, or names in `unlisted_claims` the unsupported material claims the
+    answer makes beyond the case's list (Fable 5.2 formal review B1): an invented claim beside correct listed ones still fails the answer."""
     if not (isinstance(ruling, Mapping) and isinstance(ruling.get("reviewer"), str) and ruling["reviewer"] in AUDIT_REVIEWERS
             and isinstance(ruling.get("supported"), bool) and isinstance(ruling.get("reason"), str) and bool(ruling["reason"].strip())):
         return False
     ruled = ruling.get("claims")
     if not (isinstance(ruled, list | tuple) and all(isinstance(c, Mapping) and isinstance(c.get("check"), str) and isinstance(c.get("supported"), bool) for c in ruled)):
         return False
-    return sorted(c["check"] for c in ruled) == sorted(claims) and ruling["supported"] == all(c["supported"] for c in ruled)
+    if sorted(c["check"] for c in ruled) != sorted(claims):
+        return False
+    every = all(c["supported"] for c in ruled)
+    if ruling["supported"]:
+        return every
+    unlisted = ruling.get("unlisted_claims")
+    return not every or (isinstance(unlisted, list | tuple) and bool(unlisted) and all(isinstance(u, str) and bool(u.strip()) for u in unlisted))
 
 
 def _held(audit: Mapping[str, Any] | None, identity: Mapping[str, Any]) -> bool:

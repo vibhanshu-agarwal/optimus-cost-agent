@@ -718,6 +718,20 @@ def test_each_ruling_rules_on_every_material_claim_and_is_supported_only_when_ev
         assert _verdict(sc.PASS, record, identity) == (sc.PENDING_AUDIT, "incomplete ruling"), why
 
 
+def test_a_ruling_fails_an_answer_for_an_unsupported_claim_the_case_does_not_list_by_naming_it():
+    """Fable 5.2 formal review B1: every listed claim supported, but the answer also invents a material claim; the ruling is unsupported
+    and must name that claim."""
+    case, answer = BY_ID["QB1"], ANSWERS["QB1"]
+    identity = sc.audit_identity(case, "X", release=None, answer=answer, cases_sha256=None)
+    invented = _audit(case, answer)
+    invented["rulings"] = [{**r, "supported": False, "unlisted_claims": ["claims RRF_K is configurable per request, which nothing delivered says"]}
+                           for r in invented["rulings"]]
+    assert _verdict(sc.PASS, invented, identity) == (sc.FAIL, "unsupported")
+    for unlisted in (None, [], [" "], "one claim", [7]):
+        unnamed = {**invented, "rulings": [{**r, "unlisted_claims": unlisted} for r in invented["rulings"]]}
+        assert _verdict(sc.PASS, unnamed, identity) == (sc.PENDING_AUDIT, "incomplete ruling"), unlisted
+
+
 def test_framing_named_with_an_unrelated_exclusion_still_passes_the_screen():
     case = BY_ID["QB3"]
     answer = "`MAX_ENTRIES` caps one page at 40 entries.\n\n`MAX_PAGE_BYTES` caps it at 12,288 UTF-8 bytes, including framing, excluding unrelated files."
