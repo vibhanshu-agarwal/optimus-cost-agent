@@ -35,7 +35,7 @@ def test_an_answer_at_its_bound_is_accepted_and_one_byte_over_is_refused() -> No
     assert _code("ANSWER: " + chr(0xE9) * (ANSWER_MAX_BYTES // 2 + 1)) == "ANSWER_TOO_LONG"  # bytes, not characters
 
 
-@pytest.mark.parametrize("text", ["ANSWER:", "ANSWER:   ", "ANSWER:" + NL + TAB + NL])
+@pytest.mark.parametrize("text", ["ANSWER:", "ANSWER:   ", "ANSWER:" + NL + TAB + NL, "ANSWER: " + chr(0xA0), "ANSWER:" + NL + chr(0x3000)])
 def test_an_empty_answer_is_refused(text: str) -> None:
     assert _code(text) == "ANSWER_EMPTY"
 
@@ -65,6 +65,17 @@ def test_a_fenced_answer_is_an_answer_and_a_fenced_mixed_one_is_refused() -> Non
     fence = "`" * 3
     assert parse_planning_turn(NL.join([fence, "ANSWER: Yes.", fence])).reason == "Yes."
     assert _code(NL.join([fence, "ANSWER: Here is my advice.", "TEST pytest -q", fence])) == "ANSWER_HAS_DIRECTIVE"
+
+
+def test_a_fenced_answer_with_anything_after_its_closing_fence_is_not_an_answer() -> None:
+    """Codex review 2, finding 3: the suffix keeps the reply out of the answer path, as on the parent."""
+    fence = "`" * 3
+    assert _code(NL.join([fence, "ANSWER: Yes.", fence, "MCP_LIST docs"])) == "MCP_MIXED_DIRECTIVES"
+
+
+def test_a_directive_behind_leading_blanks_is_still_a_directive() -> None:
+    """Codex review 2, finding 5: the intermediate parser strips U+00A0, so the answer scan does too."""
+    assert _code("ANSWER: Yes." + NL + chr(0xA0) + "READ: README.md#bytes=0:10") == "ANSWER_HAS_DIRECTIVE"
 
 
 def test_an_answer_with_a_lone_surrogate_is_refused_not_a_crash() -> None:

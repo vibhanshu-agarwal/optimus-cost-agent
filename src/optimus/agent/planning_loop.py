@@ -658,7 +658,10 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
         return refuse_decision
     if stripped.startswith("REFUSE:"):
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
-    answer_decision = _try_parse_answer(stripped) or _try_parse_answer(strip_plan_text(_unwrap_markdown_code_fence(stripped)))
+    fenced = stripped.splitlines()[-1].lstrip().startswith("```")
+    answer_decision = _try_parse_answer(stripped) or (
+        _try_parse_answer(strip_plan_text(_unwrap_markdown_code_fence(stripped))) if fenced else None
+    )
     if answer_decision is not None:
         return answer_decision
 
@@ -956,6 +959,7 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
 
 
 def _answer_has_directive(line: str) -> bool:
+    line = line.strip()  # as the intermediate parser reads a line, U+00A0 and other blanks included
     normalized = _normalize_directive_surface_line(line)
     return (
         _REFUSE_REASON_DIRECTIVE_PREFIX.match(normalized) is not None
@@ -972,7 +976,7 @@ def _try_parse_answer(text: str) -> PlanningTurnDecision | None:
     if not text.startswith("ANSWER:"):
         return None
     answer = strip_plan_text(text[len("ANSWER:") :]).replace("\r\n", "\n")
-    if not answer:
+    if not answer.strip():  # str.strip also takes the blanks reply padding keeps (U+00A0 and the like)
         raise PlanningTurnParseError("ANSWER_EMPTY", "ANSWER holds no answer")
     if len(answer.encode("utf-8", "surrogatepass")) > ANSWER_MAX_BYTES:  # a lone surrogate is refused below, not a crash
         raise PlanningTurnParseError("ANSWER_TOO_LONG", "ANSWER exceeds its byte bound")
@@ -1126,9 +1130,9 @@ def planning_corrective_text(
 def _corrective_template(
     stop_reason: str | None, *, refusal_reason: str | None, workspace_root: Path | None, route_stopped: bool
 ) -> str:
-    if stop_reason == PLANNING_ANSWERED and refusal_reason is not None:
-        return refusal_reason  # #512: delivered as a Chat answer is; the subject sanitizer would rewrite every backslash
-    if stop_reason == "PLANNING_MODEL_REFUSED" and refusal_reason is not None:
+    # #512 (Codex review 2): an answer gets a refusal's sanitizer, so a secret it echoes is masked; shortcut: the
+    # sanitizer also turns a backslash into a slash, upgrade if answers need code examples with backslashes.
+    if stop_reason in ("PLANNING_MODEL_REFUSED", PLANNING_ANSWERED) and refusal_reason is not None:
         return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
     if route_stopped and stop_reason in PLANNING_ROUTE_STOPPED_MESSAGES:
         return PLANNING_ROUTE_STOPPED_MESSAGES[stop_reason]

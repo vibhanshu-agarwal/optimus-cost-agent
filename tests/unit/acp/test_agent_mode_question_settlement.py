@@ -9,6 +9,8 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from typing import Any
 
+import pytest
+
 from optimus.acp.shapes import LOOP_CONTINUE_OPTION_ID, LOOP_STOP_OPTION_ID
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.runner import AgentRunner
@@ -99,13 +101,13 @@ async def test_a_multi_line_answer_keeps_its_lines(tmp_path: Path) -> None:
     assert asked.plans == []
 
 
-async def test_an_answer_reaches_the_person_unrewritten(tmp_path: Path) -> None:
-    """Codex review 1, finding 4: as a Chat answer, never through the subject sanitizer that rewrites backslashes."""
-    backslash = chr(92)
-    text = f"Use {backslash}d for a digit, and the file is at {tmp_path}{backslash}README.md."
-    asked = await _ask(tmp_path, [f"ANSWER: {text}"])
+@pytest.mark.parametrize("form", ["ANSWER", "REFUSE"])
+async def test_an_answer_is_masked_as_a_refusal_is(tmp_path: Path, form: str) -> None:
+    """Codex review 2: a secret the model echoes is masked in an answer exactly as in a refusal reason."""
+    token = "example" + "-token-123"
+    asked = await _ask(tmp_path, [f"{form}: Use Authorization: Bearer {token} here."])
 
-    assert asked.texts[-1].strip() == text
+    assert asked.texts[-1].strip() == "Use Authorization: Bearer ********** here."
 
 
 async def test_a_genuine_refusal_settles_exactly_as_before(tmp_path: Path) -> None:
