@@ -707,11 +707,20 @@ def test_f8_a_git_entry_refuses_even_when_git_itself_fails(tmp_path: Path, repo:
 def test_f9_the_store_location_is_used_only_when_found_and_the_domain_is_refreshed(tmp_path: Path, repo: Path, places: dict[str, Path],
                                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
     if sys.platform == "win32":
+        roaming = tmp_path / "roaming"
+        monkeypatch.setenv("APPDATA", str(roaming))
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "no-docker"))
+        monkeypatch.setenv("DOCKER_CONFIG", str(tmp_path / "docker-config"))
+        monkeypatch.delenv("DOCKER_HOST", raising=False)
+        monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
         assert mb.docker_data_location() is None
         image = tmp_path / "no-docker" / "Docker" / "wsl" / "disk" / "docker_data.vhdx"
         image.parent.mkdir(parents=True)
         image.write_bytes(b"")
+        assert mb.docker_data_location() is None
+        settings = roaming / "Docker" / "settings-store.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(json.dumps({"WslEngineEnabled": True}), encoding="utf-8")
         assert mb.docker_data_location() == image
     clock = _Clock()
     host = _Backed(tmp_path, repo, places, clock)

@@ -734,6 +734,15 @@ why = "Native-only retained sidecar/capture path-budget controls; exact nodes ke
 [[tags]]
 name = "platform"
 nodes = [
+  "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_schedule_uses_content_free_location_metadata[module-//HOST_PATH_MARKER/share/probe.py]",
+  "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_schedule_uses_content_free_location_metadata[lambda-//HOST_PATH_MARKER/share/probe.py]",
+  "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_schedule_uses_content_free_location_metadata[genexpr-//HOST_PATH_MARKER/share/probe.py]",
+]
+why = "The synthetic UNC origins exercise Windows Coverage path canonicalization while retaining the same assertions on POSIX."
+
+[[tags]]
+name = "platform"
+nodes = [
   "tests/unit/tools/test_h5_failure_capture.py::test_retains_every_ordered_row_and_long_error_metadata",
   "tests/unit/tools/test_h5_failure_capture.py::test_refuses_malformed_or_private_data_before_publication",
   "tests/unit/tools/test_h5_failure_capture.py::test_verifier_rejects_missing_repeats_and_wrong_binding",
