@@ -38,6 +38,7 @@ from optimus.agent.workspace_context import (
     assemble_workspace_context_for_prompt,
     blocking_from_diagnostics,
     extract_file_references,
+    on_disk,
     rank_ambiguity,
     resolve_task_references,
     verified_hints,
@@ -597,7 +598,8 @@ class MemoryTurn:
         policy.forget_ignore_files()
         budget = min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
         with self._session.foreground():
-            diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(extract_file_references(selection_text)))
+            named = extract_file_references(selection_text, on_disk(policy.root))  # whole paths decide whether the cached listing will do (#634)
+            diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(named))
             diagnostics = rank_ambiguity(diagnostics, task, self._session.hints_for(self._scope))
             stop_reason, message = blocking_from_diagnostics(diagnostics)
             if stop_reason is not None:
@@ -718,13 +720,12 @@ class MemoryTurn:
     def ground(self, answer: str) -> GroundingReport:
         """Check what an answer cited against what exists now. An intended new file is #258's; here it only reads as not found."""
         self._session.policy.forget_ignore_files()
-        listed = list(self._session.listing_for(extract_file_references(answer)))
+        references = extract_file_references(answer, on_disk(self._session.policy.root))  # a whole path, never its tail (#634)
+        listed = list(self._session.listing_for(references))
         names: dict[str, list[str]] = {}
         for path in listed:
             names.setdefault(path.rsplit("/", 1)[-1], []).append(path)
         known = set(listed)
-        root = self._session.policy.root
-        references = extract_file_references(answer, lambda relative: relative in known or (root / relative).exists())  # a whole path, never its tail (#634)
         resolved: dict[str, None] = {}
         unresolved: dict[str, None] = {}
         ambiguous: dict[str, None] = {}

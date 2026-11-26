@@ -1838,3 +1838,20 @@ def test_a_spaced_or_non_ascii_path_is_the_packs_required_file_and_its_basename_
     assert result.prioritized_paths == (named,) and "THE NAMED FILE" in result.text and "THE COMPETITOR" not in result.text
     report = turn.ground(f"I read {quote}{named}{quote}.")
     assert report.resolved == (named,) and "guide.md" not in report.resolved
+
+
+def test_a_whole_path_made_after_the_listing_was_cached_is_still_the_required_file(workspace):
+    """Codex review 1, finding 3: the tail "folder/guide.md" is listed, so a decision taken on it would reuse the cached listing."""
+    (workspace / "folder").mkdir()
+    (workspace / "folder" / "guide.md").write_text("THE COMPETITOR" + chr(10), encoding="utf-8")
+    session = _session(workspace, _Storage())
+    _assemble(session.turn(), task="explain folder/guide.md")  # caches a listing with folder/guide.md in it
+    named = "docs/my folder/guide.md"
+    (workspace / named).parent.mkdir(parents=True)
+    (workspace / named).write_text("THE NAMED FILE" + chr(10), encoding="utf-8")
+
+    turn = session.turn()
+    result = _assemble(turn, task=f"summarize {named}")
+
+    assert result.prioritized_paths == (named,) and "THE NAMED FILE" in result.text
+    assert turn.ground(f"I read {named}.").resolved == (named,)

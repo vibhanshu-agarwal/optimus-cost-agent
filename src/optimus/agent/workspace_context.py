@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import ntpath
+import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -367,11 +368,14 @@ def _blocking_from_diagnostics(
 
 def _extract_file_references(task: str, exists: Callable[[str], bool] | None = None) -> tuple[str, ...]:
     """What the text names. `exists` says whether a workspace-relative path is there; without it only a quoted path is read whole."""
-    references: list[str] = []
+    found: list[tuple[int, str]] = []
     for match in _FILE_REFERENCE_RE.finditer(task):
-        reference = _whole_path(task, match.start(), match.end(), exists) or match.group(0).replace("\\", "/")
-        if reference not in references:
-            references.append(reference)
+        whole = _whole_path(task, match.start(), match.end(), exists)
+        if whole is None:
+            found.append((match.start(), match.group(0).replace("\\", "/")))
+        else:  # the earlier matches inside it are pieces of the one path, not files of their own (Codex review 1, finding 1)
+            found = [item for item in found if item[0] < whole[0]] + [whole]
+    references = list(dict.fromkeys(reference for _, reference in found))
     for match in _PATH_TOKEN_RE.finditer(task):
         token = match.group(0).replace("\\", "/").rstrip(".")
         names_a_file = token.startswith(".") or "/" in token or token.lower() in _KEY_FILE_NAMES
@@ -384,38 +388,62 @@ def _extract_file_references(task: str, exists: Callable[[str], bool] | None = N
     return tuple(references)
 
 
-def _whole_path(text: str, start: int, end: int, exists: Callable[[str], bool] | None) -> str | None:
-    """#634: the path that ends where a reference ends and has a space or a non-ASCII character before it, so the reference is not
-    taken for its tail. The longest one that exists wins. One that is not there is read whole only inside quotes and only when the
-    word glued to the reference holds a folder ("docs/ops guide.md"): a quoted sentence ("Look at legacy.py", as every prompt in a
-    history envelope is) and unquoted prose ("Fix the bug in guide.md") cannot be told from a path that is not there."""
-    line_start = text.rfind("\n", 0, start) + 1
-    for at in range(max(line_start, start - _WHOLE_PATH_WINDOW), start):
-        prefix = text[at:start]
-        opened = at == line_start or text[at - 1].isspace() or text[at - 1] in _PATH_OPENERS
-        if not opened or text[at].isspace() or any(char in _QUOTES for char in prefix):
+def _whole_path(text: str, start: int, end: int, exists: Callable[[str], bool] | None) -> tuple[int, str] | None:
+    """#634: where the path starts that ends where a reference ends and has a space or a non-ASCII character before it, and the path,
+    so the reference is not taken for its tail. The longest one that exists wins. One that is not there is read whole only for a bare
+    name, inside quotes, glued to a word that holds a folder ("docs/ops guide.md"): a quoted sentence ("Look at legacy.py", as every
+    prompt in a history envelope is) and unquoted prose ("Fix the bug in guide.md") cannot be told from a path that is not there."""
+    low = max(0, start - _WHOLE_PATH_WINDOW)
+    newline = text.rfind("\n", low, start)
+    first = newline + 1 if newline >= 0 else low
+    for at in range(first, start):
+        opened = at == 0 or text[at - 1].isspace() or text[at - 1] in _PATH_OPENERS
+        if not opened or text[at].isspace() or text[at] in _QUOTES:
             continue
-        if not any(char.isspace() or not char.isascii() for char in prefix):
+        if not any(char.isspace() or not char.isascii() for char in text[at:start]):
             continue
         span = text[at:end].replace("\\", "/")
         if exists is not None and _safe_relative_reference(span) is not None and exists(span):
-            return span
+            return at, span
     quote = text[end:end + 1]
-    opened_at = text.rfind(quote, line_start, start) if quote and quote in _QUOTES else -1
-    head = text[opened_at + 1:start]
-    if opened_at < 0 or any(char in _QUOTES for char in head):
+    if not quote or quote not in _QUOTES or any(char in "/\\" for char in text[start:end]):
+        return None  # an exact relative path cannot bind another file's basename, so it reads as before (finding 4)
+    opened_at = text.rfind(quote, first, start)
+    if opened_at < 0:
         return None
+    head = text[opened_at + 1:start]
     tail = head.rstrip()
     word = tail.split()[-1] if tail.split() else ""
     glued = tail != head or not text[start - 1].isascii()  # a space, or a non-ASCII symbol, joins the word to the reference
-    if not glued or not any(char in word for char in "/\\") or _FILE_REFERENCE_RE.fullmatch(word):
+    if not glued or not any(char in word for char in "/\\") or word[-1] in "/\\" or _FILE_REFERENCE_RE.fullmatch(word):
         return None
-    return text[opened_at + 1 + len(tail) - len(word):end].replace("\\", "/")
+    at = opened_at + 1 + len(tail) - len(word)
+    return at, text[at:end].replace("\\", "/")
+
+
+def on_disk(root: Path) -> Callable[[str], bool]:
+    """Whether a workspace-relative path is on disk. Only a path whose first part is an entry of the root is looked up, so prose costs
+    one listing of the root, and a rooted or drive spelling is never looked up outside the workspace (Codex review 1, findings 5, 6)."""
+    entries: set[str] | None = None
+
+    def exists(relative: str) -> bool:
+        nonlocal entries
+        if _safe_relative_reference(relative) is None:
+            return False
+        if entries is None:
+            try:
+                entries = set(os.listdir(root))
+            except OSError:
+                entries = set()
+        return relative.split("/", 1)[0] in entries and (root / relative).exists()
+
+    return exists
 
 
 def _exists_in(root: Path, index: _EligibleFileIndex) -> Callable[[str], bool]:
     """Listed, or on disk: a path the policy refuses is still the one named, and is refused by name, never replaced (#634)."""
-    return lambda relative: relative in index.by_relative or (root / relative).exists()
+    disk = on_disk(root)
+    return lambda relative: relative in index.by_relative or disk(relative)
 
 
 def _safe_relative_reference(reference: str) -> Path | None:

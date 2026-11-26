@@ -1108,3 +1108,58 @@ def test_a_whole_path_in_the_prompt_settles_an_ambiguity_its_history_left(tmp_pa
     result = assemble_workspace_context_for_prompt(tmp_path, task=f"earlier: look at notes.md{chr(10)}{prompt}", prompt=prompt)
 
     assert result.blocking_stop_reason is None and result.prioritized_paths == (named,)
+
+
+# --- #634, Codex review 1 ---------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("quote", ["", '"'])
+def test_a_quote_inside_an_existing_path_does_not_stop_it_resolving_whole(tmp_path, quote):
+    named = "docs/owner" + chr(39) + "s guide.md"
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {quote}{named}{quote}")
+
+    assert result.prioritized_paths == (named,)
+
+
+def test_a_reference_inside_a_whole_path_is_a_piece_of_it_and_not_a_file_of_its_own(tmp_path):
+    named = "docs/draft.md guide.md"
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "docs/draft.md", "THE PIECE" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f'Summarize "{named}"')
+
+    assert result.prioritized_paths == (named,) and [item.reference for item in result.diagnostics] == [named]
+
+
+@pytest.mark.parametrize("task", ['{"1":{"user_prompt":"Compare src/ other/guide.md","outcome":"completed"}}', 'He said "Look in src/ guide.md"',
+                                  '{"1":{"user_prompt":"Compare src/app other/guide.md","outcome":"completed"}}'])
+def test_a_quoted_folder_written_alone_beside_a_name_reads_as_before(tmp_path, task):
+    _write(tmp_path, "src/app.py", "x = 1" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task)
+
+    assert result.prioritized_paths == ("other/guide.md",)
+
+
+@pytest.mark.parametrize("relative", ["/outside folder/guide.md", chr(92) + "outside folder" + chr(92) + "guide.md", "../x y/guide.md", "c:/x y/guide.md"])
+def test_the_disk_lookup_never_leaves_the_workspace(tmp_path, relative, monkeypatch):
+    looked: list[Path] = []
+    real = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda self, **kwargs: looked.append(self) or real(self, **kwargs))
+    assert workspace_context.on_disk(tmp_path)(relative) is False and looked == []
+    assert workspace_context.extract_file_references(f"see {relative}", workspace_context.on_disk(tmp_path))[0][:1] not in ("/", chr(92), ".")
+
+
+def test_prose_costs_one_listing_of_the_root_and_no_lookups(tmp_path, monkeypatch):
+    _write(tmp_path, "other/guide.md", "x" + chr(10))
+    looked: list[Path] = []
+    real = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda self, **kwargs: looked.append(self) or real(self, **kwargs))
+
+    references = workspace_context.extract_file_references("word guide.md " * 2000, workspace_context.on_disk(tmp_path))
+
+    assert references == ("guide.md",) and looked == []
