@@ -1897,3 +1897,62 @@ class TestClientMcpReviewCeremonyTask7:
         assert stored is not None
         assert stored.canonical_target == "https://mcp.example.com/persist"
         assert stored.effect_ceiling == "non_mutating"
+
+
+def _one_shot_spawn_failure(tmp_path, monkeypatch, capsys, *, consume_error=None):
+    """#653: approve a one-shot launch whose target cannot be spawned."""
+    from optimus.acp.launch_approvals import ApprovalError
+
+    cli_module, workspace, store = _approval_cli_case(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    handles: list[str] = []
+    real_write = store.write_one_shot
+
+    def _write(record, nonce):
+        handles.append(real_write(record, nonce))
+        return handles[-1]
+
+    monkeypatch.setattr(store, "write_one_shot", _write)
+    if consume_error is not None:
+
+        def _consume(handle, digest):
+            if isinstance(consume_error, BaseException):
+                raise consume_error
+            raise ApprovalError(code=consume_error, detail=f"while consuming {handle}")
+
+        monkeypatch.setattr(store, "consume_one_shot", _consume)
+    missing = str(tmp_path / "no-such-target-{approval_id}")
+    code = cli_module._cmd_approve(workspace, mode="one-shot", target_argv=[missing])
+    captured = capsys.readouterr()
+    assert handles and handles[0] not in captured.out + captured.err
+    return code, captured.err
+
+
+def test_one_shot_spawn_failure_reports_confirmed_cleanup(tmp_path, monkeypatch, capsys) -> None:
+    code, err = _one_shot_spawn_failure(tmp_path, monkeypatch, capsys)
+    assert code == 3
+    assert "optimus-trust: spawn failed:" in err
+    assert "optimus-trust: one-shot approval removed after the failed spawn" in err
+
+
+def test_one_shot_spawn_failure_reports_unconfirmed_cleanup(tmp_path, monkeypatch, capsys) -> None:
+    code, err = _one_shot_spawn_failure(tmp_path, monkeypatch, capsys, consume_error="LOCK_CONTENTION")
+    assert code == 3
+    assert "optimus-trust: spawn failed:" in err
+    assert "optimus-trust: one-shot approval cleanup not confirmed (code: LOCK_CONTENTION)" in err
+    assert "while consuming" not in err
+
+
+def test_one_shot_spawn_failure_reports_confirmed_absence(tmp_path, monkeypatch, capsys) -> None:
+    code, err = _one_shot_spawn_failure(tmp_path, monkeypatch, capsys, consume_error="ONE_SHOT_NOT_FOUND")
+    assert code == 3
+    assert "optimus-trust: one-shot approval absent after the failed spawn (code: ONE_SHOT_NOT_FOUND)" in err
+
+
+def test_one_shot_cleanup_io_error_keeps_the_spawn_failure(tmp_path, monkeypatch, capsys) -> None:
+    code, err = _one_shot_spawn_failure(tmp_path, monkeypatch, capsys, consume_error=OSError("lock close failed"))
+    assert code == 3
+    assert "optimus-trust: spawn failed:" in err
+    assert "optimus-trust: one-shot approval cleanup not confirmed (code: CLEANUP_IO_ERROR)" in err
+    assert "lock close failed" not in err
