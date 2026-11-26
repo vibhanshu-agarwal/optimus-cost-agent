@@ -1024,3 +1024,87 @@ def test_a_typed_reference_to_a_windows_device_name_is_refused_on_every_host(tmp
     assert result.diagnostics[0].reference == reference
     assert result.diagnostics[0].status is WorkspaceReferenceStatus.NOT_READABLE
     assert result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+
+
+# --- #634: a path with a space or a non-ASCII character is one reference, never its basename -------------------------------
+
+SPACED = "docs/ops guide.md"
+NON_ASCII_FOLDER = "docs/caf" + chr(0xE9) + "/guide.md"  # a letter: today the resolver extracted nothing at all
+NON_ASCII_JOINED = "docs/ops" + chr(0x2013) + "guide.md"  # an en dash: today the resolver extracted the basename alone
+
+
+def _write(root: Path, relative: str, text: str) -> None:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize("named", [SPACED, NON_ASCII_FOLDER, NON_ASCII_JOINED])
+@pytest.mark.parametrize("form", ["exact", "double", "single", "backtick", "backslash"])
+def test_a_spaced_or_non_ascii_path_resolves_whole_and_its_basename_never_binds_elsewhere(tmp_path, named, form):
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+    text = {"exact": named, "double": f'"{named}"', "single": f"'{named}'", "backtick": f"`{named}`",
+            "backslash": named.replace("/", chr(92))}[form]
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {text} for me")
+
+    assert [(item.reference, item.status, item.candidates) for item in result.diagnostics] == [
+        (named, WorkspaceReferenceStatus.RESOLVED, (named,))]
+    assert result.prioritized_paths == (named,)
+    assert "THE NAMED FILE" in result.text
+    assert "THE COMPETITOR" not in result.text or result.text.index("THE NAMED FILE") < result.text.index("THE COMPETITOR")
+
+
+def test_a_whole_path_is_not_ambiguous_with_other_files_of_its_basename(tmp_path):
+    _write(tmp_path, SPACED, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "a/guide.md", "a" + chr(10))
+    _write(tmp_path, "b/guide.md", "b" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {SPACED}")
+
+    assert result.blocking_stop_reason is None and result.prioritized_paths == (SPACED,)
+
+
+@pytest.mark.parametrize("named", [SPACED, NON_ASCII_JOINED])
+def test_a_quoted_path_that_does_not_exist_is_not_found_and_no_competitor_takes_its_place(tmp_path, named):
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f'Summarize "{named}"')
+
+    assert [(item.reference, item.status) for item in result.diagnostics] == [(named, WorkspaceReferenceStatus.NOT_FOUND)]
+    assert result.prioritized_paths == ()
+
+
+def test_a_whole_path_the_policy_refuses_is_refused_and_no_competitor_takes_its_place(tmp_path):
+    _write(tmp_path, SPACED, "IGNORED" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+    _write(tmp_path, ".gitignore", "docs/" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {SPACED}")
+
+    assert [(item.reference, item.status) for item in result.diagnostics] == [(SPACED, WorkspaceReferenceStatus.NOT_READABLE)]
+    assert result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE" and result.text == ""
+
+
+@pytest.mark.parametrize("task", ["Fix the bug in guide.md", "Compare src/app.py with guide.md", "Look in docs and guide.md",
+                                  "see notes guide.md", "Review (guide.md) now", 'He said "Look at guide.md"',
+                                  '{"1":{"user_prompt":"Look at guide.md","outcome":"completed"}}', "'Compare src/app.py guide.md'"])
+def test_ordinary_prose_naming_a_basename_resolves_as_before(tmp_path, task):
+    _write(tmp_path, "src/app.py", "x = 1" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task)
+
+    assert ("other/guide.md" in result.prioritized_paths) and result.blocking_stop_reason is None
+
+
+def test_a_whole_path_in_the_prompt_settles_an_ambiguity_its_history_left(tmp_path):
+    named = "my docs/notes.md"
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "a/notes.md", "a" + chr(10))
+    prompt = f"use {named}"
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"earlier: look at notes.md{chr(10)}{prompt}", prompt=prompt)
+
+    assert result.blocking_stop_reason is None and result.prioritized_paths == (named,)

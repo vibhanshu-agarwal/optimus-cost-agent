@@ -718,12 +718,13 @@ class MemoryTurn:
     def ground(self, answer: str) -> GroundingReport:
         """Check what an answer cited against what exists now. An intended new file is #258's; here it only reads as not found."""
         self._session.policy.forget_ignore_files()
-        references = extract_file_references(answer)
-        listed = list(self._session.listing_for(references))
+        listed = list(self._session.listing_for(extract_file_references(answer)))
         names: dict[str, list[str]] = {}
         for path in listed:
             names.setdefault(path.rsplit("/", 1)[-1], []).append(path)
         known = set(listed)
+        root = self._session.policy.root
+        references = extract_file_references(answer, lambda relative: relative in known or (root / relative).exists())  # a whole path, never its tail (#634)
         resolved: dict[str, None] = {}
         unresolved: dict[str, None] = {}
         ambiguous: dict[str, None] = {}

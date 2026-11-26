@@ -1820,3 +1820,21 @@ def test_a_batch_line_holding_a_content_separator_runs_no_tool(workspace, separa
     result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
 
     assert result.tool_calls == () and len(gateway.inputs) == 1
+
+
+# --- #634: the pack's named files are the whole path, never a competitor of its basename ---------------------------------
+
+
+@pytest.mark.parametrize("named", ["docs/ops guide.md", "docs/caf" + chr(0xE9) + "/guide.md", "docs/ops" + chr(0x2013) + "guide.md"])
+@pytest.mark.parametrize("quote", ["", '"'])
+def test_a_spaced_or_non_ascii_path_is_the_packs_required_file_and_its_basename_never_binds_elsewhere(workspace, named, quote):
+    for relative, text in ((named, "THE NAMED FILE"), ("other/guide.md", "THE COMPETITOR")):
+        (workspace / relative).parent.mkdir(parents=True, exist_ok=True)
+        (workspace / relative).write_text(text + chr(10), encoding="utf-8")
+
+    turn = _session(workspace, _Storage()).turn()
+    result = _assemble(turn, task=f"summarize {quote}{named}{quote} please")
+
+    assert result.prioritized_paths == (named,) and "THE NAMED FILE" in result.text and "THE COMPETITOR" not in result.text
+    report = turn.ground(f"I read {quote}{named}{quote}.")
+    assert report.resolved == (named,) and "guide.md" not in report.resolved

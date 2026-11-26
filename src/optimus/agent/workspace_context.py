@@ -21,9 +21,13 @@ from optimus.guardrails.secret_paths import is_secret_path
 DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES = 16 * 1024
 _TRUNCATION_PREFIX = "--- omitted (size cap): "
 
-_FILE_REFERENCE_RE = re.compile(
-    r"(?<![\w./\\-])(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+\.[A-Za-z0-9]+(?![\w/\\-])"
+_FILE_REFERENCE_RE = re.compile(  # segments may hold non-ASCII letters (#634); the extension stays ASCII
+    r"(?<![\w./\\-])(?:[\w.-]+[\\/])*[\w.-]+\.[A-Za-z0-9]+(?![\w/\\-])"
 )
+# #634: a reference the pattern cut at a space or a non-ASCII symbol is the tail of a longer path; these may open that path.
+_QUOTES = "`'\""
+_PATH_OPENERS = frozenset(_QUOTES + "([<")
+_WHOLE_PATH_WINDOW = 256  # shortcut: a whole path is looked for at most this far back on its line; raise it if longer ones are named
 # Dotfiles, folder paths and key files the reference pattern misses (.env, config/.env, .pypirc, id_rsa): only secret
 # ones become references, so naming one is refused visibly (#385). A bare prose word such as "token" never is, but a
 # quoted or backticked one ("`credentials`") is marked as a file name.
@@ -119,7 +123,7 @@ def rank_ambiguity(diagnostics: tuple[WorkspaceReferenceDiagnostic, ...], task: 
     names when the task does not name it (Codex CP3 review 1, finding 1)."""
     if not any(item.status is WorkspaceReferenceStatus.AMBIGUOUS for item in diagnostics):
         return diagnostics
-    own = set(_extract_file_references(task))
+    own = set(_extract_file_references(task, {item.reference for item in diagnostics}.__contains__))  # a whole path resolved already (#634)
     resolved = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics
                                    if item.status is WorkspaceReferenceStatus.RESOLVED and item.reference in own))
     chosen = set(resolved)
@@ -214,7 +218,6 @@ def assemble_workspace_context_for_prompt(
     if not root.is_dir():
         return empty
 
-    references = _extract_file_references(task)
     policy = FilePolicy(root)
     decisions = list(policy.walk(purpose=FilePurpose.AUTOMATIC))
     candidate_paths = [root / decision.relative_path for decision in decisions if decision.allowed]
@@ -223,6 +226,7 @@ def assemble_workspace_context_for_prompt(
         if not decision.allowed:
             excluded_counts[decision.reason] = excluded_counts.get(decision.reason, 0) + 1
     index = _build_eligible_file_index(candidate_paths, root)
+    references = _extract_file_references(task, _exists_in(root, index))
     diagnostics: list[WorkspaceReferenceDiagnostic] = []
     prioritized_paths: list[str] = []
     seen_resolved: set[str] = set()
@@ -315,12 +319,12 @@ def assemble_workspace_context_for_prompt(
 def resolve_task_references(task: str, policy: FilePolicy, listed: Sequence[str]) -> tuple[WorkspaceReferenceDiagnostic, ...]:
     """What the task names, resolved against an already known listing of admitted files, by the rules a full walk uses."""
     index = _build_eligible_file_index([policy.root / path for path in listed], policy.root)
-    found = (_resolve_reference(reference, policy, index) for reference in _extract_file_references(task))
+    found = (_resolve_reference(reference, policy, index) for reference in _extract_file_references(task, _exists_in(policy.root, index)))
     return tuple(item for item in found if item is not None)
 
 
-def extract_file_references(text: str) -> tuple[str, ...]:
-    return _extract_file_references(text)
+def extract_file_references(text: str, exists: Callable[[str], bool] | None = None) -> tuple[str, ...]:
+    return _extract_file_references(text, exists)
 
 
 def blocking_from_diagnostics(diagnostics: tuple[WorkspaceReferenceDiagnostic, ...]) -> tuple[str | None, str | None]:
@@ -361,10 +365,11 @@ def _blocking_from_diagnostics(
     return None, None
 
 
-def _extract_file_references(task: str) -> tuple[str, ...]:
+def _extract_file_references(task: str, exists: Callable[[str], bool] | None = None) -> tuple[str, ...]:
+    """What the text names. `exists` says whether a workspace-relative path is there; without it only a quoted path is read whole."""
     references: list[str] = []
     for match in _FILE_REFERENCE_RE.finditer(task):
-        reference = match.group(0).replace("\\", "/")
+        reference = _whole_path(task, match.start(), match.end(), exists) or match.group(0).replace("\\", "/")
         if reference not in references:
             references.append(reference)
     for match in _PATH_TOKEN_RE.finditer(task):
@@ -377,6 +382,40 @@ def _extract_file_references(task: str) -> tuple[str, ...]:
         if is_secret_path(token) and token not in references:
             references.append(token)
     return tuple(references)
+
+
+def _whole_path(text: str, start: int, end: int, exists: Callable[[str], bool] | None) -> str | None:
+    """#634: the path that ends where a reference ends and has a space or a non-ASCII character before it, so the reference is not
+    taken for its tail. The longest one that exists wins. One that is not there is read whole only inside quotes and only when the
+    word glued to the reference holds a folder ("docs/ops guide.md"): a quoted sentence ("Look at legacy.py", as every prompt in a
+    history envelope is) and unquoted prose ("Fix the bug in guide.md") cannot be told from a path that is not there."""
+    line_start = text.rfind("\n", 0, start) + 1
+    for at in range(max(line_start, start - _WHOLE_PATH_WINDOW), start):
+        prefix = text[at:start]
+        opened = at == line_start or text[at - 1].isspace() or text[at - 1] in _PATH_OPENERS
+        if not opened or text[at].isspace() or any(char in _QUOTES for char in prefix):
+            continue
+        if not any(char.isspace() or not char.isascii() for char in prefix):
+            continue
+        span = text[at:end].replace("\\", "/")
+        if exists is not None and _safe_relative_reference(span) is not None and exists(span):
+            return span
+    quote = text[end:end + 1]
+    opened_at = text.rfind(quote, line_start, start) if quote and quote in _QUOTES else -1
+    head = text[opened_at + 1:start]
+    if opened_at < 0 or any(char in _QUOTES for char in head):
+        return None
+    tail = head.rstrip()
+    word = tail.split()[-1] if tail.split() else ""
+    glued = tail != head or not text[start - 1].isascii()  # a space, or a non-ASCII symbol, joins the word to the reference
+    if not glued or not any(char in word for char in "/\\") or _FILE_REFERENCE_RE.fullmatch(word):
+        return None
+    return text[opened_at + 1 + len(tail) - len(word):end].replace("\\", "/")
+
+
+def _exists_in(root: Path, index: _EligibleFileIndex) -> Callable[[str], bool]:
+    """Listed, or on disk: a path the policy refuses is still the one named, and is refused by name, never replaced (#634)."""
+    return lambda relative: relative in index.by_relative or (root / relative).exists()
 
 
 def _safe_relative_reference(reference: str) -> Path | None:
