@@ -2,12 +2,12 @@
  "schema": "plan12-memory-m2b.closure.v1",
  "plan": "Plan 12.14 (M2b), #548, docs/superpowers/plans/2026-11-23-plan-12-14-ranking-and-budgets-implementation.md (sha256 c2b80ad5...0bbc)",
  "issue": 548,
- "state": "an incomplete closure after Task 4 qualification failed and D3 was rolled back, delivered through Task 5 by the operator's decisions below; the one full suite failed (final-gates.json) and its disposition is owed; nothing pushed or delivered yet",
+ "state": "an incomplete closure after Task 4 qualification failed and D3 was rolled back, delivered through Task 5 by the operator's decisions below; the Windows full suite passed on its replacement run (final-gates.json); push, PR, Linux CI and merge owed; nothing pushed or delivered yet",
  "identities": {
-  "code_head": "git:7a32cacc2dbaa134919745d0c499ee19a80ccde0",
-  "full_suite_head": "git:aab9f36565c71b2df6b68261234603af26aa84af",
+  "code_head": "git:5fec1acc67f36f68a800e63097b20f71769f9220",
+  "full_suite_head": "git:5fec1acc67f36f68a800e63097b20f71769f9220",
   "branch": "agent/claude/p1214-impl (unpushed)",
-  "merged_main": "git:e9c8e39 (origin/main, merged at git:339aa42)",
+  "merged_main": "git:72d2349 (origin/main, merged at git:5fec1ac; e9c8e39 earlier at git:339aa42)",
   "original_base": "git:7abbaa262696c40409cea166569a93bd2feb6853 (main at work start; the merge base before 339aa42 was git:a192f9b)",
   "records_commit": "the commit that adds this version of the file; it changes no executable byte"
  },
@@ -21,8 +21,8 @@
   "D7": "paid R UNRUN: independently unreleased; Task 4 requires passing deterministic gates before it too (verify_qualification guards only Q's launcher)"
  },
  "live_deltas": [
-  "every memory turn's manifest is optimus.context-manifest.v2 with config.budget_policy_version m2b-v1, config.budget_policy (legacy on every shipped route) and outline null; /why shows the pack-budget line (README.md's /why paragraph)",
-  "the empty repo-map paths log their cause (git:a93309f)",
+  "every memory turn's manifest is optimus.context-manifest.v2 with config.budget_policy_version m2b-v1 and config.budget_policy (legacy on every shipped route); a packed turn's manifest also carries outline null, a fallback manifest (index unavailable) omits it; /why shows the pack-budget line only when the turn had an index pack (README.md's /why paragraph)",
+  "the repo map's two early empty returns log their cause, no published generation (info) or the store's refusal code (warning), when no map is cached (git:a93309f)",
   "nothing else changes shipped behaviour: baseline packing is the old greedy order, and the budget machinery and outline need a context_budget field no shipped route carries (Fable 5.2 CP4, #548 comment 7198247153)"
  ],
  "evidence": {
@@ -35,7 +35,7 @@
   "gate-g2.json": "hex:f45b3c8690194e9541e70be40cdd59996d00fbafa312e2bed725401d141b0cd2",
   "qualification.json": "hex:de5fa09b1d38029db77a1872ee345b31902f508412c8782b068e2f422e2d827a",
   "zed-ui.json": "hex:a39cc05003366fd01a4a5a258e13f6b7c30f69dd73a83ef28709bc28ef563a65",
-  "final-gates.json": "hex:7bc1eab1dd1afeb78ae42208269560a645ed4ca03aa8cacbac022c204c0bcba8",
+  "final-gates.json": "hex:965e469668b8e75fafe32427000a120c99f6797454da7ad516170314e4ae8064",
   "run-config.json": "hex:b6e8b13e6c653480b4ccce70c1cf98911307be109adf797f76073390d4206404",
   "run-config-budget.json": "hex:27cb569a26c15ee0bbd824282e8289b80e4279fe8f443b37a6264c4b639e3777",
   "gate-config.json": "hex:f761073bc6c699d56fe4a415b47b438901bea9913953216f0ca8745386516f55",
@@ -55,9 +55,7 @@
   "support_audit": "UNRUN: no paid answers"
  },
  "owed_before_delivery": [
-  "the operator's disposition of the failed full suite (final-gates.json): a second full run at the code head, or acceptance with the fix's targeted evidence",
-  "Codex's CP4 round, posted on #548",
-  "freshness against main before the PR, Linux CI on the PR's actual-tested SHA, and the PR's own identities (head, merge, CI)"
+  "the operator's push and PR authority; freshness against main repeated before the PR and before the merge; Linux CI and the safety-coverage comparison on the PR's actual-tested SHA; the PR's own identities (head, merge, CI); the operator's merge authority"
  ],
  "issue_custody": {
   "#548": "close after delivery and the archive of the plan; remove its status: label",
