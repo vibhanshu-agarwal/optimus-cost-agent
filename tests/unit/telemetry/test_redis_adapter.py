@@ -2,8 +2,9 @@ from decimal import Decimal
 
 import pytest
 
-from optimus.telemetry.redis_adapter import RedisTelemetryAdapter, RunMetadata
+from optimus.telemetry.redis_adapter import _SETTLE_SCRIPT, RedisTelemetryAdapter, RunMetadata
 from optimus.usage.errors import DuplicateGatewayRequestError
+from tests.support.redis_settle import run_settle_script
 
 
 class FakeRedis:
@@ -15,12 +16,17 @@ class FakeRedis:
 
     async def execute_command(self, *args: object):
         self.commands.append(args)
+        if args[0] == "EVAL":
+            return self._settle(args)
         if args[0] == "TS.CREATE":
             key = args[1]
             if self.fail_create_existing or key in self._created_series:
                 raise RuntimeError("TSDB: key already exists")
             self._created_series.add(key)
         return "OK"
+
+    def _settle(self, args: tuple[object, ...]) -> int:
+        return run_settle_script(self.commands, self._hashes, args)
 
     async def hset(self, key: str, mapping: dict[str, str]):
         self.commands.append(("HSET", key, mapping))
@@ -114,7 +120,7 @@ async def test_record_settled_usage_writes_exact_ts_create_and_ts_add_sequence()
     )
 
     assert client.commands == [
-        ("HSETNX", "optimus:usage:claims", "gw-1", client.commands[0][3]),
+        ("HGET", "optimus:usage:claims", "gw-1"),
         (
             "TS.CREATE",
             "optimus:usage:run-1:cost_usd",
@@ -137,9 +143,11 @@ async def test_record_settled_usage_writes_exact_ts_create_and_ts_add_sequence()
             "metric",
             "billing_units",
         ),
+        client.commands[3],
         ("TS.ADD", "optimus:usage:run-1:cost_usd", "*", "0.002"),
         ("TS.ADD", "optimus:usage:run-1:billing_units", "*", "10"),
     ]
+    assert client.commands[3][:6] == ("EVAL", _SETTLE_SCRIPT, 3, _CLAIMS, "optimus:usage:run-1:cost_usd", "optimus:usage:run-1:billing_units")
 
 
 async def test_record_settled_usage_identical_replay_is_a_noop():
@@ -183,46 +191,6 @@ async def test_record_settled_usage_divergent_duplicate_raises_and_writes_no_sec
         )
 
     assert sum(1 for command in client.commands if command[0] == "TS.ADD") == 2
-
-
-async def test_record_settled_usage_removes_claim_when_timeseries_write_fails():
-    class FailingTsAddRedis(FakeRedis):
-        failed = False
-
-        async def execute_command(self, *args: object):
-            if args[0] == "TS.ADD" and not self.failed:
-                self.failed = True
-                self.commands.append(args)
-                raise RuntimeError("connection reset")
-            return await super().execute_command(*args)
-
-    client = FailingTsAddRedis()
-    adapter = RedisTelemetryAdapter(client=client)
-
-    with pytest.raises(RuntimeError, match="connection reset"):
-        await adapter.record_settled_usage(
-            run_id="run-1",
-            gateway_request_id="gw-1",
-            provider="tavily",
-            provider_request_id="provider-1",
-            billing_units=10,
-            cost_usd=Decimal("0.002"),
-        )
-
-    assert ("HDEL", "optimus:usage:claims", "gw-1") in client.commands
-    assert "gw-1" not in client._hashes["optimus:usage:claims"]
-    # A retry against the same Redis state, by another adapter, claims again and writes both points.
-    before = len(client.commands)
-    await RedisTelemetryAdapter(client=client).record_settled_usage(
-        run_id="run-1",
-        gateway_request_id="gw-1",
-        provider="tavily",
-        provider_request_id="provider-1",
-        billing_units=10,
-        cost_usd=Decimal("0.002"),
-    )
-    assert sum(1 for command in client.commands[before:] if command[0] == "TS.ADD") == 2
-    assert "gw-1" in client._hashes["optimus:usage:claims"]
 
 
 async def test_record_settled_usage_reuses_existing_series_for_second_request_in_same_run():
@@ -372,14 +340,13 @@ _F = '"billing_units": 10, "gateway_request_id": "gw-1", "provider": "tavily", "
         _CANONICAL.replace('"0.003"', '"0.00_3"'),
         b"\xff\xfe",  # invalid UTF-8
         pytest.param("[" * 100_000, id="deeply-nested"),  # json.loads raises RecursionError at this depth
-        None,  # the claim was released between hsetnx and hget
+        None,  # the settle script found a claim that was gone again when read
     ],
 )
 async def test_record_settled_usage_corrupt_stored_claim_is_divergent(stored: str | bytes | None):
     client = _seeded(stored)
     if stored is None:
-        client._hashes[_CLAIMS] = {}
-        client.hsetnx = _lost_hsetnx  # type: ignore[method-assign]
+        client._settle = _lost_settle  # type: ignore[method-assign]
 
     with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
         await RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "cost_usd": Decimal("0.0030")})
@@ -387,7 +354,7 @@ async def test_record_settled_usage_corrupt_stored_claim_is_divergent(stored: st
     assert _ts_adds(client) == 0
 
 
-async def _lost_hsetnx(key: str, field: str, value: str):
+def _lost_settle(*args: object):
     return 0
 
 
@@ -448,3 +415,71 @@ async def test_record_settled_usage_divergent_record_under_another_run_raises_an
 
     assert _ts_adds(client) == 2
     assert not any("run-2" in str(command) for command in client.commands)
+
+
+# #646: an interrupted write must not double-count or lose a point on retry or concurrent replay.
+class _Interrupted(FakeRedis):
+    """Drops the connection on the n-th command the adapter sends, before it is sent or after it applied."""
+
+    def __init__(self, at: int, applied: bool, hdel_fails: bool) -> None:
+        super().__init__()
+        self.at, self.applied, self.hdel_fails, self.writes = at, applied, hdel_fails, 0
+
+    async def execute_command(self, *args: object):
+        if args[0] != "TS.ALTER":  # the retry's own ALTERs are not part of the first attempt
+            self.writes += 1
+            if self.writes == self.at:
+                if self.applied:
+                    await super().execute_command(*args)
+                raise ConnectionError("connection reset by peer")
+        return await super().execute_command(*args)
+
+    async def hdel(self, key: str, *fields: str):
+        if self.hdel_fails:
+            raise RuntimeError("hdel failed too")
+        return await super().hdel(key, *fields)
+
+
+def _points(client: FakeRedis, metric: str) -> int:
+    return sum(1 for command in client.commands if command[0] == "TS.ADD" and str(command[1]).endswith(metric))
+
+
+@pytest.mark.parametrize("applied", [False, True], ids=["before-send", "reply-lost"])
+@pytest.mark.parametrize("at", [1, 2, 3, 4])
+@pytest.mark.parametrize("hdel_fails", [False, True], ids=["", "hdel-fails"])
+async def test_record_settled_usage_retry_after_an_interrupted_write_counts_each_point_once(at: int, applied: bool, hdel_fails: bool):
+    client = _Interrupted(at, applied, hdel_fails)
+    raised = None
+    try:
+        await RedisTelemetryAdapter(client=client).record_settled_usage(**_BASE)
+    except ConnectionError as exc:
+        raised = exc
+    assert (raised is not None) == (client.writes >= at), "the original error reaches the caller"
+
+    await RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "cost_usd": Decimal("0.0030")})
+
+    assert (_points(client, ":cost_usd"), _points(client, ":billing_units")) == (1, 1)
+    assert client._hashes[_CLAIMS]["gw-1"] in (_CANONICAL, _CANONICAL.replace('"0.003"', '"0.0030"'))
+
+
+async def test_record_settled_usage_concurrent_replays_count_each_point_once():
+    import asyncio
+
+    class Interleaving(FakeRedis):
+        async def hget(self, key: str, field: str):
+            await asyncio.sleep(0)
+            return await super().hget(key, field)
+
+        async def execute_command(self, *args: object):
+            await asyncio.sleep(0)
+            return await super().execute_command(*args)
+
+    client = Interleaving()
+    await asyncio.gather(
+        RedisTelemetryAdapter(client=client).record_settled_usage(**_BASE),
+        RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "run_id": "run-2"}),
+        RedisTelemetryAdapter(client=client).record_settled_usage(**{**_BASE, "cost_usd": Decimal("0.0030")}),
+    )
+
+    assert (_points(client, ":cost_usd"), _points(client, ":billing_units")) == (1, 1)
+    assert client._hashes[_CLAIMS]["gw-1"] == _CANONICAL
