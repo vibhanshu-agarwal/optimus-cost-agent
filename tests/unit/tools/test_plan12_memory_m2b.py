@@ -182,7 +182,8 @@ def _qualification_repo(tmp_path: Path, *, selected: str = "baseline", fresh_req
     (repo / "cases.json").write_text(json.dumps({"packing_sets": {name: {"cases": c, "requirements": r} for name, (c, r) in specs.items()},
                                                  "injections": {"sets": {"fresh": {"poison": {"path": "p.md"}}}}}), encoding="utf-8")
     config = {"label": "t", "authorization": "operator, test", "cases": "cases.json", "work_dir": "work", "calibration": "calibration.json",
-              "calibration_sha256": "hex:" + hashlib.sha256(calibration).hexdigest(), "container": "none-c", "volume": "none-v", "embedding_threads": 1}
+              "calibration_sha256": "hex:" + hashlib.sha256(calibration).hexdigest(), "container": "none-c", "volume": "none-v", "embedding_threads": 1,
+              "output": "q.json"}
     (repo / "config.json").write_text(json.dumps(config), encoding="utf-8")
     return repo
 
@@ -218,6 +219,13 @@ def test_the_qualification_gates_need_every_set_its_frozen_counts_and_f_coverage
     assert not short["passes"] and not short["checks"]["replay_m1_held_out: every frozen case and requirement"]
     no_control = ev.qualification_gates(_sets(fresh=[_arm_row("probe", 20, 1, 1), _arm_row("probe", 20, 1, 1)]), record)
     assert not no_control["passes"] and not no_control["checks"]["fresh: its positive control measured"]
+    lost_control = ev.qualification_gates(_sets(fresh=[_arm_row("probe", 20, 1, 1), _arm_row("probe", 20, 1, 1), _arm_row("control", 1, 1, 0)]), record)
+    assert not lost_control["passes"] and not lost_control["checks"]["fresh: F admits the control at least as often as U"]
+
+
+def test_the_cases_where_f_shows_less_than_u_are_named():
+    rows = [{**_arm_row("probe", 2, 2, 1), "case_id": "A"}, {**_arm_row("probe", 2, 1, 2), "case_id": "B"}, {**_arm_row("probe", 1, 1, 1), "case_id": "C"}]
+    assert ev.f_below_u(rows) == ["A"]
 
 
 def test_a_fresh_set_under_forty_requirements_fails_even_when_it_matches_its_record(tmp_path):
@@ -302,7 +310,61 @@ def test_qualification_replays_the_historical_sets_first_and_records_the_fresh_o
     assert [state for _, state in opened] == [None, False, False, False, True]  # the opening is on disk before the fresh fixture is read
     assert [(n, p) for n, injected, p in seen if injected] == [("fresh", "baseline")]  # only the fresh set has its poison and control
     assert report["gates"]["passes"] and json.loads((repo / "q.json").read_text(encoding="utf-8"))["gates"]["passes"]
+    assert all(report["sets"][name]["f_below_u"] == [] for name in ev.QUALIFICATION_SETS)
     assert handle.calls == ["close", "kill", "wait"] and ["docker", "rm", "-f", "none-c"] in commands and ["docker", "volume", "rm", "-f", "none-v"] in commands
+
+
+def test_a_historical_set_that_fails_its_gates_stops_the_run_before_the_fresh_set_opens(tmp_path, monkeypatch):
+    repo = _qualification_repo(tmp_path)
+
+    def qualify(name, *a, **k):
+        rows = _set_rows(name)
+        if name == "replay_fresh":
+            rows = [_arm_row("probe", 1, 1, 0)]  # F shows less than U
+        return _policies([{**row, "case_id": f"{name}-{i}"} for i, row in enumerate(rows)]), None
+
+    _commands, handle, opened = _driver(monkeypatch, repo, qualify)
+    report = ev.run_qualification(json.loads((repo / "config.json").read_text(encoding="utf-8")), repo, repo / "q.json")
+    on_disk = json.loads((repo / "q.json").read_text(encoding="utf-8"))
+    assert [name for name, _ in opened] == list(ev.QUALIFICATION_SETS[:4]) and report["fresh_opened"] is False and on_disk["fresh_opened"] is False
+    assert not on_disk["gates"]["passes"] and on_disk["gates"]["stopped"] and not on_disk["gates"]["checks"]["replay_fresh: F required coverage >= U"]
+    assert on_disk["sets"]["replay_fresh"]["f_below_u"] == ["replay_fresh-0"] and "fresh" not in on_disk["sets"] and handle.calls == ["close", "kill", "wait"]
+
+
+def test_each_finished_tree_is_on_disk_before_the_next_one_starts(tmp_path, monkeypatch):
+    repo = _qualification_repo(tmp_path)
+    seen = []
+
+    def qualify(name, *a, on_tree, **k):
+        rows = _policies(_set_rows(name))
+        on_tree(rows[:1])
+        out = repo / "q.json"
+        seen.append(json.loads(out.read_text(encoding="utf-8"))["sets"].get(name, {}) if out.exists() else {})
+        return rows, None
+
+    _driver(monkeypatch, repo, qualify)
+    ev.run_qualification(json.loads((repo / "config.json").read_text(encoding="utf-8")), repo, repo / "q.json")
+    assert len(seen) == 5 and all(record.get("partial") and len(record["rows"]) == 1 for record in seen)
+
+
+def test_a_stuck_gateway_still_removes_the_container_and_volume(tmp_path, monkeypatch):
+    repo = _qualification_repo(tmp_path)
+    commands, handle, _opened = _driver(monkeypatch, repo, lambda name, *a, **k: (_policies(_set_rows(name)), None))
+
+    def stuck(_timeout):
+        raise TimeoutError("the Gateway did not stop")
+
+    handle.wait = stuck
+    with pytest.raises(TimeoutError):
+        ev.run_qualification(json.loads((repo / "config.json").read_text(encoding="utf-8")), repo, repo / "q.json")
+    assert ["docker", "rm", "-f", "none-c"] in commands and ["docker", "volume", "rm", "-f", "none-v"] in commands
+
+
+def test_a_report_path_other_than_the_pinned_one_is_refused(tmp_path, monkeypatch):
+    repo = _qualification_repo(tmp_path)
+    _refuse_provisioning(monkeypatch)
+    with pytest.raises(ev.FreshRefused, match="the qualification report is q.json"):
+        ev.run_qualification(json.loads((repo / "config.json").read_text(encoding="utf-8")), repo, repo / "elsewhere.json")
 
 
 def test_a_failure_before_the_fresh_set_spends_no_opening_and_tears_down(tmp_path, monkeypatch):
@@ -368,11 +430,12 @@ def test_a_set_with_an_injection_gets_its_poison_and_control_and_a_replay_gets_n
     probe = ev.control_case(injection, "git:" + "b" * 40, "2026-11-24T18:08:04+05:30").model_copy(update={"role": "probe", "case_id": "P1"})
     kwargs = {"policy": "baseline", "legacy": 16_384, "model_aware": MODEL_AWARE, "pack_estimate": ev.estimate}
     trees: list = []
-    rows, _ = ev._qualify_set("fresh", [probe], injection, ROOT, tmp_path, None, None, trees, None, **kwargs)
-    assert injected == ["fresh-bbbbbbbbbbbb"] and [r["case_id"] for r in rows] == ["P1", "FC01-a@bbbbbbbbbbbb"] and trees[0]["set"] == "fresh"
-    assert queries == [(), ()] and captures == ["fresh", "fresh"] and all(set(r["arms"]) == {"U", "F"} for r in rows)
+    written: list = []
+    rows, _ = ev._qualify_set("fresh", [probe], injection, ROOT, tmp_path, None, None, trees, None, on_tree=written.append, **kwargs)
+    assert injected == ["4-bbbbbbbbbbbb"] and [r["case_id"] for r in rows] == ["P1", "FC01-a@bbbbbbbbbbbb"] and trees[0]["set"] == "fresh"
+    assert queries == [(), ()] and captures == ["fresh", "fresh"] and all(set(r["arms"]) == {"U", "F"} for r in rows) and written == [rows]
     rows, _ = ev._qualify_set("replay_fresh", [probe], None, ROOT, tmp_path, None, None, trees, None, **kwargs)
-    assert injected == ["fresh-bbbbbbbbbbbb"] and [r["case_id"] for r in rows] == ["P1"] and trees[1]["set"] == "replay_fresh"
+    assert injected == ["4-bbbbbbbbbbbb"] and [r["case_id"] for r in rows] == ["P1"] and trees[1]["set"] == "replay_fresh"
 
 
 def test_injections_take_the_trees_own_archive_date(tmp_path, monkeypatch):

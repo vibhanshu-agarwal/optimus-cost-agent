@@ -18,6 +18,7 @@
  "embedding_threads": 2,
  "models": "none: the index Gateway's upstream is unroutable (127.0.0.1:9); the keyring is the in-process stand-in of m1_scale._provision, so no OS keyring write",
  "teardown": "run_qualification closes the client, stops the index Gateway and removes the container and volume in a finally block",
- "order": "the four historical sets first, each on its own, then the fresh set; the report records the opening before the fresh fixture is read, and an opened report refuses a second run (m2b_evaluate.run_qualification)",
- "estimate": "56 cutoff trees (13 fresh, 43 replay) at the shared embedding cache's 63-134 s per tree in G2 and the budget pass, plus new vectors for content the cache lacks: about 1.5-3 hours"
+ "order": "the four historical sets first, each on its own, then the fresh set; a historical set that fails its gates stops the run with the fresh set unopened; the report records the opening before the fresh fixture is read, and an opened report (at this pinned output only) refuses a second run; every finished tree is written at once (m2b_evaluate.run_qualification)",
+ "estimate": "56 cutoff trees (13 fresh, 43 replay) at the shared embedding cache's 63-134 s per tree in G2 and the budget pass, plus new vectors for the 54 snapshots the cache has not seen (about 0.13-0.17 s per new record cold): about 2-3.5 hours (Fable 5.2 review)",
+ "output": "reports/plan12-memory-m2b/qualification.json"
 }

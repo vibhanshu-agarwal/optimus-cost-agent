@@ -6609,6 +6609,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m2b_evaluate:progress:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: run_qualification's per-tree callback; it writes the set's finished rows (counts, digests, case ids, repository-relative paths) through _write; no query text, file body, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_each_finished_tree_is_on_disk_before_the_next_one_starts",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m2b_evaluate:run_qualification:text_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: reads the frozen cases record, the released calibration report and an earlier qualification report's opening flag; the qualification report it writes goes through _write (counts, budgets, digests, git ids, case ids, repository-relative paths).",

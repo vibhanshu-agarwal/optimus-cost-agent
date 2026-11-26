@@ -545,18 +545,30 @@ def arm_totals(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, int]]:
                   "control_admitted": sum(r["arms"][arm]["evidence_in_context"] for r in controls)} for arm in ("U", "F")}
 
 
+def f_below_u(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The cases where F shows fewer requirements than U: recorded, since the gate reads set totals (plan line 267: "on ... sets")."""
+    return [row["case_id"] for row in rows if row["arms"]["F"]["evidence_in_context"] < row["arms"]["U"]["evidence_in_context"]]
+
+
+def set_checks(name: str, record: Mapping[str, Any], spec: Mapping[str, Any]) -> dict[str, bool]:
+    arms = record["arms"]
+    checks = {f"{name}: every frozen case and requirement": (arms["U"]["cases"], arms["U"]["requirements"]) == (spec["cases"], spec["requirements"]),
+              f"{name}: F required coverage >= U": arms["F"]["evidence_in_context"] >= arms["U"]["evidence_in_context"]}
+    if name == "fresh":
+        checks["fresh: at least 40 requirements"] = arms["U"]["requirements"] >= FRESH_REQUIREMENTS
+        checks["fresh: its positive control measured"] = arms["U"]["controls"] > 0
+        checks["fresh: F admits the control at least as often as U"] = arms["F"]["control_admitted"] >= arms["U"]["control_admitted"]  # cases.json injections.gate
+    return checks
+
+
 def qualification_gates(sets: Mapping[str, Mapping[str, Any]], cases_record: Mapping[str, Any]) -> dict[str, Any]:
-    """Plan 12.14 Task 4's deterministic gates: every set measured with each frozen case and requirement, the fresh set's >= 40 requirements,
-    and F's required coverage >= U's on every set (adoption gate: budgets). The utility gate is moot while U = B."""
+    """Plan 12.14 Task 4's deterministic gates: every set measured with each frozen case and requirement, the fresh set's >= 40 requirements
+    and its control, and F's required coverage >= U's on every set (adoption gate: budgets). The utility gate is moot while U = B."""
     if sorted(sets) != sorted(QUALIFICATION_SETS):
         return {"checks": {"every_set_measured": False}, "passes": False, "sets": sorted(sets)}
     checks: dict[str, bool] = {"every_set_measured": True}
     for name in QUALIFICATION_SETS:
-        spec, arms = cases_record["packing_sets"][name], sets[name]["arms"]
-        checks[f"{name}: every frozen case and requirement"] = (arms["U"]["cases"], arms["U"]["requirements"]) == (spec["cases"], spec["requirements"])
-        checks[f"{name}: F required coverage >= U"] = arms["F"]["evidence_in_context"] >= arms["U"]["evidence_in_context"]
-    checks["fresh: at least 40 requirements"] = sets["fresh"]["arms"]["U"]["requirements"] >= FRESH_REQUIREMENTS
-    checks["fresh: its positive control measured"] = sets["fresh"]["arms"]["U"]["controls"] > 0
+        checks.update(set_checks(name, sets[name], cases_record["packing_sets"][name]))
     return {"checks": checks, "passes": all(checks.values()), "utility": "not applicable: calibration kept the baseline (U = B); every policy's packs are recorded per row"}
 
 
@@ -565,12 +577,14 @@ def run_qualification(config: Mapping[str, Any], repository: Path, out: Path) ->
     records the opening before the fresh fixture is read, so a second use is refused until a successor disposition is recorded."""
     if not config.get("authorization"):
         raise FreshRefused("no recorded release for the qualification run")
+    if out.resolve() != (repository / config["output"]).resolve():  # the opening lives in one pinned report, so another path cannot bypass it
+        raise FreshRefused(f"the qualification report is {config['output']}, not {out}")
     if out.exists() and json.loads(out.read_text(encoding="utf-8")).get("fresh_opened"):
         raise FreshRefused(f"{out} records the fresh set opened; a second use needs a recorded successor disposition")
     cases_record = json.loads((repository / config["cases"]).read_text(encoding="utf-8"))
     selection = frozen_selection(repository, config)
     head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
-    work = repository / config["work_dir"] / "qualification"
+    work = repository / config["work_dir"] / "q"  # short: cutoff trees run deep and long paths are not enabled
     legacy_policy, model_aware, pack_estimate = production_routes(work)
     assert legacy_policy.ceiling == legacy_budget(D3_USABLE_INPUT), "the utility record packs at calibration's legacy budget"
     report: dict[str, Any] = {"schema": "plan12-memory-m2b.qualification.v1", "head": f"git:{head}", "label": config["label"], "authorization": config["authorization"],
@@ -586,27 +600,40 @@ def run_qualification(config: Mapping[str, Any], repository: Path, out: Path) ->
         previous = None
         for name in QUALIFICATION_SETS:
             if name == "fresh":
+                replays = {key: ok for done in report["sets"] for key, ok in set_checks(done, report["sets"][done], cases_record["packing_sets"][done]).items()}
+                if not all(replays.values()):  # a failed replay needs a disposition first; the fresh set stays unopened for it
+                    report["gates"] = {"checks": replays, "passes": False, "stopped": "a historical set failed its gates; the fresh set was not opened"}
+                    break
                 report["fresh_opened"] = True
                 _write(report, out)
             cases = load_set(repository, cases_record, name, qualification=True)
+
+            def progress(rows: list[dict[str, Any]], name: str = name) -> None:  # each tree on disk: a failure keeps every finished row
+                report["sets"][name] = {"rows": rows, "partial": True}
+                _write(report, out)
+
             rows, previous = _qualify_set(name, cases, cases_record["injections"]["sets"].get(name), repository, work, settings, embedder, report["trees"], previous,
-                                          policy=selection["selected"], legacy=legacy_policy.ceiling, model_aware=model_aware, pack_estimate=pack_estimate)
-            report["sets"][name] = {"rows": rows, "totals": totals(rows), "arms": arm_totals(rows)}
+                                          policy=selection["selected"], legacy=legacy_policy.ceiling, model_aware=model_aware, pack_estimate=pack_estimate, on_tree=progress)
+            report["sets"][name] = {"rows": rows, "totals": totals(rows), "arms": arm_totals(rows), "f_below_u": f_below_u(rows)}
             _write(report, out)
-        report["gates"] = qualification_gates(report["sets"], cases_record)
+        else:
+            report["gates"] = qualification_gates(report["sets"], cases_record)
         report["embedding"] = {"embedded": embedder.embedded, "reused": embedder.reused}
         _write(report, out)
     finally:
-        client.close()
-        gateway.kill()
-        gateway.wait(10)
-        subprocess.run(["docker", "rm", "-f", config["container"]], capture_output=True, check=False)
-        subprocess.run(["docker", "volume", "rm", "-f", config["volume"]], capture_output=True, check=False)
+        try:
+            client.close()
+            gateway.kill()
+            gateway.wait(10)
+        finally:  # a stuck Gateway still leaves no container or volume behind
+            subprocess.run(["docker", "rm", "-f", config["container"]], capture_output=True, check=False)
+            subprocess.run(["docker", "volume", "rm", "-f", config["volume"]], capture_output=True, check=False)
     return report
 
 
 def _qualify_set(name: str, cases: Sequence[GoldenCase], injection: Mapping[str, Any] | None, repository: Path, work: Path, settings: Any, embedder: Any,
-                 trees: list[dict[str, Any]], previous: Any, *, policy: str, legacy: int, model_aware: BudgetPolicy, pack_estimate: Callable[[str], int]) -> tuple[list[dict[str, Any]], Any]:
+                 trees: list[dict[str, Any]], previous: Any, *, policy: str, legacy: int, model_aware: BudgetPolicy, pack_estimate: Callable[[str], int],
+                 on_tree: Callable[[list[dict[str, Any]]], None] = lambda rows: None) -> tuple[list[dict[str, Any]], Any]:
     """One set, each cutoff tree indexed by the real worker (with the set's poison and control when it has them), each case retrieved once by
     production's call; every policy's legacy pack is recorded (calibration's scoring) beside the selected policy's U and F packs."""
     snapshots: dict[str, list[GoldenCase]] = {}
@@ -615,7 +642,7 @@ def _qualify_set(name: str, cases: Sequence[GoldenCase], injection: Mapping[str,
     poison = injection["poison"]["path"] if injection else None
     rows: list[dict[str, Any]] = []
     for revision, group in snapshots.items():
-        tree = work / "trees" / f"{name}-{revision[:12]}"
+        tree = work / "trees" / f"{QUALIFICATION_SETS.index(name)}-{revision[:12]}"  # the set's number: one snapshot can appear in two sets
         m1_evaluate.materialize(repository, revision, tree, branch=f"{name}-{revision[:12]}")
         if injection:
             inject(tree, injection)
@@ -634,6 +661,7 @@ def _qualify_set(name: str, cases: Sequence[GoldenCase], injection: Mapping[str,
             row["capture_sha256"] = save_capture(work / "captures" / name / f"{row['case_id'].replace('@', '_')}.json", capture)
             rows.append(row)
         previous = _rotate(previous, index, work, tree)
+        on_tree(list(rows))
     return rows, previous
 
 
