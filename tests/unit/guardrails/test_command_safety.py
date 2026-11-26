@@ -470,3 +470,38 @@ def test_latin_lookalikes_in_an_approved_test_command_are_still_refused(tmp_path
     results = [_approved_test_command(tmp_path, *command) for command in commands]
 
     assert [(r.verdict, r.rule_id) for r in results] == [(PreToolVerdict.BLOCK, "shell.unicode_confusable")] * len(commands)
+
+
+def test_latin_and_common_script_lookalikes_of_ascii_are_refused(tmp_path):
+    """#619: a non-ASCII Latin- or Common-script character the table maps to ASCII is refused, with no second script."""
+    commands = (
+        ("pytest", "tests/f" + chr(0x0131) + "le.py"),  # dotless i
+        ("pytest", "tests/" + chr(0x0251) + "pi.py"),  # Latin alpha
+        ("pytest", "tests/" + chr(0x2160) + "ib.py"),  # Roman numeral one for l
+        ("pytest", "tests/p" + chr(0x1D432) + "thon.py"),  # mathematical bold y
+        ("pytest", chr(0x2212) + "q", "tests"),  # minus sign as the flag dash
+        ("pytest", chr(0x2013) + "q", "tests"),  # en dash as the flag dash
+        ("pytest", "tests" + chr(0x2215) + "unit"),  # division slash as the path slash
+        ("pytest", "-k", "don" + chr(0x2019) + "t"),  # curly apostrophe
+        ("pytest", "tests/a" + chr(0x2002) + "b.py"),  # en space: one argument that looks like two
+    )
+
+    results = [_approved_test_command(tmp_path, *command) for command in commands]
+
+    assert [(r.verdict, r.rule_id) for r in results] == [(PreToolVerdict.BLOCK, "shell.unicode_confusable")] * len(commands)
+
+
+def test_accented_latin_and_cjk_punctuation_in_a_file_name_still_run(tmp_path):
+    """#619 keeps #596: accented Latin and CJK names with fullwidth parentheses or digits are not ASCII look-alikes."""
+    names = (
+        "caf" + chr(0x00E9) + "_" + chr(0x00FC) + "ber_" + chr(0x00F1) + chr(0x00E7) + chr(0x00DF),
+        _name(0x6D4B, 0x8BD5, 0xFF08, 0x6587, 0xFF09),  # Han with fullwidth parentheses
+        _name(0x6D4B, 0x8BD5, 0xFF10, 0xFF11),  # Han with fullwidth digits
+        _name(0x30C7, 0x30FC, 0x30BF),  # Katakana with the long-vowel mark
+    )
+
+    results = {name: _approved_test_command(tmp_path, "pytest", f"tests/{name}.py") for name in names}
+
+    assert {name: (r.verdict, r.rule_id) for name, r in results.items()} == {
+        name: (PreToolVerdict.ALLOW, "allow.shell.pytest") for name in names
+    }
