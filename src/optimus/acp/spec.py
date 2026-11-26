@@ -3946,6 +3946,8 @@ class AcpDuplexAdapter:
         turn: AcpPromptTurn | None = None,
     ) -> None:
         if planning:
+            if result.status not in (AgentRunStatus.AWAITING_APPROVAL, AgentRunStatus.COMPLETED):
+                return  # a stopped run's text is why it stopped, not a plan (#570)
             if turn is not None:
                 lease = turn.turn_control.try_start(SendKind.PROVISIONAL_PLAN, "plan")
                 if not lease.granted:
@@ -3995,7 +3997,7 @@ class AcpDuplexAdapter:
         result: AgentRunResult,
         turn: AcpPromptTurn | None = None,
     ) -> None:
-        send_plan = result.stop_reason not in _UNAPPLIED_PLAN_STOP_REASONS  # a completed plan would claim undone work
+        send_plan = result.status is AgentRunStatus.COMPLETED  # on any other outcome a completed plan would claim undone work (#570)
         if turn is not None:
             turn.turn_control.seal_final_delivery()
             turn.turn_control.declare_terminal_messages(("completed_plan", "final_text") if send_plan else ("final_text",))
@@ -4110,7 +4112,7 @@ _WRITE_NOT_EXECUTED_MESSAGE = (
     "Any tests in the plan may still have run. Send your request again to get a new plan."
 )
 
-# Stops whose plan's work was not done: they end as end_turn and send no completed-plan update (#559, #565).
+# Stops whose plan's work was not done: they end as end_turn, not refusal (#559, #565).
 _UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED", *GUARD_REFUSAL_TEXTS})
 
 
