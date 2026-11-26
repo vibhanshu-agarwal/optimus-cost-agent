@@ -170,6 +170,14 @@ def _refuse_provisioning(monkeypatch) -> None:
     monkeypatch.setattr(ev.m1_scale, "_provision", lambda *a, **k: pytest.fail("provisioned past a refusal"))
 
 
+@pytest.mark.parametrize("passes, code", [(True, 0), (False, 1)])
+def test_main_exits_with_an_error_when_qualification_fails_its_gates(tmp_path, monkeypatch, passes, code):
+    repo = _qualification_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setattr(ev, "run_qualification", lambda config, repository, out: {"gates": {"passes": passes}})
+    assert ev.main(["--config", "config.json", "--phase", "qualification", "--output", "q.json"]) == code
+
+
 SPECS = {"replay_seed_held_out": (1, 2), "replay_m1_held_out": (1, 1), "replay_fresh": (1, 1), "replay_fresh2": (1, 1), "fresh": (2, 40)}
 
 

@@ -1,5 +1,5 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v15",
+ "schema": "plan12-memory-m2b.evaluation-contract.v16",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
@@ -186,10 +186,10 @@
   ]
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v14",
-  "sha256": "hex:c37edd68dcc66bc824efcefdde91597ca43707169c67317ae4dac354af41cc49",
-  "commit": "git:f91c751",
-  "change": "Fable 5.2's formal review: the scorer re-frozen after B1, the superseded freezes corrected, the release conditions and the obligations before CP3 scoring and Task 5"
+  "schema": "plan12-memory-m2b.evaluation-contract.v15",
+  "sha256": "hex:c277ad5955987afe5110eda1ea288a02b57fce70dba17d077a7f8d218e05aeb7",
+  "commit": "git:ef9d0ad",
+  "change": "Task 4 qualification failed on the fresh set; the D3 field rolled back by the operator's decision (plan line 115); Q and R not run under Plan 12.14"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -229,7 +229,8 @@
    "guard": "Codex findings 3 (round 122, attempts 2-3): the Guard refuses before forwarding unless the row's allowance (at most one send per row, enforced by run_one), the released model (the approved hash fixes its route), the approved hash and output cap, the input cap (the route's estimator), every earlier send reconciled, and the ceiling's reservation counting those earlier sends' unsettled attempts all hold; each refusal is recorded, and the host's own record of a refused request is kept apart (unforwarded_receipt_ids), never charged",
    "accounting": "each send records at dispatch the host request identity the runner gives its receipts (`receipt_base`, `<run>:answer:1:<dispatch>` for Q's one-request Chat turn); a receipt matches a Gateway attempt only under that identity with the attempt's ordinal, Gateway id and disposition (a completed attempt the host records as uncertain keeps both, its charge unknown), and any route request id or attempt number its usage names must agree. Attempts come only from Gateway evidence: each physical Gateway attempt is one attempt; a send the Gateway reported nothing for is MAX_ROUTE_ATTEMPTS unknown attempts once, its host records kept beside them and never counted again. Identical matched copies are one charge; differing copies leave it unknown. A receipt matching no attempt is kept and flagged; each distinct receipt identity not already settled is charged once as money only (an unattributed charge creates no attempt), conflicting copies flagged. Any failure of the run keeps its row and receipts and stops the run; attempt 5: a send without its recorded host request identity matches nothing; a send with no Gateway attempt keeps its two unknown attempt slots and any amount its own host records report, settled once as money; copies of one receipt with differing amounts leave it unknown whether the copies arrive through the attempt path or the money path; the ceiling keeps unknown money (unknown_charges) apart from unknown attempts, each priced at one attempt's worst case; each row records its settlement (attempts, unknown-cost attempts, money charges, unknown charges, known USD)",
    "terminal": "expected_zero_call only with the case's declared stop reason and no emitted answer: the delivered text is exactly production's too-large notice for a required file (workspace_context.blocking_from_diagnostics); otherwise incomplete",
-   "q_release_gate": "re-frozen at the Q-release gate: these are the bytes G2 ran and q_launch pins (Fable formal review B3)"
+   "q_release_gate": "re-frozen at the Q-release gate: these are the bytes G2 ran and q_launch pins (Fable formal review B3)",
+   "accounting_status": "historical (Codex round 125 A4): the prose above records the runner's accounting before the Q-release gate's item 5; the governing text is the top-level producer_contract_463 as amended there (no money-only path, no unknown charges)"
   },
   "intended_composition": {
    "registry": "src/optimus_model_policy/defaults.yaml with models.anthropic/claude-haiku-5.5.context_budget.input_target_usd = \"0.008192\", staged in defaults.yaml itself at git:e3506a7 (Plan 12.14 Task 2)",
@@ -256,7 +257,14 @@
     "pre_change_hash": "hex:526153c5c682d8ffbde091869ec83e72a4b1545c555356a77c8e84b1fc85b3d2",
     "why": "the Auto composition is the shipped defaults then auto_overlay.yaml, so the field changes it too; the field is the only cause (optimus-handoff/p1214-task2/auto-hash-check.txt); the census before the three approvals missed it",
     "approval": "approved by the operator 2026-11-25 (\"Approve Auto hash\"), recorded at git:6b828c5; an Auto launch must be re-approved"
-   }
+   },
+   "status": "ROLLED BACK 2026-11-26 (operator, Claude chat: \"Roll back D3\"): Task 4 qualification failed (task4_qualification); per plan line 115 the field is removed from src/optimus_model_policy/defaults.yaml (reverts of e3506a7 and 6b828c5), the prior pins restored and the pre-change effective hash proven (tests/unit/model_policy/test_binding.py: 4d2f637e...6338)",
+   "approvals_unused": [
+    "shipped defaults and the attached profile b7fca195...6e3a (operator 2026-11-25, \"Approve all three\", #548 comment 7159307909): unused; restored 4d2f637e...6338",
+    "qualification profile 16f6dc6a...c1f3 (same approval): unused; restored a015e40e...3c73",
+    "evaluation profile 94873ae9...03a4 (same approval): unused; restored c235fb1a...7440",
+    "Auto composition 43b9762c...e872 (operator 2026-11-25, \"Approve Auto hash\"): unused; restored 526153c5...b3d2"
+   ]
   },
   "production_equivalence": {
    "claim": "F's paid request is production's own final-round Chat request on the same turn, carrying exactly the pack the budget pass measured; B's and F's packs in the budget pass are the packs production's memory turn builds from matching inputs",
@@ -414,7 +422,9 @@
    ],
    "g2": "passed 2026-11-26; runs 1-4 (fixes 358064a, 884b7b9 between them); runs 3 and 4 reproduce through m2b_launch.compare; result posted, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7176732364",
    "formal": "Fable 5.2, then one Codex CLI round on this contract and the gate head, both posted verbatim on #548",
-   "fable_formal": "Fable 5.2 ACCEPT WITH CHANGES at f91c751 (one A on the release wording, five B), https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7177612471; B1 and B3 fixed here, A1 and B5 in release_conditions, B2 and B4 in obligations"
+   "fable_formal": "Fable 5.2 ACCEPT WITH CHANGES at f91c751 (one A on the release wording, five B), https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7177612471; B1 and B3 fixed here, A1 and B5 in release_conditions, B2 and B4 in obligations",
+   "codex_round_125": "Codex formal round 125 ACCEPT WITH CHANGES at ef9d0ad, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7177926124: A1 and A2 fixed at 9902022, A3 (qualification before Q) built and run (task4_qualification), A4 here",
+   "round_126": "Fable 5.2 design review https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7181737343; Codex result review https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7183765567"
   },
   "release_conditions": {
    "one_launch": "the release covers one launch: the ceiling is per launch, so a second launch could exceed 96 attempts or USD 6.00 and would overwrite the record; a stopped run is not relaunched without a new operator decision (Fable formal review A1)",
@@ -424,9 +434,10 @@
    "expected_stops": "a stop on a paid row is the designed outcome of any accounting anomaly or dispatch difference, not a fault"
   },
   "obligations": {
-   "before_cp3_scoring": "the scoring driver: reads paid-attempts.json, both sinks and the support audit; computes the adoption and cost gates, the comparable cohort and the forced-refusal exclusions; a HELD or PENDING_AUDIT row makes every gate that needs it unavailable, never computed without it; committed and reviewed before any answer is read (Fable formal review B2)",
-   "before_task5": "production's first repo map on a fresh session can come back empty with nothing logged (MemorySession.repo_map; G2 run 2): its cause established and the path made to persist it before Task 5's adoption decision; Q measures primed maps (Fable formal review B4)"
-  }
+   "before_cp3_scoring": "moot under Plan 12.14: no paid Q; carried to any successor that runs paid Q",
+   "before_task5": "production's first repo map on a fresh session can come back empty with nothing logged (MemorySession.repo_map; G2 run 2): its cause established and the path made to persist it before Task 5's adoption decision; Q measures primed maps (Fable formal review B4); still open, and carried to the closure record"
+  },
+  "status": "CLOSED WITHOUT RELEASE 2026-11-26: Task 4 qualification failed and D3 is rolled back; Q and R are not run under Plan 12.14. The q_launch gate stays as the record of what was frozen; its registry hash b7fca195 is no longer the shipped composition, and m2b_launch.run_paid also requires a passing qualification report the gate pins (verify_qualification), so the paid driver refuses"
  },
  "cp1_exception": {
   "status": "approved by the operator 2026-11-25 (\"Accept as proposed\"), #548 comment 7158350437, once focused-8 at af66883 passed (8,569 passed, 20 skipped, 0 failed)",
@@ -499,6 +510,53 @@
    "head": "git:884b7b9a69529030ed5dd7829623d8fad82a7d7e",
    "authorization": "operator, 2026-11-26: \"Release G2\" (reports/plan12-memory-m2b/gate-config.json)"
   },
-  "frozen_at": "git:f69bd70e531c0936bfeb1ff76efab1128917e4a5"
+  "frozen_at": "git:f69bd70e531c0936bfeb1ff76efab1128917e4a5",
+  "status": "void: see q_release_gate.status"
+ },
+ "task4_qualification": {
+  "report": {
+   "path": "reports/plan12-memory-m2b/qualification.json",
+   "sha256": "hex:de5fa09b1d38029db77a1872ee345b31902f508412c8782b068e2f422e2d827a",
+   "head": "git:f1821e509182450db8ab94b66a824cd66277a57a"
+  },
+  "phase": "m2b_evaluate --phase qualification (7e1c345, 0172c3f after Fable 5.2's design review, fa6433f): the four historical sets replayed first, each on its own, then the fresh set opened once; U (legacy 16,384) and F (model-aware; 13,107 for a task without required files) packed from one production retrieval per case",
+  "runs": {
+   "1": "released 2026-11-26 (\"Release it\"); stopped in the second historical set on the index store's INDEX_TIMEOUT while dropping a previous line; fresh set unopened; evidence optimus-handoff/p1214-gate/qualification-run-1.json and .log; fixed at fa6433f (bounded retry of a timed-out drop step)",
+   "2": "released 2026-11-26 (\"Release run 2\") at f1821e5; complete: 56 trees, no drop timeouts; the fresh set opened and SPENT"
+  },
+  "required_evidence_U_F": {
+   "fresh": [
+    20,
+    19,
+    44
+   ],
+   "replay_fresh": [
+    10,
+    10,
+    30
+   ],
+   "replay_fresh2": [
+    21,
+    22,
+    44
+   ],
+   "replay_m1_held_out": [
+    2,
+    2,
+    11
+   ],
+   "replay_seed_held_out": [
+    5,
+    5,
+    12
+   ]
+  },
+  "result": "FAIL on one check: fresh F required coverage 19 < U 20 (QF04-a: R3 falls between F's 13,107 and U's 16,384); every historical set passes (replay_fresh2 F gains MG15-a); all five sets 58 = 58; zero stale paths; the fresh control 13/13 in both arms",
+  "disposition": "operator 2026-11-26, Claude chat: \"Roll back D3\", after Codex round 126 (no adoption under plan lines 115 and 267; Q and R blocked by Task 4; an incomplete closure with the operator's disposition, the D3 obligation kept open)",
+  "reviews": {
+   "fable_design": "Fable 5.2 ACCEPT WITH CHANGES at 7e1c345, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7181737343 (applied at 0172c3f)",
+   "codex_result": "Codex round 126 at 6b988b5: roll back D3 and keep paid Q/R blocked, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7183765567"
+  },
+  "fresh_set": "spent: a second use needs a recorded successor disposition and a new fresh set (cases.json packing_sets.fresh)"
  }
 }

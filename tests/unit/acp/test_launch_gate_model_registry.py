@@ -100,9 +100,8 @@ def test_an_untrustworthy_registry_blocks_launch(tmp_path: Path, monkeypatch: py
 # by value, not only by recomputation, so any change to the packaged defaults is a deliberate, reviewed
 # approval change rather than a silent one. The closure release changed it deliberately: the shipped
 # defaults are the previous defaults plus the attached Haiku 5.5 entry and its one summary receipt, so
-# the shipped hash is the attached profile's reviewed hash (previously ff836631...). Plan 12.14 Task 2 added the D3
-# context_budget field to that entry (operator hash approval 2026-11-25, "Approve all three"; previously 4d2f637e...).
-SHIPPED_EFFECTIVE_HASH = "b7fca195e22c4884109540c8c0d8acf2f23ec70534994d4136445a7408906e3a"  # pragma: allowlist secret - shipped registry identity, not a credential
+# the shipped hash is the attached profile's reviewed hash (previously ff836631...).
+SHIPPED_EFFECTIVE_HASH = "4d2f637e822841c23ae617d352c81a6472d11771fd7cd7011b3052c12b506338"  # pragma: allowlist secret - shipped registry identity, not a credential
 
 
 def test_an_activated_launch_approves_exactly_the_shipped_registry(tmp_path: Path) -> None:

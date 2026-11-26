@@ -569,6 +569,17 @@ def verify_g2(g2: Mapping[str, Any], gate: Mapping[str, Any]) -> None:
         raise LaunchRefused("G2: " + "; ".join(problems))
 
 
+def verify_qualification(repository: Path, gate: Mapping[str, Any]) -> None:
+    """Task 4: Q and R follow a passing qualification. The gate must pin the sealed report, which opened the fresh set once and passed
+    every deterministic gate (Codex round 126 finding 4)."""
+    spec = gate.get("qualification")
+    if not isinstance(spec, Mapping):
+        raise LaunchRefused("the gate pins no qualification report")
+    report = load_artifact(repository, spec)
+    if report.get("fresh_opened") is not True or (report.get("gates") or {}).get("passes") is not True:
+        raise LaunchRefused("the qualification report did not pass its gates")
+
+
 def preflight(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_available: bool, budget_report: Mapping[str, Any], gate: Mapping[str, Any],
               snapshot: RegistrySnapshot, repository: Path) -> paid.Ceiling:
     """Items 3 and 12: the frozen schedule, the frozen release bounds (never the caller's), every pinned file and the composition the
@@ -867,6 +878,7 @@ def run_paid(config: Mapping[str, Any], repository: Path, release: Mapping[str, 
     cases = load_artifact(repository, {"path": CASES, "sha256": sc.SEALED_CASES_SHA256})["paid_q"]["cases"]  # the one file the preflight checks
     g2 = load_artifact(repository, gate["g2_report"])
     verify_g2(g2, gate)
+    verify_qualification(repository, gate)
     u_equals_b = contract["task1_freezes"]["selected_candidate"]["u_equals_b"]
     budget_report = g2["budget"]
     preflight(cases, u_equals_b=u_equals_b, outline_available=budget_report["outline_available"], budget_report=budget_report, gate=gate, snapshot=trusted_snapshot(),

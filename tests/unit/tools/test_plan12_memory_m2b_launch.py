@@ -127,7 +127,7 @@ def test_each_arm_is_productions_d3_composition_with_only_bs_pack_budget_replace
     assert composition.packer(case, "N").memory is None and composition.packer(case, "F").memory is not None and composition.packer(case, "B").memory is not None
     built = launch.ordinary_attachment(snapshot=composition.snapshot, model_id=launch.D3_MODEL, gateway_client=composition.summaries, shared_secret=composition.shared_secret)
     assert (built.pack_budget, built.model_id, built.registry_hash) == (shipped.pack_budget, launch.D3_MODEL, composition.snapshot.effective_hash)
-    assert built.pack_budget.name == "model-aware" and built.pack_budget.ceiling == 32_768
+    assert built.pack_budget == BudgetPolicy("legacy", 16_384, None)  # D3 rolled back after Task 4 qualification failed: the shipped route is legacy
     asked: list[dict] = []
     monkeypatch.setattr(launch, "ordinary_attachment", lambda **kwargs: asked.append(kwargs) or built)
     f, b = composition.attachment("F"), composition.attachment("B")
@@ -558,6 +558,32 @@ def _repository(tmp_path: Path, gate: dict | None) -> tuple[Path, dict[str, Any]
     return repo, {"head": head, "contract_sha256": "hex:" + hashlib.sha256(data).hexdigest(), "reviews": {"fable": COMMENT + "1", "codex": COMMENT + "2"}}
 
 
+def test_a_paid_run_needs_the_pinned_qualification_report_to_have_passed(tmp_path):
+    def pinned(report: dict) -> dict:
+        data = json.dumps(report).encode()
+        (tmp_path / "q.json").write_bytes(data)
+        return {"qualification": {"path": "q.json", "sha256": "hex:" + hashlib.sha256(data).hexdigest()}}
+
+    launch.verify_qualification(tmp_path, pinned({"fresh_opened": True, "gates": {"passes": True}}))
+    for report in ({"fresh_opened": True, "gates": {"passes": False}}, {"fresh_opened": False, "gates": {"passes": True}}, {"fresh_opened": True}):
+        with pytest.raises(launch.LaunchRefused, match="did not pass its gates"):
+            launch.verify_qualification(tmp_path, pinned(report))
+    with pytest.raises(launch.LaunchRefused, match="pins no qualification report"):
+        launch.verify_qualification(tmp_path, {})
+    gate = pinned({"fresh_opened": True, "gates": {"passes": True}})
+    (tmp_path / "q.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(launch.LaunchRefused, match="not the gate's bytes"):
+        launch.verify_qualification(tmp_path, gate)
+
+
+def test_the_committed_qualification_blocks_the_paid_run():
+    """Run 2 failed (fresh F < U): a gate pinning it refuses, whatever else holds (Plan 12.14 D3 rollback)."""
+    path = "reports/plan12-memory-m2b/qualification.json"
+    data = (ROOT / path).read_bytes()
+    with pytest.raises(launch.LaunchRefused, match="did not pass its gates"):
+        launch.verify_qualification(ROOT, {"qualification": {"path": path, "sha256": "hex:" + hashlib.sha256(data).hexdigest()}})
+
+
 def test_the_release_must_name_the_clean_head_the_contracts_bytes_and_both_reviews(tmp_path):
     repo, release = _repository(tmp_path, {"sends": 25})
     assert launch.verify_release(repo, release)[1] == {"sends": 25}
@@ -847,8 +873,10 @@ def test_a_failed_run_whose_teardown_also_fails_keeps_both_failures(driver, monk
     assert (kept["passes"], kept["failures"]) == (False, ["teardown left the released container behind", "the smoke row could not be prepared"])
 
 
-def test_the_paid_entry_refuses_a_failing_preflight_before_provisioning_anything(tmp_path, monkeypatch):
-    """Codex round 124 attempt 3, B1: the release, the gate, the G2 report and the whole preflight are checked before any container or index."""
+@pytest.mark.parametrize("qualified, reason", [(True, "the tariff is not the gate's"), (False, "the qualification report did not pass its gates")])
+def test_the_paid_entry_refuses_a_failing_preflight_before_provisioning_anything(tmp_path, monkeypatch, qualified, reason):
+    """Codex round 124 attempt 3, B1: the release, the gate, the G2 report, the qualification (Codex round 126 finding 4) and the whole
+    preflight are checked before any container or index."""
     gate = {**_gate(), "tariff": {**launch.tariff_record(), "output_usd_per_million": "9.99"}, "g2_report": {"path": "g2.json", "sha256": ""}}
     gate["digests"][launch.CASES] = launch.sc.SEALED_CASES_SHA256
     g2 = json.dumps({"passes": True, "pinned": gate["digests"], "registry_hash": gate["registry_hash"], "tariff_id": paid.D3_TARIFF.id, "cases_sha256": launch.sc.SEALED_CASES_SHA256,
@@ -858,6 +886,9 @@ def test_the_paid_entry_refuses_a_failing_preflight_before_provisioning_anything
     (repo / Path(launch.CASES).parent).mkdir(parents=True)
     (repo / launch.CASES).write_bytes((ROOT / launch.CASES).read_bytes())
     (repo / "g2.json").write_bytes(g2)
+    qualification = json.dumps({"fresh_opened": True, "gates": {"passes": qualified}}).encode()  # passing: the preflight is what refuses
+    (repo / "q.json").write_bytes(qualification)
+    gate["qualification"] = {"path": "q.json", "sha256": "hex:" + hashlib.sha256(qualification).hexdigest()}
     contract = json.dumps({"q_launch": gate, "task1_freezes": {"selected_candidate": {"u_equals_b": True}}}).encode()
     (repo / launch.CONTRACT).write_bytes(contract)
     subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True, capture_output=True)
@@ -870,7 +901,7 @@ def test_the_paid_entry_refuses_a_failing_preflight_before_provisioning_anything
     try:
         launch.run_paid({"sink_dir": str(tmp_path / "sink"), "work_dir": str(tmp_path / "work")}, repo, release, tmp_path / "paid.json")
     except launch.LaunchRefused as refused:
-        assert str(refused).startswith("preflight: ") and "the tariff is not the gate's" in str(refused)
+        assert reason in str(refused) and str(refused).startswith("preflight: ") == qualified
     except Exception as other:  # noqa: BLE001 - anything else means the preflight did not come first
         pytest.fail(f"the paid entry went on past a failing preflight and raised {type(other).__name__}")
     else:

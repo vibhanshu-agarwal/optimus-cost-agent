@@ -1829,7 +1829,7 @@ class TestEffectiveCredentialDisplayRows:
 
 
 _GOLDEN_DISPLAY_DIGEST = "f7af89af0acce664b27825e5af9823c25b11579490bccc73e8f82d4ec316f248"  # pragma: allowlist secret - synthetic test fixture
-_GOLDEN_SHIPPED_DISPLAY_DIGEST = "a939e8655490b9ffe9369e499ff99bbc1fd7f5d74f4752a48927ce2416d0e691"  # Plan 12.14 Task 2: the shipped registry literal's approved hash b7fca195... (was 2b0cb8bc...)  # pragma: allowlist secret - synthetic test fixture
+_GOLDEN_SHIPPED_DISPLAY_DIGEST = "2b0cb8bc3042d2fe4d4750897690eb74d4674d3eb71a67721c3cacbb362d47a5"  # 2026-11-20 merge of main (cdbed07) into CP4 design R: new registry hash  # pragma: allowlist secret - synthetic test fixture
 _GOLDEN_ENV = {
     "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
     "OPTIMUS_API_KEY": "agent-key",  # pragma: allowlist secret - synthetic test fixture

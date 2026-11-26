@@ -75,17 +75,17 @@ def test_chosen_budget(ceiling, target, required, expected):
 # --- The route's budget, bound before preparation (Task 2 seam) ----------------------------------------------------------
 
 
-def test_the_shipped_route_gives_the_d3_forecast_and_without_the_field_the_legacy_budget(tmp_path):
-    """Plan 12.14 Task 2: the staged D3 field makes the shipped route model-aware; the pre-change defaults keep the legacy budget."""
+def test_the_shipped_route_keeps_the_legacy_budget_and_the_d3_target_gives_the_forecast(tmp_path):
     from optimus.context.shipped_policy import attachment_limits
-    from optimus_model_policy.binding import trusted_snapshot
+    from optimus_model_policy.binding import packaged_defaults, trusted_snapshot
     from optimus_model_policy.registry import load_registry
-    from tests.unit.model_policy.test_context_budget_field import defaults_without_field
 
     haiku = "anthropic/claude-haiku-5.5"
-    assert attachment_limits(trusted_snapshot(), haiku).pack_budget == BudgetPolicy("model-aware", 32_768, 13_107)  # the route caches its prefix: a write is priced
-    before = attachment_limits(load_registry(defaults_without_field(tmp_path)), haiku).pack_budget
-    assert before == BudgetPolicy("legacy", 16_384, None)
+    assert attachment_limits(trusted_snapshot(), haiku).pack_budget == BudgetPolicy("legacy", 16_384, None)
+    override = tmp_path / "override.yaml"
+    override.write_text(f'models:\n  {haiku}:\n    context_budget: {{input_target_usd: "0.008192"}}\n', encoding="utf-8")
+    staged = attachment_limits(load_registry(packaged_defaults(), override), haiku).pack_budget
+    assert staged == BudgetPolicy("model-aware", 32_768, 13_107)  # Haiku's route caches its prefix, so a write is priced
 
 
 def test_escalation_keeps_the_budget_the_pack_was_prepared_with():
