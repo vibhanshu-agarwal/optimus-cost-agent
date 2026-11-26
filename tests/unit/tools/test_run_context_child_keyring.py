@@ -197,15 +197,21 @@ _REPORT_BACKEND = (
 )
 
 
-def _backend_child(tmp_path: Path, variable: str | None = None, *, tripwire: bool = True) -> tuple[subprocess.CompletedProcess[str], Path]:
-    """A child launched with the tripwire's environment, which carries the control; `variable` replaces the selection,
-    and without `tripwire` the program runs without the tripwire's prelude."""
+def _backend_child(
+    tmp_path: Path, variable: str | None = None, *, tripwire: bool = True, hooked: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """A child launched with the tripwire's environment, which carries the control; `variable` replaces the selection.
+    Without `tripwire` the program runs without the tripwire's prelude; `hooked` loads the tripwire through its
+    start-up hook instead of the prelude."""
     record = tmp_path / "tripwire.jsonl"
-    environment = child_tripwire.environment(dict(os.environ), record)
+    if hooked:
+        environment = child_tripwire.hooked_environment(dict(os.environ), record)
+    else:
+        environment = child_tripwire.environment(dict(os.environ), record)
     if variable is not None:
         environment[child_keyring.VARIABLE] = variable
     completed = subprocess.run(
-        [sys.executable, "-c", (child_tripwire.PRELUDE if tripwire else "") + _REPORT_BACKEND], cwd=_ROOT,
+        [sys.executable, "-c", (child_tripwire.PRELUDE if tripwire and not hooked else "") + _REPORT_BACKEND], cwd=_ROOT,
         capture_output=True, text=True, timeout=120, check=False, env=environment,
     )
     return completed, record
@@ -214,14 +220,20 @@ def _backend_child(tmp_path: Path, variable: str | None = None, *, tripwire: boo
 def test_a_child_given_the_control_resolves_keyrings_fail_backend_and_its_record_proves_it(tmp_path: Path) -> None:
     completed, record = _backend_child(tmp_path)
     assert completed.returncode == 0, completed.stderr
+    (tmp_path / "hooked").mkdir()
+    hooked, hooked_record = _backend_child(tmp_path / "hooked", hooked=True)
+    assert hooked.returncode == 0 and hooked.stdout.split() == [child_keyring.FAIL_BACKEND, "REFUSED=NoKeyringError"], hooked.stderr
+    assert child_tripwire.assert_no_real_adapter_access(hooked_record)["keyring_fail_selected"] == 1
     assert completed.stdout.split() == [child_keyring.FAIL_BACKEND, "REFUSED=NoKeyringError"]
     assert child_tripwire.assert_no_real_adapter_access(record)["keyring_fail_selected"] == 1
 
 
+@pytest.mark.parametrize("hooked", [False, True], ids=["prelude", "start_up_hook"])
 @pytest.mark.parametrize("variable", ["keyring.backends.null.Keyring", ""])
-def test_a_tripwire_child_without_the_fail_selection_never_runs_its_program(tmp_path: Path, variable: str) -> None:
-    """Mutation control: the tripwire refuses before the child's own program runs, and the parent's check fails."""
-    completed, record = _backend_child(tmp_path, variable)
+def test_a_tripwire_child_without_the_fail_selection_never_runs_its_program(tmp_path: Path, variable: str, hooked: bool) -> None:
+    """Mutation control: the tripwire refuses before the child's own program runs, and the parent's check fails. Loaded
+    by the start-up hook, the refusal must end the interpreter: site.py would otherwise report it and run the program."""
+    completed, record = _backend_child(tmp_path, variable, hooked=hooked)
     assert completed.returncode != 0 and completed.stdout == "", completed.stdout
     assert child_tripwire.KEYRING_REFUSAL in completed.stderr
     with pytest.raises(AssertionError):
