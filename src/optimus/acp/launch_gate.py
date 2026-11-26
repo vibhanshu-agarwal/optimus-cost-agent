@@ -48,6 +48,7 @@ from optimus.acp.launch_policy import (
 from optimus.acp.local_gateway_secrets import (
     CredentialLayer,
     CredentialProvenance,
+    CredentialStoreUnavailable,
     ProviderCredentialConfigurationError,
     ProviderCredentialResolution,
     resolve_provider_credentials,
@@ -665,13 +666,15 @@ def resolve_launch_candidate(
             config_root=operator_paths.config_root,
             keyring_backend=keyring_backend,
         )
+        resolved_shared_secret, shared_secret_provenance = resolve_shared_secret_with_provenance(
+            snapshot.values,
+            config_root=operator_paths.config_root,
+            keyring_backend=keyring_backend,
+        )
+    except CredentialStoreUnavailable as exc:  # #654: unknown is not absent
+        raise LaunchGateError(code="GATEWAY_CREDENTIAL_STORE_UNAVAILABLE", detail=exc.user_message) from exc
     except ProviderCredentialConfigurationError as exc:
         raise LaunchGateError(code="GATEWAY_PROVIDER_UNSUPPORTED", detail=exc.user_message) from exc
-    resolved_shared_secret, shared_secret_provenance = resolve_shared_secret_with_provenance(
-        snapshot.values,
-        config_root=operator_paths.config_root,
-        keyring_backend=keyring_backend,
-    )
 
     # 2c. Fold the RESOLVED credentials (which may come from .env.gateway or
     # keyring, not just the environment scan above) into the digest inputs.
