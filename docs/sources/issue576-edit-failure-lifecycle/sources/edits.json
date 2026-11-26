@@ -1,0 +1,16 @@
+[
+  {
+    "file": "page-updates.json",
+    "document": "lld",
+    "page": "19",
+    "old": "An applicability failure ends the run with status FAILED and internal stop reason `EDIT_NOT_APPLICABLE`; ACP wire `stopReason` is `refusal` (`acp/spec.py:2212–2221`).\n\nThe fixed completion text is:\n\n```text\nEDIT not applied to <path> (<code>): <reason>. Nothing was written.\n```",
+    "new": "An applicability failure ends the run with status FAILED and internal stop reason `EDIT_NOT_APPLICABLE`. At main `31c6de5` (#576) the ACP prompt response for that turn has wire `stopReason` `end_turn`, not `refusal`, and `_meta` `{\"runStopReason\": \"EDIT_NOT_APPLICABLE\", \"outcome\": \"failed\"}` (#559 / PR #569; #268 / PR #561; `acp/spec.py:4135`, `:4278–4308`). This holds for a binding failure before approval and for an applicability failure after it. If a cancel was accepted first, `_meta.outcome` is `cancelled` instead, and before approval `stopReason` is `cancelled` too (`acp/spec.py:2514–2526`; `acp/lifecycle.py:337–341`). The stopped run's text is never sent as a plan: a binding failure sends no plan update, and after approval no completed-plan update is sent, because only a COMPLETED run sends one (#570 / PR #630; `acp/spec.py:3967–3969`, `:4019–4028`).\n\nThe completion text is one fixed message per code, built only from the code and the path the plan named, never file content (#574; `agent/edits.py:28–52`, `:66–76`). It is a single line, wrapped here:\n\n```text\nThe change was not made to <path>, because <reason>.\nThe plan made no changes and ran none of its tests. <next step>. (<code>)\n```\n\nEach code has its own `<reason>` and `<next step>`. For example, `EDIT_OLD_NOT_FOUND` gives \"the lines it replaces are not in the file exactly as planned\" and \"Send your request again to get a new plan\"."
+  },
+  {
+    "file": "page-updates.json",
+    "document": "lld",
+    "page": "19",
+    "old": "Completion text is passed through by `acp/spec.py:2121–2122`.",
+    "new": "Completion text is passed through by `_completion_message` (`acp/spec.py:4141–4142` at `31c6de5`)."
+  }
+]
