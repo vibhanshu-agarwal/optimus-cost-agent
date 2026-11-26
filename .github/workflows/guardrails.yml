@@ -170,8 +170,11 @@ jobs:
 
       # #620: the requires_redis live tier against the job's Redis service. The URL is set on this step only, so
       # the full default run above is unchanged. The ignored file starts its own redis:8 containers and reads the
-      # operator's optimus-redis; here it would only skip, so it stays a local-only check.
+      # operator's optimus-redis; here it would only skip, so it stays a local-only check. The live fixtures' preflight
+      # also needs Gateway settings to be present (not contacted): synthetic loopback values, no credential.
       - name: "Live tier: requires_redis"
         env:
           OPTIMUS_REDIS_URL: redis://127.0.0.1:16379/0
+          OPTIMUS_GATEWAY_URL: http://127.0.0.1:8765
+          OPTIMUS_API_KEY: opt-live-test # pragma: allowlist secret - synthetic test value, not a credential
         run: uv run python -m pytest -m requires_redis -q -p no:cacheprovider --no-cov --ignore=tests/integration/acp/test_local_redis_attach_live.py

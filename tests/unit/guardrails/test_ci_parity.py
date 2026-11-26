@@ -123,7 +123,10 @@ def test_ci_runs_the_requires_redis_tier_last_against_a_real_redis_service() -> 
     names = [step.get("name") for step in job["steps"]]
     assert names[-2:] == ["Upload product coverage evidence", "Live tier: requires_redis"]
     step = job["steps"][-1]
-    assert step["env"] == {"OPTIMUS_REDIS_URL": "redis://127.0.0.1:16379/0"}
+    assert step["env"] == {  # the Gateway values are synthetic: preflight checks presence, nothing contacts them
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:16379/0", "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "opt-live-test",  # pragma: allowlist secret - synthetic test value, not a credential
+    }
     assert "if" not in step and "continue-on-error" not in step
     assert shlex.split(step["run"]) == [
         "uv", "run", "python", "-m", "pytest", "-m", "requires_redis", "-q", "-p", "no:cacheprovider", "--no-cov",
