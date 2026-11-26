@@ -117,8 +117,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def build_plan117_v5_collect_parser() -> argparse.ArgumentParser:
-    """Separate parser for the v5 gate; the legacy collect subparser is untouched."""
-    parser = argparse.ArgumentParser(prog="evidence_gather collect (plan117-v5)")
+    """Separate parser for the v6 gate; the legacy collect subparser is untouched."""
+    parser = argparse.ArgumentParser(prog="evidence_gather collect (plan117-v6)")
     parser.add_argument("--scenario", type=Path, required=True)
     parser.add_argument("--capture-root", type=Path, required=True)
     parser.add_argument("--bind", action="append", default=[])
@@ -129,8 +129,8 @@ def build_plan117_v5_collect_parser() -> argparse.ArgumentParser:
 
 
 def build_plan117_v5_redact_parser() -> argparse.ArgumentParser:
-    """Separate parser for the v5 two-phase redaction; the legacy redact subparser is untouched."""
-    parser = argparse.ArgumentParser(prog="evidence_gather redact (plan117-v5)")
+    """Separate parser for the v6 two-phase redaction; the legacy redact subparser is untouched."""
+    parser = argparse.ArgumentParser(prog="evidence_gather redact (plan117-v6)")
     parser.add_argument("--scenario", type=Path, required=True)
     parser.add_argument("--capture-root", type=Path, required=True)
     parser.add_argument("--bind", action="append", default=[])

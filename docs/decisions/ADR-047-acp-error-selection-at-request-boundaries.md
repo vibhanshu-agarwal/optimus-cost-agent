@@ -1,6 +1,6 @@
 # ADR-047: ACP error selection at request boundaries
 
-**Status** — Operator approved implementation on 26 November 2026. Draft pending independent review and repository delivery.
+**Status** — Operator approved implementation on 26 November 2026. [Independent review accepted the patch](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240#issuecomment-7190581260).
 
 ## Decision and provenance
 
