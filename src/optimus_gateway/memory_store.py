@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import errno
 import hashlib
 import hmac
 import json
@@ -44,6 +45,7 @@ _LIST_ENVELOPE_BYTES: Final = 1024  # status, cursor and framing around the item
 _SOCKET_MARGIN_MS: Final = 100  # WAITAOF answers before the socket's own budget runs out
 _MIN_SOCKET_SECONDS: Final = 0.05
 _CONNECT_SECONDS: Final = 2.0
+_WSAENOTSOCK: Final = 10038
 _FENCE_KEY: Final = f"{_PREFIX}:fence"
 _PROBE_KEY: Final = f"{_PREFIX}:fsync-probe"
 _MIB: Final = 1024 * 1024
@@ -99,6 +101,9 @@ class Link:
         self.connection: Any = None
         self.connects = 0
         self.deadline: float | None = None  # the holding request's absolute deadline, on time.monotonic()
+        self.request_bound = False
+        self.read_budget: float | None = None
+        self.cut_socket: socket.socket | None = None
         self.expected: int | None = None  # the verified generation while the store holds this connection; None while verifying
 
     def established(self, connection: Any) -> None:
@@ -111,6 +116,7 @@ class Link:
         self.deadline = time.monotonic()  # revoke the budget before releasing the blocked caller
         sock = getattr(self.connection, "_sock", None)  # shortcut: redis-py 8 keeps the live socket here; re-check on upgrade
         if sock is not None:
+            self.cut_socket = sock
             try:
                 sock.shutdown(socket.SHUT_RDWR)
             except OSError:
@@ -121,6 +127,10 @@ class Link:
 class DeadlinePassed(RedisConnectionError):
     """Raised instead of connecting or sending once the holding request's deadline has passed. A connection error, so redis-py's
     own cleanup (a pipeline's UNWATCH after a cut, say) treats it as a dead connection rather than reconnecting."""
+
+
+def _request_wait_expired(error: BaseException | None) -> bool:
+    return isinstance(error, DeadlinePassed) or getattr(error, "_optimus_read_budget_expired", False) is True
 
 
 class Reconnected(RedisConnectionError):
@@ -146,16 +156,22 @@ class _TrackedConnection(redis.Connection):
         """Where redis-py really connects (a pool checkout, or a send on a closed connection): only inside the deadline, and with
         what is left of it as the TCP and handshake timeouts."""
         self._within_deadline()
-        deadline = self._optimus_link.deadline
+        link = self._optimus_link
+        deadline = link.deadline
         if deadline is not None:
-            remaining = max(0.001, deadline - time.monotonic())
-            self.socket_connect_timeout = min(_CONNECT_SECONDS, remaining)
-            self.socket_timeout = remaining
+            remaining = deadline - time.monotonic()
+            self.socket_timeout = max(0.001, remaining)
+            self.socket_connect_timeout = min(_CONNECT_SECONDS, self.socket_timeout)
+            if self._sock is None:
+                link.read_budget = remaining if link.request_bound and remaining >= 0.001 else None
         super().connect_check_health(*args, **kwargs)
 
     def _connect(self) -> socket.socket:
         self._within_deadline()
-        return super()._connect()
+        sock = super()._connect()
+        if self._optimus_link.read_budget is not None:
+            self._optimus_link.read_budget = sock.gettimeout()
+        return sock
 
     def send_packed_command(self, *args: Any, **kwargs: Any) -> None:
         self._within_deadline()
@@ -163,6 +179,23 @@ class _TrackedConnection(redis.Connection):
         if link.expected is not None and (self._sock is None or link.connects != link.expected):
             raise Reconnected("this connection is not the one the store verified")
         super().send_packed_command(*args, **kwargs)
+
+    def read_response(self, *args: Any, **kwargs: Any) -> Any:
+        link = self._optimus_link
+        sock = self._sock
+        full_wait = (link.read_budget is not None and sock is not None and "timeout" not in kwargs
+                     and sock.gettimeout() == link.read_budget)
+        try:
+            return super().read_response(*args, **kwargs)
+        except (RedisConnectionError, TimeoutError) as error:
+            cause = error.__cause__ or error.__context__
+            # A coincident peer reset is not proof that this watchdog ended the read.
+            cut = (link.request_bound and sock is not None and sock is link.cut_socket and isinstance(cause, OSError)
+                   and (cause.errno in (errno.EBADF, errno.ENOTSOCK) or getattr(cause, "winerror", None) == _WSAENOTSOCK))
+            if cut or (full_wait and isinstance(error, TimeoutError)):
+                # Preserve redis-py's exception type and cleanup, including for other callers.
+                error.__dict__["_optimus_read_budget_expired"] = True
+            raise
 
 
 def connect(endpoint: MemoryStoreEndpoint) -> redis.Redis:
@@ -188,6 +221,8 @@ def set_budget(client: Any, seconds: float) -> None:
     link = getattr(client, "optimus_link", None)
     if not isinstance(link, Link):  # an in-memory stand-in
         return
+    full_wait = link.request_bound and seconds >= _MIN_SOCKET_SECONDS
+    link.read_budget = None
     seconds = max(_MIN_SOCKET_SECONDS, seconds)
     client.connection_pool.connection_kwargs.update(socket_timeout=seconds, socket_connect_timeout=min(_CONNECT_SECONDS, seconds))
     connection = link.connection
@@ -200,6 +235,9 @@ def set_budget(client: Any, seconds: float) -> None:
     if sock is not None:
         try:
             sock.settimeout(seconds)
+            if full_wait:
+                # CPython rounds the installed timeout, so compare the exact readback value.
+                link.read_budget = sock.gettimeout()
         except OSError:
             pass  # cut at a deadline: the next use reconnects, a new generation that must be verified
     buffer = getattr(getattr(connection, "_parser", None), "_buffer", None)
@@ -515,13 +553,16 @@ class MemoryStore:
         socket at the absolute deadline, so no sequence of reads, however fragmented, outlasts the request."""
         held = getattr(self._local, "held", ())
         self._local.held = (*held, client)
-        set_budget(client, self._remaining())
         link = getattr(client, "optimus_link", None)
         watchdog = None
         if isinstance(link, Link):
-            link.deadline = time.monotonic() + self._remaining()
+            request_deadline = getattr(self._local, "deadline", None)
+            link.request_bound = request_deadline is not None
+            link.deadline = time.monotonic() + msc.DEADLINE_SECONDS if request_deadline is None else request_deadline
             verifying = getattr(self._local, "verifying", False)
             link.expected = None if verifying else self._verified_connects[0 if client is self._writer else 1]
+        set_budget(client, self._remaining())
+        if isinstance(link, Link):
             watchdog = threading.Timer(max(0.0, self._remaining()), link.cut)
             watchdog.daemon = True
             watchdog.start()
@@ -532,6 +573,8 @@ class MemoryStore:
                 watchdog.cancel()
                 watchdog.join()  # a cut already under way finishes on this request's connection, before the lock is released
                 link.deadline = None
+                link.request_bound = False
+                link.cut_socket = None
                 link.expected = None
             self._local.held = held
             set_budget(client, msc.DEADLINE_SECONDS)
@@ -552,7 +595,8 @@ class MemoryStore:
         try:
             self._prove(resource)
         except (RedisError, OSError, MemoryStoreStartupError) as exc:  # a cut at the deadline included, however it was wrapped
-            if self._remaining() <= 0:
+            expired = deadline is not None and (_request_wait_expired(exc) or _request_wait_expired(exc.__cause__))
+            if expired or self._remaining() <= 0:
                 raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503) from None
             if isinstance(exc, Reconnected) or isinstance(exc.__cause__, Reconnected):  # refused at the send, before writing
                 raise MemoryStoreStartupError("MEMORY_STORE_RECONNECTED") from exc
@@ -677,7 +721,7 @@ class MemoryStore:
                         continue
                 if not token:
                     return {"status": "ok"}
-                if not self._durable(connection):
+                if not self._durable(connection, lease_confirmation=True):
                     raise msc.MemoryRequestError("LEASE_UNCONFIRMED", 503)
                 return {"status": "ok", "token": token}
             raise msc.MemoryRequestError("LEASE_CONTENDED", 409)
@@ -703,7 +747,9 @@ class MemoryStore:
     def _reading(self, *, verifying: bool = False) -> Iterator[None]:
         self._on_time()
         if not self._read_lock.acquire(timeout=max(0.0, self._remaining())):
-            raise msc.MemoryRequestError("MEMORY_BUSY", 503)
+            # The native wait can expire before the outer clock reaches the request deadline.
+            code = "MEMORY_BUSY" if getattr(self._local, "deadline", None) is None else "MEMORY_TIMEOUT"
+            raise msc.MemoryRequestError(code, 503)
         try:
             self._on_time()
             if self._suspect and not verifying:
@@ -838,7 +884,7 @@ class MemoryStore:
         self._writer.incr(self._key(project, "sync"))  # puts this connection's offset past the earlier append, wherever it came from
         return {"status": "ok", **result, "replayed": True, **self._confirm(project, head, connection)}
 
-    def _durable(self, connection: int) -> bool:
+    def _durable(self, connection: int, *, lease_confirmation: bool = False) -> bool:
         """Whether this connection's writes are on disk: `WAITAOF` on the writer, and the same connection before and after.
 
         Three ways to fail, kept apart. A lost or replaced connection drops every cache and re-verifies the resource, since Redis
@@ -851,8 +897,11 @@ class MemoryStore:
         try:
             count = waitaof_local(self._writer, timeout_ms=budget)
             same = int(self._writer.client_id()) == connection and _connects(self._writer) == self._verified_connects[0]
-        except (RedisConnectionError, TimeoutError, OSError):
-            count, same = 0, False
+        except (RedisConnectionError, TimeoutError, OSError) as exc:
+            self._connection_lost()
+            if lease_confirmation and getattr(self._local, "deadline", None) is not None and _request_wait_expired(exc):
+                raise msc.MemoryRequestError("MEMORY_TIMEOUT", 503) from None
+            return False
         except (RedisError, MemoryStoreStartupError):
             count, same = 0, True
         if not same:
@@ -877,9 +926,10 @@ class MemoryStore:
                 return
             try:
                 confirmed = fsync_probe(self._writer, timeout_ms=budget) >= 1
-            except (RedisConnectionError, TimeoutError, OSError):
+            except (RedisConnectionError, TimeoutError, OSError) as exc:
                 self._connection_lost()
-                raise msc.MemoryRequestError("MEMORY_UNAVAILABLE", 503) from None
+                code = "MEMORY_TIMEOUT" if isinstance(exc, (TimeoutError, DeadlinePassed)) else "MEMORY_UNAVAILABLE"
+                raise msc.MemoryRequestError(code, 503) from None
             except (RedisError, MemoryStoreStartupError):
                 confirmed = False
             if confirmed or budget == _WAITAOF_COMMIT_MS:
@@ -1471,11 +1521,13 @@ class MemoryStoreService:
                 return 503, msc.error_body("MEMORY_BUSY")
         finally:
             self._waiting.release()
+        operation = None
         try:
             if time.monotonic() >= deadline:
                 return 503, msc.error_body("MEMORY_TIMEOUT")
             request = msc.parse_request(raw_body)
-            if request["op"] in msc.UNAVAILABLE:  # answered before verification, which would connect and write
+            operation = request["op"]
+            if operation in msc.UNAVAILABLE:  # answered before verification, which would connect and write
                 return self._late(deadline) or (501, msc.error_body("MEMORY_OPERATION_UNAVAILABLE"))
             if not self._verified or self._store.suspect:
                 if self._verify is None:
@@ -1491,10 +1543,11 @@ class MemoryStoreService:
             return 200, result
         except msc.MemoryRequestError as refusal:
             return self._late(deadline) or (refusal.status, msc.error_body(refusal.code))
-        except (RedisConnectionError, TimeoutError, OSError):
+        except (RedisConnectionError, TimeoutError, OSError) as exc:
             self._verified = self._verify is None  # whatever comes back on this port has to prove itself again
             self._store.connection_lost()  # and nothing cached from before the outage is trusted: it may hold writes Redis lost
-            return self._late(deadline) or (503, msc.error_body("MEMORY_UNAVAILABLE"))
+            code = "MEMORY_TIMEOUT" if operation == "capabilities" and _request_wait_expired(exc) else "MEMORY_UNAVAILABLE"
+            return self._late(deadline) or (503, msc.error_body(code))
         except Exception:  # noqa: BLE001 - a malformed entry or any other fault is a stable code, never a dropped connection
             self._store.forget()
             return self._late(deadline) or (503, msc.error_body("MEMORY_STORAGE_ERROR"))

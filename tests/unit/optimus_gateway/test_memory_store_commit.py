@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from redis.exceptions import WatchError
 
 from context_engine import memory_contracts as engine
@@ -418,6 +419,18 @@ def test_a_connection_lost_during_waitaof_never_confirms_a_save_redis_then_lost(
     assert [json.loads(fields[b"e"])["key"] for _id, fields in server.streams[stream]] == ["d" * 64, "c" * 64]
 
 
+def test_an_append_keeps_its_unconfirmed_reply_when_confirmation_crosses_the_deadline() -> None:
+    service, server, writer = store()
+    token = lease(service)
+    writer.waitaof_raises = memory_store.DeadlinePassed("confirmation socket budget expired")
+
+    status, reply = append(service, token, event())
+
+    assert status == 200 and (reply["durable_state"], reply["projection_state"]) == ("unconfirmed", "pending")
+    stream = memory_store.MemoryStore._key("p-1", "events")
+    assert len(server.streams[stream]) == 1 and service._store.suspect
+
+
 def test_a_watch_error_from_a_replaced_connection_unwinds_and_waits_for_verification() -> None:
     checks: list[int] = []
     service, server, writer = store(checks=checks)
@@ -522,6 +535,25 @@ def test_the_fsync_recheck_waits_only_for_what_is_left_of_the_request() -> None:
     assert server.waitaof_timeouts and max(server.waitaof_timeouts) <= 400
 
 
+@pytest.mark.parametrize(("error", "code"), [
+    (RedisTimeoutError, "MEMORY_TIMEOUT"),
+    (memory_store.DeadlinePassed, "MEMORY_TIMEOUT"),
+    (RedisConnectionError, "MEMORY_UNAVAILABLE"),
+    (OSError, "MEMORY_UNAVAILABLE"),
+])
+def test_fsync_recheck_preserves_a_timeout_or_disconnect_before_the_request_deadline(error: type[Exception], code: str) -> None:
+    service, server, writer = store()
+    token = lease(service)
+    service._store._fsync_failed = True
+    probe_count = int(server.strings[memory_store._PROBE_KEY])
+    writer.waitaof_raises = error("probe confirmation interrupted")
+
+    assert append(service, token, event()) == (503, {"status": "rejected", "error": code})
+    assert service._store.suspect and service._store._fsync_failed
+    assert server.streams == {}
+    assert int(server.strings[memory_store._PROBE_KEY]) == probe_count + 1
+
+
 def test_a_read_waits_for_the_read_lock_only_inside_its_budget() -> None:
     service, _, _ = store()
     lease(service)
@@ -540,6 +572,33 @@ def test_a_read_waits_for_the_read_lock_only_inside_its_budget() -> None:
     release.set()
     holder.join(5)
     assert reply == (503, msc.error_body("MEMORY_TIMEOUT")) and time.monotonic() - started < 1.0  # the wait used the whole budget
+
+
+@pytest.mark.parametrize(("has_deadline", "code"), [(True, "MEMORY_TIMEOUT"), (False, "MEMORY_BUSY")])
+def test_read_lock_expiration_classifies_the_wait_before_the_outer_deadline(
+    monkeypatch: pytest.MonkeyPatch, has_deadline: bool, code: str,
+) -> None:
+    service, _, _ = store()
+    lease(service)
+    store_under_test = service._store
+    waits: list[float] = []
+
+    class HeldLock:
+        def acquire(self, *, timeout: float) -> bool:
+            waits.append(timeout)
+            return False
+
+    def unexpected_read(*_args: object) -> None:
+        pytest.fail("the reader must acquire the lock before accessing the store")
+
+    monkeypatch.setattr(store_under_test, "_read_lock", HeldLock())
+    monkeypatch.setattr(store_under_test._redis, "get", unexpected_read)
+    deadline = time.monotonic() + msc.DEADLINE_SECONDS if has_deadline else None
+    with pytest.raises(msc.MemoryRequestError) as refused:
+        store_under_test.dispatch({"op": "read", "project": "p-1", "item": "m-0123456789abcdef"}, deadline=deadline)
+    assert deadline is None or time.monotonic() < deadline
+    assert (refused.value.status, refused.value.code) == (503, code)
+    assert len(waits) == 1 and 0 < waits[0] <= msc.DEADLINE_SECONDS
 
 
 def test_replies_convert_into_the_engine_contracts() -> None:
