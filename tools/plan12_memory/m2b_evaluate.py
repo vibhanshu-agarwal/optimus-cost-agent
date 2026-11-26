@@ -29,6 +29,7 @@ from typing import Any, Final
 
 from context_engine.context_pack import SECTION_BODIES, SECTION_REQUIRED, Pack, assemble_pack
 from context_engine.file_outline import summary_target
+from context_engine.index_worker import StorageUnavailableError
 from context_engine.pack_utility import POLICIES
 from context_engine.retrieval import Ranked, Retrieval, Retriever, read_catalogue, seed_map
 from optimus.context.context_budget import BudgetPolicy, legacy_budget, plan_budget
@@ -660,9 +661,34 @@ def _qualify_set(name: str, cases: Sequence[GoldenCase], injection: Mapping[str,
             row["case_id"] = row["case_id"] if case.role == "probe" else f"{row['case_id']}@{revision[:12]}"
             row["capture_sha256"] = save_capture(work / "captures" / name / f"{row['case_id'].replace('@', '_')}.json", capture)
             rows.append(row)
-        previous = _rotate(previous, index, work, tree)
+        if previous is not None:
+            trees[-1]["drop_timeouts"] = drop_retrying(previous)
+        previous = _rotate(None, index, work, tree)  # the previous line is dropped above, with its timeouts on the record
         on_tree(list(rows))
     return rows, previous
+
+
+DROP_ATTEMPTS: Final = 5
+
+
+def drop_retrying(index: Any, *, attempts: int = DROP_ATTEMPTS, pause: float = 2.0) -> int:
+    """m1_evaluate._drop, repeating a step the store timed out: an expired step changes nothing and the drop resumes from its cursor
+    (memory_index cleanup). Returns how many steps timed out; any other refusal, or a step timing out `attempts` times, stops the run."""
+    token = index.storage.call("lease", action="acquire", owner=index.owner, ttl_ms=60000, kind="scope")["token"]
+    cursor, timeouts = None, 0
+    while True:
+        for attempt in range(attempts):
+            try:
+                reply = index.storage.call("cleanup", action="drop", token=token, **({} if cursor is None else {"cursor": cursor}))
+                break
+            except StorageUnavailableError as error:
+                if str(error) != "INDEX_TIMEOUT" or attempt == attempts - 1:
+                    raise
+                timeouts += 1
+                time.sleep(pause)
+        cursor = reply.get("cursor")
+        if cursor is None:
+            return timeouts
 
 
 def _write(report: Mapping[str, Any], out: Path) -> None:

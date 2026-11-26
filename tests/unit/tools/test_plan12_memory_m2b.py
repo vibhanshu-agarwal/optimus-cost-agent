@@ -436,6 +436,10 @@ def test_a_set_with_an_injection_gets_its_poison_and_control_and_a_replay_gets_n
     assert queries == [(), ()] and captures == ["fresh", "fresh"] and all(set(r["arms"]) == {"U", "F"} for r in rows) and written == [rows]
     rows, _ = ev._qualify_set("replay_fresh", [probe], None, ROOT, tmp_path, None, None, trees, None, **kwargs)
     assert injected == ["4-bbbbbbbbbbbb"] and [r["case_id"] for r in rows] == ["P1"] and trees[1]["set"] == "replay_fresh"
+    dropped: list = []
+    monkeypatch.setattr(ev, "drop_retrying", lambda line: (dropped.append(line), 3)[1])
+    ev._qualify_set("replay_fresh", [probe], None, ROOT, tmp_path, None, None, trees, "the previous line", **kwargs)
+    assert dropped == ["the previous line"] and trees[2].get("drop_timeouts") == 3  # each drop's timeouts on the record
 
 
 def test_injections_take_the_trees_own_archive_date(tmp_path, monkeypatch):
@@ -539,3 +543,49 @@ def test_the_policy_reader_refuses_what_production_would_not_read(tmp_path):
     (tmp_path / "a.py").write_bytes(b"x = 1\n")
     read = ev.policy_reader(tmp_path)
     assert read("a.py") == b"x = 1\n" and read(".env") is None
+
+
+class _DropStore:
+    """The index store's drop: two steps (a cursor between them); each code in `fail` is raised once, in order, before a step answers."""
+
+    def __init__(self, fail: list[str]):
+        self.fail, self.calls = list(fail), []
+
+    def call(self, op, **body):
+        self.calls.append((op, body.get("cursor")))
+        if op == "lease":
+            return {"token": "t"}
+        if self.fail:
+            raise ev.StorageUnavailableError(self.fail.pop(0))
+        return {"status": "ok", "cursor": None if body.get("cursor") else "c1"}
+
+
+def _line(store):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(storage=store, owner="o")
+
+
+def test_a_timed_out_drop_step_is_repeated_from_its_cursor_and_counted():
+    store = _DropStore(["INDEX_TIMEOUT", "INDEX_TIMEOUT"])
+    try:
+        timeouts = ev.drop_retrying(_line(store), pause=0)
+    except ev.StorageUnavailableError:
+        pytest.fail("a timed-out drop step was not repeated")
+    assert timeouts == 2
+    assert store.calls == [("lease", None), ("cleanup", None), ("cleanup", None), ("cleanup", None), ("cleanup", "c1")]
+
+
+def test_another_refusal_or_a_step_timing_out_every_attempt_stops_the_drop():
+    with pytest.raises(ev.StorageUnavailableError, match="SCOPE_UNKNOWN"):
+        ev.drop_retrying(_line(_DropStore(["SCOPE_UNKNOWN"])), pause=0)
+    store = _DropStore(["INDEX_TIMEOUT"] * 3)
+    try:
+        ev.drop_retrying(_line(store), attempts=3, pause=0)
+    except ev.StorageUnavailableError as error:
+        assert str(error) == "INDEX_TIMEOUT"
+    except Exception as error:  # noqa: BLE001 - any other end means the bound did not hold
+        pytest.fail(f"the drop did not stop at its bound: {type(error).__name__}")
+    else:
+        pytest.fail("the drop did not stop at its bound")
+    assert [op for op, _ in store.calls].count("cleanup") == 3
