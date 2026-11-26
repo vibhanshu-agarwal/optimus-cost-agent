@@ -656,6 +656,11 @@ def _capture_to_disk(
     # finished cleanly: a failed or timed-out worker's partial file never sits where quarantine or signing look (#622).
     finals = (output_dir / "transcript.stdout", output_dir / "transcript.stderr")
     partials = tuple(path.with_name(path.name + ".partial") for path in finals)
+    # A previous run's evidence must not survive a failed re-run into the same directory and still verify (#622 round 3).
+    for name in (*_TRANSCRIPT_ARTIFACTS, _EVIDENCE_MANIFEST_FILENAME):
+        (output_dir / name).unlink(missing_ok=True)
+    for partial in partials:
+        partial.unlink(missing_ok=True)
     workers = [
         threading.Thread(target=_pump, args=(process.stdout, partials[0])),
         threading.Thread(target=_pump, args=(process.stderr, partials[1])),

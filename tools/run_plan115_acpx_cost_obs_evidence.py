@@ -42,7 +42,7 @@ from optimus.acp.subprocess_env import (  # noqa: E402
     SubprocessEnvConfigurationError,
     build_acp_subprocess_env,
 )
-from optimus_security.sanitization import StreamingTextSanitizer  # noqa: E402
+from optimus_security.sanitization import sanitize_for_persistence  # noqa: E402
 
 E7_SCHEMA_VERSION = "plan-11-5-e7-acpx-cost-obs-evidence-v1"
 DEFAULT_REPORT = ROOT / ".superpowers" / "sdd" / "task8-e7-acpx-cost-obs-evidence.md"
@@ -263,8 +263,8 @@ def build_e7_summary(
 
 
 def _sanitize_full_text(text: str, *, known_secrets: tuple[str, ...]) -> str:
-    sanitizer = StreamingTextSanitizer(known_secrets=known_secrets)
-    return sanitizer.feed(text) + sanitizer.finalize()
+    # The whole text is already here: one pass, so no stream cut can change the output (#622).
+    return str(sanitize_for_persistence(text, known_secrets=known_secrets).value)
 
 
 def write_e7_report(

@@ -210,6 +210,23 @@ def test_linear_email_masking_equals_the_email_regex(parts: list[str]) -> None:
     assert (masked is not None) == bool(sanitization._EMAIL_RE.search(text))
 
 
+@pytest.mark.parametrize(
+    "line",
+    (
+        '{"sessionId":"s1","blob":"aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH"}' + chr(10),  # pragma: allowlist secret
+        "model=gpt x aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fHaB3dE5gH" + chr(10),  # pragma: allowlist secret
+    ),
+    ids=("session-id-and-token", "model-and-token"),
+)
+def test_one_shot_is_linear_in_protected_labels_times_tokens(line: str) -> None:
+    # Fable round 3 (#622): each token scanned every protected span, 14 s for 1 MiB of this NDJSON shape.
+    text = line * (2**20 // len(line))
+    started = time.perf_counter()
+    out = sanitize_for_persistence(text, policy=EVIDENCE_REDACTION_POLICY).value
+    assert time.perf_counter() - started < 8.0
+    assert "aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bD1fH" not in out  # pragma: allowlist secret
+
+
 def test_email_masking_is_linear_on_a_dotted_run() -> None:
     # The email regex alone retries every word boundary of the run: about three minutes here on the old rule.
     text = "a." * 2**18 + "@x"
@@ -301,6 +318,16 @@ _CONTEXTS = (
 def _label_value_texts(draw) -> str:
     parts = draw(st.lists(st.tuples(_PIECES, _SEPARATORS), min_size=1, max_size=12))
     return "".join(piece + sep for piece, sep in parts)
+
+
+def test_the_plan115_report_sanitizes_its_whole_text_in_one_pass() -> None:
+    # #622 round 3: the report already holds the full stdout and stderr, so a stream cut is never needed.
+    from tools.run_plan115_acpx_cost_obs_evidence import _sanitize_full_text
+
+    text = "Bearer A_KEY= B_KEY = " + " " * 70_000 + "abc123x"
+    out = _sanitize_full_text(text, known_secrets=())
+    assert out == _one_shot(text, COMPATIBILITY_SANITIZATION_POLICY)
+    assert "abc123x" not in out
 
 
 @settings(derandomize=True, database=None, max_examples=400, deadline=None)

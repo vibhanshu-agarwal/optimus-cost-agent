@@ -1266,6 +1266,27 @@ def test_capture_fails_closed_when_a_stream_worker_raises(tmp_path: Path, monkey
     assert not (tmp_path / "out" / "transcript.stderr").exists()
 
 
+def test_a_failed_recapture_leaves_no_earlier_evidence_behind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#622 round 3: a re-run that fails must not leave the previous run's transcripts and manifest to verify."""
+    out = tmp_path / "out"
+    out.mkdir()
+    for name in ("transcript.stdout", "transcript.stderr", "sanitizer-manifest.json"):
+        (out / name).write_text("run one", encoding="utf-8")
+    process = SimpleNamespace(
+        stdout=io.StringIO("note one"), stderr=io.StringIO("note two"), wait=lambda timeout=None: 0, returncode=0
+    )
+    monkeypatch.setattr(capture_tool, "spawn_authorized_capture", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(capture_tool, "_known_secrets", lambda _capture: ())
+
+    def failing_finalize(self: object) -> str:
+        raise RuntimeError("simulated sanitizer failure")
+
+    monkeypatch.setattr(capture_tool.StreamingTextSanitizer, "finalize", failing_finalize)
+    with pytest.raises(RuntimeError, match="simulated sanitizer failure"):
+        capture_tool._capture_to_disk(SimpleNamespace(capture=object()), command=["acpx"], output_dir=out)
+    assert not any((out / name).exists() for name in ("transcript.stdout", "transcript.stderr", "sanitizer-manifest.json"))
+
+
 def test_capture_promotes_transcripts_only_after_both_workers_finish(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     process = SimpleNamespace(
         stdout=io.StringIO("note one"), stderr=io.StringIO("note two"), wait=lambda timeout=None: 0, returncode=0

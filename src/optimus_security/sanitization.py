@@ -12,6 +12,7 @@ COMPATIBILITY_SANITIZATION_POLICY preserves pre-existing caller behavior.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import hmac
 import math
@@ -453,14 +454,14 @@ def _sanitize_text(
             result = masked
             counter.inc("email_masking")
 
-    protected = _protected_spans(result) if policy.enable_contextual_preservation else ()
+    protected = _protected_spans(result) if policy.enable_contextual_preservation else _NO_PROTECTED
 
     if policy.enable_prefix_detection:
         result = _apply_prefix_redaction(result, protected=protected, counter=counter)
 
     if policy.enable_entropy_detection:
         # Recompute protected spans after prefix edits so indices stay aligned.
-        protected = _protected_spans(result) if policy.enable_contextual_preservation else ()
+        protected = _protected_spans(result) if policy.enable_contextual_preservation else _NO_PROTECTED
         result = _apply_entropy_redaction(result, protected=protected, counter=counter, exempt=entropy_exempt)
 
     return result
@@ -523,7 +524,14 @@ def _path_alias_pattern(rule: PathAliasRule) -> re.Pattern[str] | None:
     )
 
 
-def _protected_spans(text: str) -> tuple[tuple[int, int], ...]:
+# Protected value spans as (sorted starts, running maximum of their ends): a token lies inside some span exactly when
+# the largest end among spans starting at or before it reaches its end. One bisect per token, so one pass over a whole
+# artifact stays linear in the number of tokens and spans (#622 round 3).
+_Protected = tuple[tuple[int, ...], tuple[int, ...]]
+_NO_PROTECTED: _Protected = ((), ())
+
+
+def _protected_spans(text: str) -> _Protected:
     spans: list[tuple[int, int]] = []
     for labels, value_pat in _PRESERVE_LABELS:
         patterns = (
@@ -535,17 +543,22 @@ def _protected_spans(text: str) -> tuple[tuple[int, int], ...]:
         for pattern in patterns:
             spans.extend((match.start(1), match.end(1)) for match in pattern.finditer(text))
     spans.sort()
-    return tuple(spans)
+    max_ends: list[int] = []
+    for _, p_end in spans:
+        max_ends.append(max(p_end, max_ends[-1]) if max_ends else p_end)
+    return tuple(p_start for p_start, _ in spans), tuple(max_ends)
 
 
-def _span_protected(start: int, end: int, protected: Sequence[tuple[int, int]]) -> bool:
-    return any(start >= p_start and end <= p_end for p_start, p_end in protected)
+def _span_protected(start: int, end: int, protected: _Protected) -> bool:
+    starts, max_ends = protected
+    i = bisect.bisect_right(starts, start)
+    return i > 0 and max_ends[i - 1] >= end
 
 
 def _apply_prefix_redaction(
     text: str,
     *,
-    protected: Sequence[tuple[int, int]],
+    protected: _Protected,
     counter: _RuleCounter,
 ) -> str:
     matches: list[tuple[int, int]] = []
@@ -568,7 +581,7 @@ def _is_entropy_candidate(token: str) -> bool:
 def _apply_entropy_redaction(
     text: str,
     *,
-    protected: Sequence[tuple[int, int]],
+    protected: _Protected,
     counter: _RuleCounter,
     exempt: frozenset[str] = frozenset(),
 ) -> str:
