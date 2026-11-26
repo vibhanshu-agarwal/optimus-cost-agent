@@ -2440,9 +2440,7 @@ async def test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attac
 
 
 @pytest.mark.asyncio
-async def test_concurrent_same_session_prompt_is_request_cancelled(tmp_path):
-    from optimus.acp.errors import REQUEST_CANCELLED
-
+async def test_concurrent_same_session_prompt_is_turn_busy(tmp_path):
     loop = asyncio.get_running_loop()
     started = asyncio.Event()
     release = threading.Event()
@@ -2507,11 +2505,17 @@ async def test_concurrent_same_session_prompt_is_request_cancelled(tmp_path):
             },
         },
     )
-    assert second["error"]["code"] == REQUEST_CANCELLED
-    assert second["error"]["message"] == "a turn is already in progress"
-    assert len(sessions.get(session_id).conversation.records) == 0
-    release.set()
-    await first
+    try:
+        assert second == {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "error": {"code": -32913, "message": "a turn is already in progress"},
+        }
+        assert len(sessions.get(session_id).conversation.records) == 0
+    finally:
+        release.set()
+        completed = await first
+    assert completed["result"]["stopReason"] == "end_turn"
 
 
 @pytest.mark.asyncio

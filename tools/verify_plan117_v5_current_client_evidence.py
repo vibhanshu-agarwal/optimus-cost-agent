@@ -1,4 +1,4 @@
-"""Offline verifier for promoted Plan 11.7 v5 sanitized current-client evidence.
+"""Offline verifier for promoted Plan 11.7 v6 sanitized current-client evidence.
 
 Three arguments only: ``--manifest``, ``--attestation``, ``--bundle-root``. The registered scenario, approved-run
 registry and descriptor fixture are read from THIS reviewed checkout, never from the bundle. Verification needs no
@@ -37,7 +37,10 @@ class VerificationAbort(Exception):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="verify_plan117_v5_current_client_evidence")
+    parser = argparse.ArgumentParser(
+        prog="verify_plan117_v5_current_client_evidence",
+        description="Verify sanitized Plan 11.7 v6 current-client evidence.",
+    )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--attestation", type=Path, required=True)
     parser.add_argument("--bundle-root", type=Path, required=True)

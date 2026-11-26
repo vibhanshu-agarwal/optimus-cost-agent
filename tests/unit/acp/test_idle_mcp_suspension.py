@@ -372,7 +372,9 @@ async def test_pending_sdk_release_quarantines_and_blocks_future_prompts(compose
     clock[0] += 10
     await adapter.sweep_idle_mcp_once()
     refusal = await prompt(adapter, session, 2)
-    assert refusal.response["error"]["data"]["reason"] == "mcp_cleanup_uncertain"
+    assert refusal.response["error"] == {
+        "code": -32800, "message": "session unavailable", "data": {"reason": "mcp_cleanup_uncertain"},
+    }
     assert len(runner.requests) == 1
     with pytest.raises(RuntimeError, match='session cleanup incomplete') as caught:
         await adapter.aclose()

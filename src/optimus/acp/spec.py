@@ -56,6 +56,7 @@ from optimus.acp.errors import (
     JsonRpcError,
     error_response,
     outbound_error_response,
+    select_acp_error,
     success_response,
 )
 from optimus.acp.lifecycle import (
@@ -1404,9 +1405,6 @@ class AcpDuplexAdapter:
                 use = owner.acquire(session_id) if owner.is_active(session_id) else None
                 if use is not None:
                     custody.append(use)
-                elif self._sessions.get(session_id) is not None:
-                    return self._non_turn(error_response(request.get('id'),
-                                          JsonRpcError(code=INVALID_REQUEST, message='unknown session')), ownership_slot)
             return await self._handle_client_request(request, ownership_slot)
         finally:
             if own_custody:
@@ -1415,6 +1413,12 @@ class AcpDuplexAdapter:
                 for use in custody:
                     use.release()
                 custody.clear()
+
+    def _session_for_request(self, session_id: str) -> AcpSpecSession | None:
+        # A retained session is visible to a request only while that request holds a use.
+        if any(use.session_id == session_id for use in request_session_custody.get() or ()):
+            return self._sessions.get(session_id)
+        return None
 
     async def _handle_client_request(
         self,
@@ -1864,9 +1868,9 @@ class AcpDuplexAdapter:
                     return invalid("unsupported context strategy")
             else:
                 return invalid("unknown config option")
-        session = self._sessions.get(params["sessionId"])
+        session = self._session_for_request(params["sessionId"])
         if session is None:
-            return invalid("unknown session")
+            return error_response(request_id, select_acp_error(AcpErrorOutcome.SESSION_UNAVAILABLE))
 
         # Serialized per session: the state change, its updates and the response value belong to
         # this request alone. The prompt path never takes this lock, so no turn is held up, and no
@@ -2052,7 +2056,7 @@ class AcpDuplexAdapter:
         # It is the handler's only wait, and it comes before every check below, so they judge the session as it is after it.
         # No turn, report or renewal holds a cancel during the wait, so one sent meanwhile is kept and honoured below where it
         # would have landed had it come just after (Codex round 116).
-        known = self._sessions.get(session_id)
+        known = self._session_for_request(session_id)
         names: frozenset[str] = frozenset()
         heard = asyncio.Event()
         if known is not None:
@@ -2066,11 +2070,11 @@ class AcpDuplexAdapter:
                 if not waiting and self._finding_names.get(session_id) is waiting:
                     del self._finding_names[session_id]
         cancelled = heard.is_set()
-        session = self._sessions.get(session_id)
+        session = self._session_for_request(session_id)
         if session is None:
             self._pre_run_refused(request, session_id, "unknown_session")
             return self._non_turn(
-                error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="unknown session")),
+                error_response(request.get("id"), select_acp_error(AcpErrorOutcome.SESSION_UNAVAILABLE)),
                 ownership_slot,
             )
         task = _text_from_content_blocks(prompt)
@@ -2086,7 +2090,7 @@ class AcpDuplexAdapter:
             return self._non_turn(
                 error_response(
                     request.get("id"),
-                    JsonRpcError(code=REQUEST_CANCELLED, message="a turn is already in progress"),
+                    select_acp_error(AcpErrorOutcome.TURN_BUSY),
                 ),
                 ownership_slot,
             )
@@ -3610,7 +3614,7 @@ class AcpDuplexAdapter:
         """A prompt request refused before any turn (correction plan v4, C5): its fixed reason, with the session and the
         client's request id each in its own shape, in the operator line, the trace and the always-on telemetry
         record. Never the prompt or the invalid values; each record is contained on its own."""
-        refused = self._sessions.get(session_id) if isinstance(session_id, str) else None
+        refused = self._session_for_request(session_id) if isinstance(session_id, str) else None
         if refused is not None:  # Plan 12.13: `/why` then says its snapshot is still the earlier turn's
             refused.why_refused_after = True
         known = reason if reason in PRE_RUN_REFUSAL_REASONS else "unrecognized"

@@ -154,6 +154,35 @@ def test_missing_registered_case_invalidates_coverage():
 # --------------------------------------------------------------------------- custody / identity closure
 
 
+
+@pytest.mark.parametrize("fault", ["omitted", "duplicate", "reordered", "wrong-body"])
+def test_required_busy_arm_faults_block_the_gate(fault):
+    document = ev.valid_raw_document()
+    busy = ev.arm(document, "r_turn_busy")
+    if fault == "omitted":
+        document["arms"].remove(busy)
+    elif fault == "duplicate":
+        document["arms"].append(copy.deepcopy(busy))
+    elif fault == "reordered":
+        document["arms"].remove(busy)
+        document["arms"].insert(0, busy)
+    else:
+        reply = next(event for event in ev.launch(document, "r_turn_busy", "first")["wire"] if event["error_code"] is not None)
+        reply["response_sha256"] = ev.sha(b'{"code":-32913,"message":"wrong"}')
+    result = _reduce(document)
+    assert result.disposition is D.INVALID_CURRENT_CLIENT_GATE
+
+
+def test_busy_reopen_load_remains_stop_when_another_arm_is_missing():
+    document = ev.valid_raw_document()
+    document["arms"].remove(ev.arm(document, "r_internal_error"))
+    ev.launch(document, "r_turn_busy", "reopen")["counts"]["session_load"] = 1
+    result = _reduce(document)
+    assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+    assert result.primary.subject == "r_turn_busy"
+    assert R.ARM_SET_INVALID in _codes(result)
+
+
 def test_counts_inconsistent_with_wire_list_are_invalid():
     result = _reduce(ev.mutated(lambda d: ev.launch(d, "a_prime", "first")["counts"].update(session_prompt=1)))
     assert result.disposition is D.INVALID_CURRENT_CLIENT_GATE
@@ -461,7 +490,7 @@ def test_r_case_with_wrong_stop_reason_is_invalid(arm_id, replacement):
     assert R.R_PROMPT_RESPONSE_MISMATCH in _codes(result)
 
 
-@pytest.mark.parametrize("arm_id", ["r_invalid_request", "r_request_cancelled", "r_internal_error"])
+@pytest.mark.parametrize("arm_id", ["r_invalid_request", "r_request_cancelled", "r_turn_busy", "r_internal_error"])
 def test_r_case_with_wrong_error_payload_is_invalid(arm_id):
     def mutation(d):
         response = ev.launch(d, arm_id, "first")["wire"][-1]
@@ -889,12 +918,35 @@ def _registry(*specs):
     }
 
 
+
+@pytest.mark.parametrize("fault", ["omitted", "duplicate", "reordered"])
+def test_approved_run_must_bind_the_exact_busy_arm_position(fault):
+    spec = _run_spec()
+    arms = spec["arm_ids"]
+    assert "r_turn_busy" in arms
+    if fault == "duplicate":
+        arms.append("r_turn_busy")
+    else:
+        arms.remove("r_turn_busy")
+        if fault == "reordered":
+            arms.insert(0, "r_turn_busy")
+    with pytest.raises(c.ContractError):
+        c.parse_approved_runs(_registry(spec))
+
+
 def test_empty_registry_parses_and_has_no_approved_run():
     registry = c.parse_approved_runs(_registry())
     assert registry.runs == ()
     with pytest.raises(c.ContractError) as excinfo:
         registry.lookup(ev.RUN_ID)
     assert excinfo.value.code == "run_not_registered"
+
+
+
+def test_current_run_registry_rejects_a_historical_gate_scenario():
+    spec = _run_spec(scenario_id="plan117-current-client-gate-v5")
+    with pytest.raises(c.ContractError, match="schema_invalid"):
+        c.parse_approved_runs(_registry(spec))
 
 
 def test_registry_lookup_returns_the_hash_bound_run_spec():
@@ -968,11 +1020,42 @@ def test_sanitized_manifest_is_checked_against_run_spec_commitments():
 # --------------------------------------------------------------------------- descriptor fixture
 
 
-def test_descriptor_fixture_registers_exactly_the_six_classes():
+def test_descriptor_fixture_registers_the_current_classes():
     fixture = c.parse_descriptor_fixture(ev.descriptor_fixture())
     assert tuple(d.descriptor_id for d in fixture.descriptors) == c.R_DESCRIPTOR_IDS
     covered = {entry.descriptor_id for entry in fixture.census if entry.disposition == "descriptor"}
     assert covered == set(c.R_DESCRIPTOR_IDS)
+
+
+
+def test_v6_fixture_pins_exact_busy_and_cancellation_bodies():
+    fixture = c.parse_descriptor_fixture(ev.descriptor_fixture())
+    by_id = {descriptor.descriptor_id: descriptor for descriptor in fixture.descriptors}
+    assert len(by_id) == 7
+    assert c.expected_response_sha256(by_id["r_turn_busy"]) == ev.sha(
+        b'{"code":-32913,"message":"a turn is already in progress"}'
+    )
+    assert c.expected_response_sha256(by_id["r_request_cancelled"]) == ev.sha(
+        b'{"code":-32800,"data":{"reason":"mcp_cleanup_uncertain"},"message":"session unavailable"}'
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "data"),
+    [
+        ("r_turn_busy", {}),
+        ("r_turn_busy", {"reason": "mcp_cleanup_uncertain"}),
+        ("r_request_cancelled", None),
+        ("r_request_cancelled", {"reason": "mcp_closing"}),
+        ("r_request_cancelled", {"reason": "mcp_cleanup_uncertain", "extra": True}),
+    ],
+)
+def test_v6_fixture_refuses_altered_error_data(case, data):
+    document = ev.descriptor_fixture()
+    descriptor = next(item for item in document["descriptors"] if item["descriptor_id"] == case)
+    descriptor["error_data"] = data
+    with pytest.raises(c.ContractError):
+        c.parse_descriptor_fixture(document)
 
 
 def test_descriptor_codes_and_notices_are_the_current_source_values():

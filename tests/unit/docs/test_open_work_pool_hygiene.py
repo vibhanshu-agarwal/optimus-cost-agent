@@ -217,7 +217,7 @@ PLAN_11_SUMMARY_EVIDENCE = {
     "Plan 11.4": ("Closed", "PR #91"),
     "Plan 11.5": ("Closed", "PR #95"),
     "Plan 11.6": ("Merged", "PR #97"),
-    "Plan 11.7": ("[Issue #240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240)", "owns status and the next gate", "Plan 11.7 v5"),
+    "Plan 11.7": ("[Issue #240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240)", "owns status and the next gate", "Plan 11.7 v6"),
     "Plan 11.8": ("Historical", "Plan 11.12"),
     "Plan 11.9": ("Closed", "PR #123", "PR #124"),
 }

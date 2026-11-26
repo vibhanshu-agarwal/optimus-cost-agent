@@ -17,7 +17,7 @@ import sqlite3
 import sys
 import tempfile
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +50,67 @@ _ADMISSION_ANCHOR = "allocate_turn_seq"
 _LOCAL_ANSWER = "_answer_locally"  # the host's own command answers share its responses; each call site counts them with its own message
 
 
+# These two selected errors are part of the first-prompt wire contract. Read their
+# literals from the gated source, since the collector and agent can use separate trees.
+_SELECTOR_CODES = {"SESSION_UNAVAILABLE": ("RESOURCE_NOT_FOUND", -32002), "TURN_BUSY": ("TURN_BUSY", -32913)}
+
+
+def _literal_values(module: ast.Module, name: str) -> list[ast.expr]:
+    return [
+        node.value for node in module.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)
+    ]
+
+
+def _require_wire_code(module: ast.Module, name: str, code: int | None) -> None:
+    values = _literal_values(module, name)
+    if code is None or len(values) != 1 or ast.unparse(values[0]) != str(code):
+        raise HostError("r_census_mismatch")
+
+
+def _selector_site(module: ast.Module, selector: ast.FunctionDef, outcome: str, code_name: str, wire_code: int) -> str:
+    _require_wire_code(module, code_name, wire_code)
+    branches = [
+        case for statement in selector.body
+        if isinstance(statement, ast.Match) and ast.unparse(statement.subject) == "outcome"
+        for case in statement.cases
+        if isinstance(case.pattern, ast.MatchValue) and ast.unparse(case.pattern.value) == f"AcpErrorOutcome.{outcome}"
+    ]
+    if len(branches) != 1 or branches[0].guard is not None or len(branches[0].body) != 1:
+        raise HostError("r_census_mismatch")
+    reply = branches[0].body[0]
+    if not isinstance(reply, ast.Return) or not isinstance(reply.value, ast.Call):
+        raise HostError("r_census_mismatch")
+    call = reply.value
+    keywords = {item.arg: item.value for item in call.keywords}
+    if ast.unparse(call.func) != "JsonRpcError" or call.args or len(call.keywords) != 2 or set(keywords) != {"code", "message"}:
+        raise HostError("r_census_mismatch")
+    code = keywords["code"]
+    message = keywords["message"]
+    if not isinstance(code, ast.Name) or code.id != code_name or not isinstance(message, ast.Constant) or type(message.value) is not str:
+        raise HostError("r_census_mismatch")
+    return f"error:{code_name}:{message.value}"
+
+
+def _selector_sites(spec: ast.Module, errors_text: str) -> dict[str, str]:
+    imports = {
+        alias.name for node in spec.body
+        if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module == "optimus.acp.errors"
+        for alias in node.names if alias.asname is None
+    }
+    if not {"AcpErrorOutcome", "select_acp_error"} <= imports:
+        raise HostError("r_census_mismatch")
+    errors = ast.parse(errors_text)
+    functions = [node for node in errors.body if isinstance(node, ast.FunctionDef) and node.name == "select_acp_error"]
+    if len(functions) != 1:
+        raise HostError("r_census_mismatch")
+    return {
+        f"AcpErrorOutcome.{outcome}": _selector_site(errors, functions[0], outcome, code, value)
+        for outcome, (code, value) in _SELECTOR_CODES.items()
+    }
+
+
 def _stop_reasons(value: ast.expr) -> list[object]:
     if isinstance(value, ast.Constant):
         return [value.value]
@@ -58,7 +119,9 @@ def _stop_reasons(value: ast.expr) -> list[object]:
     return ["*"]
 
 
-def _sites(node: ast.AST, prior_idle: bool, local: tuple[str, ...] = ()) -> list[tuple[str, bool]]:
+def _sites(
+    node: ast.AST, prior_idle: bool, selected: Mapping[str, str], local: tuple[str, ...] = (),
+) -> list[tuple[str, bool]]:
     found: list[tuple[str, bool]] = []
     for child in ast.iter_child_nodes(node):
         idle = prior_idle or (isinstance(child, ast.If) and "state.suspended" in ast.unparse(child.test))
@@ -70,6 +133,13 @@ def _sites(node: ast.AST, prior_idle: bool, local: tuple[str, ...] = ()) -> list
                 message = keywords.get("message")
                 text = message.value if isinstance(message, ast.Constant) and isinstance(message.value, str) else "*"
                 found.append((f"error:{code}:{text}", idle))
+            elif name == "select_acp_error" or name.endswith(".select_acp_error"):
+                if name != "select_acp_error" or len(child.args) != 1 or child.keywords:
+                    raise HostError("r_census_mismatch")
+                site = selected.get(ast.unparse(child.args[0]))
+                if site is None:
+                    raise HostError("r_census_mismatch")
+                found.append((site, idle))
             elif name.endswith("._mcp_refusal"):
                 reason = child.args[2].value if len(child.args) > 2 and isinstance(child.args[2], ast.Constant) else "*"
                 found.append((f"mcp_refusal:{reason}", idle))
@@ -87,22 +157,27 @@ def _sites(node: ast.AST, prior_idle: bool, local: tuple[str, ...] = ()) -> list
             for key, value in zip(child.keys, child.values, strict=True):
                 if isinstance(key, ast.Constant) and key.value == "stopReason":
                     found.extend((f"stop_reason:{item}", idle) for item in _stop_reasons(value))
-        found.extend(_sites(child, idle, local))
+        found.extend(_sites(child, idle, selected, local))
     return found
 
 
-def trace_first_prompt_census(spec_text: str) -> tuple[tuple[str, str, bool, int], ...]:
+def trace_first_prompt_census(spec_text: str, *, errors_text: str) -> tuple[tuple[str, str, bool, int], ...]:
     """``(function, site, prior_idle, count)`` for every first-prompt response-class site.
 
     ``_handle_session_prompt`` is read only up to its admission (``allocate_turn_seq``) statement;
     sites inside the ``state.suspended`` re-disposition block are marked ``prior_idle``.
     """
+    try:
+        module = ast.parse(spec_text)
+        selected = _selector_sites(module, errors_text)
+    except SyntaxError as exc:
+        raise HostError("r_census_mismatch") from exc
     counts: dict[tuple[str, str, bool], int] = {}
-    for node in ast.parse(spec_text).body:
+    for node in module.body:
         if not isinstance(node, ast.ClassDef) or node.name != _CENSUS_CLASS:
             continue
         local = tuple(site for function in node.body if isinstance(function, ast.AsyncFunctionDef) and function.name == _LOCAL_ANSWER
-                      for statement in function.body for site, _ in _sites(ast.Module(body=[statement], type_ignores=[]), False))
+                      for statement in function.body for site, _ in _sites(ast.Module(body=[statement], type_ignores=[]), False, selected))
         for function in node.body:
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)) or function.name not in _CENSUS_FUNCTIONS:
                 continue
@@ -113,16 +188,20 @@ def trace_first_prompt_census(spec_text: str) -> tuple[tuple[str, str, bool, int
                     raise HostError("r_census_anchor_missing")
                 body = body[:cut]
             for statement in body:
-                for site, idle in _sites(ast.Module(body=[statement], type_ignores=[]), False, local):
+                for site, idle in _sites(ast.Module(body=[statement], type_ignores=[]), False, selected, local):
                     counts[(function.name, site, idle)] = counts.get((function.name, site, idle), 0) + 1
     return tuple(sorted((f, s, idle, n) for (f, s, idle), n in counts.items()))
 
 
-def verify_census(fixture: contract.DescriptorFixture, spec_text: str) -> None:
+def verify_census(fixture: contract.DescriptorFixture, spec_text: str, *, errors_text: str) -> None:
     """Fail closed when production gains, loses or moves a first-prompt response branch."""
     expected = tuple(sorted((e.function, e.site, e.prior_idle, e.count) for e in fixture.census))
-    if trace_first_prompt_census(spec_text) != expected:
+    if trace_first_prompt_census(spec_text, errors_text=errors_text) != expected:
         raise HostError("r_census_mismatch")
+    errors = ast.parse(errors_text)
+    for descriptor in fixture.descriptors:
+        if descriptor.error_code_name is not None:
+            _require_wire_code(errors, descriptor.error_code_name, descriptor.error_code)
 
 
 # --------------------------------------------------------------------------- frozen isolated patches
@@ -150,10 +229,11 @@ _REFUSAL_ANCHOR = "        if session_id in self._active_turns or session_id in 
 
 
 def _refusal_operation(descriptor: contract.Descriptor) -> tuple[str, str]:
+    body = contract.descriptor_response_body(descriptor)
     if descriptor.wire_class == "result_stop_reason":
-        response = f'success_response(request.get("id"), {{"stopReason": {descriptor.stop_reason!r}}})'
+        response = f'success_response(request.get("id"), {body!r})'
     else:
-        response = f'error_response(request.get("id"), JsonRpcError(code={descriptor.error_code_name}, message={descriptor.error_message!r}))'
+        response = f'error_response(request.get("id"), JsonRpcError(**{body!r}))'
     notice = ""
     if descriptor.notice_text is not None:
         notice = (
@@ -625,7 +705,7 @@ def private_root_commitments(capture_root: Path, run_key: bytes) -> dict[str, st
 # before the first launch; after it, a failure is preserved as an aborted run and path custody, the
 # restoration check and cleanup still run, in that order.
 
-SCENARIO_RELATIVE = "tests/fixtures/evidence/scenarios/plan117-current-client-gate-v5.toml"
+SCENARIO_RELATIVE = "tests/fixtures/evidence/scenarios/plan117-current-client-gate-v6.toml"
 ARTIFACT_SCHEMA = "plan-11-7-v5-collector-artifact-v1"
 ZED_LAUNCH_TIMEOUT_SECONDS = 900.0
 ZED_DRAIN_TIMEOUT_SECONDS = 10.0
@@ -772,7 +852,7 @@ class WorkspaceApprovalSession(Protocol):
 class HostActions:
     source_facts: Callable[[Path], SourceObservation]
     normal_source_digest: Callable[[Path], str]
-    base_spec_bytes: Callable[[Path, str], bytes]
+    base_module_bytes: Callable[[Path, str, str], bytes]
     zed_identity: Callable[[], ZedIdentity]
     prepare_source: Callable[[SourcePreparation], None]
     launch: Callable[[LaunchRequest], LaunchResult]
@@ -840,7 +920,8 @@ class _Emitter:
 
 def _preflight(inputs: CollectInputs, actions: HostActions, run_key: bytes) -> tuple[bytes, SourceObservation]:
     spec = inputs.run_spec
-    if spec.run_id != inputs.context.run_id or spec.evidence_kind != contract.EVIDENCE_KIND_GATE:
+    if (spec.run_id != inputs.context.run_id or spec.evidence_kind != contract.EVIDENCE_KIND_GATE
+            or spec.scenario_id != contract.SCENARIO_ID or inputs.context.scenario_id != spec.scenario_id):
         raise HostError("run_spec_mismatch")
     if inputs.descriptor_fixture_sha256 != spec.descriptor_fixture_sha256 or LAUNCH_CONFIG_SHA256 != spec.launch_config_sha256:
         raise HostError("run_spec_mismatch")
@@ -855,8 +936,10 @@ def _preflight(inputs: CollectInputs, actions: HostActions, run_key: bytes) -> t
         raise HostError("source_commit_mismatch")
     if (source.tracked_diff_sha256, source.untracked_digest_sha256) != (_EMPTY, _EMPTY):
         raise HostError("source_dirty")
-    base_spec = actions.base_spec_bytes(inputs.normal_source_root, spec.source_commit)
-    verify_census(inputs.fixture, base_spec.decode("utf-8"))
+    normal_root = inputs.normal_source_root
+    base_spec = actions.base_module_bytes(normal_root, spec.source_commit, contract.REQUIRED_MODULE_PATHS["optimus.acp.spec"])
+    errors = actions.base_module_bytes(normal_root, spec.source_commit, contract.REQUIRED_MODULE_PATHS["optimus.acp.errors"])
+    verify_census(inputs.fixture, base_spec.decode("utf-8"), errors_text=errors.decode("utf-8"))
     return base_spec, source
 
 
@@ -1653,14 +1736,14 @@ def promote_with_receipt(context: RunContext, *, staging_root: Path, sanitized_r
 # from a bundle or a caller-chosen location. The reviewed invocation record pins the checkout commit and the
 # exact git blob hashes of those three files and must live outside the run roots.
 
-APPROVED_RUNS_RELATIVE = "reports/plan-11-7-v5-approved-runs.json"
-DESCRIPTOR_FIXTURE_RELATIVE = "tests/fixtures/evidence/plan117-v5-first-refusal-descriptors.json"
-INVOCATION_RECORD_SCHEMA = "plan-11-7-v5-invocation-record-v1"
+APPROVED_RUNS_RELATIVE = "reports/plan-11-7-v6-approved-runs.json"
+DESCRIPTOR_FIXTURE_RELATIVE = contract.DESCRIPTOR_FIXTURE_RELATIVE
+INVOCATION_RECORD_SCHEMA = "plan-11-7-v6-invocation-record-v1"
 _INVOCATION_KEYS = ("schema", "run_id", "checkout_commit", "scenario_blob_sha1", "registry_blob_sha1", "descriptor_fixture_blob_sha1")
 
 
 def require_registered_scenario(scenario_path: Path, checkout_root: Path) -> bytes:
-    """The v5 scenario may only be the checkout's registered file (path identity; content cannot widen it)."""
+    """The current scenario may only be the checkout's registered file (path identity; content cannot widen it)."""
     try:
         expected = checkout_root.joinpath(*SCENARIO_RELATIVE.split("/")).resolve(strict=True)
         supplied = Path(scenario_path).resolve(strict=True)
@@ -1852,7 +1935,7 @@ def real_host_actions(repo_root: Path) -> HostActions:
 
     return HostActions(
         source_facts=source_facts, normal_source_digest=probe.normal_workspace_source_digest,
-        base_spec_bytes=lambda root, commit: probe.git_cat_file_blob(root, commit, "src/optimus/acp/spec.py"),
+        base_module_bytes=probe.git_cat_file_blob,
         zed_identity=zed_identity, prepare_source=prepare_source, launch=launch, locate_database=_locate_zed_binding_database,
         approvals=lambda control, workspaces: NativeWorkspaceApprovals(control, workspaces, environment),
         interpreter=Path(sys.executable), remove_tree=shutil.rmtree, monotonic_ns=time.monotonic_ns,

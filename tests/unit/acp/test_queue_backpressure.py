@@ -408,7 +408,11 @@ async def test_eight_permission_held_prompts_leave_setter_pool_usable(tmp_path, 
         assert configured.fake_gateway_call_count == 8
         assert len(allocated) == 8
         busy = await request(199, "session/prompt", {"sessionId": sessions[0], "prompt": [{"type": "text", "text": "Must remain busy"}]})
-        assert busy["error"]["message"] == "a turn is already in progress"
+        assert busy == {
+            "jsonrpc": "2.0",
+            "id": 199,
+            "error": {"code": -32913, "message": "a turn is already in progress"},
+        }
         await reader.send({"jsonrpc": "2.0", "id": 200, "method": "session/prompt", "params": {"sessionId": sessions[8], "prompt": [{"type": "text", "text": "Must not run"}]}})
         setter = await request(201, "session/set_mode", {"sessionId": sessions[8], "modeId": "chat"})
         assert "result" in setter

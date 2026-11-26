@@ -117,8 +117,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def build_plan117_v5_collect_parser() -> argparse.ArgumentParser:
-    """Separate parser for the v5 gate; the legacy collect subparser is untouched."""
-    parser = argparse.ArgumentParser(prog="evidence_gather collect (plan117-v5)")
+    """Separate parser for the v6 gate; the legacy collect subparser is untouched."""
+    parser = argparse.ArgumentParser(prog="evidence_gather collect (plan117-v6)")
     parser.add_argument("--scenario", type=Path, required=True)
     parser.add_argument("--capture-root", type=Path, required=True)
     parser.add_argument("--bind", action="append", default=[])
@@ -129,8 +129,8 @@ def build_plan117_v5_collect_parser() -> argparse.ArgumentParser:
 
 
 def build_plan117_v5_redact_parser() -> argparse.ArgumentParser:
-    """Separate parser for the v5 two-phase redaction; the legacy redact subparser is untouched."""
-    parser = argparse.ArgumentParser(prog="evidence_gather redact (plan117-v5)")
+    """Separate parser for the v6 two-phase redaction; the legacy redact subparser is untouched."""
+    parser = argparse.ArgumentParser(prog="evidence_gather redact (plan117-v6)")
     parser.add_argument("--scenario", type=Path, required=True)
     parser.add_argument("--capture-root", type=Path, required=True)
     parser.add_argument("--bind", action="append", default=[])
@@ -162,7 +162,7 @@ def _scenario_flag_values(argv: Sequence[str]) -> list[str]:
 
 
 def _plan117_v5_selected(scenario_path: str | Path) -> bool:
-    """The registered v5 path, or any file declaring the v5 scenario ID or collector. Never raises."""
+    """Recognize the registered Plan 11.7 path and reserved scenario or collector IDs. Never raises."""
     try:
         resolved = Path(scenario_path).resolve(strict=True)
         if resolved == PLAN117_V5_CHECKOUT_ROOT.joinpath(*plan117_mod.SCENARIO_RELATIVE.split("/")).resolve(strict=True):
@@ -170,11 +170,12 @@ def _plan117_v5_selected(scenario_path: str | Path) -> bool:
         scenario = load_scenario(resolved)
     except Exception:  # noqa: BLE001 - unreadable input falls through to the ordinary handler's own error
         return False
-    return scenario.scenario_id == plan117_contract.SCENARIO_ID or any(item.adapter_id == plan117_mod.COLLECTOR_ID for item in scenario.collection)
+    reserved_ids = {plan117_contract.SCENARIO_ID, "plan117-current-client-gate-v5"}
+    return scenario.scenario_id in reserved_ids or any(item.adapter_id == plan117_mod.COLLECTOR_ID for item in scenario.collection)
 
 
 def _authorize_plan117_v5(scenario_path: Path) -> bool:
-    """Scenario authority for every stage: a v5 scenario must be the reviewed checkout's registered file."""
+    """Require the reviewed checkout's registered Plan 11.7 scenario for each stage."""
     if not _plan117_v5_selected(scenario_path):
         return False
     plan117_mod.require_registered_scenario(scenario_path, PLAN117_V5_CHECKOUT_ROOT)

@@ -26,7 +26,7 @@ from optimus.acp.conversation import (
     ConversationState,
 )
 from optimus.acp.dispatcher import JsonRpcDispatcher
-from optimus.acp.errors import INVALID_REQUEST, REQUEST_CANCELLED
+from optimus.acp.errors import RESOURCE_NOT_FOUND, TURN_BUSY
 from optimus.acp.server import AcpStreamServer
 from optimus.acp.settlement import EffectState
 from optimus.acp.shapes import build_usage_update
@@ -291,7 +291,7 @@ async def test_unknown_session_is_jsonrpc_error_not_refusal(tmp_path: Path) -> N
     try:
         await reader.send(_prompt("session-never-created", "hi", request_id=7))
         resp = await writer.wait_for_response(7)
-        assert resp["error"]["code"] == INVALID_REQUEST
+        assert resp["error"]["code"] == RESOURCE_NOT_FOUND
         assert resp["error"]["message"] == "unknown session"
     finally:
         reader.close()
@@ -365,7 +365,7 @@ async def test_concurrent_same_session_prompt_rejected(tmp_path: Path) -> None:
         await asyncio.wait_for(runner.started.wait(), timeout=5)
         await reader.send(_prompt(session_id, "second", request_id=3))
         second = await writer.wait_for_response(3)
-        assert second["error"]["code"] == REQUEST_CANCELLED
+        assert second["error"]["code"] == TURN_BUSY
         assert second["error"]["message"] == "a turn is already in progress"
         runner.release.set()
         first = await writer.wait_for_response(2)
