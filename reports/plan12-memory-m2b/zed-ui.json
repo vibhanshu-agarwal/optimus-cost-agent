@@ -62,5 +62,6 @@
   "stub-requests.ndjson": "hex:a31c8c3390f66e9de22a507d39a23937821d336db5909d0bce4e3b016af00e2c"
  },
  "evidence_root": "optimus-handoff/p1214-zed/evidence (screenshots and the stub's request log: counts, paths and body digests, never bodies)",
- "teardown": "Zed quit; stub stopped; container optimus-memory-redis and volume optimus-memory-redis-data removed; the Zed entry removed (settings restored from the byte-exact backup); the launch approval revoke and the keyring entry deletion by the operator"
+ "teardown": "done 2026-11-26: Zed quit; stub stopped; container optimus-memory-redis and volume optimus-memory-redis-data removed; the Zed entry removed (settings restored from the byte-exact backup); the operator revoked the launch approval and deleted the index keyring entry (\"Both done\")",
+ "scope": "the legacy pack-budget line only; the model-aware/target form and the outline line were never seen in Zed. Run at git:a93309f, before the merge of main (339aa42); not repeated on the delivered head, whose /why rendering the unit tests and the full suite cover"
 }

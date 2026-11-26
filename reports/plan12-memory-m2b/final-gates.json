@@ -1,0 +1,64 @@
+{
+ "schema": "plan12-memory-m2b.final-gates.v1",
+ "plan": "Plan 12.14 (M2b), #548",
+ "issue": 548,
+ "status": "NOT MET: the one planned Windows full suite failed (3 of 16,145); one failure was merge-caused and is fixed at git:7a32cac, two are load-sensitive and pass alone; the operator's disposition decides whether a second full run follows",
+ "heads": {
+  "full_suite_head": "git:aab9f36565c71b2df6b68261234603af26aa84af",
+  "code_head": "git:7a32cacc2dbaa134919745d0c499ee19a80ccde0",
+  "code_delta": "git:7a32cac changes only tests/unit/context/test_context_budget.py (a stand-in policy gains a root)",
+  "merged_main": "git:e9c8e39 (origin/main, merged at git:339aa42)"
+ },
+ "windows_full_suite": {
+  "attempt": 1,
+  "command": "python tools/check_product_coverage.py --run-full-suite --groups tools/product-coverage-groups.json --report-json tmp/coverage/product-coverage-report.json --coverage-json tmp/coverage/coverage.json (PowerShell, this worktree's venv)",
+  "log": "optimus-handoff/p1214-final/full-suite-1.log",
+  "result": "exit 1: 3 failed, 16,142 passed, 75 skipped, 410 deselected (2:12:02); run 20261126T165132-59304-ae1a75, records=COMPLETE",
+  "failures": {
+   "tests/unit/context/test_context_budget.py::test_the_memory_turns_assemble_passes_the_target_to_retrieval": "merge-caused: main's #634 fix (PR #641) makes MemoryTurn.assemble read policy.root; the test's stand-in had none. Fixed at git:7a32cac (test only); tests/unit/context, tests/unit/agent, the M2b tools and the logging-surface inventory: 2,847 passed, 6 skipped",
+   "tests/integration/acp/test_process_signals.py::test_repeated_native_signal_retains_started_worker_until_return": "load-sensitive: exit 75 instead of 130 within 15 s under the suite's load; passes alone 3 of 3; code this branch does not touch",
+   "tests/unit/tools/test_evidence_gather.py::test_spawn_acpx_timeout_stops_descendant_holding_pipes[capture-files]": "load-sensitive: the grandchild never announced its pid by the deadline under load; passes alone 3 of 3; code this branch does not touch"
+  },
+  "coverage": {
+   "aggregate_percent": 87,
+   "floors": {
+    "optimus": {
+     "percent": 89.69,
+     "floor": 80.0,
+     "enforced": true,
+     "passed": true
+    },
+    "context_engine": {
+     "percent": 91.51,
+     "floor": 80.0,
+     "enforced": true,
+     "passed": true
+    },
+    "evidence_handoff": {
+     "percent": 68.68,
+     "floor": 80.0,
+     "enforced": false,
+     "passed": false
+    },
+    "optimus_model_policy": {
+     "percent": 95.74,
+     "floor": 80.0,
+     "enforced": true,
+     "passed": true
+    },
+    "aggregate": {
+     "percent": 87.44,
+     "floor": 80.0,
+     "enforced": false,
+     "passed": true
+    }
+   },
+   "validator": "coverage_products validate refuses full-run validity: the run exited 1, and the stand-in fix changed a test after it started"
+  }
+ },
+ "ruff": "clean at git:339aa42 and on every commit (hooks)",
+ "inventories": "the logging-surface manifest, tests/unit/docs and the probe closure test pass on the merge (2,306 passed, 6 skipped) and after the fix",
+ "reversions": "the revert checks of every change, each mutant caught by a named assertion (optimus-handoff/p1214-gate/revert_*.log); Task 4's disposable-checkout reversions UNRUN by the operator's disposition (closure.json operator_decisions.live_checks)",
+ "linux_ci": "owed: the PR's actual-tested-SHA CI",
+ "disposition": "owed: the operator decides between a second full run at git:7a32cac and accepting this run with the fix's targeted evidence, after Codex's CP4 round"
+}
