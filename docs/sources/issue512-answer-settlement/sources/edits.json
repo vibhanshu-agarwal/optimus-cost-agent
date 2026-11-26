@@ -1,0 +1,24 @@
+[
+  {
+    "file": "hld-14-context-engine.md",
+    "old": "Reaching the planning limit without a detection does not itself trigger escalation.",
+    "new": "Reaching the planning limit without a detection does not itself trigger escalation. At main `72d2349`, loop control treats an `ANSWER` settled after the nudge like a `REFUSE` settled after the nudge, and a first `ANSWER` outside an episode ends the turn with the answer."
+  },
+  {
+    "file": "page-updates.json",
+    "document": "lld",
+    "page": "19",
+    "old": "`MULTI_TURN_PLANNER_PROMPT_VERSION:2026-10-24-p407-edit-p410-write-line-endings` (`agent/prompts.py:10–15`, `:40–50`).",
+    "new": "`MULTI_TURN_PLANNER_PROMPT_VERSION:2026-11-26-p512-answer` (`agent/prompts.py:10–15`, `:40–50`). At `72d2349`, `ANSWER:` is a whole-reply form in the multi-turn grammar, with at most 4096 UTF-8 bytes of answer text, no directive line, and the #583 character rule with line breaks and tabs permitted (`agent/prompts.py:14`, `:119–122`; `agent/planning_loop.py:104`, `:961–988`). An Agent-mode answer settles as a completed run with `PLANNING_ANSWERED`. Its terminal message is the answer as final text, with no plan update, and ACP returns `end_turn` with `_meta` `{\"runStopReason\": \"PLANNING_ANSWERED\", \"outcome\": \"completed\"}`, unless a cancel was accepted first. When continuity is configured, the committed turn's checkpoint records `responded` and no completed task (`agent/runner.py:171–176`; `acp/spec.py:3052–3058`, `:3972–3974`, `:4024–4039`, `:4054–4057`, `:4144–4146`, `:4286–4298`, `:4310–4316`; `context/memory_continuity.py:150–158`). Known limit: the answer parser and the EDIT parser split a code fence differently when its lines are separated only by bare carriage returns, so such a reply can settle as an answer without its EDIT (PR #657)."
+  },
+  {
+    "file": "lld-13-context-integration.md",
+    "old": "`:240–290`).",
+    "new": "`:240–290`). At `72d2349`, a waiting answer follows the same escalation and check-in rules as a waiting refusal (`src/optimus/agent/planning_loop.py:119–120`, `:1584–1609`, `:1627–1632`, `:1640–1647`)."
+  },
+  {
+    "file": "lld-13-context-integration.md",
+    "old": "retains a pending refusal.",
+    "new": "retains a pending refusal. At `72d2349`, Continue sets aside a waiting answer and Stop keeps it, as for a waiting refusal, with check-in text specific to the answer (`src/optimus/agent/planning_loop.py:1612–1618`, `:1649–1655`, `:1696–1705`)."
+  }
+]
