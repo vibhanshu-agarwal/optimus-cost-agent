@@ -24,7 +24,7 @@ EDIT_FAILURE_CODES = frozenset(
     }
 )
 
-# (why the change was not made, what the person can do next). LLD v2.48 §4B.5 still states the old text: #576.
+# (why the change was not made, what the person can do next). LLD v2.49 §4B.5 states this text (#576).
 _FAILURE_TEXT = {
     "EDIT_TARGET_MISSING": ("no file could be found at that path", "Check the path, then send your request again"),
     "EDIT_NOT_UTF8": (
