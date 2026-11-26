@@ -385,6 +385,7 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
     from starlette.responses import PlainTextResponse, Response
     from starlette.types import ASGIApp, Receive, Send
 
+    from evidence_handoff.ledger.errors import LedgerStoreError
     from evidence_handoff.redaction.ingress import RequestRedactionInputs, StructuredIngress
     from evidence_handoff.redaction.models import RedactionRuntimeInputs
     from evidence_handoff_runtime.auth import AuthError
@@ -819,8 +820,12 @@ def build_asgi_app(runtime: dict[str, Any], *, auth_bundle: dict[str, Any] | Non
                 for pid, aid in _registered_readers.items():
                     try:
                         auth_ctx["store"].get_reader_capability(pid)
-                    except Exception:
-                        auth_ctx["store"].upsert_reader_capability(
+                    except LedgerStoreError as exc:
+                        # Only the store's own not-found answer proves the row is absent; the insert
+                        # still yields to a report committed after this lookup.
+                        if exc.code != "capability_not_found":
+                            raise
+                        auth_ctx["store"].insert_reader_capability_if_absent(
                             ReaderCapability(
                                 agent_id=aid,
                                 principal_id=pid,
