@@ -23,6 +23,7 @@ from tests.support import child_keyring, child_tripwire
 from tests.support.child_launch_inventory import default_python_sites, launch_sites
 from tests.unit.tools.test_run_context_child_sites import _node_binds as node_binds
 from tests.unit.tools.test_run_context_child_sites import module_constant
+from tools.tracked_repository_files import tracked_repository_files
 
 _ROOT = Path(__file__).resolve().parents[3]
 _MAP = Path(__file__).with_name("run_context_child_sites.json")
@@ -315,7 +316,7 @@ def test_every_test_that_drives_a_measurement_controls_the_measurement_child() -
     """The audit tool launches measurement children itself; a test module that reaches that launch in-process applies
     `child_keyring.control_measurement_children` (Codex round 1, finding 4)."""
     missing = []
-    for path in sorted((_ROOT / "tests").rglob("test_*.py")):
+    for path in sorted(path for path in tracked_repository_files(_ROOT, pathspecs=["tests"]) if path.name.startswith("test_") and path.suffix == ".py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} | {
             node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
