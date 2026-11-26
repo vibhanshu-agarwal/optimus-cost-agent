@@ -475,7 +475,10 @@ def test_ci_keeps_the_one_full_run_and_uploads_its_evidence_even_when_it_fails()
         "--report-json", "${RUNNER_TEMP}/product-coverage/product-coverage-report.json",
         "--coverage-json", "${RUNNER_TEMP}/product-coverage/coverage.json",
     ]
-    assert [step for step in steps if "pytest" in str(step.get("run", ""))] == []  # no second suite exports the JSON
+    # No second suite exports the JSON: the one other pytest step (#620's live tier) runs after the upload, coverage off.
+    pytest_steps = [step for step in steps if "pytest" in str(step.get("run", ""))]
+    assert [step["name"] for step in pytest_steps] == ["Live tier: requires_redis"] and steps[-1] is pytest_steps[0]
+    assert "--no-cov" in shlex.split(pytest_steps[0]["run"])
     assert copy["if"] == upload["if"] == "${{ !cancelled() }}"
     assert copy["run"] == 'mkdir -p "${RUNNER_TEMP}/product-coverage/test-runs" && cp --parents tmp/test-runs/*/run.json "${RUNNER_TEMP}/product-coverage/test-runs/"'
     assert upload["uses"].startswith("actions/upload-artifact@")
