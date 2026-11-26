@@ -374,7 +374,9 @@ def _extract_file_references(task: str, exists: Callable[[str], bool] | None = N
         if whole is None:
             found.append((match.start(), match.group(0).replace("\\", "/")))
         else:  # the earlier matches inside it are pieces of the one path, not files of their own (Codex review 1, finding 1)
-            found = [item for item in found if item[0] < whole[0]] + [whole]
+            while found and found[-1][0] >= whole[0]:
+                found.pop()
+            found.append(whole)
     references = list(dict.fromkeys(reference for _, reference in found))
     for match in _PATH_TOKEN_RE.finditer(task):
         token = match.group(0).replace("\\", "/").rstrip(".")
@@ -390,9 +392,10 @@ def _extract_file_references(task: str, exists: Callable[[str], bool] | None = N
 
 def _whole_path(text: str, start: int, end: int, exists: Callable[[str], bool] | None) -> tuple[int, str] | None:
     """#634: where the path starts that ends where a reference ends and has a space or a non-ASCII character before it, and the path,
-    so the reference is not taken for its tail. The longest one that exists wins. One that is not there is read whole only for a bare
-    name, inside quotes, glued to a word that holds a folder ("docs/ops guide.md"): a quoted sentence ("Look at legacy.py", as every
-    prompt in a history envelope is) and unquoted prose ("Fix the bug in guide.md") cannot be told from a path that is not there."""
+    so the reference is not taken for its tail. The longest one that exists wins. One that is not there is read whole only inside
+    quotes, glued to a word that holds a folder and is not there itself ("docs/ops guide.md"): a quoted sentence ("Look at legacy.py",
+    as every prompt in a history envelope is), a quoted list ("Compare src/ guide.md") and unquoted prose ("Fix the bug in guide.md")
+    cannot be told from a path that is not there."""
     low = max(0, start - _WHOLE_PATH_WINDOW)
     newline = text.rfind("\n", low, start)
     first = newline + 1 if newline >= 0 else low
@@ -406,8 +409,8 @@ def _whole_path(text: str, start: int, end: int, exists: Callable[[str], bool] |
         if exists is not None and _safe_relative_reference(span) is not None and exists(span):
             return at, span
     quote = text[end:end + 1]
-    if not quote or quote not in _QUOTES or any(char in "/\\" for char in text[start:end]):
-        return None  # an exact relative path cannot bind another file's basename, so it reads as before (finding 4)
+    if not quote or quote not in _QUOTES:
+        return None
     opened_at = text.rfind(quote, first, start)
     if opened_at < 0:
         return None
@@ -415,8 +418,10 @@ def _whole_path(text: str, start: int, end: int, exists: Callable[[str], bool] |
     tail = head.rstrip()
     word = tail.split()[-1] if tail.split() else ""
     glued = tail != head or not text[start - 1].isascii()  # a space, or a non-ASCII symbol, joins the word to the reference
-    if not glued or not any(char in word for char in "/\\") or word[-1] in "/\\" or _FILE_REFERENCE_RE.fullmatch(word):
-        return None
+    if not glued or not any(char in word for char in "/\\") or word[-1] in "/\\" or word[0] in _QUOTES or _FILE_REFERENCE_RE.fullmatch(word):
+        return None  # a folder written alone, or a quoted word, is named on its own (Codex reviews 1 and 2)
+    if exists is not None and _safe_relative_reference(word) is not None and exists(word.replace("\\", "/")):
+        return None  # the word is a thing of its own that is there (Codex review 2, finding 2)
     at = opened_at + 1 + len(tail) - len(word)
     return at, text[at:end].replace("\\", "/")
 
@@ -428,14 +433,16 @@ def on_disk(root: Path) -> Callable[[str], bool]:
 
     def exists(relative: str) -> bool:
         nonlocal entries
-        if _safe_relative_reference(relative) is None:
+        safe = _safe_relative_reference(relative)
+        if safe is None or not safe.parts:
             return False
         if entries is None:
             try:
-                entries = set(os.listdir(root))
+                entries = {os.path.normcase(name) for name in os.listdir(root)}
             except OSError:
                 entries = set()
-        return relative.split("/", 1)[0] in entries and (root / relative).exists()
+        # Path drops "./" as resolution does, and normcase folds case where the file system does (Codex review 2, finding 1)
+        return os.path.normcase(safe.parts[0]) in entries and (root / relative).exists()
 
     return exists
 
