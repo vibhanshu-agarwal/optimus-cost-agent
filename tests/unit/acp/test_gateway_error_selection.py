@@ -66,6 +66,17 @@ def _invalid_receipt_body() -> bytes:
     return json.dumps(body).encode()
 
 
+def _secondary_receipt_conflict_body() -> bytes:
+    body = json.loads(_invalid_receipt_body())
+    body["route_attempts"].extend(
+        [
+            {"attempt": 2, "outcome": "rejected", "gateway_request_id": "gw-conflicting"},
+            {"attempt": 3, "outcome": "uncertain", "gateway_request_id": "gw-conflicting"},
+        ]
+    )
+    return json.dumps(body).encode()
+
+
 def _client(capture=None, *, scheme="http"):
     settings = OptimusGatewaySettings(
         gateway_url=f"{scheme}://127.0.0.1:8765", optimus_api_key="opt_fixture_gateway_only"  # pragma: allowlist secret
@@ -167,6 +178,8 @@ async def test_offline_framed_gateway_fixture(tmp_path, monkeypatch, body, trans
         ("agent", "conflict", "GATEWAY_ATTEMPT_INTEGRITY"),
         ("chat", "storage-first", "GATEWAY_ATTEMPT_INTEGRITY"),
         ("agent", "storage-first", "GATEWAY_ATTEMPT_INTEGRITY"),
+        ("chat", "secondary-receipt-conflict", "GATEWAY_ATTEMPT_INTEGRITY"),
+        ("agent", "secondary-receipt-conflict", "GATEWAY_ATTEMPT_INTEGRITY"),
         ("chat", "storage-only", None),
         ("agent", "storage-only", None),
         ("chat", "replacement", None),
@@ -186,7 +199,12 @@ async def test_ndjson_gateway_failure_custody(tmp_path, monkeypatch, mode, case,
 
     def open_stub(request, *, timeout):
         calls.append(request.full_url)
-        body = _REFUSAL if case == "refusal-stop" else _failed_body(matched=case == "storage-only")
+        if case == "refusal-stop":
+            body = _REFUSAL
+        elif case == "secondary-receipt-conflict":
+            body = _secondary_receipt_conflict_body()
+        else:
+            body = _failed_body(matched=case == "storage-only")
         raise HTTPError(request.full_url, 422, "gateway-private-canary", {}, io.BytesIO(body))
 
     def storage_failure(*args, **kwargs):
@@ -242,6 +260,10 @@ async def test_ndjson_gateway_failure_custody(tmp_path, monkeypatch, mode, case,
     if case in {"conflict", "storage-first", "storage-only", "replacement"}:
         paid = [Decimal(r["reported_cost_usd"]) for r in records if r["kind"] == capture_contract.ATTEMPT_RECEIPT and r["reported_cost_usd"]]
         assert paid == [Decimal("0.0003")]
+    if case == "secondary-receipt-conflict":
+        assert any(r["kind"] == capture_contract.INTEGRITY_FAILURE and r["reason"] == "receipt_conflict" for r in records)
+        entries = accounting.provider_ledger.entries_for_run()
+        assert [(e.gateway_request_id, e.cost_usd) for e in entries] == [("gw-used", Decimal("0.0003"))]
     if reason is not None:
         assert response["error"] == {**_ERROR, "data": {"reason": reason, "effect_certainty": "unknown"}}
     elif case == "refusal-stop":
@@ -273,7 +295,11 @@ def test_gateway_preflight_proof_is_limited_to_model_calls(monkeypatch, path, pr
 def test_discarded_gateway_facts_cannot_be_used_by_a_detached_worker():
     facts = GatewayFailureFacts()
     failure = AttemptIntegrityError("unwitnessed-attribution", attempts=())
+    facts.remember_receipt_conflict(failure)
     facts.discard()
+    assert facts.take_receipt_conflict() is None
+    facts.remember_receipt_conflict(failure)
+    assert facts.take_receipt_conflict() is None
     facts.publish(failure, GatewayFailureReason.ATTEMPT_INTEGRITY)
     facts.supply_uncertainty(failure)
     assert facts.consume(failure) is None

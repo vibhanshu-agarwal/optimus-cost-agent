@@ -66,7 +66,7 @@ from optimus.telemetry.events import TelemetryEvent
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
 from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS, WriteRefused, WriteSourceChanged
 from optimus.usage.accounting import UsageAccountingService
-from optimus.usage.turn_settlement import StageReceipt, publish_accounting_conflict
+from optimus.usage.turn_settlement import ReceiptConflictError, StageReceipt, publish_accounting_conflict
 
 if TYPE_CHECKING:
     from optimus.agent.planning_loop import (
@@ -1215,7 +1215,11 @@ class AgentRunner:
             except Exception as error:  # noqa: BLE001 - offered every receipt first
                 refused.append(error)
         if refused:
-            raise first_error(refused)
+            primary = first_error(refused)
+            facts = scope.gateway_failure_facts
+            if facts is not None and any(isinstance(error, ReceiptConflictError) for error in refused[1:]):
+                facts.remember_receipt_conflict(primary)
+            raise primary
 
     def _report_one(
         self,

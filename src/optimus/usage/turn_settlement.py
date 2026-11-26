@@ -69,8 +69,12 @@ class ReceiptConflictError(ValueError):
 def publish_accounting_conflict(
     facts: GatewayFailureFacts | None, failure: BaseException, errors: Sequence[Exception]
 ) -> None:
-    if facts is not None and any(
-        isinstance(error, (AttemptIntegrityError, ReceiptConflictError, DuplicateGatewayRequestError)) for error in errors
+    if facts is None:
+        return
+    receipt_conflict = facts.take_receipt_conflict()
+    if any(
+        error is receipt_conflict or isinstance(error, (AttemptIntegrityError, ReceiptConflictError, DuplicateGatewayRequestError))
+        for error in errors
     ):
         facts.publish(failure, GatewayFailureReason.ATTEMPT_INTEGRITY)
 

@@ -23,8 +23,19 @@ class GatewayFailureFacts:
 
     def __init__(self) -> None:
         self._fact: tuple[BaseException, GatewayFailureReason] | None = None
+        self._receipt_conflict_primary: BaseException | None = None
         self._closed = False
         self._conflicted = False
+
+    def remember_receipt_conflict(self, primary: BaseException) -> None:
+        """Associate a receipt conflict with the exact first error raised by the receipt group."""
+        if not self._closed:
+            self._receipt_conflict_primary = primary
+
+    def take_receipt_conflict(self) -> BaseException | None:
+        primary = None if self._closed else self._receipt_conflict_primary
+        self._receipt_conflict_primary = None
+        return primary
 
     def publish(self, failure: BaseException, reason: GatewayFailureReason) -> None:
         if self._closed or self._conflicted:
@@ -45,8 +56,9 @@ class GatewayFailureFacts:
         return fact[1] if fact is not None and fact[0] is failure else None
 
     def discard(self) -> None:
-        self._fact = None
         self._closed = True
+        self._fact = None
+        self._receipt_conflict_primary = None
 
 
 class GatewayError(Exception):
