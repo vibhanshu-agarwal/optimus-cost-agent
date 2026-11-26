@@ -29,6 +29,7 @@ case finishes, or protection against deliberate edits to trusted runtime files.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -381,6 +382,7 @@ class StageCGuard:
         if path.is_symlink() or not path.is_file():
             raise StageCLedgerError("STAGE_C_LEDGER_MISSING", "initialize the release's ledger first; a start never creates one")
         lock = _Lock(path.with_name(path.name + ".lock"))
+        handle: IO[bytes] | None = None
         try:
             replay = cls._replay_ledger(path, envelope)
             handle = path.open("ab")
@@ -389,7 +391,14 @@ class StageCGuard:
                 guard._start_window()
             return guard
         except BaseException:
-            lock.release()
+            # Give back the handle and the lock; a failure while doing so never replaces the one being raised.
+            try:
+                if handle is not None:
+                    with contextlib.suppress(OSError):
+                        handle.close()
+            finally:
+                with contextlib.suppress(OSError):
+                    lock.release()
             raise
 
     @staticmethod

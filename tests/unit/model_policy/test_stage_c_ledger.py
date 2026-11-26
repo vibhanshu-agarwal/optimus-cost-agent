@@ -465,3 +465,72 @@ def test_the_status_refuses_a_missing_or_foreign_ledger(tmp_path: Path) -> None:
     with pytest.raises(StageCLedgerError) as caught:
         stage_c.stage_c_ledger_status(path, envelope)
     assert caught.value.code == "STAGE_C_LEDGER_MISSING"
+
+
+# --- #651: a guard that fails to initialize gives back its append handle and the lock ------------------------
+
+
+class _InitFailure(Exception):
+    pass
+
+
+def _open_with_failing_initialization(path: Path, envelope, monkeypatch, *, failing_close: bool = False):
+    """Open the guard so its window start fails after the append handle is acquired; return the handle."""
+    handles: list = []
+    real_open = Path.open
+
+    def spy(self, mode="r", *args, **kwargs):
+        handle = real_open(self, mode, *args, **kwargs)
+        if self == path and mode == "ab":
+            handles.append(handle)
+            if failing_close:
+                real_close = handle.close
+
+                def close():
+                    real_close()
+                    raise OSError(errno.EIO, "close failed")
+
+                handle = _CloseFails(handle, close)
+                handles[-1] = handle
+        return handle
+
+    monkeypatch.setattr(Path, "open", spy)
+    failure = _InitFailure("window start failed")
+
+    def clock() -> datetime:
+        raise failure
+
+    with pytest.raises(_InitFailure) as caught:
+        StageCGuard.open(path, envelope, clock=clock)
+    assert caught.value is failure
+    monkeypatch.setattr(Path, "open", real_open)
+    return handles[0]
+
+
+class _CloseFails:
+    def __init__(self, inner, close) -> None:
+        self._inner, self.close = inner, close
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    @property
+    def closed(self) -> bool:
+        return self._inner.closed
+
+
+def test_a_guard_that_fails_to_initialize_closes_its_append_handle_and_frees_the_lock(tmp_path: Path, monkeypatch) -> None:
+    path, envelope = _initialized(tmp_path)
+    handle = _open_with_failing_initialization(path, envelope, monkeypatch)
+    assert handle.closed
+    guard = StageCGuard.open(path, envelope, clock=Clock())  # the lock is free
+    guard.close()
+    path.unlink()  # on Windows an open handle would refuse this
+
+
+def test_a_failing_cleanup_never_replaces_the_initialization_failure(tmp_path: Path, monkeypatch) -> None:
+    path, envelope = _initialized(tmp_path)
+    handle = _open_with_failing_initialization(path, envelope, monkeypatch, failing_close=True)
+    assert handle.closed
+    guard = StageCGuard.open(path, envelope, clock=Clock())  # the lock was released despite the failed close
+    guard.close()
