@@ -497,6 +497,7 @@ def test_the_child_tripwire_records_and_refuses_a_real_adapter_request(tmp_path:
     assert "REFUSED=" in output and "RESOLVED" not in output, output
     assert child_tripwire.observed(record) == {
         "loaded": 1, "loaded_after_product_import": 0, "trusted_paths_imported": True, "real_adapter_calls": 1,
+        "keyring_fail_selected": 1,
     }
     with pytest.raises(AssertionError, match="asked for the real known folders"):
         child_tripwire.assert_no_real_adapter_access(record)

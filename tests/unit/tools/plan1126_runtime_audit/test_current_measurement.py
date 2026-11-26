@@ -28,6 +28,7 @@ from types import SimpleNamespace
 import pytest
 from jsonschema import Draft202012Validator
 
+from tests.support import child_keyring
 from tools.plan1126_runtime_audit import evidence_store, queue_policy, shutdown
 from tools.plan1126_runtime_audit.current_envelope import (
     MeasurementPlan,
@@ -152,7 +153,7 @@ def _child_case(case: str) -> dict:
         completed = subprocess.run(
             [sys.executable, str(CHILD_CASES), str(ROOT), case],
             cwd=str(ROOT), capture_output=True, text=True, timeout=1800,
-            env=fresh_child_environment(cache),
+            env=child_keyring.environment(fresh_child_environment(cache)),
         )
     assert completed.returncode == 0, f"{case}: {completed.stderr[-2000:]}"
     return json.loads(completed.stdout.strip().splitlines()[-1])
@@ -1203,7 +1204,7 @@ def test_the_cli_measures_verifies_renders_and_replays_in_fresh_processes(tmp_pa
     def _cli(*arguments: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [sys.executable, str(CLI), *arguments],
-            cwd=ROOT, capture_output=True, text=True, timeout=1800,
+            cwd=ROOT, capture_output=True, text=True, timeout=1800, env=child_keyring.environment(os.environ),
         )
 
     measured = _cli(

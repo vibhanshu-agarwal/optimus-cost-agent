@@ -25,6 +25,7 @@ import pytest
 
 from optimus.acp.session_config import SessionConfigSnapshot, build_session_config_options
 from optimus.acp.shapes import build_config_option_update_notification, build_current_mode_update_notification, build_session_mode_state
+from tests.support import child_keyring
 from tools import plan12_stage_c_acp_double as double
 from tools import plan12_stage_c_launch_rehearsal as rehearsal
 from tools import plan12_stage_c_schedule as schedule_tool
@@ -260,7 +261,7 @@ def test_the_double_is_packed_as_a_real_executable_under_a_path_with_spaces(tmp_
     record = tmp_path / "record.jsonl"
     request = json.dumps({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"protocolVersion": 1}}) + "\n"
     proc = subprocess.run([str(exe), "--workspace-root", r"C:\a b"], input=request, capture_output=True, text=True, timeout=60,
-                          env={**os.environ, double.RECORD_ENV: str(record)})  # fmt: skip
+                          env=child_keyring.environment({**os.environ, double.RECORD_ENV: str(record)}))  # fmt: skip
     assert proc.returncode == 0 and json.loads(proc.stdout.splitlines()[0])["result"]["protocolVersion"] == 1
     start = json.loads(record.read_text(encoding="utf-8").splitlines()[0])
     assert start["args"] == ["--workspace-root", r"C:\a b"] and Path(start["argv0"]) == exe
