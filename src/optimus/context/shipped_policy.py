@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from context_engine import StrategyParameters, ViewLimits
 from context_engine.summary import PROMPT_VERSION, SUMMARY_FORMAT
+from optimus.context.context_budget import BudgetPolicy, plan_budget
 from optimus.context.maintenance import MaintenanceReceipt
 from optimus_model_policy import Message, PackedModelRequest, RegistrySnapshot
 from optimus_model_policy.capacity import estimate_complete_input
@@ -58,6 +59,7 @@ class AttachmentLimits:
     limits: ViewLimits
     usable_input_tokens: int
     estimate_request: Callable[[str], int]
+    pack_budget: BudgetPolicy  # Plan 12.14: the context pack's budget on this route, legacy unless the entry names a target
 
 
 def attachment_limits(snapshot: RegistrySnapshot, model_id: str) -> AttachmentLimits:
@@ -103,7 +105,10 @@ def attachment_limits(snapshot: RegistrySnapshot, model_id: str) -> AttachmentLi
         estimate_history=estimate_history,
         estimator_id=entry.route.estimator,
     )
-    return AttachmentLimits(parameters=parameters, limits=limits, usable_input_tokens=usable, estimate_request=estimate_request)
+    target = entry.context_budget.input_target_usd if entry.context_budget is not None else None
+    pack_budget = plan_budget(usable, input_target_usd=target, input_usd_per_million=entry.prices.input_usd_per_million,
+                              cache_write=entry.route.prompt_cache in {"top_level", "prefix"})
+    return AttachmentLimits(parameters=parameters, limits=limits, usable_input_tokens=usable, estimate_request=estimate_request, pack_budget=pack_budget)
 
 
 def no_attachment_ledger(_receipt: MaintenanceReceipt) -> None:

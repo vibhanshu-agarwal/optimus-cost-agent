@@ -1,0 +1,27 @@
+{
+ "schema": "plan12-memory-m2b.calibration-addendum.v1",
+ "plan": "12.14",
+ "issue": 548,
+ "source": {
+  "path": "reports/plan12-memory-m2b/calibration.json",
+  "sha256": "hex:cbbf61c50400f737b78996d4e4bed26dc56ffb3d8ac7d13b76ed8ccc96a20307",
+  "run_head": "git:4f2a9913a10e49c167396bd8493fc48abaa1eb7d"
+ },
+ "why": "Fable CP1 finding 4: run 1's evaluator predates the budget_gates call, so its verdict is computed here offline from the committed rows with the committed m2b_evaluate.budget_gates; nothing was rerun",
+ "budget_gates": {
+  "checks": {
+   "all_four_change": true,
+   "two_ordinary_allocation_changes": true,
+   "two_r_in_legacy_to_ceiling": true,
+   "every_complete_f_fits_q_cap": true
+  },
+  "passes": true
+ },
+ "identical_in_every_repetition": true,
+ "limits": [
+  "5 of 112 per-case packs (15 of 96 case-policy digests) differ across repetitions by a few tokens or order; evidence in context and recall at five are identical. Cause not established: run 1 kept no captures; the injected files' write-time mtime is a hypothesis, pinned since e861344.",
+  "In run 1 the injected poison and control had the newest mtimes, so recency favoured them: density's 'poison gained tokens' reason is confounded. The selection does not rest on it: every candidate also fails 'no strict development improvement' in every repetition.",
+  "The 16,000 per-case irrelevant-token cap is ill-posed against a 16,384 legacy budget: the baseline itself exceeds it in 5 of 16 development cases. It is recorded, not relied on; a ruling is needed before any utility is re-proposed.",
+  "The e861344 evaluator (shared embedding cache, budget cases once, captures, mtime pin) has not run on a real index yet; its first real run is Task 4's."
+ ]
+}

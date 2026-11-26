@@ -379,6 +379,7 @@ def auto_router(
                 limits=limits.limits,
                 usable_input_tokens=limits.usable_input_tokens,
                 estimate_request=limits.estimate_request,
+                pack_budget=limits.pack_budget,
             )
     return AutoRouter(
         snapshot=snapshot,

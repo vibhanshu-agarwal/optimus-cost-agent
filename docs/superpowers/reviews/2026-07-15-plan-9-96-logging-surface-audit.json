@@ -1305,6 +1305,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_session:MemorySession.repo_map:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: when the map is empty because the index store refused or did not answer, logs the store's stable code (StorageRefusedError.code, or StorageUnavailableError's text, which the storage client builds from the store's code or an HTTP status), else the exception's type name; no path, record or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_an_empty_first_map_logs_why_the_store_gave_none",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession.repo_map:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: logs a fixed sentence naming why the map is empty (no published generation, or the store's stable code as above); no path, record or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_an_empty_first_map_logs_why_the_store_gave_none",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_session:MemorySession._passes:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
@@ -6582,6 +6598,198 @@
       "rationale": "Inspection: str(error) is only the evaluator's own ValueError from resolve, a fixed sentence with an integer byte target (target N is not reachable; a read range passes the end of its file), recorded as a blocked probe in the measurement report; no file body, observation text, credential or third-party diagnostic.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m2a.py::test_every_own_limit_probe_solves_on_target_for_every_candidate",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:_write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes or prints a calibration report of counts, token totals, ranks, hashes, case ids and repository-relative paths; no file body, query result text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_report_is_written_as_sorted_ascii_json",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:_write:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes or prints a calibration report of counts, token totals, ranks, hashes, case ids and repository-relative paths; no file body, query result text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_report_is_written_as_sorted_ascii_json",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:budget_case:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: canonical json of (path, symbol, line, disclosure) tuples, hashed in memory for an optional-set digest; nothing is written or logged.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_a_budget_case_records_both_arms_and_a_substantive_change",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes or prints a calibration report of counts, token totals, ranks, hashes, case ids and repository-relative paths; no file body, query result text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_main_refuses_a_second_opening_of_the_fresh_set",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints the selected policy name and the repetition count; no file body, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_main_refuses_a_second_opening_of_the_fresh_set",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:run_calibration:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the frozen cases record and writes nothing beyond the calibration report covered by _write.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_development_set_loads_from_its_frozen_fixtures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:drop_retrying:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: drop_retrying reads a StorageUnavailableError's text only to recognise the store's INDEX_TIMEOUT code, then re-raises the original error unchanged; it exports and persists nothing (the report keeps only the count of timed-out steps).",
+      "sanitizer": "in-process classification; the error is re-raised, not written",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_another_refusal_or_a_step_timing_out_every_attempt_stops_the_drop",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:progress:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: run_qualification's per-tree callback; it writes the set's finished rows (counts, digests, case ids, repository-relative paths) through _write; no query text, file body, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_each_finished_tree_is_on_disk_before_the_next_one_starts",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:run_qualification:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the frozen cases record, the released calibration report and an earlier qualification report's opening flag; the qualification report it writes goes through _write (counts, budgets, digests, git ids, case ids, repository-relative paths).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_qualification_replays_the_historical_sets_first_and_records_the_fresh_opening_before_reading_it",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:save_capture:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes one retrieval capture of hit ids, kinds, repository-relative paths, symbol names, line numbers, file hashes, scores and channel ranks, and the query's hash; no query text, file body, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_a_capture_keeps_ids_and_ranks_never_text",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:production_routes:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the fixed one-field registry override (the D3 model id and its frozen target) into the evaluator's own work folder; nothing from a record, a reply or an exception.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_production_routes_give_the_forecast_budgets_and_the_routes_estimator",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:run_budget:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the frozen cases record; the budget report it writes goes through _write (counts, budgets, hashes, case ids, repository-relative paths).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_development_set_loads_from_its_frozen_fixtures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the run config and prints whether the gate passed, the send count and the first rehearsal problems, which are built from case ids, arms, counts, digests and the Guard's own refusal reasons; no file body, request or answer text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_gate_driver_refuses_with_a_provider_key_in_the_environment_before_provisioning_anything",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: prints whether the gate passed, the send count and the first rehearsal problems (case ids, arms, counts and the Guard's own refusal reasons); no file body, request or answer text, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_gate_driver_refuses_with_a_provider_key_in_the_environment_before_provisioning_anything",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:run_gate:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the frozen contract and cases records; the gate report it writes goes through m2b_evaluate._write (counts, budgets, digests, git ids, case ids, repository-relative paths); request texts stay in process memory and only their digests are kept.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_gate_driver_refuses_with_a_provider_key_in_the_environment_before_provisioning_anything",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:Handler.do_POST:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol serialization: the rehearsal's loopback stub provider answers the production Gateway's real upstream client in OpenRouter's reply shape; it keeps only each request's digest and cache split, never its text, and writes nothing to disk.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_rehearsal_sends_every_row_once_through_the_http_gateway_and_seals_what_the_paid_run_must_reproduce",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:Handler.do_POST:text_write",
+      "policy": "protocol-only",
+      "rationale": "Functional protocol reply: the loopback stub provider writes its fixed rehearsal reply to the production Gateway's upstream connection; no request text, file body or credential.",
+      "sanitizer": "protocol contract validation; no diagnostic sanitizer for functional payload",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_the_rehearsal_sends_every_row_once_through_the_http_gateway_and_seals_what_the_paid_run_must_reproduce",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:write_input:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the paid run's delivered-input custody sink (Q-release gate item 15): each forwarded request's text, keyed by its digest, appended before the send to a directory the launcher refuses inside the repository; the support audit reads it and the repository record keeps only digests.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_text_sinks_must_be_outside_the_repository_and_keep_each_request_by_its_digest",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:write_input:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the paid run's delivered-input custody sink (Q-release gate item 15): each forwarded request's text, keyed by its digest, appended before the send to a directory the launcher refuses inside the repository; the support audit reads it and the repository record keeps only digests.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_text_sinks_must_be_outside_the_repository_and_keep_each_request_by_its_digest",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:write_input:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: the paid run's delivered-input custody sink (Q-release gate item 15): each forwarded request's text, keyed by its digest, appended before the send to a directory the launcher refuses inside the repository; the support audit reads it and the repository record keeps only digests.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_text_sinks_must_be_outside_the_repository_and_keep_each_request_by_its_digest",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_launch:_writable:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the fixed word 'probe' to a randomly named file in a destination directory and removes it at once, so a destination that cannot take the paid record fails before any send; no request, answer, file body or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_a_destination_that_cannot_be_written_is_refused_before_any_send",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_paid:run:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: builds a row's terminal reason and the run's stop reason from counts, the Guard's refusal reason and the expected request count; no reply, source or credential text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_at_the_first_row_that_is_not_settled",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_paid:write:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the paid-attempt record of case ids, arms, positions, attempt and Gateway request ids, outcomes, reported costs, usage counts, request digests and byte counts, and each answer's digest; answers go only to the caller's separate sink; no source body, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_at_the_first_row_that_is_not_settled",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_paid:write:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the paid-attempt record of case ids, arms, positions, attempt and Gateway request ids, outcomes, reported costs, usage counts, request digests and byte counts, and each answer's digest; answers go only to the caller's separate sink; no source body, credential or exception text.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_paid.py::test_the_run_stops_at_the_first_row_that_is_not_settled",
       "evidence_tier": "unit"
     },
     {

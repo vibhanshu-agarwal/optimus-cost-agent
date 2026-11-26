@@ -894,7 +894,7 @@ def determinism(frozen: Frozen, work: Path, chosen: tuple[int, int]) -> dict[str
 PRE_TASK2 = "e0ece334e5f394544ff723aca7184715ea74b8f9"  # pragma: allowlist secret (a git commit)
 
 
-def cache_identity(repository: Path) -> dict[str, Any]:
+def cache_identity(repository: Path, *, head: str = "HEAD") -> dict[str, Any]:
     """The planner prompt's versions, and its cacheable prefix and one fixed request digested under 4/12 and under the production limits;
     the registry's ordinary, Auto and test-profile hashes, and whether any registry file changed since before Task 2."""
     from optimus.agent import prompts
@@ -924,7 +924,7 @@ def cache_identity(repository: Path) -> dict[str, Any]:
         for label, value in limits.items()
     }
     changed = subprocess.run(
-        ["git", "-C", str(repository), "diff", "--name-only", PRE_TASK2, "HEAD", "--", "src/optimus_model_policy", ":(exclude)src/optimus_model_policy/stage_c.py"],
+        ["git", "-C", str(repository), "diff", "--name-only", PRE_TASK2, head, "--", "src/optimus_model_policy", ":(exclude)src/optimus_model_policy/stage_c.py"],
         capture_output=True,
         text=True,
         check=True,

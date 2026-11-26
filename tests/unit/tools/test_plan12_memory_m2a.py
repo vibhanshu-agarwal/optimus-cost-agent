@@ -429,8 +429,12 @@ def test_ambiguity_scores_every_order_over_the_same_rows() -> None:
     assert (score["candidates_lost"], score["denied_listed"]) == (1, 1)
 
 
+M2A_DELIVERED = "5467386be9ede1374c471cd6fffdd037fe5a673e"  # pragma: allowlist secret (a git commit: PR #562's merge)
+
+
 def test_cache_identity_shows_the_prefix_moved_and_the_registry_did_not() -> None:
-    report = ev.cache_identity(REPOSITORY)
+    # Bounded by M2a's own delivery: Plan 12.14 changes the registry on purpose, after it (D3, D5).
+    report = ev.cache_identity(REPOSITORY, head=M2A_DELIVERED)
     assert report["prefix_changed"] and report["registry"]["files_changed"] == []
     assert report["digests"]["production"]["limits"] == [6144, 10240, 16384]
     assert set(report["registry"]["test_profiles"]) == {"qualification", "attached", "evaluation"}

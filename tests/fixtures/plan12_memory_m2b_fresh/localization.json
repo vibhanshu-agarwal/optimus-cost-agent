@@ -1,0 +1,937 @@
+{
+ "schema": "plan12-memory-fixtures/1",
+ "cases": [
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF01-a",
+   "version": 1,
+   "family": "QF01",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "A launch can hand agent state and telemetry to a foreign Redis, because any loopback listener that answers is reused and, on the default address, only a container name is checked. Where does the launch start or reuse its local Redis and decide whether the default port's owner is the expected container, and where does the entry point start local dependencies for an authorized run?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:a92f45a04d22dc5940944b99c7d4e68a1f1ce17a",
+   "cutoff": "2026-11-16T17:37:35+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/__main__.py::main._run_authorized",
+      "symbol:src/optimus/acp/__main__.py::main._start_local_dependencies"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/local_infra.py::_assert_default_redis_port_owner",
+      "symbol:src/optimus/acp/local_infra.py::_is_established_default_redis_url",
+      "symbol:src/optimus/acp/local_infra.py::ensure_local_redis"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit 8afa60f085300693b2fe4e40287930a574fe81f3 inside merged PR #487 (merge 5b28b2b19b0a665484d04614044bd87abe179eef), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF02-a",
+   "version": 1,
+   "family": "QF02",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Traces can go to a foreign program: the launch accepts a local tracing endpoint as its own when Docker names the port's owner, the container's image matches and the health check answers, none of which proves the loopback listener is that container. Where does the launch decide to start or reuse the local tracing container, and where does it read the container's image, whether it exists and who owns its published port?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:a92f45a04d22dc5940944b99c7d4e68a1f1ce17a",
+   "cutoff": "2026-11-16T17:37:35+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/local_infra.py::_assert_phoenix_port_identity",
+      "symbol:src/optimus/acp/local_infra.py::_container_exists",
+      "symbol:src/optimus/acp/local_infra.py::_docker_container_image",
+      "symbol:src/optimus/acp/local_infra.py::_docker_published_port_owners",
+      "symbol:src/optimus/acp/local_infra.py::ensure_local_phoenix"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit db94781386b94836f9f6637f2e05b780c151a94e inside merged PR #488 (merge dc21421ca76cf862ecf88d49fd5c7d9a6e90a89a), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF03-a",
+   "version": 1,
+   "family": "QF03",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "In the memory store a list reply can exceed its reply bound, a read can iterate a fold while a confirmed save changes it, an outage leaves stale cached folds, and the event contract accepts a first event that is not an admission and control characters at the boundary. Where does the memory store answer appends, reads, lists, leases and checkpoints and confirm a save on disk, and where does the store contract validate an event and its text?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:22d9fcc1299929d1a3e67e4cf1e4210c2be9abcf",
+   "cutoff": "2026-11-17T01:31:40+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._append",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._confirm",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._op_append",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._op_checkpoints",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._op_lease",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._op_list",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._op_read",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._recheck_fsync",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._served",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStoreService.handle",
+      "symbol:src/optimus_gateway/memory_store.py::connect",
+      "symbol:src/optimus_gateway/memory_store.py::verify_resource",
+      "symbol:src/optimus_gateway/memory_store.py::waitaof_local"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus_security/memory_store_contract.py::_line",
+      "symbol:src/optimus_security/memory_store_contract.py::event"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit d23ca8f5f1a887e384cfdff551ebc66ad23be9e6 inside merged PR #493 (merge 84fb87ca6546c44d3a1f72e027a04bac638e70f8), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF04-a",
+   "version": 1,
+   "family": "QF04",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Several memory defects at once: purge recovery loses a dead Gateway's last verified journal record and refuses a purge under another key; an agent turn that read a document still vouches for lineage; a session can commit under two leases and text the store refused is not retried; a detached session keeps its extractor; the per-project cap on live off-record items is missing. Where does memory extraction filter, enqueue, commit and close, where does the purge journal list its entries, where does the store fold, reconcile and purge, where does the attached turn record a dispatch, where is a session detached from the in-memory session store, and where are the store contract's limits defined?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:07d4f62abcbd991819dcca7ed05f3dda0ca63567",
+   "cutoff": "2026-11-17T10:56:07+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::InMemoryAcpSpecSessionStore._detach_session"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/context/assembly.py::AttachedTurn.record_dispatch"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/context/memory_extraction.py::MemoryExtractor.__init__",
+      "symbol:src/optimus/context/memory_extraction.py::MemoryExtractor._commit",
+      "symbol:src/optimus/context/memory_extraction.py::MemoryExtractor._enqueue",
+      "symbol:src/optimus/context/memory_extraction.py::MemoryExtractor._run",
+      "symbol:src/optimus/context/memory_extraction.py::MemoryExtractor.close",
+      "symbol:src/optimus/context/memory_extraction.py::agent_candidates",
+      "symbol:src/optimus/context/memory_extraction.py::evidence_from",
+      "symbol:src/optimus/context/memory_extraction.py::extractor_factory",
+      "symbol:src/optimus/context/memory_extraction.py::extractor_factory.open_extractor",
+      "symbol:src/optimus/context/memory_extraction.py::prefilter_agent",
+      "symbol:src/optimus/context/memory_extraction.py::prefilter_user",
+      "symbol:src/optimus/context/memory_extraction.py::user_candidates"
+     ]
+    },
+    {
+     "requirement_id": "R4",
+     "any_of": [
+      "symbol:src/optimus_gateway/memory_journal.py::PurgeJournal.entries"
+     ]
+    },
+    {
+     "requirement_id": "R5",
+     "any_of": [
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._append",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._op_purge",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._op_purge_status",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._reconcile",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._served",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._writing",
+      "symbol:src/optimus_gateway/memory_store.py::_Fold.__init__",
+      "symbol:src/optimus_gateway/memory_store.py::_Fold.apply"
+     ]
+    },
+    {
+     "requirement_id": "R6",
+     "any_of": [
+      "path:src/optimus_security/memory_store_contract.py"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit 1acc05bc3999b4538b195121457c16f0dbfa2421 inside merged PR #496 (merge a51a97811a7422fbf250d57f61deba2035662ce9), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF05-a",
+   "version": 1,
+   "family": "QF05",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "Package and advisory metadata routes answer not found whenever no web search key is configured, because the Gateway builds its tool bundle only when every credential is present. Where are the Gateway's tool dependencies built, where does its server route a POST to a tool, and where do the web search and extract handlers use the web provider?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:43e5e5b415140a17005045d3d21c6de2ed8595b3",
+   "cutoff": "2026-11-17T17:27:35+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus_gateway/providers.py::build_tool_dependencies"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus_gateway/server.py::OptimusGatewayHandler._handle_post",
+      "symbol:src/optimus_gateway/server.py::OptimusGatewayHandler.do_POST"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus_gateway/tool_handlers.py::GatewayToolDependencies",
+      "symbol:src/optimus_gateway/tool_handlers.py::_handle_web_extract",
+      "symbol:src/optimus_gateway/tool_handlers.py::_handle_web_search"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit 1720b0dc7a56dd565f36f7fd97574179bc19425f inside merged PR #494 (merge 4a21291e147cdf40b5f87c3de5002534d0092290), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF06-a",
+   "version": 1,
+   "family": "QF06",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "After a purge reply is lost and both the journal and store disappear, a restore can proceed. Two exports of one project can race, repairing a lost registry can preserve only one project's identity, and undelivered notices can be dropped at a cap. Where does the memory command dispatch a purge, where does recovery serialize exports and repair the registry, where are undelivered notices retained, and where is the registry snapshot supplied to a session's recovery?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:afd831ee8376a113f334456c47444988944a9a05",
+   "cutoff": "2026-11-18T12:08:50+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/memory_commands.py::MemoryCommands.purge"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/context/memory_extraction.py::extractor_factory",
+      "symbol:src/optimus/context/memory_extraction.py::extractor_factory.open_extractor"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/context/memory_recovery.py::NoticeBacklog.add",
+      "symbol:src/optimus/context/memory_recovery.py::Recovery",
+      "symbol:src/optimus/context/memory_recovery.py::Recovery._export",
+      "symbol:src/optimus/context/memory_recovery.py::Recovery.export",
+      "symbol:src/optimus/context/memory_recovery.py::Recovery.restore",
+      "symbol:src/optimus/context/memory_recovery.py::RegistryRecovery.recover",
+      "symbol:src/optimus/context/memory_recovery.py::registry_entry"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit ae6be12770ad17ba48a946d944e77801238b55a0 inside merged PR #500 (merge e718836f09b7bffa5b081e0e1343ab72722f352d), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF07-a",
+   "version": 1,
+   "family": "QF07",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "The tracing health probe, the agent's Gateway client, and the Gateway's tool and model clients open URLs without a shared rule limiting them to HTTP and HTTPS. Where do those components validate destinations and open their requests?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:1e09d811ce4884749555f9bfaca3220893ec2415",
+   "cutoff": "2026-11-18T18:55:14+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/local_infra.py::_phoenix_health_ready"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/gateway/client.py::UrllibGatewayTransport.post_json"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus_gateway/tool_provider_http.py::request_bytes",
+      "symbol:src/optimus_gateway/tool_provider_http.py::request_json"
+     ]
+    },
+    {
+     "requirement_id": "R4",
+     "any_of": [
+      "symbol:src/optimus_gateway/tool_providers.py::OsvAdvisoryToolProvider.__init__",
+      "symbol:src/optimus_gateway/tool_providers.py::PackageRegistryToolProvider.__init__",
+      "symbol:src/optimus_gateway/tool_providers.py::TavilyWebToolProvider.__init__"
+     ]
+    },
+    {
+     "requirement_id": "R5",
+     "any_of": [
+      "symbol:src/optimus_gateway/upstream_client.py::UrllibOpenAICompatibleClient.__init__",
+      "symbol:src/optimus_gateway/upstream_client.py::UrllibOpenAICompatibleClient.create_decision_once",
+      "symbol:src/optimus_gateway/upstream_client.py::UrllibOpenAICompatibleClient.create_message_once",
+      "symbol:src/optimus_gateway/upstream_client.py::_build_attempt_opener",
+      "symbol:src/optimus_gateway/upstream_client.py::_read_reply",
+      "symbol:src/optimus_gateway/upstream_client.py::_urlopen_json",
+      "symbol:src/optimus_gateway/upstream_client.py::_watched_opener",
+      "symbol:src/optimus_gateway/upstream_client.py::watched_urlopen"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit 5ea61ccfb5e46ec6a48c0b64647afb3b8a585521 inside merged PR #503 (merge 8008791770e1d96f12a498d158e40c789ed0d94d), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF08-a",
+   "version": 1,
+   "family": "QF08",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "A memory request can outlive its deadline while the store recovers from a failed watched transaction. Cutting the socket does not first revoke the remaining transport budget, reconnecting can proceed after expiry, and recovery can return an untyped connection error. Where does the store cut the connection, enforce the deadline on reconnect, and classify the recovery failure?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:b082d062cd0ec380335287e9af2a12db4634ee61",
+   "cutoff": "2026-11-18T21:24:19+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus_gateway/memory_store.py::Link.cut",
+      "symbol:src/optimus_gateway/memory_store.py::MemoryStore._after_watch_error",
+      "symbol:src/optimus_gateway/memory_store.py::_TrackedConnection"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit eff01628f08759b0d507b57f42d90696d22e95d0 inside merged PR #502 (merge 1e5df7196bbad0a7ee5959bed452880678bb5ab6), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF09-a",
+   "version": 1,
+   "family": "QF09",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "A memory file pin can be created for a secret, ignored or out-of-workspace file because pins bypass the includable-files policy; a restore writes before it validates pins; and an agent lesson resting only on a tool read is admitted without cited verification. Where does a confirmed memory command take effect, where are agent candidates extracted, where does recovery restore and repair the registry, and where does memory serving pin and recheck files?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:deb83379188ff55e65d69d5b42febff1f554e72c",
+   "cutoff": "2026-11-18T22:42:49+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/memory_commands.py::MemoryCommands.confirmed"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/context/memory_extraction.py::agent_candidates"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/context/memory_recovery.py::Recovery.restore",
+      "symbol:src/optimus/context/memory_recovery.py::RegistryRecovery.recover"
+     ]
+    },
+    {
+     "requirement_id": "R4",
+     "any_of": [
+      "symbol:src/optimus/context/memory_serving.py::_digest",
+      "symbol:src/optimus/context/memory_serving.py::_inside",
+      "symbol:src/optimus/context/memory_serving.py::changed_file",
+      "symbol:src/optimus/context/memory_serving.py::file_refs",
+      "symbol:src/optimus/context/memory_serving.py::from_store"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit f1c83ecc89f0bf6bbd6d0e019341e755265308a9 inside merged PR #504 (merge fcc72ce8e77b262226c1909ff8f7784e7ce4ab09), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF10-a",
+   "version": 1,
+   "family": "QF10",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When projects share a backup folder, one project's cleanup can touch another project's generations. Switching back to an earlier folder can leave it listed as both current and previous, and a failed scheduled backup can retry too soon. A failure recording a withdrawal for recovery can also prevent recording the backup cleanup obligation. Where do the backup and recovery commands run, where are the targets, cleanup and schedule tracked, and where are the two withdrawal records made?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:c530976c397d69aafe331961af130150308889a1",
+   "cutoff": "2026-11-21T03:30:05+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/memory_commands.py::MemoryCommands._backup_command",
+      "symbol:src/optimus/acp/memory_commands.py::MemoryCommands._backup_confirmed",
+      "symbol:src/optimus/acp/memory_commands.py::MemoryCommands._recovery_command"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/context/memory_backups.py::BackupState",
+      "symbol:src/optimus/context/memory_backups.py::BackupState.from_json",
+      "symbol:src/optimus/context/memory_backups.py::BackupState.to_json",
+      "symbol:src/optimus/context/memory_backups.py::BackupStateFile.load",
+      "symbol:src/optimus/context/memory_backups.py::BackupStateFile.update",
+      "symbol:src/optimus/context/memory_backups.py::Backups",
+      "symbol:src/optimus/context/memory_backups.py::Backups._backup",
+      "symbol:src/optimus/context/memory_backups.py::Backups._backup.change",
+      "symbol:src/optimus/context/memory_backups.py::Backups._checked_target",
+      "symbol:src/optimus/context/memory_backups.py::Backups._clean_prior",
+      "symbol:src/optimus/context/memory_backups.py::Backups._retire",
+      "symbol:src/optimus/context/memory_backups.py::Backups._source",
+      "symbol:src/optimus/context/memory_backups.py::Backups.assess",
+      "symbol:src/optimus/context/memory_backups.py::Backups.backup",
+      "symbol:src/optimus/context/memory_backups.py::Backups.configure",
+      "symbol:src/optimus/context/memory_backups.py::Backups.configure.change",
+      "symbol:src/optimus/context/memory_backups.py::Backups.generations",
+      "symbol:src/optimus/context/memory_backups.py::Backups.run_if_due",
+      "symbol:src/optimus/context/memory_backups.py::Backups.status_line",
+      "symbol:src/optimus/context/memory_backups.py::Backups.withdrawn",
+      "symbol:src/optimus/context/memory_backups.py::Backups.withdrawn.change",
+      "symbol:src/optimus/context/memory_backups.py::Scheduler._loop",
+      "symbol:src/optimus/context/memory_backups.py::Scheduler.close",
+      "symbol:src/optimus/context/memory_backups.py::_disks_linux",
+      "symbol:src/optimus/context/memory_backups.py::_disks_windows",
+      "symbol:src/optimus/context/memory_backups.py::_reparse_in_chain",
+      "symbol:src/optimus/context/memory_backups.py::default_store_data"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/context/memory_extraction.py::extractor_factory.open_extractor.written"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit 438ea89830feca6e5c7894358f23714fde0c6332 inside merged PR #522 (merge a15b333225c3ea5564d5b5ca36d78fe23d6ef7f7), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF11-a",
+   "version": 1,
+   "family": "QF11",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "In a real editor session the memory backup status says overdue since a future date and shows a stray fragment, and import commit cards say Remembered instead of Imported. Where is the backup status line built, where are memory answers and the import confirmation produced, where are notice cards rendered, and where does the ACP adapter compute a memory command's reply?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:e02de5af64672e7aafc1b5b2770a910652dee530",
+   "cutoff": "2026-11-21T18:57:56+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/memory_commands.py::MemoryAnswer",
+      "symbol:src/optimus/acp/memory_commands.py::MemoryCommands._import_confirmed"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/memory_notices.py::card"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._handle_memory_command.compute"
+     ]
+    },
+    {
+     "requirement_id": "R4",
+     "any_of": [
+      "symbol:src/optimus/context/memory_backups.py::Backups.status_line"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit 1366f7b47d673e9bd4a92e1c6f25a294f9e9f39a inside merged PR #542 (merge 1f4d3e37963c77eb0c451a936b200df287bd99ee), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF12-a",
+   "version": 1,
+   "family": "QF12",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "When the shared local Gateway the agent borrowed is lost, a later prompt is sent without re-verifying its identity, and an Auto turn whose classification reply was lost can send a fallback request although the first may already have been charged. Where does the entry point confirm or start the Gateway and register a reuse check, where is the configured server built, where does the stream server accept that check, and where does the ACP adapter handle a prompt, prepare attached context and route an Auto turn?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:cc121ce790729cccacd9d75265aaeecf479d15a7",
+   "cutoff": "2026-11-23T01:19:40+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/__main__.py::_BuildServerKwargs",
+      "symbol:src/optimus/acp/__main__.py::main._confirm_running_gateway",
+      "symbol:src/optimus/acp/__main__.py::main._run_authorized",
+      "symbol:src/optimus/acp/__main__.py::main._start_gateway"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/bootstrap.py::build_configured_server"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "symbol:src/optimus/acp/local_infra.py::confirm_running_gateway",
+      "symbol:src/optimus/acp/local_infra.py::ensure_local_gateway",
+      "symbol:src/optimus/acp/local_infra.py::ensure_local_gateway.confirm_listener"
+     ]
+    },
+    {
+     "requirement_id": "R4",
+     "any_of": [
+      "symbol:src/optimus/acp/server.py::AcpStreamServer.__init__",
+      "symbol:src/optimus/acp/server.py::AcpStreamServer._serve_ndjson"
+     ]
+    },
+    {
+     "requirement_id": "R5",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter.__init__",
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._handle_session_prompt",
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._prepare_attached_context",
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._route_auto_turn"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit 4333d51c9fb9ffe0679df676e86b99e9462b2417 inside merged PR #551 (merge 38e6e3a437e4354ec1c30c710e6d0462752ea5bc), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF13-a",
+   "version": 1,
+   "family": "QF13",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "The evidence collector and operator verifier can leave subprocess descendants holding pipes open during teardown. Cleanup can stall or finish without reporting that a reader or child was left behind. Where are those subprocesses launched and torn down, and where is the process tree contained?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:3d39f0894466d19a9a3e70e2f58107bd5447f9a7",
+   "cutoff": "2026-11-23T08:26:03+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession",
+      "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession.__init__",
+      "symbol:src/optimus/acp/ndjson_subprocess_session.py::NdjsonSubprocessSession.terminate"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/operator_verify.py::_finish_verifier_lifetime",
+      "symbol:src/optimus/acp/operator_verify.py::run_operator_live_session"
+     ]
+    },
+    {
+     "requirement_id": "R3",
+     "any_of": [
+      "path:src/optimus/runtime/process_tree.py"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit f3e41df3760429d53da77e03d278bcd8fbdf7893 inside merged PR #553 (merge a9dae8462b35554325c5a50a1f778829bc33bcdb), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  },
+  {
+   "schema": "plan12-memory-case/1",
+   "case_id": "QF14-a",
+   "version": 1,
+   "family": "QF14",
+   "split": "held_out",
+   "kind": "localization",
+   "role": "probe",
+   "oracles": [
+    "K2"
+   ],
+   "inputs": [
+    {
+     "seq": 0,
+     "actor": "user",
+     "text": "A prompt response's outcome metadata says failed or completed although the turn settled as cancelled, because it carries the outcome handed to the commit instead of the turn's settlement. Where does the turn control keep its settlement, and where does the ACP adapter build the prompt result and finish Chat and prompt turns?",
+     "attempt": null
+    }
+   ],
+   "project_id": "optimus-cost-agent",
+   "snapshot": "git:95eb062d4c1c97d3bb60047d8a745594b6c19470",
+   "cutoff": "2026-11-23T23:16:08+05:30",
+   "expected_action": "answer",
+   "required_facts": [],
+   "required_evidence": [
+    {
+     "requirement_id": "R1",
+     "any_of": [
+      "symbol:src/optimus/acp/lifecycle.py::TurnControl"
+     ]
+    },
+    {
+     "requirement_id": "R2",
+     "any_of": [
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._finish_chat_turn",
+      "symbol:src/optimus/acp/spec.py::AcpDuplexAdapter._handle_session_prompt",
+      "symbol:src/optimus/acp/spec.py::_prompt_result"
+     ]
+    }
+   ],
+   "prohibited_claims": [],
+   "required_events": [],
+   "prohibited_events": [],
+   "expected_memory": [],
+   "expected_rank": [],
+   "expected_cost": null,
+   "verification": "packing qualification: each requirement is met by one of its changed symbols in the cutoff tree (its path only for a module-level change); evidence in context is counted in the pack, recall at k=5 in the retrieved order",
+   "provenance": {
+    "drafted_by": "claude",
+    "verified_by": "codex",
+    "holdout": "historical, not forward-time",
+    "source": "fix commit 52c38b696fd725f8d863b9e570e9b8c68f2e1ead inside merged PR #561 (merge 33aff086660ca6c8fd5f426e9de79f9239b50b43), a pre-merge snapshot; gold = its changed src paths and symbols on the old side, AST-unchanged files and files without an old-side locus left out"
+   }
+  }
+ ]
+}

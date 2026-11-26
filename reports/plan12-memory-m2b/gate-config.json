@@ -1,0 +1,20 @@
+{
+ "schema": "plan12-memory-m2b.run-config.v1",
+ "label": "plan12.14-q-release-gate-g2",
+ "authorization": "operator, Claude chat 2026-11-26: \"Release G2\" (Docker Desktop, the dedicated index Redis p1214-index-test-redis and its volume, the configured embedding artifact; reruns of the same command that day; no paid call is possible)",
+ "cases": "reports/plan12-memory-m2b/cases.json",
+ "release_prefix": "p1214-",
+ "container": "p1214-index-test-redis",
+ "volume": "p1214-index-test-data",
+ "port": 6401,
+ "gateway_port": 8781,
+ "maxmemory_mb": 1024,
+ "capacity": "five live indexes, 96,763 records (calibration.json tree counts for the five paid snapshots); the M1 pilot held 60,000 records in 349.3 MiB, so about 563 MiB by straight line, over Task 1's 512 MiB cap; 1,024 MiB leaves about 1.8x headroom. Host 47.8 GiB, WSL2 default limit half of it. A worker the store refuses stops the run with its reason (m2b_launch.wait_indexed).",
+ "work_dir": "tmp/plan12-m2b",
+ "embedding_cache": "tmp/plan12-m2b/embedding-cache.sqlite",
+ "artifact_cache": "C:/worktrees/optimus-cost-agent-worktrees/optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+ "embedding_threads": 2,
+ "sink_dir": "C:/worktrees/optimus-cost-agent-worktrees/optimus-handoff/p1214-q-sinks",
+ "models": "none in G2: the index Gateway's upstream is unroutable (127.0.0.1:9) and the rehearsal's model Gateway posts only to a loopback stub provider; m2b_launch refuses with a provider key in the environment",
+ "teardown": "m2b_launch.provisioned closes every session, the index Gateway and removes the container and volume in a finally block, a failed start included"
+}

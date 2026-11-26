@@ -13,9 +13,12 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Final
 
-from .retrieval import Hit, Ranked
+from .file_outline import build_outline
+from .pack_utility import Candidate, select
+from .retrieval import Hit, Ranked, lexical_terms
 
 SIGNATURE_SHARE: Final = 0.25  # of what optional context has; bodies get the rest
+REQUIRED_FLOOR_TOKENS: Final = 1024  # optional room kept above required text when there is room for it (Plan 12.14)
 SECTION_REQUIRED: Final = "--- required files ---"
 SECTION_SIGNATURES: Final = "--- relevant symbols and sections (from the index) ---"
 SECTION_BODIES: Final = "--- verified excerpts (read from disk now) ---"
@@ -31,7 +34,7 @@ class Selected:
     file_hash: str
     start_line: int | None
     end_line: int | None
-    disclosure: str  # "required", "signature", "body" or "omitted"
+    disclosure: str  # "required", "outline", "signature", "body" or "omitted"
     score: float = 0.0
     ranks: Mapping[str, int] = field(default_factory=dict)
     reason: str = ""
@@ -46,10 +49,16 @@ class Pack:
     file_sha256s: Mapping[str, str]
     missing_required: tuple[str, ...] = ()
     stale_paths: tuple[str, ...] = ()
+    outline: Mapping[str, object] | None = None  # Plan 12.14: the overflow outline's body-free metadata, when the pack carries one
 
     @property
     def complete(self) -> bool:
         return not self.missing_required
+
+
+def chosen_budget(ceiling: int, target: int, required: int) -> int:
+    """Plan 12.14: the soft target, never below the required text plus a floor of optional room, never above the hard ceiling."""
+    return min(ceiling, max(required + min(REQUIRED_FLOOR_TOKENS, ceiling - required), target))
 
 
 def _excerpt(data: bytes, hit: Hit) -> str | None:
@@ -74,8 +83,15 @@ def _signature_line(hit: Hit) -> str | None:
     return f"{_where(hit)} {label}: {' '.join((summary or '').split())}".rstrip(": ")
 
 
-def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Callable[[str], bytes | None], estimate: Callable[[str], int], budget_tokens: int) -> Pack:
-    """`read` returns the file's current bytes, or None when policy no longer admits it. `estimate` is the route's token estimator."""
+def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Callable[[str], bytes | None], estimate: Callable[[str], int], budget_tokens: int,
+                  policy: str = "baseline", task: str = "", protected: Sequence[str] = (), target_tokens: int | None = None,
+                  overview_path: str | None = None) -> Pack:
+    """`read` returns the file's current bytes, or None when policy no longer admits it. `estimate` is the route's token estimator.
+    `policy` chooses which optional items fill each phase (pack_utility); `task` gives its terms and `protected` the quota places.
+    With `target_tokens` (Plan 12.14), `budget_tokens` is the hard ceiling C: required text that fits it is whole, and optional room is
+    chosen_budget(C, target, required) less the required text. Without it, `budget_tokens` is the whole budget, as before.
+    `overview_path` (Plan 12.14, D4; with a target only) names the one required file a direct summary task asked for: when it is the whole
+    required set and its text is over C, a disclosed outline of it (file_outline) stands in for it if one fits; otherwise, as before."""
     selected: list[Selected] = []
     hashes: dict[str, str] = {}
     contents: dict[str, bytes | None] = {}
@@ -104,12 +120,27 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         selected.append(Selected(path, "file", None, file_hash, None, None, "required", reason="named by the task"))
     required_text = f"{SECTION_REQUIRED}\n" + "\n".join(blocks) if blocks else ""
     used = estimate(required_text) if required_text else 0
+    outline = None
+    if used > budget_tokens and target_tokens is not None and overview_path is not None and tuple(required) == (overview_path,) and not missing:
+        # The section header is charged first, so an outline sized to its room still fits C once wrapped (gate item 10 found the gap).
+        room_for_outline = budget_tokens - estimate(f"{SECTION_REQUIRED}\n")
+        outline = build_outline(overview_path, contents[overview_path] or b"", estimate=estimate, max_tokens=room_for_outline)
+        if outline is not None and estimate(f"{SECTION_REQUIRED}\n{outline.text}") <= budget_tokens:
+            required_text = f"{SECTION_REQUIRED}\n{outline.text}"
+            used = estimate(required_text)
+            # file_sha256s names files whose bytes the text shows; an outline shows none, so its hash stays on the row only (Fable CP2 finding 2).
+            selected[0] = Selected(overview_path, "file", None, hashes.pop(overview_path), None, None, "outline", reason="outline only: the whole file is over the budget")
+        else:
+            outline = None
     if used > budget_tokens:
         return Pack("", 0, budget_tokens, tuple(selected), {}, tuple(required))
     if missing:
         return Pack(required_text, used, budget_tokens, tuple(selected), hashes, tuple(missing))
-
     room = budget_tokens - used
+    if target_tokens is not None:
+        budget_tokens = chosen_budget(budget_tokens, target_tokens, used)
+        # A hard ceiling holds for the whole pack: the two newlines joining its three sections are charged here (legacy is unchanged).
+        room = max(0, budget_tokens - used - max(0, estimate("\n\n") - estimate("")))
     signatures_room = int(room * SIGNATURE_SHARE)
     named = set(required)
     stale: list[str] = []
@@ -128,35 +159,27 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         else:
             verified.append(item)
 
-    signature_lines: list[str] = []
-    shown_signature: set[str] = set()
-    for item in verified:
-        line = _signature_line(item.hit)
-        if line is None:
-            continue
-        candidate = "\n".join([SECTION_SIGNATURES, *signature_lines, line])
-        if estimate(candidate) > signatures_room:
-            continue
-        signature_lines.append(line)
-        shown_signature.add(item.hit.id)
+    task_terms = lexical_terms(task) if policy != "baseline" else []
+    keep = frozenset(protected)
+    lines_by_id = {item.hit.id: line for item in verified if (line := _signature_line(item.hit)) is not None}
+    pool = [Candidate(item.hit.id, lines_by_id[item.hit.id], item.score, ordinal) for ordinal, item in enumerate(verified) if item.hit.id in lines_by_id]
+    shown_signature = {c.id for c in select(SECTION_SIGNATURES, pool, room=signatures_room, estimate=estimate, policy=policy, task_terms=task_terms, protected=keep)}
+    signature_lines = [c.text for c in pool if c.id in shown_signature]
     signature_text = "\n".join([SECTION_SIGNATURES, *signature_lines]) if signature_lines else ""
     used_signatures = estimate(signature_text) if signature_text else 0
 
     bodies_room = room - used_signatures
-    body_blocks: list[str] = []
-    shown_body: set[str] = set()
-    for item in verified:
+    blocks_pool: list[Candidate] = []
+    for ordinal, item in enumerate(verified):
         hit = item.hit
         excerpt = _excerpt(contents[hit.path] or b"", hit) if hit.kind != "file" else None
-        if not excerpt:
-            continue
-        block = f"--- {_where(hit)} ---\n{excerpt}"
-        candidate = "\n".join([SECTION_BODIES, *body_blocks, block])
-        if estimate(candidate) > bodies_room:
-            continue
-        body_blocks.append(block)
-        shown_body.add(hit.id)
-        hashes[hit.path] = hit.file_hash
+        if excerpt:
+            blocks_pool.append(Candidate(hit.id, f"--- {_where(hit)} ---\n{excerpt}", item.score, ordinal))
+    shown_body = {c.id for c in select(SECTION_BODIES, blocks_pool, room=bodies_room, estimate=estimate, policy=policy, task_terms=task_terms, protected=keep)}
+    body_blocks = [c.text for c in blocks_pool if c.id in shown_body]
+    for item in verified:
+        if item.hit.id in shown_body:
+            hashes[item.hit.path] = item.hit.file_hash
     body_text = "\n".join([SECTION_BODIES, *body_blocks]) if body_blocks else ""
 
     for item in verified:
@@ -171,7 +194,8 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         selected.append(Selected(hit.path, hit.kind, hit.symbol, hit.file_hash, hit.start_line, hit.end_line, disclosure, item.score, dict(item.ranks), _reason(item)))
 
     text = "\n".join(part for part in (required_text, signature_text, body_text) if part)
-    return Pack(text, estimate(text) if text else 0, budget_tokens, tuple(selected), hashes, (), tuple(stale))
+    return Pack(text, estimate(text) if text else 0, budget_tokens, tuple(selected), hashes, (), tuple(stale),
+                None if outline is None else {**outline.metadata(overview_path or ""), "section_tokens": used})  # V: the outline section's cost
 
 
 def _reason(item: Ranked) -> str:
