@@ -12,6 +12,7 @@ from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 from optimus.usage.accounting import UsageAccountingService
 from tests.support.gateway_settings import gateway_settings
+from tests.support.redis_settle import run_settle_script
 
 
 class FakeTransport:
@@ -48,6 +49,8 @@ class FakeRedis:
 
     async def execute_command(self, *args: object):
         self.commands.append(args)
+        if args[0] == "EVAL":
+            return run_settle_script(self.commands, self._hashes, args)
         if args[0] == "TS.CREATE":
             key = args[1]
             if key in self._series:

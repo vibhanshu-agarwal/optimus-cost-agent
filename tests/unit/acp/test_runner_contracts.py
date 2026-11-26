@@ -188,7 +188,8 @@ def test_persistence_cannot_hide_a_recorded_missing_script(contract_call_log):
     log = contract_call_log[-1]
     log.expect("hset")
     outcome = RedisAgentStateStore(client=client).persist_plan(plan_record())
-    assert outcome.outcome.value == "persistence_failed"
+    # #644: the first write was attempted and the client did not report a Redis refusal, so it is uncertain.
+    assert outcome.outcome.value == "persistence_partial" and not outcome.authorizing
     assert log.calls == ["hset"]
     # An ordinary scenario's empty expectation still rejects the absorbed error.
     with pytest.raises(AssertionError, match="unexpected contract calls"):

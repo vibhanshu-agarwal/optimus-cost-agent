@@ -14,6 +14,7 @@ from optimus.telemetry.redis_adapter import RedisTelemetryAdapter
 from optimus.telemetry.redis_sink import RedisTelemetryEventSink
 from optimus.usage.accounting import UsageAccountingService
 from optimus.usage.errors import DuplicateGatewayRequestError
+from tests.support.redis_settle import run_settle_script
 from tests.unit.usage.test_accounting import gateway_usage
 
 
@@ -25,6 +26,8 @@ class FakeRedis:
 
     async def execute_command(self, *args: object):
         self.commands.append(args)
+        if args[0] == "EVAL":
+            return run_settle_script(self.commands, self._hashes, args)
         name = args[0]
         if name == "TS.CREATE":
             key = args[1]

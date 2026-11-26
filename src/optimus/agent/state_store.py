@@ -89,6 +89,21 @@ class PlanPersistenceResult:
         return self.outcome is PlanPersistenceOutcome.PERSISTED
 
 
+class _ExpiryNotApplied(RuntimeError):
+    """EXPIRE answered false: the key it was meant to bound no longer exists."""
+
+
+def _attempt_result(completed: tuple[str, ...], *, uncertain: bool) -> PlanPersistenceResult:
+    """Failed only when nothing was sent; otherwise partial with the substeps known to have landed.
+
+    A write that failed after it was sent may still have applied: a lost reply, or a client retry
+    whose refusal hides a first send that landed.
+    """
+    if completed or uncertain:
+        return PlanPersistenceResult(outcome=PlanPersistenceOutcome.PERSISTENCE_PARTIAL, completed_substeps=completed)
+    return PlanPersistenceResult(outcome=PlanPersistenceOutcome.PERSISTENCE_FAILED)
+
+
 class AgentPlanRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -338,35 +353,45 @@ class RedisAgentStateStore:
         client.expire(latest_key, self._ttl_seconds)
 
     def persist_plan(self, record: AgentPlanRecord) -> PlanPersistenceResult:
-        if self._async_store is not None:
-            try:
-                self.save_plan(record)
-            except Exception:
-                return PlanPersistenceResult(outcome=PlanPersistenceOutcome.PERSISTENCE_FAILED)
-            return PlanPersistenceResult(
-                outcome=PlanPersistenceOutcome.PERSISTED,
-                completed_substeps=("primary", "expiry", "pointer"),
-            )
         completed: list[str] = []
+        async_store = self._async_store
+        if async_store is not None:
+            lock = threading.Lock()
+            attempt = {"abandoned": False, "started": False}
+
+            async def steps() -> None:
+                with lock:
+                    if attempt["abandoned"]:  # the submitter already reported it; it must not write now
+                        return
+                    attempt["started"] = True
+                await async_store.save_plan(record, progress=completed)
+
+            try:
+                self.submit(steps)
+            except Exception:
+                with lock:
+                    attempt["abandoned"] = True
+                    done, started = tuple(completed), attempt["started"]
+                return _attempt_result(done, uncertain=started)
+            return PlanPersistenceResult(outcome=PlanPersistenceOutcome.PERSISTED, completed_substeps=tuple(completed))
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
+        sent = False
         try:
             client = self._required_sync_client
+            sent = True
             _sync_hset(client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
             completed.append("primary")
-            client.expire(key, self._ttl_seconds)
+            if not client.expire(key, self._ttl_seconds):
+                raise _ExpiryNotApplied(key)
             completed.append("expiry")
             latest_key = _latest_plan_key(run_id=record.run_id)
             _sync_hset(client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
             completed.append("pointer")
-            client.expire(latest_key, self._ttl_seconds)
+            if not client.expire(latest_key, self._ttl_seconds):
+                raise _ExpiryNotApplied(latest_key)
         except Exception:
-            if completed:
-                return PlanPersistenceResult(
-                    outcome=PlanPersistenceOutcome.PERSISTENCE_PARTIAL,
-                    completed_substeps=tuple(completed),
-                )
-            return PlanPersistenceResult(outcome=PlanPersistenceOutcome.PERSISTENCE_FAILED)
+            return _attempt_result(tuple(completed), uncertain=sent)
         return PlanPersistenceResult(
             outcome=PlanPersistenceOutcome.PERSISTED,
             completed_substeps=tuple(completed),
@@ -426,14 +451,21 @@ class AsyncRedisAgentStateStore:
         self._client = client
         self._ttl_seconds = ttl_seconds
 
-    async def save_plan(self, record: AgentPlanRecord) -> None:
+    async def save_plan(self, record: AgentPlanRecord, *, progress: list[str] | None = None) -> None:
+        """``progress`` receives each substep as it lands, the names ``persist_plan`` reports."""
+        done = progress if progress is not None else []
         key = _plan_key(run_id=record.run_id, plan_hash=record.plan_hash)
         mapping = _record_to_mapping(record)
         await _async_hset(self._client, key, mapping, lambda native, name, values: native.hset(name, mapping=values))
-        await self._client.expire(key, self._ttl_seconds)
+        done.append("primary")
+        if not await self._client.expire(key, self._ttl_seconds):
+            raise _ExpiryNotApplied(key)
+        done.append("expiry")
         latest_key = _latest_plan_key(run_id=record.run_id)
         await _async_hset(self._client, latest_key, {"plan_hash": record.plan_hash}, lambda native, name, values: native.hset(name, mapping=values))
-        await self._client.expire(latest_key, self._ttl_seconds)
+        done.append("pointer")
+        if not await self._client.expire(latest_key, self._ttl_seconds):
+            raise _ExpiryNotApplied(latest_key)
 
     async def load_plan(self, *, run_id: str, plan_hash: str) -> AgentPlanRecord:
         key = _plan_key(run_id=run_id, plan_hash=plan_hash)
