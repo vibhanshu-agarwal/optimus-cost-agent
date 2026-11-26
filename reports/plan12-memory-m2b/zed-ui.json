@@ -1,0 +1,66 @@
+{
+ "schema": "plan12-memory-m2b.zed-ui.v1",
+ "plan": "12.14",
+ "issue": 548,
+ "release": "operator 2026-11-26, Claude chat: \"Release the full setup\" (memory-setup in a throwaway config root with its keyring entry and the pinned model download, a durable launch approval, one Zed agent entry, the index container optimus-memory-redis, one zero-paid Zed session)",
+ "code_head": "git:a93309f43f48fd8ac05707f9832a2c406a05adca",
+ "client": "Zed (operator-typed prompts); computer use at click tier opened the workspace with Zed's command-line launcher, started the thread and captured screenshots",
+ "agent": "optimus-agent from this worktree's venv; entry optimus-p1214-why; own Gateway port 18784; config root optimus-handoff/p1214-zed/cfg; model auto",
+ "attach_gate": "before the counted prompt: one optimus-agent, its Gateway on 18784 in its own process chain to the Zed window, the Gateway's only upstream the stub on 18799, nothing on 8765",
+ "upstream": "local stub http://127.0.0.1:18799/api/v1 only, never forwards; provider key a dummy",
+ "paid_calls": "0",
+ "stub_requests": {
+  "total": 4,
+  "served_case_R1": 2,
+  "refused_unexpected_path": 2
+ },
+ "attempts": [
+  "launch 1: the thread was started in another Zed window; the agent refused with 'session cwd outside configured workspace' (Zed starts an entry's agent only in the window opened on its folder)",
+  "launch 2: Zed restored a second project at launch, so two agents of the entry started; the first owned the Gateway on 18784 and exited with that window, so the thread's agent refused prompt 1 twice with GATEWAY_IDENTITY_UNCONFIRMED and sent nothing (the agent starts its Gateway only at launch)",
+  "launch 3: Zed quit and reopened on the proof workspace alone; Zed's resume of the old thread failed ('Loading or resuming sessions is not supported by this agent'), a fresh thread from the + menu ran the steps below"
+ ],
+ "steps": [
+  {
+   "n": 1,
+   "prompt": "fix the gateway timeout in src/gateway/config.py [p1214:R1]",
+   "observed": "'Context index: building, nothing published yet. This turn uses today's context.'; the stub's synthetic reply",
+   "pass": true,
+   "screenshot": null
+  },
+  {
+   "n": 2,
+   "prompt": "/why",
+   "observed": "turn 1 explained; 'index pack: unavailable' (no index pack, so no pack-budget line)",
+   "pass": true,
+   "screenshot": "step2-why-index-unpublished.jpg"
+  },
+  {
+   "n": 3,
+   "prompt": "fix the gateway timeout in src/gateway/config.py [p1214:R1]",
+   "observed": "'Context index: ready, 4 of 4 files.'; the stub's synthetic reply",
+   "pass": true,
+   "screenshot": null
+  },
+  {
+   "n": 4,
+   "prompt": "/why",
+   "observed": "turn 2: 'index pack: 865 of 16384 tokens' and 'pack budget: legacy, ceiling 16384 tokens (policy m2b-v1); computed once before preparation for the route bound then, so after an Auto escalation it is the pre-escalation route's'",
+   "pass": true,
+   "screenshot": "step4-why-pack-budget-legacy.jpg"
+  }
+ ],
+ "result": "PASS: the /why v2 pack-budget line renders in real Zed and names the shipped legacy policy",
+ "observations": [
+  "whole-file index hits (README.md, docs/notes/caf\u00e9 r\u00e9sum\u00e9.md, src/agent/config.py) are listed 'omitted ... over the budget' with 865 of 16,384 tokens used: context_pack gives a file-kind hit no excerpt, so it can never be packed as a body or signature, and labels it with the generic reason. Pre-existing since M1 (1696fbf); packing is unaffected; the /why reason is misleading. A follow-up candidate (filing needs the operator's OK)",
+  "Auto's classifier call reached the stub on an unexpected path and was refused, so Auto fell back ('the classifier failed: error'); the stub serves only chat completions"
+ ],
+ "evidence": {
+  "step0-thread-ready.jpg": "hex:2e91019df23de0bc8ddfd46cba25ca6c214f0f1c4dd6f762c718b058a02880a1",
+  "step1-gateway-not-verified.jpg": "hex:130209489aac7d84e3034781e5fe83dd0c5e7d903239abc522ac5941889cb8e2",
+  "step2-why-index-unpublished.jpg": "hex:3d71a5c59849e7999b7e535664c45c2e30f3e38c0dd6d0c1d5dfffb1da8eed4f",
+  "step4-why-pack-budget-legacy.jpg": "hex:5dd6a51489ae2e1ec0eabfc7189f0957590898eebda66b8f96b9b5333e932651",
+  "stub-requests.ndjson": "hex:a31c8c3390f66e9de22a507d39a23937821d336db5909d0bce4e3b016af00e2c"
+ },
+ "evidence_root": "optimus-handoff/p1214-zed/evidence (screenshots and the stub's request log: counts, paths and body digests, never bodies)",
+ "teardown": "Zed quit; stub stopped; container optimus-memory-redis and volume optimus-memory-redis-data removed; the Zed entry removed (settings restored from the byte-exact backup); the launch approval revoke and the keyring entry deletion by the operator"
+}

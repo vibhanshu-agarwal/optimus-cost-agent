@@ -4,7 +4,7 @@
  "issue": 548,
  "state": "an incomplete closure after Task 4 qualification failed and D3 was rolled back, delivered through Task 5 by the operator's decisions below; Task 5 in progress; nothing pushed or delivered yet",
  "identities": {
-  "code_head": "git:8669178b5ce9fa328dd4cdc2a48b5948293e2bd2",
+  "code_head": "git:a93309f43f48fd8ac05707f9832a2c406a05adca",
   "branch": "agent/claude/p1214-impl (unpushed)",
   "base": "git:7abbaa262696c40409cea166569a93bd2feb6853"
  },
@@ -25,7 +25,8 @@
   "calibration-addendum.json": "hex:d45d43bcaa7648a9b99a4c62388d3556a6a068f464b430a51c6cca0b68de3b57",
   "calibration-budget.json": "hex:0e2c59f6cf879a3ba6c8d49fd6e127b4500f232629897029b0266dde2dd4404c",
   "gate-g2.json": "hex:f45b3c8690194e9541e70be40cdd59996d00fbafa312e2bed725401d141b0cd2",
-  "qualification.json": "hex:de5fa09b1d38029db77a1872ee345b31902f508412c8782b068e2f422e2d827a"
+  "qualification.json": "hex:de5fa09b1d38029db77a1872ee345b31902f508412c8782b068e2f422e2d827a",
+  "zed-ui.json": "hex:65a469d34ed7118764d7b52c3432dcf20fb50b327e4c63ce77257f72874274d1"
  },
  "partial_evidence": {
   "qualification": "the real-index qualification (qualification.json): the real index worker, Redis store and FilePolicy reader on 56 cutoff trees; zero paid",
@@ -34,14 +35,13 @@
  },
  "unrun": {
   "paid-attempts.json": "no paid Q or R (D6, D7)",
-  "boundaries.json": "Task 4's real acpx, Zed and Windows/WSL checks of /why, outline-to-exact-reread, allocation and overflow: UNRUN",
+  "boundaries.json": "Task 4's real acpx and Windows/WSL checks and the outline-to-exact-reread, allocation and overflow live checks: UNRUN by the operator's disposition (live_checks); the Zed /why check ran: zed-ui.json, PASS",
   "policy-checks.json": "whole/outline/reread/why/escalation/prefix/registry checks as a record: UNRUN (unit and production-byte tests only)",
   "final-gates.json": "Task 5: UNRUN",
   "support_audit": "UNRUN: no paid answers"
  },
  "owed_before_delivery": [
   "Task 5's final gates at the final code head: the affected-suite sweep and inventories, one full suite run from PowerShell, Ruff, coverage, then Linux CI on the PR",
-  "the /why v2 lines (optimus.context-manifest.v2, budget_policy legacy on the shipped route) seen in real Zed under its own release (UI testing rule), or the operator's disposition of that check",
   "freshness against main before the PR, and the PR's own identities (head, merge, CI)"
  ],
  "issue_custody": {
@@ -51,8 +51,9 @@
   "#235": "stays open: route qualification, deferred, Gated and later slices",
   "#463": "stays open: broader campaigns and report integration",
   "#491": "stays open: security and continuity",
-  "repo_map_defect": "production's first repo map on a fresh session can come back empty with nothing logged (MemorySession.repo_map; G2 run 2); an obligation before Task 5: fix or defer by the operator's decision",
-  "resolver_defect": "the workspace resolver binds a spaced or non-ASCII path's basename to another file (M2a behaviour; contract cp2_attempt_1.follow_ups): custody by the operator's decision",
+  "repo_map_defect": "fixed within Plan 12.14 at git:a93309f: each empty-map path logs its cause; G2 run 2's own cause is not recoverable from its records",
+  "resolver_defect": "filed as #634 (follow-up, default labels)",
+  "why_omission_reason": "whole-file index hits are labelled 'over the budget' whatever the room (context_pack, since M1 1696fbf; zed-ui.json observations): a follow-up candidate, filing needs the operator's OK",
   "owner": "handler:claude for #243's successor plan and every item above unless the operator names another"
  },
  "operator_decisions": {
