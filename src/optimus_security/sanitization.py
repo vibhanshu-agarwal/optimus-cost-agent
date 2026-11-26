@@ -82,6 +82,10 @@ _X_API_KEY_HEADER_RE = re.compile(r"(?i)x-api-key:\s*\S+")
 # The leading \b keeps a long word run linear: without it every position in the run retries the scheme (#622).
 _URL_USERINFO_RE = re.compile(r"(?i)\b(\w+://)[^/\s:@]*:[^@\s/]+@")
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+# Each local-part run that ends at an "@", found from its start only: searching _EMAIL_RE directly retries every word
+# boundary of a dotted run with no "@", which is quadratic in the run (#622, one-shot artifacts).
+_EMAIL_LOCAL_RUN_RE = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]++(?=@)")
+_WORD_BOUNDARY_RE = re.compile(r"\b")
 _TOKEN_CANDIDATE_RE = re.compile(r"[A-Za-z0-9._+:/-]{24,256}")
 _PREFIX_RES = tuple(
     re.compile(rf"(?<![A-Za-z0-9_-]){re.escape(prefix)}[A-Za-z0-9_-]{{{_PREFIX_SUFFIX_MIN},{_PREFIX_SUFFIX_MAX}}}(?![A-Za-z0-9_-])")
@@ -443,9 +447,11 @@ def _sanitize_text(
         result = _WHITESPACE_SECRET_ASSIGNMENT_RE.sub(r"\1\2" + _REDACTED, result)
         counter.inc("whitespace_secret_assignment")
 
-    if policy.enable_email_masking and _EMAIL_RE.search(result):
-        result = _EMAIL_RE.sub(_REDACTED, result)
-        counter.inc("email_masking")
+    if policy.enable_email_masking:
+        masked = _mask_emails(result)
+        if masked is not None:
+            result = masked
+            counter.inc("email_masking")
 
     protected = _protected_spans(result) if policy.enable_contextual_preservation else ()
 
@@ -458,6 +464,33 @@ def _sanitize_text(
         result = _apply_entropy_redaction(result, protected=protected, counter=counter, exempt=entropy_exempt)
 
     return result
+
+
+def _mask_emails(text: str) -> str | None:
+    """``_EMAIL_RE.sub(_REDACTED, text)`` in linear time, or None when nothing matches.
+
+    A match's local part is the run of local-part characters before its "@" (the class has no "@"), taken from the
+    run's first word boundary, and the rest of the match does not depend on where in the run it starts. So each "@"
+    needs one anchored match from that boundary, and no other start in the run can match.
+    """
+    pieces: list[str] = []
+    pos = 0
+    for run in _EMAIL_LOCAL_RUN_RE.finditer(text):
+        start, at = max(run.start(), pos), run.end()
+        if start >= at:
+            continue
+        boundary = _WORD_BOUNDARY_RE.search(text, start, at)
+        if boundary is None or boundary.start() >= at:
+            continue
+        match = _EMAIL_RE.match(text, boundary.start())
+        if match is None:
+            continue
+        pieces += (text[pos : match.start()], _REDACTED)
+        pos = match.end()
+    if not pieces:
+        return None
+    pieces.append(text[pos:])
+    return "".join(pieces)
 
 
 def _apply_path_aliases(text: str, path_aliases: list[PathAliasRule], counter: _RuleCounter) -> str:
@@ -633,7 +666,7 @@ class StreamingTextSanitizer:
         self.max_hold_chars = max_hold_chars
         self._pending = ""
         self._counter = _RuleCounter()
-        self._exact_needles = self._sorted_secrets + self._sorted_pii
+        self._exact_needles = tuple((needle, _smallest_period(needle)) for needle in self._sorted_secrets + self._sorted_pii)
         self._normalizes_slashes = policy.enable_path_aliases and bool(self._path_aliases)
         # Long matches the local cut check cannot see whole: each rule with a stand-in for the text still to come.
         # A label (or a URI's user part) running to the end of the buffer then matches through it and waits.
@@ -719,20 +752,8 @@ class StreamingTextSanitizer:
     def _long_match_spans(self) -> list[tuple[int, int]]:
         pending = self._pending
         spans: list[tuple[int, int]] = []
-        for needle in self._exact_needles:
-            # Overlapping occurrences merge into one run; a cut cannot lie strictly inside one character.
-            run_start = run_end = -1
-            idx = pending.find(needle)
-            while idx != -1:
-                if idx < run_end:
-                    run_end = max(run_end, idx + len(needle))
-                else:
-                    if run_end - run_start > 1:
-                        spans.append((run_start, run_end))
-                    run_start, run_end = idx, idx + len(needle)
-                idx = pending.find(needle, idx + 1)
-            if run_end - run_start > 1:
-                spans.append((run_start, run_end))
+        for needle, period in self._exact_needles:
+            spans.extend(run for run in _occurrence_runs(pending, needle, period) if run[1] - run[0] > 1)
         # The alias rule slash-normalizes the whole text before the pattern rules run (same length).
         text = pending.replace("\\", "/") if self._normalizes_slashes else pending
         for pattern, probe in self._probes:
@@ -769,6 +790,44 @@ class StreamingTextSanitizer:
             policy=self._policy,
             counter=self._counter,
         )
+
+
+def _smallest_period(needle: str) -> int:
+    """The least p > 0 with needle[i] == needle[i + p] wherever both exist (KMP failure function)."""
+    fail = [0] * len(needle)
+    k = 0
+    for i in range(1, len(needle)):
+        while k and needle[i] != needle[k]:
+            k = fail[k - 1]
+        if needle[i] == needle[k]:
+            k += 1
+        fail[i] = k
+    return len(needle) - (fail[-1] if needle else 0)
+
+
+def _occurrence_runs(text: str, needle: str, period: int) -> list[tuple[int, int]]:
+    """The union of ``needle``'s occurrences in ``text`` as maximal runs of overlapping ones, in linear time.
+
+    Searching again from each occurrence plus one compares the whole needle at every overlap, quadratic for a
+    self-overlapping needle (#622 review). Within a run, the next occurrence that overlaps the last one is one period on
+    while the text keeps repeating, an O(period) check. Once that stops, an overlapping occurrence can only start in the
+    last period of the run (Fine and Wilf), so the next search starts there.
+    """
+    size = len(needle)
+    tail = needle[size - period :]
+    runs: list[tuple[int, int]] = []
+    idx = text.find(needle)
+    while idx != -1:
+        start, end = idx, idx + size
+        while True:
+            while period < size and text.startswith(tail, end):
+                end += period
+            idx = text.find(needle, end - period + 1)
+            if idx == -1 or idx >= end:
+                break
+            end = idx + size
+        runs.append((start, end))
+    return runs
 
 
 def _cut_outside(spans: Sequence[tuple[int, int]], boundary: int) -> int:

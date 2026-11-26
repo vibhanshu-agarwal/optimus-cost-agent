@@ -8,6 +8,7 @@ one-shot ``sanitize_for_persistence`` masked it.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from hypothesis import strategies as st
 
 from evidence_handoff.redaction import text as text_mod
 from evidence_handoff.redaction.models import Disposition
+from optimus_security import sanitization
 from optimus_security.sanitization import (
     COMPATIBILITY_SANITIZATION_POLICY,
     EVIDENCE_REDACTION_POLICY,
@@ -141,22 +143,94 @@ def test_a_match_longer_than_the_hold_back_limit_refuses_the_stream() -> None:
         stream.feed("a" * 40)
 
 
-def test_a_text_artifact_with_a_match_past_the_hold_back_limit_is_quarantined(tmp_path: Path) -> None:
+def _artifact(tmp_path: Path, body: str, **kwargs) -> str:
     source = tmp_path / "note.txt"
-    source.write_bytes(("note token=" + "a" * (MAX_STREAM_HOLD_CHARS + 2 * 65_536)).encode("utf-8"))
+    source.write_bytes(body.encode("utf-8"))
     staging = tmp_path / "staging"
     staging.mkdir()
+    context = {"known_secrets": (), "known_pii": (), "path_aliases": (), **kwargs}
     result = text_mod.sanitize_text_artifact(
-        source_path=source,
-        staging_root=staging,
-        artifact_role="session_note",
-        known_secrets=(),
-        known_pii=(),
-        path_aliases=(),
+        source_path=source, staging_root=staging, artifact_role="session_note", **context
     )
-    assert result.disposition is Disposition.QUARANTINED
-    assert result.reason_code == "text_match_too_long"
-    assert list(staging.iterdir()) == []
+    assert result.disposition is Disposition.PROMOTED
+    assert result.staging_path is not None
+    return result.staging_path.read_text(encoding="utf-8")
+
+
+def test_a_text_artifact_with_a_match_past_the_hold_back_limit_is_sanitized_whole(tmp_path: Path) -> None:
+    # A stream refuses this; an artifact is sanitized in one pass, so it is masked instead.
+    body = "note token=" + "a" * (MAX_STREAM_HOLD_CHARS + 2 * 65_536)
+    out = _artifact(tmp_path, body)
+    assert out == _one_shot(body, EVIDENCE_REDACTION_POLICY)
+    assert "a" * 16 not in out
+
+
+def _at_default_cut(head: str, tail: str) -> str:
+    """``head + tail`` placed so the cut between them falls at character 65,537, padded to 131,072 characters."""
+    body = " " * (65_537 - len(head)) + head + tail
+    return body + " " * max(0, 131_072 - len(body))
+
+
+@pytest.mark.parametrize(
+    ("head", "tail"),
+    (
+        # Codex round 2 (#622): a rule chain longer than any trial window, cut on either side of the run.
+        ("Bearer A_KEY= B_KEY = " + " " * 9000, "abc123x"),
+        ("Bearer A_KEY= B_KEY = ", " " * 9000 + "abc123x"),
+        # An email whose start a stream would already have released.
+        ("note a@", "b" * 131_072 + ".io"),
+    ),
+    ids=("chain-cut-after-run", "chain-cut-before-run", "long-email-domain"),
+)
+def test_a_text_artifact_equals_one_shot_where_a_stream_cut_cannot(tmp_path: Path, head: str, tail: str) -> None:
+    body = _at_default_cut(head, tail)
+    out = _artifact(tmp_path, body)
+    assert "abc123x" not in out
+    assert "b" * 64 not in out
+    assert out == _one_shot(body, EVIDENCE_REDACTION_POLICY)
+
+
+def test_a_text_artifact_with_secrets_pii_and_aliases_equals_one_shot(tmp_path: Path) -> None:
+    context = {
+        "known_secrets": ("fixture",),
+        "known_pii": ("Zq9value",),
+        "path_aliases": (PathAliasRule(source_root="C:/repo", alias="<repo>"),),
+    }
+    body = _at_default_cut("fixturepassword : Zq9value C:" + _BACKSLASH + "repo" + _BACKSLASH + "f ", "token is abc123x")
+    out = _artifact(tmp_path, body, **context)
+    assert out == sanitize_for_persistence(body, policy=EVIDENCE_REDACTION_POLICY, **context).value
+
+
+@settings(derandomize=True, database=None, max_examples=2000, deadline=None)
+@given(st.lists(st.sampled_from(("a", "b", ".", "_", "%", "+", "-", "9", "@", " ", chr(233), "co", "io", "x.y")), max_size=40))
+def test_linear_email_masking_equals_the_email_regex(parts: list[str]) -> None:
+    text = "".join(parts)
+    masked = sanitization._mask_emails(text)
+    assert (text if masked is None else masked) == sanitization._EMAIL_RE.sub(sanitization._REDACTED, text)
+    assert (masked is not None) == bool(sanitization._EMAIL_RE.search(text))
+
+
+def test_email_masking_is_linear_on_a_dotted_run() -> None:
+    # The email regex alone retries every word boundary of the run: about three minutes here on the old rule.
+    text = "a." * 2**18 + "@x"
+    started = time.perf_counter()
+    assert sanitization._mask_emails(text) is None
+    assert time.perf_counter() - started < 10.0
+
+
+@settings(derandomize=True, database=None, max_examples=2000, deadline=None)
+@given(needle=st.text(alphabet="ab", min_size=1, max_size=6), text=st.text(alphabet="ab", max_size=40))
+def test_occurrence_runs_equal_the_search_from_each_occurrence(needle: str, text: str) -> None:
+    # The pre-#622 loop: search again from each occurrence plus one, merging overlapping (not touching) ones.
+    expected: list[tuple[int, int]] = []
+    idx = text.find(needle)
+    while idx != -1:
+        if expected and idx < expected[-1][1]:
+            expected[-1] = (expected[-1][0], idx + len(needle))
+        else:
+            expected.append((idx, idx + len(needle)))
+        idx = text.find(needle, idx + 1)
+    assert sanitization._occurrence_runs(text, needle, sanitization._smallest_period(needle)) == expected
 
 
 @pytest.mark.parametrize("label", ("password : ", "token is ", "password=", "OPTIMUS_API_KEY="))
