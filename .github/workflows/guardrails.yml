@@ -16,6 +16,18 @@ concurrency:
 jobs:
   clean-environment-recheck:
     runs-on: ubuntu-latest
+    # #620: a real TimeSeries-capable Redis for the requires_redis step at the end. Host port 16379, not the
+    # default 6379, so the default suite's assumptions about the default port are untouched.
+    services:
+      redis:
+        image: redis:8.10.1@sha256:298e5b3bc566bade82f46ad5511777a4a07a294097ce16ada2f6a42be5239df5
+        ports:
+          - 16379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -155,3 +167,11 @@ jobs:
           name: product-coverage-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/product-coverage/
           if-no-files-found: error
+
+      # #620: the requires_redis live tier against the job's Redis service. The URL is set on this step only, so
+      # the full default run above is unchanged. The ignored file starts its own redis:8 containers and reads the
+      # operator's optimus-redis; here it would only skip, so it stays a local-only check.
+      - name: "Live tier: requires_redis"
+        env:
+          OPTIMUS_REDIS_URL: redis://127.0.0.1:16379/0
+        run: uv run python -m pytest -m requires_redis -q -p no:cacheprovider --no-cov --ignore=tests/integration/acp/test_local_redis_attach_live.py

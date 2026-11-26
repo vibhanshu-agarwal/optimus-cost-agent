@@ -1121,6 +1121,9 @@ Without Redis, `requires_redis` tests are deselected by default (`pyproject.toml
 explicitly select a live tier (`pytest -m requires_redis`) and the environment is broken, fixtures
 call `pytest.fail()` with the operator action message — silent skips are forbidden.
 The smoke script exits non-zero when Redis is unreachable or approval replay fails.
+PR CI runs this tier as the last step of the `clean-environment-recheck` job, against a Redis 8
+service container; `tests/integration/acp/test_local_redis_attach_live.py` (it starts its own Docker
+containers) stays local-only.
 
 ## Development worktrees
 

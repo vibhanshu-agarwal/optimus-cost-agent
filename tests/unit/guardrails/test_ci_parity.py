@@ -112,6 +112,26 @@ def test_ci_runs_the_full_default_suite_with_every_product_measured_and_gated() 
     assert "run_profile" not in text and "--profile" not in text
 
 
+def test_ci_runs_the_requires_redis_tier_last_against_a_real_redis_service() -> None:
+    """#620: the job's Redis 8 service (TimeSeries built in) on a non-default host port, health-checked, and one step
+    after the coverage evidence selecting the tier. The URL lives on that step only, so the default run never sees it."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8"))
+    job = workflow["jobs"]["clean-environment-recheck"]
+    service = job["services"]["redis"]
+    assert service["image"].startswith("redis:8.") and "@sha256:" in service["image"]
+    assert service["ports"] == ["16379:6379"] and '--health-cmd "redis-cli ping"' in service["options"]
+    names = [step.get("name") for step in job["steps"]]
+    assert names[-2:] == ["Upload product coverage evidence", "Live tier: requires_redis"]
+    step = job["steps"][-1]
+    assert step["env"] == {"OPTIMUS_REDIS_URL": "redis://127.0.0.1:16379/0"}
+    assert "if" not in step and "continue-on-error" not in step
+    assert shlex.split(step["run"]) == [
+        "uv", "run", "python", "-m", "pytest", "-m", "requires_redis", "-q", "-p", "no:cacheprovider", "--no-cov",
+        "--ignore=tests/integration/acp/test_local_redis_attach_live.py",
+    ]
+    assert "OPTIMUS_REDIS_URL" not in str(workflow.get("env", {})) + str(job.get("env", {}))
+
+
 def test_default_agent_config_paths_include_nested_agents_cursor_rules_and_root_mcp(tmp_path):
     nested = tmp_path / "packages" / "api"
     nested.mkdir(parents=True)
