@@ -22,7 +22,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.support import child_tripwire
+from tests.support import child_keyring, child_tripwire
 from tools.testing import run_context, run_context_records, run_context_windows
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -497,6 +497,7 @@ def test_the_child_tripwire_records_and_refuses_a_real_adapter_request(tmp_path:
     assert "REFUSED=" in output and "RESOLVED" not in output, output
     assert child_tripwire.observed(record) == {
         "loaded": 1, "loaded_after_product_import": 0, "trusted_paths_imported": True, "real_adapter_calls": 1,
+        "keyring_fail_selected": 1,
     }
     with pytest.raises(AssertionError, match="asked for the real known folders"):
         child_tripwire.assert_no_real_adapter_access(record)
@@ -514,7 +515,8 @@ def test_a_tripwire_that_is_missing_or_late_never_counts_as_a_clean_child(tmp_pa
         child_tripwire.assert_no_real_adapter_access(record)
     unconfigured = subprocess.run(
         [sys.executable, "-c", child_tripwire.PRELUDE + "print('RAN')"], cwd=_ROOT, capture_output=True, text=True,
-        timeout=120, check=False, env={name: value for name, value in os.environ.items() if name != child_tripwire.FILE_VARIABLE},
+        timeout=120, check=False,
+        env=child_keyring.environment({name: value for name, value in os.environ.items() if name != child_tripwire.FILE_VARIABLE}),
     )
     assert unconfigured.returncode != 0 and "RAN" not in unconfigured.stdout
     assert "TEST_CHILD_TRIPWIRE_NOT_CONFIGURED" in unconfigured.stderr

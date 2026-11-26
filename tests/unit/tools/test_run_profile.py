@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import child_keyring
 from tools.testing import run_profile
 from tools.testing import test_profiles as profiles
 
@@ -249,7 +250,7 @@ def test_profile_probe_repeat() -> None:
 def _env(tmp_path: Path, **values: str) -> dict[str, str]:
     scratch = tmp_path / "child-temp"
     scratch.mkdir(exist_ok=True)
-    return {**os.environ, "TMPDIR": str(scratch), "TEMP": str(scratch), "TMP": str(scratch), **values}
+    return child_keyring.environment({**os.environ, "TMPDIR": str(scratch), "TEMP": str(scratch), "TMP": str(scratch), **values})
 
 
 def test_a_subrun_is_an_active_recorded_run_of_exactly_its_nodes(tmp_path: Path) -> None:

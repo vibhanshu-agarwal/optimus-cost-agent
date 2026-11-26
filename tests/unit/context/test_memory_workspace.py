@@ -28,6 +28,7 @@ from optimus.guardrails import file_policy
 from optimus.guardrails.file_policy import FilePolicy
 from optimus.usage.savings_report import ReportTransportError
 from optimus_security.memory_index_config import ARTIFACTS_NAME, EmbeddingConfig, artifact_digest
+from tests.support import child_keyring
 
 _SETTINGS = OptimusGatewaySettings.from_env({"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:9", "OPTIMUS_API_KEY": "k"})
 
@@ -288,7 +289,7 @@ def test_git_answers_while_the_acp_reader_is_waiting_on_stdin(tmp_path: Path) ->
     git = shutil.which("git")
     assert git is not None
     subprocess.run([git, "init", "-q", "-b", "proof", str(tmp_path)], check=True)
-    env = {**os.environ, "PYTHONPATH": str(Path(memory_workspace.__file__).parents[2])}
+    env = child_keyring.environment({**os.environ, "PYTHONPATH": str(Path(memory_workspace.__file__).parents[2])})
     child = subprocess.Popen([sys.executable, "-c", _READER_IS_WAITING, str(tmp_path)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
     try:
         assert child.stdout is not None

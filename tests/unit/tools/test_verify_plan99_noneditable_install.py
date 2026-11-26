@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 import tools.verify_plan99_noneditable_install as verifier
+from tests.support import child_keyring
 from tools.verify_plan99_noneditable_install import (
     HOSTILE_PROVIDER_KEY,
     HOSTILE_SHARED_SECRET,
@@ -212,7 +214,8 @@ def test_the_extraction_probe_reports_a_clean_engine_import_and_is_caught_in_a_c
 
     script = tmp_path / "probe.py"
     script.write_text(verifier.EXTRACTION_PROBE, encoding="utf-8")
-    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=120)
+    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=120,
+                            env=child_keyring.environment(os.environ))
     values = json.loads(result.stdout)
 
     assert values["host_modules_after_engine_import"] == []
@@ -229,7 +232,8 @@ def test_the_extraction_probe_detects_a_host_package_loaded_with_the_engine(tmp_
 
     script = tmp_path / "tainted_probe.py"
     script.write_text("import optimus.acp.conversation\n" + verifier.EXTRACTION_PROBE, encoding="utf-8")
-    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=120)
+    result = subprocess.run([sys.executable, str(script)], cwd=tmp_path, capture_output=True, text=True, check=True, timeout=120,
+                            env=child_keyring.environment(os.environ))
     values = json.loads(result.stdout)
 
     assert "optimus" in values["host_modules_after_engine_import"]

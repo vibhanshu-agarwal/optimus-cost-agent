@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 import pytest
 
+from tests.support import child_keyring
 from tests.support.child_launch_inventory import default_python_sites, launch_sites
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -681,7 +682,7 @@ def _census_child(tmp_path: Path, program: str, *, hooked: bool = True) -> tuple
         environment["OPTIMUS_TEST_CHILD_CENSUS_DIR"] = str(rows)
     completed = subprocess.run(
         [sys.executable, "-c", "import os; print('PID=' + str(os.getpid()))\n" + program],
-        cwd=_ROOT, env=environment, capture_output=True, text=True, timeout=120, check=False,
+        cwd=_ROOT, env=child_keyring.environment(environment), capture_output=True, text=True, timeout=120, check=False,
     )
     events = [json.loads(line) for file in sorted(rows.glob("*.jsonl")) for line in file.read_text(encoding="utf-8").splitlines()]
     return completed, events

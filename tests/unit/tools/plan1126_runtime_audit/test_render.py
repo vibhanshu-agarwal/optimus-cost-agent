@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -13,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 import tools.run_plan1126_runtime_audit as cli
+from tests.support import child_keyring
 from tests.support.concurrency import DescendantRecorder, assert_descendants_killed
 from tests.support.fault_injection import TREE_SHAPES, descendant_tree
 from tools.plan1126_runtime_audit.model import AuditArtifact, GateStatus, LiveStatus
@@ -750,6 +752,7 @@ def test_cli_script_runs_directly_from_outside_repository(tmp_path: Path) -> Non
     completed = subprocess.run(
         [sys.executable, str(script), "inventory"],
         cwd=tmp_path,
+        env=child_keyring.environment(os.environ),
         check=False,
         capture_output=True,
         text=True,

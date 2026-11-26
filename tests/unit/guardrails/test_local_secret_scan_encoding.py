@@ -32,6 +32,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.support import child_keyring
 from tests.unit.guardrails import test_ci_parity as parity
 
 ROOT = parity.ROOT
@@ -105,7 +106,7 @@ def _hook_env(repo: Path, *, utf8_mode: bool) -> dict[str, str]:
     """
     env = parity._sanitized_env(repo)
     env["PYTHONUTF8"] = "1" if utf8_mode else "0"
-    return env
+    return child_keyring.environment(env)
 
 
 def _run_local_hook(

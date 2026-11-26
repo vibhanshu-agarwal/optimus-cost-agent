@@ -20,6 +20,7 @@ import yaml
 
 from optimus.guardrails.ci_parity import GuardrailRuleSet, load_ci_check_names, load_pre_commit_check_names
 from optimus.guardrails.prompt_injection import TrustScanVerdict, default_agent_config_paths, scan_paths
+from tests.support import child_keyring
 from tests.support.concurrency import DescendantRecorder, announce_pid_code, assert_descendants_killed
 from tools import process_tree
 
@@ -774,7 +775,7 @@ def _sanitized_env(repo: Path) -> dict[str, str]:
     env["PRE_COMMIT_HOME"] = str(repo / ".pre-commit-cache")
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
-    return env
+    return child_keyring.environment(env)
 
 
 def _terminate_tree(process: subprocess.Popen) -> None:
