@@ -1,0 +1,57 @@
+{
+ "schema": "plan12-memory-m2b.closure.v1",
+ "plan": "Plan 12.14 (M2b), #548, docs/superpowers/plans/2026-11-23-plan-12-14-ranking-and-budgets-implementation.md (sha256 c2b80ad5...0bbc)",
+ "issue": 548,
+ "state": "DRAFT 2026-11-26: an incomplete closure proposed after Task 4 qualification failed and D3 was rolled back; pending the operator's approval; nothing pushed or delivered",
+ "identities": {
+  "code_head": "git:da53a67964b3d643b296ff5be26e3212effbcf4c",
+  "branch": "agent/claude/p1214-impl (unpushed)",
+  "base": "git:7abbaa262696c40409cea166569a93bd2feb6853"
+ },
+ "decisions": {
+  "D1": "done: #548 filed under #235 (PR #549)",
+  "D2": "baseline kept (U = B): no utility candidate passed development (calibration.json); qualification recorded every policy for the record only",
+  "D3": "FAILED Task 4 qualification (fresh F 19 < U 20 required evidence, qualification.json); ROLLED BACK at git:da53a67 by the operator's decision (\"Roll back D3\"); the four candidate-hash approvals unused (evaluation-contract.json v17)",
+  "D4": "dormant by the operator's decision (\"Keep it dormant\"): the outline stays in the code and tests, reachable only under a model-aware ceiling",
+  "D5": "not shipped: the shipped defaults keep their pre-change hash 4d2f637e...6338",
+  "D6": "paid Q UNRUN: Task 4 requires passing deterministic gates first; the launcher refuses (verify_qualification)",
+  "D7": "paid R UNRUN, for the same reason"
+ },
+ "evidence": {
+  "manifest.json": "hex:3a4d5def09ca19f0b5184ebaa5d614c0ba4fc5e557f1f1a0f2470d581823874f",
+  "cases.json": "hex:17a8e68d6fdac9acb91e4d885a4128a7609a411c5967a96e438d655c69e6ea36",
+  "evaluation-contract.json": "hex:2b06f10718b9767d924f7279dcefe7cc5fc9053d1c99a67e823d83b1b7eec56a",
+  "calibration.json": "hex:cbbf61c50400f737b78996d4e4bed26dc56ffb3d8ac7d13b76ed8ccc96a20307",
+  "calibration-addendum.json": "hex:d45d43bcaa7648a9b99a4c62388d3556a6a068f464b430a51c6cca0b68de3b57",
+  "calibration-budget.json": "hex:0e2c59f6cf879a3ba6c8d49fd6e127b4500f232629897029b0266dde2dd4404c",
+  "gate-g2.json": "hex:f45b3c8690194e9541e70be40cdd59996d00fbafa312e2bed725401d141b0cd2",
+  "qualification.json": "hex:de5fa09b1d38029db77a1872ee345b31902f508412c8782b068e2f422e2d827a"
+ },
+ "unrun": {
+  "paid-attempts.json": "no paid Q or R (D6, D7)",
+  "boundaries.json": "Task 4's real acpx, Zed and Windows/WSL checks of /why, outline-to-exact-reread, allocation and overflow: UNRUN",
+  "policy-checks.json": "whole/outline/reread/why/escalation/prefix/registry checks as a record: UNRUN (unit and production-byte tests only)",
+  "final-gates.json": "Task 5: UNRUN",
+  "support_audit": "UNRUN: no paid answers"
+ },
+ "owed_before_delivery": [
+  "Task 5's final gates at the final code head: the affected-suite sweep and inventories, one full suite run from PowerShell, Ruff, coverage, then Linux CI on the PR",
+  "the /why v2 lines (optimus.context-manifest.v2, budget_policy legacy on the shipped route) seen in real Zed under its own release (UI testing rule), or the operator's disposition of that check",
+  "freshness against main before the PR, and the PR's own identities (head, merge, CI)"
+ ],
+ "issue_custody": {
+  "#548": "close after delivery and the archive of the plan; remove its status: label",
+  "#243": "stays open: D3 failed qualification on the D3 route; next gate is an approved successor plan (a different floor for tasks without required files, a new fresh set, the successor obligations in evaluation-contract.json)",
+  "M2": "stays open for #243's remainder",
+  "#235": "stays open: route qualification, deferred, Gated and later slices",
+  "#463": "stays open: broader campaigns and report integration",
+  "#491": "stays open: security and continuity",
+  "repo_map_defect": "production's first repo map on a fresh session can come back empty with nothing logged (MemorySession.repo_map; G2 run 2); not yet filed: filing needs the operator's OK"
+ },
+ "paid_calls": "0; provider cost USD 0",
+ "fresh_set": "spent by qualification run 2",
+ "risks": [
+  "the budget machinery (context_budget, the model-aware policy) and the outline ship dormant: no route carries the field",
+  "one route and one target were qualified; the failure is one requirement on one fresh case, so it says little about other targets"
+ ]
+}

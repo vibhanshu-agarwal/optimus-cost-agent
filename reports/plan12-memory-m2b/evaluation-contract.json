@@ -1,5 +1,5 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v16",
+ "schema": "plan12-memory-m2b.evaluation-contract.v17",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
@@ -186,10 +186,10 @@
   ]
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v15",
-  "sha256": "hex:c277ad5955987afe5110eda1ea288a02b57fce70dba17d077a7f8d218e05aeb7",
-  "commit": "git:ef9d0ad",
-  "change": "Task 4 qualification failed on the fresh set; the D3 field rolled back by the operator's decision (plan line 115); Q and R not run under Plan 12.14"
+  "schema": "plan12-memory-m2b.evaluation-contract.v16",
+  "sha256": "hex:5324a32afaf166249d0457c1185b95d1f3505867b7088d51575b823ce563a3a7",
+  "commit": "git:da53a67",
+  "change": "Codex round 127: D4's disposition, the candidate-only claims marked historical, the successor obligations"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -264,7 +264,8 @@
     "qualification profile 16f6dc6a...c1f3 (same approval): unused; restored a015e40e...3c73",
     "evaluation profile 94873ae9...03a4 (same approval): unused; restored c235fb1a...7440",
     "Auto composition 43b9762c...e872 (operator 2026-11-25, \"Approve Auto hash\"): unused; restored 526153c5...b3d2"
-   ]
+   ],
+   "d4_disposition": "operator 2026-11-26, Claude chat: \"Keep it dormant\": the overflow outline (Task 3, git:3d5c3b9) and its /why disclosure stay in the code with their tests; assemble_pack outlines only under a model-aware ceiling (context_pack.py: an eligible overview path and R > C), so on the shipped legacy route it never triggers. A successor that ships a model-aware budget re-qualifies the outline with it"
   },
   "production_equivalence": {
    "claim": "F's paid request is production's own final-round Chat request on the same turn, carrying exactly the pack the budget pass measured; B's and F's packs in the budget pass are the packs production's memory turn builds from matching inputs",
@@ -424,7 +425,8 @@
    "formal": "Fable 5.2, then one Codex CLI round on this contract and the gate head, both posted verbatim on #548",
    "fable_formal": "Fable 5.2 ACCEPT WITH CHANGES at f91c751 (one A on the release wording, five B), https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7177612471; B1 and B3 fixed here, A1 and B5 in release_conditions, B2 and B4 in obligations",
    "codex_round_125": "Codex formal round 125 ACCEPT WITH CHANGES at ef9d0ad, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7177926124: A1 and A2 fixed at 9902022, A3 (qualification before Q) built and run (task4_qualification), A4 here",
-   "round_126": "Fable 5.2 design review https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7181737343; Codex result review https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7183765567"
+   "round_126": "Fable 5.2 design review https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7181737343; Codex result review https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7183765567",
+   "round_127": "Codex round 127 ACCEPT WITH CHANGES at da53a67, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7186204512: D4 disposition, historical claims and successor obligations recorded here"
   },
   "release_conditions": {
    "one_launch": "the release covers one launch: the ceiling is per launch, so a second launch could exceed 96 attempts or USD 6.00 and would overwrite the record; a stopped run is not relaunched without a new operator decision (Fable formal review A1)",
@@ -558,5 +560,21 @@
    "codex_result": "Codex round 126 at 6b988b5: roll back D3 and keep paid Q/R blocked, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7183765567"
   },
   "fresh_set": "spent: a second use needs a recorded successor disposition and a new fresh set (cases.json packing_sets.fresh)"
+ },
+ "historical_after_rollback": {
+  "why": "D3 rolled back at git:da53a67: these records describe the staged candidate composition (defaults plus the D3 field), not the shipped route, which keeps the legacy budget",
+  "claims": [
+   "task1_freezes.fit_note and the budget pass (calibration-budget.json): F's budgets, packs and fit are the candidate's",
+   "Task 2's production equivalence (tests/unit/tools/test_plan12_memory_m2b_production_bytes.py): it proves the candidate's request bytes; the shipped route's request is the legacy one",
+   "q_launch and gate-g2.json: G2's budget pass measured candidate F; its rehearsal ran the staged defaults; both are void for release (q_release_gate.status)",
+   "Task 3's outline evidence (G2's QO1/QO2 outline rows, the CP2 outline proofs): an outline under the candidate's ceiling; dormant on the shipped route (d4_disposition)",
+   "/why manifests v2 (optimus.context-manifest.v2, budget_policy_version m2b-v1) report the policy in force: legacy on the shipped route"
+  ]
+ },
+ "successor_obligations": {
+  "qualification_binding": "before any successor releases a paid run, m2b_launch.verify_qualification must bind the report's schema, cases, the tested source and the candidate's identity, not only two flags under a digest (Codex round 127 finding 4)",
+  "control_tie_at_zero": "the fresh control gate must fail when both arms admit the control zero times (Codex rounds 126-127)",
+  "wrong_branch_gated": "the wrong-branch control's result must be part of qualification_gates.passes (Codex rounds 126-127)",
+  "fresh_set": "a new fresh set: this one is spent (task4_qualification.fresh_set)"
  }
 }
