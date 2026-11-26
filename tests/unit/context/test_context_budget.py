@@ -185,7 +185,7 @@ def test_the_runner_hands_the_packers_budget_to_the_memory_turn(tmp_path):
     assert seen["pack_budget"] is budget
 
 
-def test_the_memory_turns_assemble_passes_the_target_to_retrieval(monkeypatch):
+def test_the_memory_turns_assemble_passes_the_target_to_retrieval(monkeypatch, tmp_path):
     """Codex CP1 round 122 finding 7: through MemoryTurn.assemble itself, not only its helpers."""
     import contextlib
 
@@ -197,7 +197,7 @@ def test_the_memory_turns_assemble_passes_the_target_to_retrieval(monkeypatch):
     monkeypatch.setattr(memory_session, "blocking_from_diagnostics", lambda _d: (None, None))
     seen: dict = {}
     turn = object.__new__(memory_session.MemoryTurn)
-    policy = type("P", (), {"forget_ignore_files": staticmethod(lambda: None)})()
+    policy = type("P", (), {"forget_ignore_files": staticmethod(lambda: None), "root": tmp_path})()  # assemble reads whole paths from the root (main's #634)
     turn._session = type("S", (), {"policy": policy, "foreground": staticmethod(contextlib.nullcontext), "listing_for": staticmethod(lambda _r: ()),  # noqa: SLF001
                                    "hints_for": staticmethod(lambda _s: ())})()
     turn._scope = None  # noqa: SLF001
