@@ -1,7 +1,7 @@
 """Synthetic Plan 11.7 v5 current-client gate documents for unit tests.
 
 Test support only. Every value is synthetic: no document built here is, or may be presented as, live
-or accepted evidence. ``valid_raw_document`` describes one complete accepted run (A-prime, the six
+or accepted evidence. ``valid_raw_document`` describes one complete accepted run (A-prime, the seven
 registered first-refusal cases and the prompted A/B arm); tests mutate a deep copy of it.
 """
 
@@ -38,14 +38,14 @@ def descriptor_fixture() -> dict[str, Any]:
     """Parsed copy of the committed first-refusal descriptor fixture."""
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[1] / "fixtures" / "evidence" / "plan117-v5-first-refusal-descriptors.json"
+    path = Path(__file__).resolve().parents[2] / contract.DESCRIPTOR_FIXTURE_RELATIVE
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def descriptor_fixture_sha256() -> str:
     from pathlib import Path
 
-    path = Path(__file__).resolve().parents[1] / "fixtures" / "evidence" / "plan117-v5-first-refusal-descriptors.json"
+    path = Path(__file__).resolve().parents[2] / contract.DESCRIPTOR_FIXTURE_RELATIVE
     return sha(path.read_bytes())
 
 
@@ -147,7 +147,10 @@ def _first_prompt(wire: _Wire, session_id: str, descriptor_id: str) -> None:
     if descriptor["wire_class"] == "result_stop_reason":
         wire.response(2, {"stopReason": descriptor["stop_reason"]}, stop_reason=descriptor["stop_reason"])
     else:
-        wire.response(2, error={"code": descriptor["error_code"], "message": descriptor["error_message"]})
+        error = {"code": descriptor["error_code"], "message": descriptor["error_message"]}
+        if descriptor["error_data"] is not None:
+            error["data"] = descriptor["error_data"]
+        wire.response(2, error=error)
 
 
 def _closure(source_kind: str, report_ns: int) -> dict[str, Any]:

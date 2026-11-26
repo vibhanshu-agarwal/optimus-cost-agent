@@ -18,7 +18,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from optimus.acp.errors import INTERNAL_ERROR, INVALID_REQUEST, AcpOutboundError
+from optimus.acp.errors import INTERNAL_ERROR, INVALID_REQUEST, RESOURCE_NOT_FOUND, AcpOutboundError
 from optimus.acp.outbound_writer import DedicatedOutboundWriter
 from optimus.acp.server import NdjsonOutboundChannel
 from optimus.acp.shapes import AGENT_MESSAGE_BLOCK_SEPARATOR
@@ -239,22 +239,22 @@ async def test_repeating_the_current_mode_is_idempotent(tmp_path, via):
 
 
 @pytest.mark.parametrize(
-    ("method", "params"),
+    ("method", "params", "expected_code"),
     [
-        ("session/set_mode", {"sessionId": "session-missing", "modeId": "chat"}),
-        ("session/set_mode", {"sessionId": "{sid}", "modeId": "plan"}),
-        ("session/set_mode", {"sessionId": "{sid}", "modeId": 7}),
-        ("session/set_mode", {"sessionId": "{sid}"}),
-        ("session/set_mode", "not-an-object"),
-        ("session/set_config_option", {"sessionId": "session-missing", "configId": "mode", "value": "chat"}),
-        ("session/set_config_option", {"sessionId": "{sid}", "configId": "model", "value": "chat"}),
-        ("session/set_config_option", {"sessionId": "{sid}", "configId": "mode", "value": "plan"}),
-        ("session/set_config_option", {"sessionId": "{sid}", "configId": "mode", "type": "boolean", "value": True}),
-        ("session/set_config_option", {"sessionId": "{sid}", "configId": "mode", "value": 1}),
-        ("session/set_config_option", {"sessionId": "{sid}", "configId": "mode"}),
+        ("session/set_mode", {"sessionId": "session-missing", "modeId": "chat"}, RESOURCE_NOT_FOUND),
+        ("session/set_mode", {"sessionId": "{sid}", "modeId": "plan"}, INVALID_REQUEST),
+        ("session/set_mode", {"sessionId": "{sid}", "modeId": 7}, INVALID_REQUEST),
+        ("session/set_mode", {"sessionId": "{sid}"}, INVALID_REQUEST),
+        ("session/set_mode", "not-an-object", INVALID_REQUEST),
+        ("session/set_config_option", {"sessionId": "session-missing", "configId": "mode", "value": "chat"}, RESOURCE_NOT_FOUND),
+        ("session/set_config_option", {"sessionId": "{sid}", "configId": "model", "value": "chat"}, INVALID_REQUEST),
+        ("session/set_config_option", {"sessionId": "{sid}", "configId": "mode", "value": "plan"}, INVALID_REQUEST),
+        ("session/set_config_option", {"sessionId": "{sid}", "configId": "mode", "type": "boolean", "value": True}, INVALID_REQUEST),
+        ("session/set_config_option", {"sessionId": "{sid}", "configId": "mode", "value": 1}, INVALID_REQUEST),
+        ("session/set_config_option", {"sessionId": "{sid}", "configId": "mode"}, INVALID_REQUEST),
     ],
 )
-async def test_invalid_mode_changes_are_atomic(tmp_path, method, params):
+async def test_invalid_mode_changes_are_atomic(tmp_path, method, params, expected_code):
     adapter, outbound, _ = _adapter(tmp_path)
     session_id = (await _new_session(adapter, tmp_path))["sessionId"]
     if isinstance(params, dict):
@@ -263,8 +263,7 @@ async def test_invalid_mode_changes_are_atomic(tmp_path, method, params):
     response = await _rpc(adapter, {"jsonrpc": "2.0", "id": "bad", "method": method, "params": params})
 
     assert "result" not in response, response
-    # The adapter's existing request-validation error form, not "method not found".
-    assert response["error"]["code"] == INVALID_REQUEST, response
+    assert response["error"]["code"] == expected_code, response
     assert _mode_updates(outbound) == []
     assert adapter._sessions.get(session_id).execution_mode is ExecutionMode.AGENT  # noqa: SLF001
 

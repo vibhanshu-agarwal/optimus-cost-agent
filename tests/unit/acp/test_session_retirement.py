@@ -12,6 +12,7 @@ from decimal import Decimal
 
 import pytest
 
+from optimus.acp.errors import INVALID_REQUEST, METHOD_NOT_FOUND, RESOURCE_NOT_FOUND
 from optimus.acp.session_retention import RetirementReason, RetirementStatus, SessionCapacityError, SessionRetentionPolicy
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
@@ -741,17 +742,87 @@ async def test_provisional_session_is_unavailable_until_setup_activates(tmp_path
     adapter, store, outbound = make_adapter(tmp_path, client_mcp_runtime=runtime)
     creating = asyncio.create_task(adapter.handle_client_request(new_request(tmp_path, [
         {'type': 'http', 'name': 'tools', 'url': 'https://mcp.example.com/a', 'headers': []}])))
-    pending = await asyncio.wait_for(outbound.wait_for_request('session/request_permission'), 1)
-    session_id, = adapter.retention.session_ids
-    assert store.get(session_id) is not None and not adapter.retention.is_active(session_id)
-    response = await adapter.handle_client_request({'jsonrpc': '2.0', 'id': 2, 'method': 'session/prompt',
-        'params': {'sessionId': session_id, 'prompt': [{'type': 'text', 'text': 'premature'}]}})
-    assert response.response['error'] == {'code': -32600, 'message': 'unknown session'}
-    assert adapter._active_turns == {}
-    outbound.respond(pending['id'], {'outcome': {'outcome': 'selected', 'optionId': 'allow_once'}})
-    response = await creating
-    assert response.response['result']['sessionId'] == session_id and adapter.retention.is_active(session_id)
-    await adapter.aclose()
+    try:
+        pending = await asyncio.wait_for(outbound.wait_for_request('session/request_permission'), 1)
+        session_id, = adapter.retention.session_ids
+        provisional = store.get(session_id)
+        assert provisional is not None and not adapter.retention.is_active(session_id)
+        assert not provisional.why_refused_after
+        requests_before = outbound.requests[:]
+        notifications_before = outbound.notifications[:]
+        unsupported_methods = (
+            'session/load', 'session/cancel', 'session/update', 'session/request_permission',
+            'optimus.ping', 'optimus.gateway.responses', 'optimus.evidence.search', 'optimus.evidence.extract',
+            'optimus.evidence.package_lookup', 'optimus.evidence.security_advisory', 'optimus.agent.run',
+            'optimus.mutation.writeFile', 'optimus.unknown',
+        )
+        for unavailable_id in (session_id, 'never-created'):
+            for method in unsupported_methods:
+                response = await adapter.handle_client_request({
+                    'jsonrpc': '2.0', 'id': 4, 'method': method, 'params': {'sessionId': unavailable_id},
+                })
+                assert response.response == {
+                    'jsonrpc': '2.0', 'id': 4,
+                    'error': {'code': METHOD_NOT_FOUND, 'message': f'method not found: {method}'},
+                }
+            await adapter.handle_client_notification({
+                'jsonrpc': '2.0', 'method': 'session/cancel', 'params': {'sessionId': unavailable_id},
+            })
+        assert not creating.done()
+        assert not adapter._reopen_cancelled
+
+        valid_calls = {
+            'session/prompt': {'prompt': [{'type': 'text', 'text': 'premature'}]},
+            'session/set_mode': {'modeId': 'chat'},
+            'session/set_config_option': {'configId': 'mode', 'value': 'chat'},
+        }
+        for method, params in valid_calls.items():
+            for unavailable_id in (session_id, 'never-created'):
+                response = await adapter.handle_client_request({
+                    'jsonrpc': '2.0', 'id': 2, 'method': method,
+                    'params': {'sessionId': unavailable_id, **params},
+                })
+                assert response.response == {
+                    'jsonrpc': '2.0', 'id': 2,
+                    'error': {'code': RESOURCE_NOT_FOUND, 'message': 'unknown session'},
+                }
+
+        for unavailable_id in (session_id, 'never-created'):
+            response = await adapter.handle_client_request({
+                'jsonrpc': '2.0', 'id': 3, 'method': 'session/prompt',
+                'params': {'sessionId': unavailable_id, 'prompt': 'malformed'},
+            })
+            assert response.response['error'] == {'code': INVALID_REQUEST, 'message': 'invalid request'}
+            response = await adapter.handle_client_request({
+                'jsonrpc': '2.0', 'id': 5, 'method': 'session/prompt',
+                'params': {'sessionId': unavailable_id, 'prompt': []},
+            })
+            assert response.response['error'] == {'code': RESOURCE_NOT_FOUND, 'message': 'unknown session'}
+            for command in ('/why', '/savings', '/memory'):
+                response = await adapter.handle_client_request({
+                    'jsonrpc': '2.0', 'id': 7, 'method': 'session/prompt',
+                    'params': {'sessionId': unavailable_id, 'prompt': [{'type': 'text', 'text': command}]},
+                })
+                assert response.response['error'] == {'code': RESOURCE_NOT_FOUND, 'message': 'unknown session'}
+
+        assert adapter._active_turns == {}
+        assert not provisional.why_refused_after
+        assert outbound.requests == requests_before
+        assert outbound.notifications == notifications_before
+        outbound.respond(pending['id'], {'outcome': {'outcome': 'selected', 'optionId': 'allow_once'}})
+        response = await creating
+        assert response.response['result']['sessionId'] == session_id and adapter.retention.is_active(session_id)
+        response = await adapter.handle_client_request({
+            'jsonrpc': '2.0', 'id': 6, 'method': 'session/prompt',
+            'params': {'sessionId': session_id, 'prompt': []},
+        })
+        assert response.response['error'] == {'code': INVALID_REQUEST, 'message': 'empty prompt'}
+        assert provisional.why_refused_after
+    finally:
+        if not creating.done():
+            creating.cancel()
+        await asyncio.gather(creating, return_exceptions=True)
+        await adapter.aclose()
 
 
 async def test_control_failure_retains_all_distinct_state_close_verdicts(tmp_path, runtime):

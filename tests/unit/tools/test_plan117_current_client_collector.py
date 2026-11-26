@@ -18,6 +18,7 @@ from tools.evidence_gather_support.common import HostError
 
 REPO = Path(__file__).resolve().parents[3]
 SPEC_TEXT = (REPO / "src" / "optimus" / "acp" / "spec.py").read_text(encoding="utf-8")
+ERRORS_TEXT = (REPO / "src/optimus/acp/errors.py").read_text(encoding="utf-8")
 FIXTURE = c.default_descriptor_fixture()
 D = c.GateDisposition
 R = c.GateReason
@@ -28,18 +29,18 @@ RUN_ID = "p117v5-run-0001"
 
 
 def test_current_source_census_matches_the_frozen_fixture():
-    col.verify_census(FIXTURE, SPEC_TEXT)
+    col.verify_census(FIXTURE, SPEC_TEXT, errors_text=ERRORS_TEXT)
 
 
 def test_only_malformed_or_unknown_session_requests_are_negative_controls():
     """Plan 11.7 v5: every well-formed pre-admission branch maps to its wire class's descriptor (one per class, whatever its
     message); malformed or unknown-session requests are the only negative controls."""
     controls = {e.site for e in FIXTURE.census if e.disposition == "negative_control"}
-    assert controls == {"error:INVALID_REQUEST:invalid request", "error:INVALID_REQUEST:unknown session", "error:METHOD_NOT_FOUND:*"}
+    assert controls == {"error:INVALID_REQUEST:invalid request", "error:RESOURCE_NOT_FOUND:unknown session", "error:METHOD_NOT_FOUND:*"}
 
 
 def test_census_is_traced_from_source_not_copied_from_the_fixture():
-    traced = col.trace_first_prompt_census(SPEC_TEXT)
+    traced = col.trace_first_prompt_census(SPEC_TEXT, errors_text=ERRORS_TEXT)
     assert ("_handle_session_prompt", "error:INVALID_REQUEST:empty prompt", False, 1) in traced
     assert ("_refuse_prompt", "stop_reason:refusal", False, 1) in traced
     assert ("_handle_savings", "stop_reason:cancelled", False, 3) in traced
@@ -51,6 +52,58 @@ def test_census_is_traced_from_source_not_copied_from_the_fixture():
     assert not any(site == "stop_reason:*" for _, site, _, _ in traced)
 
 
+
+def test_selector_census_resolves_both_outcomes_from_the_gated_errors_source():
+    traced = col.trace_first_prompt_census(SPEC_TEXT, errors_text=ERRORS_TEXT)
+    assert ("_handle_session_prompt", "error:RESOURCE_NOT_FOUND:unknown session", False, 1) in traced
+    assert ("_handle_session_prompt", "error:TURN_BUSY:a turn is already in progress", False, 1) in traced
+    assert not any(site == "error:INVALID_REQUEST:unknown session" for _, site, _, _ in traced)
+
+
+@pytest.mark.parametrize(
+    ("spec_change", "errors_change"),
+    [
+        (("AcpErrorOutcome.TURN_BUSY)", "AcpErrorOutcome.DEPENDENCY_UNAVAILABLE)"), None),
+        (("AcpErrorOutcome.TURN_BUSY)", "choose_outcome())"), None),
+        (("    select_acp_error,", "    select_acp_error as alias,"), None),
+        (None, ("TURN_BUSY = -32913", "TURN_BUSY = -32914")),
+        (None, ('message="a turn is already in progress"', 'message="different reply"')),
+        (None, ("RESOURCE_NOT_FOUND = -32002", "RESOURCE_NOT_FOUND = -32004")),
+        (None, ('message="unknown session"', 'message="missing resource"')),
+        (None, ("case AcpErrorOutcome.TURN_BUSY:", "case AcpErrorOutcome.TURN_BUSY if allowed:")),
+        (None, ("case AcpErrorOutcome.TURN_BUSY:", "case AcpErrorOutcome.TURN_BUSY:\n            marker = 1")),
+        (None, ("INVALID_REQUEST = -32600", "INVALID_REQUEST = -32604")),
+        (None, ("REQUEST_CANCELLED = -32800", "REQUEST_CANCELLED = -32801")),
+        (None, ("INTERNAL_ERROR = -32603", "INTERNAL_ERROR = -32604")),
+    ],
+)
+def test_selector_census_fails_on_source_drift(spec_change, errors_change):
+    errors = ERRORS_TEXT
+    spec = SPEC_TEXT
+    if spec_change is not None:
+        assert spec.count(spec_change[0]) == 1
+        spec = spec.replace(*spec_change, 1)
+    if errors_change is not None:
+        assert errors.count(errors_change[0]) == 1
+        errors = errors.replace(*errors_change, 1)
+    with pytest.raises(HostError, match="r_census_mismatch"):
+        col.verify_census(FIXTURE, spec, errors_text=errors)
+
+
+def test_census_refuses_a_qualified_selector_in_a_new_branch():
+    spec = SPEC_TEXT.replace("from optimus.acp.errors import (", "from optimus.acp import errors\nfrom optimus.acp.errors import (", 1)
+    spec = spec.replace(
+        "        task = _text_from_content_blocks(prompt)\n",
+        '        if request.get("newRefusal"):\n'
+        '            return self._non_turn(error_response(request.get("id"), errors.select_acp_error(AcpErrorOutcome.TURN_BUSY)), ownership_slot)\n'
+        "        task = _text_from_content_blocks(prompt)\n",
+        1,
+    )
+    assert spec != SPEC_TEXT
+    with pytest.raises(HostError, match="r_census_mismatch"):
+        col.verify_census(FIXTURE, spec, errors_text=ERRORS_TEXT)
+
+
 def test_new_first_prompt_response_branch_fails_structural_coverage():
     mutated = SPEC_TEXT.replace(
         "        task = _text_from_content_blocks(prompt)\n",
@@ -60,7 +113,7 @@ def test_new_first_prompt_response_branch_fails_structural_coverage():
     )
     assert mutated != SPEC_TEXT
     with pytest.raises(HostError) as excinfo:
-        col.verify_census(FIXTURE, mutated)
+        col.verify_census(FIXTURE, mutated, errors_text=ERRORS_TEXT)
     assert excinfo.value.code == "r_census_mismatch"
 
 
@@ -68,7 +121,7 @@ def test_removed_branch_fails_structural_coverage():
     mutated = SPEC_TEXT.replace('JsonRpcError(code=INVALID_REQUEST, message="empty prompt")', 'JsonRpcError(code=INVALID_REQUEST, message="invalid request")', 1)
     assert mutated != SPEC_TEXT
     with pytest.raises(HostError):
-        col.verify_census(FIXTURE, mutated)
+        col.verify_census(FIXTURE, mutated, errors_text=ERRORS_TEXT)
 
 
 def test_reopen_refusal_moved_out_of_the_prior_idle_block_fails_coverage():
@@ -79,23 +132,23 @@ def test_reopen_refusal_moved_out_of_the_prior_idle_block_fails_coverage():
     )
     assert mutated != SPEC_TEXT
     with pytest.raises(HostError):
-        col.verify_census(FIXTURE, mutated)
+        col.verify_census(FIXTURE, mutated, errors_text=ERRORS_TEXT)
 
 
 def test_mcp_reopen_refused_is_only_reachable_after_prior_idle_suspension():
-    reopen_refused = [entry for entry in col.trace_first_prompt_census(SPEC_TEXT) if entry[1] == "mcp_refusal:mcp_reopen_refused"]
+    reopen_refused = [entry for entry in col.trace_first_prompt_census(SPEC_TEXT, errors_text=ERRORS_TEXT) if entry[1] == "mcp_refusal:mcp_reopen_refused"]
     assert reopen_refused and all(entry[2] for entry in reopen_refused)
 
 
 def test_every_descriptor_class_is_reached_by_a_source_branch():
-    traced = {(f, s, idle) for f, s, idle, _ in col.trace_first_prompt_census(SPEC_TEXT)}
+    traced = {(f, s, idle) for f, s, idle, _ in col.trace_first_prompt_census(SPEC_TEXT, errors_text=ERRORS_TEXT)}
     reached = {entry.descriptor_id for entry in FIXTURE.census if entry.disposition == "descriptor" and (entry.function, entry.site, entry.prior_idle) in traced}
     assert reached == set(c.R_DESCRIPTOR_IDS)
 
 
 def test_census_without_its_admission_anchor_fails_closed():
     with pytest.raises(HostError) as excinfo:
-        col.trace_first_prompt_census(SPEC_TEXT.replace("allocate_turn_seq", "allocate_seq"))
+        col.trace_first_prompt_census(SPEC_TEXT.replace("allocate_turn_seq", "allocate_seq"), errors_text=ERRORS_TEXT)
     assert excinfo.value.code == "r_census_anchor_missing"
 
 
@@ -741,7 +794,7 @@ def test_private_root_commitment_is_the_keyed_commitment_of_the_captured_capture
 
 # --------------------------------------------------------------------------- slice 7: collection state machine and raw derivation
 
-FIXTURE_SHA = c.sha256_hex((REPO / "tests" / "fixtures" / "evidence" / "plan117-v5-first-refusal-descriptors.json").read_bytes())
+FIXTURE_SHA = c.sha256_hex((REPO / col.DESCRIPTOR_FIXTURE_RELATIVE).read_bytes())
 
 
 class Run:
@@ -1201,7 +1254,7 @@ def test_a_runtime_error_abort_after_a_positive_signal_is_still_stop(tmp_path, w
     assert (result.disposition, result.primary.subject) == (D.ZERO_ENTRY_REACHABLE_STOP, "a_prime")
 
 
-@pytest.mark.parametrize("hook", ["base_spec_bytes", "zed_identity", "prepare_source"])
+@pytest.mark.parametrize("hook", ["base_module_bytes", "zed_identity", "prepare_source"])
 def test_a_runtime_error_before_any_launch_leaves_no_scratch_and_a_fixed_code(tmp_path, windows_shaped_paths, monkeypatch, hook):
     run = Run(tmp_path)
     monkeypatch.setattr(run.host, hook, _raise(_probe_error()))
@@ -1337,10 +1390,36 @@ def test_collect_refuses_a_dirty_source_before_launching(tmp_path, windows_shape
 
 def test_collect_refuses_a_source_whose_census_drifted(tmp_path, windows_shaped_paths, monkeypatch):
     run = Run(tmp_path)
-    monkeypatch.setattr(run.host, "base_spec_bytes", lambda root, commit: SPEC_TEXT.replace('message="empty prompt"', 'message="blank prompt"').encode())
+    original = run.host.base_module_bytes
+
+    def drifted(root, commit, path):
+        return original(root, commit, path).replace(b'message="empty prompt"', b'message="blank prompt"')
+
+    monkeypatch.setattr(run.host, "base_module_bytes", drifted)
     with pytest.raises(HostError) as excinfo:
         run.collect()
     assert excinfo.value.code == "r_census_mismatch"
+
+
+
+def test_collect_refuses_error_registry_drift_from_the_pinned_normal_source(tmp_path, windows_shaped_paths, monkeypatch):
+    run = Run(tmp_path)
+    original = run.host.base_module_bytes
+    requested = []
+
+    def drifted(root, commit, path):
+        requested.append((root, commit, path))
+        data = original(root, commit, path)
+        return data.replace(b"TURN_BUSY = -32913", b"TURN_BUSY = -32914")
+
+    monkeypatch.setattr(run.host, "base_module_bytes", drifted)
+    with pytest.raises(HostError, match="r_census_mismatch"):
+        run.collect()
+    assert run.host.launches == []
+    assert requested == [
+        (run.normal, run.host_mod.SOURCE_COMMIT, "src/optimus/acp/spec.py"),
+        (run.normal, run.host_mod.SOURCE_COMMIT, "src/optimus/acp/errors.py"),
+    ]
 
 
 def test_collect_requires_the_prepared_run_key(tmp_path, windows_shaped_paths):
@@ -1944,7 +2023,7 @@ def test_real_source_facts_inspect_the_requested_root_not_the_machinery_checkout
 
 def test_real_base_spec_is_read_from_the_executing_root_at_the_pinned_commit(tmp_path, monkeypatch):
     actions, _, blobs = _real_actions_with_recorded_git(monkeypatch, {})
-    assert actions.base_spec_bytes(tmp_path, "c" * 40) == SPEC_TEXT.encode()
+    assert actions.base_module_bytes(tmp_path, "c" * 40, "src/optimus/acp/spec.py") == SPEC_TEXT.encode()
     assert blobs == [(tmp_path, "c" * 40, "src/optimus/acp/spec.py")]
 
 
@@ -1958,9 +2037,9 @@ def test_collect_binds_the_executing_source_root_separately_from_the_registry_ch
 
 
 def test_census_covers_the_pre_dispatch_request_handler():
-    traced = col.trace_first_prompt_census(SPEC_TEXT)
+    traced = col.trace_first_prompt_census(SPEC_TEXT, errors_text=ERRORS_TEXT)
     assert any(function == "_handle_client_request" for function, *_ in traced)
-    col.verify_census(FIXTURE, SPEC_TEXT)
+    col.verify_census(FIXTURE, SPEC_TEXT, errors_text=ERRORS_TEXT)
 
 
 def test_new_pre_dispatch_refusal_fails_structural_coverage():
@@ -1971,7 +2050,7 @@ def test_new_pre_dispatch_refusal_fails_structural_coverage():
     )
     assert mutated != SPEC_TEXT
     with pytest.raises(HostError):
-        col.verify_census(FIXTURE, mutated)
+        col.verify_census(FIXTURE, mutated, errors_text=ERRORS_TEXT)
 
 
 @pytest.mark.parametrize("code", ["-32600", True, None, 1.5])
@@ -2692,10 +2771,17 @@ def test_an_unknown_key_never_rescues_an_invalid_known_field_on_the_positive_art
 def test_collector_approves_all_arms_and_rechecks_before_every_spawn(tmp_path, windows_shaped_paths):
     run = Run(tmp_path)
     batch = run.collect()
-    assert run.host.approval_events[:8] == [("approve", arm) for arm in c.ARM_IDS]
-    assert run.host.approval_events[8:24] == [("verify", arm) for arm in c.ARM_IDS for _ in range(2)]
-    assert run.host.approval_events[-1] == ("recover", "")
-    assert len(run.host.launches) == 16
+    expected_launches = [
+        (arm, launch)
+        for arm in c.ARM_IDS
+        for launch in (c.PROMPTED_LAUNCH_IDS if arm == c.ARM_PROMPTED else c.REOPEN_LAUNCH_IDS)
+    ]
+    assert run.host.launches == expected_launches
+    assert run.host.approval_events == [
+        *(("approve", arm) for arm in c.ARM_IDS),
+        *(("verify", arm) for arm, _ in expected_launches),
+        ("recover", ""),
+    ]
     assert batch.observations
 
 

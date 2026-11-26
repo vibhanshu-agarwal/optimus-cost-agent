@@ -1103,6 +1103,22 @@ The framed Content-Length transport (`--framed`) refuses at startup while the tr
 model registry is enforced, because it cannot bind requests to that registry. IDE
 integrations use the ndjson Agent Client Protocol flow above.
 
+### ACP error responses
+
+| Request outcome | JSON-RPC error | Message and data |
+| --- | --- | --- |
+| A known, exposed dispatcher method needs a local dependency that is unavailable | `INTERNAL_ERROR` (`-32603`) | `dependency unavailable` with `data.reason` set to `DEPENDENCY_UNAVAILABLE` |
+| A valid prompt, mode change or config change refers to an unavailable session | `RESOURCE_NOT_FOUND` (`-32002`) | `unknown session` with no error data. Absent and inaccessible retained sessions receive the same response. |
+| A second prompt arrives while the session is executing a turn or serving a usage report | `TURN_BUSY` (`-32913`) | `a turn is already in progress` with no error data. The first request continues to own its result. |
+
+Unknown and policy-disabled methods use `METHOD_NOT_FOUND`. Malformed session
+request shapes use `INVALID_REQUEST`. The prompt handler checks session
+availability before checking whether the prompt contains usable text. NDJSON returns
+`METHOD_NOT_FOUND` for unsupported requests such as `session/load`, regardless of whether
+the supplied session is privately retained. A `session/cancel` notification still cancels
+existing work through the notification path. [ADR-047](docs/decisions/ADR-047-acp-error-selection-at-request-boundaries.md)
+records the scope and code allocation.
+
 ### Verify with real Redis
 
 Unit and default integration tests use in-memory fakes. To prove Redis-backed plan

@@ -18,6 +18,7 @@ RESOURCE_NOT_FOUND = -32002
 MUTATION_FORBIDDEN = -32910
 DUPLICATE_REQUEST_ID = -32911
 MCP_REOPEN_REFUSED = -32912
+TURN_BUSY = -32913
 
 JSON_RPC_STANDARD_ERROR_CODES = frozenset(
     {PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR}
@@ -25,7 +26,7 @@ JSON_RPC_STANDARD_ERROR_CODES = frozenset(
 ACP_PROTOCOL_ERROR_CODES = frozenset(
     {*JSON_RPC_STANDARD_ERROR_CODES, AUTHENTICATION_REQUIRED, REQUEST_CANCELLED, RESOURCE_NOT_FOUND}
 )
-OPTIMUS_APPLICATION_ERROR_CODES = frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID, MCP_REOPEN_REFUSED})
+OPTIMUS_APPLICATION_ERROR_CODES = frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID, MCP_REOPEN_REFUSED, TURN_BUSY})
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,9 @@ class JsonRpcError:
 
 class AcpErrorOutcome(StrEnum):
     CLIENT_REJECTED_OUTBOUND = "CLIENT_REJECTED_OUTBOUND"
+    DEPENDENCY_UNAVAILABLE = "DEPENDENCY_UNAVAILABLE"
+    SESSION_UNAVAILABLE = "SESSION_UNAVAILABLE"
+    TURN_BUSY = "TURN_BUSY"
 
 
 def select_acp_error(outcome: AcpErrorOutcome | GatewayFailureReason) -> JsonRpcError:
@@ -57,6 +61,12 @@ def select_acp_error(outcome: AcpErrorOutcome | GatewayFailureReason) -> JsonRpc
                 message="client rejected outbound request",
                 data={"reason": outcome.value},
             )
+        case AcpErrorOutcome.DEPENDENCY_UNAVAILABLE:
+            return JsonRpcError(code=INTERNAL_ERROR, message="dependency unavailable", data={"reason": outcome.value})
+        case AcpErrorOutcome.SESSION_UNAVAILABLE:
+            return JsonRpcError(code=RESOURCE_NOT_FOUND, message="unknown session")
+        case AcpErrorOutcome.TURN_BUSY:
+            return JsonRpcError(code=TURN_BUSY, message="a turn is already in progress")
     assert_never(outcome)
 
 

@@ -373,11 +373,29 @@ def test_manifest_or_attestation_outside_the_bundle_root_is_refused(tmp_path, mo
 
 def test_bundle_cannot_register_itself(tmp_path, monkeypatch, capsys, windows_shaped_paths):
     bundle = Bundle(tmp_path, monkeypatch)
-    registry_path = bundle.checkout / "reports" / "plan-11-7-v5-approved-runs.json"
-    shutil.copyfile(registry_path, bundle.root / "plan-11-7-v5-approved-runs.json")
+    registry_path = bundle.checkout / col.APPROVED_RUNS_RELATIVE
+    shutil.copyfile(registry_path, bundle.root / Path(col.APPROVED_RUNS_RELATIVE).name)
     registry_path.write_bytes(c.canonical_json_bytes({"schema": c.RUN_REGISTRY_SCHEMA, "runs": []}))
     code, out, _ = bundle.run(capsys)
     assert code == 2 and "run_not_registered" in out["failures"]
+
+
+
+@pytest.mark.parametrize(
+    ("current_path", "historical_path"),
+    [
+        (col.APPROVED_RUNS_RELATIVE, "reports/plan-11-7-v5-approved-runs.json"),
+        (col.DESCRIPTOR_FIXTURE_RELATIVE, "tests/fixtures/evidence/plan117-v5-first-refusal-descriptors.json"),
+    ],
+)
+def test_one_historical_trust_input_cannot_validate_current_evidence(
+    tmp_path, monkeypatch, capsys, windows_shaped_paths, current_path, historical_path,
+):
+    bundle = Bundle(tmp_path, monkeypatch)
+    (bundle.checkout / current_path).write_bytes((Path(__file__).resolve().parents[3] / historical_path).read_bytes())
+    code, out, _ = bundle.run(capsys)
+    assert code == 2
+    assert out["integrity"] == "failed"
 
 
 def test_trust_inputs_inside_the_bundle_root_are_refused(tmp_path, monkeypatch, capsys, windows_shaped_paths):
@@ -388,7 +406,7 @@ def test_trust_inputs_inside_the_bundle_root_are_refused(tmp_path, monkeypatch, 
 
 def test_scenario_blob_drift_in_the_checkout_fails(tmp_path, monkeypatch, capsys, windows_shaped_paths):
     bundle = Bundle(tmp_path, monkeypatch)
-    scenario = bundle.checkout / "tests" / "fixtures" / "evidence" / "scenarios" / "plan117-current-client-gate-v5.toml"
+    scenario = bundle.checkout / col.SCENARIO_RELATIVE
     scenario.write_bytes(scenario.read_bytes() + b"\n")
     code, out, _ = bundle.run(capsys)
     assert code == 2 and "run_spec_mismatch:scenario_source_sha256" in out["failures"]
@@ -483,7 +501,7 @@ def test_an_unreadable_derivative_cannot_hide_a_stop_manifest(tmp_path, monkeypa
     assert out["disposition"] == D.ZERO_ENTRY_REACHABLE_STOP.value
 
 
-@pytest.mark.parametrize("name", ["plan-11-7-v5-approved-runs.json", "plan117-current-client-gate-v5.toml", "plan117-v5-first-refusal-descriptors.json"])
+@pytest.mark.parametrize("name", [Path(p).name for p in (col.APPROVED_RUNS_RELATIVE, col.SCENARIO_RELATIVE, col.DESCRIPTOR_FIXTURE_RELATIVE)])
 def test_unreadable_trust_inputs_cannot_hide_a_stop_manifest(tmp_path, monkeypatch, capsys, windows_shaped_paths, name):
     bundle = Bundle(tmp_path, monkeypatch, host_mod.FakeHostOptions(reopen_load_arm="r_cancelled"))
     _deny_reads(monkeypatch, lambda p: p.name == name)
@@ -578,7 +596,7 @@ def test_a_rebound_but_unchanged_report_still_verifies(tmp_path, monkeypatch, ca
 
 def test_a_malformed_trusted_scenario_is_reported_beside_a_kept_stop(tmp_path, monkeypatch, capsys, windows_shaped_paths):
     bundle = Bundle(tmp_path, monkeypatch, host_mod.FakeHostOptions(reopen_load_arm="r_refusal"))
-    scenario = bundle.checkout / "tests" / "fixtures" / "evidence" / "scenarios" / "plan117-current-client-gate-v5.toml"
+    scenario = bundle.checkout / col.SCENARIO_RELATIVE
     scenario.write_bytes(b"this is = = not toml [\n")
     code, out, _ = bundle.run(capsys)
     assert code == 2 and "trust_input_invalid" in out["failures"]

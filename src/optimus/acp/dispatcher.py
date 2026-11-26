@@ -14,6 +14,7 @@ from optimus.acp.errors import (
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
     MUTATION_FORBIDDEN,
+    AcpErrorOutcome,
     JsonRpcError,
     error_response,
     select_acp_error,
@@ -165,7 +166,7 @@ class JsonRpcDispatcher:
                 if self._gateway_client is None:
                     return error_response(
                         request_id=request_id,
-                        error=JsonRpcError(code=METHOD_NOT_FOUND, message="gateway client not configured"),
+                        error=select_acp_error(AcpErrorOutcome.DEPENDENCY_UNAVAILABLE),
                     )
                 params = request.get("params")
                 if (
@@ -210,7 +211,7 @@ class JsonRpcDispatcher:
                 if self._evidence_service is None:
                     return error_response(
                         request_id=request_id,
-                        error=JsonRpcError(code=METHOD_NOT_FOUND, message="evidence service not configured"),
+                        error=select_acp_error(AcpErrorOutcome.DEPENDENCY_UNAVAILABLE),
                     )
                 try:
                     evidence_request = EvidenceRequest.model_validate(request.get("params"))
@@ -231,7 +232,7 @@ class JsonRpcDispatcher:
                 if self._evidence_service is None:
                     return error_response(
                         request_id=request_id,
-                        error=JsonRpcError(code=METHOD_NOT_FOUND, message="evidence service not configured"),
+                        error=select_acp_error(AcpErrorOutcome.DEPENDENCY_UNAVAILABLE),
                     )
                 try:
                     extract_request = EvidenceExtractRequest.model_validate(request.get("params"))
@@ -252,9 +253,7 @@ class JsonRpcDispatcher:
                 if self._package_advisory_service is None:
                     return error_response(
                         request_id=request_id,
-                        error=JsonRpcError(
-                            code=METHOD_NOT_FOUND, message="package advisory service not configured"
-                        ),
+                        error=select_acp_error(AcpErrorOutcome.DEPENDENCY_UNAVAILABLE),
                     )
                 try:
                     package_request = EvidencePackageLookupRequest.model_validate(request.get("params"))
@@ -293,9 +292,7 @@ class JsonRpcDispatcher:
                 if self._package_advisory_service is None:
                     return error_response(
                         request_id=request_id,
-                        error=JsonRpcError(
-                            code=METHOD_NOT_FOUND, message="package advisory service not configured"
-                        ),
+                        error=select_acp_error(AcpErrorOutcome.DEPENDENCY_UNAVAILABLE),
                     )
                 try:
                     advisory_request = EvidenceSecurityAdvisoryRequest.model_validate(request.get("params"))
@@ -334,7 +331,7 @@ class JsonRpcDispatcher:
                 if self._agent_runner is None:
                     return error_response(
                         request_id=request_id,
-                        error=JsonRpcError(code=METHOD_NOT_FOUND, message="agent runner not configured"),
+                        error=select_acp_error(AcpErrorOutcome.DEPENDENCY_UNAVAILABLE),
                     )
                 params = request.get("params")
                 if isinstance(params, dict) and "completion_condition" in params:
