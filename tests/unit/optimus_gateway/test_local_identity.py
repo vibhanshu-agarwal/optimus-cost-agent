@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import http.client
 import json
+import socket
 import threading
 from collections.abc import Iterator
 from dataclasses import replace
 from decimal import Decimal
+from http import HTTPStatus
+from http.server import ThreadingHTTPServer
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -15,6 +19,7 @@ from optimus.acp import launch_policy
 from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient
 from optimus.gateway.errors import GatewayHttpError
+from optimus_gateway import server as gw_server
 from optimus_gateway.models import GatewayServiceConfig
 from optimus_gateway.server import serve_gateway
 from optimus_gateway.upstream_client import ProviderMessageResult
@@ -139,6 +144,89 @@ def test_a_refusal_answers_even_a_body_past_its_reading_limit(gateway) -> None:
     port, upstream = gateway
     status, reply = _post(port, "/v1/responses", b"x" * 200_000, {**_AUTH, gi.HEADER: "0" * 64})
     assert (status, reply) == (409, {"error": "gateway_identity_mismatch"})
+    assert upstream.calls == 0
+
+
+def test_oversized_identity_refusal_finishes_writing_before_bounded_discard(monkeypatch: pytest.MonkeyPatch) -> None:
+    handler = object.__new__(gw_server.OptimusGatewayHandler)
+    handler.headers = http.client.HTTPMessage()
+    handler.headers.add_header("Content-Length", "200000")
+    calls = Mock()
+    handler.connection = calls.connection
+    handler.rfile = calls.stream
+
+    clock = iter((10.0, 10.5))
+    monkeypatch.setattr(gw_server, "_monotonic", lambda: next(clock))
+    monkeypatch.setattr(handler, "_send_json", calls.reply)
+    monkeypatch.setattr(gw_server, "_discard_rejected_post_body", calls.discard)
+    monkeypatch.setattr(gw_server.request_diagnostics, "write_log_line", lambda _: None)
+
+    handler._refuse_other_identity("/v1/responses")
+
+    assert handler.close_connection
+    assert calls.mock_calls == [
+        call.reply(HTTPStatus.CONFLICT, {"error": "gateway_identity_mismatch"}, write_deadline=12.5),
+        call.connection.shutdown(socket.SHUT_WR),
+        call.discard(calls.stream, calls.connection, 65_536, 12.0),
+    ]
+
+
+@pytest.fixture
+def gateway_request_closed(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
+    closed = threading.Event()
+    shutdown_request = ThreadingHTTPServer.shutdown_request
+
+    def observed_shutdown(server: ThreadingHTTPServer, connection: socket.socket) -> None:
+        shutdown_request(server, connection)
+        closed.set()
+
+    monkeypatch.setattr(ThreadingHTTPServer, "shutdown_request", observed_shutdown)
+    return closed
+
+
+def _oversized_mismatch_headers() -> bytes:
+    return (
+        "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\n"
+        f"Authorization: {_AUTH['Authorization']}\r\n{gi.HEADER}: {'0' * 64}\r\n"
+        "Content-Type: application/json\r\nContent-Length: 200000\r\nConnection: close\r\n\r\n"
+    ).encode("ascii")
+
+
+def test_oversized_identity_refusal_survives_server_close(gateway, gateway_request_closed: threading.Event) -> None:
+    port, upstream = gateway
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+        connection.sendall(_oversized_mismatch_headers())
+        connection.sendall(b"x" * 200_000)
+        assert gateway_request_closed.wait(5)
+        with http.client.HTTPResponse(connection) as reply:
+            reply.begin()
+            assert (reply.status, json.loads(reply.read())) == (409, {"error": "gateway_identity_mismatch"})
+    assert upstream.calls == 0
+
+
+def test_oversized_identity_refusal_closes_after_bounded_wait_for_withheld_body(
+    gateway, gateway_request_closed: threading.Event, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    port, upstream = gateway
+    timed_out = threading.Event()
+    discard = gw_server._discard_rejected_post_body
+
+    def observe_discard(*args, **kwargs) -> None:
+        try:
+            discard(*args, **kwargs)
+        except gw_server._RejectedPostError as exc:
+            if exc.status == HTTPStatus.REQUEST_TIMEOUT:
+                timed_out.set()
+            raise
+
+    monkeypatch.setattr(gw_server, "_discard_rejected_post_body", observe_discard)
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+        connection.sendall(_oversized_mismatch_headers())
+        with http.client.HTTPResponse(connection) as reply:
+            reply.begin()
+            assert (reply.status, json.loads(reply.read())) == (409, {"error": "gateway_identity_mismatch"})
+            assert gateway_request_closed.wait(5)
+    assert timed_out.is_set()
     assert upstream.calls == 0
 
 
