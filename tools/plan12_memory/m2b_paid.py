@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -460,8 +461,13 @@ def run(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_availab
         if row_evidence is not None:
             row.update(row_evidence(case, arm, row))
         report["rows"].append(row)
-        write_answers(answers)
-        write(report)
+        write(report)  # the row's record first, so a charged row survives a failed answer write (Codex round 125 A2)
+        try:
+            write_answers(answers)
+        except Exception as failure:  # noqa: BLE001 - kept on the record; the run stops and the Gateway ledger holds any charge
+            report["stopped"] = {"at": [case_id, arm], "reason": f"the answers sink could not be written ({type(failure).__name__}); the Gateway ledger is the authority"}
+            write(report)
+            break
         if row["terminal"] not in {"settled", "expected_zero_call", "failed"} or (row["terminal"] == "failed" and row["logical_requests"]):
             report["stopped"] = {"at": [case_id, arm], "reason": row["terminal_reason"]}
             break
@@ -473,7 +479,11 @@ def run(cases: Sequence[Mapping[str, Any]], *, u_equals_b: bool, outline_availab
 
 
 def write_json(path: Path) -> Callable[[Mapping[str, Any]], None]:
+    """Each write replaces the file whole (a temporary file, then os.replace), so a failed write leaves the previous valid report."""
+
     def write(report: Mapping[str, Any]) -> None:
-        path.write_text(json.dumps(report, indent=1, sort_keys=True, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")
+        partial = path.with_name(path.name + ".partial")
+        partial.write_text(json.dumps(report, indent=1, sort_keys=True, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")
+        os.replace(partial, path)
 
     return write

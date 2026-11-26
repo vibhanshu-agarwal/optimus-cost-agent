@@ -329,6 +329,12 @@ def degraded(manifest: Mapping[str, Any]) -> list[str]:
     return found
 
 
+def _view(retrieval: Any, pack: Any) -> dict[str, Any]:
+    """What production retrieved and packed, in the manifest's own shape, for `degraded`."""
+    return {"retrieval": {"state": retrieval.state, "coverage": dict(retrieval.coverage), "channels": dict(retrieval.channels)},
+            "stale_paths": [] if pack is None else list(pack.stale_paths)}
+
+
 class Evidence:
     """What the runner showed each row: the request text (this process's memory only), its workspace context, and what its memory turn
     retrieved (generation, retrieval and degradation, kept even when the turn refuses before its manifest), with the snapshot's tree id.
@@ -341,6 +347,7 @@ class Evidence:
         self.composition = composition
         self.snapshot_of = {case["case_id"]: case["snapshot"] for case in cases}
         self.run_snapshot = {f"m2b-q-{case['case_id']}-{arm}": case["snapshot"] for case in cases for arm in "NBUF"}
+        self.run_key = {f"m2b-q-{case['case_id']}-{arm}": (case["case_id"], arm) for case in cases for arm in "NBUF"}
         self.expected = None if expected is None else {f"m2b-q-{r['case_id']}-{r['arm']}": r for r in expected}
         self.inputs: dict[str, str] = {}
         self.contexts: dict[str, str] = {}
@@ -356,11 +363,33 @@ class Evidence:
         want = None if self.expected is None else self.expected.get(request.run_id)
         snapshot = self.run_snapshot.get(request.run_id)
         reason = None if snapshot is None else self.composition.checkout_drift(snapshot)
+        if reason is None and self.expected is not None:  # paid time: a refusal row too, before its terminal is accepted (Codex round 125 A1)
+            reason = self._retrieval_problem(request.run_id)
         if reason is None and want is not None and want["sent"]:
             reason = self._differs(want, result.text)
         if reason is not None:
             self.refusals[request.run_id] = reason
             raise paid.GuardRefused(reason)
+
+    def _seen(self, run_id: str) -> Any:
+        key = self.run_key.get(run_id)
+        attached = None if key is None else self.composition.packers.get(key)
+        memory = None if attached is None else attached.memory
+        return None if memory is None else getattr(memory, "m2b_seen", None)
+
+    def _retrieval_problem(self, run_id: str) -> str | None:
+        """Why a row's retrieval, if it ran, is not the full one on the session's published generation."""
+        seen = self._seen(run_id)
+        if seen is None:
+            return None
+        retrieval, pack = seen
+        found = degraded(_view(retrieval, pack))
+        if found:
+            return "degraded retrieval: " + "; ".join(found)
+        published = self.composition.epochs.get(self.run_snapshot[run_id])
+        if retrieval.epoch != published:
+            return f"retrieval read generation {retrieval.epoch}, the session published {published}"
+        return None
 
     def _differs(self, want: Mapping[str, Any], context: str) -> str | None:
         if self.composition.trees.get(self.snapshot_of[want["case_id"]]) != want["tree"]:
@@ -383,10 +412,8 @@ class Evidence:
             evidence = "none: the turn stopped before retrieval"
         else:
             retrieval, pack = seen
-            view = {"retrieval": {"state": retrieval.state, "coverage": dict(retrieval.coverage), "channels": dict(retrieval.channels)},
-                    "stale_paths": [] if pack is None else list(pack.stale_paths)}
             evidence = "manifest" if manifest else "retrieval, then a refusal before the manifest"
-            epoch, found = retrieval.epoch, degraded(view)
+            epoch, found = retrieval.epoch, degraded(_view(retrieval, pack))
         return {"pack_sha256": _sha(context.rpartition("\n")[0]) if row["sent"] and memory is not None and context is not None else None,  # minus its scope line
                 "epoch": epoch, "tree": self.composition.trees.get(case["snapshot"]), "retrieval_evidence": evidence, "degraded": found,
                 "evidence_refusal": self.refusals.get(row["logical_request_id"])}
@@ -809,6 +836,16 @@ def _sink(path: Path, repository: Path) -> Path:
     return resolved
 
 
+def _writable(directory: Path) -> None:
+    """A probe file written and removed, so a destination that cannot take the record fails before any send (Codex round 125 A2)."""
+    probe = directory / f".m2b-probe-{secrets.token_hex(4)}"
+    try:
+        probe.write_text("probe", encoding="utf-8")
+        probe.unlink()
+    except OSError as failure:
+        raise LaunchRefused(f"{directory.name} cannot be written ({type(failure).__name__})") from failure
+
+
 def input_sink(directory: Path) -> Callable[[str, str], None]:
     """Each forwarded request's text, appended before the send to the sink outside the repository, keyed by its digest (item 15)."""
 
@@ -835,6 +872,9 @@ def run_paid(config: Mapping[str, Any], repository: Path, release: Mapping[str, 
     preflight(cases, u_equals_b=u_equals_b, outline_available=budget_report["outline_available"], budget_report=budget_report, gate=gate, snapshot=trusted_snapshot(),
               repository=repository)  # before anything is provisioned or indexed (Codex round 124 attempt 3, B1); paid_launch repeats it
     sink = _sink(Path(config["sink_dir"]), repository)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    for destination in (sink, out.parent):
+        _writable(destination)
     work = repository / config["work_dir"] / "paid"
     legacy, _model_aware, _estimate = ev.production_routes(work)
     composition = Composition(trusted_snapshot(), settings.optimus_api_key.get_secret_value(), legacy, {}, {})

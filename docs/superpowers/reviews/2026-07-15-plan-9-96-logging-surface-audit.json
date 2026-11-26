@@ -6697,6 +6697,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "tools.plan12_memory.m2b_launch:_writable:text_file_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: writes the fixed word 'probe' to a randomly named file in a destination directory and removes it at once, so a destination that cannot take the paid record fails before any send; no request, answer, file body or credential.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b_launch.py::test_a_destination_that_cannot_be_written_is_refused_before_any_send",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "tools.plan12_memory.m2b_paid:run:text_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: builds a row's terminal reason and the run's stop reason from counts, the Guard's refusal reason and the expected request count; no reply, source or credential text.",

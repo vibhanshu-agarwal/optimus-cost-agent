@@ -338,12 +338,12 @@ def test_masking_hides_only_the_emitted_scope_lines_index_generation():
 
 # --- the paid launch ---------------------------------------------------------------------------------------------------------------
 
-def _launch(tree: Path, sealed: dict, budget: dict, provider_calls: list[int], *, gate: dict | None = None) -> dict:
+def _launch(tree: Path, sealed: dict, budget: dict, provider_calls: list[int], *, gate: dict | None = None, cases: list[dict] | None = None) -> dict:
     composition = _composition(tree, epoch=9, checked=True)
     kept: list[tuple[str, str]] = []
     with launch.loopback_gateway(composition.snapshot, composition.shared_secret) as (client, provider):  # the operator Gateway's stand-in
         try:
-            return launch.paid_launch(_cases(), composition, gateway=client, sealed=sealed, budget_report=budget, gate=gate or _gate(), u_equals_b=True, outline_available=True,
+            return launch.paid_launch(cases or _cases(), composition, gateway=client, sealed=sealed, budget_report=budget, gate=gate or _gate(), u_equals_b=True, outline_available=True,
                                       repository=ROOT, write=lambda _r: None, write_answers=lambda _a: None, write_input=lambda sha, text: kept.append((sha, text)))
         finally:
             provider_calls.append(len(provider.calls))
@@ -398,7 +398,100 @@ def test_a_paid_row_on_a_newer_index_generation_than_the_dry_pass_is_refused_bef
     report = _launch(tree, sealed, _budget(sealed), calls)
     first_memory = next(row for row in report["rows"] if row["arm"] != "N")
     assert calls == [first_memory["position"] - 1] and report["stopped"] is not None
-    assert first_memory["evidence_refusal"] == "the scope line's generation is not the dry pass's"
+    assert first_memory["evidence_refusal"] == "degraded retrieval: catalogue not ready", "a republish shows first as no catalogue held for it (Codex round 125 A1)"
+
+
+def _refusing_first(tree: Path) -> list[dict[str, Any]]:
+    """QR1/B, the schedule's second row, refuses after retrieval (an oversized required file under B's legacy budget)."""
+    (tree / "pkg" / "big.py").write_text(BIG, encoding="utf-8", newline="\n")
+    _commit(tree)
+    cases = _cases()
+    qr1 = cases[0]
+    qr1.update({"task": "Explain what pkg/big.py does.", "required_files": [{"path": "pkg/big.py"}], "forced_refusal": {**qr1["forced_refusal"], "B": True},
+                "boundary": {"stop_reason": "REQUIRED_WORKSPACE_FILE_TOO_LARGE", "gateway_requests": 0}})
+    return cases
+
+
+@pytest.mark.parametrize(("degrade", "reason"), [
+    (lambda storage: setattr(storage, "complete", False), "degraded retrieval: index coverage incomplete"),
+    (lambda storage: setattr(storage, "epoch", 10), "degraded retrieval: catalogue not ready"),  # a republish shows first as no catalogue for it
+])
+def test_a_paid_refusal_row_whose_retrieval_degraded_after_the_dry_pass_stops_the_run_before_the_next_send(tree, gates_pass, monkeypatch, degrade, reason):
+    """Codex round 125 A1: a zero-call row retrieves too; at paid time its retrieval must be the full one on the published generation, or
+    the row is refused before its terminal is accepted and the run stops, so the next send never happens."""
+    monkeypatch.setattr(launch, "FROZEN_COUNTS", (36, 35, 1))
+    cases = _refusing_first(tree)
+    sealed = _rehearse(_composition(tree), cases=cases)
+    assert sealed["passes"], sealed["problems"]
+    real_run = paid.run
+
+    def degraded_after_the_dry_pass(*args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("expected_inputs") is not None:
+            degrade(kwargs["packer_for"].__self__.sessions[SNAP]._storage_for("scope"))  # noqa: SLF001
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(launch.paid, "run", degraded_after_the_dry_pass)
+    calls: list[int] = []
+    report = _launch(tree, sealed, _budget(sealed), calls, gate={**_gate(), "sends": 35, "forced_refusals": 1}, cases=cases)
+    refused = report["rows"][-1]
+    assert (refused["case_id"], refused["arm"], refused["evidence_refusal"], refused["terminal"]) == ("QR1", "B", reason, "incomplete")
+    assert calls == [1] and report["stopped"]["at"] == ["QR1", "B"], "QR1/N sent; nothing after the refused row"
+
+
+def test_at_paid_time_a_retrieval_on_another_generation_than_the_session_published_is_refused(tree):
+    composition = _composition(tree, epoch=9)
+    full = SimpleNamespace(state="ok", epoch=10, coverage={"complete": True}, channels={"memory": "no authorized source", "lexical": "1 results", "dense": "1 results",
+                                                                                      "structure": "1 results", "recency": "1 results"})
+    composition.packers[("QR1", "B")] = SimpleNamespace(memory=SimpleNamespace(m2b_seen=(full, SimpleNamespace(stale_paths=()))))
+    evidence = launch.Evidence(composition, _cases(), expected=[])
+    with pytest.raises(paid.GuardRefused, match="retrieval read generation 10, the session published 9"):
+        evidence.observe(SimpleNamespace(run_id="m2b-q-QR1-B"), SimpleNamespace(text="blocked"))
+    launch.Evidence(composition, _cases()).observe(SimpleNamespace(run_id="m2b-q-QR1-B"), SimpleNamespace(text="blocked"))  # rehearsal: recorded, not refused
+
+
+def test_a_failed_answer_write_after_a_send_keeps_the_charged_row_and_stops_the_run(tree):
+    """Codex round 125 A2: the row's record is written before the answers, and a failed answer write stops the run on the record."""
+    composition = _composition(tree)
+    written: list[dict] = []
+
+    def unwritable(answers: Any) -> None:
+        raise OSError("the answers sink is gone")
+
+    with launch.loopback_gateway(composition.snapshot, composition.shared_secret) as (client, provider):
+        try:
+            report = paid.run(_cases(), u_equals_b=True, outline_available=True, gateway=client, approved=composition.approved(), model=composition.model_id,
+                              packer_for=composition.packer, binder_for=composition.binder, workspace_for=composition.workspace_for,
+                              ceiling=paid.Ceiling(96, launch.USD_MAX, launch.PER_ATTEMPT_USD), write=lambda r: written.append(json.loads(json.dumps(r))),
+                              write_answers=unwritable)
+        except OSError:
+            pytest.fail("the failed answer write escaped instead of stopping the run on the record")
+        assert len(provider.calls) == 1, "the first row sent; nothing after it"
+    assert written[0]["rows"][0]["logical_requests"] == 1 and written[0]["stopped"] is None, "the charged row was on the record before the answers"
+    assert report["stopped"] == {"at": ["QR1", "N"], "reason": "the answers sink could not be written (OSError); the Gateway ledger is the authority"}
+
+
+def test_a_record_write_replaces_the_file_whole_and_a_failed_one_keeps_the_previous_report(tmp_path, monkeypatch):
+    path = tmp_path / "paid-attempts.json"
+    write = paid.write_json(path)
+    write({"rows": [1]})
+    assert json.loads(path.read_text(encoding="utf-8")) == {"rows": [1]} and not (tmp_path / "paid-attempts.json.partial").exists()
+
+    def interrupted(source: Any, target: Any) -> None:
+        raise OSError("interrupted")
+
+    monkeypatch.setattr(paid.os, "replace", interrupted)
+    with pytest.raises(OSError):
+        write({"rows": [1, 2]})
+    assert json.loads(path.read_text(encoding="utf-8")) == {"rows": [1]}, "the previous valid report survives"
+
+
+def test_a_destination_that_cannot_be_written_is_refused_before_any_send(tmp_path):
+    launch._writable(tmp_path)  # noqa: SLF001
+    assert list(tmp_path.iterdir()) == [], "the probe leaves nothing behind"
+    not_a_directory = tmp_path / "file.json"
+    not_a_directory.write_text("{}", encoding="utf-8")
+    with pytest.raises(launch.LaunchRefused, match="cannot be written"):
+        launch._writable(not_a_directory)  # noqa: SLF001
 
 
 def test_the_paid_launch_refuses_before_any_send_on_a_sealed_difference(tree, frozen, gates_pass):
