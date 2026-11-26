@@ -255,7 +255,7 @@ def test_build_agent_environment_accepts_empty_optimus_projection() -> None:
 def test_assert_agent_environment_is_approved_accepts_registry_names() -> None:
     env = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:9",
-        "OPTIMUS_API_KEY": "secret",
+        "OPTIMUS_API_KEY": "secret",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
         "PATH": "/usr/bin",
     }
@@ -266,9 +266,9 @@ def test_assert_agent_environment_is_approved_accepts_registry_names() -> None:
 def test_assert_agent_environment_is_approved_rejects_unapproved_name() -> None:
     env = {
         "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:9",
-        "OPTIMUS_API_KEY": "secret",
+        "OPTIMUS_API_KEY": "secret",  # pragma: allowlist secret - synthetic test fixture
         "OPTIMUS_REDIS_URL": "redis://127.0.0.1:6379/0",
-        "ANTHROPIC_API_KEY": "should-never-be-here",
+        "ANTHROPIC_API_KEY": "should-never-be-here",  # pragma: allowlist secret - synthetic test fixture
     }
 
     with pytest.raises(SubprocessEnvConfigurationError, match="ANTHROPIC_API_KEY"):
@@ -312,7 +312,7 @@ def test_build_e7_summary_marks_incomplete_when_no_acp_results() -> None:
 def test_write_e7_report_persists_sanitized_transcript_only(tmp_path: Path) -> None:
     from tools.run_plan115_acpx_cost_obs_evidence import _sanitize_full_text, write_e7_report
 
-    secret = "super-secret-gateway-key-value"
+    secret = "super-secret-gateway-key-value"  # pragma: allowlist secret - synthetic test fixture
     sanitized_stdout = _sanitize_full_text(f"seen {secret} in stdout", known_secrets=(secret,))
     sanitized_stderr = _sanitize_full_text(f"seen {secret} in stderr", known_secrets=(secret,))
     report_path = tmp_path / "e7.md"
@@ -327,3 +327,14 @@ def test_write_e7_report_persists_sanitized_transcript_only(tmp_path: Path) -> N
     text = report_path.read_text(encoding="utf-8")
     assert secret not in text
     assert "seen" in text
+
+
+def test_the_plan115_report_sanitizes_its_whole_text_in_one_pass() -> None:
+    # #622 round 3: the report already holds the full stdout and stderr, so a stream cut is never needed.
+    from optimus_security.sanitization import COMPATIBILITY_SANITIZATION_POLICY, sanitize_for_persistence
+    from tools.run_plan115_acpx_cost_obs_evidence import _sanitize_full_text
+
+    text = "Bearer A_KEY= B_KEY = " + " " * 70_000 + "abc123x"
+    out = _sanitize_full_text(text, known_secrets=())
+    assert out == sanitize_for_persistence(text, policy=COMPATIBILITY_SANITIZATION_POLICY).value
+    assert "abc123x" not in out

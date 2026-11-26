@@ -320,16 +320,6 @@ def _label_value_texts(draw) -> str:
     return "".join(piece + sep for piece, sep in parts)
 
 
-def test_the_plan115_report_sanitizes_its_whole_text_in_one_pass() -> None:
-    # #622 round 3: the report already holds the full stdout and stderr, so a stream cut is never needed.
-    from tools.run_plan115_acpx_cost_obs_evidence import _sanitize_full_text
-
-    text = "Bearer A_KEY= B_KEY = " + " " * 70_000 + "abc123x"
-    out = _sanitize_full_text(text, known_secrets=())
-    assert out == _one_shot(text, COMPATIBILITY_SANITIZATION_POLICY)
-    assert "abc123x" not in out
-
-
 @settings(derandomize=True, database=None, max_examples=400, deadline=None)
 @given(
     text=_label_value_texts(),
