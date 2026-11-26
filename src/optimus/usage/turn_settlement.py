@@ -31,13 +31,16 @@ from __future__ import annotations
 import contextlib
 import re
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from optimus.gateway.attempts import AttemptIntegrityError
+from optimus.gateway.errors import GatewayFailureFacts, GatewayFailureReason
 from optimus.gateway.models import GatewayUsage
+from optimus.usage.errors import DuplicateGatewayRequestError
 
 if TYPE_CHECKING:
     from optimus.context.maintenance import MaintenanceReceipt
@@ -61,6 +64,19 @@ _USAGE_FACTS = ("provider", "resolved_provider", "resolved_model", "input_tokens
 
 class ReceiptConflictError(ValueError):
     """A receipt that contradicts one already recorded for the same attempt or Gateway request."""
+
+
+def publish_accounting_conflict(
+    facts: GatewayFailureFacts | None, failure: BaseException, errors: Sequence[Exception]
+) -> None:
+    if facts is None:
+        return
+    receipt_conflict = facts.take_receipt_conflict()
+    if any(
+        error is receipt_conflict or isinstance(error, (AttemptIntegrityError, ReceiptConflictError, DuplicateGatewayRequestError))
+        for error in errors
+    ):
+        facts.publish(failure, GatewayFailureReason.ATTEMPT_INTEGRITY)
 
 
 @dataclass(frozen=True, slots=True)

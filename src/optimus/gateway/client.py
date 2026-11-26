@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Protocol
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request
 
 from optimus.config.gateway import OptimusGatewaySettings
-from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
+from optimus.gateway.attempts import PREFLIGHT_REFUSAL_CODES
+from optimus.gateway.errors import GatewayHttpError, GatewayResponseError, PreflightProof
 from optimus.gateway.models import (
     GatewayDecision,
     GatewayResponse,
@@ -131,6 +133,7 @@ class UrllibGatewayTransport:
                 route_attempts=route_attempts,
                 route_attempts_malformed=_route_attempts_dropped(detail, route_attempts),
                 error_envelope=_error_envelope(raw, detail),
+                _proof=_preflight_proof(urllib_request, exc, raw, gateway_code, retryable),
             ) from exc
         except URLPolicyError as exc:
             raise GatewayHttpError(0, "gateway redirect rejected by scheme policy", failure={"kind": "transport", **exception_fact(exc)}) from None
@@ -263,6 +266,41 @@ class GatewayClient:
         headers["Content-Type"] = "application/json"
         headers["Accept"] = "application/json"
         return headers
+
+
+def _preflight_proof(
+    request: Request, error: HTTPError, raw: bytes, code: str | None, retryable: bool | None
+) -> PreflightProof | None:
+    """Qualify the wire claim without strengthening legacy retry and accounting signals."""
+    if (
+        code not in PREFLIGHT_REFUSAL_CODES
+        or retryable is not False
+        or request.get_method() != "POST"
+        or not 400 <= error.code < 600
+        or error.geturl() != request.full_url
+        or hasattr(request, "redirect_dict")
+        or request.has_proxy()
+        or getattr(request, "_tunnel_host", None) is not None
+        or not urlsplit(request.full_url).path.endswith(("/v1/responses", "/v1/decisions"))
+    ):
+        return None
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        obj = dict(pairs)
+        if len(obj) != len(pairs):
+            raise ValueError("duplicate JSON field")
+        return obj
+
+    def invalid_constant(value: str) -> None:
+        raise ValueError("non-JSON numeric constant")
+
+    try:
+        envelope = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=invalid_constant)
+    except (ValueError, RecursionError):
+        return None
+    if isinstance(envelope, dict) and "gateway_usage" not in envelope and envelope.get("route_attempts", []) == []:
+        return PreflightProof.DIRECT_REFUSAL
+    return None
 
 
 def _try_parse_error_usage(detail: str) -> GatewayUsage | None:

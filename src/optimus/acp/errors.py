@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, assert_never
 
+from optimus.gateway.errors import GatewayFailureReason
 from optimus_security.sanitization import sanitize_for_persistence
 
 PARSE_ERROR = -32700
@@ -38,8 +39,17 @@ class AcpErrorOutcome(StrEnum):
     CLIENT_REJECTED_OUTBOUND = "CLIENT_REJECTED_OUTBOUND"
 
 
-def select_acp_error(outcome: AcpErrorOutcome) -> JsonRpcError:
+def select_acp_error(outcome: AcpErrorOutcome | GatewayFailureReason) -> JsonRpcError:
     """Select the host-owned wire error for a classified ACP outcome."""
+    if isinstance(outcome, GatewayFailureReason):
+        return JsonRpcError(
+            code=INTERNAL_ERROR,
+            message="gateway request failed",
+            data={
+                "reason": outcome.value,
+                "effect_certainty": "no_effect" if outcome is GatewayFailureReason.PREFLIGHT_REFUSED else "unknown",
+            },
+        )
     match outcome:
         case AcpErrorOutcome.CLIENT_REJECTED_OUTBOUND:
             return JsonRpcError(

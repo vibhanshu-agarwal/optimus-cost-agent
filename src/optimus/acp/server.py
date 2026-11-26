@@ -37,6 +37,7 @@ from optimus.acp.errors import (
     error_response,
     outbound_error_response,
     sanitize_protocol_error_message,
+    select_acp_error,
 )
 from optimus.acp.framing import FramingError, encode_message, read_message
 from optimus.acp.lifecycle import (
@@ -1493,10 +1494,15 @@ class AcpStreamServer:
                     f"pending_permission_id={pending_permission_id!r}: {sanitize_protocol_error_message(str(exc))}",
                     file=sys.stderr,
                 )
-                error_payload = error_response(
-                    request_id=request_id,
-                    error=JsonRpcError(code=INTERNAL_ERROR, message=sanitize_protocol_error_message(str(exc))),
+                facts = ownership_slot.gateway_failure_facts
+                control = ownership_slot.turn_control
+                reason = None
+                if facts is not None and control is not None and not control.transport_abandoned():
+                    reason = facts.consume(exc)
+                error = select_acp_error(reason) if reason is not None else JsonRpcError(
+                    code=INTERNAL_ERROR, message=sanitize_protocol_error_message(str(exc)),
                 )
+                error_payload = error_response(request_id=request_id, error=error)
                 await deliver_recovery(error_payload)
 
             finally:
