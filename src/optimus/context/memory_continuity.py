@@ -55,8 +55,8 @@ class Settled:
     plan_hash: str = ""
     verification: tuple[str, ...] = ()  # host evidence references of checks that ran
     pending: bool = False  # the turn ended awaiting the user's approval
-    # Planning stopped on the model's own reply (PLANNING_MODEL_REFUSED), which was delivered: an answer to a question or a
-    # genuine refusal alike, never a completed task. The outcome stays as settled (Codex CP4 review 18, ruling 2).
+    # Planning stopped on the model's own reply, which was delivered: a refusal (PLANNING_MODEL_REFUSED) or an answer
+    # (PLANNING_ANSWERED, #512), never a completed task. The outcome stays as settled (Codex CP4 review 18, ruling 2).
     responded: bool = False
 
 
@@ -151,9 +151,10 @@ class Continuity:
             project=self._store.project, session=self._session, sequence=settled.sequence, branch=branch, worktree=self._worktree,
             baseline=head, settled_at_ms=self._clock(), outcome=_opaque(settled.outcome), objective=objective,
             provenance=settled.run_id, plan_hash=settled.plan_hash, pending=(f"{settled.run_id}:approval",) if settled.pending else (),
-            amendments=amendments, completion=(f"{settled.run_id}:completed",) if settled.outcome == "completed" else (),
+            # #512: an answered turn settles completed, yet claims no completed task: it keeps its `responded` reference.
+            amendments=amendments, completion=(f"{settled.run_id}:completed",) if settled.outcome == "completed" and not settled.responded else (),
             verification=tuple(settled.verification[:32]),
-            remaining=() if settled.outcome == "completed" or settled.pending
+            remaining=() if (settled.outcome == "completed" and not settled.responded) or settled.pending
             else (f"{settled.run_id}:{RESPONDED if settled.responded else _opaque(settled.outcome)}",))
         for attempt in range(CHECKPOINT_TRIES):
             try:

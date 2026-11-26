@@ -103,6 +103,35 @@ def test_already_quarantined_retained(tmp_path: Path) -> None:
     assert result.sha256 == hashlib.sha256(body).hexdigest()
 
 
+def test_already_quarantined_reports_unverified_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#647: a retained dump whose private-file check fails says so."""
+    q = _quarantine()
+    _, quarantine = _setup(tmp_path)
+    source = quarantine / "already.dmp"
+    body = b"MDMP" + b"\x03" * 40
+    source.write_bytes(body)
+    from evidence_handoff.redaction.private_files import PrivateFileError, apply_restrictive_permissions
+
+    apply_restrictive_permissions(source)
+    result = q.quarantine_process_dump(source_path=source, quarantine_root=quarantine)
+    assert result.reason_code == "process_dump_quarantined"  # real check passes
+
+    # A failed check, or an I/O error inside it (the file vanishing between exists() and stat()).
+    for failure in (PrivateFileError("posix_permissions_too_open"), FileNotFoundError("gone")):
+
+        def _check_fails(path: Path, failure: Exception = failure) -> None:
+            raise failure
+
+        monkeypatch.setattr(q, "verify_restrictive_permissions", _check_fails)
+        result = q.quarantine_process_dump(source_path=source, quarantine_root=quarantine)
+        assert result.reason_code == "quarantine_permissions_unverified"
+        assert result.quarantine_path == source.resolve()
+        assert result.sha256 == hashlib.sha256(body).hexdigest()
+        assert result.byte_size == len(body)
+
+
 def test_cross_filesystem_refuses_without_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -261,3 +261,32 @@ def test_rollback_leaves_counter_unchanged(postgres_store) -> None:
     assert status.last_content_sha256 == first.content_sha256
     second = store.append(_sanitized(text="after"), _identity(), idempotency_key="idem-after")
     assert second.sequence == 2
+
+
+def test_default_capability_insert_yields_to_an_existing_report(postgres_store) -> None:
+    """#650: the default row delivery_status writes never overwrites a report committed first."""
+    from datetime import UTC, datetime
+
+    from evidence_handoff_runtime.capabilities import ReaderCapability
+
+    now = datetime.now(tz=UTC)
+    report = ReaderCapability(
+        agent_id="reader-a", principal_id="reader-p", supported_schemas=frozenset({"schema-1"}),
+        reported_at=now, retired=True,
+    )
+    default = ReaderCapability(
+        agent_id="reader-a", principal_id="reader-p", supported_schemas=frozenset(),
+        reported_at=now, retired=False,
+    )
+    postgres_store.upsert_reader_capability(report)
+    postgres_store.insert_reader_capability_if_absent(default)
+    stored = postgres_store.get_reader_capability("reader-p")
+    assert stored.supported_schemas == frozenset({"schema-1"})
+    assert stored.retired is True
+
+    other = ReaderCapability(
+        agent_id="reader-b", principal_id="reader-q", supported_schemas=frozenset(),
+        reported_at=now, retired=False,
+    )
+    postgres_store.insert_reader_capability_if_absent(other)
+    assert postgres_store.get_reader_capability("reader-q").agent_id == "reader-b"

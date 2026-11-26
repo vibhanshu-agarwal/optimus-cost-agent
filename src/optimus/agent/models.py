@@ -10,6 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from optimus.runtime.modes import ExecutionMode
 
+# #512: planning ended on the model's answer to a request for information; the run settles with no plan.
+PLANNING_ANSWERED = "PLANNING_ANSWERED"
+
 
 class AgentRunStatus(StrEnum):
     PLAN_READY = "plan_ready"

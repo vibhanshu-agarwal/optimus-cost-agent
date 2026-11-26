@@ -96,7 +96,7 @@ def test_multi_turn_prompt_marks_initial_context_ephemeral_and_requires_complete
         remaining_wall_clock_minutes=30,
         initial_workspace_context="--- target.py ---\noriginal\n",
     )
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-24-p407-edit-p410-write-line-endings")  # #407's and #410's bump
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-11-26-p512-answer")  # #512's bump, after #407's and #410's
     assert "available on planning turn 1 only" in prompt
     assert "will not be carried to planning turn 2" in prompt
     assert "request every raw byte range" in prompt
@@ -190,7 +190,7 @@ def test_both_grammars_state_the_write_line_ending_rule():
         assert "One empty line directly before the next directive separates it from the body" in prompt
     assert "apart from line endings, as described above" in single
     assert AGENT_PLANNER_PROMPT_VERSION.endswith("2026-10-24-p407-edit-p410-write-line-endings")
-    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-10-24-p407-edit-p410-write-line-endings")
+    assert MULTI_TURN_PLANNER_PROMPT_VERSION.endswith("2026-11-26-p512-answer")  # #410's rule stays; #512 bumped it
 
 
 def test_a_read_block_names_the_files_line_endings():

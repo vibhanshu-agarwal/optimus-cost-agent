@@ -134,9 +134,9 @@ def quarantine_process_dump(
     if _is_under(source_resolved, quarantine_resolved):
         try:
             verify_restrictive_permissions(source_resolved)
-        except PrivateFileError:
-            # Already-quarantined retention still reports hash metadata.
-            pass
+        except (PrivateFileError, OSError):
+            # Retention still reports hash metadata, but not as verified custody (#647).
+            reason = "quarantine_permissions_unverified"
         return DumpQuarantineResult(
             disposition=Disposition.QUARANTINED,
             dump_kind=kind,

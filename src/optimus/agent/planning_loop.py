@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from optimus.agent.directives import (
+    _EDIT_PREFIX,
+    _INDEX_TOOL_LINE,
     BULLET_PREFIXES,
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
@@ -40,7 +42,7 @@ from optimus.agent.directives import (
     windows_path_shape,
 )
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
-from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
+from optimus.agent.models import PLANNING_ANSWERED, AgentMcpToolOutput, AgentToolCall, ContextPacker
 from optimus.agent.operation_control import TurnOperationControl
 from optimus.agent.prompts import build_multi_turn_planner_input, format_mcp_evidence_envelope, indexed_planner_prefix
 from optimus.agent.tools import AgentToolbox
@@ -98,7 +100,8 @@ _PLACEHOLDER_SOURCE_SHA256 = "0" * 64
 _OBSERVE_DIRECTIVE = re.compile(r"^OBSERVE:\s*(.*)$", re.DOTALL)
 _READ_RANGE_DIRECTIVE = re.compile(r"^READ:\s+(\S+)#bytes=(\d+):(\d+)\s*$")
 _REFUSE_DIRECTIVE = re.compile(r"^REFUSE:\s*(.+)$")
-_DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "PLAN:", "MCP_LIST", "MCP_CALL")
+_DIRECTIVE_PREFIXES = ("OBSERVE:", "READ:", "WRITE", "TEST", "REFUSE:", "ANSWER:", "PLAN:", "MCP_LIST", "MCP_CALL")
+ANSWER_MAX_BYTES = 4096  # #512: an answer's bound; within MAX_PATH_CHARS code points, so only this bound measures length
 _REFUSE_REASON_DIRECTIVE_PREFIX = re.compile(
     r"^(?:OBSERVE:|READ:|WRITE(?:\s|$)|TEST\s|PLAN:|CONTENT:|END_CONTENT|MCP_LIST\s|MCP_CALL\s)"
 )
@@ -110,6 +113,11 @@ class PlanningTurnKind(StrEnum):
     INDEX_TOOL = "INDEX_TOOL"
     FINAL_PLAN = "FINAL_PLAN"
     REFUSE = "REFUSE"
+    ANSWER = "ANSWER"  # #512: the model answered a request for information; `reason` holds the answer
+
+
+# #512: the model's own replies that end planning without a plan; loop control treats them alike.
+_MODEL_REPLIES = frozenset({PlanningTurnKind.REFUSE, PlanningTurnKind.ANSWER})
 
 
 class PlanningTurnParseError(ValueError):
@@ -127,6 +135,10 @@ PLANNING_TURN_PARSE_CODES = frozenset(
         "REFUSE_TOO_LONG",
         "REFUSE_HAS_DIRECTIVE_PREFIX",
         "REFUSE_UNSAFE_TEXT",
+        "ANSWER_EMPTY",
+        "ANSWER_TOO_LONG",
+        "ANSWER_HAS_DIRECTIVE",
+        "ANSWER_UNSAFE_TEXT",
         "PLAN_PATH_UNSAFE",
         "INDEX_ARGUMENT_UNSAFE",
         "MCP_MIXED_DIRECTIVES",
@@ -153,12 +165,16 @@ _MCP_AUTHORIZATION_OUTCOMES = frozenset({"ALLOW", "BLOCK", "HOLD"})
 PLANNING_PARSE_FEEDBACK: dict[str, str] = {
     "GRAMMAR_UNRECOGNIZED": (
         "it matched no planning-turn form. Reply with exactly one form: an intermediate turn (one OBSERVE: line, "
-        "then ranged READ: lines), one MCP_LIST or MCP_CALL line, a final plan, or a one-line REFUSE:."
+        "then ranged READ: lines), one MCP_LIST or MCP_CALL line, a final plan, an ANSWER: reply, or a one-line REFUSE:."
     ),
     "REFUSE_NOT_ONE_LINE": "a REFUSE: reply must be a single non-empty line.",
     "REFUSE_TOO_LONG": "a REFUSE: reason must be at most 512 UTF-8 bytes.",
     "REFUSE_HAS_DIRECTIVE_PREFIX": "a REFUSE: reason must not contain directive prefixes.",
     "REFUSE_UNSAFE_TEXT": "a REFUSE: reason must not hold control or invisible format characters.",
+    "ANSWER_EMPTY": "an ANSWER: reply must hold the answer after ANSWER:.",
+    "ANSWER_TOO_LONG": f"an ANSWER: reply must be at most {ANSWER_MAX_BYTES} UTF-8 bytes.",
+    "ANSWER_HAS_DIRECTIVE": "an ANSWER: reply must be the whole reply, with no directive line in it.",
+    "ANSWER_UNSAFE_TEXT": "an ANSWER: reply must not hold control or invisible format characters other than line breaks and tabs.",
     "PLAN_PATH_UNSAFE": (
         f"each plan path must be workspace-relative, at most {MAX_PATH_CHARS} characters, with no control or invisible "
         "format character, colon, leading backslash or reserved Windows name."
@@ -642,6 +658,12 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
         return refuse_decision
     if stripped.startswith("REFUSE:"):
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
+    fenced = stripped.splitlines()[-1].lstrip().startswith("```")
+    answer_decision = _try_parse_answer(stripped) or (
+        _try_parse_answer(strip_plan_text(_unwrap_markdown_code_fence(stripped))) if fenced else None
+    )
+    if answer_decision is not None:
+        return answer_decision
 
     # #575: the final-plan parser decides where a WRITE body ends. The checks below read a body by their own, looser
     # rules; when they would refuse a reply only for MCP-looking or OBSERVE lines that parser reads as WRITE content,
@@ -936,6 +958,36 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
     return PlanningTurnDecision(kind=PlanningTurnKind.REFUSE, reason=reason)
 
 
+def _answer_has_directive(line: str) -> bool:
+    line = line.strip()  # as the intermediate parser reads a line, U+00A0 and other blanks included
+    normalized = _normalize_directive_surface_line(line)
+    return (
+        _REFUSE_REASON_DIRECTIVE_PREFIX.match(normalized) is not None
+        or normalized.startswith(("REFUSE:", "ANSWER:"))
+        or _EDIT_PREFIX.match(normalized) is not None
+        or _INDEX_TOOL_LINE.match(normalized) is not None
+        or normalized in ("MCP_LIST", "MCP_CALL")
+        or is_directive_line(line)
+    )
+
+
+def _try_parse_answer(text: str) -> PlanningTurnDecision | None:
+    """#512: `ANSWER: <prose>` is the whole reply; more lines may follow, none of them a directive."""
+    if not text.startswith("ANSWER:"):
+        return None
+    answer = strip_plan_text(text[len("ANSWER:") :]).replace("\r\n", "\n")
+    if not answer.strip():  # str.strip also takes the blanks reply padding keeps (U+00A0 and the like)
+        raise PlanningTurnParseError("ANSWER_EMPTY", "ANSWER holds no answer")
+    if len(answer.encode("utf-8", "surrogatepass")) > ANSWER_MAX_BYTES:  # a lone surrogate is refused below, not a crash
+        raise PlanningTurnParseError("ANSWER_TOO_LONG", "ANSWER exceeds its byte bound")
+    if any(_answer_has_directive(line) for line in answer.split("\n")):
+        raise PlanningTurnParseError("ANSWER_HAS_DIRECTIVE", "ANSWER must not hold a directive line")
+    # #583's rule, as for a REFUSE reason, with line breaks and tabs permitted; a lone CR is still refused.
+    if unsafe_path_text(answer.replace("\n", "").replace("\t", "")):
+        raise PlanningTurnParseError("ANSWER_UNSAFE_TEXT", "ANSWER holds an unsafe character")
+    return PlanningTurnDecision(kind=PlanningTurnKind.ANSWER, reason=answer)
+
+
 def _final_plan_path_refused(text: str) -> bool:
     """#583: the reply failed as a final plan because of a path, so the notice can name that cause."""
     try:
@@ -1078,7 +1130,9 @@ def planning_corrective_text(
 def _corrective_template(
     stop_reason: str | None, *, refusal_reason: str | None, workspace_root: Path | None, route_stopped: bool
 ) -> str:
-    if stop_reason == "PLANNING_MODEL_REFUSED" and refusal_reason is not None:
+    # #512 (Codex review 2): an answer gets a refusal's sanitizer, so a secret it echoes is masked; shortcut: the
+    # sanitizer also turns a backslash into a slash, upgrade if answers need code examples with backslashes.
+    if stop_reason in ("PLANNING_MODEL_REFUSED", PLANNING_ANSWERED) and refusal_reason is not None:
         return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
     if route_stopped and stop_reason in PLANNING_ROUTE_STOPPED_MESSAGES:
         return PLANNING_ROUTE_STOPPED_MESSAGES[stop_reason]
@@ -1528,7 +1582,7 @@ class _PlanningIterationRunner:
             return None
         stop = loop_result.stop_reason
         kind = None if self._last_decision is None else self._last_decision.kind
-        plan_waiting, refusal_waiting = kind is PlanningTurnKind.FINAL_PLAN, kind is PlanningTurnKind.REFUSE
+        plan_waiting, refusal_waiting = kind is PlanningTurnKind.FINAL_PLAN, kind in _MODEL_REPLIES
         if stop is LoopStopReason.COMPLETED:
             # An open episode always ends at a check-in, even when its nudge produced a plan or a refusal.
             if not (self._checkin_requested or ((plan_waiting or refusal_waiting) and self._episode is not None)):
@@ -1587,7 +1641,7 @@ class _PlanningIterationRunner:
         self._escalates = False  # one switch per turn: later episodes on the stronger model go to their check-in
         self._detector.reset()
         self._checkin_requested = False
-        if self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
+        if self._last_decision is not None and self._last_decision.kind in _MODEL_REPLIES:
             self._last_decision = None  # the weak model's refusal is set aside for the stronger one; the episode stays
         assert self._episode is not None
         self._nudge = self._recovery_note(self._episode, escalated=True)
@@ -1597,7 +1651,7 @@ class _PlanningIterationRunner:
         self._episode, self._nudge, self._nudged, self._checkin_requested = None, None, False, False
         self._escalation_tried, self._episode_moved_to, self._episode_no_target = False, None, False
         self._detector.reset()
-        if self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
+        if self._last_decision is not None and self._last_decision.kind in _MODEL_REPLIES:
             self._last_decision = None  # Continue sets the refusal aside for more planning steps
 
     def _recovery_note(self, detection: LoopDetection, *, escalated: bool = False) -> str:
@@ -1639,6 +1693,11 @@ class _PlanningIterationRunner:
             text += " Auto had no stronger eligible model to try."
         if plan_waiting:
             text += " A final plan is ready: Continue shows it for your approval."
+        elif refusal_waiting and self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.ANSWER:
+            text += (
+                " The model then answered without a plan. Continue sets the answer aside and grants "
+                f"{self._policy.continue_grant_steps} more planning steps and {minutes} minutes; Stop keeps the answer."
+            )
         elif refusal_waiting:
             assert self._last_decision is not None
             text += (
@@ -2229,6 +2288,14 @@ class _PlanningIterationRunner:
                 evidence={"planning_turn": str(planning_turn)},
             )
 
+        if decision.kind is PlanningTurnKind.ANSWER:
+            return IterationOutcome(
+                summary="planning settled with an answer",
+                deterministic_completion=True,
+                failure_signature=None,
+                cost_usd=attempt_cost,
+            )
+
         if decision.kind is PlanningTurnKind.REFUSE:
             return IterationOutcome(
                 summary="planning settled with a typed refusal",
@@ -2303,6 +2370,14 @@ class _PlanningIterationRunner:
                 return self._planning_failure_result(
                     stop_reason=self._typed_planning_stop_reason,
                     settled_turns=settled_turns,
+                )
+
+            if decision is not None and decision.kind is PlanningTurnKind.ANSWER:
+                return self._planning_failure_result(
+                    stop_reason=PLANNING_ANSWERED,
+                    settled_turns=settled_turns,
+                    refusal_reason=decision.reason,  # the answer is the person's text (#512)
+                    detail=self._refusal_detail,
                 )
 
             if decision is not None and decision.kind is PlanningTurnKind.REFUSE:
