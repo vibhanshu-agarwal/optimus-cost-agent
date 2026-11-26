@@ -31,14 +31,18 @@ copy with an empty one. A lost project registry is repaired only from a generati
 workspace's own registry key.
 
 **Notices.** Memory notices not yet shown are kept in a durable backlog per project (`NoticeBacklog`), delivered by event id at
-the next opportunity in any session, so a restart loses no notice and a resend repeats no change.
+the next opportunity in any session, so a restart loses no notice and a resend repeats no change. A write the disk refuses
+is held in the process and retried by the next backlog call (#643); only a disk that refuses every write until the host exits
+loses the card, never the change.
 """
 
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
 import json
+import logging
 import os
 import secrets
 import shutil
@@ -52,6 +56,8 @@ from typing import Any, Final
 
 from optimus.context.memory_workspace import _git
 from optimus_file_lock import FileLock, LockBusy, LockFault
+
+_LOG = logging.getLogger(__name__)
 
 FORMAT: Final = "optimus-agent-memory-repo/2"
 LAYOUT: Final = ("MEMORY.md", "entries.jsonl", "manifest.json")
@@ -224,11 +230,22 @@ class StateFile:
 class NoticeBacklog:
     """Memory notices a person has not been shown yet, for one project, durable across restarts (Codex CP3 review 1, finding 6).
     A notice is added before it is sent and removed once its send is confirmed; any session of the project delivers what is left,
-    under the same event id, so a resend replaces a card and never repeats a change."""
+    under the same event id, so a resend replaces a card and never repeats a change.
+
+    #643: an add or remove the disk refuses is held in this process (records, and removals as tombstones) and written by the next
+    call, one attempt per call, so every session of the project in this process still sees it; `pending` returns no tombstoned
+    id. Held state is capped (`HELD_LIMIT` each, oldest dropped and counted). Known limit: if every write fails until the process
+    ends, what was held is lost with it; the change itself stays in the store and `/memory` lists it."""
+
+    HELD_LIMIT: Final = 256
 
     def __init__(self, config_root: Path, project: str) -> None:
         self.path = config_root / "memory-notices" / f"{hashlib.sha256(project.encode()).hexdigest()[:32]}.json"
-        self._lock = threading.Lock()
+        self._lock = threading.Lock()  # guards the file and every held field below
+        self._held: dict[str, dict[str, Any]] = {}  # event id -> record not yet written, oldest first
+        self._gone: dict[str, None] = {}  # event ids delivered whose removal is not yet written, oldest first
+        self._dropped = 0  # held records or tombstones dropped at the cap while failing
+        self._failing = False
 
     @classmethod
     def shared(cls, config_root: Path, project: str) -> NoticeBacklog:
@@ -237,34 +254,94 @@ class NoticeBacklog:
             found: NoticeBacklog = _SHARED.setdefault(candidate.path, candidate)
             return found
 
-    def _load(self) -> list[dict[str, Any]]:
+    def _load(self, *, writing: bool = False) -> list[dict[str, Any]]:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
+            return []
+        except OSError:
+            if writing:
+                raise  # a file that cannot be read now is never overwritten with only what this process holds (#643)
+            return []
+        except ValueError:
             return []
         return [record for record in data if isinstance(record, dict)] if isinstance(data, list) else []
 
     def pending(self) -> list[dict[str, Any]]:
         with self._lock:
-            return self._load()
+            if self._held or self._gone:
+                with contextlib.suppress(Exception):  # `_apply` logged the cause; what is held stays held
+                    self._apply()
+            current = [record for record in self._load() if record.get("event_id") not in self._gone]
+            known = {record.get("event_id") for record in current}
+            return current + [record for event_id, record in self._held.items() if event_id not in known]
 
     def add(self, records: list[dict[str, Any]]) -> None:
+        """Raises what the write raised, with the records already held for the next call (an import stops on it)."""
         if not records:
             return
-        with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
-            current = self._load()
-            known = {record.get("event_id") for record in current}  # a malformed record never blocks the rest
-            current += [record for record in records if record["event_id"] not in known]
-            _durable_json(self.path, current)  # kept until acknowledged, however many (Codex CP3 review 2, finding 4)
+        with self._lock:
+            for record in records:
+                self._hold(self._held, record["event_id"], record)
+            self._apply()
 
     def remove(self, event_ids: list[str]) -> None:
         if not event_ids:
             return
-        with self._lock, _file_lock(self.path.with_name(self.path.name + ".lock")):
-            current = self._load()
-            kept = [record for record in current if record.get("event_id") not in set(event_ids)]
-            if kept != current:
-                _durable_json(self.path, kept)
+        with self._lock:
+            for event_id in event_ids:
+                self._held.pop(event_id, None)  # a delivered record is never written or shown again
+                self._hold(self._gone, event_id, None)
+            self._apply()
+
+    def flush(self) -> None:
+        """One attempt to write what is held (a session's close); never raises."""
+        with self._lock:
+            if self._held or self._gone:
+                with contextlib.suppress(Exception):
+                    self._apply()
+
+    @staticmethod
+    def _hold(held: dict[str, Any], key: str, value: Any) -> None:
+        held.pop(key, None)
+        held[key] = value  # newest last
+
+    def _apply(self) -> None:
+        """Under `self._lock`: one attempt to apply the held records and tombstones to the file; held state is cleared only once
+        written. The first failure and the recovery are each logged once, with the error's class and counts, no values."""
+        try:
+            with _file_lock(self.path.with_name(self.path.name + ".lock")):
+                current = self._load(writing=True)
+                known = {record.get("event_id") for record in current}  # a malformed record never blocks the rest
+                target = [record for record in current if record.get("event_id") not in self._gone]
+                target += [record for event_id, record in self._held.items() if event_id not in known and event_id not in self._gone]
+                if target != current:
+                    _durable_json(self.path, target)  # kept until acknowledged, however many (Codex CP3 review 2, finding 4)
+        except Exception as failure:
+            for held in (self._held, self._gone):  # only what stays unwritten is capped; a write takes any number
+                while len(held) > self.HELD_LIMIT:
+                    del held[next(iter(held))]
+                    self._dropped += 1
+            if not self._failing:
+                self._failing = True
+                _LOG.warning("Memory notice backlog write failed (%s); holding %d notice(s) and %d removal(s) in this process",
+                             _failure_class(failure), len(self._held), len(self._gone))
+            raise
+        if self._failing:
+            _LOG.warning("Memory notice backlog written again; %d held notice(s) or removal(s) were dropped at the cap meanwhile",
+                         self._dropped)
+        self._held.clear()
+        self._gone.clear()
+        self._failing, self._dropped = False, 0
+
+
+def _failure_class(failure: BaseException) -> str:
+    """A value-free name for a failure: an OSError's errno name, a RecoveryError's code, else the exception's class."""
+    if isinstance(failure, OSError) and failure.errno is not None:
+        return errno.errorcode.get(failure.errno, f"errno {failure.errno}")
+    if isinstance(failure, RecoveryError):
+        return failure.code
+    return type(failure).__name__
 
 
 def location(worktree: Path) -> Path:

@@ -1281,6 +1281,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_recovery:NoticeBacklog._apply:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: two fixed warnings, when notice backlog writes start failing and when they succeed again, carrying only the errno name, a RecoveryError code or the exception class, and counts; never a record, event id, item, path or exception message.",
+      "sanitizer": "constant diagnostic",
+      "test_node": "tests/unit/context/test_notice_backlog_holding.py::test_refused_writes_are_held_capped_and_logged_once_each_way",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_session:MemorySession._current_scope:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",

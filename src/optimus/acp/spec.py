@@ -1525,7 +1525,7 @@ class AcpDuplexAdapter:
             backlog = None if session is None else session.memory_backlog
             shown = [_notice_record(notice, imported=answer.imported) for notice, _label in answer.notices]
             if backlog is not None and shown:  # kept until its card is confirmed sent; else a later turn or session shows it
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(Exception):  # a refused write stays held by the backlog, which logs why (#643)
                     await asyncio.to_thread(backlog.add, shown)
 
             def delivered() -> None:
@@ -4191,7 +4191,7 @@ def _memory_report(session: AcpSpecSession) -> Callable[[Any], None]:
         session.memory_outcomes.append(outcome)
         shown = [notice for notice in outcome.notices if notice.action != "off"]
         if session.memory_backlog is not None:  # durable first, so a restart before the next turn loses no notice
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception):  # a refused write stays held by the backlog, which logs why (#643)
                 session.memory_backlog.add([_notice_record(notice) for notice in shown])
         session.memory_pending.extend(shown)
 
