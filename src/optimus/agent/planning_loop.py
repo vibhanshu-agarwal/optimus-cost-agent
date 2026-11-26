@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from optimus.agent.directives import (
+    _EDIT_PREFIX,
+    _INDEX_TOOL_LINE,
     BULLET_PREFIXES,
     EDIT_END_MARKER,
     EDIT_OLD_MARKER,
@@ -656,7 +658,7 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
         return refuse_decision
     if stripped.startswith("REFUSE:"):
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
-    answer_decision = _try_parse_answer(stripped)
+    answer_decision = _try_parse_answer(stripped) or _try_parse_answer(strip_plan_text(_unwrap_markdown_code_fence(stripped)))
     if answer_decision is not None:
         return answer_decision
 
@@ -957,7 +959,9 @@ def _answer_has_directive(line: str) -> bool:
     normalized = _normalize_directive_surface_line(line)
     return (
         _REFUSE_REASON_DIRECTIVE_PREFIX.match(normalized) is not None
-        or normalized.startswith(("REFUSE:", "ANSWER:", "EDIT "))
+        or normalized.startswith(("REFUSE:", "ANSWER:"))
+        or _EDIT_PREFIX.match(normalized) is not None
+        or _INDEX_TOOL_LINE.match(normalized) is not None
         or normalized in ("MCP_LIST", "MCP_CALL")
         or is_directive_line(line)
     )
@@ -967,7 +971,7 @@ def _try_parse_answer(text: str) -> PlanningTurnDecision | None:
     """#512: `ANSWER: <prose>` is the whole reply; more lines may follow, none of them a directive."""
     if not text.startswith("ANSWER:"):
         return None
-    answer = text[len("ANSWER:") :].strip().replace("\r\n", "\n")
+    answer = strip_plan_text(text[len("ANSWER:") :]).replace("\r\n", "\n")
     if not answer:
         raise PlanningTurnParseError("ANSWER_EMPTY", "ANSWER holds no answer")
     if len(answer.encode("utf-8", "surrogatepass")) > ANSWER_MAX_BYTES:  # a lone surrogate is refused below, not a crash
@@ -1122,7 +1126,9 @@ def planning_corrective_text(
 def _corrective_template(
     stop_reason: str | None, *, refusal_reason: str | None, workspace_root: Path | None, route_stopped: bool
 ) -> str:
-    if stop_reason in ("PLANNING_MODEL_REFUSED", PLANNING_ANSWERED) and refusal_reason is not None:
+    if stop_reason == PLANNING_ANSWERED and refusal_reason is not None:
+        return refusal_reason  # #512: delivered as a Chat answer is; the subject sanitizer would rewrite every backslash
+    if stop_reason == "PLANNING_MODEL_REFUSED" and refusal_reason is not None:
         return sanitize_workspace_text(refusal_reason, workspace_root=workspace_root)
     if route_stopped and stop_reason in PLANNING_ROUTE_STOPPED_MESSAGES:
         return PLANNING_ROUTE_STOPPED_MESSAGES[stop_reason]

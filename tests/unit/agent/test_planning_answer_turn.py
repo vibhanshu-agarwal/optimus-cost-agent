@@ -43,6 +43,7 @@ def test_an_empty_answer_is_refused(text: str) -> None:
 @pytest.mark.parametrize("line", [
     "READ README.md", "READ: README.md#bytes=0:10", "WRITE a.py", "EDIT a.py", "TEST pytest -q", "OBSERVE: x",
     "MCP_LIST server", "MCP_CALL server tool {}", "MCP_LIST", "REFUSE: no", "ANSWER: again", "PLAN: x", "- WRITE a.py",
+    "EDIT" + TAB + "a.py", "SEARCH needle", "OUTLINE README.md", "SYMBOLS main", "LIST .",  # Codex review 1, finding 2
 ])
 def test_an_answer_never_holds_a_directive_line(line: str) -> None:
     assert _code("ANSWER: Yes." + NL + line) == "ANSWER_HAS_DIRECTIVE"
@@ -51,6 +52,19 @@ def test_an_answer_never_holds_a_directive_line(line: str) -> None:
 @pytest.mark.parametrize("char", [CR, chr(0), chr(0x1B), chr(0x202E), chr(0x2066), chr(0x2028), chr(0x200B), chr(0x3164), chr(0xE000)])
 def test_an_answer_with_an_unsafe_character_is_refused(char: str) -> None:
     assert _code("ANSWER: Yes" + char + "no.") == "ANSWER_UNSAFE_TEXT"
+
+
+@pytest.mark.parametrize("text", ["ANSWER: Yes." + CR, "ANSWER: " + chr(0x2028) + "Yes.", "ANSWER: Yes." + chr(0x2029)])
+def test_an_unsafe_character_at_either_edge_is_refused_not_trimmed_away(text: str) -> None:
+    """Codex review 1, finding 3: only a reply's padding (spaces, tabs, LF/CRLF) is trimmed before the rule runs."""
+    assert _code(text) == "ANSWER_UNSAFE_TEXT"
+
+
+def test_a_fenced_answer_is_an_answer_and_a_fenced_mixed_one_is_refused() -> None:
+    """Codex review 1, finding 1: the final-plan parser would skip the answer line as prose and keep the TEST."""
+    fence = "`" * 3
+    assert parse_planning_turn(NL.join([fence, "ANSWER: Yes.", fence])).reason == "Yes."
+    assert _code(NL.join([fence, "ANSWER: Here is my advice.", "TEST pytest -q", fence])) == "ANSWER_HAS_DIRECTIVE"
 
 
 def test_an_answer_with_a_lone_surrogate_is_refused_not_a_crash() -> None:

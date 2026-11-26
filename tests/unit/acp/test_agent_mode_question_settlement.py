@@ -99,6 +99,15 @@ async def test_a_multi_line_answer_keeps_its_lines(tmp_path: Path) -> None:
     assert asked.plans == []
 
 
+async def test_an_answer_reaches_the_person_unrewritten(tmp_path: Path) -> None:
+    """Codex review 1, finding 4: as a Chat answer, never through the subject sanitizer that rewrites backslashes."""
+    backslash = chr(92)
+    text = f"Use {backslash}d for a digit, and the file is at {tmp_path}{backslash}README.md."
+    asked = await _ask(tmp_path, [f"ANSWER: {text}"])
+
+    assert asked.texts[-1].strip() == text
+
+
 async def test_a_genuine_refusal_settles_exactly_as_before(tmp_path: Path) -> None:
     reason = "The task needs a file that is not visible."
     asked = await _ask(tmp_path, [f"REFUSE: {reason}"])
