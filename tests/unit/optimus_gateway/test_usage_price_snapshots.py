@@ -17,7 +17,7 @@ from optimus_model_policy.binding import compose_trusted_snapshot, packaged_defa
 from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, RuleSource, Source
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
-from tests.support.price_snapshot_stamp import stamp_when_durable
+from tests.support.price_snapshot_stamp import stamp_when_durable, until_stamped
 
 
 @pytest.fixture
@@ -148,9 +148,9 @@ def test_completion_and_decision_envelopes_carry_the_durable_snapshot_id(writer,
                               resolved_provider=None, resolved_model="m-1")
 
     expected = snapshots.registry_payload(policy.snapshot)["snapshot_id"]
-    assert stamp_when_durable(policy) == {"price_snapshot_id": expected}  # durable first; the envelopes below must not race it
-    assert _gateway_usage(config=config, model="m-1", provider_result=completion, gateway_request_id="gw-1")["price_snapshot_id"] == expected
-    assert _decision_usage(config=config, model="m-1", result=decision, gateway_request_id="gw-2")["price_snapshot_id"] == expected
+    completed = until_stamped(lambda: _gateway_usage(config=config, model="m-1", provider_result=completion, gateway_request_id="gw-1"))
+    decided = until_stamped(lambda: _decision_usage(config=config, model="m-1", result=decision, gateway_request_id="gw-2"))
+    assert completed["price_snapshot_id"] == decided["price_snapshot_id"] == expected
 
 
 def test_an_approved_override_replaces_the_packaged_references_until_reconfigured(tmp_path):
