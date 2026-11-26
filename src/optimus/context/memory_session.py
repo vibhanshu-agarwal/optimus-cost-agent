@@ -466,9 +466,11 @@ class MemorySession:
                                         current["epoch"])
                     self._map = cached
                 elif cached is None:
+                    _LOG.info("context index map empty: no generation published yet")
                     return ""
-            except (StorageRefusedError, StorageUnavailableError):
-                if cached is None:
+            except (StorageRefusedError, StorageUnavailableError) as exc:
+                if cached is None:  # the turn goes on without a map; the cause is kept (Plan 12.14: G2 run 2's first map came back empty unexplained)
+                    _LOG.warning("context index map empty: the store did not answer: %s", getattr(exc, "code", None) or str(exc) or type(exc).__name__)
                     return ""
         return self._verified_map(cached).text
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 import time
 from decimal import Decimal
@@ -1452,6 +1453,27 @@ def test_the_catalogue_the_map_read_serves_the_turns_retrieval(workspace):
     turn.repo_map()
     turn._retriever.retrieve("helper")
     assert [op for op, _fields in storage.calls].count("catalogue") == 1  # 41 pages each at 10,255 files, read twice on a first turn
+
+
+@pytest.mark.parametrize("failure, code", [(StorageUnavailableError("INDEX_TIMEOUT"), "INDEX_TIMEOUT"), (StorageRefusedError("SCOPE_UNKNOWN"), "SCOPE_UNKNOWN")])
+def test_an_empty_first_map_logs_why_the_store_gave_none(workspace, caplog, failure, code):
+    """Plan 12.14: a fresh session's first map came back empty in G2 run 2 with nothing logged. Each empty path now names its cause."""
+
+    class Failing(_Storage):
+        def call(self, op, **fields):
+            if op == "catalogue":
+                raise failure
+            return super().call(op, **fields)
+
+    session = _session(workspace, Failing([_record("x", "pkg/a.py", "helper", _sha(SOURCE))]))
+    with caplog.at_level(logging.INFO, logger="optimus.context.memory_session"):
+        assert session.repo_map(session._current_scope()) == ""
+    assert any(r.levelno == logging.WARNING and r.getMessage() == f"context index map empty: the store did not answer: {code}" for r in caplog.records)
+    caplog.clear()
+    unpublished = _session(workspace, _Storage(current=False))
+    with caplog.at_level(logging.INFO, logger="optimus.context.memory_session"):
+        assert unpublished.repo_map(unpublished._current_scope()) == ""
+    assert [r.getMessage() for r in caplog.records if "map empty" in r.getMessage()] == ["context index map empty: no generation published yet"]
 
 
 @pytest.mark.parametrize("damage", ["emptied", "binary"])

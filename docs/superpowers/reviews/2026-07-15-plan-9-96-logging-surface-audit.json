@@ -1289,6 +1289,22 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.context.memory_session:MemorySession.repo_map:exception_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: when the map is empty because the index store refused or did not answer, logs the store's stable code (StorageRefusedError.code, or StorageUnavailableError's text, which the storage client builds from the store's code or an HTTP status), else the exception's type name; no path, record or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_an_empty_first_map_logs_why_the_store_gave_none",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_session:MemorySession.repo_map:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: logs a fixed sentence naming why the map is empty (no published generation, or the store's stable code as above); no path, record or file contents.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/context/test_memory_tools_and_turns.py::test_an_empty_first_map_logs_why_the_store_gave_none",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.context.memory_session:MemorySession._passes:redis_hash_write",
       "policy": "safe-by-construction",
       "rationale": "Inspection: this is threading.Event.set, which the scan reads as a Redis write; nothing here touches Redis.",
