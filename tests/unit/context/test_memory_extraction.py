@@ -9,6 +9,7 @@ import pytest
 
 from context_engine import memory_gate
 from optimus.context import memory_extraction as mx
+from optimus.usage.turn_settlement import TurnSettlement
 
 PROJECT, SCOPE = "p-1", "s-1"
 
@@ -428,3 +429,39 @@ def test_context_the_turn_inherited_taints_what_its_work_learned() -> None:
     assert [item.ref for item in fresh.memory_lineage("r")] == ["r:context:unreported"]  # type: ignore[attr-defined]
     calls = [SimpleNamespace(tool_name="index_search", summary="search scheduler", authorization_outcome="ALLOW")]
     assert [item.kind for item in mx.evidence_from("r", calls)] == ["document"]  # its results are not attributed to their files
+
+
+@pytest.mark.parametrize("job_fails", [False, True], ids=["settled-job", "failed-job"])
+def test_reporter_failure_does_not_relabel_jobs_or_stop_worker(monkeypatch, caplog, job_fails):
+    outcomes = []
+    settlement = TurnSettlement()
+
+    def run(_self, purpose, turn):
+        if turn.turn_id == "first" and job_fails:
+            raise RuntimeError("synthetic extraction fault")
+        return mx.Outcome(turn.turn_id, purpose, proposals=1)
+
+    def report(outcome):
+        outcomes.append(outcome)
+        if outcome.turn_id == "first":
+            raise RuntimeError("synthetic reporter fault")
+
+    monkeypatch.setattr(mx.MemoryExtractor, "_run", run)
+    extractor = mx.MemoryExtractor(
+        store=None, settlement=settlement, sanitize=lambda text: text, report=report, workers=0,
+    )
+    for turn_id in ("first", "second"):
+        extractor._enqueue(
+            mx.USER_PURPOSE,
+            mx.TurnInput(turn_id=turn_id, scope="fixture", blocks=(), work=None, sources=(), trusted=False),
+        )
+    extractor._jobs.put_nowait(None)
+    extractor._loop()
+
+    assert [(outcome.turn_id, outcome.proposals, outcome.incomplete) for outcome in outcomes] == [
+        ("first", 0, "extractor_fault") if job_fails else ("first", 1, None),
+        ("second", 1, None),
+    ]
+    assert settlement.settle_turn("first").pending_invocations == 0
+    assert settlement.settle_turn("second").pending_invocations == 0
+    assert caplog.messages == ["Memory extraction outcome reporting failed (RuntimeError)"]

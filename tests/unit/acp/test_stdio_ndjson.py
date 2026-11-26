@@ -14,7 +14,11 @@ import pytest
 
 from optimus.acp import errors, server
 from optimus.acp.server import StdioNdjsonLineReader, StdioNdjsonLineWriter
-from tests.integration.acp.test_server_stream import configured_test_agent_server
+from tests.integration.acp.test_server_stream import (
+    InteractiveLineReader,
+    MemoryLineWriter,
+    configured_test_agent_server,
+)
 from tests.support.contract_doubles import checked_agent_runner
 
 
@@ -1348,3 +1352,28 @@ async def test_ndjson_peer_error_returns_host_error_without_retaining_peer_body(
     for marker in ("-31415", "peer-detail-marker", "peer-payload-marker"):
         assert marker not in log
         assert marker not in captured.err
+
+
+async def test_serve_ndjson_delivers_internal_error_when_stderr_write_fails(tmp_path, monkeypatch):
+    configured = configured_test_agent_server(tmp_path, output_text="synthetic")
+    reader, writer = InteractiveLineReader(), MemoryLineWriter()
+    attempted = []
+
+    async def fail_request(self, request, *, ownership_slot=None):
+        raise RuntimeError("synthetic request failure")
+
+    def fail_diagnostic(message, *, file):
+        attempted.append(message)
+        raise BrokenPipeError("diagnostic stream closed")
+
+    monkeypatch.setattr(server.AcpDuplexAdapter, "handle_client_request", fail_request)
+    monkeypatch.setattr(server, "print", fail_diagnostic, raising=False)
+    serve = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+    try:
+        await reader.send({"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": str(tmp_path)}})
+        response = await asyncio.wait_for(writer.wait_for_response(1), timeout=3)
+        assert response["error"]["code"] == errors.INTERNAL_ERROR
+        assert attempted and "process_request failed" in attempted[0]
+    finally:
+        reader.close()
+        await asyncio.wait_for(serve, timeout=3)
