@@ -55,7 +55,8 @@ def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
     for thread in threads:
         thread.start()
     deadline = time.monotonic() + 5
-    # both workers are held in the store and every queue slot is taken: a stable state until release is set
+    # both workers are held in the store and every queue slot is taken; this holds until release is set or the 5 s
+    # store wait and request deadlines run out, far beyond the probe's 1 s
     while (store.calls < mic.SERVING_WORKERS or service._waiting._value) and time.monotonic() < deadline:
         time.sleep(0.01)
     assert store.calls == mic.SERVING_WORKERS and service._waiting._value == 0
