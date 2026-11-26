@@ -87,7 +87,11 @@ async def test_a_turn_that_did_not_complete_sends_no_completed_plan_and_no_prose
     assert [record.outcome for record in records.values()] == [outcome]  # committed: every declared message was sent
     # Only the plan the person was asked to approve is shown, and still pending; the direct stop shows none.
     assert _plans(updates) == ([plan_entries_from_text(PLAN)] if approve else [])
-    assert [u for u in updates if u["sessionUpdate"] == "agent_message_chunk"], "the turn's final text is still sent"
+    final = [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"][-1]
+    if wire_stop == "end_turn":  # the client keeps the turn: its text must say why it stopped, now that no plan does
+        assert not final.startswith("Turn completed."), final
+    if stop == "PLAN_NOT_FOUND_OR_EXPIRED":
+        assert "re-run planning and approve the new plan" in final.lower(), final
     assert [r.approval.approved for r in runner.requests] == ([False, True] if approve else [False])
 
 
@@ -105,5 +109,7 @@ async def test_a_completed_turn_still_sends_the_pending_then_the_completed_plan(
     assert [record.outcome for record in records.values()] == [ConversationOutcome.COMPLETED]
     pending = plan_entries_from_text(PLAN)
     assert _plans(updates) == [pending, [{**entry, "status": "completed"} for entry in pending]]
+    kinds = [u["sessionUpdate"] for u in updates if u["sessionUpdate"] in ("plan", "agent_message_chunk")]
+    assert kinds[-3:] == ["plan", "plan", "agent_message_chunk"], kinds  # the completed plan comes before the final text
     final = [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"][-1]
     assert final.startswith("Completed:\n- wrote example.py")

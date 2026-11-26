@@ -4127,6 +4127,8 @@ def _completion_message(result: AgentRunResult) -> str:
         return _WRITE_NOT_EXECUTED_MESSAGE
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
         return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
+    if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
+        return result.output_text  # the replan instruction; it no longer reaches the person as a plan entry (#570)
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
         return result.output_text
     if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
