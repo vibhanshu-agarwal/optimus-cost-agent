@@ -82,6 +82,19 @@ def test_a_delivered_reply_is_never_called_unfinished_or_completed_and_the_outco
     assert ("It ended unfinished." in brief) is not responded
 
 
+def test_an_answered_turn_settles_completed_but_claims_no_completed_task(repo: Path) -> None:
+    """#512: an answer (PLANNING_ANSWERED) settles completed; the checkpoint keeps it a delivered reply, never a completion."""
+    adapter = _adapter(store()[0])
+    clock = _Clock()
+    assert _session(adapter, repo, "s-1", clock).record(_turn(1, "Should I run the tests before pushing?", responded=True))
+    point = _session(adapter, repo, "s-1b", clock).previous()[1].checkpoint
+    assert (point.outcome, point.completion, point.remaining) == ("completed", (), ("run-1:responded",))
+    clock.now += BRIEF_AFTER_MS
+    brief = _session(adapter, repo, "s-2", clock).brief()
+    assert "outcome completed." in brief
+    assert "- A reply was delivered, but planning did not complete a task (the reply may have been an answer or a refusal)." in brief.splitlines()
+
+
 def test_each_settled_turn_is_checkpointed_from_host_state_and_a_status_question_never_replaces_the_objective(repo: Path) -> None:
     adapter = _adapter(store()[0])
     clock = _Clock()
