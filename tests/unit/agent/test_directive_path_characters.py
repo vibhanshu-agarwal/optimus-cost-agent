@@ -98,7 +98,7 @@ def test_an_unsafe_path_is_rejected_with_a_fixed_message(directive, path):
     # The planner sees no final plan: the turn is unparseable, and its fixed notice quotes nothing.
     with pytest.raises(PlanningTurnParseError) as turn:
         parse_planning_turn(_plan(directive, path))
-    assert turn.value.code == "GRAMMAR_UNRECOGNIZED" and path not in str(turn.value)
+    assert turn.value.code == "PLAN_PATH_UNSAFE" and path not in str(turn.value)
 
 
 @pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
@@ -118,7 +118,7 @@ def test_an_unsafe_ranged_read_path_is_rejected_with_a_fixed_message(path):
 
 def test_the_ranged_read_notice_names_the_cause():
     notice = PLANNING_PARSE_FEEDBACK["READ_PATH_NOT_RELATIVE"]
-    assert f"at most {MAX_PATH_CHARS} characters" in notice and "no control or invisible format characters" in notice
+    assert f"at most {MAX_PATH_CHARS} characters" in notice and "no control or invisible format character" in notice
 
 
 @pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
@@ -420,3 +420,91 @@ def test_a_windows_shaped_test_argument_is_rejected_at_parse_time_without_quotin
 )
 def test_an_option_value_may_hold_a_colon(command):
     assert parse_agent_plan(f"TEST {command}{NL}", edit_base="forbidden").tests == (tuple(command.split()),)
+
+
+# --- What #588 left open on #583: the REFUSE reason, and a notice that names the cause -----------------------------
+
+REFUSE_UNSAFE = {key: UNSAFE[key] for key in ("esc", "nul", "c1-csi", "rlo", "lri", "zwsp", "private-use")}
+
+
+@pytest.mark.parametrize("token", REFUSE_UNSAFE.values(), ids=REFUSE_UNSAFE.keys())
+def test_an_unsafe_refuse_reason_is_rejected_with_a_fixed_message(token):
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"REFUSE: I will not change {token}\n")
+
+    assert caught.value.code == "REFUSE_UNSAFE_TEXT" and token not in str(caught.value)
+
+
+def test_a_lone_surrogate_in_a_refuse_reason_is_refused_not_a_crash():
+    """Codex review: a JSON reply can decode to one; the 512-byte check raised UnicodeEncodeError before the rule."""
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"REFUSE: I will not change {chr(0xD800)}\n")
+
+    assert caught.value.code == "REFUSE_UNSAFE_TEXT"
+
+
+@pytest.mark.parametrize("reason", [f"I will not change docs/{PERSIAN}.md", f"caf{E_ACUTE} {NIHONGO} {EMOJI_ZWJ}"], ids=["zwnj", "letters-emoji"])
+def test_a_refuse_reason_in_any_script_is_still_accepted(reason):
+    assert parse_planning_turn(f"REFUSE: {reason}\n").reason == reason
+
+
+def test_an_over_long_refuse_reason_was_already_rejected_by_its_byte_cap():
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"REFUSE: {UNSAFE['too-long']}\n")
+
+    assert caught.value.code == "REFUSE_TOO_LONG"
+
+
+@pytest.mark.parametrize("path", [*UNSAFE.values(), *WINDOWS_SHAPES.values()], ids=[*UNSAFE, *(f"windows-{k}" for k in WINDOWS_SHAPES)])
+@pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
+def test_a_final_plan_path_rejection_gets_a_notice_that_names_the_cause(directive, path):
+    """#583 / #590: the generic grammar notice made a model that cannot see the character repeat the same reply."""
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(_plan(directive, path))
+
+    assert caught.value.code == "PLAN_PATH_UNSAFE" and path not in str(caught.value)
+
+
+def test_a_reply_that_is_no_plan_still_gets_the_grammar_notice():
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"Here is prose about src/a{ESC}b.py\n")
+
+    assert caught.value.code == "GRAMMAR_UNRECOGNIZED"
+
+
+@pytest.mark.parametrize("code", ["PLAN_PATH_UNSAFE", "READ_PATH_NOT_RELATIVE"])
+def test_both_path_notices_name_every_cause(code):
+    notice = PLANNING_PARSE_FEEDBACK[code]
+    for cause in (f"at most {MAX_PATH_CHARS} characters", "control or invisible format character", "colon", "leading backslash", "reserved Windows name"):
+        assert cause in notice, cause
+
+
+def test_the_refuse_notice_names_the_cause():
+    assert "control or invisible format characters" in PLANNING_PARSE_FEEDBACK["REFUSE_UNSAFE_TEXT"]
+
+
+@pytest.mark.parametrize("token", [UNSAFE[key] for key in ("esc", "nul", "rlo", "too-long")], ids=["esc", "nul", "rlo", "too-long"])
+async def test_an_unsafe_refuse_reason_reaches_neither_the_person_nor_the_history(token, tmp_path):
+    """The REFUSE reason was the run's output: shown in two plan updates, the final message and the committed history."""
+    gateway = _SamePlan(f"REFUSE: I will not change {token}\n")
+
+    result, outbound, runner, records = await _drive(tmp_path, gateway)
+
+    [record] = records.values()
+    sent = _strings([n["params"] for n in outbound.notifications]) + _strings(list(outbound.requests))
+    committed = _strings([record.completion_text, getattr(record, "plan_text", None)])
+    assert [s for s in sent + committed if _unsafe_characters(s) or token in s] == []
+    assert len(gateway.calls) > 1 and [call for call in gateway.calls[1:] if token in call] == []
+    code = "REFUSE_TOO_LONG" if token == UNSAFE["too-long"] else "REFUSE_UNSAFE_TEXT"
+    assert PLANNING_PARSE_FEEDBACK[code] in gateway.calls[1]
+    assert result["_meta"]["runStopReason"] == "PLANNING_UNPARSEABLE_RESPONSE"
+
+
+@pytest.mark.parametrize("token", [UNSAFE[key] for key in ("esc", "nul", "rlo", "too-long")], ids=["esc", "nul", "rlo", "too-long"])
+async def test_the_next_planning_call_names_why_a_final_plan_path_was_refused(token, tmp_path):
+    (tmp_path / "small.py").write_text("old\n")
+    gateway = _SamePlan(_plan("EDIT", token))
+
+    await _drive(tmp_path, gateway)
+
+    assert PLANNING_PARSE_FEEDBACK["PLAN_PATH_UNSAFE"] in gateway.calls[1]

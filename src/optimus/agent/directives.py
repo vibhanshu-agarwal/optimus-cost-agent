@@ -37,6 +37,10 @@ class AgentDirectiveParseError(ValueError):
     pass
 
 
+class AgentDirectivePathError(AgentDirectiveParseError):
+    """#583: the path rule refused a plan path, so the planner can name that cause in its fixed notice."""
+
+
 @dataclass(frozen=True)
 class AgentWriteDirective:
     path: str
@@ -92,8 +96,11 @@ class IndexToolRequest:
 
 
 def parse_index_tool_reply(text: str) -> tuple[IndexToolRequest, ...] | None:
-    """The requests when a whole reply is nothing but tool lines; otherwise None, because a line inside prose or a plan is not a request."""
-    lines = [line for line in (directive_text(item) for item in plan_lines(_unwrap_markdown_code_fence(text))) if line]
+    """The requests when a whole reply is nothing but tool lines; otherwise None, because a line inside prose or a plan is not a request.
+    Raises AgentDirectivePathError when such a reply holds an argument the path rule refuses (#583)."""
+    # #583 (Codex review): a line holding a content separator is not blank, so it makes the reply prose rather
+    # than being dropped while the rest of the batch runs.
+    lines = [directive_text(item) for item in plan_lines(_unwrap_markdown_code_fence(text)) if plan_line_text(item)]
     if not lines or len(lines) > MAX_INDEX_TOOL_LINES:
         return None
     requests: list[IndexToolRequest] = []
@@ -102,6 +109,10 @@ def parse_index_tool_reply(text: str) -> tuple[IndexToolRequest, ...] | None:
         if match is None:
             return None
         requests.append(IndexToolRequest(match.group(1) or match.group(3), match.group(2) or match.group(4)))
+    # #583: the argument reaches the tool card, the call summary and the model's next request, so the path rule
+    # applies to it, raised only once the whole reply is tool lines.
+    if any(unsafe_path_text(request.argument) for request in requests):
+        raise AgentDirectivePathError("unsafe index tool argument")
     return tuple(requests)
 
 
@@ -444,12 +455,12 @@ def windows_path_shape(path_text: str) -> bool:
 
 def _validate_relative_path(path_text: str) -> None:
     if not path_text or unsafe_path_text(path_text) or windows_path_shape(path_text):
-        raise AgentDirectiveParseError("no valid agent directives")
+        raise AgentDirectivePathError("no valid agent directives")
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
-        raise AgentDirectiveParseError("no valid agent directives")
+        raise AgentDirectivePathError("no valid agent directives")
     if _ABSOLUTE_PATH.match(path_text):
-        raise AgentDirectiveParseError("no valid agent directives")
+        raise AgentDirectivePathError("no valid agent directives")
 
 
 # #590: the pytest options whose value is one path, and the short flags that take no value. Any other option's value

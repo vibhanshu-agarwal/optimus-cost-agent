@@ -12,7 +12,14 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from optimus.agent.directives import AgentDirectiveParseError, AgentEditDirective, bind_edit_base, parse_agent_plan, parse_index_tool_reply
+from optimus.agent.directives import (
+    AgentDirectiveParseError,
+    AgentDirectivePathError,
+    AgentEditDirective,
+    bind_edit_base,
+    parse_agent_plan,
+    parse_index_tool_reply,
+)
 from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failure_text
 from optimus.agent.index_turn import LIMIT_NOTICE, LIMIT_OBSERVATION, MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import (
@@ -115,6 +122,10 @@ def _chat_builder(request: AgentRunRequest, files: str, *, memory: Any, repo_map
 CHAT_FAILURE_MESSAGES: dict[str, str] = {
     "CHAT_EMPTY_ANSWER": "Chat received an empty answer from the model. Please rephrase the question or try again.",
     "CHAT_SEARCH_LIMIT_REACHED": "Chat stopped: the model kept asking to search after its limit of search rounds and gave no answer. Please narrow the question.",
+    "CHAT_TOOL_ARGUMENT_REFUSED": (
+        "Chat stopped: the model asked to search with control or invisible format characters, so nothing was run "
+        "or shown. Please try again."
+    ),
     "CHAT_GATEWAY_FAILURE": "Chat could not get an answer: the model gateway reported a failure. Please try again.",
     "CHAT_GATEWAY_COST_UNKNOWN": (
         "Chat stopped because the model gateway failed without reporting the call's cost. Please try again."
@@ -1982,7 +1993,11 @@ class AgentRunner:
                 return reply
             spent += reply.cost_usd
             unknown_so_far += reply.unknown
-            requests = None if memory is None else parse_index_tool_reply(reply.answer)
+            try:
+                requests = None if memory is None else parse_index_tool_reply(reply.answer)
+            except AgentDirectivePathError:
+                # #583: tool syntax is not an answer, and this one holds a refused argument; run and show neither.
+                return fail(stop_reason="CHAT_TOOL_ARGUMENT_REFUSED")
             if requests is None:
                 break
             if not tools_open:
