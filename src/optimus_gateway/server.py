@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import json
 import secrets
+import sys
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -400,10 +401,12 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.CONFLICT, {"error": "gateway_identity_mismatch"},
                         write_deadline=_monotonic() + _REJECTED_POST_WRITE_SECONDS)
         if oversized:
-            # Stage the close so an outstanding body cannot immediately cut off the queued response.
+            # Stage the close so an outstanding body cannot cut off the queued response: closing with unread bytes
+            # resets the connection. Nothing read here is kept, so the deadline is the only bound; it ends at the
+            # client's end of stream or at the deadline, whichever is first.
             with contextlib.suppress(_RejectedPostError, OSError):
                 self.connection.shutdown(SHUT_WR)
-                _discard_rejected_post_body(self.rfile, self.connection, _REJECTED_POST_MAX_BYTES, deadline)
+                _discard_rejected_post_body(self.rfile, self.connection, sys.maxsize, deadline)
 
     def _reject_unhandled_post(self) -> None:
         """Terminal handling for the early-404 branch: consume a bounded, well-framed body first."""

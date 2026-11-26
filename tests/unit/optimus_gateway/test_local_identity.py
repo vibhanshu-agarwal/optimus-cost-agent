@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import socket
+import sys
 import threading
 from collections.abc import Iterator
 from dataclasses import replace
@@ -167,7 +168,7 @@ def test_oversized_identity_refusal_finishes_writing_before_bounded_discard(monk
     assert calls.mock_calls == [
         call.reply(HTTPStatus.CONFLICT, {"error": "gateway_identity_mismatch"}, write_deadline=12.5),
         call.connection.shutdown(socket.SHUT_WR),
-        call.discard(calls.stream, calls.connection, 65_536, 12.0),
+        call.discard(calls.stream, calls.connection, sys.maxsize, 12.0),
     ]
 
 
@@ -184,19 +185,25 @@ def gateway_request_closed(monkeypatch: pytest.MonkeyPatch) -> threading.Event:
     return closed
 
 
+_OVERSIZED_BODY_BYTES = 5_000_000
+
+
 def _oversized_mismatch_headers() -> bytes:
     return (
         "POST /v1/responses HTTP/1.1\r\nHost: localhost\r\n"
         f"Authorization: {_AUTH['Authorization']}\r\n{gi.HEADER}: {'0' * 64}\r\n"
-        "Content-Type: application/json\r\nContent-Length: 200000\r\nConnection: close\r\n\r\n"
+        f"Content-Type: application/json\r\nContent-Length: {_OVERSIZED_BODY_BYTES}\r\nConnection: close\r\n\r\n"
     ).encode("ascii")
 
 
 def test_oversized_identity_refusal_survives_server_close(gateway, gateway_request_closed: threading.Event) -> None:
+    """The whole body is sent before anything is read, far past what a socket buffer holds: the answer survives only
+    if the server reads the body to its end before closing."""
     port, upstream = gateway
     with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
         connection.sendall(_oversized_mismatch_headers())
-        connection.sendall(b"x" * 200_000)
+        connection.sendall(b"x" * _OVERSIZED_BODY_BYTES)
+        connection.shutdown(socket.SHUT_WR)
         assert gateway_request_closed.wait(5)
         with http.client.HTTPResponse(connection) as reply:
             reply.begin()
