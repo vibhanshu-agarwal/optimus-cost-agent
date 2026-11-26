@@ -6,7 +6,9 @@ captures what retrieval returned; every packing policy is then scored on that sa
 budget cases are measured on main's tree: R, T, C, the chosen budget, and the B/U (legacy) and F (model-aware) packs' bytes and digests.
 
 No generative or provider call is possible: the Gateway's upstream is an unroutable local address. The fresh set is refused here: it is opened
-once, in Task 4 qualification. Records carry counts, hashes and identifiers, never source text.
+once, in Task 4 qualification (`--phase qualification`), which replays the four historical sets first, each on its own, then the fresh set
+with its poison and control, and gates F's required coverage against U's on every set. Records carry counts, hashes and identifiers, never
+source text.
 """
 
 from __future__ import annotations
@@ -61,8 +63,8 @@ class Capture:
     read: Callable[[str], bytes | None]
 
 
-def load_set(repository: Path, cases_record: Mapping[str, Any], name: str) -> list[GoldenCase]:
-    if name == "fresh":
+def load_set(repository: Path, cases_record: Mapping[str, Any], name: str, *, qualification: bool = False) -> list[GoldenCase]:
+    if name == "fresh" and not qualification:
         raise FreshRefused("the fresh set is opened once, in Task 4 qualification, never in calibration")
     spec = cases_record["packing_sets"][name]
     out: list[GoldenCase] = []
@@ -505,6 +507,136 @@ def run_budget(config: Mapping[str, Any], repository: Path, out: Path) -> dict[s
     return report
 
 
+QUALIFICATION_SETS: Final = ("replay_seed_held_out", "replay_m1_held_out", "replay_fresh", "replay_fresh2", "fresh")  # fresh last: an earlier failure spends no opening
+FRESH_REQUIREMENTS: Final = 40
+
+
+def frozen_selection(repository: Path, config: Mapping[str, Any]) -> dict[str, Any]:
+    """Calibration's choice, read from its released report and never recomputed: no replacement or tuning against qualification."""
+    data = (repository / config["calibration"]).read_bytes()
+    digest = "hex:" + hashlib.sha256(data).hexdigest()
+    if digest != config["calibration_sha256"]:
+        raise FreshRefused(f"{config['calibration']} is not the released calibration ({digest})")
+    selection = json.loads(data)["selection"]
+    if selection["selected"] != "baseline":  # shortcut: only U = B is qualified here; a selected candidate needs the utility gates on every set first
+        raise FreshRefused(f"calibration selected {selection['selected']}; its utility gates on the qualification sets are not built")
+    return {"selected": selection["selected"], "u_equals_b": selection["u_equals_b"], "calibration_sha256": digest}
+
+
+def budget_arms(capture: Capture, *, policy: str, legacy: int, model_aware: BudgetPolicy, pack_estimate: Callable[[str], int], poison_path: str | None) -> dict[str, Any]:
+    """U: the selected policy at the legacy budget; F: the same policy at the model-aware ceiling and target. Both with the route's estimator,
+    as a Chat turn packs; a localization task names no required file, so required coverage is the case's own requirements."""
+    arms = {}
+    for arm, ceiling, target in (("U", legacy, None), ("F", model_aware.ceiling, model_aware.target)):
+        pack = assemble_pack(required=(), ranked=capture.ranked, read=capture.read, estimate=pack_estimate, budget_tokens=ceiling, policy=policy, task=capture.query,
+                             protected=capture.protected, target_tokens=target)
+        arms[arm] = {**score_pack(capture.case, capture, pack, poison_path=poison_path), "budget": pack.budget_tokens}
+    return arms
+
+
+def arm_totals(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, int]]:
+    """Per arm over one set's probes; its positive control is counted on its own."""
+    probes = [row for row in rows if row["role"] == "probe"]
+    controls = [row for row in rows if row["role"] == "control"]
+    return {arm: {"cases": len(probes), "requirements": sum(r["arms"][arm]["requirements"] for r in probes),
+                  "evidence_in_context": sum(r["arms"][arm]["evidence_in_context"] for r in probes),
+                  "irrelevant_tokens": sum(r["arms"][arm]["irrelevant_tokens"] for r in probes), "stale_paths": sum(r["arms"][arm]["stale_paths"] for r in probes),
+                  "poison_tokens": sum(r["arms"][arm]["poison_tokens"] for r in probes), "controls": len(controls),
+                  "control_admitted": sum(r["arms"][arm]["evidence_in_context"] for r in controls)} for arm in ("U", "F")}
+
+
+def qualification_gates(sets: Mapping[str, Mapping[str, Any]], cases_record: Mapping[str, Any]) -> dict[str, Any]:
+    """Plan 12.14 Task 4's deterministic gates: every set measured with each frozen case and requirement, the fresh set's >= 40 requirements,
+    and F's required coverage >= U's on every set (adoption gate: budgets). The utility gate is moot while U = B."""
+    if sorted(sets) != sorted(QUALIFICATION_SETS):
+        return {"checks": {"every_set_measured": False}, "passes": False, "sets": sorted(sets)}
+    checks: dict[str, bool] = {"every_set_measured": True}
+    for name in QUALIFICATION_SETS:
+        spec, arms = cases_record["packing_sets"][name], sets[name]["arms"]
+        checks[f"{name}: every frozen case and requirement"] = (arms["U"]["cases"], arms["U"]["requirements"]) == (spec["cases"], spec["requirements"])
+        checks[f"{name}: F required coverage >= U"] = arms["F"]["evidence_in_context"] >= arms["U"]["evidence_in_context"]
+    checks["fresh: at least 40 requirements"] = sets["fresh"]["arms"]["U"]["requirements"] >= FRESH_REQUIREMENTS
+    checks["fresh: its positive control measured"] = sets["fresh"]["arms"]["U"]["controls"] > 0
+    return {"checks": checks, "passes": all(checks.values()), "utility": "not applicable: calibration kept the baseline (U = B); every policy's packs are recorded per row"}
+
+
+def run_qualification(config: Mapping[str, Any], repository: Path, out: Path) -> dict[str, Any]:
+    """Task 4: one provisioned index store, the historical sets replayed first, each on its own, then the fresh set opened once. The report
+    records the opening before the fresh fixture is read, so a second use is refused until a successor disposition is recorded."""
+    if not config.get("authorization"):
+        raise FreshRefused("no recorded release for the qualification run")
+    if out.exists() and json.loads(out.read_text(encoding="utf-8")).get("fresh_opened"):
+        raise FreshRefused(f"{out} records the fresh set opened; a second use needs a recorded successor disposition")
+    cases_record = json.loads((repository / config["cases"]).read_text(encoding="utf-8"))
+    selection = frozen_selection(repository, config)
+    head = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    work = repository / config["work_dir"] / "qualification"
+    legacy_policy, model_aware, pack_estimate = production_routes(work)
+    assert legacy_policy.ceiling == legacy_budget(D3_USABLE_INPUT), "the utility record packs at calibration's legacy budget"
+    report: dict[str, Any] = {"schema": "plan12-memory-m2b.qualification.v1", "head": f"git:{head}", "label": config["label"], "authorization": config["authorization"],
+                              "selection": selection, "estimator": "utility record: one token per UTF-8 byte (calibration's); U and F arms: the D3 route's request estimator",
+                              "retrieval": "production_retrieve (MemoryTurn._retrieve's call); reader FilePolicy, purpose AUTOMATIC",
+                              "budget": {"legacy": legacy_policy.ceiling, "C": model_aware.ceiling, "T": model_aware.target},
+                              "cases_sha256": "hex:" + hashlib.sha256((repository / config["cases"]).read_bytes()).hexdigest(), "fresh_opened": False, "sets": {}, "trees": []}
+    root, memory, _password, client, gateway, settings, settings_file = m1_scale._provision(dict(config), repository, work)
+    try:
+        embedder = m1_evaluate.CachedEmbedder(FastembedEmbedder(root, memory.embedding, directory=settings_file["embedding"]["artifact_directory"], threads=config["embedding_threads"]),
+                                              embedding_cache(config, repository))
+        report["wrong_branch_control"] = m1_evaluate.wrong_branch_control(work, settings, embedder)
+        previous = None
+        for name in QUALIFICATION_SETS:
+            if name == "fresh":
+                report["fresh_opened"] = True
+                _write(report, out)
+            cases = load_set(repository, cases_record, name, qualification=True)
+            rows, previous = _qualify_set(name, cases, cases_record["injections"]["sets"].get(name), repository, work, settings, embedder, report["trees"], previous,
+                                          policy=selection["selected"], legacy=legacy_policy.ceiling, model_aware=model_aware, pack_estimate=pack_estimate)
+            report["sets"][name] = {"rows": rows, "totals": totals(rows), "arms": arm_totals(rows)}
+            _write(report, out)
+        report["gates"] = qualification_gates(report["sets"], cases_record)
+        report["embedding"] = {"embedded": embedder.embedded, "reused": embedder.reused}
+        _write(report, out)
+    finally:
+        client.close()
+        gateway.kill()
+        gateway.wait(10)
+        subprocess.run(["docker", "rm", "-f", config["container"]], capture_output=True, check=False)
+        subprocess.run(["docker", "volume", "rm", "-f", config["volume"]], capture_output=True, check=False)
+    return report
+
+
+def _qualify_set(name: str, cases: Sequence[GoldenCase], injection: Mapping[str, Any] | None, repository: Path, work: Path, settings: Any, embedder: Any,
+                 trees: list[dict[str, Any]], previous: Any, *, policy: str, legacy: int, model_aware: BudgetPolicy, pack_estimate: Callable[[str], int]) -> tuple[list[dict[str, Any]], Any]:
+    """One set, each cutoff tree indexed by the real worker (with the set's poison and control when it has them), each case retrieved once by
+    production's call; every policy's legacy pack is recorded (calibration's scoring) beside the selected policy's U and F packs."""
+    snapshots: dict[str, list[GoldenCase]] = {}
+    for case in sorted(cases, key=lambda c: c.cutoff):
+        snapshots.setdefault(case.snapshot.removeprefix("git:"), []).append(case)
+    poison = injection["poison"]["path"] if injection else None
+    rows: list[dict[str, Any]] = []
+    for revision, group in snapshots.items():
+        tree = work / "trees" / f"{name}-{revision[:12]}"
+        m1_evaluate.materialize(repository, revision, tree, branch=f"{name}-{revision[:12]}")
+        if injection:
+            inject(tree, injection)
+        index = _index(tree, settings, embedder, trees, revision)
+        trees[-1]["set"] = name
+        retriever, read = Retriever(index.storage, embedder), policy_reader(tree)
+        controls = [control_case(injection, f"git:{revision}", group[0].cutoff.isoformat())] if injection else []
+        for case in [*group, *controls]:
+            query = next(item.text for item in case.inputs if item.actor == "user" and item.text)
+            retrieval = production_retrieve(retriever, query, named=())
+            capture = Capture(case, query, retrieval.ranked, retrieval.protected, read)
+            row = score_capture(capture, budget=legacy, poison_path=poison)
+            row["arms"] = budget_arms(capture, policy=policy, legacy=legacy, model_aware=model_aware, pack_estimate=pack_estimate, poison_path=poison)
+            row["stale_or_missing_records"] = m1_evaluate.stale_or_missing_hits(retrieval.ranked, tree)
+            row["case_id"] = row["case_id"] if case.role == "probe" else f"{row['case_id']}@{revision[:12]}"
+            row["capture_sha256"] = save_capture(work / "captures" / name / f"{row['case_id'].replace('@', '_')}.json", capture)
+            rows.append(row)
+        previous = _rotate(previous, index, work, tree)
+    return rows, previous
+
+
 def _write(report: Mapping[str, Any], out: Path) -> None:
     out.write_text(json.dumps(report, indent=1, sort_keys=True, ensure_ascii=True) + "\n", encoding="utf-8", newline="\n")
 
@@ -518,7 +650,9 @@ def main(argv: list[str] | None = None) -> int:
     repository = Path.cwd()
     config = json.loads((repository / args.config).read_text(encoding="utf-8"))
     if args.phase == "qualification":
-        raise FreshRefused("qualification opens in Task 4, after CP1")
+        report = run_qualification(config, repository, repository / args.output)
+        print(json.dumps({"qualification_gates": report["gates"]["passes"]}))
+        return 0
     if args.phase == "budget":
         report = run_budget(config, repository, repository / args.output)
         print(json.dumps({"budget_gates": report["budget_gates"]["passes"]}))

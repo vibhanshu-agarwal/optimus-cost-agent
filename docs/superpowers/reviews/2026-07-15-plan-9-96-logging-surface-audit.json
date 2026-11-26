@@ -6589,7 +6589,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection: writes or prints a calibration report of counts, token totals, ranks, hashes, case ids and repository-relative paths; no file body, query result text, credential or exception text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_main_refuses_qualification_before_task_4",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_main_refuses_a_second_opening_of_the_fresh_set",
       "evidence_tier": "unit"
     },
     {
@@ -6597,7 +6597,7 @@
       "policy": "safe-by-construction",
       "rationale": "Inspection: prints the selected policy name and the repetition count; no file body, credential or exception text.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_main_refuses_qualification_before_task_4",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_main_refuses_a_second_opening_of_the_fresh_set",
       "evidence_tier": "unit"
     },
     {
@@ -6606,6 +6606,14 @@
       "rationale": "Inspection: reads the frozen cases record and writes nothing beyond the calibration report covered by _write.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_the_development_set_loads_from_its_frozen_fixtures",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan12_memory.m2b_evaluate:run_qualification:text_write",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: reads the frozen cases record, the released calibration report and an earlier qualification report's opening flag; the qualification report it writes goes through _write (counts, budgets, digests, git ids, case ids, repository-relative paths).",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/tools/test_plan12_memory_m2b.py::test_qualification_replays_the_historical_sets_first_and_records_the_fresh_opening_before_reading_it",
       "evidence_tier": "unit"
     },
     {

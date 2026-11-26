@@ -152,10 +152,227 @@ def test_the_report_is_written_as_sorted_ascii_json(tmp_path):
     assert text.isascii() and text.index('"a"') < text.index('"b"') and json.loads(text) == {"a": "é", "b": 1}
 
 
-def test_main_refuses_qualification_before_task_4(tmp_path, monkeypatch):
-    monkeypatch.chdir(ROOT)
-    with pytest.raises(ev.FreshRefused):
-        ev.main(["--config", "reports/plan12-memory-m2b/run-config.json", "--phase", "qualification", "--output", str(tmp_path / "q.json")])
+def test_main_refuses_a_second_opening_of_the_fresh_set(tmp_path, monkeypatch):
+    repo = _qualification_repo(tmp_path)
+    (repo / "q.json").write_text(json.dumps({"fresh_opened": True}), encoding="utf-8")
+    monkeypatch.chdir(repo)
+    _refuse_provisioning(monkeypatch)
+    with pytest.raises(ev.FreshRefused, match="second use"):
+        ev.main(["--config", "config.json", "--phase", "qualification", "--output", "q.json"])
+
+
+def _refuse_provisioning(monkeypatch) -> None:
+    """Everything before provisioning runs cheaply, so a removed guard reaches the provisioning step and fails there by name."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(ev.subprocess, "run", lambda args, *a, **k: subprocess.CompletedProcess(args, 0, stdout="abc\n", stderr=""))
+    monkeypatch.setattr(ev, "production_routes", lambda work: (SimpleNamespace(ceiling=legacy_budget(ev.D3_USABLE_INPUT)), MODEL_AWARE, ev.estimate))
+    monkeypatch.setattr(ev.m1_scale, "_provision", lambda *a, **k: pytest.fail("provisioned past a refusal"))
+
+
+SPECS = {"replay_seed_held_out": (1, 2), "replay_m1_held_out": (1, 1), "replay_fresh": (1, 1), "replay_fresh2": (1, 1), "fresh": (2, 40)}
+
+
+def _qualification_repo(tmp_path: Path, *, selected: str = "baseline", fresh_requirements: int = 40) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    calibration = json.dumps({"selection": {"selected": selected, "u_equals_b": selected == "baseline"}}).encode()
+    (repo / "calibration.json").write_bytes(calibration)
+    specs = {**SPECS, "fresh": (2, fresh_requirements)}
+    (repo / "cases.json").write_text(json.dumps({"packing_sets": {name: {"cases": c, "requirements": r} for name, (c, r) in specs.items()},
+                                                 "injections": {"sets": {"fresh": {"poison": {"path": "p.md"}}}}}), encoding="utf-8")
+    config = {"label": "t", "authorization": "operator, test", "cases": "cases.json", "work_dir": "work", "calibration": "calibration.json",
+              "calibration_sha256": "hex:" + hashlib.sha256(calibration).hexdigest(), "container": "none-c", "volume": "none-v", "embedding_threads": 1}
+    (repo / "config.json").write_text(json.dumps(config), encoding="utf-8")
+    return repo
+
+
+def _arm_row(role: str, requirements: int, u: int, f: int) -> dict:
+    def arm(met: int) -> dict:
+        return {"requirements": requirements, "evidence_in_context": met, "irrelevant_tokens": 0, "stale_paths": 0, "poison_tokens": 0}
+
+    return {"role": role, "arms": {"U": arm(u), "F": arm(f)}}
+
+
+def _set_rows(name: str) -> list[dict]:
+    cases, requirements = SPECS[name]
+    rows = [_arm_row("probe", requirements // cases + (requirements % cases if i == 0 else 0), 1, 1) for i in range(cases)]
+    return rows + ([_arm_row("control", 1, 1, 1)] if name == "fresh" else [])
+
+
+def _sets(**changes) -> dict:
+    return {name: {"arms": ev.arm_totals(changes.get(name, _set_rows(name)))} for name in SPECS}
+
+
+def test_the_qualification_gates_need_every_set_its_frozen_counts_and_f_coverage_at_least_u(tmp_path):
+    record = json.loads((_qualification_repo(tmp_path) / "cases.json").read_text(encoding="utf-8"))
+    assert ev.qualification_gates(_sets(), record)["passes"]
+    try:
+        missing = ev.qualification_gates({k: v for k, v in _sets().items() if k != "replay_fresh"}, record)
+    except KeyError:
+        pytest.fail("a missing set crashed the gates instead of failing them")
+    assert not missing["passes"] and missing["checks"] == {"every_set_measured": False}
+    worse = ev.qualification_gates(_sets(replay_fresh2=[_arm_row("probe", 1, 1, 0)]), record)
+    assert not worse["passes"] and not worse["checks"]["replay_fresh2: F required coverage >= U"]
+    short = ev.qualification_gates(_sets(replay_m1_held_out=[_arm_row("probe", 1, 1, 1), _arm_row("probe", 1, 1, 1)]), record)
+    assert not short["passes"] and not short["checks"]["replay_m1_held_out: every frozen case and requirement"]
+    no_control = ev.qualification_gates(_sets(fresh=[_arm_row("probe", 20, 1, 1), _arm_row("probe", 20, 1, 1)]), record)
+    assert not no_control["passes"] and not no_control["checks"]["fresh: its positive control measured"]
+
+
+def test_a_fresh_set_under_forty_requirements_fails_even_when_it_matches_its_record(tmp_path):
+    record = json.loads((_qualification_repo(tmp_path, fresh_requirements=39) / "cases.json").read_text(encoding="utf-8"))
+    gates = ev.qualification_gates(_sets(fresh=[_arm_row("probe", 20, 1, 1), _arm_row("probe", 19, 1, 1), _arm_row("control", 1, 1, 1)]), record)
+    assert gates["checks"]["fresh: every frozen case and requirement"] and not gates["checks"]["fresh: at least 40 requirements"] and not gates["passes"]
+
+
+def test_f_packs_the_selected_policy_at_the_model_aware_budget_and_u_at_the_legacy_one():
+    filler = "".join(f"def f{i}():\n    return {i}\n" for i in range(100)).encode()
+    far = b"def target():\n    return 1\n"
+    files = {"opt.py": filler, "far.py": far}
+    ranked = tuple(Ranked(_hit(str(i), "opt.py", filler, (2 * i + 1, 2 * i + 2), f"f{i}"), 1 / (60 + i), {"lexical": i + 1}) for i in range(100))
+    ranked += (Ranked(_hit("far", "far.py", far, (1, 2), "target"), 1 / 400, {"lexical": 101}),)
+    control = {"control": {"case": {"case_id": "XC01-a", "query": "where is target?", "required_evidence": [{"requirement_id": "R1", "any_of": ["path:far.py"]}]}}}
+    case = ev.control_case(control, "git:" + "a" * 40, "2026-11-24T18:08:04+05:30")
+    capture = ev.Capture(case, "where is target?", ranked, (), files.get)
+    arms = ev.budget_arms(capture, policy="baseline", legacy=1_000, model_aware=MODEL_AWARE, pack_estimate=ev.estimate, poison_path=None)
+    assert arms["U"]["budget"] == 1_000 and arms["F"]["budget"] == MODEL_AWARE.target
+    assert arms["U"]["evidence_in_context"] == 0 and arms["F"]["evidence_in_context"] == 1
+
+
+class _Handle:
+    def __init__(self):
+        self.calls: list[str] = []
+
+    def close(self):
+        self.calls.append("close")
+
+    def kill(self):
+        self.calls.append("kill")
+
+    def wait(self, _timeout):
+        self.calls.append("wait")
+
+
+def _driver(monkeypatch, repo: Path, qualify):
+    from types import SimpleNamespace
+
+    commands: list = []
+    handle = _Handle()
+
+    def run(args, *a, **k):
+        commands.append(list(args))
+        return subprocess.CompletedProcess(args, 0, stdout="abc\n", stderr="")
+
+    monkeypatch.setattr(ev.subprocess, "run", run)
+    monkeypatch.setattr(ev, "production_routes", lambda work: (SimpleNamespace(ceiling=legacy_budget(ev.D3_USABLE_INPUT)), MODEL_AWARE, ev.estimate))
+    monkeypatch.setattr(ev.m1_scale, "_provision", lambda *a, **k: (repo, SimpleNamespace(embedding=None), None, handle, handle, None, {"embedding": {"artifact_directory": "x"}}))
+    monkeypatch.setattr(ev, "FastembedEmbedder", lambda *a, **k: None)
+    monkeypatch.setattr(ev.m1_evaluate, "CachedEmbedder", lambda *a, **k: SimpleNamespace(embedded=0, reused=0))
+    monkeypatch.setattr(ev.m1_evaluate, "wrong_branch_control", lambda *a, **k: {"passes": True})
+    opened: list = []
+
+    def load(repository, record, name, *, qualification=False):
+        assert qualification
+        out = repo / "q.json"
+        opened.append((name, json.loads(out.read_text(encoding="utf-8")).get("fresh_opened") if out.exists() else None))
+        return [name]
+
+    monkeypatch.setattr(ev, "load_set", load)
+    monkeypatch.setattr(ev, "_qualify_set", qualify)
+    return commands, handle, opened
+
+
+def _policies(rows: list[dict]) -> list[dict]:
+    blank = {"requirements": 0, "evidence_in_context": 0, "irrelevant_tokens": 0, "max_irrelevant_tokens": 0, "poison_tokens": 0, "poison_shown": 0, "stale_paths": 0}
+    return [{**row, "policies": {p: blank for p in ev.POLICIES}, "ranking": {"met_at_k": 0}} for row in rows]
+
+
+def test_qualification_replays_the_historical_sets_first_and_records_the_fresh_opening_before_reading_it(tmp_path, monkeypatch):
+    repo = _qualification_repo(tmp_path)
+    seen = []
+
+    def qualify(name, cases, injection, *a, policy, **k):
+        seen.append((name, injection is not None, policy))
+        return _policies(_set_rows(name)), None
+
+    commands, handle, opened = _driver(monkeypatch, repo, qualify)
+    report = ev.run_qualification(json.loads((repo / "config.json").read_text(encoding="utf-8")), repo, repo / "q.json")
+    assert [name for name, *_ in seen] == list(ev.QUALIFICATION_SETS) == [name for name, _ in opened]
+    assert [state for _, state in opened] == [None, False, False, False, True]  # the opening is on disk before the fresh fixture is read
+    assert [(n, p) for n, injected, p in seen if injected] == [("fresh", "baseline")]  # only the fresh set has its poison and control
+    assert report["gates"]["passes"] and json.loads((repo / "q.json").read_text(encoding="utf-8"))["gates"]["passes"]
+    assert handle.calls == ["close", "kill", "wait"] and ["docker", "rm", "-f", "none-c"] in commands and ["docker", "volume", "rm", "-f", "none-v"] in commands
+
+
+def test_a_failure_before_the_fresh_set_spends_no_opening_and_tears_down(tmp_path, monkeypatch):
+    repo = _qualification_repo(tmp_path)
+
+    def qualify(name, *a, **k):
+        if name == "replay_fresh2":
+            raise RuntimeError("index failed")
+        return _policies(_set_rows(name)), None
+
+    _commands, handle, _opened = _driver(monkeypatch, repo, qualify)
+    config = json.loads((repo / "config.json").read_text(encoding="utf-8"))
+    with pytest.raises(RuntimeError):
+        ev.run_qualification(config, repo, repo / "q.json")
+    assert json.loads((repo / "q.json").read_text(encoding="utf-8"))["fresh_opened"] is False and handle.calls == ["close", "kill", "wait"]
+    with pytest.raises(RuntimeError):  # not refused: the fresh set was never opened
+        ev.run_qualification(config, repo, repo / "q.json")
+
+
+@pytest.mark.parametrize("change, message", [({"authorization": ""}, "no recorded release"), ({"calibration_sha256": "hex:" + "0" * 64}, "not the released calibration")])
+def test_qualification_refuses_without_a_release_or_with_another_calibration(tmp_path, monkeypatch, change, message):
+    repo = _qualification_repo(tmp_path)
+    _refuse_provisioning(monkeypatch)
+    config = {**json.loads((repo / "config.json").read_text(encoding="utf-8")), **change}
+    with pytest.raises(ev.FreshRefused, match=message):
+        ev.run_qualification(config, repo, repo / "q.json")
+
+
+def test_a_calibration_that_selected_a_candidate_is_refused_before_the_fresh_set_opens(tmp_path, monkeypatch):
+    repo = _qualification_repo(tmp_path, selected="density")
+    _refuse_provisioning(monkeypatch)
+    with pytest.raises(ev.FreshRefused, match="selected density"):
+        ev.run_qualification(json.loads((repo / "config.json").read_text(encoding="utf-8")), repo, repo / "q.json")
+
+
+def test_a_set_with_an_injection_gets_its_poison_and_control_and_a_replay_gets_neither(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    injected, queries, captures = [], [], []
+    monkeypatch.setattr(ev.m1_evaluate, "materialize", lambda *a, **k: None)
+    monkeypatch.setattr(ev, "inject", lambda tree, injection: injected.append(tree.name))
+
+    def index(tree, settings, embedder, trees, revision):
+        trees.append({"revision": revision})
+        return SimpleNamespace(storage=None)
+
+    def retrieve(retriever, query, *, named):
+        queries.append(named)
+        return Retrieval("ok", 1, {}, None, (), {})
+
+    def capture(path, item):
+        captures.append(path.parent.name)
+        return "hex:0"
+
+    monkeypatch.setattr(ev, "_index", index)
+    monkeypatch.setattr(ev, "Retriever", lambda *a: None)
+    monkeypatch.setattr(ev, "policy_reader", lambda tree: (lambda path: None))
+    monkeypatch.setattr(ev, "production_retrieve", retrieve)
+    monkeypatch.setattr(ev.m1_evaluate, "stale_or_missing_hits", lambda ranked, tree: 0)
+    monkeypatch.setattr(ev, "save_capture", capture)
+    monkeypatch.setattr(ev, "_rotate", lambda previous, index, work, tree: index)
+    injection = CASES["injections"]["sets"]["fresh"]
+    probe = ev.control_case(injection, "git:" + "b" * 40, "2026-11-24T18:08:04+05:30").model_copy(update={"role": "probe", "case_id": "P1"})
+    kwargs = {"policy": "baseline", "legacy": 16_384, "model_aware": MODEL_AWARE, "pack_estimate": ev.estimate}
+    trees: list = []
+    rows, _ = ev._qualify_set("fresh", [probe], injection, ROOT, tmp_path, None, None, trees, None, **kwargs)
+    assert injected == ["fresh-bbbbbbbbbbbb"] and [r["case_id"] for r in rows] == ["P1", "FC01-a@bbbbbbbbbbbb"] and trees[0]["set"] == "fresh"
+    assert queries == [(), ()] and captures == ["fresh", "fresh"] and all(set(r["arms"]) == {"U", "F"} for r in rows)
+    rows, _ = ev._qualify_set("replay_fresh", [probe], None, ROOT, tmp_path, None, None, trees, None, **kwargs)
+    assert injected == ["fresh-bbbbbbbbbbbb"] and [r["case_id"] for r in rows] == ["P1"] and trees[1]["set"] == "replay_fresh"
 
 
 def test_injections_take_the_trees_own_archive_date(tmp_path, monkeypatch):

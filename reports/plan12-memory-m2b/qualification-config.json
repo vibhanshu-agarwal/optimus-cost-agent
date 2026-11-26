@@ -1,0 +1,23 @@
+{
+ "schema": "plan12-memory-m2b.run-config.v1",
+ "label": "plan12.14-task4-qualification",
+ "authorization": "",
+ "cases": "reports/plan12-memory-m2b/cases.json",
+ "calibration": "reports/plan12-memory-m2b/calibration.json",
+ "calibration_sha256": "hex:cbbf61c50400f737b78996d4e4bed26dc56ffb3d8ac7d13b76ed8ccc96a20307",
+ "release_prefix": "p1214-",
+ "container": "p1214-index-test-redis",
+ "volume": "p1214-index-test-data",
+ "port": 6401,
+ "gateway_port": 8781,
+ "maxmemory_mb": 1024,
+ "capacity": "two live index lines at a time (_rotate drops the previous line once the next is indexed); the largest snapshot holds 34,812 records, so about 70,000 at most, under G2's five-line 96,763 at the same 1,024 MiB",
+ "work_dir": "tmp/plan12-m2b",
+ "embedding_cache": "tmp/plan12-m2b/embedding-cache.sqlite",
+ "artifact_cache": "C:/worktrees/optimus-cost-agent-worktrees/optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+ "embedding_threads": 2,
+ "models": "none: the index Gateway's upstream is unroutable (127.0.0.1:9); the keyring is the in-process stand-in of m1_scale._provision, so no OS keyring write",
+ "teardown": "run_qualification closes the client, stops the index Gateway and removes the container and volume in a finally block",
+ "order": "the four historical sets first, each on its own, then the fresh set; the report records the opening before the fresh fixture is read, and an opened report refuses a second run (m2b_evaluate.run_qualification)",
+ "estimate": "56 cutoff trees (13 fresh, 43 replay) at the shared embedding cache's 63-134 s per tree in G2 and the budget pass, plus new vectors for content the cache lacks: about 1.5-3 hours"
+}
