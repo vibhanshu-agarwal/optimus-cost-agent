@@ -55,9 +55,11 @@ def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
     for thread in threads:
         thread.start()
     deadline = time.monotonic() + 5
-    while store.calls < mic.SERVING_WORKERS and time.monotonic() < deadline:
+    # both workers are held in the store and every queue slot is taken; this holds until release is set or the 5 s
+    # store wait and request deadlines run out, far beyond the probe's 1 s
+    while (store.calls < mic.SERVING_WORKERS or service._waiting._value) and time.monotonic() < deadline:
         time.sleep(0.01)
-    time.sleep(0.05)
+    assert store.calls == mic.SERVING_WORKERS and service._waiting._value == 0
     started = time.monotonic()
     refused = service.handle(_COVERAGE, deadline=time.monotonic() + 5)
     assert refused == (503, mic.error_body("INDEX_BUSY")) and time.monotonic() - started < 1
