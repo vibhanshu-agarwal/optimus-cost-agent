@@ -245,3 +245,117 @@ def test_no_token_persisted_under_control_root(tmp_path: Path) -> None:
             text = path.read_text(encoding="utf-8", errors="replace")
             assert token not in text
             assert "unit-signing-key" not in text
+
+
+_EXPIRY_KEY = b"unit-signing-key-32-bytes-xxxxxx"
+_EXPIRY_NOW = datetime(2026, 8, 8, 12, 0, 0, tzinfo=UTC)
+_ABSENT = object()
+
+
+def _token_with_expiry(expires: object) -> str:
+    """Sign a payload whose expires_at the issuer would never write (#648)."""
+    import hashlib
+    import hmac
+    import json
+
+    from evidence_handoff_runtime.auth import _b64url_encode
+
+    payload: dict[str, object] = {
+        "principal_id": "principal-reviewer",
+        "agent_id": "reviewer-1",
+        "caller_role": "reviewer",
+        "issuer": "evidence-handoff-runtime",
+        "audience": "evidence-handoff",
+        "scope": ["ledger.read", "ledger.write"],
+        "token_id": "token-id-expiry-case",
+        "instance_id": "ledger-inst-1",
+    }
+    if expires is not _ABSENT:
+        payload["expires_at"] = expires
+    body = _b64url_encode(json.dumps(payload).encode("utf-8"))
+    signature = _b64url_encode(hmac.new(_EXPIRY_KEY, body.encode("ascii"), hashlib.sha256).digest())
+    return f"eh1.{body}.{signature}"
+
+
+def _validate_with_expiry(expires: object):
+    from evidence_handoff_runtime.auth import CredentialValidator, validate_authorization
+
+    validator = CredentialValidator(
+        signing_key=_EXPIRY_KEY,
+        expected_issuer="evidence-handoff-runtime",
+        expected_audience="evidence-handoff",
+        enrollments={("ledger-inst-1", "principal-reviewer"): _enrollment()},
+        now=lambda: _EXPIRY_NOW,
+        revoked_token_ids=frozenset(),
+        consumed_jti=set(),
+    )
+    return validate_authorization(
+        authorization_header="Bearer " + _token_with_expiry(expires),
+        validator=validator,
+        request={"ledger_instance_id": "ledger-inst-1"},
+    )
+
+
+@pytest.mark.parametrize(
+    "expires",
+    [
+        pytest.param("2026-08-08T12:10:00", id="naive"),
+        pytest.param("2026-08-08", id="date-only"),
+        pytest.param("expiry-text-zq" + chr(0x2603), id="unparseable"),
+        pytest.param("", id="empty"),
+        pytest.param(1786190400, id="integer"),
+        pytest.param(["2026-08-08T12:10:00+00:00"], id="list"),
+        pytest.param(None, id="null"),
+        pytest.param(_ABSENT, id="missing"),
+    ],
+)
+def test_invalid_expiration_is_the_typed_value_free_refusal(expires: object) -> None:
+    import traceback
+
+    from evidence_handoff_runtime.auth import AuthError
+
+    with pytest.raises(AuthError) as raised:
+        _validate_with_expiry(expires)
+    assert raised.value.code == "token_malformed"
+    assert str(raised.value) == "token_malformed"
+    # No chained cause: a logged traceback must not carry the rejected input.
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    rendered = "".join(traceback.format_exception(raised.value))
+    if isinstance(expires, str) and expires:
+        assert expires not in rendered
+    if isinstance(expires, list):
+        assert expires[0] not in rendered
+
+
+@pytest.mark.parametrize(
+    ("expires", "code"),
+    [
+        pytest.param("2026-08-08T12:00:00+00:00", "token_expired", id="exactly-now"),
+        pytest.param("2026-08-08T11:59:59+00:00", "token_expired", id="already-expired"),
+        pytest.param("2026-08-08T17:29:59+05:30", "token_expired", id="expired-other-offset"),
+    ],
+)
+def test_well_formed_expiration_keeps_its_refusal(expires: str, code: str) -> None:
+    from evidence_handoff_runtime.auth import AuthError
+
+    with pytest.raises(AuthError) as raised:
+        _validate_with_expiry(expires)
+    assert raised.value.code == code
+
+
+@pytest.mark.parametrize(
+    "expires",
+    [
+        pytest.param("2026-08-08T12:00:01+00:00", id="one-second-ahead"),
+        pytest.param("2026-08-08T17:40:00+05:30", id="other-offset"),
+        pytest.param("2026-08-08T12:10:00Z", id="z-suffix"),
+        pytest.param("9999-12-31T23:59:59-23:59", id="far-offset"),
+    ],
+)
+def test_well_formed_future_expiration_is_accepted(expires: str) -> None:
+    from evidence_handoff_runtime.auth import AuthenticatedPrincipal
+
+    principal = _validate_with_expiry(expires)
+    assert isinstance(principal, AuthenticatedPrincipal)
+    assert principal.token_id == "token-id-expiry-case"
