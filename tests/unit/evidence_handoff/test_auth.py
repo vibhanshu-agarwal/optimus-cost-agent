@@ -320,7 +320,7 @@ def test_invalid_expiration_is_the_typed_value_free_refusal(expires: object) -> 
     assert str(raised.value) == "token_malformed"
     # No chained cause: a logged traceback must not carry the rejected input.
     assert raised.value.__cause__ is None
-    assert raised.value.__suppress_context__ is True
+    assert raised.value.__context__ is None
     rendered = "".join(traceback.format_exception(raised.value))
     if isinstance(expires, str) and expires:
         assert expires not in rendered

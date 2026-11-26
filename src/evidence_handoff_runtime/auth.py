@@ -190,6 +190,7 @@ class CredentialValidator:
             payload = json.loads(_b64url_decode(body).decode("utf-8"))
         except Exception as exc:
             raise AuthError("token_malformed") from exc
+        claims: CredentialClaims | None
         try:
             claims = CredentialClaims(
                 principal_id=str(payload["principal_id"]),
@@ -203,8 +204,10 @@ class CredentialValidator:
                 instance_id=str(payload["instance_id"]),
             )
         except Exception:
-            # from None: a chained parse error would carry the rejected claim text.
-            raise AuthError("token_malformed") from None
+            claims = None
+        if claims is None:
+            # Raised outside the except: a chained or context parse error would carry the rejected claim text.
+            raise AuthError("token_malformed")
         if claims.issuer != self.expected_issuer:
             raise AuthError("token_wrong_issuer")
         if claims.audience != self.expected_audience:
