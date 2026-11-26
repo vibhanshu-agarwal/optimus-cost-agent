@@ -308,15 +308,17 @@ class TestWhitespaceRuleKeepsProse:
         assert sanitize_for_persistence("token not", policy=EVIDENCE_REDACTION_POLICY).value == "token **********"
 
     @pytest.mark.parametrize(
-        ("head", "released"),
-        [("password : Per!?!?. ", "password : ********** "), ("password is not", "password is **********")],
+        ("head", "expected"),
+        [("password : Per!?!?. ", "password : ********** "), ("password is not", "password is not")],
     )
-    def test_a_real_stream_release_keeps_the_mask(self, head: str, released: str) -> None:
-        # feed() releases everything beyond the default overlap, cutting the text right after head.
+    def test_a_real_stream_release_keeps_the_mask(self, head: str, expected: str) -> None:
+        # The tentative cut lands right after head. Since #622 the stream equals one-shot on the whole text, where a
+        # function word followed by whitespace ("not" before the padding) is prose, as #584 decided.
         stream = StreamingTextSanitizer(policy=EVIDENCE_REDACTION_POLICY)
-        out = stream.feed(head + " " * stream.overlap_chars)
-        assert out == released
-        assert stream.finalize() == " " * stream.overlap_chars
+        text = head + " " * stream.overlap_chars
+        out = stream.feed(text) + stream.finalize()
+        assert out == expected + " " * (len(text) - len(head))
+        assert out == sanitize_for_persistence(text, policy=EVIDENCE_REDACTION_POLICY).value
 
 
 class TestDictKeyRedaction:

@@ -643,17 +643,17 @@ def _capture_to_disk(
             for name, count in counts.items():
                 rule_counts[name] = rule_counts.get(name, 0) + count
 
+    worker_errors: list[BaseException] = []
+
+    def _pump(source: TextIO, destination: Path) -> None:
+        try:
+            _merge_counts(_stream_sanitized(source, destination, known_secrets=secrets))
+        except BaseException as exc:  # re-raised below: a failed worker leaves a partial transcript (#622)
+            worker_errors.append(exc)
+
     workers = [
-        threading.Thread(
-            target=lambda: _merge_counts(
-                _stream_sanitized(process.stdout, output_dir / "transcript.stdout", known_secrets=secrets)
-            ),
-        ),
-        threading.Thread(
-            target=lambda: _merge_counts(
-                _stream_sanitized(process.stderr, output_dir / "transcript.stderr", known_secrets=secrets)
-            ),
-        ),
+        threading.Thread(target=_pump, args=(process.stdout, output_dir / "transcript.stdout")),
+        threading.Thread(target=_pump, args=(process.stderr, output_dir / "transcript.stderr")),
     ]
     for worker in workers:
         worker.start()
@@ -683,6 +683,8 @@ def _capture_to_disk(
         for worker in workers:
             worker.join(timeout=max(0.0, cleanup_deadline - time.monotonic()))
         exit_code = process.returncode or 1
+    if worker_errors:
+        raise worker_errors[0]
     return CaptureResult(exit_code=exit_code, rule_counts=dict(rule_counts))
 
 

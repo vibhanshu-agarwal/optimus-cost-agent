@@ -1245,6 +1245,23 @@ def test_stream_sanitized_fail_closed_on_sanitizer_error(
         assert canary not in persisted
 
 
+def test_capture_fails_closed_when_a_stream_worker_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#622: a sanitizer failure in a transcript worker must fail the capture, not leave a partial
+    transcript behind a zero exit code for the caller to scan and sign."""
+    process = SimpleNamespace(
+        stdout=io.StringIO("note one"), stderr=io.StringIO("note two"), wait=lambda timeout=None: 0, returncode=0
+    )
+    monkeypatch.setattr(capture_tool, "spawn_authorized_capture", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(capture_tool, "_known_secrets", lambda _capture: ())
+
+    def failing_finalize(self: object) -> str:
+        raise RuntimeError("simulated sanitizer failure")
+
+    monkeypatch.setattr(capture_tool.StreamingTextSanitizer, "finalize", failing_finalize)
+    with pytest.raises(RuntimeError, match="simulated sanitizer failure"):
+        capture_tool._capture_to_disk(SimpleNamespace(capture=object()), command=["acpx"], output_dir=tmp_path / "out")
+
+
 def test_main_generates_launch_session_id_when_absent(
     monkeypatch: pytest.MonkeyPatch
 ) -> None:

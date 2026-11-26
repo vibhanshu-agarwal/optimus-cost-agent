@@ -29,8 +29,10 @@ from urllib.parse import urlparse
 MAX_SECRET_TEXT_CHARS = 65_536
 # Longest single rule match a stream release may hold back past its tentative cut before the stream is refused.
 MAX_STREAM_HOLD_CHARS = 4 * MAX_SECRET_TEXT_CHARS
-# How far before a match's end a label that reaches past it can start (see _safe_release_boundary).
-_LABEL_REACH = 1024
+# Characters on each side of a candidate release cut that must sanitize the same together as apart.
+_CUT_CHECK_CHARS = 8192
+# Candidate cuts tried per release, each further back, before nothing is released this time.
+_CUT_ATTEMPTS = 12
 
 _REDACTED = "**********"
 REDACTION_MASK = _REDACTED  # what every redaction leaves in place of what it removed
@@ -609,7 +611,8 @@ class StreamHoldBackExceededError(ValueError):
 class StreamingTextSanitizer:
     """Bounded-overlap streaming sanitizer for incrementally-arriving text.
 
-    A release never cuts through a match of any rule the policy applies, so a label leaves with its value (#622).
+    A release cut changes no output: the streamed text equals one-shot sanitization, so a label leaves with its
+    value (#622). A match held back past ``max_hold_chars`` refuses the stream instead of splitting it.
     """
 
     def __init__(
@@ -630,28 +633,30 @@ class StreamingTextSanitizer:
         self.max_hold_chars = max_hold_chars
         self._pending = ""
         self._counter = _RuleCounter()
-        # Every rule _sanitize_text applies under this policy; a release never cuts through one of their matches.
         self._exact_needles = self._sorted_secrets + self._sorted_pii
-        patterns: list[re.Pattern[str]] = []
+        self._normalizes_slashes = policy.enable_path_aliases and bool(self._path_aliases)
+        # Long matches the local cut check cannot see whole: each rule with a stand-in for the text still to come.
+        # A label (or a URI's user part) running to the end of the buffer then matches through it and waits.
+        probes: list[tuple[re.Pattern[str], str]] = []
         if policy.enable_uri_userinfo:
-            patterns.append(_URL_USERINFO_RE)
+            probes.append((_URL_USERINFO_RE, ":x@"))
         if policy.enable_bearer_header_assignment:
-            patterns += [
-                _BEARER_TOKEN_RE,
-                _ENV_ASSIGNMENT_RE,
-                _GENERIC_SECRET_ASSIGNMENT_RE,
-                _API_KEY_HEADER_RE,
-                _X_API_KEY_HEADER_RE,
+            probes += [
+                (_BEARER_TOKEN_RE, "x"),
+                (_ENV_ASSIGNMENT_RE, "x"),
+                (_GENERIC_SECRET_ASSIGNMENT_RE, "x"),
+                (_API_KEY_HEADER_RE, "x"),
+                (_X_API_KEY_HEADER_RE, "x"),
             ]
         if policy.enable_whitespace_secret_assignment:
-            patterns.append(_WHITESPACE_SECRET_ASSIGNMENT_RE)
-        if policy.enable_email_masking:
-            patterns.append(_EMAIL_RE)
-        self._boundary_patterns = tuple(patterns)
-        # Token rules match at most 256 characters; scanning their every overlap would cost a match per character.
-        self._bounded_patterns = (_PREFIX_RES if policy.enable_prefix_detection else ()) + (
-            (_TOKEN_CANDIDATE_RE,) if policy.enable_entropy_detection else ()
-        )
+            probes.append((_WHITESPACE_SECRET_ASSIGNMENT_RE, "x"))
+        # Email is left to the local cut check: no real address outlasts it, a probe would hold every long
+        # alphanumeric run (a hex dump), and the rule is slow on dotted runs.
+        if policy.enable_prefix_detection:
+            probes += [(pattern, "") for pattern in _PREFIX_RES]
+        if policy.enable_entropy_detection:
+            probes.append((_TOKEN_CANDIDATE_RE, ""))
+        self._probes = tuple(probes)
         self._alias_patterns = (
             tuple(p for p in map(_path_alias_pattern, self._path_aliases) if p is not None) if policy.enable_path_aliases else ()
         )
@@ -683,37 +688,74 @@ class StreamingTextSanitizer:
         )
 
     def _safe_release_boundary(self, tentative_boundary: int) -> int:
-        """Pull the cut back until no rule match spans it, so a label leaves with its value (#622)."""
+        """The latest cut at or before the tentative one that changes no output, or 0 (#622).
+
+        A cut must lie outside every long match, and the text on either side of it must sanitize the same
+        together as apart. The local check covers what one-shot rule order does: a replaced secret creating a
+        word boundary, an alias normalizing backslashes into a URI, an earlier mask exposing a later label, and
+        the left context a rule's word boundary needs.
+        """
+        spans = sorted(self._long_match_spans(), reverse=True)
+        candidate = tentative_boundary
+        step = 64
+        for _ in range(_CUT_ATTEMPTS):
+            boundary = _cut_outside(spans, self._after_whitespace(candidate))
+            if boundary <= 0:
+                return 0
+            if self._cut_is_inert(boundary):
+                return boundary
+            candidate = boundary - step
+            step *= 2
+        return 0
+
+    def _after_whitespace(self, boundary: int) -> int:
+        """The nearest cut at or before ``boundary`` that follows whitespace, within a short scan; else ``boundary``."""
+        pending = self._pending
+        for cut in range(boundary, max(0, boundary - _CUT_CHECK_CHARS // 8), -1):
+            if pending[cut - 1].isspace():
+                return cut
+        return boundary
+
+    def _long_match_spans(self) -> list[tuple[int, int]]:
         pending = self._pending
         spans: list[tuple[int, int]] = []
         for needle in self._exact_needles:
+            # Overlapping occurrences merge into one run; a cut cannot lie strictly inside one character.
+            run_start = run_end = -1
             idx = pending.find(needle)
             while idx != -1:
-                spans.append((idx, idx + len(needle)))
+                if idx < run_end:
+                    run_end = max(run_end, idx + len(needle))
+                else:
+                    if run_end - run_start > 1:
+                        spans.append((run_start, run_end))
+                    run_start, run_end = idx, idx + len(needle)
                 idx = pending.find(needle, idx + 1)
-        # A stand-in for the text still to come: a label followed only by whitespace to the end of the buffer
-        # then matches through it, so the label waits for its value.
-        probed = pending + "x"
-        for pattern in self._boundary_patterns:
-            # Overlapping matches: one match's value can be the next one's label ("password= password : abc").
-            # Only a label near a match's end can reach past it; restarting there keeps "token=token=..." linear.
-            # shortcut: an env label longer than _LABEL_REACH at a value's end is not re-found; widen it if one is seen.
-            match = pattern.search(probed)
-            while match is not None:
-                spans.append(match.span())
-                match = pattern.search(probed, max(match.start() + 1, match.end() - _LABEL_REACH))
-        for pattern in self._bounded_patterns:
-            spans.extend(match.span() for match in pattern.finditer(probed))
-        if self._alias_patterns:
-            normalized = pending.replace("\\", "/")
-            for pattern in self._alias_patterns:
-                spans.extend(match.span() for match in pattern.finditer(normalized))
-        # Latest start first: once the cut moves to a span's start, no span already visited can contain it.
-        boundary = tentative_boundary
-        for start, end in sorted(spans, reverse=True):
-            if start < boundary < end:
-                boundary = start
-        return boundary
+            if run_end - run_start > 1:
+                spans.append((run_start, run_end))
+        # The alias rule slash-normalizes the whole text before the pattern rules run (same length).
+        text = pending.replace("\\", "/") if self._normalizes_slashes else pending
+        for pattern, probe in self._probes:
+            spans.extend(match.span() for match in pattern.finditer(text + probe))
+        for pattern in self._alias_patterns:
+            spans.extend(match.span() for match in pattern.finditer(text))
+        return spans
+
+    def _cut_is_inert(self, boundary: int) -> bool:
+        left = self._pending[max(0, boundary - _CUT_CHECK_CHARS) : boundary]
+        right = self._pending[boundary : boundary + _CUT_CHECK_CHARS]
+        return self._trial_sanitize(left + right) == self._trial_sanitize(left) + self._trial_sanitize(right)
+
+    def _trial_sanitize(self, text: str) -> str:
+        """Sanitize without counting: a trial for the cut check, not output."""
+        return _sanitize_text(
+            text,
+            sorted_secrets=self._sorted_secrets,
+            sorted_pii=self._sorted_pii,
+            path_aliases=self._path_aliases,
+            policy=self._policy,
+            counter=_RuleCounter(),
+        )
 
     def finalize(self) -> str:
         remaining, self._pending = self._pending, ""
@@ -727,6 +769,15 @@ class StreamingTextSanitizer:
             policy=self._policy,
             counter=self._counter,
         )
+
+
+def _cut_outside(spans: Sequence[tuple[int, int]], boundary: int) -> int:
+    """Move ``boundary`` back to the start of any span that strictly contains it; ``spans`` latest start first."""
+    # Once the cut moves to a span's start, no span already visited can contain it.
+    for start, end in spans:
+        if start < boundary < end:
+            boundary = start
+    return max(0, boundary)
 
 
 def session_correlation_tag(secret: str, *, field_name: str, session_key: bytes) -> str:
