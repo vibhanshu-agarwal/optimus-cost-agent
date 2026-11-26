@@ -17,6 +17,7 @@ from unittest import mock
 import pytest
 
 import tools.plan117_custody_relay as plan117_custody_relay
+from tests.support import child_keyring
 from tools.plan117_custody_contract import CustodyContractError, atomic_write_json, sha256_file
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -267,6 +268,7 @@ def test_post_exit_broken_pipe_preserves_child_exit_and_summary(tmp_path: Path) 
             self._wrapped.close()
 
     def exited_child_popen(*args: Any, **kwargs: Any) -> subprocess.Popen[bytes]:
+        kwargs["env"] = child_keyring.environment(kwargs.get("env") or os.environ)
         proc = subprocess.Popen(*args, **kwargs)
         assert proc.wait(timeout=5) == 7
         assert proc.poll() == 7
@@ -479,6 +481,7 @@ def test_cli_relay_only_args_never_reach_child(tmp_path: Path) -> None:
         input=b"",
         capture_output=True,
         check=False,
+        env=child_keyring.environment(os.environ),
     )
     assert proc.returncode == 0
     out = proc.stdout.decode("utf-8", errors="replace")
@@ -675,6 +678,7 @@ def test_cli_main_parses_double_dash(tmp_path: Path) -> None:
         input=b"cli-bytes",
         capture_output=True,
         check=False,
+        env=child_keyring.environment(os.environ),
     )
     assert proc.returncode == 0
     assert proc.stdout == b"cli-bytes"

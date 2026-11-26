@@ -26,6 +26,11 @@ _OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secre
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
 
 
+@pytest.fixture(autouse=True)
+def _measurement_children_off_the_host_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_measurement_children(monkeypatch)
+
+
 def _sealed_replay():
     """Every family's sealed observations. The builders replay these; they measure nothing."""
     import json as _json

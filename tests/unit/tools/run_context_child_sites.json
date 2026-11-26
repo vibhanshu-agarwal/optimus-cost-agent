@@ -83,12 +83,7 @@
    "proof": "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded",
    "basis": "The test replaces PYTHONPATH with the MAIN-5 guard's startup folder; the child refuses the real adapter itself.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "module:pre_commit.store",
-     "module:sqlite3",
-     "module:shutil"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/acp/test_main5_guard.py::test_real_known_folder_adapter_is_refused_and_recorded#1": {
@@ -444,7 +439,7 @@
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
     "verdict": "fail_backend_in_child_env",
-    "control_in": "tests/unit/guardrails/test_ci_parity.py::_sanitized_env"
+    "control_in": "tests/unit/guardrails/test_local_secret_scan_encoding.py::_hook_env"
    }
   },
   "tests/unit/guardrails/test_local_secret_scan_encoding.py::test_environment_record_for_this_boundary#1": {
@@ -570,10 +565,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "program"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py::_cli#1": {
@@ -618,10 +610,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "coverage.py (`python -m coverage run`, then `coverage json`) on a synthetic tmp_path package this test writes, which imports only `sys`; no product code runs. An ordinary child proven by the census at the acceptance candidate (Plan 11.30 Task 3).",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "module:coverage"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_debug_trace_message_rule.py::_scan#1": {
@@ -648,11 +637,7 @@
    "proof": "tests/unit/tools/test_run_context_boundaries.py::test_a_selection_that_is_not_the_approved_default_runs_passive",
    "basis": "Nested pytest of a temporary project with a rebuilt PYTHONPATH: another root, so passive; its one test runs git only.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "module:pytest",
-     "constant:tests/unit/tools/test_git_env_immunity.py:UNPROTECTED_GIT_TEST"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_mypy_ratchet.py::test_new_module_is_checked#1": {
@@ -679,10 +664,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_every_default_launch_site_is_mapped_to_a_proof",
    "basis": "Defined inside a test that skips on Windows (`os.name == \"nt\"`); not reachable in the Windows default selection. On POSIX it launches the custody relay's child, which the relay's other sites show clean.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "file:tools/plan117_custody_relay.py"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_plan117_custody_relay.py::test_cli_relay_only_args_never_reach_child#1": {
@@ -691,10 +673,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "file:tools/plan117_custody_relay.py"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_plan117_custody_relay.py::test_cli_main_parses_double_dash#1": {
@@ -703,10 +682,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "file:tools/plan117_custody_relay.py"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_plan12_memory_m1_evaluate.py::test_a_cutoff_tree_holds_exactly_that_commit_even_past_the_windows_path_limit#2": {
@@ -910,10 +886,7 @@
    "proof": "tests/unit/tools/test_run_context_boundaries.py::test_the_child_tripwire_records_and_refuses_a_real_adapter_request",
    "basis": "A child that stops at the unconfigured tripwire before running any program.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "module:tests.support.child_tripwire"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_run_context_boundaries.py::test_a_forged_registry_entry_never_reaches_a_record_or_the_terminal#1": {
@@ -1048,10 +1021,8 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "The profile runner (`python -m tools.testing.run_profile --dry-run`) with its temporary folders under tmp_path: it reads Git and runs one collection-only pytest, executing no test; an ordinary child proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "module:tools.testing.run_profile"
-    ]
+    "verdict": "fail_backend_in_child_env",
+    "control_in": "tests/unit/tools/test_run_profile.py::_env"
    }
   },
   "tests/unit/tools/test_test_profiles.py::_pytest#1": {
@@ -1069,11 +1040,7 @@
    "proof": "tests/unit/tools/test_test_profiles.py::test_native_h5_capture_preserves_original_failure_and_later_test",
    "basis": "Owned temporary pytest project with exactly two generated synthetic fixture nodes and a stubbed measurement service; no H5 probe or repository test node executes. The named proof statically binds every launcher caller and dynamically checks its five-case matrix; companion test_capture_controls_never_touch_inherited_outer_base checks disabled/enabled children. The shared launcher enforces the same fixture and no-repository-run-record/pruning contract for every call. Context/root injection is passive synthetic evidence, never measured/native product acceptance. Inherited capture activation is removed and optionally replaced only with an owned child directory.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "module:pytest",
-     "module:tests.support.profiles_plugin"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_verify_masterplan_impact.py::_run_verifier#1": {
@@ -1142,10 +1109,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "file:tools/verify_plan987_acpx_evidence.py"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value#1": {
@@ -1154,10 +1118,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "file:tools/verify_plan987_acpx_evidence.py"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_verify_plan987_acpx_evidence.py::test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value#2": {
@@ -1166,10 +1127,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "file:tools/verify_plan987_acpx_evidence.py"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_the_extraction_probe_reports_a_clean_engine_import_and_is_caught_in_a_checkout#1": {
@@ -1178,15 +1136,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "module:json",
-     "module:sys",
-     "module:importlib",
-     "module:context_engine",
-     "module:optimus_model_policy",
-     "module:optimus_model_policy.registry"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/tools/test_verify_plan99_noneditable_install.py::test_the_extraction_probe_detects_a_host_package_loaded_with_the_engine#1": {
@@ -1195,16 +1145,7 @@
    "proof": "tests/unit/tools/test_run_context_child_sites.py::test_the_census_hook_refuses_and_attributes_a_real_adapter_request",
    "basis": "Ordinary child of an inherited or rebuilt environment; proven by the census at the acceptance candidate.",
    "keyring": {
-    "verdict": "import_closure",
-    "entries": [
-     "module:json",
-     "module:sys",
-     "module:importlib",
-     "module:context_engine",
-     "module:optimus_model_policy",
-     "module:optimus_model_policy.registry",
-     "module:optimus.acp.conversation"
-    ]
+    "verdict": "fail_backend_in_child_env"
    }
   },
   "tests/unit/usage/test_outbox.py::test_a_killed_writer_leaves_a_claimable_stream_with_its_verified_prefix#1": {
@@ -1225,9 +1166,9 @@
   "literal_program": "The literal-program check above limits the program to imports of os, sys and time: it cannot import keyring.",
   "reviewed_program": "The reviewed-program proof holds every statement to shapes that import only os, sys, time and subprocess, and launch only those programs: nothing imports keyring.",
   "not_in_default_run": "The launch is skipped in an ordinary run (runner-only plant).",
-  "nested_pytest": "The child is a pytest session over this repository's tests, so the root conftest installs keyring's fail backend in it and in each of its xdist workers (#538). Its own launches are sites of this map.",
-  "import_closure": "Every module the child's entries can import, lazy imports included, imports keyring nowhere, and nothing in that closure imports or runs code by a computed name. The map test recomputes the closure from the sources each run (tests.support.child_keyring.import_closure).",
-  "fail_backend_in_child_env": "The child's environment selects keyring's fail backend through PYTHON_KEYRING_BACKEND (tests.support.child_keyring.environment, which the child tripwire's environments also apply). The map test finds that call in the launching function or in the helper named by control_in. A tripwire site's child also records the selection and the parent's check requires it."
+  "nested_pytest": "The child is a pytest session over this repository's tests that loads the root conftest before collection (no -c, --rootdir, --noconftest or --confcutdir), so the root conftest installs keyring's fail backend in it and in each of its xdist workers (#538). Its own launches are sites of this map.",
+  "import_closure": "Every module the child's program, module constant or script can import, lazy imports included, imports keyring nowhere; the entries are read from what the child runs, never listed by hand. The closure walks namespace packages and fails closed on a computed import, exec, eval or runpy referenced anywhere (called or aliased), on a repository module name that does not resolve, and on a top-level name neither the repository nor this environment holds. The map test recomputes it from the sources each run (tests.support.child_keyring.import_closure). It does not follow the child's own launches: each such program is bounded here only through the same closure.",
+  "fail_backend_in_child_env": "The child's environment selects keyring's fail backend through PYTHON_KEYRING_BACKEND (tests.support.child_keyring.environment). At a tripwire site the tripwire's environments carry it, the tripwire refuses to start the child's program without it, and the site's proof requires the child's record of it. Elsewhere the map test reads the launch call: its env is the control's result, a name bound only to it, the helper named by control_in whose every return is it, or **kwargs whose env item is set to it. The child's own children inherit it unless their launcher replaces the environment."
  },
  "keyring_tools": {
   "mechanisms": {

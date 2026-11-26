@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import child_keyring
 from tools.plan1126_runtime_audit import measurement
 from tools.plan1126_runtime_audit.current_envelope import MeasurementPlan, default_measurement_plan
 from tools.plan1126_runtime_audit.source import ExecutingSourceMismatch, SourceTree, source_fingerprint
@@ -26,6 +27,11 @@ ROOT = Path(__file__).resolve().parents[4]
 _ENTRY = "identity.echo_bound_modules"
 _THIS = "tests/unit/tools/plan1126_runtime_audit/test_measurement_reuse.py"
 _REUSE_PROBE = f"{_THIS}::test_measurement_reuse_probe"
+
+
+@pytest.fixture(autouse=True)
+def _measurement_children_off_the_host_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_measurement_children(monkeypatch)
 
 
 def _plan(**options: object) -> MeasurementPlan:

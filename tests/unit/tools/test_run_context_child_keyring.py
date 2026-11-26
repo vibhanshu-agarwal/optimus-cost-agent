@@ -44,6 +44,57 @@ def _calls(relative: str, name: str) -> set[str]:
     return {ast.unparse(node.func) for function in _functions(relative, name) for node in ast.walk(function) if isinstance(node, ast.Call)}
 
 
+def _file_calls(relative: str) -> set[str]:
+    return {ast.unparse(node.func) for node in ast.walk(ast.parse((_ROOT / relative).read_text(encoding="utf-8"))) if isinstance(node, ast.Call)}
+
+
+def _helper_calls(relative: str, name: str) -> set[str]:
+    """Calls made by the module-level functions `name` calls directly, one level down."""
+    module_functions = {node.name for node in ast.parse((_ROOT / relative).read_text(encoding="utf-8")).body
+                        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    return {call for helper in _calls(relative, name) & module_functions for call in _calls(relative, helper)}
+
+
+def _is_control(node: ast.AST | None) -> bool:
+    return isinstance(node, ast.Call) and ast.unparse(node.func) in child_keyring.CONTROL_CALLS
+
+
+def _launch_call(site: dict[str, object]) -> ast.Call:
+    tree = ast.parse((_ROOT / str(site["file"])).read_text(encoding="utf-8"))
+    calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and node.lineno == site["line"]]
+    assert calls, f"{site['key']}: no launch call at line {site['line']}"
+    return calls[0]
+
+
+def assert_control_reaches_the_launch(site: dict[str, object], control_in: str | None) -> None:
+    """The environment the launch call passes is the control's result, not merely a control call somewhere nearby
+    (Codex round 1, finding 1): the `env=` value is a control call; or a name every binding of which in the launching
+    function is one; or, when `control_in` names the helper that builds it, a call of that helper every `return` of
+    which returns one; or `**kwargs` whose `"env"` item the function sets to one."""
+    key, function = site["key"], str(site["function"])
+    launch = _launch_call(site)
+    value = next((keyword.value for keyword in launch.keywords if keyword.arg == "env"), None)
+    functions = _functions(str(site["file"]), function)
+    if value is None and any(keyword.arg is None for keyword in launch.keywords):
+        stores = [node for f in functions for node in ast.walk(f) if isinstance(node, ast.Assign) and len(node.targets) == 1
+                  and isinstance(node.targets[0], ast.Subscript) and ast.unparse(node.targets[0].slice) == "'env'"]
+        assert stores and all(_is_control(node.value) for node in stores), f"{key}: **kwargs carry no controlled env"
+        return
+    assert value is not None, f"{key}: the launch passes no env, so the child inherits this process's environment"
+    if _is_control(value):
+        return
+    if isinstance(value, ast.Name):
+        bindings = [node for f in functions for node in ast.walk(f) if node is not f and node_binds(node, value.id)]
+        controlled = bindings and all(isinstance(node, ast.Assign) and _is_control(node.value) for node in bindings)
+        assert controlled, f"{key}: {value.id} is bound to something other than the control"
+        return
+    assert control_in and isinstance(value, ast.Call), f"{key}: the env passed is not the control's result"
+    relative, _, helper = control_in.partition("::")
+    assert ast.unparse(value.func).split(".")[-1] == helper, f"{key}: the env comes from {ast.unparse(value.func)}, not {helper}"
+    returns = [node for f in _functions(relative, helper) for node in ast.walk(f) if isinstance(node, ast.Return)]
+    assert returns and all(_is_control(node.value) for node in returns), f"{key}: {helper} returns an uncontrolled env"
+
+
 def site_program(site: dict[str, object]) -> str:
     """The `-c` program of a launch, read from the call in the source: a string literal or a module string constant."""
     tree = ast.parse((_ROOT / str(site["file"])).read_text(encoding="utf-8"))
@@ -62,7 +113,8 @@ def site_program(site: dict[str, object]) -> str:
     if not local:
         return module_constant(str(site["file"]), program.id)
     # A name the launching function binds: exactly one plain assignment of a string constant, nothing else.
-    assert len(local) == 1 and isinstance(local[0], ast.Assign) and isinstance(local[0].value, ast.Constant)         and isinstance(local[0].value.value, str), f"{site['key']}: {program.id} is not one plain string assignment"
+    assert len(local) == 1 and isinstance(local[0], ast.Assign) and isinstance(local[0].value, ast.Constant) \
+        and isinstance(local[0].value.value, str), f"{site['key']}: {program.id} is not one plain string assignment"
     return local[0].value.value
 
 
@@ -76,11 +128,9 @@ def closure_entries(site: dict[str, object], entries: list[str]) -> list[str]:
         elif kind == "constant":
             relative, _, name = value.rpartition(":")
             resolved.append("-c:" + module_constant(relative, name))
-        elif kind == "file":
-            assert (_ROOT / value).is_file(), entry
-            resolved.append(value)
         else:
-            assert kind == "module", entry
+            # Read from what the child runs, never a hand-written module list (Codex round 1, finding 3).
+            assert kind == "file" and (_ROOT / value).is_file(), f"an entry is the program, a constant or a file: {entry}"
             resolved.append(value)
     return resolved
 
@@ -101,16 +151,20 @@ def test_every_default_launch_site_has_a_keyring_verdict_that_holds() -> None:
             assert closure["unbounded"] == [], f"{key}: the child's closure imports by computed name: {closure['unbounded']}"
         else:
             assert verdict == "fail_backend_in_child_env", key
-            relative, _, function = str(keyring.get("control_in", f"{site['file']}::{site['function']}")).partition("::")
-            if set(child_keyring.CONTROL_CALLS) & _calls(relative, function):
+            try:
+                assert_control_reaches_the_launch(site, keyring.get("control_in"))
                 continue
-            # A tripwire site may build the environment in the test that calls the launching helper: the tripwire's
-            # environments carry the control, the child records it, and the parent's check requires that record.
-            assert entry["disposition"] == "tripwire_at_site", f"{key}: {relative}::{function} applies no control"
-            calls = {ast.unparse(node.func) for node in ast.walk(ast.parse((_ROOT / str(site["file"])).read_text(encoding="utf-8")))
-                     if isinstance(node, ast.Call)}
+            except AssertionError:
+                if entry["disposition"] != "tripwire_at_site":
+                    raise
+            # Runtime control: the tripwire's environments carry the selection, the tripwire refuses to start the child's
+            # program without it, and the site's proof requires the child's record of it.
+            proof_file, _, proof = str(entry["proof"]).partition("::")
+            proof = proof.split("[")[0]
+            calls = _file_calls(str(site["file"])) | _file_calls(proof_file)
             assert calls & {"child_tripwire.environment", "child_tripwire.hooked_environment"}, f"{key}: no tripwire environment"
-            assert "child_tripwire.assert_no_real_adapter_access" in calls, f"{key}: the parent never checks the child's record"
+            proof_calls = _calls(proof_file, proof) | _helper_calls(proof_file, proof)
+            assert "child_tripwire.assert_no_real_adapter_access" in proof_calls, f"{key}: its proof never checks the child's record"
 
 
 def test_every_default_launch_site_that_starts_no_python_is_accounted_for() -> None:
@@ -125,10 +179,11 @@ def test_every_default_launch_site_that_starts_no_python_is_accounted_for() -> N
     assert sorted(set(tools["sites"]) - {str(site["key"]) for site in others}) == [], "keyring_tools lists sites that no longer exist"
 
 
-# Host-safe even under mutation: with no backend named, the child stops before importing keyring.
+# Host-safe even under mutation: unless keyring's fail or null backend is named exactly, the child stops before it
+# imports keyring, so no mutation of the control can let it resolve or read the host's store.
 _REPORT_BACKEND = (
     "import os, sys\n"
-    "if not os.environ.get('PYTHON_KEYRING_BACKEND'):\n"
+    "if os.environ.get('PYTHON_KEYRING_BACKEND') not in {'keyring.backends.fail.Keyring', 'keyring.backends.null.Keyring'}:\n"
     "    print('NO_SELECTION')\n"
     "    sys.exit(0)\n"
     "import keyring\n"
@@ -142,32 +197,48 @@ _REPORT_BACKEND = (
 )
 
 
-def _backend_child(tmp_path: Path, variable: str | None = None) -> tuple[list[str], Path]:
-    """A child launched with the tripwire's environment, which carries the control; `variable` replaces the selection."""
+def _backend_child(tmp_path: Path, variable: str | None = None, *, tripwire: bool = True) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """A child launched with the tripwire's environment, which carries the control; `variable` replaces the selection,
+    and without `tripwire` the program runs without the tripwire's prelude."""
     record = tmp_path / "tripwire.jsonl"
     environment = child_tripwire.environment(dict(os.environ), record)
     if variable is not None:
         environment[child_keyring.VARIABLE] = variable
     completed = subprocess.run(
-        [sys.executable, "-c", child_tripwire.PRELUDE + _REPORT_BACKEND], cwd=_ROOT, capture_output=True, text=True,
-        timeout=120, check=True, env=environment,
+        [sys.executable, "-c", (child_tripwire.PRELUDE if tripwire else "") + _REPORT_BACKEND], cwd=_ROOT,
+        capture_output=True, text=True, timeout=120, check=False, env=environment,
     )
-    return completed.stdout.split(), record
+    return completed, record
 
 
 def test_a_child_given_the_control_resolves_keyrings_fail_backend_and_its_record_proves_it(tmp_path: Path) -> None:
-    lines, record = _backend_child(tmp_path)
-    assert lines == [child_keyring.FAIL_BACKEND, "REFUSED=NoKeyringError"]
+    completed, record = _backend_child(tmp_path)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.split() == [child_keyring.FAIL_BACKEND, "REFUSED=NoKeyringError"]
     assert child_tripwire.assert_no_real_adapter_access(record)["keyring_fail_selected"] == 1
 
 
-def test_the_childs_own_variable_decides_its_backend_and_the_record_check_notices_another(tmp_path: Path) -> None:
-    """Mutation control: with another non-host backend named in the child's variable, the child resolves that one, and
-    the parent's check refuses the record. The host backend is never resolved: a backend is always named."""
-    lines, record = _backend_child(tmp_path, "keyring.backends.null.Keyring")
-    assert lines[0] == "keyring.backends.null.Keyring"
-    with pytest.raises(AssertionError, match="did not select keyring's fail backend"):
+@pytest.mark.parametrize("variable", ["keyring.backends.null.Keyring", ""])
+def test_a_tripwire_child_without_the_fail_selection_never_runs_its_program(tmp_path: Path, variable: str) -> None:
+    """Mutation control: the tripwire refuses before the child's own program runs, and the parent's check fails."""
+    completed, record = _backend_child(tmp_path, variable)
+    assert completed.returncode != 0 and completed.stdout == "", completed.stdout
+    assert child_tripwire.KEYRING_REFUSAL in completed.stderr
+    with pytest.raises(AssertionError):
         child_tripwire.assert_no_real_adapter_access(record)
+
+
+def test_the_childs_own_variable_decides_its_backend(tmp_path: Path) -> None:
+    """Without the tripwire, a child whose variable names another non-host backend resolves that one: the selection in
+    the child's own environment is what decides."""
+    completed, _ = _backend_child(tmp_path, "keyring.backends.null.Keyring", tripwire=False)
+    assert completed.stdout.split()[0] == "keyring.backends.null.Keyring", completed.stderr
+
+
+def test_the_probe_names_no_backend_it_was_not_given(tmp_path: Path) -> None:
+    """The probe itself stops before keyring for any other value, so it can never resolve a host backend."""
+    completed, _ = _backend_child(tmp_path, "keyring.backends.Windows.WinVaultKeyring", tripwire=False)
+    assert completed.stdout.split() == ["NO_SELECTION"], completed.stderr
 
 
 def test_the_control_adds_only_the_backend_selection() -> None:
@@ -195,3 +266,55 @@ def test_the_import_closure_finds_lazy_keyring_imports_and_fails_closed_on_compu
         assert closure["keyring_importers"] == []
     if unbounded is not None:
         assert closure["unbounded"] == unbounded
+
+
+@pytest.mark.parametrize(
+    ("entries", "unbounded"),
+    [
+        (["-c:from importlib import import_module as load\nload(name)"], ["<program>:1: from importlib import import_module"]),
+        (["-c:import importlib\nloader = importlib.import_module"], ["<program>:2: importlib.import_module"]),
+        (["-c:import tools.no_such_module_540"], ["<program>: unresolved tools.no_such_module_540"]),
+        (["-c:import no_such_top_level_540"], ["<program>: unresolved no_such_top_level_540"]),
+    ],
+)
+def test_the_import_closure_fails_closed_on_aliases_and_unresolved_names(entries, unbounded) -> None:
+    assert child_keyring.import_closure(entries)["unbounded"] == unbounded
+
+
+def test_the_import_closure_walks_namespace_packages() -> None:
+    """`tools` and `tests` have no `__init__.py`; the walk still reaches their modules (Codex round 1, finding 2)."""
+    closure = child_keyring.import_closure(["-c:import tools.testing.run_profile"])
+    assert {"tools", "tools.testing", "tools.testing.run_profile"} <= set(closure["modules"])
+    assert "optimus.acp.launch_gate" in child_keyring.import_closure(["-c:import tests.integration.acp.test_server_stream"])["modules"]
+
+
+def test_every_nested_pytest_verdict_loads_the_root_conftest() -> None:
+    """A nested session that chooses its own configuration or root, or skips conftests, would not install fail."""
+    found = {str(site["key"]): site for site in default_python_sites(_ROOT)}
+    for key, entry in _document()["sites"].items():
+        if entry["keyring"]["verdict"] == "nested_pytest":
+            command = ast.unparse(_launch_call(found[key]).args[0]) if _launch_call(found[key]).args else ""
+            # The pytest arguments: after `-m pytest`, or the inline program that calls pytest.main.
+            arguments = command.split("'pytest'", 1)[1] if "'-m', 'pytest'" in command else site_program(found[key])
+            assert not any(flag in arguments for flag in ("'-c'", '"-c"', "--rootdir", "--noconftest", "--confcutdir")), f"{key}: {arguments}"
+
+
+def test_every_test_that_drives_a_measurement_controls_the_measurement_child() -> None:
+    """The audit tool launches measurement children itself; a test module that reaches that launch in-process applies
+    `child_keyring.control_measurement_children` (Codex round 1, finding 4)."""
+    missing = []
+    for path in sorted((_ROOT / "tests").rglob("test_*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} | {
+            node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+        if names & set(child_keyring.MEASUREMENT_CALLS) and "control_measurement_children" not in names:
+            missing.append(path.relative_to(_ROOT).as_posix())
+    assert missing == []
+
+
+def test_the_measurement_control_reaches_the_measurement_childs_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tools.plan1126_runtime_audit import measurement
+
+    assert child_keyring.VARIABLE not in measurement.fresh_child_environment(tmp_path) or child_keyring.VARIABLE in os.environ
+    child_keyring.control_measurement_children(monkeypatch)
+    assert measurement.fresh_child_environment(tmp_path)[child_keyring.VARIABLE] == child_keyring.FAIL_BACKEND

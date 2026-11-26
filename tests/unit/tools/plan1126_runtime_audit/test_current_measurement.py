@@ -80,6 +80,11 @@ _RUNTIME = "src/optimus/redis/runtime.py"
 _GATE = "tools/plan1126_runtime_audit/measurement.py"
 
 
+@pytest.fixture(autouse=True)
+def _measurement_children_off_the_host_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_measurement_children(monkeypatch)
+
+
 def _tree(paths) -> SourceTree:
     return SourceTree({path: (ROOT / path).read_text(encoding="utf-8") for path in paths})
 
@@ -488,7 +493,7 @@ def test_the_fresh_child_executes_verified_source_not_stale_bytecode(tmp_path) -
     plain = subprocess.run(
         [sys.executable, "-c", "import plan1126_stale_probe as m; print(m.PLAN1126_STALE_MARKER)"],
         cwd=root, capture_output=True, text=True,
-        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1", CACHE_PREFIX_VARIABLE: ""},
+        env=child_keyring.environment({**os.environ, "PYTHONDONTWRITEBYTECODE": "1", CACHE_PREFIX_VARIABLE: ""}),
     )
     assert plain.stdout.strip() == "old", (
         "the stale-bytecode trap did not reproduce, so this control proves nothing"

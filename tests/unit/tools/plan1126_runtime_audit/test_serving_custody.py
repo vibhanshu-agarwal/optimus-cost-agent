@@ -62,6 +62,11 @@ SEALED = ROOT / "reports" / "plan-11-26-acp-runtime-audit.json"
 BOOTSTRAP = "src/optimus/acp/bootstrap.py"
 
 
+@pytest.fixture(autouse=True)
+def _measurement_children_off_the_host_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_measurement_children(monkeypatch)
+
+
 def _current_tree(paths=S1_SOURCE_PATHS) -> SourceTree:
     return SourceTree({path: (ROOT / path).read_text(encoding="utf-8") for path in paths})
 

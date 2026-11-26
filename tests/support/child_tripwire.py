@@ -13,8 +13,8 @@ the tripwire loaded, and loaded before the trusted-path module was imported. Rec
 names and a process ID only.
 
 Both environments also select keyring's `fail` backend for the child (`tests.support.child_keyring`,
-#540), and the child records at start-up that its own environment carries that selection; a clean
-result requires it.
+#540). At start-up the child refuses to run its program unless its own environment carries that
+selection, and records that it does; a clean result requires the record.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from tests.support import child_keyring
 FILE_VARIABLE = "OPTIMUS_TEST_CHILD_TRIPWIRE_FILE"
 PRELUDE = "import tests.support.child_tripwire as _child_tripwire; _child_tripwire.install()\n"
 REFUSAL = "TEST_CHILD_TRIPWIRE_REAL_ADAPTER"
+KEYRING_REFUSAL = "TEST_CHILD_TRIPWIRE_KEYRING_NOT_FAIL"
 _TARGET = "optimus.acp.trusted_paths"
 
 
@@ -114,8 +115,9 @@ def install() -> None:
     """Child side. Fails closed: without a record file the child does not run its program."""
     if FILE_VARIABLE not in os.environ:
         raise RuntimeError("TEST_CHILD_TRIPWIRE_NOT_CONFIGURED")
-    if os.environ.get(child_keyring.VARIABLE) == child_keyring.FAIL_BACKEND:
-        _note("keyring_fail_selected")
+    if os.environ.get(child_keyring.VARIABLE) != child_keyring.FAIL_BACKEND:
+        raise RuntimeError(KEYRING_REFUSAL)  # before the child's own program can reach the host's store (#540)
+    _note("keyring_fail_selected")
     if getattr(sys, "_main5_guard_activated", False):
         # The MAIN-5 guard already refuses and records this in the child, and checks its own
         # adapter patch. It is left in force; this tripwire only reports that it ran.
