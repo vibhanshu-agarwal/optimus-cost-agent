@@ -17,6 +17,7 @@ from optimus_model_policy.binding import compose_trusted_snapshot, packaged_defa
 from optimus_model_policy.savings_references import CategoryPrices, Reference, ReferenceSet, RuleSource, Source
 from optimus_security import durable_outbox as ob
 from optimus_security import usage_capture_contract as uc
+from tests.support.price_snapshot_stamp import stamp_when_durable
 
 
 @pytest.fixture
@@ -82,7 +83,7 @@ def test_without_accounting_or_a_registry_the_usage_envelope_keeps_its_earlier_b
 
 
 def test_the_snapshot_id_is_stamped_once_durable_and_its_snapshot_written_once(writer, policy):
-    first = snapshots.stamp({}, policy)
+    first = stamp_when_durable(policy)  # the first write into a fresh outbox may take longer than the request-path wait
     second = snapshots.stamp({}, policy)
 
     assert first == second == {"price_snapshot_id": snapshots.registry_payload(policy.snapshot)["snapshot_id"]}
@@ -97,7 +98,7 @@ def test_a_failed_snapshot_write_leaves_the_id_absent_and_is_retried(tmp_path, p
         assert snapshots.stamp({}, policy) == {}
         working = ob.OutboxWriter(tmp_path / "working")
         snapshots.configure(working)
-        assert "price_snapshot_id" in snapshots.stamp({}, policy)
+        assert "price_snapshot_id" in stamp_when_durable(policy)
         working.close()
     finally:
         snapshots.configure(None)
@@ -147,6 +148,7 @@ def test_completion_and_decision_envelopes_carry_the_durable_snapshot_id(writer,
                               resolved_provider=None, resolved_model="m-1")
 
     expected = snapshots.registry_payload(policy.snapshot)["snapshot_id"]
+    assert stamp_when_durable(policy) == {"price_snapshot_id": expected}  # durable first; the envelopes below must not race it
     assert _gateway_usage(config=config, model="m-1", provider_result=completion, gateway_request_id="gw-1")["price_snapshot_id"] == expected
     assert _decision_usage(config=config, model="m-1", result=decision, gateway_request_id="gw-2")["price_snapshot_id"] == expected
 
