@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
+import sys
 import threading
 import weakref
 from collections import Counter
@@ -456,6 +458,20 @@ def test_schedule_uses_content_free_location_metadata(monkeypatch, filename, kin
 
     with monkeypatch.context() as context:
         context.setattr(Path, "resolve", _resolve)
+        coverage = sys.modules.get("coverage")
+        if os.name == "nt" and filename.startswith("//") and coverage is not None and coverage.Coverage.current() is not None:
+            # Coverage copies os.path before filtering source files. Localize only
+            # the exact synthetic lookup in that copy, keeping the traceback filename.
+            coverage_path = sys.modules["coverage.files"].os.path
+            realpath = coverage_path.realpath
+            local_file = realpath(__file__, strict=True)
+
+            def _realpath(path, *args, **kwargs):
+                if isinstance(path, str) and path == filename:
+                    return local_file
+                return realpath(path, *args, **kwargs)
+
+            context.setattr(coverage_path, "realpath", _realpath)
         row = _diagnostic_schedule(context, probe=_probe)[0]
     assert Path.resolve is original
     with pytest.raises(RuntimeError, match="FIXTURE_BODY"):

@@ -79,7 +79,7 @@ def gateway() -> Iterator[tuple[int, _Upstream]]:
         thread.join(5)
 
 
-def _post(port: int, path: str, body: bytes, headers: dict[str, str] | None = None) -> tuple[int, dict[str, object]]:
+def _post(port: int, path: str, body: bytes | None, headers: dict[str, str] | None = None) -> tuple[int, dict[str, object]]:
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
     try:
         connection.request("POST", path, body=body, headers={"Content-Type": "application/json", **(headers or {})})
@@ -111,7 +111,9 @@ def test_a_replayed_reply_fails_for_a_new_nonce(gateway) -> None:
 
 def test_the_route_refuses_a_wrong_key_before_reading_anything(gateway) -> None:
     port, _ = gateway
-    status, reply = _post(port, gi.PATH, gi.build_request(gi.new_nonce()), {"Authorization": "Bearer wrong"})
+    # Withhold the declared body to check refusal before receiving its bytes.
+    body_length = len(gi.build_request(gi.new_nonce()))
+    status, reply = _post(port, gi.PATH, None, {"Authorization": "Bearer wrong", "Content-Length": str(body_length)})
     assert status == 401
     assert "fields" not in reply
 

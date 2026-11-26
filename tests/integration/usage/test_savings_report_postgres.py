@@ -40,6 +40,7 @@ from optimus_security import usage_capture_contract as uc
 from optimus_security import usage_report_contract as urc
 from tests.integration.usage.test_durable_capture_postgres import _GATEWAY_CHILD, _ready_line
 from tests.support.plan12_capture_k3 import AT
+from tests.support.price_snapshot_stamp import stamp_when_durable
 
 pytestmark = [pytest.mark.requires_plan12_capture_postgres]
 
@@ -224,7 +225,7 @@ def test_snapshots_read_back_independently_keep_their_first_capture_and_are_immu
         usage_price_snapshots.configure(outbox)
         try:
             usage_price_snapshots.record_references(REFERENCES)
-            ids.append(usage_price_snapshots.stamp({}, policy)["price_snapshot_id"])
+            ids.append(stamp_when_durable(policy)["price_snapshot_id"])
         finally:
             usage_price_snapshots.configure(None)
         outbox.close()
