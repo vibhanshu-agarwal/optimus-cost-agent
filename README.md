@@ -243,7 +243,8 @@ context. References come from the packaged `optimus_model_policy/savings_referen
 
 Context explanation and ambiguity (Plan 12.13, M2a; [ADR-046](docs/decisions/ADR-046-context-why-ranked-ambiguity-and-6-10-partition.md)): `/why` in Zed's Agent Panel
 explains the context this session's last turn was prepared with. It shows the outcome, whether the turn was sent to a model,
-the files and index entries chosen with their ranks and reasons, the byte and token limits used, and the memory served, by
+the files and index entries chosen with their ranks and reasons, the byte and token limits used with the pack budget's policy
+(legacy on every shipped route; Plan 12.14), and the memory served, by
 `id@version`. It never shows file bodies, prompts or memory statements, and it withholds a path that today's file policy denies.
 `/why <n>` shows page n. It makes no model call, is kept in memory only, and is unavailable after a restart. When a file name
 matches several workspace files, the turn stops and lists them most likely first; the order chooses nothing, and naming one
