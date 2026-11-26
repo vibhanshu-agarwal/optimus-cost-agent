@@ -2,9 +2,9 @@
  "schema": "plan12-memory-m2b.closure.v1",
  "plan": "Plan 12.14 (M2b), #548, docs/superpowers/plans/2026-11-23-plan-12-14-ranking-and-budgets-implementation.md (sha256 c2b80ad5...0bbc)",
  "issue": 548,
- "state": "DRAFT 2026-11-26: an incomplete closure proposed after Task 4 qualification failed and D3 was rolled back; pending the operator's approval; nothing pushed or delivered",
+ "state": "an incomplete closure after Task 4 qualification failed and D3 was rolled back, delivered through Task 5 by the operator's decisions below; Task 5 in progress; nothing pushed or delivered yet",
  "identities": {
-  "code_head": "git:da53a67964b3d643b296ff5be26e3212effbcf4c",
+  "code_head": "git:8669178b5ce9fa328dd4cdc2a48b5948293e2bd2",
   "branch": "agent/claude/p1214-impl (unpushed)",
   "base": "git:7abbaa262696c40409cea166569a93bd2feb6853"
  },
@@ -15,17 +15,22 @@
   "D4": "dormant by the operator's decision (\"Keep it dormant\"): the outline stays in the code and tests, reachable only under a model-aware ceiling",
   "D5": "not shipped: the shipped defaults keep their pre-change hash 4d2f637e...6338",
   "D6": "paid Q UNRUN: Task 4 requires passing deterministic gates first; the launcher refuses (verify_qualification)",
-  "D7": "paid R UNRUN, for the same reason"
+  "D7": "paid R UNRUN: independently unreleased; Task 4 requires passing deterministic gates before it too (verify_qualification guards only Q's launcher)"
  },
  "evidence": {
   "manifest.json": "hex:3a4d5def09ca19f0b5184ebaa5d614c0ba4fc5e557f1f1a0f2470d581823874f",
   "cases.json": "hex:17a8e68d6fdac9acb91e4d885a4128a7609a411c5967a96e438d655c69e6ea36",
-  "evaluation-contract.json": "hex:2b06f10718b9767d924f7279dcefe7cc5fc9053d1c99a67e823d83b1b7eec56a",
+  "evaluation-contract.json": "hex:1a6d10044569249dcefe43aa28b9c237f62be9ca04bdac0328e66dbccbf2edbe",
   "calibration.json": "hex:cbbf61c50400f737b78996d4e4bed26dc56ffb3d8ac7d13b76ed8ccc96a20307",
   "calibration-addendum.json": "hex:d45d43bcaa7648a9b99a4c62388d3556a6a068f464b430a51c6cca0b68de3b57",
   "calibration-budget.json": "hex:0e2c59f6cf879a3ba6c8d49fd6e127b4500f232629897029b0266dde2dd4404c",
   "gate-g2.json": "hex:f45b3c8690194e9541e70be40cdd59996d00fbafa312e2bed725401d141b0cd2",
   "qualification.json": "hex:de5fa09b1d38029db77a1872ee345b31902f508412c8782b068e2f422e2d827a"
+ },
+ "partial_evidence": {
+  "qualification": "the real-index qualification (qualification.json): the real index worker, Redis store and FilePolicy reader on 56 cutoff trees; zero paid",
+  "g2": "G2 (gate-g2.json, historical): the production Gateway and client against a loopback stub provider; the candidate composition",
+  "unit_and_revert": "unit, production-byte and revert-check evidence by commit, kept apart from the UNRUN final gates (optimus-handoff/p1214-gate: revert_*.log, every mutant caught by a named assertion; focused failures and skips as each commit message records them)"
  },
  "unrun": {
   "paid-attempts.json": "no paid Q or R (D6, D7)",
@@ -46,12 +51,20 @@
   "#235": "stays open: route qualification, deferred, Gated and later slices",
   "#463": "stays open: broader campaigns and report integration",
   "#491": "stays open: security and continuity",
-  "repo_map_defect": "production's first repo map on a fresh session can come back empty with nothing logged (MemorySession.repo_map; G2 run 2); not yet filed: filing needs the operator's OK"
+  "repo_map_defect": "production's first repo map on a fresh session can come back empty with nothing logged (MemorySession.repo_map; G2 run 2); an obligation before Task 5: fix or defer by the operator's decision",
+  "resolver_defect": "the workspace resolver binds a spaced or non-ASCII path's basename to another file (M2a behaviour; contract cp2_attempt_1.follow_ups): custody by the operator's decision",
+  "owner": "handler:claude for #243's successor plan and every item above unless the operator names another"
+ },
+ "operator_decisions": {
+  "when": "2026-11-26, Claude chat, after Codex round 128 (#548 comment 7188150830)",
+  "delivery": "\"Deliver via Task 5\": the dormant machinery goes to main through Task 5's final-head gates, CP4 acceptance, freshness audits and separate push/PR/merge authority",
+  "live_checks": "\"Zed /why check only\": one zero-paid Zed session under its own release confirms the /why v2 lines (UI testing rule); real acpx, Windows/WSL, policy-checks.json and Task 4's disposable-checkout reversions are recorded UNRUN for the successor",
+  "defects": "\"Fix 1 here, file 2\": the repo-map defect is fixed within Plan 12.14 before Task 5; the resolver defect is filed as a follow-up issue under M2"
  },
  "paid_calls": "0; provider cost USD 0",
  "fresh_set": "spent by qualification run 2",
  "risks": [
   "the budget machinery (context_budget, the model-aware policy) and the outline ship dormant: no route carries the field",
-  "one route and one target were qualified; the failure is one requirement on one fresh case, so it says little about other targets"
+  "one route and one target were evaluated; the failure is one requirement on one fresh case, so it says little about other targets"
  ]
 }

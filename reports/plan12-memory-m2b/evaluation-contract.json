@@ -1,5 +1,5 @@
 {
- "schema": "plan12-memory-m2b.evaluation-contract.v17",
+ "schema": "plan12-memory-m2b.evaluation-contract.v18",
  "plan": "12.14",
  "issue": 548,
  "frozen_on": "2026-11-24",
@@ -186,10 +186,10 @@
   ]
  },
  "successor_of": {
-  "schema": "plan12-memory-m2b.evaluation-contract.v16",
-  "sha256": "hex:5324a32afaf166249d0457c1185b95d1f3505867b7088d51575b823ce563a3a7",
-  "commit": "git:da53a67",
-  "change": "Codex round 127: D4's disposition, the candidate-only claims marked historical, the successor obligations"
+  "schema": "plan12-memory-m2b.evaluation-contract.v17",
+  "sha256": "hex:2b06f10718b9767d924f7279dcefe7cc5fc9053d1c99a67e823d83b1b7eec56a",
+  "commit": "git:8669178",
+  "change": "Codex round 128 finding 1: three more candidate-only records marked historical"
  },
  "task1_freezes": {
   "selected_candidate": {
@@ -426,7 +426,8 @@
    "fable_formal": "Fable 5.2 ACCEPT WITH CHANGES at f91c751 (one A on the release wording, five B), https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7177612471; B1 and B3 fixed here, A1 and B5 in release_conditions, B2 and B4 in obligations",
    "codex_round_125": "Codex formal round 125 ACCEPT WITH CHANGES at ef9d0ad, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7177926124: A1 and A2 fixed at 9902022, A3 (qualification before Q) built and run (task4_qualification), A4 here",
    "round_126": "Fable 5.2 design review https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7181737343; Codex result review https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7183765567",
-   "round_127": "Codex round 127 ACCEPT WITH CHANGES at da53a67, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7186204512: D4 disposition, historical claims and successor obligations recorded here"
+   "round_127": "Codex round 127 ACCEPT WITH CHANGES at da53a67, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7186204512: D4 disposition, historical claims and successor obligations recorded here",
+   "round_128": "Codex round 128 ACCEPT WITH CHANGES at 8669178, https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/548#issuecomment-7188150830: finding 1 here; findings 3-5 in closure.json and the operator's decisions"
   },
   "release_conditions": {
    "one_launch": "the release covers one launch: the ceiling is per launch, so a second launch could exceed 96 attempts or USD 6.00 and would overwrite the record; a stopped run is not relaunched without a new operator decision (Fable formal review A1)",
@@ -568,7 +569,11 @@
    "Task 2's production equivalence (tests/unit/tools/test_plan12_memory_m2b_production_bytes.py): it proves the candidate's request bytes; the shipped route's request is the legacy one",
    "q_launch and gate-g2.json: G2's budget pass measured candidate F; its rehearsal ran the staged defaults; both are void for release (q_release_gate.status)",
    "Task 3's outline evidence (G2's QO1/QO2 outline rows, the CP2 outline proofs): an outline under the candidate's ceiling; dormant on the shipped route (d4_disposition)",
-   "/why manifests v2 (optimus.context-manifest.v2, budget_policy_version m2b-v1) report the policy in force: legacy on the shipped route"
+   "/why manifests v2 (optimus.context-manifest.v2, budget_policy_version m2b-v1) report the policy in force: legacy on the shipped route",
+   "task1_freezes.intended_composition.shipped_hash (b7fca195...6e3a): the candidate's; the shipped hash is 4d2f637e...6338 again",
+   "task1_freezes.evaluator note 'the shipped route is model-aware now': true only between e3506a7 and da53a67; production_routes composes F from the defaults plus the field again",
+   "q_launch's schedule (36 rows, 25 sends, 11 forced refusals): counted for the candidate F; void with q_launch",
+   "a G2 rerun after the rollback would measure candidate F in its budget pass but rehearse the legacy defaults: G2 is not rerun under Plan 12.14"
   ]
  },
  "successor_obligations": {
