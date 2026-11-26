@@ -44,6 +44,7 @@ from optimus.agent.workspace_context import (
     verified_hints,
 )
 from optimus.config.gateway import OptimusGatewaySettings
+from optimus.context.context_budget import POLICY_VERSION, BudgetPolicy
 from optimus.context.index_tools import IndexTools
 from optimus.context.memory_workspace import (
     EmbedderUnavailableError,
@@ -59,6 +60,7 @@ from optimus_security.memory_index_config import MemoryIndexConfig
 
 PACK_SHARE: Final = 0.25  # of the route's usable input; history and evidence keep the rest
 PACK_MAX_TOKENS: Final = 16_384  # agent-selected, frozen before evaluation
+MANIFEST_SCHEMA: Final = "optimus.context-manifest.v2"  # Plan 12.14: v2 records the pack's budget policy; v1 reads as legacy or unknown
 MAP_CHARS: Final = 12_000
 RETRY_SECONDS: Final = 30.0
 # During a build each publication is a new epoch and names barely change between them. A catalogue only suggests what to ask for, and every
@@ -465,9 +467,11 @@ class MemorySession:
                                         current["epoch"])
                     self._map = cached
                 elif cached is None:
+                    _LOG.info("context index map empty: no generation published yet")
                     return ""
-            except (StorageRefusedError, StorageUnavailableError):
-                if cached is None:
+            except (StorageRefusedError, StorageUnavailableError) as exc:
+                if cached is None:  # the turn goes on without a map; the cause is kept (Plan 12.14: G2 run 2's first map came back empty unexplained)
+                    _LOG.warning("context index map empty: the store did not answer: %s", getattr(exc, "code", None) or str(exc) or type(exc).__name__)
                     return ""
         return self._verified_map(cached).text
 
@@ -567,6 +571,13 @@ class MemorySession:
         return self._foreground()
 
 
+def pack_limits(pack_budget: BudgetPolicy | None, usable_input_tokens: int) -> tuple[int, int | None]:
+    """The pack's budget and soft target (Plan 12.14): the route's own, computed once before preparation; without one, M1's legacy budget."""
+    if pack_budget is None:
+        return min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS), None
+    return pack_budget.ceiling, pack_budget.target
+
+
 class MemoryTurn:
     """One turn's view: one scope, and the same read path for the pack and the tools."""
 
@@ -590,13 +601,17 @@ class MemoryTurn:
     def status(self) -> str:
         return self._session.status()
 
-    def assemble(self, *, run_id: str, task: str, selection_text: str, model_id: str, estimate: Callable[[str], int], usable_input_tokens: int) -> WorkspaceContextResult:
+    def assemble(self, *, run_id: str, task: str, selection_text: str, model_id: str, estimate: Callable[[str], int], usable_input_tokens: int,
+                 pack_budget: BudgetPolicy | None = None, overview_path: str | None = None) -> WorkspaceContextResult:
         """The turn's context. Blocking conditions are today's own, so each mode's handling of them is unchanged. An index that cannot
-        answer gives today's context plus a line saying so; required evidence that does not fit is never quietly dropped."""
+        answer gives today's context plus a line saying so; required evidence that does not fit is never quietly dropped. `overview_path`
+        is the file a direct summary task asked for (file_outline.summary_target): with a model-aware budget, the pack may outline it when
+        it alone is required and too large (Plan 12.14, D4), built from this turn's read, so an edit or unsaved buffer is current."""
         self._run_id = run_id
         policy = self._session.policy
         policy.forget_ignore_files()
-        budget = min(int(usable_input_tokens * PACK_SHARE), PACK_MAX_TOKENS)
+        budget, target = pack_limits(pack_budget, usable_input_tokens)
+        chosen = pack_budget or BudgetPolicy("legacy", budget, None)  # the policy this turn was prepared with, recorded on every manifest
         with self._session.foreground():
             named = extract_file_references(selection_text, on_disk(policy.root))  # whole paths decide whether the cached listing will do (#634)
             diagnostics = resolve_task_references(selection_text, policy, self._session.listing_for(named))
@@ -606,14 +621,14 @@ class MemoryTurn:
                 return self._blocked(diagnostics, stop_reason, message)
             required = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED))
             self._capture_buffers(required)
-        retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task)
+        retrieval, pack = self._retrieve(selection_text, required, estimate, budget, task, target, overview_path)
         if retrieval.state != "ok" or pack is None:
-            return self._today(task=selection_text, retrieval=retrieval, prompt=task)
+            return self._today(task=selection_text, retrieval=retrieval, prompt=task, policy=chosen)
         if not pack.complete:
             return self._incomplete(diagnostics, pack)
         coverage_line = self._coverage_line(retrieval, pack)
         text = f"{pack.text}\n{coverage_line}" if pack.text else coverage_line
-        self.manifest = self._manifest(retrieval, pack, model_id=model_id, budget=budget, task_terms=len(task.split()))
+        self.manifest = self._manifest(retrieval, pack, model_id=model_id, policy=chosen, task_terms=len(task.split()))
         self._session.write_manifest(run_id, self.manifest)
         omitted = tuple(dict.fromkeys(item.path for item in pack.selected if item.disclosure == "omitted"))
         shown = tuple(dict.fromkeys(item.path for item in pack.selected if item.disclosure != "omitted"))  # Codex CP2 review 3, finding 3
@@ -640,7 +655,8 @@ class MemoryTurn:
             if not _same_text(data, disk) and b"\x00" not in data and len(data) <= MAX_BUFFER_BYTES:
                 self._overlay[path] = data
 
-    def _retrieve(self, text: str, required: Sequence[str], estimate: Callable[[str], int], budget: int, task: str) -> tuple[Retrieval, Pack | None]:
+    def _retrieve(self, text: str, required: Sequence[str], estimate: Callable[[str], int], budget: int, task: str, target: int | None = None,
+                  overview_path: str | None = None) -> tuple[Retrieval, Pack | None]:
         query = text[:_QUERY_CHARS]
         symbols = named_symbols(task)
         pack: Pack | None = None
@@ -649,7 +665,8 @@ class MemoryTurn:
                 retrieval = self._retriever.retrieve(query, named_paths=required, named_symbols=symbols)
                 if retrieval.state != "ok":
                     return retrieval, None
-                pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget)
+                pack = assemble_pack(required=required, ranked=retrieval.ranked, read=self._read, estimate=estimate, budget_tokens=budget, target_tokens=target,
+                                     overview_path=overview_path)
             # The wait below is outside: the worker gives way to a busy turn, so it could not do this repair while one was waiting for it.
             if not pack.stale_paths or attempt == _RECONCILE_ATTEMPTS or self._cancelled():
                 return retrieval, pack
@@ -657,11 +674,13 @@ class MemoryTurn:
             time.sleep(_RECONCILE_WAIT_SECONDS)
         raise AssertionError("unreachable")
 
-    def _today(self, *, task: str, retrieval: Retrieval, prompt: str | None = None) -> WorkspaceContextResult:
+    def _today(self, *, task: str, retrieval: Retrieval, prompt: str | None = None, policy: BudgetPolicy | None = None) -> WorkspaceContextResult:
         self._overlay.clear()  # today's selection reads disk, so nothing else this turn may see other text
         result = assemble_workspace_context_for_prompt(self._session.policy.root, task=task, prompt=prompt)
         line = f"Context index: no usable generation ({retrieval.state}). These files are today's selection, not a ranked search."
-        self.manifest = {"schema": "optimus.context-manifest.v1", "run_id": self._run_id, "retrieval": {"state": retrieval.state, "channels": dict(retrieval.channels)}}
+        self.manifest = {"schema": MANIFEST_SCHEMA, "run_id": self._run_id, "retrieval": {"state": retrieval.state, "channels": dict(retrieval.channels)}}
+        if policy is not None:  # no pack was built, but the turn's budget policy is still its own (Codex CP2 A3)
+            self.manifest["config"] = {"budget_policy_version": POLICY_VERSION, "budget_policy": asdict(policy)}
         self._session.write_manifest(self._run_id, self.manifest)
         return WorkspaceContextResult(**{**vars(result), "text": f"{result.text}\n{line}" if result.text else line}) if result.blocking_stop_reason is None else result
 
@@ -703,17 +722,19 @@ class MemoryTurn:
             parts.append(f"shown from the editor's unsaved text, which differs from disk: {', '.join(sorted(self._overlay))}")
         return "; ".join(parts) + ". Saying something is absent covers only this scope. ---"
 
-    def _manifest(self, retrieval: Retrieval, pack: Pack, *, model_id: str, budget: int, task_terms: int) -> dict[str, Any]:
+    def _manifest(self, retrieval: Retrieval, pack: Pack, *, model_id: str, policy: BudgetPolicy, task_terms: int) -> dict[str, Any]:
         return {
-            "schema": "optimus.context-manifest.v1",
+            "schema": MANIFEST_SCHEMA,
             "run_id": self._run_id,
             "route": {"model_id": model_id},
-            "config": {"rrf_k": RRF_K, "weights": dict(WEIGHTS), "embedding": self._session._embedding_identity, "pack_share": PACK_SHARE, "pack_max_tokens": PACK_MAX_TOKENS},
+            "config": {"rrf_k": RRF_K, "weights": dict(WEIGHTS), "embedding": self._session._embedding_identity, "pack_share": PACK_SHARE, "pack_max_tokens": PACK_MAX_TOKENS,
+                       "budget_policy_version": POLICY_VERSION, "budget_policy": asdict(policy)},
             "retrieval": {"state": retrieval.state, "generation": retrieval.epoch, "revision": retrieval.revision, "coverage": dict(retrieval.coverage), "channels": dict(retrieval.channels)},
             "budget": {"tokens": pack.tokens, "budget_tokens": pack.budget_tokens, "task_words": task_terms},
             "selected": [asdict(item) for item in pack.selected],
             "stale_paths": list(pack.stale_paths),
             "unsaved_buffers": sorted(self._overlay),
+            "outline": None if pack.outline is None else dict(pack.outline),
             "grounding": None,
         }
 

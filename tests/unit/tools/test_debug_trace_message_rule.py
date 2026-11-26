@@ -198,6 +198,8 @@ def test_fresh_process_resolves_then_scans_without_shell_path(tmp_path):
     The parent's `lru_cache` cannot help the child, so a regression that resolves under a
     stripped PATH still fails here even if the in-process tests were arranged to pass.
     """
+    from tests.support import child_keyring  # here: the probe child loads this module without tests on its path
+
     probe = tmp_path / "fresh_resolution_probe.py"
     probe.write_text(
         _FRESH_PROCESS_PROBE.format(
@@ -208,7 +210,7 @@ def test_fresh_process_resolves_then_scans_without_shell_path(tmp_path):
     )
     completed = subprocess.run(  # noqa: S603 - this interpreter running a generated probe
         [sys.executable, str(probe)],
-        text=True, capture_output=True, check=False, timeout=120,
+        text=True, capture_output=True, check=False, timeout=120, env=child_keyring.environment(os.environ),
     )
     # Check the child's status and surface both streams BEFORE touching any report key, so a
     # real failure reads as an explicit message rather than a bare KeyError or IndexError.

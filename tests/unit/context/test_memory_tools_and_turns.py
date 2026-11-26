@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 import time
 from decimal import Decimal
@@ -348,6 +349,39 @@ def test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodi
     manifest = json.loads(written)
     assert manifest["selected"][0]["disclosure"] == "body" and manifest["retrieval"]["generation"] == 3
     assert "needle" not in written
+
+
+def test_a_manifest_is_v2_and_records_the_budget_policy_the_pack_used(workspace):
+    """Plan 12.14 Task 2: a new manifest names its budget policy, legacy when the route has none and the route's own otherwise."""
+    from optimus.context.context_budget import BudgetPolicy
+
+    storage = _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE), lines=(6, 7), signature="def helper():")])
+    session = _session(workspace, storage)
+    first = session.turn()
+    _assemble(first)
+    legacy = first.manifest
+    turn = session.turn()
+    turn.assemble(run_id="run-2", task="how does helper work", selection_text="how does helper work", model_id="m", estimate=len, usable_input_tokens=40_000,
+                  pack_budget=BudgetPolicy("model-aware", 10_000, 2_000))
+    aware = turn.manifest
+    assert legacy["schema"] == aware["schema"] == "optimus.context-manifest.v2"
+    assert legacy["config"]["budget_policy_version"] == aware["config"]["budget_policy_version"] == "m2b-v1"
+    assert legacy["config"]["budget_policy"] == {"name": "legacy", "ceiling": 10_000, "target": None}
+    assert aware["config"]["budget_policy"] == {"name": "model-aware", "ceiling": 10_000, "target": 2_000}
+    assert aware["budget"]["budget_tokens"] <= 10_000
+
+
+def test_an_index_fallback_manifest_still_records_the_turns_budget_policy(workspace):
+    """Codex CP2 A3: with no usable generation no pack is built, but the v2 record keeps the policy the turn was prepared with."""
+    from optimus.context.context_budget import BudgetPolicy
+
+    for policy, expected in ((None, {"name": "legacy", "ceiling": 10_000, "target": None}),
+                             (BudgetPolicy("model-aware", 10_000, 2_000), {"name": "model-aware", "ceiling": 10_000, "target": 2_000})):
+        turn = _session(workspace, _Storage(current=False)).turn()
+        turn.assemble(run_id="run-3", task="how does helper work", selection_text="how does helper work", model_id="m", estimate=len,
+                      usable_input_tokens=40_000, pack_budget=policy)
+        assert turn.manifest["schema"] == "optimus.context-manifest.v2" and "budget" not in turn.manifest, "the pack stays unavailable"
+        assert turn.manifest.get("config") == {"budget_policy_version": "m2b-v1", "budget_policy": expected}
 
 
 def test_a_document_shown_only_by_its_signature_still_reaches_memory_lineage(workspace):
@@ -1419,6 +1453,27 @@ def test_the_catalogue_the_map_read_serves_the_turns_retrieval(workspace):
     turn.repo_map()
     turn._retriever.retrieve("helper")
     assert [op for op, _fields in storage.calls].count("catalogue") == 1  # 41 pages each at 10,255 files, read twice on a first turn
+
+
+@pytest.mark.parametrize("failure, code", [(StorageUnavailableError("INDEX_TIMEOUT"), "INDEX_TIMEOUT"), (StorageRefusedError("SCOPE_UNKNOWN"), "SCOPE_UNKNOWN")])
+def test_an_empty_first_map_logs_why_the_store_gave_none(workspace, caplog, failure, code):
+    """Plan 12.14: a fresh session's first map came back empty in G2 run 2 with nothing logged. Each empty path now names its cause."""
+
+    class Failing(_Storage):
+        def call(self, op, **fields):
+            if op == "catalogue":
+                raise failure
+            return super().call(op, **fields)
+
+    session = _session(workspace, Failing([_record("x", "pkg/a.py", "helper", _sha(SOURCE))]))
+    with caplog.at_level(logging.INFO, logger="optimus.context.memory_session"):
+        assert session.repo_map(session._current_scope()) == ""
+    assert any(r.levelno == logging.WARNING and r.getMessage() == f"context index map empty: the store did not answer: {code}" for r in caplog.records)
+    caplog.clear()
+    unpublished = _session(workspace, _Storage(current=False))
+    with caplog.at_level(logging.INFO, logger="optimus.context.memory_session"):
+        assert unpublished.repo_map(unpublished._current_scope()) == ""
+    assert [r.getMessage() for r in caplog.records if "map empty" in r.getMessage()] == ["context index map empty: no generation published yet"]
 
 
 @pytest.mark.parametrize("damage", ["emptied", "binary"])

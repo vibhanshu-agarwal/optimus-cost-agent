@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import child_keyring
 from tools.plan1126_runtime_audit import serving_custody
 from tools.plan1126_runtime_audit.current_envelope import (
     default_measurement_plan,
@@ -59,6 +60,11 @@ from tools.plan1126_runtime_audit.source import ExecutingSourceMismatch, SourceT
 ROOT = Path(__file__).resolve().parents[4]
 SEALED = ROOT / "reports" / "plan-11-26-acp-runtime-audit.json"
 BOOTSTRAP = "src/optimus/acp/bootstrap.py"
+
+
+@pytest.fixture(autouse=True)
+def _measurement_children_off_the_host_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_measurement_children(monkeypatch)
 
 
 def _current_tree(paths=S1_SOURCE_PATHS) -> SourceTree:
@@ -566,7 +572,7 @@ def _child_case(case: str) -> dict:
     with tempfile.TemporaryDirectory(prefix="plan1126-s1-control-") as cache:
         completed = subprocess.run(
             [sys.executable, str(CHILD_CASES), str(ROOT), case], cwd=str(ROOT),
-            capture_output=True, text=True, timeout=1800, env=fresh_child_environment(cache),
+            capture_output=True, text=True, timeout=1800, env=child_keyring.environment(fresh_child_environment(cache)),
         )
     assert completed.returncode == 0, f"{case}: {completed.stderr[-2000:]}"
     return json.loads(completed.stdout.strip().splitlines()[-1])

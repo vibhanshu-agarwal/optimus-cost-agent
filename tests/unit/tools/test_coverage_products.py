@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from tests.support import child_keyring
 from tools import check_product_coverage as gate
 from tools.testing import coverage_products as cp
 from tools.testing import run_context
@@ -115,7 +116,7 @@ def test_the_report_counts_equal_coverage_py_s_own_analysis_of_the_source(tmp_pa
     config.write_text('[tool.coverage.run]\nbranch = true\nsource = ["src/pkg"]\n', encoding="utf-8")
     env = {**os.environ, "PYTHONPATH": str(tmp_path / "src"), "COVERAGE_FILE": str(tmp_path / ".coverage")}
     for command in (["run", "-m", "pkg.mod"], ["json", "-o", str(tmp_path / "coverage.json")]):
-        subprocess.run([sys.executable, "-m", "coverage", *command, f"--rcfile={config}"], cwd=tmp_path, env=env, check=True, capture_output=True)
+        subprocess.run([sys.executable, "-m", "coverage", *command, f"--rcfile={config}"], cwd=tmp_path, env=child_keyring.environment(env), check=True, capture_output=True)
     rows = json.loads((tmp_path / "coverage.json").read_text(encoding="utf-8"))["files"]
     summary = next(row["summary"] for name, row in rows.items() if name.replace("\\", "/").endswith("pkg/mod.py"))
     assert cp.source_counts(package / "mod.py", config) == (summary["num_statements"], summary["num_branches"])

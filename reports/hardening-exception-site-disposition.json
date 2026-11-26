@@ -1,6 +1,6 @@
 {
   "schema": "optimus-exception-site-disposition-v1",
-  "source_sha256": "sha256:48f9b04895e8b7eff601d2292ad61c31eab6f0ebe7f768d25aaf3e049098c436",
+  "source_sha256": "sha256:2061b1de60176d0a89d22f5d2da5fcd15c80bbf2f345fa1e770bb9e822076b57",
   "sites": [
     {
       "key": "sha256:12dc6cf0fd88164c89a3bef9b8ca106a6ecb2174b346ccd6e50e60cb04d52b77",
@@ -33,7 +33,7 @@
       "path": "src/context_engine/retrieval.py",
       "symbol": "context_engine.retrieval.Retriever._dense",
       "kind": "except",
-      "line": 242,
+      "line": 251,
       "column": 9,
       "fingerprint": "sha256:c8b6d43c5986135b558c70fb679fe030afc764c4deb16b7de6b2a8e1393a7ed3",
       "occurrence": 1,
@@ -5808,7 +5808,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner._run_gated",
       "kind": "except",
-      "line": 303,
+      "line": 304,
       "column": 5,
       "fingerprint": "sha256:ec130aea4ca62dd242ddfe5cf064f141ff548e71c1e822f30887d3d45fc8ae8e",
       "occurrence": 1,
@@ -5830,7 +5830,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner.AgentRunner._run_once",
       "kind": "except",
-      "line": 639,
+      "line": 640,
       "column": 9,
       "fingerprint": "sha256:163ec796b7d9cd1212cc59fd1aa0425d42452154d403bb79b1dd6f2f0dca63ef",
       "occurrence": 1,
@@ -5852,7 +5852,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner.AgentRunner._account",
       "kind": "except",
-      "line": 1095,
+      "line": 1096,
       "column": 13,
       "fingerprint": "sha256:224d5578d660ab3a19a1589c4d6a21e1e25bf242797ed557260e3d3d66001db3",
       "occurrence": 1,
@@ -5879,7 +5879,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner.AgentRunner._account",
       "kind": "except",
-      "line": 1106,
+      "line": 1107,
       "column": 9,
       "fingerprint": "sha256:224d5578d660ab3a19a1589c4d6a21e1e25bf242797ed557260e3d3d66001db3",
       "occurrence": 2,
@@ -5906,7 +5906,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner.AgentRunner._observe_attempts",
       "kind": "suppress",
-      "line": 1131,
+      "line": 1132,
       "column": 14,
       "fingerprint": "sha256:435217e1b8cfc452035f2619aa0453555031710b64f1be6aa4482101eff95fb8",
       "occurrence": 1,
@@ -5928,7 +5928,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner.AgentRunner._record_ledger_entry",
       "kind": "except",
-      "line": 1171,
+      "line": 1172,
       "column": 9,
       "fingerprint": "sha256:be4ed588929e6f66a78f161df0dce20545d9806340d1e0ef3d5e43394361dda3",
       "occurrence": 1,
@@ -5950,7 +5950,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner.AgentRunner._report_receipts",
       "kind": "except",
-      "line": 1229,
+      "line": 1230,
       "column": 13,
       "fingerprint": "sha256:68503f71bc24697b88f8be274db1d041a568aac2b6d77ca6eba19d2404177d10",
       "occurrence": 1,
@@ -5977,7 +5977,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner.AgentRunner._chat_call",
       "kind": "except",
-      "line": 2121,
+      "line": 2125,
       "column": 9,
       "fingerprint": "sha256:a14b0d33b208187d030059c4c5f2db6a07b7d99d19cbb9dac8f42e5cf98fbf39",
       "occurrence": 1,
@@ -6004,7 +6004,7 @@
       "path": "src/optimus/agent/runner.py",
       "symbol": "optimus.agent.runner.AgentRunner._chat_call",
       "kind": "except",
-      "line": 2129,
+      "line": 2133,
       "column": 13,
       "fingerprint": "sha256:490be45949bad420cc1b5134a002a0369a9b02c1290da58b46a197c49e55e8e4",
       "occurrence": 1,
@@ -6026,7 +6026,7 @@
       "path": "src/optimus/agent/state_store.py",
       "symbol": "optimus.agent.state_store.InMemoryAgentStateStore._report_retirement",
       "kind": "except",
-      "line": 216,
+      "line": 231,
       "column": 9,
       "fingerprint": "sha256:9bd4478e0a7918ab51711bcc9b23aa0e1c975007c05993219d7aeccb74130b9d",
       "occurrence": 1,
@@ -6049,13 +6049,13 @@
       "test_scope": "Read-only source assessment. No branch coverage inferred."
     },
     {
-      "key": "sha256:a41323680cb7a582fc9e3e9922c9a041ea7d353cfb33ee0a720f2bfa9f93875f",
+      "key": "sha256:596a8fb687a1724f5170072de2b9a1ddd866bf06d88f032b1e7647bea8521586",
       "path": "src/optimus/agent/state_store.py",
       "symbol": "optimus.agent.state_store.RedisAgentStateStore.persist_plan",
       "kind": "except",
-      "line": 344,
+      "line": 371,
       "column": 13,
-      "fingerprint": "sha256:d0f6109688b0264f3da7c610e6eddf0b331ee9a9d4af65ef1aef764df6ded000",
+      "fingerprint": "sha256:f11b436b96145f0a85b7d0cbdb1190daf533b84ac21bccb649a59a611e0d6763",
       "occurrence": 1,
       "caught": "Exception",
       "unresolved": false,
@@ -6070,21 +6070,20 @@
       "source_review_status": "reviewed_custody",
       "owning_issue": 644,
       "behavior_owner": "Redis plan persistence",
-      "rationale": "Independent follow-up owns the remaining behavior: Distinguish partial effects in owner-backed Redis plan persistence.",
-      "evidence": "Approved handoff and verified open issue https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/644. Source observation at src/optimus/agent/state_store.py:344 in e9c8e39789f64a56a932a141722a90d1a28b65df. See the owning issue for the remaining verification.",
-      "proposed_disposition": null,
-      "disposition": "report",
-      "test_scope": "Read-only source assessment. No branch coverage inferred.",
-      "implementation_state": "follow_up"
+      "rationale": "When submission raises, the handler marks the holder abandoned and snapshots completed substeps and the start flag. Started work produces a non-authorizing partial outcome even when no reply established a completed write.",
+      "evidence": "src/optimus/agent/state_store.py:371 at the refreshed base. PR #662 carries the #644 change and tests/unit/agent/test_state_store.py covers the synchronous and owner-backed outcomes.",
+      "disposition": "translate",
+      "implementation_state": "follow_up",
+      "follow_up_delivery": "merged_upstream"
     },
     {
-      "key": "sha256:218d191f10f017d7c37b790e3719c27cb211be69ed6dc868020ae6a8ebdb16cb",
+      "key": "sha256:1f2d70d38d01f4d2cdc50fc374330593ff0b7484f4f85e38677886d591805a43",
       "path": "src/optimus/agent/state_store.py",
       "symbol": "optimus.agent.state_store.RedisAgentStateStore.persist_plan",
       "kind": "except",
-      "line": 363,
+      "line": 393,
       "column": 9,
-      "fingerprint": "sha256:738d43523301c8d1a2073fe97508228551af0331f0dc7e6af88044209c8bf4a4",
+      "fingerprint": "sha256:4c87ed17ccbe5842a7d2525bcae9fab1b278db9babf50f165347c47290b5bc81",
       "occurrence": 1,
       "caught": "Exception",
       "unresolved": false,
@@ -6096,20 +6095,19 @@
       ],
       "prior_inventory_key": "sha256:e2dfc169374ddac2d5ebe41374045db3aabe33c90f91747f359005df5c7d6f9f",
       "review_state": "source_reviewed",
-      "source_review_status": "source-reviewed",
+      "source_review_status": "source_review",
       "owning_issue": 334,
       "behavior_owner": "Redis sync plan-persistence outcomes",
-      "rationale": "A successful sync primary/hash, expiry or pointer step is recorded before later failures. Returning PERSISTENCE_PARTIAL with the captured substeps keeps the outcome non-authorizing and distinguishes a first-step failure.",
-      "evidence": "state_store.py:76\u201389,350\u2013373; runner.py:952\u2013962; tests/unit/agent/test_state_store.py:212\u2013225 (source only)",
-      "disposition": "translate",
-      "test_scope": "Read-only source assessment. No branch coverage inferred."
+      "rationale": "On a synchronous store error, the handler reports the completed substeps. Once dispatch may have started, an uncertain result is partial even with no confirmed landed substep. Before dispatch it is reported as failed.",
+      "evidence": "src/optimus/agent/state_store.py:393 at the refreshed base. PR #662 carries the #644 change and tests/unit/agent/test_state_store.py covers the synchronous and owner-backed outcomes.",
+      "disposition": "translate"
     },
     {
       "key": "sha256:ebce7e9b431415f0f5efddd28fd8314eda52915d58635d439e09a858ca7bac95",
       "path": "src/optimus/agent/state_store.py",
       "symbol": "optimus.agent.state_store.normalize_redis_ping_errors",
       "kind": "except",
-      "line": 476,
+      "line": 508,
       "column": 5,
       "fingerprint": "sha256:769a36208f686733bf141c38f659d90fc93ca49e763d0da35db01332a14c75e1",
       "occurrence": 1,
@@ -6131,7 +6129,7 @@
       "path": "src/optimus/context/assembly.py",
       "symbol": "optimus.context.assembly._TurnMaintenance.__call__",
       "kind": "except",
-      "line": 402,
+      "line": 404,
       "column": 9,
       "fingerprint": "sha256:697738c29c3d7204e07c538955e408405adaa394763685179164cf4f10978a69",
       "occurrence": 1,
@@ -6153,7 +6151,7 @@
       "path": "src/optimus/context/assembly.py",
       "symbol": "optimus.context.assembly.AttachedTurn.prepare",
       "kind": "except",
-      "line": 619,
+      "line": 627,
       "column": 13,
       "fingerprint": "sha256:fd49726945206d4356bd05440ae7b7675ad547283bbf1ae13840342987b4da68",
       "occurrence": 1,
@@ -6180,7 +6178,7 @@
       "path": "src/optimus/context/assembly.py",
       "symbol": "optimus.context.assembly.AttachedTurn._prepare_view",
       "kind": "except",
-      "line": 670,
+      "line": 678,
       "column": 9,
       "fingerprint": "sha256:a8e21729ac1c5897b747b7140331d1e12911603d1b752d1607d360fbd4ad39a8",
       "occurrence": 1,
@@ -6202,7 +6200,7 @@
       "path": "src/optimus/context/assembly.py",
       "symbol": "optimus.context.assembly.AttachedTurn._receipt_sink",
       "kind": "except",
-      "line": 789,
+      "line": 797,
       "column": 13,
       "fingerprint": "sha256:63bf575d672dddd649e8d08e87ca52a254e8de914ddb27e7a0cbe5344dcdfc8d",
       "occurrence": 1,
@@ -6660,7 +6658,7 @@
       "path": "src/optimus/context/memory_session.py",
       "symbol": "optimus.context.memory_session.MemorySession._loop",
       "kind": "except",
-      "line": 283,
+      "line": 285,
       "column": 9,
       "fingerprint": "sha256:83445e9f2d27be47feb2b7c7046d7dfb0a9940213ff250e3bf73be8d03600bf0",
       "occurrence": 1,
@@ -6687,7 +6685,7 @@
       "path": "src/optimus/context/memory_session.py",
       "symbol": "optimus.context.memory_session.MemorySession._refresh_catalogues",
       "kind": "except",
-      "line": 391,
+      "line": 393,
       "column": 13,
       "fingerprint": "sha256:0ac7921e2360e09fd0482e83ed8a52cddb7e7f8dcb29d2f4c004d23910d8091b",
       "occurrence": 1,
@@ -8281,7 +8279,7 @@
       "path": "src/optimus/telemetry/redis_adapter.py",
       "symbol": "optimus.telemetry.redis_adapter.RedisTelemetryAdapter.ensure_series",
       "kind": "except",
-      "line": 69,
+      "line": 112,
       "column": 9,
       "fingerprint": "sha256:e0c9203f369e16fb51bff5324f17fca1890c1c9abb25de2a7b554ca1c0015f49",
       "occurrence": 1,
@@ -8303,7 +8301,7 @@
       "path": "src/optimus/telemetry/redis_adapter.py",
       "symbol": "optimus.telemetry.redis_adapter.RedisTelemetryAdapter._ensure_usage_series",
       "kind": "except",
-      "line": 87,
+      "line": 130,
       "column": 9,
       "fingerprint": "sha256:e0c9203f369e16fb51bff5324f17fca1890c1c9abb25de2a7b554ca1c0015f49",
       "occurrence": 1,
@@ -8319,30 +8317,6 @@
       "evidence": "telemetry/redis_adapter.py:74\u201390,155\u2013164",
       "disposition": "translate",
       "test_scope": "Read-only source assessment. No branch coverage inferred."
-    },
-    {
-      "key": "sha256:5551709a519f2b469d7f0bf53244126c2719f5b700926a1b0d530af6db816f15",
-      "path": "src/optimus/telemetry/redis_adapter.py",
-      "symbol": "optimus.telemetry.redis_adapter.RedisTelemetryAdapter.record_settled_usage",
-      "kind": "except",
-      "line": 162,
-      "column": 13,
-      "fingerprint": "sha256:c4767e17904800c5928602fcb6471345f080e4cac852aa942f73612fd62e9126",
-      "occurrence": 1,
-      "caught": "Exception",
-      "unresolved": false,
-      "lint": [],
-      "prior_inventory_key": "sha256:90f59f7b4a93c31e00e40e75c2242eaa50973f6335605fe01c42eb1a7feb8e8c",
-      "review_state": "source_reviewed",
-      "source_review_status": "reviewed_custody",
-      "owning_issue": 646,
-      "behavior_owner": "Redis usage projection",
-      "rationale": "Independent follow-up owns the remaining behavior: Make settled Redis telemetry projection replay-safe after partial writes.",
-      "evidence": "Approved handoff and verified open issue https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/646. Source observation at src/optimus/telemetry/redis_adapter.py:162 in e9c8e39789f64a56a932a141722a90d1a28b65df. See the owning issue for the remaining verification.",
-      "proposed_disposition": null,
-      "disposition": "re-raise",
-      "test_scope": "Read-only source assessment. No branch coverage inferred.",
-      "implementation_state": "follow_up"
     },
     {
       "key": "sha256:f4d35ee3df814e095696bdaaf563cdc4317040ce94fc5894247597bd93771cff",
@@ -8739,7 +8713,7 @@
       "path": "src/optimus_gateway/responses.py",
       "symbol": "optimus_gateway.responses._run_enforced_completion",
       "kind": "except",
-      "line": 225,
+      "line": 226,
       "column": 9,
       "fingerprint": "sha256:35424b4e6b6a8310467d7063f543bcc3357335927da42a62186361fcdfd37d58",
       "occurrence": 1,
@@ -8760,7 +8734,7 @@
       "path": "src/optimus_gateway/responses.py",
       "symbol": "optimus_gateway.responses.assert_gateway_usage_contract",
       "kind": "except",
-      "line": 444,
+      "line": 441,
       "column": 5,
       "fingerprint": "sha256:83585fe8b566b586f944758a8304c2b4ff9a909d3fb53250213c4e7449172098",
       "occurrence": 1,
@@ -8781,7 +8755,7 @@
       "path": "src/optimus_gateway/responses.py",
       "symbol": "optimus_gateway.responses.sanitize_error_message",
       "kind": "except",
-      "line": 471,
+      "line": 468,
       "column": 5,
       "fingerprint": "sha256:e90a5f5a20fbf8721d6e3560678903a8581d76e8e8a8d1c93809246321568443",
       "occurrence": 1,
@@ -9303,15 +9277,15 @@
   "ruff": "ruff 0.15.20",
   "issue": 334,
   "checkpoint": 3,
-  "source_pin": "git-sha1:ae1525cb465e491ce88d4e3a27a41a9ea171e51b",
-  "source_tree": "git-sha1:e22fc9e6a60fc7d298625d66669e2e39a8e9f2f0",
+  "source_pin": "git-sha1:d83dc380868e8fad7109aef34df94d76fbfc17ea",
+  "source_tree": "git-sha1:42acbfae6292ae9b7a632ab7bf085fa2b630d836",
   "baseline_inventory_pin": "git-sha1:fd22e96d283a35660bf2e8d767c44b6b390fc3b2",
   "review_scope": "Per-site source review. Pending rows require named custody or verified fixes before acceptance.",
   "review_counts": {
     "initial_candidates": 379,
     "remaining_sites_reviewed_this_pass": 367,
     "prior_dispositions": 12,
-    "source_dispositions": 378,
+    "source_dispositions": 377,
     "pending_rows": 0,
     "source_finding_rows": 25,
     "adjacent_gap_rows": 3,
@@ -9400,103 +9374,175 @@
     }
   ],
   "inventory_refresh": {
-    "previous_source_pin": "git-sha1:a47201ea8451fc4872344efa4bc0e8ede6b85e39",
-    "previous_reviewed_head": "git-sha1:e1d447e1af71a8a3c3cfc5eedc7f63d2f0ea588c",
-    "previous_report_sha256": "sha256:0d534de1c0ba37b9de0dc2ef51f46a3a74591031f61cc0cfc1385d31f5563a71",
-    "preserved_rows": 375,
-    "relocated_rows": 82,
-    "reviewed_successor_rows": 3,
-    "retired_with_no_successor": 5,
-    "original_custody_scope": "The existing-owner and follow-up counts describe the original 28 findings. The refresh records the successor or retirement of each changed site and retains the original owner.",
-    "upstream_rebindings": [
-      {
-        "prior_key": "sha256:c69eb21801993952c72610e4650faa3a08e98b50eff0fce5c7ba87a851cd0d89",
-        "path": "src/evidence_handoff_runtime/service.py",
-        "prior_line": 295,
-        "owning_issue": 649,
-        "merge_pr": 658,
-        "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
-        "current_keys": [
-          "sha256:2046ba8e408a8a14fbd3e1ca4e8b65982d59dcccc908883bf13e9362c6b1e6ab",
-          "sha256:42ee559d74caeb0a4fc009051b2d95501b70cc08857c2d4afbd6343f189822bc"
-        ]
+    "source_pin": "git-sha1:d83dc380868e8fad7109aef34df94d76fbfc17ea",
+    "previous_source_pin": "git-sha1:739043eb45d87f95ce8dd2bb783282e8cc2023a5",
+    "previous_report_sha256": "sha256:2f6c2f770b68599b44fd2e73eb0ba6f8ee7e58bcedf51e1827089fe5b8c9fbb7",
+    "preserved_rows": 377,
+    "relocated_rows": 0,
+    "reviewed_successor_rows": 0,
+    "retired_with_no_successor": 0,
+    "main_advance_scope": "Tests and documentation. The production tree, verifier inputs and site identities are identical.",
+    "upstream_rebindings": [],
+    "upstream_retirements": []
+  },
+  "inventory_refresh_history": [
+    {
+      "previous_source_pin": "git-sha1:a47201ea8451fc4872344efa4bc0e8ede6b85e39",
+      "previous_reviewed_head": "git-sha1:e1d447e1af71a8a3c3cfc5eedc7f63d2f0ea588c",
+      "previous_report_sha256": "sha256:0d534de1c0ba37b9de0dc2ef51f46a3a74591031f61cc0cfc1385d31f5563a71",
+      "preserved_rows": 375,
+      "relocated_rows": 82,
+      "reviewed_successor_rows": 3,
+      "retired_with_no_successor": 5,
+      "original_custody_scope": "The existing-owner and follow-up counts describe the original 28 findings. The refresh records the successor or retirement of each changed site and retains the original owner.",
+      "upstream_rebindings": [
+        {
+          "prior_key": "sha256:c69eb21801993952c72610e4650faa3a08e98b50eff0fce5c7ba87a851cd0d89",
+          "path": "src/evidence_handoff_runtime/service.py",
+          "prior_line": 295,
+          "owning_issue": 649,
+          "merge_pr": 658,
+          "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
+          "current_keys": [
+            "sha256:2046ba8e408a8a14fbd3e1ca4e8b65982d59dcccc908883bf13e9362c6b1e6ab",
+            "sha256:42ee559d74caeb0a4fc009051b2d95501b70cc08857c2d4afbd6343f189822bc"
+          ]
+        },
+        {
+          "prior_key": "sha256:6f49fd41a61c07501ffab78179b1bff195d87884c6568e98adc78ea7b56036c0",
+          "path": "src/optimus/gates/shadow_workspace.py",
+          "prior_line": 109,
+          "owning_issue": 645,
+          "merge_pr": 658,
+          "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
+          "current_keys": [
+            "sha256:734893aaa88129a8a34dc8c34e40beccc49ff22c00eebb185064588bf83ba531"
+          ]
+        }
+      ],
+      "upstream_retirements": [
+        {
+          "prior_key": "sha256:c4e8a9b9e14f97a161b2afbe7d3789761b2c0c9e55c68d70546badf7b433d8b4",
+          "path": "src/evidence_handoff/redaction/quarantine.py",
+          "prior_line": 137,
+          "owning_issue": 647,
+          "merge_pr": 658,
+          "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
+          "reason": "narrow_typed_handler",
+          "details": "The typed permission failure reports unverified custody instead of silently passing.",
+          "regression": "tests/unit/evidence/test_quarantine.py::test_already_quarantined_reports_unverified_permissions"
+        },
+        {
+          "prior_key": "sha256:6f458969ac77419e8debc7e972b3d2f1db102a3f3d5ec283f907c3c28c0d71a2",
+          "path": "src/evidence_handoff_runtime/service.py",
+          "prior_line": 140,
+          "owning_issue": null,
+          "merge_pr": 658,
+          "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
+          "reason": "narrow_typed_handler",
+          "details": "The file-removal OSError now records incomplete teardown and the loop still visits all files. The ledger record retains its broader M14 custody.",
+          "regression": "tests/unit/evidence_handoff/test_service_start_failure.py",
+          "owning_backlog_record": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY"
+        },
+        {
+          "prior_key": "sha256:93ea9d2b79e81616276aae9ecf9f4902364eab10157dcb9ac26fbe8e31569ea5",
+          "path": "src/evidence_handoff_runtime/service.py",
+          "prior_line": 145,
+          "owning_issue": null,
+          "merge_pr": 658,
+          "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
+          "reason": "narrow_typed_handler",
+          "details": "The file-removal OSError now records incomplete teardown and the loop still visits all files. The ledger record retains its broader M14 custody.",
+          "regression": "tests/unit/evidence_handoff/test_service_start_failure.py",
+          "owning_backlog_record": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY"
+        },
+        {
+          "prior_key": "sha256:b648043ef94c9bbf42996941640ce70fa767593f1393228ebc5269d8f61b546c",
+          "path": "src/evidence_handoff_runtime/service.py",
+          "prior_line": 822,
+          "owning_issue": 650,
+          "merge_pr": 658,
+          "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
+          "reason": "narrow_typed_handler",
+          "details": "A typed store error creates a reader row only on confirmed absence, and insertion cannot overwrite a concurrent row.",
+          "regression": "tests/unit/evidence_handoff/test_delivery_status_capability.py"
+        },
+        {
+          "prior_key": "sha256:6a0b17d0de2682485689b3aec028ba2428af057ed9916b0db0d8da319abc1dbd",
+          "path": "src/optimus/acp/launch_approval_cli.py",
+          "prior_line": 687,
+          "owning_issue": 653,
+          "merge_pr": 658,
+          "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
+          "reason": "narrow_typed_handler",
+          "details": "Typed cleanup errors yield a bounded cleanup status instead of silently passing after spawn failure.",
+          "regression": "tests/unit/acp/test_launch_approval_cli.py"
+        }
+      ],
+      "surviving_disposition_update": {
+        "key": "sha256:bb213dd570fda00210e3065ccd47c899a4c6c41e4364802b16aac525207c15e8",
+        "prior_line": 296,
+        "current_line": 299,
+        "reason": "PR #658 removed the raw stderr read."
       },
-      {
-        "prior_key": "sha256:6f49fd41a61c07501ffab78179b1bff195d87884c6568e98adc78ea7b56036c0",
-        "path": "src/optimus/gates/shadow_workspace.py",
-        "prior_line": 109,
-        "owning_issue": 645,
-        "merge_pr": 658,
-        "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
-        "current_keys": [
-          "sha256:734893aaa88129a8a34dc8c34e40beccc49ff22c00eebb185064588bf83ba531"
-        ]
-      }
-    ],
-    "upstream_retirements": [
-      {
-        "prior_key": "sha256:c4e8a9b9e14f97a161b2afbe7d3789761b2c0c9e55c68d70546badf7b433d8b4",
-        "path": "src/evidence_handoff/redaction/quarantine.py",
-        "prior_line": 137,
-        "owning_issue": 647,
-        "merge_pr": 658,
-        "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
-        "reason": "narrow_typed_handler",
-        "details": "The typed permission failure reports unverified custody instead of silently passing.",
-        "regression": "tests/unit/evidence/test_quarantine.py::test_already_quarantined_reports_unverified_permissions"
-      },
-      {
-        "prior_key": "sha256:6f458969ac77419e8debc7e972b3d2f1db102a3f3d5ec283f907c3c28c0d71a2",
-        "path": "src/evidence_handoff_runtime/service.py",
-        "prior_line": 140,
-        "owning_issue": null,
-        "merge_pr": 658,
-        "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
-        "reason": "narrow_typed_handler",
-        "details": "The file-removal OSError now records incomplete teardown and the loop still visits all files. The ledger record retains its broader M14 custody.",
-        "regression": "tests/unit/evidence_handoff/test_service_start_failure.py",
-        "owning_backlog_record": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY"
-      },
-      {
-        "prior_key": "sha256:93ea9d2b79e81616276aae9ecf9f4902364eab10157dcb9ac26fbe8e31569ea5",
-        "path": "src/evidence_handoff_runtime/service.py",
-        "prior_line": 145,
-        "owning_issue": null,
-        "merge_pr": 658,
-        "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
-        "reason": "narrow_typed_handler",
-        "details": "The file-removal OSError now records incomplete teardown and the loop still visits all files. The ledger record retains its broader M14 custody.",
-        "regression": "tests/unit/evidence_handoff/test_service_start_failure.py",
-        "owning_backlog_record": "EVIDENCE-HANDOFF-FEAT-LEDGER-RUNTIME-BOUNDARY"
-      },
-      {
-        "prior_key": "sha256:b648043ef94c9bbf42996941640ce70fa767593f1393228ebc5269d8f61b546c",
-        "path": "src/evidence_handoff_runtime/service.py",
-        "prior_line": 822,
-        "owning_issue": 650,
-        "merge_pr": 658,
-        "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
-        "reason": "narrow_typed_handler",
-        "details": "A typed store error creates a reader row only on confirmed absence, and insertion cannot overwrite a concurrent row.",
-        "regression": "tests/unit/evidence_handoff/test_delivery_status_capability.py"
-      },
-      {
-        "prior_key": "sha256:6a0b17d0de2682485689b3aec028ba2428af057ed9916b0db0d8da319abc1dbd",
-        "path": "src/optimus/acp/launch_approval_cli.py",
-        "prior_line": 687,
-        "owning_issue": 653,
-        "merge_pr": 658,
-        "main_merge": "git-sha1:86452b536a924c81c9d7dc392a077873030d9df1",
-        "reason": "narrow_typed_handler",
-        "details": "Typed cleanup errors yield a bounded cleanup status instead of silently passing after spawn failure.",
-        "regression": "tests/unit/acp/test_launch_approval_cli.py"
-      }
-    ],
-    "surviving_disposition_update": {
-      "key": "sha256:bb213dd570fda00210e3065ccd47c899a4c6c41e4364802b16aac525207c15e8",
-      "prior_line": 296,
-      "current_line": 299,
-      "reason": "PR #658 removed the raw stderr read."
+      "source_pin": "git-sha1:ae1525cb465e491ce88d4e3a27a41a9ea171e51b"
+    },
+    {
+      "source_pin": "git-sha1:d9a831bb79195e3b5b56f762ec20caf3e0d7cd8d",
+      "previous_source_pin": "git-sha1:ae1525cb465e491ce88d4e3a27a41a9ea171e51b",
+      "previous_verified_head": "git-sha1:339e0a521e07a415ca1b5c173d728ad6938c48f9",
+      "previous_report_sha256": "sha256:95b08712f7778cbc0a0f18f5a315badb2cd72b25864bb41ee4622fea959bcc06",
+      "preserved_rows": 375,
+      "relocated_rows": 4,
+      "reviewed_successor_rows": 2,
+      "retired_with_no_successor": 1,
+      "upstream_rebindings": [
+        {
+          "prior_key": "sha256:a41323680cb7a582fc9e3e9922c9a041ea7d353cfb33ee0a720f2bfa9f93875f",
+          "current_keys": [
+            "sha256:596a8fb687a1724f5170072de2b9a1ddd866bf06d88f032b1e7647bea8521586"
+          ],
+          "owning_issue": 644,
+          "change_issue": 644,
+          "merge_pr": 662,
+          "main_merge": "git-sha1:d9a831bb79195e3b5b56f762ec20caf3e0d7cd8d"
+        },
+        {
+          "prior_key": "sha256:218d191f10f017d7c37b790e3719c27cb211be69ed6dc868020ae6a8ebdb16cb",
+          "current_keys": [
+            "sha256:1f2d70d38d01f4d2cdc50fc374330593ff0b7484f4f85e38677886d591805a43"
+          ],
+          "owning_issue": 334,
+          "change_issue": 644,
+          "merge_pr": 662,
+          "main_merge": "git-sha1:d9a831bb79195e3b5b56f762ec20caf3e0d7cd8d"
+        }
+      ],
+      "upstream_retirements": [
+        {
+          "prior_key": "sha256:5551709a519f2b469d7f0bf53244126c2719f5b700926a1b0d530af6db816f15",
+          "path": "src/optimus/telemetry/redis_adapter.py",
+          "prior_line": 162,
+          "owning_issue": 646,
+          "merge_pr": 662,
+          "main_merge": "git-sha1:d9a831bb79195e3b5b56f762ec20caf3e0d7cd8d",
+          "reason": "handler_removed",
+          "details": "The Python handler that released a claim after point-write failure is absent. Settled projection is handled by the Redis script, with #646 retaining custody of that behavior.",
+          "regression": "tests/unit/telemetry/test_redis_adapter.py"
+        }
+      ]
+    },
+    {
+      "source_pin": "git-sha1:739043eb45d87f95ce8dd2bb783282e8cc2023a5",
+      "previous_source_pin": "git-sha1:d9a831bb79195e3b5b56f762ec20caf3e0d7cd8d",
+      "previous_report_sha256": "sha256:842742784b8dc06abdc0a4656ea8c8fb9f30655358f58928bc6cbdfb87358d62",
+      "preserved_rows": 377,
+      "relocated_rows": 19,
+      "reviewed_successor_rows": 0,
+      "retired_with_no_successor": 0,
+      "main_merge_pr": 664,
+      "upstream_rebindings": [],
+      "upstream_retirements": []
     }
-  }
+  ]
 }

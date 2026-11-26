@@ -444,6 +444,7 @@ def compose_stage_c_attachment(
         record_reservation_bytes=RECORD_RESERVATION_BYTES,
         usable_input_tokens=limits.usable_input_tokens,
         estimate_request=limits.estimate_request,
+        pack_budget=limits.pack_budget,
         registry_hash=snapshot.effective_hash,
         model_id=model_id,
         summarizer=scenario.summarizer(factory),

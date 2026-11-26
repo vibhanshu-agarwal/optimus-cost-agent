@@ -686,3 +686,192 @@ def test_expiry_reporting_failure_preserves_refusal_and_releases_record(monkeypa
         store.load_plan(run_id="run-1", plan_hash="hash-1")
     gc.collect()
     assert reference() is None
+
+
+class _FailingAsyncRedis(FakeAsyncRedis):
+    """Fails the n-th Redis write (hset or expire, counted together) with a client error."""
+
+    def __init__(self, fail_at: int) -> None:
+        super().__init__()
+        self.fail_at = fail_at
+        self.writes = 0
+
+    def _count(self):
+        self.writes += 1
+        if self.writes == self.fail_at:
+            raise redis.exceptions.ResponseError("injected write failure")
+
+    async def hset(self, key, mapping):
+        self._count()
+        return await super().hset(key, mapping)
+
+    async def expire(self, key, ttl_seconds):
+        self._count()
+        return True
+
+
+@pytest.mark.parametrize(
+    ("fail_at", "outcome", "completed"),
+    [
+        (1, "persistence_partial", ()),  # refused, but a client retry may hide a first send that landed
+        (2, "persistence_partial", ("primary",)),
+        (3, "persistence_partial", ("primary", "expiry")),
+        (4, "persistence_partial", ("primary", "expiry", "pointer")),
+    ],
+)
+def test_owner_backed_persist_reports_the_substeps_that_landed(fail_at, outcome, completed):
+    """#644: the owner-backed path reports what the synchronous path reports, through a real owner."""
+    from optimus.redis.async_bridge import RedisLoopOwner
+
+    client = _FailingAsyncRedis(fail_at)
+    runtime = RedisRuntime(pool=_Pool().checked, client=client.checked, owner=RedisLoopOwner(name="p644-owner"))
+    try:
+        result = runtime.sync_state_store().persist_plan(plan_record())
+    finally:
+        runtime.close(timeout=5.0)
+    assert (result.outcome.value, result.completed_substeps) == (outcome, completed)
+    assert not result.authorizing
+
+
+@pytest.mark.parametrize(("stalled_key", "completed"), [(":hash-1", ()), (":latest", ("primary", "expiry"))])
+def test_owner_backed_persist_is_uncertain_when_the_submission_times_out_after_it_was_sent(stalled_key, completed):
+    """#644: an outcome that cannot be known is partial (uncertain), never failed nor persisted."""
+    import threading
+
+    from optimus.agent.state_store import PlanPersistenceOutcome
+    from optimus.redis.async_bridge import RedisLoopOwner
+
+    release = threading.Event()
+
+    class _StalledPointer(FakeAsyncRedis):
+        async def hset(self, key, mapping):
+            if key.endswith(stalled_key):
+                import asyncio
+
+                while not release.is_set():
+                    await asyncio.sleep(0.01)
+            return await super().hset(key, mapping)
+
+    client = _StalledPointer()
+    owner = RedisLoopOwner(name="p644-timeout-owner")
+    runtime = RedisRuntime(pool=_Pool().checked, client=client.checked, owner=owner)
+    store = runtime.sync_state_store()
+    store._submit = partial(runtime.run_sync, timeout=0.2)
+    try:
+        result = store.persist_plan(plan_record())
+    finally:
+        release.set()
+        runtime.close(timeout=5.0)
+    assert result.outcome is PlanPersistenceOutcome.PERSISTENCE_PARTIAL
+    assert result.completed_substeps == completed
+    assert not result.authorizing
+
+
+class _LostFirstReplyAsyncRedis(FakeAsyncRedis):
+    """The first HSET applies, then the client reports ``error``: a lost reply, or a retry the server refused."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self.error = error
+
+    async def hset(self, key, mapping):
+        await super().hset(key, mapping)
+        if len(self.hsets) == 1:
+            raise self.error
+        return len(mapping)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [redis.exceptions.ConnectionError("connection reset by peer"), redis.exceptions.OutOfMemoryError("OOM command not allowed")],
+    ids=["reply-lost", "retry-refused"],
+)
+def test_owner_backed_persist_is_uncertain_when_the_first_reply_is_lost(error):
+    """#644 review: a write that may have applied is partial, never failed."""
+    from optimus.redis.async_bridge import RedisLoopOwner
+
+    client = _LostFirstReplyAsyncRedis(error)
+    runtime = RedisRuntime(pool=_Pool().checked, client=client.checked, owner=RedisLoopOwner(name="p644-lost-reply"))
+    try:
+        result = runtime.sync_state_store().persist_plan(plan_record())
+    finally:
+        runtime.close(timeout=5.0)
+    assert client.hsets, "the primary write applied"
+    assert (result.outcome.value, result.completed_substeps) == ("persistence_partial", ())
+
+
+def test_sync_persist_is_uncertain_when_the_first_reply_is_lost():
+    class LostFirstReply(FakeRedis):
+        def hset(self, key, mapping):
+            super().hset(key, mapping)
+            raise redis.exceptions.ConnectionError("connection reset by peer")
+
+    client = LostFirstReply()
+    result = RedisAgentStateStore(client=client.checked).persist_plan(plan_record())
+    assert client.hsets
+    assert (result.outcome.value, result.completed_substeps) == ("persistence_partial", ())
+
+
+def test_owner_backed_persist_that_timed_out_while_queued_never_starts_after_reporting_failed():
+    """#644 review: failed is reported only when the operation provably never writes."""
+    from optimus.redis.async_bridge import RedisLoopOwner
+
+    client = FakeAsyncRedis()
+    owner = RedisLoopOwner(name="p644-queued-owner")
+    runtime = RedisRuntime(pool=_Pool().checked, client=client.checked, owner=owner)
+
+    async def busy():
+        time.sleep(0.5)  # holds the owner loop, so the persist below stays queued
+
+    store = runtime.sync_state_store()
+    store._submit = partial(runtime.run_sync, timeout=0.1)
+    try:
+        blocker = owner.submit(busy)
+        result = store.persist_plan(plan_record())
+        blocker.future.result(5.0)
+        runtime.run_sync(lambda: asyncio_sleep(0.05))  # let the queued persist reach the loop
+    finally:
+        runtime.close(timeout=5.0)
+    assert result.outcome.value == "persistence_failed"
+    assert client.hsets == [], "a persist reported failed went on to write"
+
+
+async def asyncio_sleep(seconds):
+    import asyncio
+
+    await asyncio.sleep(seconds)
+
+
+class _ExpiredBeforeTtlAsyncRedis(FakeAsyncRedis):
+    """EXPIRE answers false for ``key``: the key had already gone."""
+
+    def __init__(self, key: str) -> None:
+        super().__init__()
+        self.key = key
+
+    async def expire(self, key, ttl_seconds):
+        return key != self.key
+
+
+@pytest.mark.parametrize(
+    ("key", "completed"),
+    [("agent:plan:run-1:hash-1", ("primary",)), ("agent:plan:run-1:latest", ("primary", "expiry", "pointer"))],
+)
+def test_persist_is_partial_when_an_expiry_was_not_applied(key, completed):
+    """#644 review: a key whose TTL could not be set is not a fully persisted plan, on either path."""
+    from optimus.redis.async_bridge import RedisLoopOwner
+
+    client = _ExpiredBeforeTtlAsyncRedis(key)
+    runtime = RedisRuntime(pool=_Pool().checked, client=client.checked, owner=RedisLoopOwner(name="p644-expiry"))
+    try:
+        owner_backed = runtime.sync_state_store().persist_plan(plan_record())
+    finally:
+        runtime.close(timeout=5.0)
+
+    class SyncExpired(FakeRedis):
+        def expire(self, name, ttl_seconds):
+            return name != key
+
+    synchronous = RedisAgentStateStore(client=SyncExpired().checked).persist_plan(plan_record())
+    for result in (owner_backed, synchronous):
+        assert (result.outcome.value, result.completed_substeps) == ("persistence_partial", completed)

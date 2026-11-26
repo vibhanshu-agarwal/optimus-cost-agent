@@ -58,6 +58,7 @@ from optimus.acp.conversation import (
     rendered_byte_length,
 )
 from optimus.context.adapter import ApprovalFact, make_history_snapshot
+from optimus.context.context_budget import BudgetPolicy, legacy_budget
 from optimus.context.maintenance import (
     AttemptIntegrityError,
     HostMaintenance,
@@ -350,6 +351,7 @@ class ContextAttachment:
     record_receipt: Callable[[MaintenanceReceipt], None]
     max_repacks: int
     initial_strategy: str = "compaction"
+    pack_budget: BudgetPolicy | None = None  # Plan 12.14: None keeps the legacy pack budget on usable_input_tokens
 
     def __post_init__(self) -> None:
         if not isinstance(self.parameters, StrategyParameters) or not isinstance(self.limits, ViewLimits):
@@ -558,6 +560,12 @@ class AttachedTurn:
     @property
     def usable_input_tokens(self) -> int:
         return self._attachment.usable_input_tokens
+
+    @property
+    def pack_budget(self) -> BudgetPolicy:
+        """The pack's budget, computed for the route bound before preparation. Escalation keeps it: the pack is not rebuilt."""
+        budget = self._attachment.pack_budget
+        return budget if budget is not None else BudgetPolicy("legacy", legacy_budget(self._attachment.usable_input_tokens), None)
 
     @property
     def strategy(self) -> str:

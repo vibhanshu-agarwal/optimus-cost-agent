@@ -192,3 +192,50 @@ async def test_the_meter_keeps_a_larger_request_sent_before_the_switch(launch, t
     usage = [m["params"]["update"] for m in writer.messages if m.get("method") == "session/update"]
     meter = [u for u in usage if u.get("sessionUpdate") == "usage_update"][-1]
     assert (meter["used"], meter["size"]) == (sizes[largest], attachment_limits(snapshot, LUNA).usable_input_tokens)
+
+
+async def test_an_escalation_keeps_the_prepared_context_and_prepares_none_again(escalating, tmp_path, monkeypatch) -> None:
+    """Plan 12.14 Task 2: the turn's context is prepared once, before planning, for the route bound then. The escalated request
+    carries that same context; nothing is retrieved or packed again and no new refusal appears."""
+    from optimus.agent.runner import AgentRunner
+
+    server, provider, gateway, events, adapters = escalating
+    (tmp_path / "a.py").write_text("RELEASE_MARKER = 'prepared-once'\n", encoding="utf-8")
+    prepared: list[str] = []
+    real = AgentRunner._turn_context
+
+    def counted(self, request, selection_text, context_packer):  # noqa: ANN001, ANN202
+        prepared.append(selection_text)
+        return real(self, request, selection_text, context_packer)
+
+    monkeypatch.setattr(AgentRunner, "_turn_context", counted)
+    reader, writer = InteractiveLineReader(), MemoryLineWriter()
+    serving = asyncio.create_task(server.serve_ndjson(reader, writer))
+
+    async def call(request_id: str, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        await reader.send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
+        return await asyncio.wait_for(writer.wait_for_response(request_id), timeout=10)
+
+    try:
+        await call("init", "initialize", {"protocolVersion": 1, "clientCapabilities": {}})
+        session_id = (await call("new", "session/new", {"cwd": str(tmp_path), "mcpServers": []}))["result"]["sessionId"]
+        prompt = {"sessionId": session_id, "prompt": [{"type": "text", "text": "What is the release code name in a.py? Record it in b.py."}]}
+        await reader.send({"jsonrpc": "2.0", "id": "t1", "method": "session/prompt", "params": prompt})
+        seen: set[Any] = set()
+        checkin = await asyncio.wait_for(_next_permission(writer, seen), timeout=10)
+        await reader.send(
+            {"jsonrpc": "2.0", "id": checkin["id"], "result": {"outcome": {"outcome": "selected", "optionId": LOOP_CONTINUE_OPTION_ID}}}
+        )
+        approval = await asyncio.wait_for(_next_permission(writer, seen), timeout=10)
+        await reader.send({"jsonrpc": "2.0", "id": approval["id"], "result": {"outcome": {"outcome": "selected", "optionId": "approve"}}})
+        assert (await asyncio.wait_for(writer.wait_for_response("t1"), timeout=10))["result"]["stopReason"] == "end_turn"
+    finally:
+        reader.close()
+        await asyncio.wait_for(serving, timeout=10)
+
+    turn_requests = [p for p in gateway.payloads if p["model"] in (LUNA, GEMINI)]
+    assert [p["model"] for p in turn_requests] == [LUNA] * 4 + [GEMINI]
+    assert len(prepared) == 1, "the context is prepared once, before planning, and never again after the switch"
+    # The initial context rides on planning turn 1 only; the switch neither re-sends it nor prepares a new one for Gemini.
+    assert ["RELEASE_MARKER = 'prepared-once'" in p["input"] for p in turn_requests] == [True, False, False, False, False]
+    assert (tmp_path / "b.py").read_text(encoding="utf-8") == "CODE_NAME = 'TANGERINE-47'\n"

@@ -1,0 +1,21 @@
+{
+ "schema": "plan12-memory-m2b.run-config.v1",
+ "label": "plan12.14-q-paid",
+ "authorization": "the operator's paid Q release: the release file `--release` names (the released head, evaluation contract v15's digest and both review comment links on #548), one launch only; a stopped run is not relaunched without a new operator decision",
+ "cases": "reports/plan12-memory-m2b/cases.json",
+ "release_prefix": "p1214-",
+ "container": "p1214-index-test-redis",
+ "volume": "p1214-index-test-data",
+ "port": 6401,
+ "gateway_port": 8781,
+ "maxmemory_mb": 1024,
+ "capacity": "as reports/plan12-memory-m2b/gate-config.json: five live indexes, 96,763 records, about 563 MiB; 1,024 MiB leaves about 1.8x headroom",
+ "work_dir": "tmp/plan12-m2b",
+ "embedding_cache": "tmp/plan12-m2b/embedding-cache.sqlite",
+ "artifact_cache": "C:/worktrees/optimus-cost-agent-worktrees/optimus-cost-agent-wt-claude-m1plan/tmp/plan12-m1-models/models--Qdrant--bge-small-en-v1.5-onnx-Q/snapshots",
+ "embedding_threads": 2,
+ "sink_dir": "C:/worktrees/optimus-cost-agent-worktrees/optimus-handoff/p1214-q-sinks/q-1",
+ "output": "reports/plan12-memory-m2b/paid-attempts.json",
+ "models": "the paid rows go only to the operator-started Gateway (OPTIMUS_GATEWAY_URL, OPTIMUS_API_KEY); the dry pass to a loopback stub; the index Gateway's upstream is unroutable (127.0.0.1:9); m2b_launch refuses with a provider key in its own environment",
+ "teardown": "m2b_launch.provisioned closes every session, the index Gateway and removes the container and volume in a finally block, confirming their removal"
+}

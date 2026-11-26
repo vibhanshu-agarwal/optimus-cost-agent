@@ -4,6 +4,7 @@ render as themselves."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ import pytest
 
 from context_engine.memory_contracts import MemoryNotice
 from optimus.acp import memory_notices
+from tests.support import child_keyring
 
 _SAVED = MemoryNotice("e-1", "m-0123456789abcdef", 1, "admit", "confirmed", "current")
 _PENDING = MemoryNotice("e-2", "m-0123456789abcdef", 1, "admit", "unconfirmed", "pending")
@@ -72,7 +74,8 @@ def test_the_probe_answers_without_a_network_and_emits_the_real_cards(tmp_path: 
     )
     probe = Path(__file__).resolve().parents[3] / "tools" / "plan12_memory" / "m3_notice_probe.py"
     run = subprocess.run([sys.executable, "-c", no_network + f"import runpy, sys; sys.argv = ['probe', '--log', {str(log)!r}]; runpy.run_path({str(probe)!r}, run_name='__main__')"],
-                         input="".join(json.dumps(line) + "\n" for line in lines).encode(), capture_output=True, timeout=60, check=True)
+                         input="".join(json.dumps(line) + "\n" for line in lines).encode(), capture_output=True, timeout=60, check=True,
+                         env=child_keyring.environment(os.environ))
     replies = [json.loads(line) for line in run.stdout.splitlines()]
     assert {reply.get("id") for reply in replies if "result" in reply} == {1, 2, 3, 4}
     cards = [reply["params"]["update"] for reply in replies if reply.get("params", {}).get("update", {}).get("sessionUpdate") == "tool_call"]

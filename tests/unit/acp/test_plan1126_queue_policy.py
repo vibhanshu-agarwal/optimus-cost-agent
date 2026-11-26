@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
+from tests.support import child_keyring
 from tests.support.concurrency import assert_no_offending_rows, assert_some_row
 from tools.plan1126_runtime_audit.cancellation import H3_SOURCE_PATHS
 from tools.plan1126_runtime_audit.delivery_characterization import H4_SOURCE_PATHS
@@ -23,6 +24,11 @@ from tools.run_plan1126_runtime_audit import main
 _MERGED = "5ea8f8f71548eb05a8562a10e98667e3d2061c4d"  # pragma: allowlist secret - Historical commit-identity pin in _MERGED;
 _OVERLAY = "fac32284888850bacde93815265cbabe3afd4663"  # pragma: allowlist secret - Historical commit-identity pin in _OVERLAY;
 _SCHEMA_PATH = Path("tests/fixtures/plan1126_runtime_audit/audit-artifact.schema.json")
+
+
+@pytest.fixture(autouse=True)
+def _measurement_children_off_the_host_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_measurement_children(monkeypatch)
 
 
 def _sealed_replay():
@@ -192,7 +198,7 @@ def _child_case(case: str) -> dict:
         completed = subprocess.run(
             [sys.executable, str(_CHILD_CASES), str(root), case],
             cwd=str(root), capture_output=True, text=True, timeout=1800,
-            env=fresh_child_environment(cache),
+            env=child_keyring.environment(fresh_child_environment(cache)),
         )
     assert completed.returncode == 0, f"{case}: {completed.stderr[-2000:]}"
     return json.loads(completed.stdout.strip().splitlines()[-1])

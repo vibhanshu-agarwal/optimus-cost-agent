@@ -181,3 +181,117 @@ def test_live_redis_provider_usage_persistence_matches_response_and_ledger(
     unit_labels = _labels_mapping(unit_info)
     assert cost_labels == {"run_id": run_id, "metric": "cost_usd"}
     assert unit_labels == {"run_id": run_id, "metric": "billing_units"}
+
+
+def test_live_redis_retry_and_concurrent_replay_after_a_lost_reply_count_each_point_once(
+    live_usage_redis: tuple[object, str],
+) -> None:
+    """#646: the last point write ran but its reply was lost; retries and concurrent replays add nothing."""
+    import asyncio
+
+    client, run_id = live_usage_redis
+
+    class LostReply:
+        """Passes every command to the real client and drops the reply of the one that writes the units point."""
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(client, name)
+
+        async def execute_command(self, *args: object) -> object:
+            result = await client.execute_command(*args)
+            if args[0] in ("EVAL", "TS.ADD") and f"optimus:usage:{run_id}:billing_units" in args:
+                raise ConnectionError("reply lost after the write ran")
+            return result
+
+    facts = dict(
+        run_id=run_id,
+        gateway_request_id=f"gw-{run_id}",
+        provider="tavily",
+        provider_request_id="provider-live",
+        billing_units=10,
+        cost_usd=Decimal("0.0025"),
+    )
+
+    async def _scenario() -> tuple[list[object], list[object]]:
+        with pytest.raises(ConnectionError, match="reply lost"):
+            await RedisTelemetryAdapter(client=LostReply()).record_settled_usage(**facts)
+        await RedisTelemetryAdapter(client=client).record_settled_usage(**facts)
+        await asyncio.gather(
+            *(
+                RedisTelemetryAdapter(client=client).record_settled_usage(**{**facts, "cost_usd": Decimal(cost)})
+                for cost in ("0.0025", "0.00250", "0.0025")
+            )
+        )
+        cost_samples = await client.execute_command("TS.RANGE", f"optimus:usage:{run_id}:cost_usd", "-", "+")
+        unit_samples = await client.execute_command("TS.RANGE", f"optimus:usage:{run_id}:billing_units", "-", "+")
+        return cost_samples, unit_samples
+
+    cost_samples, unit_samples = sync_await(_scenario())
+
+    assert [Decimal(str(sample[1])) for sample in cost_samples] == [Decimal("0.0025")]
+    assert [int(Decimal(str(sample[1]))) for sample in unit_samples] == [10]
+
+
+def test_live_redis_settle_never_leaves_a_cost_point_without_its_units_point(
+    live_usage_redis: tuple[object, str],
+) -> None:
+    """#646 review: a units series already holding the current milliseconds must not strand a cost point."""
+    client, run_id = live_usage_redis
+    units_key = f"optimus:usage:{run_id}:billing_units"
+    cost_key = f"optimus:usage:{run_id}:cost_usd"
+    # Occupy the next three seconds of the units series, as an earlier request's units points would.
+    occupy = """
+local now = redis.call('TIME')
+local ts = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+for i = 0, 2999 do redis.call('TS.ADD', KEYS[1], string.format('%d', ts + i), 0) end
+return string.format('%d', ts + 2999)
+"""
+    facts = dict(
+        run_id=run_id,
+        gateway_request_id=f"gw-{run_id}",
+        provider="tavily",
+        provider_request_id="provider-live",
+        billing_units=10,
+        cost_usd=Decimal("0.0025"),
+    )
+
+    async def _scenario() -> tuple[int, list[object], list[object]]:
+        last_occupied = int(await client.execute_command("EVAL", occupy, 1, units_key))
+        adapter = RedisTelemetryAdapter(client=client)
+        await adapter.record_settled_usage(**facts)
+        await adapter.record_settled_usage(**facts)  # a retry adds nothing
+        cost = await client.execute_command("TS.RANGE", cost_key, "-", "+")
+        units = await client.execute_command("TS.RANGE", units_key, last_occupied + 1, "+")
+        return last_occupied, cost, units
+
+    last_occupied, cost_samples, unit_samples = sync_await(_scenario())
+
+    assert [(int(ts), Decimal(str(value))) for ts, value in cost_samples] == [(last_occupied + 1, Decimal("0.0025"))]
+    assert [(int(ts), int(Decimal(str(value)))) for ts, value in unit_samples] == [(last_occupied + 1, 10)]
+
+
+def test_live_redis_settle_is_not_skipped_by_a_series_sample_filter(
+    live_usage_redis: tuple[object, str],
+) -> None:
+    """#646 review: a LAST/IGNORE filter on a usage series must not drop a settled point."""
+    client, run_id = live_usage_redis
+    units_key = f"optimus:usage:{run_id}:billing_units"
+    cost_key = f"optimus:usage:{run_id}:cost_usd"
+
+    async def _scenario() -> tuple[list[object], list[object]]:
+        await client.execute_command("TS.CREATE", units_key, "DUPLICATE_POLICY", "LAST", "IGNORE", 60_000, 1)
+        adapter = RedisTelemetryAdapter(client=client)
+        for index in (1, 2):  # two distinct requests reporting the same units, well inside the ignore window
+            await adapter.record_settled_usage(
+                run_id=run_id, gateway_request_id=f"gw-{run_id}-{index}", provider="tavily",
+                provider_request_id=f"provider-{index}", billing_units=10, cost_usd=Decimal("0.0025"),
+            )  # fmt: skip
+        cost = await client.execute_command("TS.RANGE", cost_key, "-", "+")
+        units = await client.execute_command("TS.RANGE", units_key, "-", "+")
+        await client.hdel("optimus:usage:claims", f"gw-{run_id}-1", f"gw-{run_id}-2")
+        return cost, units
+
+    cost_samples, unit_samples = sync_await(_scenario())
+
+    assert [int(ts) for ts, _ in cost_samples] == [int(ts) for ts, _ in unit_samples]
+    assert len(unit_samples) == 2

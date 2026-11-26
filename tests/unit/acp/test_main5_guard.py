@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import child_keyring
+
 pytestmark = pytest.mark.skipif(
     sys.platform != "win32",
     reason="MAIN-5 guard is Windows-only: it hooks _winapi and fails closed elsewhere",
@@ -41,7 +43,7 @@ def _guarded_probe(tmp_path: Path, probe: str) -> tuple[subprocess.CompletedProc
     env["MAIN5_CONTROL_PROTECTED_ROOT"] = str(protected)
     env["MAIN5_PROBE_SOURCE"] = str(outside / "source.txt")
     child = subprocess.run(
-        [sys.executable, "-c", probe], env=env, capture_output=True, text=True, check=False,
+        [sys.executable, "-c", probe], env=child_keyring.environment(env), capture_output=True, text=True, check=False,
     )
     rows = [
         json.loads(line)

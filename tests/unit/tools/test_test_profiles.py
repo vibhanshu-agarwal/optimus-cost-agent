@@ -18,6 +18,7 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
+from tests.support import child_keyring
 from tools.testing import test_profiles as profiles
 
 _WINDOWS_H5_ONLY = pytest.mark.skipif(sys.platform != "win32", reason="requires native Windows H5 capture")
@@ -30,6 +31,11 @@ _NODES = (
     "tests/unit/b/test_two.py::test_w",
     "tests/e2e/test_three.py::test_v",
 )
+
+
+@pytest.fixture(autouse=True)
+def _measurement_children_off_the_host_keyring(monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_measurement_children(monkeypatch)
 
 
 def _manifest(body: str) -> profiles.ProfileManifest:
@@ -1109,7 +1115,7 @@ def _h5_native_run(root: Path, directory: Path | None, *, failure="", passed=Fal
         env["PYTEST_OPTIMUS_H5_CAPTURE_DIRECTORY"] = str(directory)
     completed = subprocess.run([sys.executable, "-m", "pytest", "--no-cov", "-q", "-c", str(root / "pytest.ini"),
                                 "--rootdir", str(root), "--junitxml", str(root / "junit.xml"), str(root / "tests")],
-                               cwd=root, env=env, capture_output=True, text=True, timeout=90, check=False)
+                               cwd=root, env=child_keyring.environment(env), capture_output=True, text=True, timeout=90, check=False)
     assert set(os.listdir(_ROOT / "tmp/test-runs")) == runs_before, "H5_FIXTURE_RUN_RECORD_DRIFT"
     output = completed.stdout + completed.stderr
     facts = json.loads((root / "contract.json").read_text(encoding="utf-8"))

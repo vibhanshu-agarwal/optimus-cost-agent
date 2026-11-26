@@ -275,6 +275,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/context/adapter.py",
     "src/optimus/context/assembly.py",
     "src/optimus/context/authored_memory.py",
+    "src/optimus/context/context_budget.py",
     "src/optimus/context/context_why.py",
     "src/optimus/context/index_tools.py",
     "src/optimus/context/maintenance.py",

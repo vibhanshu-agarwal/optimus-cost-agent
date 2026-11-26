@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION
+from tests.support import child_keyring
 from tools.run_plan987_acpx_live_evidence import REPLAN_POLICY_BYTES, REPLAN_TARGET_BYTES, EvidenceSummary
 from tools.run_plan988_fu4b_live_evidence import (
     BASELINE_FIXTURE_FILE_SHA256S,
@@ -409,6 +411,7 @@ def test_post_capture_verifier_is_directly_executable() -> None:
     result = subprocess.run(
         [sys.executable, str(VERIFIER_PATH), "--help"],
         cwd=ROOT,
+        env=child_keyring.environment(os.environ),
         check=False,
         capture_output=True,
         text=True,
@@ -956,6 +959,7 @@ def test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value() -> None:
     result = subprocess.run(
         [sys.executable, str(VERIFIER_PATH), "--verify-report", "fake.md", "--check-fu4b-ledger-digest", "abc"],
         cwd=ROOT,
+        env=child_keyring.environment(os.environ),
         check=False,
         capture_output=True,
         text=True,
@@ -966,6 +970,7 @@ def test_cli_digest_gate_rejects_non_lowercase_or_non_sha256_value() -> None:
     result = subprocess.run(
         [sys.executable, str(VERIFIER_PATH), "--verify-report", "fake.md", "--check-fu4b-ledger-digest", "A" * 64],
         cwd=ROOT,
+        env=child_keyring.environment(os.environ),
         check=False,
         capture_output=True,
         text=True,
