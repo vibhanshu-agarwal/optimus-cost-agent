@@ -43,6 +43,17 @@ def _b64url_decode(text: str) -> bytes:
     return base64.urlsafe_b64decode(padded.encode("ascii"))
 
 
+def _aware_expiry(raw: object) -> datetime:
+    """Parse an issued expires_at; a non-string or naive value raises (TypeError/ValueError)."""
+    if not isinstance(raw, str):
+        raise TypeError("expires_at must be a string")
+    parsed = datetime.fromisoformat(raw)
+    if parsed.utcoffset() is None:
+        # A naive time cannot be ordered against the aware clock.
+        raise ValueError("expires_at has no offset")
+    return parsed
+
+
 @dataclass(frozen=True, slots=True)
 class Enrollment:
     principal_id: str
@@ -179,6 +190,7 @@ class CredentialValidator:
             payload = json.loads(_b64url_decode(body).decode("utf-8"))
         except Exception as exc:
             raise AuthError("token_malformed") from exc
+        claims: CredentialClaims | None
         try:
             claims = CredentialClaims(
                 principal_id=str(payload["principal_id"]),
@@ -187,12 +199,15 @@ class CredentialValidator:
                 issuer=str(payload["issuer"]),
                 audience=str(payload["audience"]),
                 scope=frozenset(str(item) for item in payload["scope"]),
-                expires_at=datetime.fromisoformat(str(payload["expires_at"])),
+                expires_at=_aware_expiry(payload["expires_at"]),
                 token_id=str(payload["token_id"]),
                 instance_id=str(payload["instance_id"]),
             )
-        except Exception as exc:
-            raise AuthError("token_malformed") from exc
+        except Exception:
+            claims = None
+        if claims is None:
+            # Raised outside the except: a chained or context parse error would carry the rejected claim text.
+            raise AuthError("token_malformed")
         if claims.issuer != self.expected_issuer:
             raise AuthError("token_wrong_issuer")
         if claims.audience != self.expected_audience:

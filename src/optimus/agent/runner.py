@@ -25,6 +25,7 @@ from optimus.agent.edits import EditNotApplicable, apply_edit_blocks, edit_failu
 from optimus.agent.index_turn import LIMIT_NOTICE, LIMIT_OBSERVATION, MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import (
     GUARD_REFUSAL_TEXTS,
+    PLANNING_ANSWERED,
     TEST_GUARD_REFUSED,
     TEST_STOP_REASONS,
     WRITE_GUARD_REFUSED,
@@ -168,6 +169,12 @@ CHAT_FAILURE_MESSAGES: dict[str, str] = {
 # r8 offline correction: the same failures when they prove the experimental test route stopped. The Gateway then
 # admits no further request on that route while it runs, so these never suggest a retry. Same stop reasons.
 _NO_RETRY = ROUTE_STOPPED_NO_RETRY
+# How a planning stop that is the model's own reply settles the run; any other planning stop terminates it.
+# #512: an answer is a completed run with no plan (the one place to change if it should settle failed instead).
+PLANNING_STOP_SETTLEMENT = {
+    "PLANNING_MODEL_REFUSED": (AgentRunStatus.FAILED, AgentRunStatus.FAILED.value),
+    PLANNING_ANSWERED: (AgentRunStatus.COMPLETED, "COMPLETED"),
+}
 CHAT_ROUTE_STOPPED_MESSAGES: dict[str, str] = {
     "CHAT_GATEWAY_FAILURE": (
         "Chat could not get an answer: the model gateway refused the model's reply after the call was charged, "
@@ -788,11 +795,7 @@ class AgentRunner:
         )
         scope = current[0]  # the plan's result names the model that produced it
         if planning_result.stop_reason is not None:
-            status = (
-                AgentRunStatus.FAILED
-                if planning_result.stop_reason == "PLANNING_MODEL_REFUSED"
-                else AgentRunStatus.TERMINATED
-            )
+            status, final_state = PLANNING_STOP_SETTLEMENT.get(planning_result.stop_reason, (AgentRunStatus.TERMINATED, "TERMINATED"))
             output_text = (
                 planning_result.corrective_text
                 or planning_result.refusal_reason
@@ -801,7 +804,7 @@ class AgentRunner:
             return self._build_result(
                 request=request,
                 status=status,
-                final_state=status.value if status is AgentRunStatus.FAILED else "TERMINATED",
+                final_state=final_state,
                 output_text=output_text,
                 tool_calls=planning_result.tool_calls,
                 total_cost_usd=planning_result.total_cost_usd,

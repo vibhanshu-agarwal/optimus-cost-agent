@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from optimus.acp.failure_notes import attach_failure_note
+
 DEFAULT_SHADOW_IGNORE_PATTERNS = (
     ".git",
     "__pycache__",
@@ -106,8 +108,11 @@ def promote_shadow_changes(plan: ShadowPromotionPlan) -> None:
             target = plan.workspace_root / change.relative_path
             backups.append((target, target.read_bytes() if target.exists() else None))
             _apply_shadow_change(change, source, target)
-    except Exception:
-        _restore_backups(backups)
+    except Exception as failure:
+        unrestored = _restore_backups(backups)
+        if unrestored:
+            names = ", ".join(target.relative_to(plan.workspace_root).as_posix() for target in unrestored)
+            attach_failure_note(failure, f"shadow_restore_incomplete: {names}")
         raise
 
 
@@ -137,9 +142,15 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _restore_backups(backups: Iterable[tuple[Path, bytes | None]]) -> None:
+def _restore_backups(backups: Iterable[tuple[Path, bytes | None]]) -> list[Path]:
+    """Attempt every restoration; return the targets that could not be restored."""
+    unrestored: list[Path] = []
     for target, content in reversed(tuple(backups)):
-        if content is None:
-            target.unlink(missing_ok=True)
-        else:
-            target.write_bytes(content)
+        try:
+            if content is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.write_bytes(content)
+        except OSError:
+            unrestored.append(target)
+    return unrestored

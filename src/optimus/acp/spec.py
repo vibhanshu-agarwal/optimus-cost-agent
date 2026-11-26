@@ -123,6 +123,7 @@ from optimus.acp.shapes import (
 )
 from optimus.agent.models import (
     GUARD_REFUSAL_TEXTS,
+    PLANNING_ANSWERED,
     TEST_STOP_REASONS,
     AgentApproval,
     AgentRunRequest,
@@ -3053,7 +3054,7 @@ class AcpDuplexAdapter:
             plan_hash=plan_hash if re.fullmatch(r"[0-9a-f]{64}", plan_hash) else "",
             verification=tuple(item.ref for item in evidence_from(turn.run_id, result.tool_calls) if item.kind == "verification"),
             # #598: never pending. A turn commits only after its final text, and no turn with an open approval request has one.
-            responded=result.stop_reason == "PLANNING_MODEL_REFUSED")
+            responded=result.stop_reason in ("PLANNING_MODEL_REFUSED", PLANNING_ANSWERED))
         continuity.submit(settled)  # one ordered writer per session, off the turn's path
 
     async def _emit_memory_notices(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
@@ -3969,8 +3970,8 @@ class AcpDuplexAdapter:
         turn: AcpPromptTurn | None = None,
     ) -> None:
         if planning:
-            if result.status not in (AgentRunStatus.AWAITING_APPROVAL, AgentRunStatus.COMPLETED):
-                return  # a stopped run's text is why it stopped, not a plan (#570)
+            if result.status not in (AgentRunStatus.AWAITING_APPROVAL, AgentRunStatus.COMPLETED) or result.stop_reason == PLANNING_ANSWERED:
+                return  # a stopped run's text is why it stopped, and an answer's is the answer: neither is a plan (#570, #512)
             if turn is not None:
                 lease = turn.turn_control.try_start(SendKind.PROVISIONAL_PLAN, "plan")
                 if not lease.granted:
@@ -4020,7 +4021,8 @@ class AcpDuplexAdapter:
         result: AgentRunResult,
         turn: AcpPromptTurn | None = None,
     ) -> None:
-        send_plan = result.status is AgentRunStatus.COMPLETED  # on any other outcome a completed plan would claim undone work (#570)
+        # On any other outcome a completed plan would claim undone work (#570); an answer had no plan (#512).
+        send_plan = result.status is AgentRunStatus.COMPLETED and result.stop_reason != PLANNING_ANSWERED
         if turn is not None:
             turn.turn_control.seal_final_delivery()
             turn.turn_control.declare_terminal_messages(("completed_plan", "final_text") if send_plan else ("final_text",))
@@ -4140,6 +4142,8 @@ _UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DI
 
 
 def _completion_message(result: AgentRunResult) -> str:
+    if result.stop_reason == PLANNING_ANSWERED:
+        return result.output_text  # the answer itself (#512)
     if result.stop_reason in TEST_STOP_REASONS.values():
         return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
     if result.stop_reason == "EDIT_NOT_APPLICABLE":

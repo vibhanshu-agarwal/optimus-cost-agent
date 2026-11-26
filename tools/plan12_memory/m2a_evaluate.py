@@ -924,7 +924,7 @@ def cache_identity(repository: Path, *, head: str = "HEAD") -> dict[str, Any]:
         for label, value in limits.items()
     }
     changed = subprocess.run(
-        ["git", "-C", str(repository), "diff", "--name-only", PRE_TASK2, head, "--", "src/optimus_model_policy"],
+        ["git", "-C", str(repository), "diff", "--name-only", PRE_TASK2, head, "--", "src/optimus_model_policy", ":(exclude)src/optimus_model_policy/stage_c.py"],
         capture_output=True,
         text=True,
         check=True,

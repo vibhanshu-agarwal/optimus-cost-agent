@@ -681,12 +681,25 @@ def _cmd_approve(
             check=False,
         )
     except OSError as exc:
-        # Spawning failed — delete the one-shot record.
+        # Spawning failed — delete the one-shot record. The OSError text can name the substituted argv (the handle),
+        # and the store's detail is free text: print only the exception type, errno and error code (#653).
+        # Clean up before printing, so a failed stderr write cannot skip it.
+        cleanup_code: str | None = None
         try:
             store.consume_one_shot(handle, candidate.security_snapshot_digest)
-        except ApprovalError:
-            pass  # Best-effort cleanup.
-        print(f"optimus-trust: spawn failed: {exc}", file=sys.stderr)
+        except ApprovalError as cleanup_exc:
+            cleanup_code = cleanup_exc.code
+        except OSError:
+            # e.g. the lock file cannot be closed; caught so the spawn failure stays the cause and exit code.
+            cleanup_code = "CLEANUP_IO_ERROR"
+        print(f"optimus-trust: spawn failed: {type(exc).__name__} (errno {exc.errno})", file=sys.stderr)
+        if cleanup_code is None:
+            print("optimus-trust: one-shot approval removed after the failed spawn", file=sys.stderr)
+        elif cleanup_code in {"APPROVAL_EXPIRED", "ONE_SHOT_NOT_FOUND"}:
+            # consume_one_shot confirmed the record is gone under the lock before raising these.
+            print(f"optimus-trust: one-shot approval absent after the failed spawn (code: {cleanup_code})", file=sys.stderr)
+        else:
+            print(f"optimus-trust: one-shot approval cleanup not confirmed (code: {cleanup_code})", file=sys.stderr)
         return 3
 
     return result.returncode

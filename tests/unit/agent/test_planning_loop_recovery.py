@@ -537,3 +537,25 @@ def test_observation_too_large_keeps_the_earlier_evidence_and_reads_nothing(tmp_
     assert "path=b.py" not in gateway.prompts[2]
     assert result.stop_reason is None
     assert result.evidence_sha256s == {"a.py": hashlib.sha256(source.read_bytes()).hexdigest()}
+
+
+ANSWER = "ANSWER: Yes, run the tests before every push.\n"
+
+
+def test_an_answer_after_the_nudge_waits_for_the_check_in_like_a_refusal_and_stop_keeps_it(tmp_path, source):
+    """#512: an answer ends planning without a plan, so an open episode's check-in treats it as it treats a refusal."""
+    checkins = CheckIns(CheckInDecision.STOP)
+    result = _run(tmp_path, Gateway([PROSE] * 3 + [ANSWER]), checkins)
+    [checkin] = checkins.asked
+    assert (checkin.cause, checkin.refusal_waiting, checkin.plan_waiting) == ("REPEATED_PARSE_ERROR", True, False)
+    assert "The model then answered without a plan." in checkin.text and "Stop keeps the answer." in checkin.text
+    assert "refused" not in checkin.text
+    assert (result.stop_reason, result.refusal_reason) == ("PLANNING_ANSWERED", None)
+    assert result.corrective_text == "Yes, run the tests before every push."
+
+
+def test_continue_sets_a_waiting_answer_aside_and_grants_more_steps(tmp_path, source):
+    checkins = CheckIns(CheckInDecision.CONTINUE)
+    result = _run(tmp_path, Gateway([PROSE] * 3 + [ANSWER, READ_A, FINAL_PLAN]), checkins)
+    assert len(checkins.asked) == 1
+    assert (result.stop_reason, result.plan_text, result.settled_turns) == (None, FINAL_PLAN, 6)

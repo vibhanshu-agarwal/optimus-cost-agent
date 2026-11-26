@@ -1054,6 +1054,29 @@ class PostgresLedgerStore:
             )
             conn.commit()
 
+    def insert_reader_capability_if_absent(self, capability: ReaderCapability) -> None:
+        """Write a default row only where none exists; a concurrent report or retirement wins (#650)."""
+        schemas = sorted(str(item) for item in capability.supported_schemas)
+        with psycopg.connect(self._conninfo) as conn:
+            conn.execute(
+                """
+                INSERT INTO evidence_handoff_reader_capabilities(
+                    principal_id, agent_id, ledger_instance_id, supported_schemas,
+                    reported_at, retired
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (principal_id, ledger_instance_id) DO NOTHING
+                """,
+                (
+                    capability.principal_id,
+                    capability.agent_id,
+                    self._ledger_instance_id,
+                    schemas,
+                    capability.reported_at,
+                    bool(capability.retired),
+                ),
+            )
+            conn.commit()
+
     def get_reader_capability(self, principal_id: str) -> ReaderCapability:
         with psycopg.connect(self._conninfo, row_factory=dict_row) as conn:
             row = conn.execute(
