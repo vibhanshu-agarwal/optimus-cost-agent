@@ -1,7 +1,7 @@
 {
  "schema": "plan12-memory-m2b.run-config.v1",
  "label": "plan12.14-task4-qualification",
- "authorization": "",
+ "authorization": "operator, Claude chat 2026-11-26: \"Release it\" (one zero-paid qualification run on the index Redis p1214-index-test-redis with its volume, ports 6401/8781, 1,024 MiB and the shared embedding cache; no paid call is possible)",
  "cases": "reports/plan12-memory-m2b/cases.json",
  "calibration": "reports/plan12-memory-m2b/calibration.json",
  "calibration_sha256": "hex:cbbf61c50400f737b78996d4e4bed26dc56ffb3d8ac7d13b76ed8ccc96a20307",
