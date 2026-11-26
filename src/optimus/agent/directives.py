@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ntpath
 import re
 import shlex
 import unicodedata
@@ -34,6 +35,10 @@ _ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[\\/]|^/")
 
 class AgentDirectiveParseError(ValueError):
     pass
+
+
+class AgentDirectivePathError(AgentDirectiveParseError):
+    """#583: the path rule refused a plan path, so the planner can name that cause in its fixed notice."""
 
 
 @dataclass(frozen=True)
@@ -91,8 +96,11 @@ class IndexToolRequest:
 
 
 def parse_index_tool_reply(text: str) -> tuple[IndexToolRequest, ...] | None:
-    """The requests when a whole reply is nothing but tool lines; otherwise None, because a line inside prose or a plan is not a request."""
-    lines = [line for line in (directive_text(item) for item in plan_lines(_unwrap_markdown_code_fence(text))) if line]
+    """The requests when a whole reply is nothing but tool lines; otherwise None, because a line inside prose or a plan is not a request.
+    Raises AgentDirectivePathError when such a reply holds an argument the path rule refuses (#583)."""
+    # #583 (Codex review): a line holding a content separator is not blank, so it makes the reply prose rather
+    # than being dropped while the rest of the batch runs.
+    lines = [directive_text(item) for item in plan_lines(_unwrap_markdown_code_fence(text)) if plan_line_text(item)]
     if not lines or len(lines) > MAX_INDEX_TOOL_LINES:
         return None
     requests: list[IndexToolRequest] = []
@@ -101,6 +109,10 @@ def parse_index_tool_reply(text: str) -> tuple[IndexToolRequest, ...] | None:
         if match is None:
             return None
         requests.append(IndexToolRequest(match.group(1) or match.group(3), match.group(2) or match.group(4)))
+    # #583: the argument reaches the tool card, the call summary and the model's next request, so the path rule
+    # applies to it, raised only once the whole reply is tool lines.
+    if any(unsafe_path_text(request.argument) for request in requests):
+        raise AgentDirectivePathError("unsafe index tool argument")
     return tuple(requests)
 
 
@@ -186,7 +198,7 @@ def _invents_an_edit(plan_text: str) -> bool:
         line = _normalize_directive_line(lines[index])
         if WRITE_DIRECTIVE.match(line) is not None:
             index += 1
-            while index < len(lines) and not _is_directive_line(lines[index]):
+            while index < len(lines) and not is_directive_line(lines[index]):
                 index += 1
             continue
         if _EDIT_PREFIX.match(line) is not None:
@@ -228,7 +240,7 @@ def _parse_plan_lines(lines: list[str], *, edit_base: EditBase, keepends: bool) 
             _validate_relative_path(path)
             index += 1
             content_lines = []
-            while index < len(lines) and not _is_directive_line(lines[index]):
+            while index < len(lines) and not is_directive_line(lines[index]):
                 content_lines.append(lines[index])
                 index += 1
             if not keepends:  # an exact EDIT parse: a WRITE here is never returned (the plan is re-parsed)
@@ -331,7 +343,9 @@ def _edit_block_lines(lines: list[str], index: int, *, until: str) -> tuple[tupl
     raise AgentDirectiveParseError("unterminated EDIT block")
 
 
-def _is_directive_line(line: str) -> bool:
+def is_directive_line(line: str) -> bool:
+    """Where a WRITE body ends: at the next line that is a whole READ, WRITE, TEST, MCP_LIST or MCP_CALL directive.
+    The planning turn uses this same rule (#575)."""
     normalized = _normalize_directive_line(line)
     return (
         READ_DIRECTIVE.match(normalized) is not None
@@ -432,14 +446,28 @@ def unsafe_path_text(path_text: str) -> bool:
     )
 
 
+def windows_path_shape(path_text: str) -> bool:
+    """#590: a colon (drive letter, alternate data stream), a leading backslash (drive root), or a part Windows reserves:
+    a device name (NUL, aux.txt), a trailing dot or space (a second name for the same file), or one of ``*?"<>|``.
+    Applied on every host, so a plan means the same file everywhere. Not for TEST tokens (pytest node ids hold ::)."""
+    return ":" in path_text or path_text.startswith(chr(0x5C)) or ntpath.isreserved(path_text)
+
+
 def _validate_relative_path(path_text: str) -> None:
-    if not path_text or unsafe_path_text(path_text):
-        raise AgentDirectiveParseError("no valid agent directives")
+    if not path_text or unsafe_path_text(path_text) or windows_path_shape(path_text):
+        raise AgentDirectivePathError("no valid agent directives")
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
-        raise AgentDirectiveParseError("no valid agent directives")
+        raise AgentDirectivePathError("no valid agent directives")
     if _ABSOLUTE_PATH.match(path_text):
-        raise AgentDirectiveParseError("no valid agent directives")
+        raise AgentDirectivePathError("no valid agent directives")
+
+
+# #590: the pytest options whose value is one path, and the short flags that take no value. Any other option's value
+# is not judged here: it may be text that holds a colon or a wildcard (-p no:cacheprovider, --ignore-glob=*_slow.py).
+_PYTEST_PATH_OPTIONS = frozenset({"-c", "--rootdir", "--confcutdir", "--basetemp", "--junitxml", "--junit-xml", "--debug"})
+_PYTEST_BARE_FLAGS = re.compile(r"-[qvxsl]+")
+_PYTEST_GROUPED_CONFIG = re.compile(r"-[qvxsl]+c")  # -qc NUL
 
 
 def _parse_test_command(command_text: str) -> tuple[str, ...]:
@@ -451,7 +479,8 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
         raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}") from exc
     if not tokens or tokens[0] != "pytest":
         raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
-    for token in tokens[1:]:
+    operands_only = False  # after a bare --, pytest reads every token as a file argument
+    for previous, token in zip(tokens, tokens[1:], strict=False):
         if _SHELL_METACHARACTERS.search(token):
             raise AgentDirectiveParseError(f"unsafe TEST directive: {command_text}")
         if ".." in Path(token).parts or _ABSOLUTE_PATH.match(token):
@@ -459,5 +488,25 @@ def _parse_test_command(command_text: str) -> tuple[str, ...]:
         # #583: fixed text, the token is never quoted. No joiner exemption here: the shell guard refuses every
         # format character. No blank space character either, which would read as two arguments.
         if unsafe_path_text(token) or any(c != " " and unicodedata.category(c) in ("Cf", "Zs") for c in token):
+            raise AgentDirectiveParseError("unsafe TEST directive")
+        # #590: a file argument (the part before a node id's ::) and the value of a path option follow the plan path
+        # rule. @file is refused: pytest would read arguments from it that this loop never sees.
+        # shortcut: the value of an option outside the two sets above, or glued to a short option (-cNUL), is not
+        # judged; a person approves every TEST command. Upgrade if TEST ever runs unapproved.
+        if token == "--" and not operands_only:
+            operands_only = True
+            continue
+        # The token is judged as pytest receives it: the split keeps quotes, so a quoted path is a path with quotes.
+        if operands_only or not token.startswith("-"):
+            if not operands_only and (previous in _PYTEST_PATH_OPTIONS or _PYTEST_GROUPED_CONFIG.fullmatch(previous)):
+                shaped = windows_path_shape(token)
+            elif operands_only or not previous.startswith("-") or "=" in previous or _PYTEST_BARE_FLAGS.fullmatch(previous):
+                shaped = windows_path_shape(token.split("::", 1)[0])
+            else:
+                shaped = False  # the value of an option this rule does not know
+        else:
+            option, _, value = token.partition("=")
+            shaped = option in _PYTEST_PATH_OPTIONS and windows_path_shape(value)
+        if token.startswith("@") or shaped:
             raise AgentDirectiveParseError("unsafe TEST directive")
     return tokens

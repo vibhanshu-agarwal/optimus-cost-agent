@@ -42,6 +42,7 @@ from optimus.acp.debug_trace import (
     log_memory_served,
     log_pre_run_refusal,
     log_prompt_refusal,
+    observe_operation,
 )
 from optimus.acp.errors import (
     INTERNAL_ERROR,
@@ -49,9 +50,13 @@ from optimus.acp.errors import (
     MCP_REOPEN_REFUSED,
     METHOD_NOT_FOUND,
     REQUEST_CANCELLED,
+    AcpErrorOutcome,
     AcpOutboundError,
+    AcpPeerResponseError,
     JsonRpcError,
     error_response,
+    outbound_error_response,
+    select_acp_error,
     success_response,
 )
 from optimus.acp.lifecycle import (
@@ -70,6 +75,7 @@ from optimus.acp.memory_commands import DESCRIPTIONS as MEMORY_COMMAND_DESCRIPTI
 from optimus.acp.memory_commands import PURGE_CANCEL, Confirmation, MemoryAnswer, MemoryCommand, MemoryCommands, PurgeRequest
 from optimus.acp.memory_commands import READ_ONLY as MEMORY_READ_ONLY
 from optimus.acp.memory_commands import parse_command as parse_memory_command
+from optimus.acp.request_correlation import add_trusted_request_identity, detached_request_context
 from optimus.acp.session_config import (
     SLIDING_ACTIVE_TEXT,
     STRATEGY_CONFIG_ID,
@@ -115,7 +121,15 @@ from optimus.acp.shapes import (
     new_tool_call_id,
     tool_kind_for_name,
 )
-from optimus.agent.models import TEST_STOP_REASONS, AgentApproval, AgentRunRequest, AgentRunResult, AgentRunStatus, AgentToolCall
+from optimus.agent.models import (
+    GUARD_REFUSAL_TEXTS,
+    TEST_STOP_REASONS,
+    AgentApproval,
+    AgentRunRequest,
+    AgentRunResult,
+    AgentRunStatus,
+    AgentToolCall,
+)
 from optimus.agent.planning_loop import (
     PLANNING_NEW_READ_MAX_BYTES,
     PLANNING_OBSERVATION_MAX_BYTES,
@@ -135,7 +149,8 @@ from optimus.context.memory_backups import Scheduler as BackupScheduler
 from optimus.context.memory_continuity import Continuity, Settled
 from optimus.context.memory_extraction import CompletedWork, TurnInput, UserBlock, evidence_from
 from optimus.context.memory_recovery import Scheduler as RecoveryScheduler
-from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY
+from optimus.gateway.attempts import ROUTE_STOPPED_NO_RETRY, AttemptIntegrityError
+from optimus.gateway.errors import GatewayError, GatewayFailureFacts
 from optimus.guardrails.file_policy import FilePolicy
 from optimus.mcp.client_catalog import ClientMcpOneCallApproval
 from optimus.mcp.client_disposition import (
@@ -859,7 +874,7 @@ def _in_own_thread(call: Callable[[], Any]) -> asyncio.Future[Any]:
         with contextlib.suppress(RuntimeError):  # the loop has closed, so nobody is waiting
             loop.call_soon_threadsafe(deliver, result, error)
 
-    threading.Thread(target=copy_context().run, args=(run,), name="context-index-prepare", daemon=True).start()
+    threading.Thread(target=detached_request_context().run, args=(run,), name="context-index-prepare", daemon=True).start()
     return future
 
 
@@ -1070,6 +1085,7 @@ class AcpDuplexAdapter:
         idle.phase = "IDLE_CANDIDATE"
         idle.deadline = self._monotonic_clock() + self._mcp_idle_seconds
 
+    @observe_operation
     def start_idle_mcp_sweeper(self) -> None:
         if self._mcp_idle_seconds is None or self._closed or self._idle_sweeper is not None:
             return
@@ -1078,8 +1094,9 @@ class AcpDuplexAdapter:
             while True:
                 await asyncio.sleep(min(60, self._mcp_idle_seconds))
                 await self.sweep_idle_mcp_once()
-        self._idle_sweeper = asyncio.create_task(sweep(), name="optimus-idle-mcp-sweeper")
+        self._idle_sweeper = asyncio.create_task(sweep(), name="optimus-idle-mcp-sweeper", context=detached_request_context())
 
+    @observe_operation
     async def stop_idle_mcp_sweeper(self) -> None:
         task = self._idle_sweeper
         if task is not None:
@@ -1155,7 +1172,7 @@ class AcpDuplexAdapter:
                         idle.phase = "MCP_SUSPENDED"
                     else:
                         self._quarantine_idle_mcp(session_id, idle, failures)
-                job = asyncio.create_task(close_peer(), name="optimus-idle-mcp-close")
+                job = asyncio.create_task(close_peer(), name="optimus-idle-mcp-close", context=detached_request_context())
                 self._mcp_close_tasks.add(job)
                 budget = max(1, len(state.server_names())) * runtime.sdk_adapter._operation_timeout_seconds
                 try:
@@ -1183,9 +1200,12 @@ class AcpDuplexAdapter:
                 self._outbound.cancel_request(turn.pending_permission_request_id, {"outcome": {"outcome": "cancelled"}})
                 turn.pending_permission_request_id = None
 
+    @observe_operation
     async def aclose(self) -> None:
         if self._shutdown_task is None:
-            self._shutdown_task = asyncio.create_task(self._shutdown_retained_sessions(), name='optimus-session-shutdown')
+            self._shutdown_task = asyncio.create_task(
+                self._shutdown_retained_sessions(), name='optimus-session-shutdown', context=detached_request_context(),
+            )
             self._mcp_close_tasks.add(self._shutdown_task)
         job = self._shutdown_task
         cancelled = False
@@ -1385,9 +1405,6 @@ class AcpDuplexAdapter:
                 use = owner.acquire(session_id) if owner.is_active(session_id) else None
                 if use is not None:
                     custody.append(use)
-                elif self._sessions.get(session_id) is not None:
-                    return self._non_turn(error_response(request.get('id'),
-                                          JsonRpcError(code=INVALID_REQUEST, message='unknown session')), ownership_slot)
             return await self._handle_client_request(request, ownership_slot)
         finally:
             if own_custody:
@@ -1396,6 +1413,12 @@ class AcpDuplexAdapter:
                 for use in custody:
                     use.release()
                 custody.clear()
+
+    def _session_for_request(self, session_id: str) -> AcpSpecSession | None:
+        # A retained session is visible to a request only while that request holds a use.
+        if any(use.session_id == session_id for use in request_session_custody.get() or ()):
+            return self._sessions.get(session_id)
+        return None
 
     async def _handle_client_request(
         self,
@@ -1444,6 +1467,7 @@ class AcpDuplexAdapter:
             ownership_slot,
         )
 
+    @observe_operation
     async def _handle_savings(self, request: dict[str, Any], session_id: str, command: SavingsCommand | str,
                               ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
         """Plan 12.9 `/savings`: answered locally, before admission or classification. It enters no conversation,
@@ -1466,6 +1490,7 @@ class AcpDuplexAdapter:
         return await self._answer_locally(request, session_id, compute, ownership_slot, "the usage report could not be delivered",
                                           cancelled=cancelled)
 
+    @observe_operation
     async def _handle_memory_command(self, request: dict[str, Any], session_id: str, command: MemoryCommand | str,
                                      ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
         """Plan 12.11 v4 D10: a memory command, answered locally like `/savings` and calling no model. A change's notice is a
@@ -1512,6 +1537,7 @@ class AcpDuplexAdapter:
         return await self._answer_locally(request, session_id, compute, ownership_slot, "the memory answer could not be delivered",
                                           cancelled=cancelled)
 
+    @observe_operation
     async def _handle_why(self, request: dict[str, Any], session_id: str, page: int | str,
                           ownership_slot: ResponseOwnershipSlot | None, *, cancelled: bool = False) -> ResponseEnvelope:
         """Plan 12.13 `/why`: the session's last turn's recorded explanation, answered locally like `/savings`. It reads the
@@ -1709,6 +1735,7 @@ class AcpDuplexAdapter:
                          for name, (description, hint) in MEMORY_COMMAND_DESCRIPTIONS.items()]
         return commands
 
+    @observe_operation
     def close_all(self) -> None:
         """Cancel outstanding ACP permission work, then close session states exactly once."""
         if self._sessions._retention is not None:
@@ -1718,6 +1745,7 @@ class AcpDuplexAdapter:
         self._cancel_loop_work()
         self._sessions.close_all()
 
+    @observe_operation
     async def handle_client_notification(self, notification: dict[str, Any]) -> None:
         if notification.get("method") != "session/cancel":
             return
@@ -1753,6 +1781,7 @@ class AcpDuplexAdapter:
         elif turn.pending_permission_request_id is not None:
             self._outbound.cancel_request(turn.pending_permission_request_id, {"outcome": {"outcome": "cancelled"}})
 
+    @observe_operation
     def _handle_initialize(self, request: dict[str, Any]) -> dict[str, Any]:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("protocolVersion"), int):
@@ -1796,6 +1825,7 @@ class AcpDuplexAdapter:
         """Every advertised selector's current value (Plan 12.2 Task 10)."""
         return SessionConfigSnapshot(mode_id=_ID_BY_MODE[session.execution_mode], strategy=session.context_strategy)
 
+    @observe_operation
     async def _handle_config_change(self, request: dict[str, Any], *, method: str) -> dict[str, Any]:
         """One validation-and-update path for ``session/set_mode`` and ``session/set_config_option``.
 
@@ -1838,9 +1868,9 @@ class AcpDuplexAdapter:
                     return invalid("unsupported context strategy")
             else:
                 return invalid("unknown config option")
-        session = self._sessions.get(params["sessionId"])
+        session = self._session_for_request(params["sessionId"])
         if session is None:
-            return invalid("unknown session")
+            return error_response(request_id, select_acp_error(AcpErrorOutcome.SESSION_UNAVAILABLE))
 
         # Serialized per session: the state change, its updates and the response value belong to
         # this request alone. The prompt path never takes this lock, so no turn is held up, and no
@@ -1896,6 +1926,7 @@ class AcpDuplexAdapter:
         )
         publication.confirmed(revision)
 
+    @observe_operation
     async def _handle_session_new(self, request: dict[str, Any]) -> dict[str, Any]:
         params = request.get("params")
         if not isinstance(params, dict) or not isinstance(params.get("cwd"), str):
@@ -1981,12 +2012,13 @@ class AcpDuplexAdapter:
                         backlog=session.memory_backlog)
                     if recovery is not None:
                         session.recovery_scheduler = RecoveryScheduler(recovery)
-                        session.recovery_scheduler.start()
+                        detached_request_context().run(session.recovery_scheduler.start)
                     if getattr(extractor, "backups", None) is not None:
                         session.backup_scheduler = BackupScheduler(extractor.backups)
-                        session.backup_scheduler.start()
+                        detached_request_context().run(session.backup_scheduler.start)
             result = self._session_new_result(session)
             self.retention.activate(session.session_id)
+            add_trusted_request_identity(session_id=session.session_id)
             completed = True
             return success_response(request_id=request.get('id'), result=result)
         finally:
@@ -1997,6 +2029,7 @@ class AcpDuplexAdapter:
                 with contextlib.suppress(BaseException):
                     await self.retention.wait_retired(session.session_id)
 
+    @observe_operation
     async def _handle_session_prompt(
         self,
         request: dict[str, Any],
@@ -2023,7 +2056,7 @@ class AcpDuplexAdapter:
         # It is the handler's only wait, and it comes before every check below, so they judge the session as it is after it.
         # No turn, report or renewal holds a cancel during the wait, so one sent meanwhile is kept and honoured below where it
         # would have landed had it come just after (Codex round 116).
-        known = self._sessions.get(session_id)
+        known = self._session_for_request(session_id)
         names: frozenset[str] = frozenset()
         heard = asyncio.Event()
         if known is not None:
@@ -2037,11 +2070,11 @@ class AcpDuplexAdapter:
                 if not waiting and self._finding_names.get(session_id) is waiting:
                     del self._finding_names[session_id]
         cancelled = heard.is_set()
-        session = self._sessions.get(session_id)
+        session = self._session_for_request(session_id)
         if session is None:
             self._pre_run_refused(request, session_id, "unknown_session")
             return self._non_turn(
-                error_response(request.get("id"), JsonRpcError(code=INVALID_REQUEST, message="unknown session")),
+                error_response(request.get("id"), select_acp_error(AcpErrorOutcome.SESSION_UNAVAILABLE)),
                 ownership_slot,
             )
         task = _text_from_content_blocks(prompt)
@@ -2057,7 +2090,7 @@ class AcpDuplexAdapter:
             return self._non_turn(
                 error_response(
                     request.get("id"),
-                    JsonRpcError(code=REQUEST_CANCELLED, message="a turn is already in progress"),
+                    select_acp_error(AcpErrorOutcome.TURN_BUSY),
                 ),
                 ownership_slot,
             )
@@ -2183,6 +2216,7 @@ class AcpDuplexAdapter:
         if cancelled:  # as the cancel handler does: the gate closes before any model call
             turn_control.request_session_cancel()
         run_id = turn.run_id
+        add_trusted_request_identity(session_id=session.session_id, run_id=run_id)
         # region agent log
         acp_debug_log(
             location="spec.py:_handle_session_prompt:entry",
@@ -2382,13 +2416,18 @@ class AcpDuplexAdapter:
                 turn.planning_reads.extend(event.read_byte_counts)
                 lane.offer(event)
 
+            gateway_failure_facts = GatewayFailureFacts() if ownership_slot is not None else None
+            if ownership_slot is not None:
+                ownership_slot.gateway_failure_facts = gateway_failure_facts
             try:
                 planning_result = await self._in_worker(
                     session,
                     turn,
                     self._runner.run,
                     planning_request,
+                    gateway_failure_owner=gateway_failure_facts,
                     **self._runner_runtime_kwargs(
+                        gateway_failure_facts=gateway_failure_facts,
                         execution_mode=turn.execution_mode,
                         planning_progress_observer=_session_progress_observer,
                         session=session,
@@ -2409,6 +2448,8 @@ class AcpDuplexAdapter:
                     ),
                 )
             except asyncio.CancelledError:
+                if gateway_failure_facts is not None:
+                    gateway_failure_facts.discard()
                 progress.cancel()
                 raise
             finally:
@@ -2630,10 +2671,7 @@ class AcpDuplexAdapter:
             # A live exit still reports any threshold this turn crossed (Codex CP3 ruling R2).
             await self._emit_exit_cost_alerts(turn)
             return self._turn(
-                error_response(
-                    request_id=request.get("id"),
-                    error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
-                ),
+                outbound_error_response(request.get("id"), exc),
                 turn_control,
                 ownership_slot,
             )
@@ -2763,7 +2801,6 @@ class AcpDuplexAdapter:
             ClassifierOutcome,
         )
         from optimus.agent.auto_contract import build_classifier_input
-        from optimus.gateway.attempts import AttemptIntegrityError
 
         router = self._auto_router
         assert router is not None
@@ -3015,7 +3052,8 @@ class AcpDuplexAdapter:
             sequence=max(1, int(turn.turn_seq)), run_id=turn.run_id, outcome=str(outcome.value).lower(), prompt=sanitized_user_prompt,
             plan_hash=plan_hash if re.fullmatch(r"[0-9a-f]{64}", plan_hash) else "",
             verification=tuple(item.ref for item in evidence_from(turn.run_id, result.tool_calls) if item.kind == "verification"),
-            pending=result.status is AgentRunStatus.AWAITING_APPROVAL, responded=result.stop_reason == "PLANNING_MODEL_REFUSED")
+            # #598: never pending. A turn commits only after its final text, and no turn with an open approval request has one.
+            responded=result.stop_reason == "PLANNING_MODEL_REFUSED")
         continuity.submit(settled)  # one ordered writer per session, off the turn's path
 
     async def _emit_memory_notices(self, session: AcpSpecSession, turn: AcpPromptTurn) -> None:
@@ -3361,6 +3399,12 @@ class AcpDuplexAdapter:
         completion_text: str | None = None,
     ) -> None:
         turn.turn_control.record_outcome(Settlement(outcome.value))
+        run_outcome = outcome
+        if turn.turn_control.settlement is Settlement.CANCELLED:
+            # #558: an accepted cancel settles the turn cancelled whatever the handler passed; the record, memory and
+            # Auto routing below follow the settlement. The checkpoint keeps what the run did, so a finished run is
+            # not briefed as unfinished.
+            outcome = ConversationOutcome.CANCELLED
         raw_plan = result.candidate_plan_text or ""
         plan_text = conversation.sanitize_text(raw_plan) if raw_plan else ""
         completion = conversation.sanitize_text(
@@ -3384,7 +3428,7 @@ class AcpDuplexAdapter:
             await self._emit_exit_cost_alerts(turn)
             return
         with contextlib.suppress(Exception):  # a checkpoint never fails the turn
-            self._checkpoint_turn(turn, sanitized_user_prompt, result, outcome)
+            self._checkpoint_turn(turn, sanitized_user_prompt, result, run_outcome)
         if outcome is ConversationOutcome.COMPLETED:
             self._submit_memory(turn, sanitized_user_prompt, result, completion)
         if turn.auto_decision is not None and outcome in (ConversationOutcome.COMPLETED, ConversationOutcome.REJECTED):
@@ -3442,7 +3486,10 @@ class AcpDuplexAdapter:
             ),
         )
 
-    async def _in_worker(self, session: AcpSpecSession, turn: AcpPromptTurn, function: Any, *args: Any, **kwargs: Any) -> Any:
+    async def _in_worker(
+        self, session: AcpSpecSession, turn: AcpPromptTurn, function: Any, *args: Any,
+        gateway_failure_owner: GatewayFailureFacts | None = None, **kwargs: Any
+    ) -> Any:
         """Run `function` off the event loop as one invocation of this turn: the turn's cost stays
         incomplete while the worker runs, even after this coroutine stops waiting for it (transport
         teardown), and a worker that never started can never start later (Codex CP3 ruling R2)."""
@@ -3519,6 +3566,12 @@ class AcpDuplexAdapter:
                 raise
             outcome_observed = True
             if not succeeded:
+                if (
+                    gateway_failure_owner is not None
+                    and not turn.turn_control.transport_abandoned()
+                    and isinstance(result, (GatewayError, AttemptIntegrityError))
+                ):
+                    gateway_failure_owner.supply_uncertainty(result)
                 raise result
             return result
         finally:
@@ -3561,7 +3614,7 @@ class AcpDuplexAdapter:
         """A prompt request refused before any turn (correction plan v4, C5): its fixed reason, with the session and the
         client's request id each in its own shape, in the operator line, the trace and the always-on telemetry
         record. Never the prompt or the invalid values; each record is contained on its own."""
-        refused = self._sessions.get(session_id) if isinstance(session_id, str) else None
+        refused = self._session_for_request(session_id) if isinstance(session_id, str) else None
         if refused is not None:  # Plan 12.13: `/why` then says its snapshot is still the earlier turn's
             refused.why_refused_after = True
         known = reason if reason in PRE_RUN_REFUSAL_REASONS else "unrecognized"
@@ -3835,6 +3888,7 @@ class AcpDuplexAdapter:
         turn_model: str | None = None,
         model_stops: Any | None = None,
         recovery_escalation: Any | None = None,
+        gateway_failure_facts: GatewayFailureFacts | None = None,
     ) -> dict[str, Any]:
         """Pass client-MCP runtime kwargs only when the runner accepts them."""
         kwargs: dict[str, Any] = {}
@@ -3871,6 +3925,8 @@ class AcpDuplexAdapter:
             _maybe("model_stops", model_stops)
         if recovery_escalation is not None:
             _maybe("recovery_escalation", recovery_escalation)
+        if gateway_failure_facts is not None:
+            _maybe("gateway_failure_facts", gateway_failure_facts)
         chat = (execution_mode or session.execution_mode) is ExecutionMode.CHAT
         _maybe("client_mcp_service", None if chat else _client_mcp_service(session))
         _maybe("mcp_permission_broker", None if chat else self._mcp_permission_broker_for(session))
@@ -3913,6 +3969,8 @@ class AcpDuplexAdapter:
         turn: AcpPromptTurn | None = None,
     ) -> None:
         if planning:
+            if result.status not in (AgentRunStatus.AWAITING_APPROVAL, AgentRunStatus.COMPLETED):
+                return  # a stopped run's text is why it stopped, not a plan (#570)
             if turn is not None:
                 lease = turn.turn_control.try_start(SendKind.PROVISIONAL_PLAN, "plan")
                 if not lease.granted:
@@ -3962,7 +4020,7 @@ class AcpDuplexAdapter:
         result: AgentRunResult,
         turn: AcpPromptTurn | None = None,
     ) -> None:
-        send_plan = result.stop_reason not in _UNAPPLIED_PLAN_STOP_REASONS  # a completed plan would claim undone work
+        send_plan = result.status is AgentRunStatus.COMPLETED  # on any other outcome a completed plan would claim undone work (#570)
         if turn is not None:
             turn.turn_control.seal_final_delivery()
             turn.turn_control.declare_terminal_messages(("completed_plan", "final_text") if send_plan else ("final_text",))
@@ -4077,8 +4135,8 @@ _WRITE_NOT_EXECUTED_MESSAGE = (
     "Any tests in the plan may still have run. Send your request again to get a new plan."
 )
 
-# Stops whose plan's work was not done: they end as end_turn and send no completed-plan update (#559, #565).
-_UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED"})
+# Stops whose plan's work was not done: they end as end_turn, not refusal (#559, #565).
+_UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED", *GUARD_REFUSAL_TEXTS})
 
 
 def _completion_message(result: AgentRunResult) -> str:
@@ -4086,12 +4144,14 @@ def _completion_message(result: AgentRunResult) -> str:
         return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
     if result.stop_reason == "EDIT_NOT_APPLICABLE":
         return result.output_text  # why the change was not made, that the plan made no changes, the next step and the code (#574)
-    if result.stop_reason == "UNSAFE_TEST_DIRECTIVE":
-        return result.output_text  # what was rejected and that nothing ran (#565)
+    if result.stop_reason == "UNSAFE_TEST_DIRECTIVE" or result.stop_reason in GUARD_REFUSAL_TEXTS:
+        return result.output_text  # what was rejected and that nothing ran (#565); a guard refusal's fixed text (#589)
     if result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED":
         return _WRITE_NOT_EXECUTED_MESSAGE
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
         return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
+    if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
+        return result.output_text  # the replan instruction; it no longer reaches the person as a plan entry (#570)
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
         return result.output_text
     if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
@@ -4254,6 +4314,8 @@ def _prompt_result(stop_reason: str, result: AgentRunResult, control: TurnContro
 
 def _outbound_error_payload(run_id: str, exc: AcpOutboundError) -> Callable[[], dict[str, object]]:
     def payload() -> dict[str, object]:
+        if isinstance(exc, AcpPeerResponseError):
+            return {"run_id": run_id, "provenance": "peer", "reason": AcpErrorOutcome.CLIENT_REJECTED_OUTBOUND.value}
         return {"run_id": run_id, "code": exc.code, "message": exc.message}
 
     return payload

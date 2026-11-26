@@ -608,6 +608,21 @@ The levelled NDJSON records include `schemaVersion` and `level`. This file
 stays local. Use `--debug-trace` alone with evidence tools that require the
 original NDJSON format.
 
+At `--diagnostic-level debug`, framed dispatch and scheduled NDJSON requests
+emit a request start and terminal record with a host-generated operation ID.
+The terminal record includes elapsed time and the handler outcome. NDJSON
+also reports observed delivery and any fallback response separately. Framed
+dispatch completes before the transport writes its response. The NDJSON
+terminal record covers the request handler and response path. Work still
+owned by a retained request worker can finish afterward. Trusted session
+and run IDs appear once the host has established them.
+
+Selected request, delivery, lifecycle, and client MCP operations also emit
+one local completion record with a callable name, elapsed time, and outcome.
+Operation records omit arguments, return values, and exception text. The
+source-derived coverage test checks the instrumentation and documented
+exclusions at these boundaries.
+
 **Required after `pip install --user` on Windows:** Python installs scripts to
 `%APPDATA%\Python\Python<version>\Scripts` (for example
 `C:\Users\<you>\AppData\Roaming\Python\Python314\Scripts`). Windows does **not** add this
@@ -1088,6 +1103,22 @@ The framed Content-Length transport (`--framed`) refuses at startup while the tr
 model registry is enforced, because it cannot bind requests to that registry. IDE
 integrations use the ndjson Agent Client Protocol flow above.
 
+### ACP error responses
+
+| Request outcome | JSON-RPC error | Message and data |
+| --- | --- | --- |
+| A known, exposed dispatcher method needs a local dependency that is unavailable | `INTERNAL_ERROR` (`-32603`) | `dependency unavailable` with `data.reason` set to `DEPENDENCY_UNAVAILABLE` |
+| A valid prompt, mode change or config change refers to an unavailable session | `RESOURCE_NOT_FOUND` (`-32002`) | `unknown session` with no error data. Absent and inaccessible retained sessions receive the same response. |
+| A second prompt arrives while the session is executing a turn or serving a usage report | `TURN_BUSY` (`-32913`) | `a turn is already in progress` with no error data. The first request continues to own its result. |
+
+Unknown and policy-disabled methods use `METHOD_NOT_FOUND`. Malformed session
+request shapes use `INVALID_REQUEST`. The prompt handler checks session
+availability before checking whether the prompt contains usable text. NDJSON returns
+`METHOD_NOT_FOUND` for unsupported requests such as `session/load`, regardless of whether
+the supplied session is privately retained. A `session/cancel` notification still cancels
+existing work through the notification path. [ADR-047](docs/decisions/ADR-047-acp-error-selection-at-request-boundaries.md)
+records the scope and code allocation.
+
 ### Verify with real Redis
 
 Unit and default integration tests use in-memory fakes. To prove Redis-backed plan
@@ -1106,6 +1137,9 @@ Without Redis, `requires_redis` tests are deselected by default (`pyproject.toml
 explicitly select a live tier (`pytest -m requires_redis`) and the environment is broken, fixtures
 call `pytest.fail()` with the operator action message — silent skips are forbidden.
 The smoke script exits non-zero when Redis is unreachable or approval replay fails.
+PR CI runs this tier as the last step of the `clean-environment-recheck` job, against a Redis 8
+service container; `tests/integration/acp/test_local_redis_attach_live.py` (it starts its own Docker
+containers) stays local-only.
 
 ## Development worktrees
 
@@ -1147,7 +1181,7 @@ optimus-cost-agent/
 |----------|---------|
 | [docs/README.md](docs/README.md) | Index of every current document; older versions are in each folder's `archive/` |
 | [docs/Optimus-Cost-Agent-Architecture-v2.25.pdf](docs/Optimus-Cost-Agent-Architecture-v2.25.pdf) | High-level design; cost-savings report and its durable accounting source at `a88fde8`; earlier scoped pins retained; Plans 12.10 to 12.13's memory (M1, M3 including backups and import, M2a `/why` and ranked ambiguity) not yet covered: see ADR-037 to ADR-046 and Plans 12.12 and 12.13 |
-| [docs/Optimus-Cost-Agent-LLD-v2.48.pdf](docs/Optimus-Cost-Agent-LLD-v2.48.pdf) | Low-level design; usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 to 12.13's memory (M1, M3 including backups and import, M2a `/why` and ranked ambiguity) not yet covered: see ADR-037 to ADR-046 and Plans 12.12 and 12.13 |
+| [docs/Optimus-Cost-Agent-LLD-v2.49.pdf](docs/Optimus-Cost-Agent-LLD-v2.49.pdf) | Low-level design; v2.49 corrects the EDIT failure lifecycle (§4B.5, #576); usage-report route, ACP commands, accounting ownership and reference/snapshot contracts at `a88fde8`; Plans 12.10 to 12.13's memory (M1, M3 including backups and import, M2a `/why` and ranked ambiguity) not yet covered: see ADR-037 to ADR-046 and Plans 12.12 and 12.13 |
 | [docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf](docs/Optimus-Cost-Agent-Test-Strategy-v1.11.pdf) | Testing approach; real Postgres report tier and Plan 12.9's qualified evidence, preserving failed Windows and separately successful Linux PR/main gates |
 | [docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf](docs/Optimus-Cost-Agent-Agent-Execution-Guardrails-and-Workflow-Strategy-v1.5.pdf) | Execution guardrails |
 | [AGENTS.md](AGENTS.md) | Agent behavior, logging, safety, and testing gates |

@@ -3945,6 +3945,7 @@ def test_establishing_applicability_rejects_dirty_execution_surface(tmp_path: Pa
 
 _RETENTION_IMPORT_PATH = "src/optimus/acp/session_retention.py"
 _URL_POLICY_IMPORT_PATH = "src/optimus_security/url_schemes.py"
+_REQUEST_CORRELATION_IMPORT_PATH = "src/optimus/acp/request_correlation.py"
 
 
 def _assert_current_import_closure_and_unlisted_refusal(monkeypatch: pytest.MonkeyPatch, omitted: str) -> None:
@@ -3952,7 +3953,9 @@ def _assert_current_import_closure_and_unlisted_refusal(monkeypatch: pytest.Monk
 
     # Use checked-out candidate bytes through the same source-provider seam,
     # including new paths that the committed HEAD does not have yet.
-    tracked = probe._tracked_py_paths(REPO_ROOT, "HEAD") | {_RETENTION_IMPORT_PATH, _URL_POLICY_IMPORT_PATH}
+    tracked = probe._tracked_py_paths(REPO_ROOT, "HEAD") | {
+        _RETENTION_IMPORT_PATH, _URL_POLICY_IMPORT_PATH, _REQUEST_CORRELATION_IMPORT_PATH,
+    }
     monkeypatch.setattr(probe, "_tracked_py_paths", lambda *_args: tracked)
     monkeypatch.setattr(probe, "git_cat_file_blob", lambda _root, _commit, path: (REPO_ROOT / path).read_bytes())
     closure = probe.compute_establishing_import_closure(REPO_ROOT)
@@ -3968,6 +3971,11 @@ def test_current_retention_import_closure_and_unlisted_refusal(monkeypatch: pyte
 
 def test_current_url_policy_import_closure_and_unlisted_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
     _assert_current_import_closure_and_unlisted_refusal(monkeypatch, _URL_POLICY_IMPORT_PATH)
+
+
+
+def test_current_request_correlation_import_closure_and_unlisted_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    _assert_current_import_closure_and_unlisted_refusal(monkeypatch, _REQUEST_CORRELATION_IMPORT_PATH)
 
 
 def test_establishing_import_closure_equals_explicit_module_path_subset() -> None:
@@ -4265,6 +4273,11 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     if not budget_committed:
         expected -= {budget_path}
     assert (budget_path in closure) is budget_committed
+    trace = probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/acp/debug_trace.py")
+    correlation_committed = b"from optimus.acp.request_correlation import" in trace
+    if not correlation_committed:
+        expected -= {_REQUEST_CORRELATION_IMPORT_PATH}
+    assert (_REQUEST_CORRELATION_IMPORT_PATH in closure) is correlation_committed
     assert closure == expected
     assert (seam3_path in closure) is seam3_committed
     assert (seam2_paths <= closure) is seam2_committed
@@ -4295,7 +4308,7 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         8 if capture_committed else 0
     ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
         5 if memory_session_committed else 0
-    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed + why_committed + budget_committed
+    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed + why_committed + budget_committed + correlation_committed
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
+import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -20,9 +22,13 @@ from optimus.guardrails.secret_paths import is_secret_path
 DEFAULT_WORKSPACE_CONTEXT_MAX_BYTES = 16 * 1024
 _TRUNCATION_PREFIX = "--- omitted (size cap): "
 
-_FILE_REFERENCE_RE = re.compile(
-    r"(?<![\w./\\-])(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+\.[A-Za-z0-9]+(?![\w/\\-])"
+_FILE_REFERENCE_RE = re.compile(  # segments may hold non-ASCII letters (#634); the extension stays ASCII
+    r"(?<![\w./\\-])(?:[\w.-]+[\\/])*[\w.-]+\.[A-Za-z0-9]+(?![\w/\\-])"
 )
+# #634: a reference the pattern cut at a space or a non-ASCII symbol is the tail of a longer path; these may open that path.
+_QUOTES = "`'\""
+_PATH_OPENERS = frozenset(_QUOTES + "([<")
+_WHOLE_PATH_WINDOW = 256  # shortcut: a whole path is looked for at most this far back on its line; raise it if longer ones are named
 # Dotfiles, folder paths and key files the reference pattern misses (.env, config/.env, .pypirc, id_rsa): only secret
 # ones become references, so naming one is refused visibly (#385). A bare prose word such as "token" never is, but a
 # quoted or backticked one ("`credentials`") is marked as a file name.
@@ -118,7 +124,7 @@ def rank_ambiguity(diagnostics: tuple[WorkspaceReferenceDiagnostic, ...], task: 
     names when the task does not name it (Codex CP3 review 1, finding 1)."""
     if not any(item.status is WorkspaceReferenceStatus.AMBIGUOUS for item in diagnostics):
         return diagnostics
-    own = set(_extract_file_references(task))
+    own = set(_extract_file_references(task, {item.reference for item in diagnostics}.__contains__))  # a whole path resolved already (#634)
     resolved = tuple(dict.fromkeys(item.candidates[0] for item in diagnostics
                                    if item.status is WorkspaceReferenceStatus.RESOLVED and item.reference in own))
     chosen = set(resolved)
@@ -213,7 +219,6 @@ def assemble_workspace_context_for_prompt(
     if not root.is_dir():
         return empty
 
-    references = _extract_file_references(task)
     policy = FilePolicy(root)
     decisions = list(policy.walk(purpose=FilePurpose.AUTOMATIC))
     candidate_paths = [root / decision.relative_path for decision in decisions if decision.allowed]
@@ -222,6 +227,7 @@ def assemble_workspace_context_for_prompt(
         if not decision.allowed:
             excluded_counts[decision.reason] = excluded_counts.get(decision.reason, 0) + 1
     index = _build_eligible_file_index(candidate_paths, root)
+    references = _extract_file_references(task, _exists_in(root, index))
     diagnostics: list[WorkspaceReferenceDiagnostic] = []
     prioritized_paths: list[str] = []
     seen_resolved: set[str] = set()
@@ -314,12 +320,12 @@ def assemble_workspace_context_for_prompt(
 def resolve_task_references(task: str, policy: FilePolicy, listed: Sequence[str]) -> tuple[WorkspaceReferenceDiagnostic, ...]:
     """What the task names, resolved against an already known listing of admitted files, by the rules a full walk uses."""
     index = _build_eligible_file_index([policy.root / path for path in listed], policy.root)
-    found = (_resolve_reference(reference, policy, index) for reference in _extract_file_references(task))
+    found = (_resolve_reference(reference, policy, index) for reference in _extract_file_references(task, _exists_in(policy.root, index)))
     return tuple(item for item in found if item is not None)
 
 
-def extract_file_references(text: str) -> tuple[str, ...]:
-    return _extract_file_references(text)
+def extract_file_references(text: str, exists: Callable[[str], bool] | None = None) -> tuple[str, ...]:
+    return _extract_file_references(text, exists)
 
 
 def blocking_from_diagnostics(diagnostics: tuple[WorkspaceReferenceDiagnostic, ...]) -> tuple[str | None, str | None]:
@@ -360,12 +366,18 @@ def _blocking_from_diagnostics(
     return None, None
 
 
-def _extract_file_references(task: str) -> tuple[str, ...]:
-    references: list[str] = []
+def _extract_file_references(task: str, exists: Callable[[str], bool] | None = None) -> tuple[str, ...]:
+    """What the text names. `exists` says whether a workspace-relative path is there; without it only a quoted path is read whole."""
+    found: list[tuple[int, str]] = []
     for match in _FILE_REFERENCE_RE.finditer(task):
-        reference = match.group(0).replace("\\", "/")
-        if reference not in references:
-            references.append(reference)
+        whole = _whole_path(task, match.start(), match.end(), exists)
+        if whole is None:
+            found.append((match.start(), match.group(0).replace("\\", "/")))
+        else:  # the earlier matches inside it are pieces of the one path, not files of their own (Codex review 1, finding 1)
+            while found and found[-1][0] >= whole[0]:
+                found.pop()
+            found.append(whole)
+    references = list(dict.fromkeys(reference for _, reference in found))
     for match in _PATH_TOKEN_RE.finditer(task):
         token = match.group(0).replace("\\", "/").rstrip(".")
         names_a_file = token.startswith(".") or "/" in token or token.lower() in _KEY_FILE_NAMES
@@ -376,6 +388,69 @@ def _extract_file_references(task: str) -> tuple[str, ...]:
         if is_secret_path(token) and token not in references:
             references.append(token)
     return tuple(references)
+
+
+def _whole_path(text: str, start: int, end: int, exists: Callable[[str], bool] | None) -> tuple[int, str] | None:
+    """#634: where the path starts that ends where a reference ends and has a space or a non-ASCII character before it, and the path,
+    so the reference is not taken for its tail. The longest one that exists wins. One that is not there is read whole only inside
+    quotes, glued to a word that holds a folder and is not there itself ("docs/ops guide.md"): a quoted sentence ("Look at legacy.py",
+    as every prompt in a history envelope is), a quoted list ("Compare src/ guide.md") and unquoted prose ("Fix the bug in guide.md")
+    cannot be told from a path that is not there."""
+    low = max(0, start - _WHOLE_PATH_WINDOW)
+    newline = text.rfind("\n", low, start)
+    first = newline + 1 if newline >= 0 else low
+    for at in range(first, start):
+        opened = at == 0 or text[at - 1].isspace() or text[at - 1] in _PATH_OPENERS
+        if not opened or text[at].isspace() or text[at] in _QUOTES:
+            continue
+        if not any(char.isspace() or not char.isascii() for char in text[at:start]):
+            continue
+        span = text[at:end].replace("\\", "/")
+        if exists is not None and _safe_relative_reference(span) is not None and exists(span):
+            return at, span
+    quote = text[end:end + 1]
+    if not quote or quote not in _QUOTES:
+        return None
+    opened_at = text.rfind(quote, first, start)
+    if opened_at < 0:
+        return None
+    head = text[opened_at + 1:start]
+    tail = head.rstrip()
+    word = tail.split()[-1] if tail.split() else ""
+    glued = tail != head or not text[start - 1].isascii()  # a space, or a non-ASCII symbol, joins the word to the reference
+    if not glued or not any(char in word for char in "/\\") or word[-1] in "/\\" or word[0] in _QUOTES or _FILE_REFERENCE_RE.fullmatch(word):
+        return None  # a folder written alone, or a quoted word, is named on its own (Codex reviews 1 and 2)
+    if exists is not None and _safe_relative_reference(word) is not None and exists(word.replace("\\", "/")):
+        return None  # the word is a thing of its own that is there (Codex review 2, finding 2)
+    at = opened_at + 1 + len(tail) - len(word)
+    return at, text[at:end].replace("\\", "/")
+
+
+def on_disk(root: Path) -> Callable[[str], bool]:
+    """Whether a workspace-relative path is on disk. Only a path whose first part is an entry of the root is looked up, so prose costs
+    one listing of the root, and a rooted or drive spelling is never looked up outside the workspace (Codex review 1, findings 5, 6)."""
+    entries: set[str] | None = None
+
+    def exists(relative: str) -> bool:
+        nonlocal entries
+        safe = _safe_relative_reference(relative)
+        if safe is None or not safe.parts:
+            return False
+        if entries is None:
+            try:
+                entries = {os.path.normcase(name) for name in os.listdir(root)}
+            except OSError:
+                entries = set()
+        # Path drops "./" as resolution does, and normcase folds case where the file system does (Codex review 2, finding 1)
+        return os.path.normcase(safe.parts[0]) in entries and (root / relative).exists()
+
+    return exists
+
+
+def _exists_in(root: Path, index: _EligibleFileIndex) -> Callable[[str], bool]:
+    """Listed, or on disk: a path the policy refuses is still the one named, and is refused by name, never replaced (#634)."""
+    disk = on_disk(root)
+    return lambda relative: relative in index.by_relative or disk(relative)
 
 
 def _safe_relative_reference(reference: str) -> Path | None:
@@ -410,6 +485,8 @@ def _resolve_reference(
     safe = _safe_relative_reference(reference)
     if safe is None:
         return None
+    if ntpath.isreserved(reference):  # #590: a device or a second name for a file, refused by name and never looked up
+        return WorkspaceReferenceDiagnostic(reference=reference, status=WorkspaceReferenceStatus.NOT_READABLE, candidates=())
 
     normalized = Path(*safe.parts)
     relative_posix = normalized.as_posix()

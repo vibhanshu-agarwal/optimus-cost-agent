@@ -55,7 +55,8 @@ def _usage(gateway_request_id: str = "gw-1", **changes: Any) -> ProviderUsage:
 
 
 # Caller-side bookkeeping each entry type carries; none of it is a settled fact. ``run_id`` is
-# among them today: a same-id replay under another run is dropped, not counted in that run.
+# among them: a gateway_request_id is unique across runs, so a same-id replay under another run
+# is dropped, not counted in that run, as the Redis claim does (#573).
 _EVIDENCE_BOOKKEEPING = {
     "evidence_id": "other",
     "run_id": "run-2",
@@ -224,3 +225,21 @@ def test_empty_totals_are_a_decimal_zero_and_an_int_zero(ledger_type: Any, make:
     cost, units = ledger.total_cost_usd(), ledger.total_billing_units()
     assert type(cost) is Decimal and cost == 0
     assert type(units) is int and units == 0
+
+
+@LEDGERS
+def test_replay_under_another_run_is_a_no_op_counted_in_the_first_run(ledger_type: Any, make: Make, bookkeeping: dict) -> None:
+    # #573: a gateway_request_id is unique across runs, as the Redis claim is.
+    ledger = ledger_type().record(make())
+
+    assert ledger.record(make(run_id="run-2", cost_usd=Decimal("0.0030"))) is ledger
+    assert ledger.total_cost_usd(run_id="run-1") == Decimal("0.003")
+    assert ledger.total_cost_usd(run_id="run-2") == Decimal("0")
+
+
+@LEDGERS
+def test_divergent_record_under_another_run_raises(ledger_type: Any, make: Make, bookkeeping: dict) -> None:
+    ledger = ledger_type().record(make())
+
+    with pytest.raises(DuplicateGatewayRequestError, match="gw-1"):
+        ledger.record(make(run_id="run-2", billing_units=4))

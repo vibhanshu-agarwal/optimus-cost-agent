@@ -112,6 +112,29 @@ def test_ci_runs_the_full_default_suite_with_every_product_measured_and_gated() 
     assert "run_profile" not in text and "--profile" not in text
 
 
+def test_ci_runs_the_requires_redis_tier_last_against_a_real_redis_service() -> None:
+    """#620: the job's Redis 8 service (TimeSeries built in) on a non-default host port, health-checked, and one step
+    after the coverage evidence selecting the tier. The URL lives on that step only, so the default run never sees it."""
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "guardrails.yml").read_text(encoding="utf-8"))
+    job = workflow["jobs"]["clean-environment-recheck"]
+    service = job["services"]["redis"]
+    assert service["image"].startswith("redis:8.") and "@sha256:" in service["image"]
+    assert service["ports"] == ["16379:6379"] and '--health-cmd "redis-cli ping"' in service["options"]
+    names = [step.get("name") for step in job["steps"]]
+    assert names[-2:] == ["Upload product coverage evidence", "Live tier: requires_redis"]
+    step = job["steps"][-1]
+    assert step["env"] == {  # the Gateway values are synthetic: preflight checks presence, nothing contacts them
+        "OPTIMUS_REDIS_URL": "redis://127.0.0.1:16379/0", "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765",
+        "OPTIMUS_API_KEY": "opt-live-test",  # pragma: allowlist secret - synthetic test value, not a credential
+    }
+    assert "if" not in step and "continue-on-error" not in step
+    assert shlex.split(step["run"]) == [
+        "uv", "run", "python", "-m", "pytest", "-m", "requires_redis", "-q", "-p", "no:cacheprovider", "--no-cov",
+        "--ignore=tests/integration/acp/test_local_redis_attach_live.py",
+    ]
+    assert "OPTIMUS_REDIS_URL" not in str(workflow.get("env", {})) + str(job.get("env", {}))
+
+
 def test_default_agent_config_paths_include_nested_agents_cursor_rules_and_root_mcp(tmp_path):
     nested = tmp_path / "packages" / "api"
     nested.mkdir(parents=True)
@@ -352,10 +375,151 @@ def _assert_baseline_policy(baseline: dict) -> None:
     ), "filter configuration must be unchanged, including every threshold and option"
 
 
-def test_detect_secrets_baseline_matches_the_approved_exception_set():
-    baseline = json.loads((ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
+_FIXTURE_SET_SHA256 = "5c7fce60c18ce867b2bc7064045d5ba7c769f3eb4249f1d1ab43543d2c0b1f59"  # pragma: allowlist secret - cohort checksum
+_FIXTURE_ROW_FIELDS = frozenset({"filename", "type", "hashed_secret", "is_secret", "is_verified"})
 
-    _assert_baseline_policy(baseline)
+
+def _unique_baseline_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for name, value in pairs:
+        assert name not in result, "duplicate baseline JSON member"
+        result[name] = value
+    return result
+
+
+def _read_live_baseline(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_baseline_object)
+
+
+def _assert_live_baseline_policy(baseline: dict) -> None:
+    assert set(baseline) == {"version", "plugins_used", "filters_used", "results", "generated_at"}, "unexpected baseline schema"
+    assert baseline["version"] == "1.5.0", "unexpected baseline format version"
+    assert isinstance(baseline["generated_at"], str), "unexpected baseline generation metadata"
+    assert isinstance(baseline["results"], dict), "baseline results must be a path mapping"
+
+    canonical_results = {}
+    for path, entries in baseline["results"].items():
+        canonical = _canonical(path)
+        assert canonical not in canonical_results, "duplicate canonical baseline path"
+        assert isinstance(entries, list), "baseline path must contain a list of records"
+        canonical_results[canonical] = entries
+
+    legacy = {path: entries for path, entries in canonical_results.items() if path in APPROVED_BASELINE_RELPATHS}
+    _assert_baseline_policy({**baseline, "results": legacy})
+
+    fixtures = {path: entries for path, entries in canonical_results.items() if path not in legacy}
+    rows: list[tuple[str, str, str]] = []
+    for path, entries in fixtures.items():
+        root, *parts = path.split("/")
+        assert root in {"tests", "tools"} and parts and all(part not in {"", ".", ".."} for part in parts), (
+            "fixture exception path must be strictly below tests or tools"
+        )
+        assert entries, "fixture exception path must have at least one record"
+        for entry in entries:
+            assert isinstance(entry, dict) and set(entry) == _FIXTURE_ROW_FIELDS, "unexpected fixture exception row fields"
+            assert isinstance(entry["filename"], str) and _canonical(entry["filename"]) == path, (
+                "fixture embedded filename must match its path"
+            )
+            assert entry["is_secret"] is False and entry["is_verified"] is False, "fixture classification must remain false"
+            detector = entry["type"]
+            fingerprint = entry["hashed_secret"]
+            assert isinstance(detector, str) and detector, "fixture detector type is missing"
+            assert isinstance(fingerprint, str) and re.fullmatch(r"[0-9a-f]{40}", fingerprint), "unexpected fixture fingerprint format"
+            rows.append((path, detector, fingerprint))
+
+    assert len(fixtures) == 27, "expected exactly 27 approved fixture paths"
+    assert len(set(rows)) == len(rows), "duplicate fixture exception row"
+    assert len(rows) == 120, "expected exactly 120 approved fixture rows"
+    payload = json.dumps(sorted(rows), separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    assert hashlib.sha256(payload).hexdigest() == _FIXTURE_SET_SHA256, "fixture exception set differs from the approved cohort"
+
+
+def test_detect_secrets_baseline_matches_the_approved_exception_set():
+    _assert_live_baseline_policy(_read_live_baseline(ROOT / ".secrets.baseline"))
+
+
+@pytest.fixture
+def fixture_baseline_delta() -> tuple[dict, str]:
+    baseline = _read_live_baseline(ROOT / ".secrets.baseline")
+    path = next(
+        path for path, entries in sorted(baseline["results"].items())
+        if _canonical(path) not in APPROVED_BASELINE_RELPATHS and len(entries) > 1
+    )
+    return baseline, path
+
+
+@pytest.mark.parametrize(
+    "field,value,expected",
+    [
+        ("type", "Changed Detector", "fixture exception set differs"),
+        ("hashed_secret", "0" * 40, "fixture exception set differs"),
+        ("hashed_secret", "invalid", "unexpected fixture fingerprint format"),
+        ("filename", "tests/elsewhere.py", "fixture embedded filename must match"),
+        ("is_secret", True, "fixture classification must remain false"),
+        ("is_verified", True, "fixture classification must remain false"),
+        ("line_number", 1, "unexpected fixture exception row fields"),
+    ],
+    ids=["detector", "fingerprint", "malformed-fingerprint", "embedded-path", "classification", "verification", "line"],
+)
+def test_reviewed_fixture_policy_rejects_changed_field(fixture_baseline_delta, field, value, expected):
+    baseline, path = fixture_baseline_delta
+    baseline["results"][path][0][field] = value
+    with pytest.raises(AssertionError, match=expected):
+        _assert_live_baseline_policy(baseline)
+
+
+@pytest.mark.parametrize(
+    "mutation,expected",
+    [
+        ("added", "expected exactly 120 approved fixture rows"),
+        ("removed", "expected exactly 120 approved fixture rows"),
+        ("duplicate", "duplicate fixture exception row"),
+    ],
+    ids=["added", "removed", "duplicate"],
+)
+def test_reviewed_fixture_policy_rejects_changed_row_count(fixture_baseline_delta, mutation, expected):
+    baseline, path = fixture_baseline_delta
+    rows = baseline["results"][path]
+    if mutation == "removed":
+        rows.pop()
+    else:
+        extra = dict(rows[0])
+        if mutation == "added":
+            extra["hashed_secret"] = "0" * 40
+        rows.append(extra)
+    with pytest.raises(AssertionError, match=expected):
+        _assert_live_baseline_policy(baseline)
+
+
+@pytest.mark.parametrize(
+    "new_path,expected",
+    [
+        ("tests/newly_relocated_fixture.py", "fixture exception set differs"),
+        ("src/newly_relocated_fixture.py", "fixture exception path must be strictly below tests or tools"),
+        ("tests/../src/newly_relocated_fixture.py", "fixture exception path must be strictly below tests or tools"),
+    ],
+    ids=["relocated", "production", "traversal"],
+)
+def test_reviewed_fixture_policy_rejects_changed_path(fixture_baseline_delta, new_path, expected):
+    baseline, path = fixture_baseline_delta
+    entries = baseline["results"].pop(path)
+    baseline["results"][new_path] = [{**entry, "filename": new_path} for entry in entries]
+    with pytest.raises(AssertionError, match=expected):
+        _assert_live_baseline_policy(baseline)
+
+
+def test_reviewed_fixture_policy_rejects_canonical_path_alias(fixture_baseline_delta):
+    baseline, path = fixture_baseline_delta
+    baseline["results"][path.replace("/", "\\")] = baseline["results"][path]
+    with pytest.raises(AssertionError, match="duplicate canonical baseline path"):
+        _assert_live_baseline_policy(baseline)
+
+
+def test_reviewed_fixture_policy_rejects_duplicate_json_member(tmp_path: Path):
+    path = tmp_path / ".secrets.baseline"
+    path.write_text('{"results": {}, "results": {}}', encoding="utf-8")
+    with pytest.raises(AssertionError, match="duplicate baseline JSON member"):
+        _read_live_baseline(path)
 
 
 @pytest.mark.parametrize("relpath", sorted(PDF_CHECKSUM_EXCEPTION_SHA256))
@@ -596,17 +760,17 @@ def _venv_scripts_dir() -> Path:
 
 
 def _sanitized_env(repo: Path) -> dict[str, str]:
-    """Environment with inherited Git state removed and the locked venv pinned.
-
-    A bare ``uv run`` inside a directory with no ``pyproject.toml`` silently
-    resolves an unrelated interpreter from uv's own cache, so VIRTUAL_ENV and
-    UV_PROJECT_ENVIRONMENT are pinned here and the resolution is asserted in
-    ``run_configured_step`` before any scanner output is trusted.
-    """
-    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    env["PATH"] = os.pathsep.join([str(_venv_scripts_dir()), env.get("PATH", "")])
-    env["VIRTUAL_ENV"] = str(_venv_root())
-    env["UV_PROJECT_ENVIRONMENT"] = str(_venv_root())
+    """Pin checkout-local Python for uv invocations inside the fixture."""
+    conflicting = {"UV_SYSTEM_PYTHON", "UV_PYTHON_PREFERENCE", "UV_NO_PROJECT", "UV_ISOLATED"}
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_") and key not in conflicting}
+    venv = _venv_root().absolute()
+    scripts = _venv_scripts_dir().absolute()
+    interpreter = scripts / ("python.exe" if os.name == "nt" else "python")
+    assert interpreter.is_file(), "fixture checkout-local Python is unavailable"
+    env["PATH"] = os.pathsep.join([str(scripts), env.get("PATH", "")])
+    env["VIRTUAL_ENV"] = str(venv)
+    env["UV_PROJECT_ENVIRONMENT"] = str(venv)
+    env["UV_PYTHON"] = str(interpreter)
     env["PRE_COMMIT_HOME"] = str(repo / ".pre-commit-cache")
     env["PYTHONIOENCODING"] = "utf-8"
     env["PYTHONUTF8"] = "1"
@@ -755,17 +919,29 @@ def _bash() -> str:
 
 
 def run_configured_step(repo: Path) -> subprocess.CompletedProcess[str]:
-    """Execute the real workflow step's ``run`` body in a real shell."""
+    """Verify the uv interpreter, then execute the real workflow run body."""
     bash = _bash()
-    probe_command = "uv run python -c " + repr("import sys; print(sys.executable)")
+    probe_source = 'import json, sys; print(json.dumps({"executable": sys.executable, "prefix": sys.prefix}))'
+    probe_command = "uv run python -c " + repr(probe_source)
     probe = _run([bash, "-e", "-o", "pipefail", "-c", probe_command], repo)
     assert probe.returncode == 0, f"uv could not resolve an interpreter: {probe.stderr}"
-    resolved = Path(probe.stdout.strip()).resolve()
+    try:
+        identity = json.loads(probe.stdout)
+    except json.JSONDecodeError:
+        raise AssertionError("uv returned a malformed interpreter probe") from None
+    assert (
+        isinstance(identity, dict)
+        and set(identity) == {"executable", "prefix"}
+        and all(isinstance(value, str) and Path(value).is_absolute() for value in identity.values())
+    ), "uv returned a malformed interpreter probe"
+
+    resolved = Path(identity["executable"]).resolve()
     expected = (_venv_scripts_dir() / resolved.name).resolve()
     assert resolved == expected, (
         f"uv resolved {resolved} instead of the locked environment {expected}; "
         "scanner output would not be trustworthy"
     )
+    assert Path(identity["prefix"]).resolve() == _venv_root().resolve(), "uv resolved a prefix outside the locked environment"
     return _run([bash, "-e", "-o", "pipefail", "-c", _configured_run_string(repo)], repo)
 
 
@@ -1394,12 +1570,21 @@ def test_posix_bash_retains_native_lookup(monkeypatch, available: bool) -> None:
             _bash()
 
 
-@pytest.mark.parametrize("outcome", ["success", "mismatch", "probe-failure"], ids=["success", "mismatch", "probe-failure"])
+@pytest.mark.parametrize(
+    "outcome",
+    ["success", "mismatch", "probe-failure", "foreign-prefix-same-executable", "malformed-probe"],
+    ids=["success", "mismatch", "probe-failure", "foreign-prefix-same-executable", "malformed-probe"],
+)
 def test_configured_step_keeps_one_shell_and_locked_probe(tmp_path: Path, monkeypatch, outcome: str) -> None:
     module = sys.modules[__name__]
-    scripts = tmp_path / "locked" / "bin"
+    locked = tmp_path / "locked"
+    scripts = locked / "bin"
     interpreter = scripts / Path(sys.executable).name
-    resolved = interpreter if outcome != "mismatch" else tmp_path / "foreign" / interpreter.name
+    reported_executable = tmp_path / "foreign" / interpreter.name if outcome == "mismatch" else interpreter
+    reported_prefix = tmp_path / "foreign" if outcome == "foreign-prefix-same-executable" else locked
+    reported = json.dumps({"executable": str(reported_executable), "prefix": str(reported_prefix)})
+    if outcome == "malformed-probe":
+        reported = str(interpreter)
     shell = str((tmp_path / "Git space-é" / "bin" / "bash.exe").resolve())
     shell_calls = []
     commands = []
@@ -1413,11 +1598,11 @@ def test_configured_step_keeps_one_shell_and_locked_probe(tmp_path: Path, monkey
         assert repo == tmp_path
         commands.append(argv)
         if len(commands) == 1:
-            return subprocess.CompletedProcess(argv, 127 if outcome == "probe-failure" else 0, str(resolved), "probe-error")
+            return subprocess.CompletedProcess(argv, 127 if outcome == "probe-failure" else 0, reported, "probe-error")
         return subprocess.CompletedProcess(argv, 0, "body-result", "")
 
     monkeypatch.setattr(module, "_bash", bash)
-    monkeypatch.setattr(module, "_venv_root", lambda: scripts.parent)
+    monkeypatch.setattr(module, "_venv_root", lambda: locked)
     monkeypatch.setattr(module, "_venv_scripts_dir", lambda: scripts)
     monkeypatch.setattr(module, "_configured_run_string", lambda repo: body)
     monkeypatch.setattr(module, "_run", run)
@@ -1425,12 +1610,45 @@ def test_configured_step_keeps_one_shell_and_locked_probe(tmp_path: Path, monkey
         assert run_configured_step(tmp_path).stdout == "body-result"
         assert commands[1] == [shell, "-e", "-o", "pipefail", "-c", body]
     else:
-        expected = "uv could not resolve an interpreter" if outcome == "probe-failure" else "instead of the locked environment"
-        with pytest.raises(AssertionError, match=expected):
+        messages = {
+            "mismatch": "instead of the locked environment",
+            "probe-failure": "uv could not resolve an interpreter",
+            "foreign-prefix-same-executable": "uv resolved a prefix outside the locked environment",
+            "malformed-probe": "uv returned a malformed interpreter probe",
+        }
+        with pytest.raises(AssertionError, match=messages[outcome]):
             run_configured_step(tmp_path)
         assert len(commands) == 1
-    assert commands[0] == [shell, "-e", "-o", "pipefail", "-c", "uv run python -c " + repr("import sys; print(sys.executable)")]
+    probe_source = 'import json, sys; print(json.dumps({"executable": sys.executable, "prefix": sys.prefix}))'
+    assert commands[0] == [shell, "-e", "-o", "pipefail", "-c", "uv run python -c " + repr(probe_source)]
     assert shell_calls == [shell]
+
+
+def test_fixture_uv_environment_pins_checkout_interpreter(tmp_path: Path, monkeypatch) -> None:
+    module = sys.modules[__name__]
+    locked = tmp_path / "locked"
+    scripts = locked / ("Scripts" if os.name == "nt" else "bin")
+    scripts.mkdir(parents=True)
+    interpreter = scripts / ("python.exe" if os.name == "nt" else "python")
+    interpreter.touch()
+    fixture = tmp_path / "fixture"
+    monkeypatch.setattr(module, "_venv_root", lambda: locked)
+    monkeypatch.setattr(module, "_venv_scripts_dir", lambda: scripts)
+    monkeypatch.setenv("UV_PYTHON", str(tmp_path / "foreign-python"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "foreign-index"))
+    conflicting = ("UV_SYSTEM_PYTHON", "UV_PYTHON_PREFERENCE", "UV_NO_PROJECT", "UV_ISOLATED")
+    for key in conflicting:
+        monkeypatch.setenv(key, "1")
+
+    env = _sanitized_env(fixture)
+
+    assert env["UV_PYTHON"] == str(interpreter)
+    assert env["VIRTUAL_ENV"] == env["UV_PROJECT_ENVIRONMENT"] == str(locked)
+    assert env["PATH"].split(os.pathsep)[0] == str(scripts)
+    assert env["PRE_COMMIT_HOME"] == str(fixture / ".pre-commit-cache")
+    assert all(key not in env for key in conflicting)
+    assert not any(key.startswith("GIT_") for key in env)
+    assert os.environ["UV_PYTHON"] == str(tmp_path / "foreign-python")
 
 
 @pytest.mark.parametrize("returncode", [0, 7], ids=["early-success", "early-error"])

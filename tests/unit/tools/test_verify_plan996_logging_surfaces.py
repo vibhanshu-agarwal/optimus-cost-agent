@@ -83,8 +83,8 @@ def test_discovers_representative_live_persistence_and_protocol_sinks() -> None:
     assert {
         "optimus.telemetry.jsonl:JsonlTelemetryWriter.append:jsonl_append",
         "optimus.agent.state_store:RedisAgentStateStore.save_plan:redis_hash_write",
-        "optimus.acp.dispatcher:JsonRpcDispatcher.dispatch:jsonrpc_error_response",
-        "optimus.acp.spec:AcpDuplexAdapter._handle_session_prompt:structured_exception_export",
+        "optimus.acp.dispatcher:JsonRpcDispatcher._dispatch:jsonrpc_error_response",
+        "optimus.acp.errors:outbound_error_response:structured_exception_export",
         "optimus_gateway.responses:handle_responses_request:http_error_response",
     }.issubset(discovered)
 

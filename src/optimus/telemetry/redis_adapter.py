@@ -101,11 +101,14 @@ class RedisTelemetryAdapter:
     ) -> None:
         """Persist one settled Gateway usage attempt to two run-scoped TimeSeries.
 
-        Idempotent by ``gateway_request_id``: a fingerprint of every accounting field is
-        claimed via ``HSETNX`` under the adapter lock. An identical replay's fingerprint
-        matches the existing claim (cost compared by value) and is a no-op (no second ``TS.ADD``); a divergent
-        fingerprint raises :class:`~optimus.usage.errors.DuplicateGatewayRequestError`
-        without writing a second point. If the TimeSeries write itself fails after a new
+        Follows the settled-facts rule of ``optimus.usage.ledger.append_settled``: a
+        ``gateway_request_id`` is unique across runs, so its claim is global (one hash,
+        ``{USAGE_KEY_PREFIX}:claims``), not per run. A fingerprint of the settled facts is
+        claimed via ``HSETNX`` under the adapter lock. A replay with the same facts (cost
+        compared by value), under this run or another, is a no-op: no second ``TS.ADD``, so the
+        cost is counted once, in the run that claimed it first. Different facts raise
+        :class:`~optimus.usage.errors.DuplicateGatewayRequestError` without writing a second
+        point. If the TimeSeries write itself fails after a new
         claim is made, the claim is released so a legitimate retry is not permanently
         blocked by a phantom claim.
         """
@@ -115,7 +118,7 @@ class RedisTelemetryAdapter:
 
         if not run_id:
             raise ValueError("Access constraint violation: Missing telemetry run_id key.")
-        claims_key = f"{USAGE_KEY_PREFIX}:{run_id}:claims"
+        claims_key = f"{USAGE_KEY_PREFIX}:claims"
         fields = (gateway_request_id, provider, provider_request_id, billing_units)
         fingerprint = json.dumps(_claim_fields(*fields, str(cost_usd)), sort_keys=True)
         async with self._settled_usage_lock:

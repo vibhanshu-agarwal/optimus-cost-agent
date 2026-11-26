@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log
+from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, observe_operation
+from optimus.acp.request_correlation import detached_request_context
 from optimus_security.failure_facts import exception_fact, host_session_id
 
 if TYPE_CHECKING:
@@ -169,6 +170,7 @@ class SessionRetentionOwner:
         entry = self._entries.get(session_id)
         return entry is not None and entry.phase == 'ACTIVE'
 
+    @observe_operation
     def adopt(self, sessions: tuple[AcpSpecSession, ...]) -> None:
         self._check_loop()
         if self._bound or self._entries:
@@ -189,6 +191,7 @@ class SessionRetentionOwner:
         entry.quiescent.set()
         return entry
 
+    @observe_operation
     def create(self, factory: Callable[[], AcpSpecSession], *, provisional: bool = False) -> AcpSpecSession:
         self._check_loop()
         if self._admission_closed or self.retained_count >= self.policy.max_sessions:
@@ -205,6 +208,7 @@ class SessionRetentionOwner:
         self._log('created', self._entries[session.session_id])
         return session
 
+    @observe_operation
     def activate(self, session_id: str) -> None:
         self._check_loop()
         entry = self._entries[session_id]
@@ -253,6 +257,7 @@ class SessionRetentionOwner:
             states.append(state)
         return tuple(states)
 
+    @observe_operation
     def request_retire(self, session_id: str, *, reason: RetirementReason) -> RetirementStatus:
         self._check_loop()
         entry = self._entries.get(session_id)
@@ -262,10 +267,13 @@ class SessionRetentionOwner:
             return entry.result.status
         if entry.job is None:
             entry.phase, entry.reason = 'RETIRING', reason
-            entry.job = self._loop.create_task(self._retire(entry), name='optimus-session-retirement')
+            entry.job = self._loop.create_task(
+                self._retire(entry), name='optimus-session-retirement', context=detached_request_context(),
+            )
             self._log('retiring', entry)
         return RetirementStatus.DEFERRED if entry.uses else RetirementStatus.RETIRING
 
+    @observe_operation
     def close_admission(self) -> None:
         self._check_loop()
         self._admission_closed = True
@@ -326,6 +334,7 @@ class SessionRetentionOwner:
             raise
         return self._finish(entry, close)
 
+    @observe_operation
     async def drain(self) -> tuple[RetirementResult, ...]:
         self._check_loop()
         results: list[RetirementResult] = []
@@ -346,6 +355,7 @@ class SessionRetentionOwner:
             raise primary
         return tuple(results)
 
+    @observe_operation
     async def wait_retired(self, session_id: str) -> RetirementResult | None:
         self._check_loop()
         entry = self._entries.get(session_id)
@@ -367,6 +377,7 @@ class SessionRetentionOwner:
                            for state in self._states(entry))):
                 raise RuntimeError('session cleanup requires await aclose()')
 
+    @observe_operation
     def remove_sync(self, session_id: str) -> None:
         self.precheck_sync(session_id)
         entry = self._entries.get(session_id)
@@ -395,6 +406,7 @@ class SessionRetentionOwner:
         if primary is not None:
             raise primary
 
+    @observe_operation
     def close_all_sync(self) -> None:
         self.precheck_sync()
         self.close_admission()

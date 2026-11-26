@@ -120,3 +120,17 @@ def test_greek_confusable_blocks_config_text():
 
     assert result.verdict is TrustScanVerdict.BLOCK
     assert any(finding.rule_id == "injection.unicode_confusable" for finding in result.findings)
+
+
+def test_config_text_keeps_the_strict_confusable_rule():
+    """#596 narrowed the rule for shell commands only; config text mixing Latin with Han is still refused."""
+    result = scan_text("run pytest tests/" + chr(0x6D4B) + chr(0x8BD5) + ".py")
+
+    assert any(finding.rule_id == "injection.unicode_confusable" for finding in result.findings)
+
+
+def test_config_prose_with_a_curly_apostrophe_is_not_a_confusable():
+    """#619 refuses ASCII look-alikes in shell commands only; ordinary Latin config prose keeps its typography."""
+    result = scan_text("Search packages by name; don" + chr(0x2019) + "t include versions" + chr(0x2013) + "ranges.")
+
+    assert not [f for f in result.findings if f.rule_id == "injection.unicode_confusable"]

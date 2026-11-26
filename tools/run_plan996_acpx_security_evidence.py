@@ -154,7 +154,8 @@ _STREAM_READ_SIZE = 8192
 _CAPTURE_WAIT_TIMEOUT_SECONDS = 30.0
 _DRIVE_SESSION_WAIT_TIMEOUT_SECONDS = 600.0
 _TERMINATION_CLEANUP_GRACE_SECONDS = 3.0
-_SANITIZER_VERSION = "p996-streaming-sanitizer-v1"
+# v2 (#622): a release no longer cuts a label from its value, so stream output can change.
+_SANITIZER_VERSION = "p996-streaming-sanitizer-v2"
 _EVIDENCE_MANIFEST_HMAC_DOMAIN = b"p996-evidence-manifest-hmac-v1"
 _EVIDENCE_MANIFEST_FILENAME = "sanitizer-manifest.json"
 _TRANSCRIPT_ARTIFACTS = (
@@ -643,17 +644,26 @@ def _capture_to_disk(
             for name, count in counts.items():
                 rule_counts[name] = rule_counts.get(name, 0) + count
 
+    worker_errors: list[BaseException] = []
+
+    def _pump(source: TextIO, destination: Path) -> None:
+        try:
+            _merge_counts(_stream_sanitized(source, destination, known_secrets=secrets))
+        except BaseException as exc:  # re-raised below (#622)
+            worker_errors.append(exc)
+
+    # Each transcript is written under a staging name and gets its promotable name only once both workers have
+    # finished cleanly: a failed or timed-out worker's partial file never sits where quarantine or signing look (#622).
+    finals = (output_dir / "transcript.stdout", output_dir / "transcript.stderr")
+    partials = tuple(path.with_name(path.name + ".partial") for path in finals)
+    # A previous run's evidence must not survive a failed re-run into the same directory and still verify (#622 round 3).
+    for name in (*_TRANSCRIPT_ARTIFACTS, _EVIDENCE_MANIFEST_FILENAME):
+        (output_dir / name).unlink(missing_ok=True)
+    for partial in partials:
+        partial.unlink(missing_ok=True)
     workers = [
-        threading.Thread(
-            target=lambda: _merge_counts(
-                _stream_sanitized(process.stdout, output_dir / "transcript.stdout", known_secrets=secrets)
-            ),
-        ),
-        threading.Thread(
-            target=lambda: _merge_counts(
-                _stream_sanitized(process.stderr, output_dir / "transcript.stderr", known_secrets=secrets)
-            ),
-        ),
+        threading.Thread(target=_pump, args=(process.stdout, partials[0])),
+        threading.Thread(target=_pump, args=(process.stderr, partials[1])),
     ]
     for worker in workers:
         worker.start()
@@ -683,6 +693,12 @@ def _capture_to_disk(
         for worker in workers:
             worker.join(timeout=max(0.0, cleanup_deadline - time.monotonic()))
         exit_code = process.returncode or 1
+    if worker_errors:
+        raise worker_errors[0]
+    if timed_out or any(worker.is_alive() for worker in workers):
+        return CaptureResult(exit_code=exit_code or 1, rule_counts=dict(rule_counts))
+    for partial, final in zip(partials, finals, strict=True):
+        partial.replace(final)
     return CaptureResult(exit_code=exit_code, rule_counts=dict(rule_counts))
 
 

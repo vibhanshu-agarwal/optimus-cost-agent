@@ -147,7 +147,7 @@ class GatewayToolPolicy:
                 return GatewayToolDecision(
                     allowed=False,
                     rule_id="NON_HTTPS_URL",
-                    reason=f"URL is not HTTPS: {url}",
+                    reason="URL is not HTTPS",
                     effective_domains=effective_domains,
                 )
             allowlist = effective_domains or self._allowed_domains
@@ -213,15 +213,29 @@ def _optional_string(metadata: Mapping[str, Any], key: str) -> str | None:
     return value
 
 
+# #610: the agent reads these URLs with pydantic's HttpUrl, which refuses more than 2083 UTF-8 bytes.
+_MAX_URL_BYTES = 2083
+
+
 def _https_hostname(url: str) -> str | None:
-    parsed = urlparse(url)
+    try:
+        if len(url) > _MAX_URL_BYTES or len(url.encode()) > _MAX_URL_BYTES:
+            return None
+        parsed = urlparse(url)
+        parsed.port  # noqa: B018
+    except ValueError:  # #603: a host or port the parser rejects (an unclosed bracket, port 65536) is no host;
+        # #610: so is a URL that is too long or does not encode (a lone surrogate)
+        return None
     if parsed.scheme != "https" or parsed.hostname is None:
         return None
     return parsed.hostname.lower().rstrip(".")
 
 
 def _normalize_domain(value: str) -> str:
-    parsed = urlparse(value)
+    try:
+        parsed = urlparse(value)
+    except ValueError:  # #603: a host the parser rejects (an unclosed bracket) is no host
+        return ""
     if parsed.scheme and parsed.netloc:
         if parsed.hostname is None:
             return ""

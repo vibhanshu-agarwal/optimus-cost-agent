@@ -3,9 +3,11 @@ from __future__ import annotations
 import contextlib
 import json
 import secrets
+import sys
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socket import SHUT_WR
 from typing import Any
 
 from optimus_gateway import request_diagnostics, usage_capture
@@ -383,19 +385,28 @@ class OptimusGatewayHandler(BaseHTTPRequestHandler):
         )
 
     def _refuse_other_identity(self, path: str) -> None:
-        """Refused before dispatch, so no upstream call, ledger write or budget is touched. The body is drained when it
-        can be, so a small client write is not reset; past the bound the answer is the same and the connection closes."""
+        """Refuse before dispatch, without an upstream call, ledger write or budget charge."""
         self.close_connection = True
         deadline = _monotonic() + _REJECTED_POST_BODY_SECONDS
-        with contextlib.suppress(_RejectedPostError):
+        oversized = False
+        try:
             length = _rejected_post_length(self.headers)
             if length:
                 _discard_rejected_post_body(self.rfile, self.connection, length, deadline)
+        except _RejectedPostError as rejection:
+            oversized = rejection.status == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
         route = path if path in _CORE_ROUTES or path in TOOL_ROUTE_PATHS else "unrecognized"
         with contextlib.suppress(Exception):  # noqa: BLE001 - a diagnostic never stops the refusal it describes
             request_diagnostics.write_log_line(json.dumps({"event": "gateway_identity_mismatch", "path": route}))
         self._send_json(HTTPStatus.CONFLICT, {"error": "gateway_identity_mismatch"},
                         write_deadline=_monotonic() + _REJECTED_POST_WRITE_SECONDS)
+        if oversized:
+            # Stage the close so an outstanding body cannot cut off the queued response: closing with unread bytes
+            # resets the connection. Nothing read here is kept, so the deadline is the only bound; it ends at the
+            # client's end of stream or at the deadline, whichever is first.
+            with contextlib.suppress(_RejectedPostError, OSError):
+                self.connection.shutdown(SHUT_WR)
+                _discard_rejected_post_body(self.rfile, self.connection, sys.maxsize, deadline)
 
     def _reject_unhandled_post(self) -> None:
         """Terminal handling for the early-404 branch: consume a bounded, well-framed body first."""

@@ -42,10 +42,13 @@ def settled_fingerprint(entry: SettledEntry) -> tuple[str, str, str | None, int,
 def append_settled(entries: tuple[_Entry, ...], entry: _Entry) -> tuple[_Entry, ...] | None:
     """Append ``entry`` keyed by ``gateway_request_id``, idempotently; ``None`` means a replay.
 
-    Same-ID replays are compared on the settled-facts fingerprint alone --
-    ``gateway_request_id``, ``provider``, ``provider_request_id``, ``billing_units``,
-    ``cost_usd`` -- mirroring the Redis ``record_settled_usage`` claim. Caller-side
-    bookkeeping fields such as ``request_id``/``occurred_at``/``queried_at`` legitimately
+    The settled-facts rule, which the Redis ``record_settled_usage`` claim follows too: a
+    ``gateway_request_id`` is unique across runs. Same-ID records are compared on the
+    settled-facts fingerprint alone -- ``gateway_request_id``, ``provider``,
+    ``provider_request_id``, ``billing_units``, ``cost_usd`` (by value: ``0.003`` equals
+    ``0.0030``). A same-ID record with the same facts is a replay and a no-op, even under
+    another ``run_id``; it stays counted once, in the run that recorded it first. Caller-side
+    bookkeeping fields such as ``run_id``/``request_id``/``occurred_at``/``queried_at`` legitimately
     differ across a genuine Gateway-level retry and must not trigger a false divergence. A
     same-ID record whose settled facts diverge raises ``DuplicateGatewayRequestError`` before
     a second entry is ever appended. Shared by ``ProviderUsageLedger`` and ``EvidenceLedger``.

@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore
-from optimus.agent.directives import MAX_PATH_CHARS, AgentDirectiveParseError, parse_agent_plan, unsafe_path_text
+from optimus.agent.directives import MAX_PATH_CHARS, AgentDirectiveParseError, parse_agent_plan, unsafe_path_text, windows_path_shape
 from optimus.agent.planning_loop import PLANNING_PARSE_FEEDBACK, PlanningTurnKind, PlanningTurnParseError, parse_planning_turn
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
@@ -98,7 +98,7 @@ def test_an_unsafe_path_is_rejected_with_a_fixed_message(directive, path):
     # The planner sees no final plan: the turn is unparseable, and its fixed notice quotes nothing.
     with pytest.raises(PlanningTurnParseError) as turn:
         parse_planning_turn(_plan(directive, path))
-    assert turn.value.code == "GRAMMAR_UNRECOGNIZED" and path not in str(turn.value)
+    assert turn.value.code == "PLAN_PATH_UNSAFE" and path not in str(turn.value)
 
 
 @pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
@@ -118,7 +118,7 @@ def test_an_unsafe_ranged_read_path_is_rejected_with_a_fixed_message(path):
 
 def test_the_ranged_read_notice_names_the_cause():
     notice = PLANNING_PARSE_FEEDBACK["READ_PATH_NOT_RELATIVE"]
-    assert f"at most {MAX_PATH_CHARS} characters" in notice and "no control or invisible format characters" in notice
+    assert f"at most {MAX_PATH_CHARS} characters" in notice and "no control or invisible format character" in notice
 
 
 @pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
@@ -176,6 +176,90 @@ def test_an_unsafe_test_argument_is_rejected_at_parse_time_without_quoting_it(to
 )
 def test_a_legitimate_test_command_is_still_accepted(command):
     assert parse_agent_plan(f"TEST {command}\n", edit_base="forbidden").tests == (tuple(command.split()),)
+
+
+# #590: a colon anywhere (drive, alternate data stream) or a leading backslash (drive-root) in a plan path.
+BS, NL = chr(0x5C), chr(0x0A)
+WINDOWS_SHAPES = {
+    "stream": "a.py:stream",
+    "env-stream": ".env:s",
+    "drive-relative": "C:rel.py",
+    "other-drive": "D:x" + BS + "y.py",
+    "data-stream": "a.py::$DATA",
+    "env-data-stream": ".env::$DATA",
+    "rooted": BS + "rooted.py",
+    "rooted-dirs": BS + "Users" + BS + "x.py",
+    "sub-stream": "sub/a.py:s",
+    # #590: a part Windows reserves: a device name (with or without an extension), a trailing dot (a second name for the
+    # same file; "id_rsa." creates id_rsa), or a character no Windows file name may hold.
+    "device": "NUL",
+    "device-lower": "con",
+    "device-in-folder": "sub" + BS + "NUL",
+    "device-in-folder-slash": "sub/NUL",
+    "device-with-extension": "aux.txt",
+    "device-two-extensions": "nul.tar.gz",
+    "serial-port": "COM1",
+    "serial-port-superscript": "COM" + chr(0xB9),
+    "printer-port": "lpt1.x",
+    "console-input": "CONIN$",
+    "trailing-dot": "a.py.",
+    "trailing-dots": "a.py...",
+    "trailing-dot-key-file": "id_rsa.",
+    "trailing-dot-env": ".env.",
+    "trailing-dot-folder": "dir./a.py",
+    "three-dots": "a/.../b.py",
+    "wildcard": "a*.py",
+    "question-mark": "what?.md",
+}
+ORDINARY = {
+    "slash": "sub/a.py",
+    "interior-backslash": "sub" + BS + "a.py",
+    "dot-folder": "./a.py",
+    "dotfile": ".gitignore",
+    "inner-dots": "a..b.py",
+    "device-prefix": "console.py",
+    "device-as-extension": "a.nul",
+    "port-zero": "com0",
+}
+
+
+@pytest.mark.parametrize("path", WINDOWS_SHAPES.values(), ids=WINDOWS_SHAPES.keys())
+@pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
+def test_a_colon_or_leading_backslash_path_is_rejected_with_a_fixed_message(directive, path):
+    with pytest.raises(AgentDirectiveParseError) as caught:
+        parse_agent_plan(_plan(directive, path), edit_base="forbidden")
+
+    assert str(caught.value) == "no valid agent directives" and path not in str(caught.value)
+
+
+@pytest.mark.parametrize("path", WINDOWS_SHAPES.values(), ids=WINDOWS_SHAPES.keys())
+def test_a_colon_or_leading_backslash_ranged_read_path_is_rejected_with_a_fixed_message(path):
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"OBSERVE: the header{NL}READ: {path}#bytes=0:10{NL}")
+
+    assert caught.value.code == "READ_PATH_NOT_RELATIVE"
+    assert str(caught.value) == "READ path must be workspace-relative" and path not in str(caught.value)
+
+
+@pytest.mark.parametrize("path", ORDINARY.values(), ids=ORDINARY.keys())
+def test_an_ordinary_ranged_read_path_is_still_accepted_after_the_windows_rules(path):
+    turn = parse_planning_turn(f"OBSERVE: the header{NL}READ: {path}#bytes=0:10{NL}")
+
+    assert turn.kind is PlanningTurnKind.READ_MORE
+
+
+@pytest.mark.parametrize("path", ORDINARY.values(), ids=ORDINARY.keys())
+@pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
+def test_an_ordinary_relative_path_is_still_accepted_after_the_colon_rule(directive, path):
+    plan = parse_agent_plan(_plan(directive, path), edit_base="forbidden")
+
+    assert (plan.read_paths[0] if directive == "READ" else plan.write.path) == path
+
+
+def test_a_pytest_node_id_with_a_double_colon_is_still_a_legitimate_test_argument():
+    assert parse_agent_plan(f"TEST pytest tests/test_a.py::test_x{NL}", edit_base="forbidden").tests == (
+        ("pytest", "tests/test_a.py::test_x"),
+    )
 
 
 class _SamePlan:
@@ -268,3 +352,159 @@ async def test_an_unsafe_token_reaches_neither_the_person_nor_the_history(direct
     updates = [n["params"]["update"] for n in outbound.notifications if n["method"] == "session/update"]
     final = [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"][-1]
     assert "did not match the required directive grammar" in final
+
+
+@pytest.mark.parametrize("path", ["id_rsa.", "NUL", "small.py:stream"], ids=["trailing-dot", "device", "stream"])
+async def test_a_reserved_windows_name_is_never_written_through_the_real_runner(path, tmp_path):
+    """#590: an approved ``WRITE id_rsa.`` created ``id_rsa``, and ``WRITE NUL`` reported a write that was discarded."""
+    result, outbound, _runner, _records = await _drive(tmp_path, _SamePlan(_plan("WRITE", path)))
+
+    assert result["_meta"]["runStopReason"] == "PLANNING_UNPARSEABLE_RESPONSE"
+    # The loop check-in may ask to continue; no plan approval is asked, so nothing is written.
+    assert [r for r in outbound.requests if not r["params"]["_meta"].get("loopCheckIn")] == []
+    assert not (tmp_path / "id_rsa").exists()
+
+
+def test_a_trailing_space_is_reserved_but_directive_padding_is_not_part_of_the_path():
+    """A directive line cannot carry a space inside its path token; padding after the token is dropped, as before."""
+    assert windows_path_shape("a.py ") and windows_path_shape("dir /a.py")
+    assert parse_agent_plan(f"READ a.py {NL}", edit_base="forbidden").read_paths == ("a.py",)
+    with pytest.raises(PlanningTurnParseError):
+        parse_planning_turn(f"OBSERVE: the header{NL}READ: a.py #bytes=0:10{NL}")
+
+
+# #590: a positional TEST argument names a file (the part before a node id's ::), so it follows the plan path rule.
+WINDOWS_TEST_ARGUMENTS = {
+    "stream": "a.py:stream",
+    "stream-with-node-id": "a.py:s::test_x",
+    "drive-relative": "C:rel.py",
+    "rooted": BS + "rooted.py",
+    "device": "NUL",
+    "device-in-folder": "tests/aux.py",
+    "trailing-dot": "tests/test_a.py.",
+    "quoted-rooted": chr(0x22) + BS + "rooted.py" + chr(0x22),
+    "option-value": "--debug=NUL",
+    "option-value-stream": "--junitxml=out.xml:stream",
+    "option-value-is-not-a-node-id": "--junitxml=out.xml::report",
+    "quoted-file": chr(0x22) + "tests/test_a.py" + chr(0x22),
+    "quoted-option-value": "--junitxml=" + chr(0x22) + "out.xml" + chr(0x22),
+    "grouped-config": "-qc NUL",
+    "config-path": "-c " + BS + "rooted.ini",
+    "long-option-path": "--rootdir aux",
+    "after-separator": "-- -sample.py.",
+    "separator-then-option": "-- -k NUL",
+    "response-file": "@args.txt",
+}
+
+
+@pytest.mark.parametrize("argument", WINDOWS_TEST_ARGUMENTS.values(), ids=WINDOWS_TEST_ARGUMENTS.keys())
+@pytest.mark.parametrize("prefix", ["pytest", "pytest -q", "pytest --tb=short tests"], ids=["first", "after-flag", "after-path"])
+def test_a_windows_shaped_test_argument_is_rejected_at_parse_time_without_quoting_it(prefix, argument):
+    with pytest.raises(AgentDirectiveParseError) as caught:
+        parse_agent_plan(f"TEST {prefix} {argument}{NL}", edit_base="forbidden")
+
+    assert str(caught.value) == "unsafe TEST directive"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pytest -p no:cacheprovider tests/test_a.py::test_x[a:b]",
+        "pytest -k smoke:fast -m slow tests",
+        "pytest --cov-report=xml:cov.xml --deselect=tests/test_a.py::test_x .",
+        "pytest --cov-report xml:cov.xml --deselect tests/test_a.py::test_x[a:b] -n 2 tests",
+        "pytest --log-date-format=%H:%M:%S --ignore-glob=tests/*_slow.py tests",
+        "pytest --log-date-format %H:%M:%S -- tests/test_a.py",
+        "pytest -o cache_dir=x -W error::UserWarning -c pytest.ini tests/unit",
+    ],
+)
+def test_an_option_value_may_hold_a_colon(command):
+    assert parse_agent_plan(f"TEST {command}{NL}", edit_base="forbidden").tests == (tuple(command.split()),)
+
+
+# --- What #588 left open on #583: the REFUSE reason, and a notice that names the cause -----------------------------
+
+REFUSE_UNSAFE = {key: UNSAFE[key] for key in ("esc", "nul", "c1-csi", "rlo", "lri", "zwsp", "private-use")}
+
+
+@pytest.mark.parametrize("token", REFUSE_UNSAFE.values(), ids=REFUSE_UNSAFE.keys())
+def test_an_unsafe_refuse_reason_is_rejected_with_a_fixed_message(token):
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"REFUSE: I will not change {token}\n")
+
+    assert caught.value.code == "REFUSE_UNSAFE_TEXT" and token not in str(caught.value)
+
+
+def test_a_lone_surrogate_in_a_refuse_reason_is_refused_not_a_crash():
+    """Codex review: a JSON reply can decode to one; the 512-byte check raised UnicodeEncodeError before the rule."""
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"REFUSE: I will not change {chr(0xD800)}\n")
+
+    assert caught.value.code == "REFUSE_UNSAFE_TEXT"
+
+
+@pytest.mark.parametrize("reason", [f"I will not change docs/{PERSIAN}.md", f"caf{E_ACUTE} {NIHONGO} {EMOJI_ZWJ}"], ids=["zwnj", "letters-emoji"])
+def test_a_refuse_reason_in_any_script_is_still_accepted(reason):
+    assert parse_planning_turn(f"REFUSE: {reason}\n").reason == reason
+
+
+def test_an_over_long_refuse_reason_was_already_rejected_by_its_byte_cap():
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"REFUSE: {UNSAFE['too-long']}\n")
+
+    assert caught.value.code == "REFUSE_TOO_LONG"
+
+
+@pytest.mark.parametrize("path", [*UNSAFE.values(), *WINDOWS_SHAPES.values()], ids=[*UNSAFE, *(f"windows-{k}" for k in WINDOWS_SHAPES)])
+@pytest.mark.parametrize("directive", ["READ", "WRITE", "EDIT"])
+def test_a_final_plan_path_rejection_gets_a_notice_that_names_the_cause(directive, path):
+    """#583 / #590: the generic grammar notice made a model that cannot see the character repeat the same reply."""
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(_plan(directive, path))
+
+    assert caught.value.code == "PLAN_PATH_UNSAFE" and path not in str(caught.value)
+
+
+def test_a_reply_that_is_no_plan_still_gets_the_grammar_notice():
+    with pytest.raises(PlanningTurnParseError) as caught:
+        parse_planning_turn(f"Here is prose about src/a{ESC}b.py\n")
+
+    assert caught.value.code == "GRAMMAR_UNRECOGNIZED"
+
+
+@pytest.mark.parametrize("code", ["PLAN_PATH_UNSAFE", "READ_PATH_NOT_RELATIVE"])
+def test_both_path_notices_name_every_cause(code):
+    notice = PLANNING_PARSE_FEEDBACK[code]
+    for cause in (f"at most {MAX_PATH_CHARS} characters", "control or invisible format character", "colon", "leading backslash", "reserved Windows name"):
+        assert cause in notice, cause
+
+
+def test_the_refuse_notice_names_the_cause():
+    assert "control or invisible format characters" in PLANNING_PARSE_FEEDBACK["REFUSE_UNSAFE_TEXT"]
+
+
+@pytest.mark.parametrize("token", [UNSAFE[key] for key in ("esc", "nul", "rlo", "too-long")], ids=["esc", "nul", "rlo", "too-long"])
+async def test_an_unsafe_refuse_reason_reaches_neither_the_person_nor_the_history(token, tmp_path):
+    """The REFUSE reason was the run's output: shown in two plan updates, the final message and the committed history."""
+    gateway = _SamePlan(f"REFUSE: I will not change {token}\n")
+
+    result, outbound, runner, records = await _drive(tmp_path, gateway)
+
+    [record] = records.values()
+    sent = _strings([n["params"] for n in outbound.notifications]) + _strings(list(outbound.requests))
+    committed = _strings([record.completion_text, getattr(record, "plan_text", None)])
+    assert [s for s in sent + committed if _unsafe_characters(s) or token in s] == []
+    assert len(gateway.calls) > 1 and [call for call in gateway.calls[1:] if token in call] == []
+    code = "REFUSE_TOO_LONG" if token == UNSAFE["too-long"] else "REFUSE_UNSAFE_TEXT"
+    assert PLANNING_PARSE_FEEDBACK[code] in gateway.calls[1]
+    assert result["_meta"]["runStopReason"] == "PLANNING_UNPARSEABLE_RESPONSE"
+
+
+@pytest.mark.parametrize("token", [UNSAFE[key] for key in ("esc", "nul", "rlo", "too-long")], ids=["esc", "nul", "rlo", "too-long"])
+async def test_the_next_planning_call_names_why_a_final_plan_path_was_refused(token, tmp_path):
+    (tmp_path / "small.py").write_text("old\n")
+    gateway = _SamePlan(_plan("EDIT", token))
+
+    await _drive(tmp_path, gateway)
+
+    assert PLANNING_PARSE_FEEDBACK["PLAN_PATH_UNSAFE"] in gateway.calls[1]

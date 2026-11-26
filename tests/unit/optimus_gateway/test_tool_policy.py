@@ -285,3 +285,35 @@ def test_authorize_rejects_package_and_advisory_with_wrong_signal():
 
     assert decision.allowed is False
     assert decision.rule_id == "POLICY_SIGNAL_MISMATCH"
+
+
+# #603: each of these makes urllib's parser raise ValueError (an unclosed or invalid bracketed host).
+MALFORMED_URLS = ["https://[", "https://[::1", "https://[not-an-address]/x"]
+
+
+@pytest.mark.parametrize("url", MALFORMED_URLS)
+def test_authorize_refuses_a_resolved_url_the_parser_rejects(url):
+    decision = _policy(allowed_domains=("python.org",)).authorize(
+        context=_context(),
+        tool_class=ToolClass.WEB_SEARCH,
+        policy_signal=ToolPolicySignal.CURRENT_OR_LATEST_FACT,
+        requested_domains=("python.org",),
+        resolved_urls=(url,),
+    )
+
+    assert decision.allowed is False
+    assert decision.rule_id == "NON_HTTPS_URL"
+
+
+@pytest.mark.parametrize("domain", MALFORMED_URLS)
+def test_authorize_refuses_a_requested_domain_the_parser_rejects(domain):
+    decision = _policy(allowed_domains=("python.org",)).authorize(
+        context=_context(),
+        tool_class=ToolClass.WEB_SEARCH,
+        policy_signal=ToolPolicySignal.CURRENT_OR_LATEST_FACT,
+        requested_domains=(domain,),
+        resolved_urls=(),
+    )
+
+    assert decision.allowed is False
+    assert decision.rule_id == "EMPTY_DOMAIN_INTERSECTION"

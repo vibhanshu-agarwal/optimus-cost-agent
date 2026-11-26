@@ -189,9 +189,10 @@ class TestCompatibilityPolicyDefaults:
         assert result.rule_counts.get("email_masking", 0) == 0
 
     def test_policy_constants_are_frozen_and_versioned(self) -> None:
-        # v2 / workspace-subject-v2: the whitespace assignment rule masks the value after a copula (#505).
-        assert sanitization_mod.EVIDENCE_REDACTION_POLICY.version == "evidence-redaction-v2"
-        assert sanitization_mod.WORKSPACE_SUBJECT_SANITIZATION_POLICY.version == "workspace-subject-v2"
+        # v2 (#505): the whitespace assignment rule masks the value after a copula; v3 (#584): not a function word after it;
+        # evidence v4 (#622): stream releases keep a label with its value (the workspace policy is never streamed).
+        assert sanitization_mod.EVIDENCE_REDACTION_POLICY.version == "evidence-redaction-v4"
+        assert sanitization_mod.WORKSPACE_SUBJECT_SANITIZATION_POLICY.version == "workspace-subject-v3"
         assert sanitization_mod.COMPATIBILITY_SANITIZATION_POLICY.version == "compatibility-v1"
         with pytest.raises((AttributeError, dataclasses.FrozenInstanceError)):
             sanitization_mod.EVIDENCE_REDACTION_POLICY.version = "mutated"  # type: ignore[misc]

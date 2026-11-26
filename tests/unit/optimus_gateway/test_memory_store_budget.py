@@ -4,12 +4,13 @@ tests/integration/memory/test_store.py."""
 
 from __future__ import annotations
 
+import errno
 import json
 import socket
 import threading
 import time
 from collections.abc import Callable, Iterator
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from types import SimpleNamespace
 
 import pytest
@@ -574,6 +575,152 @@ def test_a_fsync_recheck_that_stalls_is_a_timeout(fake: Callable[[str], FakeRedi
              "kind": "fact", "scope": "s-1", "title": "t", "statement": "s", "anchors": [], "lineage": [], "valid_from_ms": 0, "valid_until_ms": 0}
     body = {"op": "append", "project": "p-1", "token": 1, "expected_version": 0, "idempotency_key": "a" * 64, "event": event}
     assert service.handle(json.dumps(body).encode(), deadline=time.monotonic() + 0.4) == (503, msc.error_body("MEMORY_TIMEOUT"))
+
+
+@contextmanager
+def _interrupted_reply(monkeypatch: pytest.MonkeyPatch, client: memory_store.redis.Redis, failure: str) -> Iterator[None]:
+    """Fail one chosen response at Redis's native read boundary without waiting on the platform timer."""
+    tracked_read = memory_store._TrackedConnection.read_response
+    connection = client.optimus_link.connection
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        assert connection._sock is not None
+        if failure == "other-socket-cut":
+            held = connection._sock
+            with socket.socket() as other:
+                try:
+                    connection._sock = other
+                    connection._optimus_link.cut()
+                finally:
+                    connection._sock = held
+            raise OSError(errno.ENOTSOCK, "unrelated socket closed")
+        if failure in ("watchdog", "drop-at-cut"):
+            connection._optimus_link.cut()
+        if failure == "watchdog":
+            raise OSError(errno.ENOTSOCK, "local socket closed")
+        if failure in ("budget", "short"):
+            raise RedisTimeoutError("read timed out") from TimeoutError("socket timed out")
+        raise ConnectionResetError(errno.ECONNRESET, "peer disconnected")
+
+    def shortened(connection: memory_store._TrackedConnection, *args: object, **kwargs: object) -> object:
+        assert connection._sock is not None
+        connection._sock.settimeout(0.01)
+        return tracked_read(connection, *args, **kwargs)
+
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(connection._parser, "read_response", fail)
+        if failure == "short":
+            interrupted.setattr(memory_store._TrackedConnection, "read_response", shortened)
+        yield
+
+
+@pytest.mark.parametrize(("failure", "code"), [
+    ("budget", "MEMORY_TIMEOUT"), ("watchdog", "MEMORY_TIMEOUT"), ("drop-at-cut", "MEMORY_UNAVAILABLE"),
+    ("drop", "MEMORY_UNAVAILABLE"), ("short", "MEMORY_UNAVAILABLE"),
+    ("other-socket-cut", "MEMORY_UNAVAILABLE"),
+])
+def test_handle_classifies_only_a_proven_read_budget_failure(
+    fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch, failure: str, code: str,
+) -> None:
+    store, endpoint = _store(fake("fast"))
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    client = store._redis
+    generation = client.optimus_link.connects
+    original = client.info
+
+    def info(section: str) -> dict[str, object]:
+        with _interrupted_reply(monkeypatch, client, failure):
+            return original(section)
+
+    monkeypatch.setattr(client, "info", info)
+    deadline = time.monotonic() + 5
+    result = memory_store.MemoryStoreService(store).handle(b'{"op":"capabilities"}', deadline=deadline)
+    assert time.monotonic() < deadline
+    assert result == (503, msc.error_body(code))
+    assert store.suspect and client.optimus_link.connects == generation
+
+
+def test_an_ordinary_read_keeps_unavailable_after_a_proven_read_budget_failure(
+    fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store, endpoint = _store(fake("fast"))
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    client = store._redis
+    generation = client.optimus_link.connects
+    original = client.get
+
+    def get(key: str) -> bytes | None:
+        with _interrupted_reply(monkeypatch, client, "budget"), pytest.raises(RedisTimeoutError) as stopped:
+            original(key)
+        assert memory_store._request_wait_expired(stopped.value)
+        raise stopped.value
+
+    monkeypatch.setattr(client, "get", get)
+    body = b'{"op":"read","project":"p-1","item":"m-0123456789abcdef"}'
+    deadline = time.monotonic() + 5
+    assert memory_store.MemoryStoreService(store).handle(body, deadline=deadline) == (503, msc.error_body("MEMORY_UNAVAILABLE"))
+    assert time.monotonic() < deadline and store.suspect and client.optimus_link.connects == generation
+
+
+@pytest.mark.parametrize("failure", ["budget", "watchdog", "drop", "short"])
+def test_verification_preserves_the_read_failure_through_the_startup_wrapper(
+    fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch, failure: str,
+) -> None:
+    store, endpoint = _store(fake("fast"))
+    client = store._writer
+    original = client.info
+
+    def info(section: str) -> dict[str, object]:
+        with _interrupted_reply(monkeypatch, client, failure):
+            return original(section)
+
+    monkeypatch.setattr(client, "info", info)
+    deadline = time.monotonic() + 5
+    if failure in ("budget", "watchdog"):
+        with pytest.raises(msc.MemoryRequestError) as stopped:
+            store.verify(endpoint.resource, deadline=deadline)
+        assert stopped.value.code == "MEMORY_TIMEOUT"
+    else:
+        with pytest.raises(memory_store.MemoryStoreStartupError) as unreachable:
+            store.verify(endpoint.resource, deadline=deadline)
+        assert unreachable.value.code == "MEMORY_STORE_UNREACHABLE"
+    assert time.monotonic() < deadline
+    assert client.optimus_link.connects == 1
+
+
+@pytest.mark.parametrize(("failure", "code"), [
+    ("budget", "MEMORY_TIMEOUT"), ("watchdog", "MEMORY_TIMEOUT"), ("drop", "LEASE_UNCONFIRMED"),
+    ("short", "LEASE_UNCONFIRMED"), ("zero", "LEASE_UNCONFIRMED"),
+])
+def test_a_sent_lease_requires_fsync_without_replay_after_a_read_failure(
+    fake: Callable[[str], FakeRedis], monkeypatch: pytest.MonkeyPatch, failure: str, code: str,
+) -> None:
+    server = fake("fast")
+    store, endpoint = _store(server)
+    store.verify(endpoint.resource, deadline=time.monotonic() + 5)
+    client = store._writer
+    generation = client.optimus_link.connects
+    waits: list[int] = []
+    original = memory_store.waitaof_local
+
+    def waitaof(writer: memory_store.redis.Redis, *, timeout_ms: int) -> int:
+        waits.append(timeout_ms)
+        if failure == "zero":
+            return 0
+        with _interrupted_reply(monkeypatch, writer, failure):
+            return original(writer, timeout_ms=timeout_ms)
+
+    monkeypatch.setattr(memory_store, "waitaof_local", waitaof)
+    service = memory_store.MemoryStoreService(store)
+    body = {"op": "lease", "project": "p-1", "owner": "host-1", "action": "acquire", "ttl_ms": 60_000}
+    deadline = time.monotonic() + 5
+    assert service.handle(json.dumps(body).encode(), deadline=deadline) == (503, msc.error_body(code))
+    assert time.monotonic() < deadline
+    assert client.optimus_link.connects == generation
+    assert sum(log.count(b"EXEC") for log in server.logs.values()) == 1
+    assert waits == [2500]  # a server-side cap is distinct from expiration of the socket's full budget
+    assert store.suspect is (failure != "zero")
+    assert store._fsync_failed is (failure == "zero")
 
 
 def test_every_operation_is_served_since_task_4() -> None:

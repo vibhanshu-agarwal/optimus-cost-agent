@@ -20,7 +20,7 @@ from context_engine.code_index import path_id
 from context_engine.index_worker import StorageRefusedError, StorageUnavailableError
 from context_engine.retrieval import CatalogueFile, Hit, Retriever
 from optimus.acp.trusted_paths import TrustedPathError
-from optimus.agent.directives import IndexToolRequest, parse_index_tool_reply
+from optimus.agent.directives import AgentDirectivePathError, IndexToolRequest, parse_index_tool_reply
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentRunRequest, AgentRunStatus
 from optimus.agent.prompts import (
@@ -30,7 +30,7 @@ from optimus.agent.prompts import (
     indexed_chat_prefix,
     indexed_planner_prefix,
 )
-from optimus.agent.runner import AgentRunner
+from optimus.agent.runner import CHAT_FAILURE_MESSAGES, AgentRunner
 from optimus.agent.tools import AgentToolbox
 from optimus.context import memory_session
 from optimus.context.index_tools import IndexTools
@@ -1790,3 +1790,123 @@ def test_an_index_turns_retry_never_requires_a_candidate_only_the_stop_listed(wo
     from optimus.agent.workspace_context import WorkspaceReferenceStatus
 
     assert [item.candidates[0] for item in result.diagnostics if item.status is WorkspaceReferenceStatus.RESOLVED] == ["src/x/config.py"]
+
+
+@pytest.mark.parametrize(
+    "argument", ["a.py:stream", "NUL", "pkg/a.py.", chr(0x5C) + "rooted.py", "pkg/aux.py", "//./NUL", "/rooted.py"]
+)
+@pytest.mark.parametrize("tool", ["OUTLINE", "LIST"])
+def test_a_windows_shaped_index_path_is_refused_before_the_tool_runs(workspace, tool, argument):
+    """#590: the same path rule as a plan path; the tool is never run on a stream, a device or a second name."""
+
+    class _NeverRun:
+        def run(self, tool, argument):
+            raise AssertionError("the index tool ran")
+
+    ran = run_index_tools((IndexToolRequest(tool, argument),), _memory(_NeverRun()), _toolbox(workspace))
+
+    assert ran.calls[0].authorization_outcome == "BLOCK"
+    assert "Refused: the path is not a plain workspace-relative path" in ran.envelope
+
+
+# --- #583: an index tool argument holding a control or format character, or over-long, is never a request ----------
+
+ESC, NUL, RLO = chr(0x1B), chr(0x00), chr(0x202E)
+UNSAFE_ARGUMENTS = {"esc": f"pkg/a{ESC}[2J.py", "nul": f"pkg/a{NUL}.py", "rlo": f"pkg/a{RLO}yp.py", "too-long": "a" * 4097}
+INDEX_TOOLS = ("SEARCH", "OUTLINE", "SYMBOLS", "LIST")
+
+
+def _unsafe(text: str) -> bool:
+    return any(c in text for c in (ESC, NUL, RLO)) or "a" * 4097 in text
+
+
+@pytest.mark.parametrize("argument", UNSAFE_ARGUMENTS.values(), ids=UNSAFE_ARGUMENTS.keys())
+@pytest.mark.parametrize("tool", INDEX_TOOLS)
+def test_an_unsafe_index_tool_argument_is_refused_by_the_path_rule(tool, argument):
+    for reply in (f"{tool} {argument}", f"LIST .\n{tool} {argument}"):
+        with pytest.raises(AgentDirectivePathError, match="^unsafe index tool argument$"):
+            parse_index_tool_reply(reply)
+    assert parse_index_tool_reply(f"{tool} {argument}\nand some prose") is None  # prose is no request, as before
+
+
+@pytest.mark.parametrize("argument", UNSAFE_ARGUMENTS.values(), ids=UNSAFE_ARGUMENTS.keys())
+@pytest.mark.parametrize("tool", INDEX_TOOLS)
+def test_agent_never_runs_or_shows_an_unsafe_index_tool_argument(workspace, tool, argument):
+    """It reached the live card title, the call summary, telemetry and the model's next request."""
+    gateway = _Gateway([f"{tool} {argument}", "REFUSE: not enough evidence"])
+    packer = _Packer(_session(workspace, _Storage()).turn())
+    cards: list[tuple[str, ...]] = []
+    packer.memory.on_tool = lambda *card: cards.append(card)
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="change it", execution_mode=ExecutionMode.AGENT, workspace_root=workspace)
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+
+    assert result.tool_calls == () and cards == []
+    assert len(gateway.inputs) == 2 and not _unsafe(gateway.inputs[1]) and not _unsafe(result.output_text)
+    assert "index tool argument" in gateway.inputs[1]  # the fixed notice names the cause
+
+
+@pytest.mark.parametrize("argument", UNSAFE_ARGUMENTS.values(), ids=UNSAFE_ARGUMENTS.keys())
+@pytest.mark.parametrize("tool", INDEX_TOOLS)
+def test_chat_never_runs_an_unsafe_index_tool_argument(workspace, tool, argument):
+    gateway = _Gateway([f"{tool} {argument}"])
+    packer = _Packer(_session(workspace, _Storage()).turn())
+    cards: list[tuple[str, ...]] = []
+    packer.memory.on_tool = lambda *card: cards.append(card)
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="q", execution_mode=ExecutionMode.CHAT, workspace_root=workspace)
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+
+    assert result.tool_calls == () and cards == [] and len(gateway.inputs) == 1
+    # Codex review: tool syntax is not an answer, so the refused reply is not shown either.
+    assert result.stop_reason == "CHAT_TOOL_ARGUMENT_REFUSED"
+    assert result.output_text == CHAT_FAILURE_MESSAGES["CHAT_TOOL_ARGUMENT_REFUSED"] and not _unsafe(result.output_text)
+
+
+@pytest.mark.parametrize("separator", (chr(0x85), chr(0x0B), chr(0x2028)), ids=("nel", "vt", "line-sep"))
+def test_a_batch_line_holding_a_content_separator_runs_no_tool(workspace, separator):
+    """Codex review: such a line was dropped like a blank one, so the rest of the batch ran."""
+    reply = f"LIST .\nSEARCH a{separator}b"
+    assert parse_index_tool_reply(reply) is None
+    gateway = _Gateway([reply])
+    packer = _Packer(_session(workspace, _Storage()).turn())
+    request = AgentRunRequest(run_id="run-1", session_id="s", task="q", execution_mode=ExecutionMode.CHAT, workspace_root=workspace)
+
+    result = AgentRunner(gateway_client=gateway, model="m").run(request, context_packer=packer)
+
+    assert result.tool_calls == () and len(gateway.inputs) == 1
+
+
+# --- #634: the pack's named files are the whole path, never a competitor of its basename ---------------------------------
+
+
+@pytest.mark.parametrize("named", ["docs/ops guide.md", "docs/caf" + chr(0xE9) + "/guide.md", "docs/ops" + chr(0x2013) + "guide.md"])
+@pytest.mark.parametrize("quote", ["", '"'])
+def test_a_spaced_or_non_ascii_path_is_the_packs_required_file_and_its_basename_never_binds_elsewhere(workspace, named, quote):
+    for relative, text in ((named, "THE NAMED FILE"), ("other/guide.md", "THE COMPETITOR")):
+        (workspace / relative).parent.mkdir(parents=True, exist_ok=True)
+        (workspace / relative).write_text(text + chr(10), encoding="utf-8")
+
+    turn = _session(workspace, _Storage()).turn()
+    result = _assemble(turn, task=f"summarize {quote}{named}{quote} please")
+
+    assert result.prioritized_paths == (named,) and "THE NAMED FILE" in result.text and "THE COMPETITOR" not in result.text
+    report = turn.ground(f"I read {quote}{named}{quote}.")
+    assert report.resolved == (named,) and "guide.md" not in report.resolved
+
+
+def test_a_whole_path_made_after_the_listing_was_cached_is_still_the_required_file(workspace):
+    """Codex review 1, finding 3: the tail "folder/guide.md" is listed, so a decision taken on it would reuse the cached listing."""
+    (workspace / "folder").mkdir()
+    (workspace / "folder" / "guide.md").write_text("THE COMPETITOR" + chr(10), encoding="utf-8")
+    session = _session(workspace, _Storage())
+    _assemble(session.turn(), task="explain folder/guide.md")  # caches a listing with folder/guide.md in it
+    named = "docs/my folder/guide.md"
+    (workspace / named).parent.mkdir(parents=True)
+    (workspace / named).write_text("THE NAMED FILE" + chr(10), encoding="utf-8")
+
+    turn = session.turn()
+    result = _assemble(turn, task=f"summarize {named}")
+
+    assert result.prioritized_paths == (named,) and "THE NAMED FILE" in result.text
+    assert turn.ground(f"I read {named}.").resolved == (named,)

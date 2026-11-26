@@ -492,3 +492,24 @@ async def test_levelled_trace_records_quarantined_session_cleanup(tmp_path):
     assert record["data"]["event"] == "retired"
     assert record["data"]["phase"] == "QUARANTINED"
     assert record["data"]["failures"] == ["SESSION_CLOSE_FAILED"]
+
+
+async def test_session_retirement_does_not_inherit_the_request_correlation(tmp_path):
+    from optimus.acp.debug_trace import observe_request
+    from optimus.acp.request_correlation import RequestCorrelation, request_correlation
+
+    observed = []
+
+    async def close(_session, _states):
+        observed.append(request_correlation.get())
+        return SessionCloseResult((), False)
+
+    store, owner = bound_store(cap=1, closer=close)
+    session = store.create(cwd=tmp_path)
+    initiating = RequestCorrelation("initiating", "ndjson", "session/new")
+    with observe_request(initiating) as seen:
+        owner.request_retire(session.session_id, reason=RetirementReason.SHUTDOWN)
+        seen.returned(has_error=False)
+    result = await owner.wait_retired(session.session_id)
+    assert result.status is RetirementStatus.RELEASED
+    assert observed == [None]

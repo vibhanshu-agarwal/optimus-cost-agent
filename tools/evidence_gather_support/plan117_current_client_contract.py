@@ -32,7 +32,7 @@ from typing import Any
 
 from tools.evidence_gather_support.plan117_launcher import PUBLIC_LAUNCHER_IDENTITY
 
-SCENARIO_ID = "plan117-current-client-gate-v5"
+SCENARIO_ID = "plan117-current-client-gate-v6"
 EVIDENCE_KIND_GATE = "current-client-gate"
 EVIDENCE_KINDS = (EVIDENCE_KIND_GATE, "acpx-restart", "zed-resume")
 
@@ -42,8 +42,9 @@ ATTESTATION_SCHEMA = "plan-11-7-v5-current-client-redaction-attestation-v1"
 REDACTION_REPORT_SCHEMA = "plan-11-7-v5-current-client-redaction-report-v1"
 RECEIPT_SCHEMA = "plan-11-7-v5-private-review-receipt-v1"
 PRIVATE_MAPPING_SCHEMA = "plan-11-7-v5-private-path-mapping-v1"
-RUN_REGISTRY_SCHEMA = "plan-11-7-v5-approved-runs-v1"
-DESCRIPTOR_FIXTURE_SCHEMA = "plan-11-7-v5-first-refusal-descriptors-v1"
+RUN_REGISTRY_SCHEMA = "plan-11-7-v6-approved-runs-v1"
+DESCRIPTOR_FIXTURE_SCHEMA = "plan-11-7-v6-first-refusal-descriptors-v1"
+DESCRIPTOR_FIXTURE_RELATIVE = "tests/fixtures/evidence/plan117-v6-first-refusal-descriptors.json"
 
 PATH_IDENTITY_SCHEME = "windows-path-v1"
 PATH_COMMITMENT_DOMAIN = b"plan-11-7-v5:path:v1\x00"
@@ -56,6 +57,7 @@ R_DESCRIPTOR_IDS = (
     "r_cancelled",
     "r_invalid_request",
     "r_request_cancelled",
+    "r_turn_busy",
     "r_internal_error",
 )
 REOPEN_ARM_IDS = (ARM_A_PRIME, *R_DESCRIPTOR_IDS)
@@ -1664,6 +1666,7 @@ class Descriptor:
     error_code_name: str | None
     error_code: int | None
     error_message: str | None
+    error_data: Mapping[str, str] | None
     notice_source: str | None
     notice_text: str | None
 
@@ -1696,19 +1699,24 @@ def parse_descriptor_fixture(document: Any) -> DescriptorFixture:
     descriptors = []
     for position, raw in enumerate(_list(top["descriptors"], "$.descriptors")):
         where = f"$.descriptors[{position}]"
-        item = _obj(raw, ("descriptor_id", "wire_class", "stop_reason", "error_code_name", "error_code", "error_message", "notice_source", "notice_text"), where)
+        item = _obj(raw, ("descriptor_id", "wire_class", "stop_reason", "error_code_name", "error_code", "error_message", "error_data", "notice_source", "notice_text"), where)
+        descriptor_id = _enum(item["descriptor_id"], R_DESCRIPTOR_IDS, f"{where}.descriptor_id")
+        error_data = {"reason": "mcp_cleanup_uncertain"} if descriptor_id == "r_request_cancelled" else None
+        if item["error_data"] != error_data:
+            raise ContractError("schema_invalid", f"{where}.error_data")
         descriptor = Descriptor(
-            _enum(item["descriptor_id"], R_DESCRIPTOR_IDS, f"{where}.descriptor_id"),
+            descriptor_id,
             _enum(item["wire_class"], ("result_stop_reason", "error"), f"{where}.wire_class"),
             _opt_str(item["stop_reason"], f"{where}.stop_reason", _STOP_REASON),
             _opt_str(item["error_code_name"], f"{where}.error_code_name", re.compile(r"^[A-Z][A-Z_]*$")),
             None if item["error_code"] is None else _signed_int(item["error_code"], f"{where}.error_code"),
             _opt_str(item["error_message"], f"{where}.error_message"),
+            error_data,
             _opt_str(item["notice_source"], f"{where}.notice_source"),
             _opt_str(item["notice_text"], f"{where}.notice_text"),
         )
         is_stop = descriptor.wire_class == "result_stop_reason"
-        if is_stop != (descriptor.stop_reason is not None) or is_stop == (descriptor.error_code is not None):
+        if is_stop != (descriptor.stop_reason is not None) or is_stop == (descriptor.error_code is not None) or (is_stop and error_data is not None):
             raise ContractError("schema_invalid", where)
         if (descriptor.error_code is None) != (descriptor.error_message is None) or (descriptor.error_code is None) != (descriptor.error_code_name is None):
             raise ContractError("schema_invalid", where)
@@ -1760,15 +1768,22 @@ def default_descriptor_fixture() -> DescriptorFixture:
     if not _DEFAULT_FIXTURE:
         from pathlib import Path
 
-        path = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "evidence" / "plan117-v5-first-refusal-descriptors.json"
+        path = Path(__file__).resolve().parents[2] / DESCRIPTOR_FIXTURE_RELATIVE
         _DEFAULT_FIXTURE.append(parse_descriptor_fixture(strict_json_loads(path.read_bytes())))
     return _DEFAULT_FIXTURE[0]
 
 
-def expected_response_sha256(descriptor: Descriptor) -> str:
+def descriptor_response_body(descriptor: Descriptor) -> dict[str, Any]:
     if descriptor.wire_class == "result_stop_reason":
-        return sha256_hex(canonical_json_bytes({"stopReason": descriptor.stop_reason}))
-    return sha256_hex(canonical_json_bytes({"code": descriptor.error_code, "message": descriptor.error_message}))
+        return {"stopReason": descriptor.stop_reason}
+    body: dict[str, Any] = {"code": descriptor.error_code, "message": descriptor.error_message}
+    if descriptor.error_data is not None:
+        body["data"] = dict(descriptor.error_data)
+    return body
+
+
+def expected_response_sha256(descriptor: Descriptor) -> str:
+    return sha256_hex(canonical_json_bytes(descriptor_response_body(descriptor)))
 
 
 def expected_notices(descriptor: Descriptor) -> tuple[tuple[str, str], ...]:
@@ -2064,10 +2079,14 @@ def _parse_run_spec(value: Any, where: str) -> RunSpec:
     not_after = _timestamp(item["approval_not_after"], f"{where}.approval_not_after")
     if not_after <= not_before:
         raise ContractError("schema_invalid", f"{where}.approval_window")
+    evidence_kind = _enum(item["evidence_kind"], EVIDENCE_KINDS, f"{where}.evidence_kind")
+    scenario_id = _str(item["scenario_id"], f"{where}.scenario_id")
+    if evidence_kind == EVIDENCE_KIND_GATE and scenario_id != SCENARIO_ID:
+        raise ContractError("schema_invalid", f"{where}.scenario_id")
     return RunSpec(
         run_id=_str(item["run_id"], f"{where}.run_id", _RUN_ID),
-        evidence_kind=_enum(item["evidence_kind"], EVIDENCE_KINDS, f"{where}.evidence_kind"),
-        scenario_id=_str(item["scenario_id"], f"{where}.scenario_id"),
+        evidence_kind=evidence_kind,
+        scenario_id=scenario_id,
         scenario_source_sha256=_str(item["scenario_source_sha256"], f"{where}.scenario_source_sha256", _HEX64),
         scenario_sha256=_str(item["scenario_sha256"], f"{where}.scenario_sha256", _HEX64),
         descriptor_fixture_sha256=_str(item["descriptor_fixture_sha256"], f"{where}.descriptor_fixture_sha256", _HEX64),

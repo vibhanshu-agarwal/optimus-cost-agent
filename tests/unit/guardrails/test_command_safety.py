@@ -1,6 +1,9 @@
 
 from optimus.guardrails.command_safety import CommandSafetyValidator
 from optimus.guardrails.path_safety import ValidationVerdict
+from optimus.guardrails.permissions import ToolSurface
+from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolVerdict
+from optimus.runtime.modes import ExecutionMode, GenerationScope
 
 
 def validator(tmp_path):
@@ -328,3 +331,177 @@ def test_ordinary_and_lookalike_tokens_are_unaffected(tmp_path):
 
         assert result.verdict is ValidationVerdict.ALLOW, command
         assert result.rule_id == "shell.allowed", command
+
+
+# #603 row 4: a URL scheme with no host after it used to be skipped by the scanner, so it never reached the network rule.
+def test_a_url_scheme_with_no_host_is_refused(tmp_path):
+    for token in ("https://", "HTTPS://"):
+        result = validator(tmp_path).validate(("pytest", "-k", token))
+
+        assert result.verdict is ValidationVerdict.BLOCK
+        assert result.rule_id == "network.missing_host"
+
+
+def test_a_plain_http_scheme_with_no_host_is_refused_as_insecure(tmp_path):
+    result = validator(tmp_path).validate(("pytest", "-k", "http://"))
+
+    assert result.verdict is ValidationVerdict.BLOCK
+    assert result.rule_id == "network.insecure_transport"
+
+
+def test_a_host_hidden_behind_a_quote_or_bracket_is_refused(tmp_path):
+    # The scanner stops at these characters, so the host after them was never judged; a shell would join the pieces.
+    for opener, closer in ((chr(0x22), chr(0x22)), (chr(0x27), chr(0x27)), ("<", ">")):
+        result = validator(tmp_path).validate(("curl", f"https://{opener}example.com{closer}"))
+
+        assert result.verdict is ValidationVerdict.BLOCK
+        assert result.rule_id == "network.missing_host"
+
+
+def test_a_command_without_a_url_scheme_is_still_allowed(tmp_path):
+    result = validator(tmp_path).validate(("pytest", "tests", "-k", "not slow and https"))
+
+    assert result.verdict is ValidationVerdict.ALLOW
+
+
+# #603 row 4, the web surface of the same guard (kept here: test_pre_tool_guard.py holds a fixture the secret-scan
+# hook rejects whenever that file is staged).
+def _web_request(target_path):
+    return PreToolRequest(
+        run_id="run-1",
+        session_id="session-1",
+        execution_mode=ExecutionMode.AGENT,
+        tool_surface=ToolSurface.WEB,
+        action="web_extract",
+        target_path=target_path,
+        generation_scope=GenerationScope.INLINE_SNIPPET,
+        approval_granted=True,
+    )
+
+
+def test_pre_tool_guard_refuses_an_empty_web_target(tmp_path):
+    """An explicitly empty target used to be treated like no target and skipped the network rule."""
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    result = guard.check(_web_request(""))
+
+    assert result.verdict is PreToolVerdict.BLOCK
+    assert result.rule_id == "network.insecure_transport"
+
+
+def test_pre_tool_guard_still_allows_a_web_request_with_no_target(tmp_path):
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    assert guard.check(_web_request(None)).verdict is PreToolVerdict.ALLOW
+    assert guard.check(_web_request("https://gateway.optimus.ai/x")).verdict is PreToolVerdict.ALLOW
+
+
+def test_pre_tool_guard_refuses_a_shell_command_holding_a_url_scheme_with_no_host(tmp_path):
+    """The same refusal at the boundary production uses: the guard hands a shell command to the validator above."""
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+
+    result = guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.SHELL,
+            action="test",
+            command=("pytest", "-k", "https://"),
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=True,
+        )
+    )
+
+    assert result.verdict is PreToolVerdict.BLOCK
+    assert result.rule_id == "network.missing_host"
+
+
+# #596: the confusable rule flags only characters that look like Latin or common ones, through the real guard.
+def _approved_test_command(tmp_path, *command):
+    guard = PreToolGuard.for_workspace(workspace_root=tmp_path, allowed_network_hosts=("gateway.optimus.ai",))
+    return guard.check(
+        PreToolRequest(
+            run_id="run-1",
+            session_id="session-1",
+            execution_mode=ExecutionMode.AGENT,
+            tool_surface=ToolSurface.SHELL,
+            action=" ".join(command),  # as shell_exec builds it
+            command=command,
+            generation_scope=GenerationScope.INLINE_SNIPPET,
+            approval_granted=True,
+        )
+    )
+
+
+def _name(*code_points):
+    return "".join(chr(point) for point in code_points)
+
+
+def test_an_approved_test_command_with_a_plain_non_latin_file_name_runs(tmp_path):
+    names = (
+        _name(0x6D4B, 0x8BD5, 0x6587),  # Han
+        _name(0x30C7, 0x30FC, 0x30BF),  # Katakana with the long-vowel mark
+        _name(0x30ED),  # Katakana RO, which looks like Han, not Latin
+        _name(0x3066, 0x3059, 0x3068),  # Hiragana
+        _name(0xD14C, 0xC2A4, 0xD2B8),  # Hangul
+        _name(0x0627, 0x062E, 0x062A),  # Arabic
+        _name(0x092A, 0x0930, 0x0940),  # Devanagari
+    )
+
+    results = {name: _approved_test_command(tmp_path, "pytest", f"tests/{name}.py") for name in names}
+
+    assert {name: (r.verdict, r.rule_id) for name, r in results.items()} == {
+        name: (PreToolVerdict.ALLOW, "allow.shell.pytest") for name in names
+    }
+
+
+def test_latin_lookalikes_in_an_approved_test_command_are_still_refused(tmp_path):
+    commands = (
+        ("pytest", "tests/p" + chr(0x0443) + "test.py"),  # Cyrillic u for y
+        ("pyt" + chr(0x0435) + "st", "tests"),  # Cyrillic ie for e
+        ("pyth" + chr(0x03BF) + "n", "-m", "pytest"),  # Greek omicron for o
+        ("p" + chr(0xFF59) + "test", "tests"),  # fullwidth y
+        ("pytest", chr(0x4E00) + "q", "tests"),  # U+4E00 used as a dash
+        ("pyth" + chr(0x0585) + "n", "-m", "pytest"),  # Armenian oh for o
+        ("pytest", "tests/" + _name(0x0442, 0x0435, 0x0441, 0x0442) + ".py"),  # a Cyrillic name: its letters look Latin
+    )
+
+    results = [_approved_test_command(tmp_path, *command) for command in commands]
+
+    assert [(r.verdict, r.rule_id) for r in results] == [(PreToolVerdict.BLOCK, "shell.unicode_confusable")] * len(commands)
+
+
+def test_latin_and_common_script_lookalikes_of_ascii_are_refused(tmp_path):
+    """#619: a non-ASCII Latin- or Common-script character the table maps to ASCII is refused, with no second script."""
+    commands = (
+        ("pytest", "tests/f" + chr(0x0131) + "le.py"),  # dotless i
+        ("pytest", "tests/" + chr(0x0251) + "pi.py"),  # Latin alpha
+        ("pytest", "tests/" + chr(0x2160) + "ib.py"),  # Roman numeral one for l
+        ("pytest", "tests/p" + chr(0x1D432) + "thon.py"),  # mathematical bold y
+        ("pytest", chr(0x2212) + "q", "tests"),  # minus sign as the flag dash
+        ("pytest", chr(0x2013) + "q", "tests"),  # en dash as the flag dash
+        ("pytest", "tests" + chr(0x2215) + "unit"),  # division slash as the path slash
+        ("pytest", "-k", "don" + chr(0x2019) + "t"),  # curly apostrophe
+        ("pytest", "tests/a" + chr(0x2002) + "b.py"),  # en space: one argument that looks like two
+    )
+
+    results = [_approved_test_command(tmp_path, *command) for command in commands]
+
+    assert [(r.verdict, r.rule_id) for r in results] == [(PreToolVerdict.BLOCK, "shell.unicode_confusable")] * len(commands)
+
+
+def test_accented_latin_and_cjk_punctuation_in_a_file_name_still_run(tmp_path):
+    """#619 keeps #596: accented Latin and CJK names with fullwidth parentheses or digits are not ASCII look-alikes."""
+    names = (
+        "caf" + chr(0x00E9) + "_" + chr(0x00FC) + "ber_" + chr(0x00F1) + chr(0x00E7) + chr(0x00DF),
+        _name(0x6D4B, 0x8BD5, 0xFF08, 0x6587, 0xFF09),  # Han with fullwidth parentheses
+        _name(0x6D4B, 0x8BD5, 0xFF10, 0xFF11),  # Han with fullwidth digits
+        _name(0x30C7, 0x30FC, 0x30BF),  # Katakana with the long-vowel mark
+    )
+
+    results = {name: _approved_test_command(tmp_path, "pytest", f"tests/{name}.py") for name in names}
+
+    assert {name: (r.verdict, r.rule_id) for name, r in results.items()} == {
+        name: (PreToolVerdict.ALLOW, "allow.shell.pytest") for name in names
+    }

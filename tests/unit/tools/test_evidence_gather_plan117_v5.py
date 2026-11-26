@@ -20,6 +20,7 @@ from tools import evidence_gather as gather
 from tools.evidence_gather_support import fixtures
 from tools.evidence_gather_support import plan117_current_client_collector as col
 from tools.evidence_gather_support import plan117_current_client_contract as c
+from tools.evidence_gather_support.common import HostError
 
 REPO = Path(__file__).resolve().parents[3]
 RUN_ID = "p117v5-run-0001"
@@ -168,6 +169,15 @@ def test_validate_accepts_only_the_registered_checkout_scenario(tmp_path, monkey
 
 def test_committed_repository_scenario_is_the_registered_one(capsys):
     assert gather.main(["validate", "--scenario", str(REPO / col.SCENARIO_RELATIVE), "--bind", f"run_id={RUN_ID}"]) == 0
+
+
+
+def test_v5_scenario_cannot_be_prepared_under_the_current_v6_gate(capsys):
+    historical = REPO / "tests/fixtures/evidence/scenarios/plan117-current-client-gate-v5.toml"
+    with pytest.raises(HostError, match="plan117_v5_scenario_unregistered"):
+        col.require_registered_scenario(historical, REPO)
+    assert gather.main(["validate", "--scenario", str(historical), "--bind", f"run_id={RUN_ID}"]) == 2
+    assert "plan117_v5_scenario_unregistered" in capsys.readouterr().err
 
 
 def test_repeated_scenario_flag_is_refused_for_routing(tmp_path, monkeypatch, capsys):
@@ -528,7 +538,7 @@ def test_bundle_cannot_register_itself(tmp_path, monkeypatch, capsys, windows_sh
     pipeline = Pipeline(tmp_path, monkeypatch)
     assert pipeline.prepare() == 0
     pipeline.register_run()
-    planted = pipeline.capture / RUN_ID / "plan-11-7-v5-approved-runs.json"
+    planted = pipeline.capture / RUN_ID / Path(col.APPROVED_RUNS_RELATIVE).name
     planted.write_bytes(pipeline.checkout.joinpath(*col.APPROVED_RUNS_RELATIVE.split("/")).read_bytes())
     pipeline.checkout.joinpath(*col.APPROVED_RUNS_RELATIVE.split("/")).write_bytes(c.canonical_json_bytes({"schema": c.RUN_REGISTRY_SCHEMA, "runs": []}))
     pipeline.write_invocation()

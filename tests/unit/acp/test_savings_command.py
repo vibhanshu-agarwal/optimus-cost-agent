@@ -324,7 +324,12 @@ async def test_a_prompt_during_a_report_is_refused_and_the_report_still_answers(
     gate.set()
     response = await asyncio.wait_for(task, 5)
 
-    assert "error" in refused and case.runner.requests == []
+    assert refused == {
+        "jsonrpc": "2.0",
+        "id": "p1",
+        "error": {"code": -32913, "message": "a turn is already in progress"},
+    }
+    assert case.runner.requests == []
     assert response["result"]["stopReason"] == "end_turn" and len(texts(case.outbound)) == 1
 
 

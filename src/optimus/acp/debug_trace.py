@@ -8,16 +8,24 @@ import shutil
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterable
-from contextlib import suppress
+from asyncio import CancelledError
+from collections.abc import Awaitable, Callable, Iterable, Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import IntEnum
 from importlib.metadata import PackageNotFoundError, version
+from inspect import iscoroutinefunction, unwrap
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar, cast
 
+from optimus.acp.request_correlation import (
+    RequestCorrelation,
+    RequestObservation,
+    add_trusted_request_identity,
+    request_correlation,
+)
 from optimus.agent.models import AgentRunRequest
 from optimus.agent.planning_loop import PlanningProgressEvent
 from optimus.agent.workspace_context import WorkspaceContextResult
@@ -65,6 +73,7 @@ class DiagnosticRecord:
     data: object
     hypothesis_id: str
     run_id: str
+    correlation: dict[str, Any] | None = None
 
 
 class LocalDiagnosticSink(Protocol):
@@ -87,6 +96,8 @@ class _NdjsonDiagnosticSink:
         if self.versioned:
             payload["schemaVersion"] = 1
             payload["level"] = record.level.name.lower()
+            if record.correlation is not None:
+                payload["correlation"] = record.correlation
             if record.hypothesis_id:
                 payload["hypothesisId"] = record.hypothesis_id
             if record.run_id and record.run_id != "pre-fix":
@@ -308,6 +319,7 @@ def acp_debug_log(
     try:
         resolved = data() if callable(data) else data
         versioned = context.minimum_level is not None
+        correlation = request_correlation.get() if versioned else None
         record = DiagnosticRecord(
             session_id=context.session_id,
             timestamp_ms=int(time.time() * 1000),
@@ -317,6 +329,7 @@ def acp_debug_log(
             data=redact_for_telemetry(resolved if resolved is not None else {}),
             hypothesis_id=redact_for_telemetry(hypothesis_id) if versioned else hypothesis_id,
             run_id=redact_for_telemetry(run_id) if versioned else run_id,
+            correlation=redact_for_telemetry(correlation.fields()) if correlation is not None else None,
         )
         # The sink receives the already sanitized record from this single write path.
         sink: LocalDiagnosticSink = _NdjsonDiagnosticSink(path=_log_path(), versioned=versioned)
@@ -324,6 +337,117 @@ def acp_debug_log(
     except Exception:
         return False
     return True
+
+
+@contextmanager
+def observe_request(
+    correlation: RequestCorrelation, *, trusted_session_id: str | None = None
+) -> Iterator[RequestObservation]:
+    token = request_correlation.set(correlation)
+    state = RequestObservation(delivery="outside_dispatch" if correlation.transport == "framed" else "not_attempted")
+    context = _ACTIVE_CONTEXT
+    enabled = context is not None and context.enabled and context.minimum_level is DiagnosticLevel.DEBUG
+    started = 0
+    termination = "completed"
+    try:
+        if enabled:
+            try:
+                started = time.monotonic_ns()
+            except Exception:
+                enabled = False
+        add_trusted_request_identity(session_id=trusted_session_id)
+        if enabled:
+            acp_debug_log(location="request_correlation:start", message="request started")
+        yield state
+    except BaseException as exc:
+        cancelled = isinstance(exc, CancelledError)
+        state.interrupted(cancelled=cancelled)
+        termination = "cancelled" if cancelled else "raised"
+        raise
+    finally:
+        try:
+            if enabled:
+                def terminal_data() -> dict[str, object]:
+                    data: dict[str, object] = {
+                        "durationNs": time.monotonic_ns() - started,
+                        "handler": state.handler,
+                        "delivery": state.delivery,
+                        "termination": termination,
+                    }
+                    if state.failure_phase is not None:
+                        data["failurePhase"] = state.failure_phase
+                    if state.recovery_delivery is not None:
+                        data["recoveryDelivery"] = state.recovery_delivery
+                    return data
+
+                acp_debug_log(
+                    location="request_correlation:terminal", message="request finished", data=terminal_data
+                )
+        finally:
+            request_correlation.reset(token)
+
+
+_OperationArgs = ParamSpec("_OperationArgs")
+_OperationResult = TypeVar("_OperationResult")
+
+
+def _operation_trace_enabled() -> bool:
+    context = _ACTIVE_CONTEXT
+    return context is not None and context.enabled and context.minimum_level is DiagnosticLevel.DEBUG
+
+
+@contextmanager
+def _observe_operation(location: str) -> Iterator[None]:
+    started: int | None
+    try:
+        started = time.monotonic_ns()
+    except Exception:
+        started = None
+
+    outcome = "returned"
+    try:
+        yield
+    except BaseException as exc:
+        outcome = "cancelled" if isinstance(exc, CancelledError) else "raised"
+        raise
+    finally:
+        if started is not None:
+            with suppress(Exception):
+                acp_debug_log(
+                    location=location,
+                    message="operation finished",
+                    data={"durationNs": time.monotonic_ns() - started, "outcome": outcome},
+                )
+
+
+def observe_operation(
+    function: Callable[_OperationArgs, _OperationResult],
+) -> Callable[_OperationArgs, _OperationResult]:
+    """Observe one logical call. Place outside retry/cache and inside a descriptor."""
+    location = f"operation:{function.__module__}.{function.__qualname__}"
+    is_async = iscoroutinefunction(function)
+    if not is_async and iscoroutinefunction(unwrap(function)):
+        raise TypeError("a synchronous decorator hides an async operation")
+    if is_async:
+        async_function = cast("Callable[_OperationArgs, Awaitable[object]]", function)
+
+        @functools.wraps(function)
+        async def observe_async(*args: _OperationArgs.args, **kwargs: _OperationArgs.kwargs) -> object:
+            if not _operation_trace_enabled():
+                return await async_function(*args, **kwargs)
+            with _observe_operation(location):
+                return await async_function(*args, **kwargs)
+
+        return cast("Callable[_OperationArgs, _OperationResult]", observe_async)
+
+    @functools.wraps(function)
+    def observe_sync(*args: _OperationArgs.args, **kwargs: _OperationArgs.kwargs) -> _OperationResult:
+        if not _operation_trace_enabled():
+            return function(*args, **kwargs)
+        with _observe_operation(location):
+            return function(*args, **kwargs)
+
+    return observe_sync
 
 
 def log_workspace_context_result(request: AgentRunRequest, result: WorkspaceContextResult) -> None:

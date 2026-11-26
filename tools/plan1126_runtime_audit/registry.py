@@ -38,6 +38,7 @@ _GATE_PATHS = ("tools/plan1126_runtime_audit/measurement.py",)
 #: unbound, which is the same gap one level down.
 _H5_PROBE_EXECUTES = (
     "src/optimus/acp/debug_trace.py",
+    "src/optimus/acp/request_correlation.py",
     "src/optimus/acp/session_retention.py",
     "src/optimus/acp/admission.py",
     "src/optimus/acp/harness_runtime.py",
@@ -221,6 +222,7 @@ _S1_PROBE_EXECUTES = (
     "src/optimus/acp/context_attachment.py",
     "src/optimus/acp/conversation.py",
     "src/optimus/acp/debug_trace.py",
+    "src/optimus/acp/request_correlation.py",
     "src/optimus/acp/dispatcher.py",
     "src/optimus/acp/failure_notes.py",
     "src/optimus/acp/framing.py",

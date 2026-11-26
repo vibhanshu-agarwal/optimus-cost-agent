@@ -1,8 +1,7 @@
-"""Streaming text artifact sanitization for evidence redaction."""
+"""Text artifact sanitization for evidence redaction: one one-shot pass over the whole decoded artifact."""
 
 from __future__ import annotations
 
-import codecs
 import os
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
@@ -12,7 +11,7 @@ from pathlib import Path
 from optimus_security.sanitization import (
     EVIDENCE_REDACTION_POLICY,
     PathAliasRule,
-    StreamingTextSanitizer,
+    sanitize_for_persistence,
 )
 
 from .bounds import MAX_ARTIFACT_BYTES, STREAM_READ_BYTES
@@ -61,7 +60,12 @@ def sanitize_text_artifact(
     path_aliases: Sequence[PathAliasRule],
     read_size: int = STREAM_READ_BYTES,
 ) -> TextSanitizeResult:
-    """Stream-sanitize a text artifact into private staging. Never writes raw interim text."""
+    """Sanitize a text artifact into private staging in one pass. Never writes raw interim text.
+
+    The whole artifact (at most ``MAX_ARTIFACT_BYTES``) is decoded and sanitized at once, so the output is exactly
+    one-shot ``sanitize_for_persistence``: a streaming cut can separate a label from its value or change how ordered
+    rules interact, at any distance (#622). ``read_size`` only sets the read chunk.
+    """
     try:
         size = source_path.stat().st_size
     except OSError:
@@ -69,71 +73,53 @@ def sanitize_text_artifact(
     if size > MAX_ARTIFACT_BYTES:
         return _quarantine("input_too_large")
 
-    sanitizer = StreamingTextSanitizer(
-        known_secrets=known_secrets,
-        known_pii=known_pii,
-        path_aliases=path_aliases,
-        policy=EVIDENCE_REDACTION_POLICY,
-    )
-    decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
     handle = None
     staging_path: Path | None = None
-    byte_size = 0
     try:
+        chunks: list[bytes] = []
+        total = 0
+        with source_path.open("rb") as source:
+            while chunk := source.read(read_size):
+                total += len(chunk)
+                if total > MAX_ARTIFACT_BYTES:
+                    # The file grew after the size check.
+                    return _quarantine("input_too_large")
+                chunks.append(chunk)
+        try:
+            raw_text = b"".join(chunks).decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            return _quarantine("invalid_utf8")
+        del chunks
+        result = sanitize_for_persistence(
+            raw_text,
+            known_secrets=known_secrets,
+            known_pii=known_pii,
+            path_aliases=path_aliases,
+            policy=EVIDENCE_REDACTION_POLICY,
+        )
+        del raw_text
+        data = str(result.value).encode("utf-8")
         handle = create_private_staging_file(staging_root=staging_root, artifact_role=artifact_role)
         staging_path = handle.path
-        with source_path.open("rb") as source:
-            while True:
-                chunk = source.read(read_size)
-                if not chunk:
-                    break
-                try:
-                    text_chunk = decoder.decode(chunk, final=False)
-                except UnicodeDecodeError:
-                    raise _Utf8Error from None
-                released = sanitizer.feed(text_chunk)
-                if released:
-                    data = released.encode("utf-8")
-                    os.write(handle.fileno(), data)
-                    byte_size += len(data)
-            try:
-                text_chunk = decoder.decode(b"", final=True)
-            except UnicodeDecodeError:
-                raise _Utf8Error from None
-            if text_chunk:
-                released = sanitizer.feed(text_chunk)
-                if released:
-                    data = released.encode("utf-8")
-                    os.write(handle.fileno(), data)
-                    byte_size += len(data)
-            final = sanitizer.finalize()
-            if final:
-                data = final.encode("utf-8")
-                os.write(handle.fileno(), data)
-                byte_size += len(data)
+        view = memoryview(data)
+        while view:
+            view = view[os.write(handle.fileno(), view) :]
         handle.flush()
         handle.close()
         handle = None
         return TextSanitizeResult(
             disposition=Disposition.PROMOTED,
             staging_path=staging_path,
-            rule_counts=dict(sanitizer.rule_counts),
+            rule_counts=dict(result.rule_counts),
             reason_code=None,
-            byte_size=byte_size,
+            byte_size=len(data),
         )
-    except _Utf8Error:
-        _abort_staging(handle, staging_path)
-        return _quarantine("invalid_utf8", rule_counts=sanitizer.rule_counts)
     except PrivateFileError:
         _abort_staging(handle, staging_path)
-        return _quarantine("private_staging_failed", rule_counts=sanitizer.rule_counts)
+        return _quarantine("private_staging_failed")
     except OSError:
         _abort_staging(handle, staging_path)
-        return _quarantine("text_io_failed", rule_counts=sanitizer.rule_counts)
-
-
-class _Utf8Error(Exception):
-    pass
+        return _quarantine("text_io_failed")
 
 
 def _abort_staging(handle: object | None, staging_path: Path | None) -> None:

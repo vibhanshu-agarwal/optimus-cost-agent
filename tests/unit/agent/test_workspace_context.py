@@ -1011,3 +1011,189 @@ def test_a_failed_edit_to_a_secret_like_name_does_not_block_the_next_request(tmp
 
     assert workspace_context.extract_file_references(task) == ()
     assert result.blocking_stop_reason is None
+
+
+@pytest.mark.parametrize("reference", ["aux.txt", "sub/aux.txt", "sub/con.py"])
+def test_a_typed_reference_to_a_windows_device_name_is_refused_on_every_host(tmp_path, reference):
+    """#590: refused by name, visibly, without a lookup; on Linux the same name would be an ordinary file."""
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "app.py").write_text("x = 1" + chr(10), encoding="utf-8")
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Show me {reference}")
+
+    assert result.diagnostics[0].reference == reference
+    assert result.diagnostics[0].status is WorkspaceReferenceStatus.NOT_READABLE
+    assert result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE"
+
+
+# --- #634: a path with a space or a non-ASCII character is one reference, never its basename -------------------------------
+
+SPACED = "docs/ops guide.md"
+NON_ASCII_FOLDER = "docs/caf" + chr(0xE9) + "/guide.md"  # a letter: today the resolver extracted nothing at all
+NON_ASCII_JOINED = "docs/ops" + chr(0x2013) + "guide.md"  # an en dash: today the resolver extracted the basename alone
+
+
+def _write(root: Path, relative: str, text: str) -> None:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+@pytest.mark.parametrize("named", [SPACED, NON_ASCII_FOLDER, NON_ASCII_JOINED])
+@pytest.mark.parametrize("form", ["exact", "double", "single", "backtick", "backslash"])
+def test_a_spaced_or_non_ascii_path_resolves_whole_and_its_basename_never_binds_elsewhere(tmp_path, named, form):
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+    text = {"exact": named, "double": f'"{named}"', "single": f"'{named}'", "backtick": f"`{named}`",
+            "backslash": named.replace("/", chr(92))}[form]
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {text} for me")
+
+    assert [(item.reference, item.status, item.candidates) for item in result.diagnostics] == [
+        (named, WorkspaceReferenceStatus.RESOLVED, (named,))]
+    assert result.prioritized_paths == (named,)
+    assert "THE NAMED FILE" in result.text
+    assert "THE COMPETITOR" not in result.text or result.text.index("THE NAMED FILE") < result.text.index("THE COMPETITOR")
+
+
+def test_a_whole_path_is_not_ambiguous_with_other_files_of_its_basename(tmp_path):
+    _write(tmp_path, SPACED, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "a/guide.md", "a" + chr(10))
+    _write(tmp_path, "b/guide.md", "b" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {SPACED}")
+
+    assert result.blocking_stop_reason is None and result.prioritized_paths == (SPACED,)
+
+
+@pytest.mark.parametrize("named", [SPACED, NON_ASCII_JOINED])
+def test_a_quoted_path_that_does_not_exist_is_not_found_and_no_competitor_takes_its_place(tmp_path, named):
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f'Summarize "{named}"')
+
+    assert [(item.reference, item.status) for item in result.diagnostics] == [(named, WorkspaceReferenceStatus.NOT_FOUND)]
+    assert result.prioritized_paths == ()
+
+
+def test_a_whole_path_the_policy_refuses_is_refused_and_no_competitor_takes_its_place(tmp_path):
+    _write(tmp_path, SPACED, "IGNORED" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+    _write(tmp_path, ".gitignore", "docs/" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {SPACED}")
+
+    assert [(item.reference, item.status) for item in result.diagnostics] == [(SPACED, WorkspaceReferenceStatus.NOT_READABLE)]
+    assert result.blocking_stop_reason == "WORKSPACE_REFERENCE_NOT_READABLE" and result.text == ""
+
+
+@pytest.mark.parametrize("task", ["Fix the bug in guide.md", "Compare src/app.py with guide.md", "Look in docs and guide.md",
+                                  "see notes guide.md", "Review (guide.md) now", 'He said "Look at guide.md"',
+                                  '{"1":{"user_prompt":"Look at guide.md","outcome":"completed"}}', "'Compare src/app.py guide.md'"])
+def test_ordinary_prose_naming_a_basename_resolves_as_before(tmp_path, task):
+    _write(tmp_path, "src/app.py", "x = 1" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task)
+
+    assert ("other/guide.md" in result.prioritized_paths) and result.blocking_stop_reason is None
+
+
+def test_a_whole_path_in_the_prompt_settles_an_ambiguity_its_history_left(tmp_path):
+    named = "my docs/notes.md"
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "a/notes.md", "a" + chr(10))
+    prompt = f"use {named}"
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"earlier: look at notes.md{chr(10)}{prompt}", prompt=prompt)
+
+    assert result.blocking_stop_reason is None and result.prioritized_paths == (named,)
+
+
+# --- #634, Codex review 1 ---------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("quote", ["", '"'])
+def test_a_quote_inside_an_existing_path_does_not_stop_it_resolving_whole(tmp_path, quote):
+    named = "docs/owner" + chr(39) + "s guide.md"
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {quote}{named}{quote}")
+
+    assert result.prioritized_paths == (named,)
+
+
+def test_a_reference_inside_a_whole_path_is_a_piece_of_it_and_not_a_file_of_its_own(tmp_path):
+    named = "docs/draft.md guide.md"
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "docs/draft.md", "THE PIECE" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f'Summarize "{named}"')
+
+    assert result.prioritized_paths == (named,) and [item.reference for item in result.diagnostics] == [named]
+
+
+@pytest.mark.parametrize("task", ['{"1":{"user_prompt":"Compare src/ other/guide.md","outcome":"completed"}}', 'He said "Look in src/ guide.md"', 'He said "Look in lib/ guide.md"',
+                                  '{"1":{"user_prompt":"Compare src/app other/guide.md","outcome":"completed"}}',
+                                  '{"1":{"user_prompt":"Compare ' + chr(39) + "src/nowhere" + chr(39) + ' guide.md","outcome":"completed"}}'])
+def test_a_quoted_folder_written_alone_beside_a_name_reads_as_before(tmp_path, task):
+    _write(tmp_path, "src/app/main.py", "x = 1" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=task)
+
+    assert result.prioritized_paths == ("other/guide.md",)
+
+
+@pytest.mark.parametrize("relative", ["/outside folder/guide.md", chr(92) + "outside folder" + chr(92) + "guide.md", "../x y/guide.md", "c:/x y/guide.md"])
+def test_the_disk_lookup_never_leaves_the_workspace(tmp_path, relative, monkeypatch):
+    looked: list[Path] = []
+    real = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda self, **kwargs: looked.append(self) or real(self, **kwargs))
+    assert workspace_context.on_disk(tmp_path)(relative) is False and looked == []
+    assert workspace_context.extract_file_references(f"see {relative}", workspace_context.on_disk(tmp_path))[0][:1] not in ("/", chr(92), ".")
+
+
+def test_prose_costs_one_listing_of_the_root_and_no_lookups(tmp_path, monkeypatch):
+    _write(tmp_path, "other/guide.md", "x" + chr(10))
+    looked: list[Path] = []
+    real = Path.exists
+    monkeypatch.setattr(Path, "exists", lambda self, **kwargs: looked.append(self) or real(self, **kwargs))
+
+    references = workspace_context.extract_file_references("word guide.md " * 2000, workspace_context.on_disk(tmp_path))
+
+    assert references == ("guide.md",) and looked == []
+
+
+# --- #634, Codex review 2 ---------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("quote", ["", '"'])
+def test_a_dot_slash_spelling_of_a_whole_path_resolves_whole(tmp_path, quote):
+    named = "docs/my folder/guide.md"
+    _write(tmp_path, named, "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "folder/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task=f"Summarize {quote}./{named}{quote}")
+
+    assert result.prioritized_paths == (named,)
+
+
+def test_a_quoted_missing_path_never_binds_a_real_file_at_its_suffix(tmp_path):
+    _write(tmp_path, "folder/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task='Summarize "docs/my folder/guide.md"')
+
+    assert [(item.reference, item.status) for item in result.diagnostics] == [("docs/my folder/guide.md", WorkspaceReferenceStatus.NOT_FOUND)]
+    assert result.prioritized_paths == ()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="a case-insensitive file system")
+def test_on_windows_a_case_mismatched_whole_path_is_never_replaced_by_a_competitor(tmp_path):
+    _write(tmp_path, "Docs/ops guide.md", "THE NAMED FILE" + chr(10))
+    _write(tmp_path, "other/guide.md", "THE COMPETITOR" + chr(10))
+
+    result = assemble_workspace_context_for_prompt(tmp_path, task="Summarize docs/ops guide.md")
+
+    assert "other/guide.md" not in result.prioritized_paths and [item.reference for item in result.diagnostics] == ["docs/ops guide.md"]

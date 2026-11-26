@@ -14,7 +14,9 @@ from optimus.guardrails.validation import ValidationResult, ValidationVerdict
 _PIPE_TO_SHELL = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*\|\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _FETCH_THEN_EXEC = re.compile(r"(curl|wget|irm|iwr|Invoke-WebRequest|Invoke-RestMethod)\b.*(&&|;)\s*(sh|bash|zsh|pwsh|powershell|iex|Invoke-Expression)\b", re.IGNORECASE)
 _ENV_ACCESS = re.compile(r"\b(printenv|env|set)\b|\bos\.environ\b|\$env:|%[A-Za-z_][A-Za-z0-9_]*%", re.IGNORECASE)
-_URL = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
+# #603: the scheme alone is a match, so a URL with no host after it (also one cut off at a quote or an angle
+# bracket) reaches the network rule and is refused there.
+_URL = re.compile(r"https?://[^\s'\"<>]*", re.IGNORECASE)
 _INTERPRETERS = {"bash", "sh", "zsh", "dash", "pwsh", "powershell", "python", "python3", "node", "ruby", "perl"}
 _INTERPRETER_PAYLOAD_FLAGS = {"-c", "-lc", "/c", "-command", "-e"}
 _NON_HTTP_EGRESS = {"scp", "sftp", "ssh", "ftp", "nc", "ncat", "netcat", "telnet"}
@@ -61,7 +63,9 @@ class CommandSafetyValidator:
                 "shell.unicode_bidi_control",
                 "Unicode bidi or format control character detected",
             )
-        if contains_dangerous_confusable(raw_text):
+        # #596: a plain non-Latin name passes; a non-Latin character that maps to a Latin or Common one is refused.
+        # #619: so is a Latin- or Common-script look-alike of ASCII (U+0131, U+2212, U+2019), with or without a second script.
+        if contains_dangerous_confusable(raw_text, latin_lookalikes_only=True):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.unicode_confusable", "Unicode confusable detected")
         if _is_recursive_force_delete(command, lowered):
             return ValidationResult(ValidationVerdict.BLOCK, "shell.destructive.rm_rf", "recursive force delete denied")

@@ -73,7 +73,7 @@ class FakeHost:
         return collector.HostActions(
             source_facts=self.source_facts,
             normal_source_digest=self.normal_source_digest,
-            base_spec_bytes=self.base_spec_bytes,
+            base_module_bytes=self.base_module_bytes,
             zed_identity=self.zed_identity,
             prepare_source=self.prepare_source,
             launch=self.launch,
@@ -128,8 +128,8 @@ class FakeHost:
             return hashlib.sha256(b"changed").hexdigest()
         return hashlib.sha256(b"normal").hexdigest()
 
-    def base_spec_bytes(self, root: Path, commit: str) -> bytes:
-        return (REPO_ROOT / "src" / "optimus" / "acp" / "spec.py").read_bytes()
+    def base_module_bytes(self, root: Path, commit: str, path: str) -> bytes:
+        return (REPO_ROOT / path).read_bytes()
 
     def zed_identity(self) -> collector.ZedIdentity:
         executable = self.tmp / "zed-install" / "zed.exe"
@@ -144,7 +144,7 @@ class FakeHost:
         )
 
     def prepare_source(self, request: collector.SourcePreparation) -> None:
-        spec = collector.render_isolated_spec(self.base_spec_bytes(request.normal_source_root, SOURCE_COMMIT), request.source_kind, request.fixture)
+        spec = collector.render_isolated_spec(self.base_module_bytes(request.normal_source_root, SOURCE_COMMIT, contract.REQUIRED_MODULE_PATHS["optimus.acp.spec"]), request.source_kind, request.fixture)
         if self.options.tamper_spec_kind == request.source_kind:
             spec += b"# tampered\n"
         for module, relative in contract.REQUIRED_MODULE_PATHS.items():
@@ -236,7 +236,7 @@ class FakeHost:
             if descriptor.wire_class == "result_stop_reason":
                 out.append(("agent_to_zed", {"jsonrpc": "2.0", "id": 2, "result": {"stopReason": descriptor.stop_reason}}))
             else:
-                out.append(("agent_to_zed", {"jsonrpc": "2.0", "id": 2, "error": {"code": descriptor.error_code, "message": descriptor.error_message}}))
+                out.append(("agent_to_zed", {"jsonrpc": "2.0", "id": 2, "error": contract.descriptor_response_body(descriptor)}))
         if launch_id == "reopen" and self.options.reopen_load_arm == arm_id:
             out.append(("zed_to_agent", {"jsonrpc": "2.0", "id": 9, "method": "session/load", "params": {"sessionId": session_for(arm_id, "first")}}))
             out.append(("agent_to_zed", {"jsonrpc": "2.0", "id": 9, "result": {}}))

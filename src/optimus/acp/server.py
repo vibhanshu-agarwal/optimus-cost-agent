@@ -18,16 +18,26 @@ from time import monotonic
 from typing import Any, Protocol
 
 from optimus.acp.admission import DEFAULT_LIMITS, AdmissionAccount, AdmissionClass, AdmissionLimits, Reservation
-from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log, debug_trace_enabled, log_provenance_once
+from optimus.acp.debug_trace import (
+    DiagnosticLevel,
+    acp_debug_log,
+    debug_trace_enabled,
+    log_provenance_once,
+    observe_operation,
+    observe_request,
+)
 from optimus.acp.dispatcher import JsonRpcDispatcher
 from optimus.acp.errors import (
     INTERNAL_ERROR,
     INVALID_REQUEST,
     REQUEST_CANCELLED,
     AcpOutboundError,
+    AcpPeerResponseError,
     JsonRpcError,
     error_response,
+    outbound_error_response,
     sanitize_protocol_error_message,
+    select_acp_error,
 )
 from optimus.acp.framing import FramingError, encode_message, read_message
 from optimus.acp.lifecycle import (
@@ -41,6 +51,8 @@ from optimus.acp.lifecycle import (
 )
 from optimus.acp.outbound_writer import DedicatedOutboundWriter, EphemeralSendOwner, OutboundQueueItem, next_ephemeral_send_key
 from optimus.acp.process_lifecycle import ProcessLifecycle, ShutdownObservation, StopReason, cleanup_failure, raise_preserving_failure
+from optimus.acp.request_correlation import APPROVED_METHOD_CATEGORIES as APPROVED_METHOD_CATEGORIES
+from optimus.acp.request_correlation import RequestCorrelation, RequestObservation, diagnostic_method
 from optimus.acp.session_retention import DEFAULT_SESSION_RETENTION_POLICY, SessionRetentionPolicy, SessionUseLease
 from optimus.acp.settlement import RpcResponseDelivery, SendOutcome, SettlementInvariantError
 from optimus.acp.spec import (
@@ -109,8 +121,6 @@ def _inbound_response_payload(message: Mapping[str, object]) -> Callable[[], dic
             "id": message.get("id"),
             "has_result": "result" in message,
             "has_error": "error" in message,
-            "error": message.get("error") if "error" in message else None,
-            "result": message.get("result") if "result" in message else None,
         }
     return payload
 
@@ -532,6 +542,7 @@ class NdjsonOutboundChannel:
         if require_flushed and outcome is not None and outcome is not SendOutcome.FLUSHED:
             raise AcpOutboundError(code=INTERNAL_ERROR, message="outbound delivery unconfirmed")
 
+    @observe_operation
     async def request(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         request_id = next(self._agent_request_ids)
         self.last_outbound_request_id = request_id
@@ -570,6 +581,17 @@ class NdjsonOutboundChannel:
 
     def deliver_client_response(self, message: dict[str, Any]) -> None:
         request_id = message.get("id")
+        if type(request_id) is not int or ("result" not in message and "error" not in message):
+            return
+        future = self._futures.pop(request_id, None)
+        if future is None or future.done():
+            return
+        result = message.get("result")
+        accepted_result = result if isinstance(result, dict) and "error" not in message else None
+        if accepted_result is not None:
+            future.set_result(accepted_result)
+        else:
+            future.set_exception(AcpPeerResponseError())
         # region agent log
         if debug_trace_enabled():
             acp_debug_log(
@@ -580,43 +602,15 @@ class NdjsonOutboundChannel:
                     "has_result": "result" in message,
                     "has_error": "error" in message,
                     "mapped_to_cancelled": False,
-                    "propagated_error": "error" in message,
-                    "result_keys": sorted(message.get("result", {}).keys()) if isinstance(message.get("result"), dict) else [],
+                    "propagated_error": accepted_result is None,
                 },
                 hypothesis_id="H1",
             )
         # endregion
-        if request_id is None:
-            return
-        future = self._futures.pop(request_id, None)
-        if future is not None and not future.done():
-            if "result" in message and isinstance(message["result"], dict):
-                future.set_result(message["result"])
-            elif "error" in message:
-                error_payload = message["error"]
-                code = error_payload.get("code", INTERNAL_ERROR) if isinstance(error_payload, dict) else INTERNAL_ERROR
-                msg = error_payload.get("message", "client error") if isinstance(error_payload, dict) else "client error"
-                data = error_payload.get("data") if isinstance(error_payload, dict) else None
-                data_dict = data if isinstance(data, dict) else None
-                future.set_exception(AcpOutboundError(code=code, message=msg, data=data_dict))
 
 
 #: Per-call observation budget for the serving process's Redis teardown stage. Test-injectable.
 REDIS_SHUTDOWN_OBSERVATION_SECONDS = 10.0
-
-# Client methods whose name may appear in a content-free diagnostic; anything else
-# collapses to "unknown" so arbitrary client content is never echoed.
-APPROVED_METHOD_CATEGORIES = frozenset(
-    {
-        "initialize",
-        "session/new",
-        "session/load",
-        "session/prompt",
-        "session/set_mode",
-        "session/set_config_option",
-    }
-)
-
 
 def redis_cleanup_payload(runtime: Any) -> dict[str, Any]:
     """The only fields the Redis diagnostic may carry: lifecycle state and stage outcomes.
@@ -1096,7 +1090,7 @@ class AcpStreamServer:
             dedicated.set_admission_failure_callback(required_failed)
 
         async def submit_via_notice(payload: Mapping[str, Any], *, handle: Any | None = None, observe: bool = True,
-                                    session_use: SessionUseLease | None = None) -> None:
+                                    session_use: SessionUseLease | None = None) -> bool:
             source_use = session_use.fork() if session_use is not None else fork_request_session_use()
             if dedicated is None:
                 try:
@@ -1104,14 +1098,14 @@ class AcpStreamServer:
                 finally:
                     if source_use is not None:
                         source_use.release()
-                return
+                return True
             response_handle = handle or notice.allocate_response_handle(ResponseKind.ORDINARY)
             ticket = response_handle.start_non_turn_response_send()
             if ticket.immediate_completion is not None:
                 response_handle.finalize_once(ticket.immediate_completion)
                 if source_use is not None:
                     source_use.release()
-                return
+                return ticket.immediate_completion.outcome is SendOutcome.FLUSHED
             assert ticket.source_future is not None
             if source_use is not None:
                 source_use.release_on(ticket.source_future)
@@ -1129,7 +1123,7 @@ class AcpStreamServer:
                     if not source.cancelled():
                         response_handle.finalize_once(source.result())
                 ticket.source_future.add_done_callback(finalize)
-                return
+                return False  # The caller chose to leave physical delivery unobserved.
             try:
                 loop = asyncio.get_running_loop()
                 completion = await asyncio.shield(
@@ -1143,6 +1137,7 @@ class AcpStreamServer:
                 )
                 raise
             response_handle.finalize_once(completion)
+            return completion.outcome is SendOutcome.FLUSHED
 
         async def submit_via_turn(payload: Mapping[str, Any], turn_control: TurnControl) -> bool:
             lease = turn_control.start_response_send()
@@ -1182,17 +1177,21 @@ class AcpStreamServer:
             return (completion.outcome is SendOutcome.FLUSHED
                     and turn_control.rpc_response_delivery is RpcResponseDelivery.FLUSHED)
 
-        async def deliver_envelope(envelope: Any, ownership_slot: ResponseOwnershipSlot) -> bool:
+        async def deliver_envelope(envelope: Any, ownership_slot: ResponseOwnershipSlot, seen: RequestObservation) -> bool:
             wire = envelope.response
             if isinstance(envelope, TurnResponseEnvelope):
                 if ownership_slot.is_bound and ownership_slot.turn_control is not envelope.turn_control:
                     raise SettlementInvariantError("envelope turn control does not match ownership slot")
-                return await submit_via_turn(wire, envelope.turn_control)
+                delivered = await submit_via_turn(wire, envelope.turn_control)
+                seen.delivery = "flushed" if delivered else "not_flushed"
+                return delivered
             if not isinstance(envelope, NonTurnResponseEnvelope):
                 raise SettlementInvariantError("unknown response envelope kind")
             if ownership_slot.is_bound:
                 raise SettlementInvariantError("non-turn envelope returned for bound ownership slot")
-            await submit_via_notice(wire, handle=envelope.response_handle)
+            delivered = await submit_via_notice(wire, handle=envelope.response_handle)
+            seen.delivery = "flushed" if delivered else "not_flushed"
+            # Keep the existing non-turn after_response scheduling contract.
             return True
 
         async def read_lines() -> None:
@@ -1256,11 +1255,11 @@ class AcpStreamServer:
                             await asyncio.sleep(0)
                         continue
                     if "id" in message and ("result" in message or "error" in message) and "method" not in message:
-                        if isinstance(message.get("id"), (str, int)):
+                        if type(message.get("id")) is int:
                             if debug_trace_enabled():
                                 acp_debug_log(
                                     location="server.py:serve_ndjson:inbound_client_response_raw",
-                                    message="raw inbound id-bearing client response before deliver_client_response",
+                                    message="observed inbound client response",
                                     data=_inbound_response_payload(message),
                                     hypothesis_id="H2-REPLY",
                                 )
@@ -1315,11 +1314,6 @@ class AcpStreamServer:
                     session_use.release()
                 reader_done = True
                 wake.set()
-
-        def approved_method_category(method: object) -> str:
-            # Never copy arbitrary client content into a diagnostic: an unapproved method
-            # collapses to "unknown" rather than being echoed.
-            return method if isinstance(method, str) and method in APPROVED_METHOD_CATEGORIES else "unknown"
 
         def report_request_task_failure(operation_id: str, request_method: str) -> None:
             # One content-free diagnostic per escaped request-task failure. This runs from a
@@ -1421,11 +1415,20 @@ class AcpStreamServer:
             except Exception:
                 return
 
-        async def process_request(message: dict[str, Any], operation_id: str) -> None:
+        async def process_request(message: dict[str, Any], operation_id: str, seen: RequestObservation) -> None:
             request_id = message.get("id")
             method = message.get("method")
             pending_permission_id = outbound.last_outbound_request_id
             ownership_slot = ResponseOwnershipSlot()
+
+            async def deliver_recovery(payload: dict[str, Any]) -> None:
+                seen.recovery_delivery = "pending"
+                if ownership_slot.turn_control is not None:
+                    delivered = await submit_via_turn(payload, ownership_slot.turn_control)
+                else:
+                    delivered = await submit_via_notice(payload)
+                seen.recovery_delivery = "flushed" if delivered else "not_flushed"
+
             try:
                 # region agent log
                 if debug_trace_enabled():
@@ -1443,6 +1446,7 @@ class AcpStreamServer:
                 # endregion
                 envelope = await adapter.handle_client_request(message, ownership_slot=ownership_slot)
                 wire = envelope.response
+                seen.returned(has_error="error" in wire)
                 # region agent log
                 if debug_trace_enabled():
                     acp_debug_log(
@@ -1459,7 +1463,8 @@ class AcpStreamServer:
                         hypothesis_id="H4",
                     )
                 # endregion
-                delivered = await deliver_envelope(envelope, ownership_slot)
+                seen.delivery = "pending"
+                delivered = await deliver_envelope(envelope, ownership_slot, seen)
                 if isinstance(envelope, TurnResponseEnvelope):
                     adapter.note_turn_delivered(envelope.turn_control, cancelled=not delivered)
                 elif delivered and isinstance(method, str) and hasattr(adapter, "after_response"):
@@ -1469,15 +1474,10 @@ class AcpStreamServer:
                     ownership_slot.turn_control.request_transport_teardown()
                 raise
             except AcpOutboundError as exc:
-                error_payload = error_response(
-                    request_id=request_id,
-                    error=JsonRpcError(code=exc.code, message=exc.message, data=exc.data),
-                )
-                if ownership_slot.turn_control is not None:
-                    await submit_via_turn(error_payload, ownership_slot.turn_control)
-                else:
-                    await submit_via_notice(error_payload)
+                seen.interrupted(cancelled=False)
+                await deliver_recovery(outbound_error_response(request_id, exc))
             except Exception as exc:
+                seen.interrupted(cancelled=False)
                 # region agent log
                 # Literal message; the exception text is deferred into the redacted payload.
                 # The protocol/stderr formatting of the same exception below is separate.
@@ -1494,14 +1494,16 @@ class AcpStreamServer:
                     f"pending_permission_id={pending_permission_id!r}: {sanitize_protocol_error_message(str(exc))}",
                     file=sys.stderr,
                 )
-                error_payload = error_response(
-                    request_id=request_id,
-                    error=JsonRpcError(code=INTERNAL_ERROR, message=sanitize_protocol_error_message(str(exc))),
+                facts = ownership_slot.gateway_failure_facts
+                control = ownership_slot.turn_control
+                reason = None
+                if facts is not None and control is not None and not control.transport_abandoned():
+                    reason = facts.consume(exc)
+                error = select_acp_error(reason) if reason is not None else JsonRpcError(
+                    code=INTERNAL_ERROR, message=sanitize_protocol_error_message(str(exc)),
                 )
-                if ownership_slot.turn_control is not None:
-                    await submit_via_turn(error_payload, ownership_slot.turn_control)
-                else:
-                    await submit_via_notice(error_payload)
+                error_payload = error_response(request_id=request_id, error=error)
+                await deliver_recovery(error_payload)
 
             finally:
                 try:
@@ -1520,13 +1522,15 @@ class AcpStreamServer:
                         prompt_sessions.discard(session_id)
                     wake.set()
 
-        async def owned_request(message: dict[str, Any], operation_id: str, session_use: SessionUseLease | None) -> None:
+        async def owned_request(message: dict[str, Any], correlation: RequestCorrelation, session_use: SessionUseLease | None) -> None:
             workers: set[asyncio.Task[Any]] = set()
             token = request_worker_custody.set(workers)
             custody = [] if session_use is None else [session_use]
             session_token = request_session_custody.set(custody)
             try:
-                await process_request(message, operation_id)
+                session_id = session_use.session_id if session_use is not None else None
+                with observe_request(correlation, trusted_session_id=session_id) as seen:
+                    await process_request(message, correlation.operation_id, seen)
             finally:
                 request_worker_custody.reset(token)
                 cancelled: asyncio.CancelledError | None = None
@@ -1587,8 +1591,9 @@ class AcpStreamServer:
                     # can be bound into the completion observer without a late-bound loop
                     # variable, and threaded into process_request for its own diagnostics.
                         operation_id = uuid.uuid4().hex
-                        request_method = approved_method_category(message.get("method"))
-                        task = asyncio.create_task(owned_request(message, operation_id, session_use))
+                        request_method = diagnostic_method(message.get("method"), "ndjson")
+                        correlation = RequestCorrelation(operation_id, "ndjson", request_method)
+                        task = asyncio.create_task(owned_request(message, correlation, session_use))
                         session_use = None
                         message, params, session_id = {}, None, None
                         request_tasks.add(task)

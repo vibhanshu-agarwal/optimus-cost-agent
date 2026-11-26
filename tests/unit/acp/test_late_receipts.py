@@ -30,7 +30,7 @@ import optimus.acp.spec as spec_module
 from context_engine import PreparedView
 from context_engine.engine import ContextEngine
 from optimus.acp.conversation import ConversationSanitizer, ConversationSanitizerInputs, ConversationState
-from optimus.acp.errors import AcpOutboundError
+from optimus.acp.errors import AcpPeerResponseError
 from optimus.acp.spec import AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.agent.runner import AgentRunner
@@ -264,7 +264,7 @@ async def test_an_outbound_failure_exit_still_alerts_in_its_turn(tmp_path) -> No
     store, outbound = InMemoryAcpSpecSessionStore(), RecordingOutboundChannel()
 
     async def refuse(method, params):
-        raise AcpOutboundError(code=-32603, message="client refused the permission request")
+        raise AcpPeerResponseError()
 
     outbound.request = refuse  # type: ignore[method-assign]
     adapter = AcpDuplexAdapter(

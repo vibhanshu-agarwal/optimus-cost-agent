@@ -1068,7 +1068,7 @@ publish a live lane's state or next gate: the
 | Plan 11.4 | Closed | PR #91 |
 | Plan 11.5 | Closed | PR #95 |
 | Plan 11.6 | Merged | PR #97 |
-| Plan 11.7 | [Issue #240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240) owns status and the next gate | [Plan 11.7 v5](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v5.md) |
+| Plan 11.7 | [Issue #240](https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/240) owns status and the next gate | [Plan 11.7 v6](2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v6.md) |
 | Plan 11.8 | Historical | Plan 11.12 retirement; precursor PR #116; PR #118 |
 | Plan 11.9 | Closed | PR #123; PR #124 |
 | Plan 11.10 | Closed | PR #130 |

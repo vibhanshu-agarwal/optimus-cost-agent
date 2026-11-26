@@ -4,6 +4,14 @@
 schema = "test-profiles-v1"
 
 [[rules]]
+tier = "gates"
+nodes = [
+  "tests/unit/tools/test_acp_instrumentation.py::test_current_owners_have_every_selected_callable_classified",
+  "tests/unit/tools/test_acp_instrumentation.py::test_new_method_in_an_owned_class_is_rejected",
+]
+why = "Read the current ACP boundary sources and verify source-derived diagnostic coverage and its negative control."
+
+[[rules]]
 tier = "core"
 paths = ["tests/unit/acp/test_session_retention.py", "tests/unit/acp/test_session_retirement.py"]
 why = "Cap-only retention ownership, real in-process adapter/writer custody and graph release; no external services or child processes."
@@ -662,6 +670,7 @@ paths = [
   "tests/unit/acp/test_auto_launch_composition.py",
   "tests/unit/acp/test_evidence_redaction_adapter.py",
   "tests/unit/acp/test_failure_telemetry.py",
+  "tests/unit/acp/test_guard_refusal_ends_turn.py",
   "tests/unit/acp/test_launch_approvals_lock_failures.py",
   "tests/unit/acp/test_launch_approvals_multipart.py",
   "tests/unit/acp/test_launch_audit.py",
@@ -721,6 +730,15 @@ nodes = [
   "tests/unit/tools/test_h5_failure_capture.py::test_capture_path_budget",
 ]
 why = "Native-only retained sidecar/capture path-budget controls; exact nodes keep unrelated audit and simulated tests out of the platform profile."
+
+[[tags]]
+name = "platform"
+nodes = [
+  "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_schedule_uses_content_free_location_metadata[module-//HOST_PATH_MARKER/share/probe.py]",
+  "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_schedule_uses_content_free_location_metadata[lambda-//HOST_PATH_MARKER/share/probe.py]",
+  "tests/unit/tools/plan1126_runtime_audit/test_shutdown_diagnostics.py::test_schedule_uses_content_free_location_metadata[genexpr-//HOST_PATH_MARKER/share/probe.py]",
+]
+why = "The synthetic UNC origins exercise Windows Coverage path canonicalization while retaining the same assertions on POSIX."
 
 [[tags]]
 name = "platform"

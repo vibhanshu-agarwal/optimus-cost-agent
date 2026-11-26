@@ -65,7 +65,10 @@ def _host_matches_domain(host: str, domain: str) -> bool:
 
 
 def _normalize_domain(value: str) -> str:
-    parsed = urlparse(value)
+    try:
+        parsed = urlparse(value)
+    except ValueError:  # #603: a host the parser rejects (an unclosed bracket) is no host
+        return ""
     if parsed.scheme and parsed.netloc:
         if parsed.hostname is None:
             return ""

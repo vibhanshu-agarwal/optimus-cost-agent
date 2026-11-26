@@ -1533,6 +1533,42 @@ async def test_session_new_malformed_mcp_servers_removes_provisional_session(tmp
     assert outbound.requests == []
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://[",
+        "https://[::1",
+        "https://[not-an-address]/x",
+        "https://host:65536/",
+        "https://host:abc/",
+        "https://" + chr(0xFF3B) + "x" + chr(0xFF3D) + "/",
+        "https://host/?q=" + chr(0xD800),
+    ],
+)
+async def test_session_new_endpoint_the_url_parser_rejects_is_an_invalid_request(tmp_path, url):
+    """Issue #603 row 5: the fixed response, no session kept, no permission asked."""
+    outbound = _recording_outbound()
+    sessions = InMemoryAcpSpecSessionStore()
+    adapter = AcpDuplexAdapter(
+        runner=checked_agent_runner(FakeRunner()),
+        workspace_root=tmp_path,
+        sessions=sessions,
+        outbound=outbound,
+        client_mcp_runtime=_client_mcp_runtime_for_tests(tmp_path),
+    )
+    response = await _rpc(adapter,
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "session/new",
+            "params": {"cwd": str(tmp_path), "mcpServers": [{"type": "http", "name": "tools", "url": url}]},
+        }
+    )
+    assert response["error"] == {"code": -32600, "message": "invalid request"}
+    assert sessions._sessions == {}
+    assert outbound.requests == []
+
+
 async def test_session_new_awaits_transport_permission_with_opaque_safe_fields(tmp_path):
     outbound = _recording_outbound()
     sessions = InMemoryAcpSpecSessionStore()
@@ -2404,9 +2440,7 @@ async def test_spec_mcp_broker_issue_fails_closed_until_catalog_authorizer_attac
 
 
 @pytest.mark.asyncio
-async def test_concurrent_same_session_prompt_is_request_cancelled(tmp_path):
-    from optimus.acp.errors import REQUEST_CANCELLED
-
+async def test_concurrent_same_session_prompt_is_turn_busy(tmp_path):
     loop = asyncio.get_running_loop()
     started = asyncio.Event()
     release = threading.Event()
@@ -2471,11 +2505,17 @@ async def test_concurrent_same_session_prompt_is_request_cancelled(tmp_path):
             },
         },
     )
-    assert second["error"]["code"] == REQUEST_CANCELLED
-    assert second["error"]["message"] == "a turn is already in progress"
-    assert len(sessions.get(session_id).conversation.records) == 0
-    release.set()
-    await first
+    try:
+        assert second == {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "error": {"code": -32913, "message": "a turn is already in progress"},
+        }
+        assert len(sessions.get(session_id).conversation.records) == 0
+    finally:
+        release.set()
+        completed = await first
+    assert completed["result"]["stopReason"] == "end_turn"
 
 
 @pytest.mark.asyncio

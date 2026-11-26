@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 
 from optimus.acp.dispatcher import JsonRpcDispatcher
-from optimus.acp.errors import DUPLICATE_REQUEST_ID, METHOD_NOT_FOUND, MUTATION_FORBIDDEN
+from optimus.acp.errors import DUPLICATE_REQUEST_ID, INTERNAL_ERROR, METHOD_NOT_FOUND, MUTATION_FORBIDDEN
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import AgentState, RuntimeContext
@@ -240,13 +240,32 @@ def inactive_registry(monkeypatch):
     monkeypatch.setattr(binding, "ENFORCEMENT_ACTIVE", False)
 
 
-def test_the_gateway_passthrough_refuses_while_the_registry_is_enforced():
+@pytest.mark.parametrize("configured", [True, False], ids=["configured", "missing-client"])
+def test_the_gateway_passthrough_refuses_while_the_registry_is_enforced(configured):
     gateway_client = FakeGatewayClient()
-    response = JsonRpcDispatcher(gateway_client=gateway_client).dispatch(
+    response = JsonRpcDispatcher(gateway_client=gateway_client if configured else None).dispatch(
         {"jsonrpc": "2.0", "id": "gw-enforced", "method": "optimus.gateway.responses", "params": {"model": "glm-5.2", "input": "x"}}
     )
     assert response["error"]["code"] == -32601 and "enforced" in response["error"]["message"]
     assert gateway_client.calls == [], "refused before any Gateway call"
+
+
+@pytest.mark.parametrize(
+    ("method", "params"),
+    [
+        ("optimus.gateway.responses", {"model": "glm-5.2", "input": "x"}),
+        ("optimus.agent.run", {"run_id": "r1", "task": "Explain", "execution_mode": "plan"}),
+    ],
+)
+def test_dispatcher_reports_missing_gateway_or_agent_dependency(inactive_registry, method, params):
+    response = JsonRpcDispatcher().dispatch({"jsonrpc": "2.0", "id": 19, "method": method, "params": params})
+
+    assert response["id"] == 19
+    assert response["error"] == {
+        "code": INTERNAL_ERROR,
+        "message": "dependency unavailable",
+        "data": {"reason": "DEPENDENCY_UNAVAILABLE"},
+    }
 
 
 def test_dispatcher_routes_gateway_responses_method_to_gateway_client(inactive_registry):
@@ -493,8 +512,11 @@ def test_dispatcher_reports_evidence_search_service_not_configured():
         }
     )
 
-    assert response["error"]["code"] == -32601
-    assert response["error"]["message"] == "evidence service not configured"
+    assert response["error"] == {
+        "code": INTERNAL_ERROR,
+        "message": "dependency unavailable",
+        "data": {"reason": "DEPENDENCY_UNAVAILABLE"},
+    }
 
 
 def test_dispatcher_reports_evidence_extract_service_not_configured():
@@ -515,8 +537,11 @@ def test_dispatcher_reports_evidence_extract_service_not_configured():
         }
     )
 
-    assert response["error"]["code"] == -32601
-    assert response["error"]["message"] == "evidence service not configured"
+    assert response["error"] == {
+        "code": INTERNAL_ERROR,
+        "message": "dependency unavailable",
+        "data": {"reason": "DEPENDENCY_UNAVAILABLE"},
+    }
 
 
 class RejectedEvidenceService(FakeEvidenceService):
@@ -862,8 +887,11 @@ def test_dispatcher_reports_evidence_package_lookup_service_not_configured():
         }
     )
 
-    assert response["error"]["code"] == -32601
-    assert response["error"]["message"] == "package advisory service not configured"
+    assert response["error"] == {
+        "code": INTERNAL_ERROR,
+        "message": "dependency unavailable",
+        "data": {"reason": "DEPENDENCY_UNAVAILABLE"},
+    }
 
 
 def test_dispatcher_reports_evidence_security_advisory_service_not_configured():
@@ -883,8 +911,11 @@ def test_dispatcher_reports_evidence_security_advisory_service_not_configured():
         }
     )
 
-    assert response["error"]["code"] == -32601
-    assert response["error"]["message"] == "package advisory service not configured"
+    assert response["error"] == {
+        "code": INTERNAL_ERROR,
+        "message": "dependency unavailable",
+        "data": {"reason": "DEPENDENCY_UNAVAILABLE"},
+    }
 
 
 class RejectedPackageAdvisoryService(FakePackageAdvisoryService):
@@ -988,3 +1019,40 @@ def test_dispatcher_write_file_writes_the_clients_bytes_exactly(tmp_path):
 
     assert response["result"] == {"written": str(tmp_path / "mixed.txt")}
     assert (tmp_path / "mixed.txt").read_bytes() == b"lf\ncrlf\r\nend"
+
+
+def test_dispatcher_versioned_request_trace_carries_handler_result_and_error(tmp_path):
+    import json
+
+    from optimus.acp.debug_trace import DiagnosticLevel, configure_debug_trace
+
+    trace = tmp_path / "framed.ndjson"
+    configure_debug_trace(enabled=True, log_path=trace, minimum_level=DiagnosticLevel.DEBUG)
+    dispatcher = JsonRpcDispatcher(workspace_root=tmp_path)
+    ping = dispatcher.dispatch({"id": "client-chosen-id", "jsonrpc": "2.0", "method": "optimus.ping"})
+    missing = dispatcher.dispatch({"id": 2, "jsonrpc": "2.0", "method": "client-chosen-method"})
+    dispatcher.dispatch({"jsonrpc": "2.0", "method": "optimus.ping"})
+    dispatcher.dispatch({"id": 3, "jsonrpc": "2.0", "result": None})
+
+    assert ping["result"] == {"message": "pong"}
+    assert missing["error"]["code"] == METHOD_NOT_FOUND
+    assert trace.is_file(), "framed request diagnostics must reach the authorized local sink"
+    records = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    opened, closed, failed_open, failed_close = records
+    assert [row["location"] for row in records] == [
+        "request_correlation:start",
+        "request_correlation:terminal",
+        "request_correlation:start",
+        "request_correlation:terminal",
+    ]
+    assert opened["correlation"] == closed["correlation"]
+    assert failed_open["correlation"] == failed_close["correlation"]
+    assert opened["correlation"]["operationId"] != failed_open["correlation"]["operationId"]
+    assert opened["correlation"]["transport"] == "framed"
+    assert opened["correlation"]["method"] == "optimus.ping"
+    assert failed_open["correlation"]["method"] == "unknown"
+    assert closed["data"]["handler"] == "returned_result"
+    assert failed_close["data"]["handler"] == "returned_error"
+    assert closed["data"]["delivery"] == failed_close["data"]["delivery"] == "outside_dispatch"
+    assert all(row["data"]["durationNs"] >= 0 for row in (closed, failed_close))
+    assert "client-chosen" not in str(records)

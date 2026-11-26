@@ -21,9 +21,13 @@ from optimus.agent.directives import (
     TEST_DIRECTIVE,
     WRITE_DIRECTIVE,
     AgentDirectiveParseError,
+    AgentDirectivePathError,
     AgentPlanDirectives,
+    AgentWriteDirective,
     IndexToolRequest,
+    _unwrap_markdown_code_fence,
     directive_text,
+    is_directive_line,
     parse_agent_plan,
     parse_index_tool_reply,
     parse_mcp_call_line,
@@ -33,6 +37,7 @@ from optimus.agent.directives import (
     split_cr_lf_keepends,
     strip_plan_text,
     unsafe_path_text,
+    windows_path_shape,
 )
 from optimus.agent.index_turn import MAX_INDEX_ROUNDS, keep_newest, run_index_tools
 from optimus.agent.models import AgentMcpToolOutput, AgentToolCall, ContextPacker
@@ -54,7 +59,7 @@ from optimus.gateway.attempts import (
     stops_experimental_route,
 )
 from optimus.gateway.client import CaptureIntent, capturing
-from optimus.gateway.errors import GatewayError
+from optimus.gateway.errors import GatewayError, GatewayFailureFacts
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.loops.completion import DeterministicCompletionEvaluator
@@ -69,6 +74,7 @@ from optimus.runtime.state import RuntimeContext
 from optimus.telemetry.events import TelemetryEvent
 from optimus.telemetry.subjects import sanitize_workspace_text
 from optimus.tools.line_endings import LineEndingStyle
+from optimus.usage.turn_settlement import publish_accounting_conflict
 from optimus_security.failure_facts import bounded
 
 if TYPE_CHECKING:
@@ -120,6 +126,9 @@ PLANNING_TURN_PARSE_CODES = frozenset(
         "REFUSE_NOT_ONE_LINE",
         "REFUSE_TOO_LONG",
         "REFUSE_HAS_DIRECTIVE_PREFIX",
+        "REFUSE_UNSAFE_TEXT",
+        "PLAN_PATH_UNSAFE",
+        "INDEX_ARGUMENT_UNSAFE",
         "MCP_MIXED_DIRECTIVES",
         "MCP_NOT_EXACTLY_ONE",
         "MCP_LIST_INVALID",
@@ -149,6 +158,14 @@ PLANNING_PARSE_FEEDBACK: dict[str, str] = {
     "REFUSE_NOT_ONE_LINE": "a REFUSE: reply must be a single non-empty line.",
     "REFUSE_TOO_LONG": "a REFUSE: reason must be at most 512 UTF-8 bytes.",
     "REFUSE_HAS_DIRECTIVE_PREFIX": "a REFUSE: reason must not contain directive prefixes.",
+    "REFUSE_UNSAFE_TEXT": "a REFUSE: reason must not hold control or invisible format characters.",
+    "PLAN_PATH_UNSAFE": (
+        f"each plan path must be workspace-relative, at most {MAX_PATH_CHARS} characters, with no control or invisible "
+        "format character, colon, leading backslash or reserved Windows name."
+    ),
+    "INDEX_ARGUMENT_UNSAFE": (
+        f"an index tool argument must be at most {MAX_PATH_CHARS} characters, with no control or invisible format characters."
+    ),
     "MCP_MIXED_DIRECTIVES": "an MCP_LIST or MCP_CALL line must be the whole reply, never mixed with other directives.",
     "MCP_NOT_EXACTLY_ONE": "an MCP turn must contain exactly one MCP_LIST or MCP_CALL line.",
     "MCP_LIST_INVALID": "the MCP_LIST line was malformed; use MCP_LIST <server>.",
@@ -164,8 +181,8 @@ PLANNING_PARSE_FEEDBACK: dict[str, str] = {
     "INTERMEDIATE_REQUIRES_READ": "an intermediate turn needs at least one ranged READ: line after its OBSERVE: line.",
     "OBSERVATION_TOO_LARGE": "the OBSERVE: note and its READ: requests exceeded the observation budget; keep the note shorter.",
     "READ_PATH_NOT_RELATIVE": (
-        f"each READ: path must be workspace-relative, at most {MAX_PATH_CHARS} characters, "
-        "with no control or invisible format characters."
+        f"each READ: path must be workspace-relative, at most {MAX_PATH_CHARS} characters, with no control or invisible "
+        "format character, colon, leading backslash or reserved Windows name."
     ),
     "READ_RANGES_DUPLICATE": "the READ: ranges must not repeat.",
     "READ_RANGES_OVERLAP": "the READ: ranges must not overlap.",
@@ -613,7 +630,10 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
     if not stripped:
         raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
     if index_tools:
-        requests = parse_index_tool_reply(stripped)
+        try:
+            requests = parse_index_tool_reply(stripped)
+        except AgentDirectivePathError as exc:
+            raise PlanningTurnParseError("INDEX_ARGUMENT_UNSAFE", "an index tool argument was refused") from exc
         if requests is not None:
             return PlanningTurnDecision(kind=PlanningTurnKind.INDEX_TOOL, index_requests=requests)
 
@@ -623,22 +643,64 @@ def parse_planning_turn(text: str, *, index_tools: bool = False) -> PlanningTurn
     if stripped.startswith("REFUSE:"):
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
 
-    mcp_decision = _try_parse_mcp_turn(stripped)
+    # #575: the final-plan parser decides where a WRITE body ends. The checks below read a body by their own, looser
+    # rules; when they would refuse a reply only for MCP-looking or OBSERVE lines that parser reads as WRITE content,
+    # its reading wins. It only ever lifts a refusal: nothing accepted before is refused or changes kind.
+    final_decision = _try_parse_final_plan(text)
+    only_in_the_body = _turn_markers_are_only_in_the_write_body(text, final_decision)
+    try:
+        mcp_decision = _try_parse_mcp_turn(stripped)
+    except PlanningTurnParseError:
+        if not only_in_the_body:
+            raise
+        mcp_decision = None
     if mcp_decision is not None:
         return mcp_decision
 
     surface_lines = _directive_surface_lines(stripped)
-    if _surface_has_observe(surface_lines):
+    if _surface_has_observe(surface_lines) and not only_in_the_body:
         return _parse_intermediate_turn(stripped)
 
-    final_decision = _try_parse_final_plan(text)
     if final_decision is not None:
         return final_decision
 
     if _surface_has_ranged_read(surface_lines):
         return _parse_intermediate_turn(stripped)
 
+    if _final_plan_path_refused(text):
+        raise PlanningTurnParseError("PLAN_PATH_UNSAFE", "a plan path was refused")
     raise PlanningTurnParseError("GRAMMAR_UNRECOGNIZED", "no recognized planning-turn grammar")
+
+
+_TURN_MARKERS = ("OBSERVE:", "MCP_LIST", "MCP_CALL")
+
+
+def _turn_markers_are_only_in_the_write_body(text: str, final_decision: PlanningTurnDecision | None) -> bool:
+    """#575: the final-plan parser reads the reply as a plan with a WRITE, and nothing outside that WRITE's body
+    starts like an OBSERVE or MCP line. The body is found as that parser finds it: its fence rule, its lines, from
+    the WRITE header to the next `is_directive_line`. Everything else in the reply is outside, text after a closing
+    fence included, and is tested piece by piece at every CR, LF and CRLF, so a marker the other checks see behind a
+    bare carriage return is seen here too."""
+    if final_decision is None or final_decision.directives is None:
+        return False
+    if not isinstance(final_decision.directives.write, AgentWriteDirective):
+        return False
+    plan = _unwrap_markdown_code_fence(text)
+    at = text.find(plan)
+    if at < 0:
+        return False
+    lines = plan_lines(plan)
+    outside = [text[:at], text[at + len(plan) :]]
+    index = 0
+    while index < len(lines):
+        outside.append(lines[index])
+        index += 1
+        if WRITE_DIRECTIVE.match(_normalize_directive_surface_line(outside[-1])) is not None:
+            while index < len(lines) and not is_directive_line(lines[index]):
+                index += 1
+    return not any(
+        piece.strip().startswith(_TURN_MARKERS) for part in outside for piece in split_cr_lf_keepends(part)
+    )
 
 
 def _try_parse_mcp_turn(text: str) -> PlanningTurnDecision | None:
@@ -864,12 +926,25 @@ def _try_parse_refuse(text: str) -> PlanningTurnDecision | None:
     reason = refuse_match.group(1).strip()
     if not reason:
         raise PlanningTurnParseError("REFUSE_NOT_ONE_LINE", "REFUSE reason must be one non-empty line")
-    if len(reason.encode("utf-8")) > 512:
+    if len(reason.encode("utf-8", "surrogatepass")) > 512:  # a lone surrogate is refused below, not a crash
         raise PlanningTurnParseError("REFUSE_TOO_LONG", "REFUSE reason exceeds 512 UTF-8 bytes")
     if _REFUSE_REASON_DIRECTIVE_PREFIX.match(reason):
         raise PlanningTurnParseError("REFUSE_HAS_DIRECTIVE_PREFIX", "REFUSE reason must not contain directive prefixes")
+    if unsafe_path_text(reason):  # #583: the reason is the person's text and the committed history
+        raise PlanningTurnParseError("REFUSE_UNSAFE_TEXT", "REFUSE reason holds an unsafe character")
 
     return PlanningTurnDecision(kind=PlanningTurnKind.REFUSE, reason=reason)
+
+
+def _final_plan_path_refused(text: str) -> bool:
+    """#583: the reply failed as a final plan because of a path, so the notice can name that cause."""
+    try:
+        parse_agent_plan(text, edit_base="forbidden")
+    except AgentDirectivePathError:
+        return True
+    except AgentDirectiveParseError:
+        return False
+    return False
 
 
 def _try_parse_final_plan(text: str) -> PlanningTurnDecision | None:
@@ -894,7 +969,7 @@ def _normalize_workspace_relative_path(path_text: str) -> str:
     path = Path(path_text)
     if path.is_absolute() or ".." in path.parts:
         raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
-    if re.match(r"^[A-Za-z]:[\\/]|^/", path_text) or unsafe_path_text(path_text):
+    if re.match(r"^[A-Za-z]:[\\/]|^/", path_text) or unsafe_path_text(path_text) or windows_path_shape(path_text):
         raise PlanningTurnParseError("READ_PATH_NOT_RELATIVE", "READ path must be workspace-relative")
     return path.as_posix()
 
@@ -1101,6 +1176,7 @@ class PlanningLoopRunner:
         operation_control: TurnOperationControl | None = None,
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
+        gateway_failure_facts: GatewayFailureFacts | None = None,
         route_binder: TurnRouteBinder | None = None,
         recovery_checkin: PlanningCheckInCallback | None = None,
         loop_event_sink: Callable[[TelemetryEvent], None] | None = None,
@@ -1136,6 +1212,7 @@ class PlanningLoopRunner:
         self._operation_control = operation_control
         self._context_packer = context_packer
         self._attempt_callback = attempt_callback
+        self._gateway_failure_facts = gateway_failure_facts
         self._route_binder = route_binder
 
     def run(
@@ -1190,6 +1267,7 @@ class PlanningLoopRunner:
             memory_context=memory_context,
             context_packer=self._context_packer,
             attempt_callback=self._attempt_callback,
+            gateway_failure_facts=self._gateway_failure_facts,
             route_binder=self._route_binder,
             interactive=self._recovery_checkin is not None,
             escalates=self._recovery_escalation is not None,
@@ -1300,6 +1378,7 @@ class _PlanningIterationRunner:
         memory_context: str = "",
         context_packer: ContextPacker | None = None,
         attempt_callback: PlanningAttemptCallback | None = None,
+        gateway_failure_facts: GatewayFailureFacts | None = None,
         route_binder: TurnRouteBinder | None = None,
         interactive: bool = False,
         escalates: bool = False,
@@ -1334,6 +1413,7 @@ class _PlanningIterationRunner:
         self._recovery_stop: tuple[str, str] | None = None  # (stop reason, the user's detail)
         self._refusal_detail = ""
         self._attempt_callback = attempt_callback
+        self._gateway_failure_facts = gateway_failure_facts
         self._route_binder = route_binder
         # Sticky: a Gateway failure proved this route stopped, and a stopped route never restarts (#400).
         self._route_stopped = False
@@ -1641,6 +1721,7 @@ class _PlanningIterationRunner:
         # funnel, never as a gateway failure (Fable CP3 correction review MINOR-1; Codex CP3 correction
         # ruling C1).
         integrity: list[Exception] = []
+        accounted = False
 
         def capture(action: Callable[[], Any]) -> None:
             try:
@@ -1681,6 +1762,8 @@ class _PlanningIterationRunner:
                 or, for a report that cannot be attributed, the records its integrity error carries,
                 with the request's `failure` for the diagnostic only. No failure stops the next step.
                 Returns None when anything failed."""
+                nonlocal accounted
+                accounted = True
                 held = len(integrity)
                 if usage is not None:
                     capture(lambda: self._record_reported_gateway_usage(usage, planning_turn, wire_attempt))
@@ -1785,7 +1868,10 @@ class _PlanningIterationRunner:
 
         retry_result = self._retry_controller.run(operation)
         if integrity:
-            raise first_error(integrity)
+            primary = first_error(integrity)
+            if accounted and (self._operation_control is None or not self._operation_control.transport_abandoned()):
+                publish_accounting_conflict(self._gateway_failure_facts, primary, integrity)
+            raise primary
 
         # Map RetryResult to planning outcomes.
         sequence_cost = self._total_cost_usd - cost_before

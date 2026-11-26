@@ -1162,3 +1162,189 @@ async def test_seam4_levelled_error_trace_preserves_escaped_request_failure(tmp_
         assert failure["data"]["request_method"] == "session/prompt"
         assert "cancellation cleanup failed" not in str(failure)
         assert "request task failed" not in captured.err
+
+
+@pytest.mark.parametrize("fail_first", [False, True], ids=["flushed", "delivery-failed"])
+async def test_ndjson_versioned_request_correlation_keeps_handler_and_delivery_separate(tmp_path, capsys, fail_first):
+    from optimus.acp.debug_trace import DiagnosticLevel, configure_debug_trace
+    from tests.integration.acp.test_server_stream import InteractiveLineReader, MemoryLineWriter
+
+    trace = tmp_path / "requests.ndjson"
+    configure_debug_trace(enabled=True, log_path=trace, minimum_level=DiagnosticLevel.DEBUG)
+    configured = configured_test_agent_server(tmp_path, output_text="done")
+    reader = InteractiveLineReader()
+    first_entered = asyncio.Event()
+    release_first = asyncio.Event()
+
+    class Writer(MemoryLineWriter):
+        attempted_first = False
+
+        async def write_line(self, message):
+            if message.get("id") == 1 and not self.attempted_first:
+                self.attempted_first = True
+                first_entered.set()
+                await release_first.wait()
+                if fail_first:
+                    raise OSError("controlled response write failure")
+            await super().write_line(message)
+
+    writer = Writer()
+    task = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+    try:
+        await reader.send({"id": 1, "jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": 1}})
+        await asyncio.wait_for(first_entered.wait(), timeout=10)
+        await reader.send({"jsonrpc": "2.0", "method": "unknown/notification"})
+        await reader.send({"id": 900, "jsonrpc": "2.0", "result": {}})
+        await reader.send({"id": 2, "jsonrpc": "2.0", "method": "initialize", "params": {"protocolVersion": 1}})
+        assert "result" in await writer.wait_for_response(2)
+        release_first.set()
+        first = await writer.wait_for_response(1)
+        assert ("error" in first) is fail_first
+    finally:
+        release_first.set()
+        reader.close()
+        await asyncio.wait_for(task, timeout=10)
+
+    records = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    lifecycle = [row for row in records if row["location"].startswith("request_correlation:")]
+    start_first, start_second, end_second, end_first = lifecycle
+    assert [row["location"] for row in lifecycle] == [
+        "request_correlation:start", "request_correlation:start",
+        "request_correlation:terminal", "request_correlation:terminal",
+    ]
+    assert start_first["correlation"] == end_first["correlation"]
+    assert start_second["correlation"] == end_second["correlation"]
+    assert start_first["correlation"]["operationId"] != start_second["correlation"]["operationId"]
+    assert end_second["data"]["handler"] == end_first["data"]["handler"] == "returned_result"
+    assert end_second["data"]["delivery"] == "flushed"
+    assert end_first["data"]["delivery"] == ("failed" if fail_first else "flushed")
+    assert end_first["data"].get("recoveryDelivery") == ("flushed" if fail_first else None)
+    assert end_first["correlation"]["transport"] == "ndjson"
+    assert capsys.readouterr().out == ""
+
+
+async def test_ndjson_request_trace_joins_the_host_session_and_run(tmp_path):
+    from optimus.acp.debug_trace import DiagnosticLevel, configure_debug_trace
+    from tests.integration.acp.test_server_stream import InteractiveLineReader, MemoryLineWriter
+
+    trace = tmp_path / "host-identity.ndjson"
+    configure_debug_trace(enabled=True, log_path=trace, minimum_level=DiagnosticLevel.DEBUG)
+    configured = configured_test_agent_server(tmp_path, output_text="WRITE example.py\ncontent")
+    reader, writer = InteractiveLineReader(), MemoryLineWriter()
+    task = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+    try:
+        await reader.send({
+            "id": 1, "jsonrpc": "2.0", "method": "session/new",
+            "params": {"cwd": str(tmp_path), "mcpServers": []},
+        })
+        session_id = (await asyncio.wait_for(writer.wait_for_response(1), timeout=10))["result"]["sessionId"]
+        await reader.send({
+            "id": 2, "jsonrpc": "2.0", "method": "session/prompt",
+            "params": {"sessionId": session_id, "prompt": [{"type": "text", "text": "local fixture"}]},
+        })
+        permission = await asyncio.wait_for(writer.wait_for_request("session/request_permission"), timeout=10)
+        await reader.send({"jsonrpc": "2.0", "id": permission["id"], "result": {"outcome": {"outcome": "cancelled"}}})
+        assert "result" in await asyncio.wait_for(writer.wait_for_response(2), timeout=10)
+    finally:
+        reader.close()
+        await asyncio.wait_for(task, timeout=10)
+
+    records = [json.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+    start, terminal = [row for row in records if row["location"].startswith("request_correlation:")
+                       and row["correlation"]["method"] == "session/prompt"]
+    assert start["correlation"]["sessionId"] == session_id
+    assert start["correlation"]["operationId"] == terminal["correlation"]["operationId"]
+    assert terminal["correlation"]["runId"] == f"{session_id}:1"
+    worker, = [row for row in records if row["location"] == "spec.py:_handle_session_prompt:entry"]
+    assert worker["correlation"]["runId"] == terminal["correlation"]["runId"]
+
+
+@pytest.mark.parametrize("path", ["prompt", "recovery"])
+@pytest.mark.parametrize("trace_level", ["legacy", "debug", "error"])
+async def test_ndjson_peer_error_returns_host_error_without_retaining_peer_body(
+    path, trace_level, tmp_path, monkeypatch, capsys,
+):
+    from optimus.acp.debug_trace import DiagnosticLevel, configure_debug_trace
+    from tests.integration.acp.test_server_stream import InteractiveLineReader, MemoryLineWriter
+
+    minimum_level = None if trace_level == "legacy" else DiagnosticLevel[trace_level.upper()]
+    trace = tmp_path / "peer-error.ndjson"
+    configure_debug_trace(enabled=True, log_path=trace, minimum_level=minimum_level)
+    configured = configured_test_agent_server(tmp_path, output_text="WRITE example.py\ncontent")
+    if path == "recovery":
+        original = server.AcpDuplexAdapter.handle_client_request
+
+        async def await_peer_in_adapter(self, message, ownership_slot=None):
+            if message.get("id") == 2:
+                await self._outbound.request("session/request_permission", {})
+            return await original(self, message, ownership_slot=ownership_slot)
+
+        monkeypatch.setattr(server.AcpDuplexAdapter, "handle_client_request", await_peer_in_adapter)
+
+    reader, writer = InteractiveLineReader(), MemoryLineWriter()
+    serve_task = asyncio.create_task(configured.server.serve_ndjson(reader, writer))
+    try:
+        await reader.send({
+            "jsonrpc": "2.0", "id": 1, "method": "session/new",
+            "params": {"cwd": str(tmp_path), "mcpServers": []},
+        })
+        opened = await asyncio.wait_for(writer.wait_for_response(1), timeout=A_BOUND_SECONDS)
+        await reader.send({
+            "jsonrpc": "2.0", "id": 2, "method": "session/prompt",
+            "params": {"sessionId": opened["result"]["sessionId"], "prompt": [{"type": "text", "text": "fixture"}]},
+        })
+        pending = await asyncio.wait_for(writer.wait_for_request("session/request_permission"), timeout=A_BOUND_SECONDS)
+        await reader.send({
+            "jsonrpc": "2.0", "id": pending["id"],
+            "error": {
+                "code": -31415,
+                "message": "peer-detail-marker",
+                "data": {"nested": {"peer-payload-marker": "synthetic fixture"}},
+            },
+        })
+        reply = await asyncio.wait_for(writer.wait_for_response(2), timeout=A_BOUND_SECONDS)
+        await reader.send({
+            "jsonrpc": "2.0", "id": 3, "method": "session/new",
+            "params": {"cwd": str(tmp_path), "mcpServers": []},
+        })
+        assert "result" in await asyncio.wait_for(writer.wait_for_response(3), timeout=A_BOUND_SECONDS)
+    finally:
+        await _seam4_finally(reader, serve_task)
+
+    assert sum(message.get("id") == 2 for message in writer.messages) == 1
+    assert not (tmp_path / "example.py").exists()
+    assert reply == {
+        "jsonrpc": "2.0", "id": 2,
+        "error": {
+            "code": errors.INTERNAL_ERROR,
+            "message": "client rejected outbound request",
+            "data": {"reason": "CLIENT_REJECTED_OUTBOUND"},
+        },
+    }
+    # In the visible tiers, the absence test needs a positive trace observation.
+    if trace_level in {"legacy", "debug"}:
+        log = trace.read_text(encoding="utf-8")
+        records = [json.loads(line) for line in log.splitlines()]
+        assert any(
+            row["location"] == "server.py:serve_ndjson:inbound_client_response_raw"
+            and row["data"] == {"id": pending["id"], "has_result": False, "has_error": True}
+            for row in records
+        )
+    elif path == "prompt":
+        log = trace.read_text(encoding="utf-8")
+        records = [json.loads(line) for line in log.splitlines()]
+        assert any(
+            row["location"] == "spec.py:_handle_session_prompt:outbound_error"
+            and row["level"] == "error"
+            and row["data"]["reason"] == "CLIENT_REJECTED_OUTBOUND"
+            for row in records
+        )
+    else:
+        # This outer recovery path emits DEBUG response observations only.
+        assert not trace.exists()
+        log = ""
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    for marker in ("-31415", "peer-detail-marker", "peer-payload-marker"):
+        assert marker not in log
+        assert marker not in captured.err

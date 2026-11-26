@@ -14,6 +14,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from typing import Any
 
+from optimus.acp.conversation import ConversationOutcome
 from optimus.acp.spec import CONTEXT_PLAN_TOO_LARGE_TEXT, AcpDuplexAdapter, InMemoryAcpSpecSessionStore, RecordingOutboundChannel
 from optimus.agent.models import AgentRunResult, AgentRunStatus
 from optimus.agent.runner import AgentRunner
@@ -94,6 +95,10 @@ class _Turn:
             self.outbound.respond(permission["id"], {"outcome": {"outcome": "selected", "optionId": answer_permission}})
         return (await asyncio.wait_for(task, timeout=10)).response["result"]
 
+    def records(self) -> Any:
+        """The committed turns of the session's real conversation object, keyed by turn_seq."""
+        return self.adapter._sessions.get(self.session_id).conversation.records  # noqa: SLF001
+
     def settlement_event_outcome(self) -> str:
         """The semantic outcome the turn's own settlement event reports (not a conversation record)."""
         [event] = self.settlements
@@ -166,16 +171,21 @@ class _Scripted(Runner):
     """The context-engine tests' scripted runner. ``cancel_in`` names the run ("planning", "approved" or "chat")
     inside which the turn accepts a cancel, exactly as a client's session/cancel arriving then would."""
 
-    def __init__(self, *, cancel_in: str | None = None, plan_text: str = "WRITE example.py\ncontent", hashed: bool = True) -> None:
+    def __init__(
+        self, *, cancel_in: str | None = None, plan_text: str = "WRITE example.py\ncontent", hashed: bool = True, approved: dict[str, Any] | None = None
+    ) -> None:
         super().__init__(plan_text=plan_text)
         self.cancel_in = cancel_in
         self.hashed = hashed
+        self.approved = approved  # fields that replace the approved run's result
 
     def run(self, request: Any, **kwargs: Any) -> AgentRunResult:
         result = super().run(request, **kwargs)
         stage = "chat" if request.execution_mode is ExecutionMode.CHAT else "approved" if request.approval.approved else "planning"
         if stage == self.cancel_in:
             assert kwargs["operation_control"].request_session_cancel().value == "accepted"
+        if stage == "approved" and self.approved is not None:
+            result = result.model_copy(update=self.approved)
         if not self.hashed and result.status is AgentRunStatus.AWAITING_APPROVAL:
             result = result.model_copy(update={"plan_hash": None})
         return result
@@ -249,3 +259,62 @@ async def test_a_plan_too_large_for_its_record_reports_failed(tmp_path: Path) ->
     assert result == {"stopReason": "end_turn", "_meta": {"runStopReason": None, "outcome": "failed"}}
     assert result["_meta"]["outcome"] == turn.settlement_event_outcome()
     assert any(CONTEXT_PLAN_TOO_LARGE_TEXT in text for text in turn.texts())
+
+
+async def test_the_record_of_a_cancel_accepted_before_the_oversized_plan_terminal(tmp_path: Path) -> None:
+    turn = _scripted_turn(tmp_path, _Scripted(cancel_in="planning", plan_text=BIG_PLAN), small_record=True)
+    await turn.open()
+
+    result = await turn.prompt()
+
+    assert result["_meta"]["outcome"] == "cancelled" == turn.settlement_event_outcome()
+    [record] = turn.records().values()  # a record is committed for the turn
+    # #558: the record follows the settlement (operator ruling, 2026-11-25); the handler had passed failed.
+    assert record.outcome is ConversationOutcome.CANCELLED
+    assert record.plan_text == "", "the oversized plan itself is not kept"
+    assert CONTEXT_PLAN_TOO_LARGE_TEXT in record.completion_text, "the refusal text is kept as the completion"
+
+
+async def test_the_record_of_a_cancel_accepted_while_the_approved_run_is_in_flight(tmp_path: Path) -> None:
+    turn = _scripted_turn(tmp_path, _Scripted(cancel_in="approved"))
+    await turn.open()
+
+    result = await turn.prompt(answer_permission="approve")
+
+    assert result["_meta"]["outcome"] == "cancelled" == turn.settlement_event_outcome()
+    [record] = turn.records().values()  # a record is committed for the turn
+    # #558: the record follows the settlement (operator ruling, 2026-11-25); the handler had passed completed.
+    assert record.outcome is ConversationOutcome.CANCELLED
+    assert record.completion_text == "Turn completed."
+
+
+async def test_the_checkpoint_of_a_cancelled_turn_keeps_what_the_run_did(tmp_path: Path) -> None:
+    """The run finished before the cancel was accepted: the record is cancelled, and the continuation checkpoint still
+    says completed, so the next session is not told the work is unfinished."""
+    turn = _scripted_turn(tmp_path, _Scripted(cancel_in="approved"))
+    await turn.open()
+    checkpointed: list[ConversationOutcome] = []
+    turn.adapter._checkpoint_turn = lambda _turn, _prompt, _result, outcome: checkpointed.append(outcome)  # noqa: SLF001
+
+    await turn.prompt(answer_permission="approve")
+
+    [record] = turn.records().values()
+    assert (record.outcome, checkpointed) == (ConversationOutcome.CANCELLED, [ConversationOutcome.COMPLETED])
+
+
+async def test_a_cancel_accepted_while_a_failing_approved_run_is_in_flight_changes_only_the_outcome(tmp_path: Path) -> None:
+    failed = {"status": AgentRunStatus.FAILED, "final_state": "FAILED", "stop_reason": "TEST_TIMED_OUT", "output_text": "A TEST timed out."}
+    results, records = [], []
+    for index, cancel_in in enumerate((None, "approved")):
+        (tmp_path / str(index)).mkdir()
+        turn = _scripted_turn(tmp_path / str(index), _Scripted(cancel_in=cancel_in, approved=failed))
+        await turn.open()
+        results.append(await turn.prompt(answer_permission="approve"))
+        [record] = turn.records().values()
+        records.append(record)
+
+    plain, cancelled = results
+    assert (plain["_meta"]["outcome"], cancelled["_meta"]["outcome"]) == ("failed", "cancelled")
+    assert (plain["stopReason"], plain["_meta"]["runStopReason"]) == (cancelled["stopReason"], cancelled["_meta"]["runStopReason"])
+    assert [record.outcome for record in records] == [ConversationOutcome.FAILED, ConversationOutcome.CANCELLED]
+    assert records[0].completion_text == records[1].completion_text  # the delivered failure text is kept either way

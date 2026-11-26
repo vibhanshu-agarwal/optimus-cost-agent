@@ -19,6 +19,7 @@ from optimus.acp.errors import (
     PARSE_ERROR,
     REQUEST_CANCELLED,
     RESOURCE_NOT_FOUND,
+    TURN_BUSY,
 )
 from tools.tracked_repository_files import tracked_repository_files
 
@@ -51,6 +52,7 @@ def test_registry_is_unique_and_protocol_aligned() -> None:
         MUTATION_FORBIDDEN,
         DUPLICATE_REQUEST_ID,
         MCP_REOPEN_REFUSED,
+        TURN_BUSY,
     )
 
     assert len(registry_values) == len(set(registry_values))
@@ -60,12 +62,14 @@ def test_registry_is_unique_and_protocol_aligned() -> None:
     assert RESOURCE_NOT_FOUND == -32002
     assert -32910 not in acp_codes
     assert -32911 not in acp_codes
+    assert -32913 not in acp_codes
     assert OPTIMUS_APPLICATION_ERROR_CODES.isdisjoint(acp_codes)
     assert all(not (RESERVED_MIN <= code <= RESERVED_MAX) for code in OPTIMUS_APPLICATION_ERROR_CODES)
     assert MUTATION_FORBIDDEN == -32910
     assert DUPLICATE_REQUEST_ID == -32911
     assert MCP_REOPEN_REFUSED == -32912
-    assert OPTIMUS_APPLICATION_ERROR_CODES == frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID, MCP_REOPEN_REFUSED})
+    assert TURN_BUSY == -32913
+    assert OPTIMUS_APPLICATION_ERROR_CODES == frozenset({MUTATION_FORBIDDEN, DUPLICATE_REQUEST_ID, MCP_REOPEN_REFUSED, TURN_BUSY})
 
 
 EXPECTED_LEGACY_ERROR_CODE_SITES: frozenset[tuple[str, str]] = frozenset()
@@ -155,7 +159,7 @@ class _ErrorCodeLiteralVisitor(ast.NodeVisitor):
             func_name = node.func.id
         elif isinstance(node.func, ast.Attribute):
             func_name = node.func.attr
-        if func_name in {"JsonRpcError", "AcpOutboundError"} and node.args:
+        if func_name in {"JsonRpcError", "AcpOutboundError", "AcpPeerResponseError"} and node.args:
             self._maybe_record_value(node.args[0], self._enclosing())
         self.generic_visit(node)
 

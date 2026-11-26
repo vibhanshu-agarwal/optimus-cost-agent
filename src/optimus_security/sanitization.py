@@ -12,6 +12,7 @@ COMPATIBILITY_SANITIZATION_POLICY preserves pre-existing caller behavior.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import hmac
 import math
@@ -27,6 +28,12 @@ from urllib.parse import urlparse
 # Maximum length of a secret that the sanitizer guarantees to catch in streaming
 # mode. Secrets longer than this are rejected at launch time.
 MAX_SECRET_TEXT_CHARS = 65_536
+# Longest single rule match a stream release may hold back past its tentative cut before the stream is refused.
+MAX_STREAM_HOLD_CHARS = 4 * MAX_SECRET_TEXT_CHARS
+# Characters on each side of a candidate release cut that must sanitize the same together as apart.
+_CUT_CHECK_CHARS = 8192
+# Candidate cuts tried per release, each further back, before nothing is released this time.
+_CUT_ATTEMPTS = 12
 
 _REDACTED = "**********"
 REDACTION_MASK = _REDACTED  # what every redaction leaves in place of what it removed
@@ -56,16 +63,35 @@ _RECOGNIZED_PREFIXES: tuple[str, ...] = (
 _BEARER_TOKEN_RE = re.compile(r"(?i)(authorization:\s*bearer\s+|bearer\s+)\S+")
 _ENV_ASSIGNMENT_RE = re.compile(r"(?i)\b([A-Z_][A-Z0-9_]*(?:_KEY|_SECRET|_TOKEN|_PASSWORD))\s*=\s*\S+")
 _GENERIC_SECRET_ASSIGNMENT_RE = re.compile(r"(?i)\b(token|password|secret|credential|api[_-]?key)((?:=|:)\s*)\S+")
+# The fewest closed-class English words prose puts after a keyword (#584): each one exempted is a one-word value that
+# could leave in clear, so the list holds only articles, common prepositions and conjunctions, plain copulas and
+# auxiliaries, and negation (no names, pronouns, determiners, modals or forms such as "being" or "been").
+_PROSE_FUNCTION_WORDS = (
+    "a an the of in on at to for from with by into via as than under over and or nor but if when while "
+    "is are was were has have had does did not never only also"
+).split()
 # Group 2 keeps an optional copula and/or separator ("token is X", "token = X", "token is: X") so the mask lands on the
-# value (#505).
+# value (#505). Groups 3 and 4 record a "=" or ":" separator. Only with none ("token X", "token is X") may the value be
+# exempt, and only as a lowercase function word followed directly by whitespace, so "token was not made" keeps "not"
+# while "password = not", "password Per" and a word cut at a stream boundary stay masked.
 _WHITESPACE_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was)(?:\s*[=:])?\s+|[=:]\s+)?)\S+"
+    r"(?i)\b(token|password|secret|credential|api[_-]?key)(\s+(?:(?:is|was)(?:\s*([=:]))?\s+|([=:])\s+)?)"
+    r"(?(3)|(?(4)|(?!(?-i:" + "|".join(_PROSE_FUNCTION_WORDS) + r")\s)))\S+"
 )
 _API_KEY_HEADER_RE = re.compile(r"(?i)(api[_-]?key)\s*:\s*\S+")
 _X_API_KEY_HEADER_RE = re.compile(r"(?i)x-api-key:\s*\S+")
-_URL_USERINFO_RE = re.compile(r"(?i)(\w+://)[^/\s:@]*:[^@\s/]+@")
+# The leading \b keeps a long word run linear: without it every position in the run retries the scheme (#622).
+_URL_USERINFO_RE = re.compile(r"(?i)\b(\w+://)[^/\s:@]*:[^@\s/]+@")
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+# Each local-part run that ends at an "@", found from its start only: searching _EMAIL_RE directly retries every word
+# boundary of a dotted run with no "@", which is quadratic in the run (#622, one-shot artifacts).
+_EMAIL_LOCAL_RUN_RE = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]++(?=@)")
+_WORD_BOUNDARY_RE = re.compile(r"\b")
 _TOKEN_CANDIDATE_RE = re.compile(r"[A-Za-z0-9._+:/-]{24,256}")
+_PREFIX_RES = tuple(
+    re.compile(rf"(?<![A-Za-z0-9_-]){re.escape(prefix)}[A-Za-z0-9_-]{{{_PREFIX_SUFFIX_MIN},{_PREFIX_SUFFIX_MAX}}}(?![A-Za-z0-9_-])")
+    for prefix in _RECOGNIZED_PREFIXES
+)
 
 _ID_VALUE = r"[A-Za-z0-9._:-]{1,128}"
 _MODEL_VALUE = r"[A-Za-z0-9._:+/-]{1,128}"
@@ -144,9 +170,11 @@ class SanitizationPolicy:
 
 COMPATIBILITY_SANITIZATION_POLICY = SanitizationPolicy(version="compatibility-v1")
 
-# v2 (#505): the whitespace assignment rule masks the value after a copula. Manifests recorded as v1 stay valid.
+# v2 (#505): the whitespace assignment rule masks the value after a copula. v3 (#584): it no longer masks a function
+# word after the keyword ("the token was not made"). v4 (#622): a stream release never cuts a label from its value,
+# and a stream with one match past the hold-back limit is refused. Manifests recorded as v1 to v3 stay valid.
 EVIDENCE_REDACTION_POLICY = SanitizationPolicy(
-    version="evidence-redaction-v2",
+    version="evidence-redaction-v4",
     enable_whitespace_secret_assignment=True,
     enable_prefix_detection=True,
     enable_entropy_detection=True,
@@ -158,10 +186,10 @@ EVIDENCE_REDACTION_POLICY = SanitizationPolicy(
 
 # Workspace subjects enable the shared whitespace assignment rule without
 # changing the default compatibility contract used by redact_for_telemetry.
-# Its own identity since #505 changed that rule's output; before it, this policy reported compatibility-v1.
+# Its own identity since #505 changed that rule's output; before it, this policy reported compatibility-v1. v3: #584.
 WORKSPACE_SUBJECT_SANITIZATION_POLICY = replace(
     COMPATIBILITY_SANITIZATION_POLICY,
-    version="workspace-subject-v2",
+    version="workspace-subject-v3",
     enable_whitespace_secret_assignment=True,
 )
 
@@ -420,21 +448,50 @@ def _sanitize_text(
         result = _WHITESPACE_SECRET_ASSIGNMENT_RE.sub(r"\1\2" + _REDACTED, result)
         counter.inc("whitespace_secret_assignment")
 
-    if policy.enable_email_masking and _EMAIL_RE.search(result):
-        result = _EMAIL_RE.sub(_REDACTED, result)
-        counter.inc("email_masking")
+    if policy.enable_email_masking:
+        masked = _mask_emails(result)
+        if masked is not None:
+            result = masked
+            counter.inc("email_masking")
 
-    protected = _protected_spans(result) if policy.enable_contextual_preservation else ()
+    protected = _protected_spans(result) if policy.enable_contextual_preservation else _NO_PROTECTED
 
     if policy.enable_prefix_detection:
         result = _apply_prefix_redaction(result, protected=protected, counter=counter)
 
     if policy.enable_entropy_detection:
         # Recompute protected spans after prefix edits so indices stay aligned.
-        protected = _protected_spans(result) if policy.enable_contextual_preservation else ()
+        protected = _protected_spans(result) if policy.enable_contextual_preservation else _NO_PROTECTED
         result = _apply_entropy_redaction(result, protected=protected, counter=counter, exempt=entropy_exempt)
 
     return result
+
+
+def _mask_emails(text: str) -> str | None:
+    """``_EMAIL_RE.sub(_REDACTED, text)`` in linear time, or None when nothing matches.
+
+    A match's local part is the run of local-part characters before its "@" (the class has no "@"), taken from the
+    run's first word boundary, and the rest of the match does not depend on where in the run it starts. So each "@"
+    needs one anchored match from that boundary, and no other start in the run can match.
+    """
+    pieces: list[str] = []
+    pos = 0
+    for run in _EMAIL_LOCAL_RUN_RE.finditer(text):
+        start, at = max(run.start(), pos), run.end()
+        if start >= at:
+            continue
+        boundary = _WORD_BOUNDARY_RE.search(text, start, at)
+        if boundary is None or boundary.start() >= at:
+            continue
+        match = _EMAIL_RE.match(text, boundary.start())
+        if match is None:
+            continue
+        pieces += (text[pos : match.start()], _REDACTED)
+        pos = match.end()
+    if not pieces:
+        return None
+    pieces.append(text[pos:])
+    return "".join(pieces)
 
 
 def _apply_path_aliases(text: str, path_aliases: list[PathAliasRule], counter: _RuleCounter) -> str:
@@ -443,17 +500,10 @@ def _apply_path_aliases(text: str, path_aliases: list[PathAliasRule], counter: _
     # Slash-normalize for matching; Windows may case-fold, POSIX must not.
     normalized = text.replace("\\", "/")
     result = normalized
-    flags = re.IGNORECASE if sys.platform == "win32" else 0
     for rule in path_aliases:
-        root = rule.source_root.replace("\\", "/").rstrip("/")
-        if not root:
+        pattern = _path_alias_pattern(rule)
+        if pattern is None:
             continue
-        # Segment boundaries: reject mid-token suffix matches such as
-        # ``backup<rooted-path>/file``, while allowing whitespace/start prefixes.
-        pattern = re.compile(
-            rf'(?<![A-Za-z0-9_]){re.escape(root)}(?=[/\\"\']|\s|$)',
-            flags,
-        )
         replaced, count = pattern.subn(rule.alias, result)
         if count:
             result = replaced
@@ -461,7 +511,27 @@ def _apply_path_aliases(text: str, path_aliases: list[PathAliasRule], counter: _
     return result
 
 
-def _protected_spans(text: str) -> tuple[tuple[int, int], ...]:
+def _path_alias_pattern(rule: PathAliasRule) -> re.Pattern[str] | None:
+    """Match a path alias root in slash-normalized text; ``None`` for an empty root."""
+    root = rule.source_root.replace("\\", "/").rstrip("/")
+    if not root:
+        return None
+    # Segment boundaries: reject mid-token suffix matches such as
+    # ``backup<rooted-path>/file``, while allowing whitespace/start prefixes.
+    return re.compile(
+        rf'(?<![A-Za-z0-9_]){re.escape(root)}(?=[/\\"\']|\s|$)',
+        re.IGNORECASE if sys.platform == "win32" else 0,
+    )
+
+
+# Protected value spans as (sorted starts, running maximum of their ends): a token lies inside some span exactly when
+# the largest end among spans starting at or before it reaches its end. One bisect per token, so one pass over a whole
+# artifact stays linear in the number of tokens and spans (#622 round 3).
+_Protected = tuple[tuple[int, ...], tuple[int, ...]]
+_NO_PROTECTED: _Protected = ((), ())
+
+
+def _protected_spans(text: str) -> _Protected:
     spans: list[tuple[int, int]] = []
     for labels, value_pat in _PRESERVE_LABELS:
         patterns = (
@@ -473,24 +543,26 @@ def _protected_spans(text: str) -> tuple[tuple[int, int], ...]:
         for pattern in patterns:
             spans.extend((match.start(1), match.end(1)) for match in pattern.finditer(text))
     spans.sort()
-    return tuple(spans)
+    max_ends: list[int] = []
+    for _, p_end in spans:
+        max_ends.append(max(p_end, max_ends[-1]) if max_ends else p_end)
+    return tuple(p_start for p_start, _ in spans), tuple(max_ends)
 
 
-def _span_protected(start: int, end: int, protected: Sequence[tuple[int, int]]) -> bool:
-    return any(start >= p_start and end <= p_end for p_start, p_end in protected)
+def _span_protected(start: int, end: int, protected: _Protected) -> bool:
+    starts, max_ends = protected
+    i = bisect.bisect_right(starts, start)
+    return i > 0 and max_ends[i - 1] >= end
 
 
 def _apply_prefix_redaction(
     text: str,
     *,
-    protected: Sequence[tuple[int, int]],
+    protected: _Protected,
     counter: _RuleCounter,
 ) -> str:
     matches: list[tuple[int, int]] = []
-    for prefix in _RECOGNIZED_PREFIXES:
-        pattern = re.compile(
-            rf"(?<![A-Za-z0-9_-]){re.escape(prefix)}[A-Za-z0-9_-]{{{_PREFIX_SUFFIX_MIN},{_PREFIX_SUFFIX_MAX}}}(?![A-Za-z0-9_-])"
-        )
+    for pattern in _PREFIX_RES:
         for match in pattern.finditer(text):
             if _span_protected(match.start(), match.end(), protected):
                 continue
@@ -509,7 +581,7 @@ def _is_entropy_candidate(token: str) -> bool:
 def _apply_entropy_redaction(
     text: str,
     *,
-    protected: Sequence[tuple[int, int]],
+    protected: _Protected,
     counter: _RuleCounter,
     exempt: frozenset[str] = frozenset(),
 ) -> str:
@@ -578,8 +650,16 @@ def validate_secret_length(secret: str, *, max_chars: int = MAX_SECRET_TEXT_CHAR
         raise ValueError(f"secret length {len(secret)} exceeds the maximum of {max_chars} characters")
 
 
+class StreamHoldBackExceededError(ValueError):
+    """A release would cut through a rule match held back over ``max_hold_chars``; the stream must be refused."""
+
+
 class StreamingTextSanitizer:
-    """Bounded-overlap streaming sanitizer for incrementally-arriving text."""
+    """Bounded-overlap streaming sanitizer for incrementally-arriving text.
+
+    A release cut changes no output: the streamed text equals one-shot sanitization, so a label leaves with its
+    value (#622). A match held back past ``max_hold_chars`` refuses the stream instead of splitting it.
+    """
 
     def __init__(
         self,
@@ -589,14 +669,43 @@ class StreamingTextSanitizer:
         path_aliases: Sequence[PathAliasRule] = (),
         policy: SanitizationPolicy = COMPATIBILITY_SANITIZATION_POLICY,
         max_secret_chars: int = MAX_SECRET_TEXT_CHARS,
+        max_hold_chars: int = MAX_STREAM_HOLD_CHARS,
     ) -> None:
         self._sorted_secrets = sorted((s for s in known_secrets if s), key=len, reverse=True)
         self._sorted_pii = sorted((s for s in known_pii if s), key=len, reverse=True)
         self._path_aliases = _normalize_path_aliases(path_aliases)
         self._policy = policy
         self.overlap_chars = max(0, max_secret_chars - 1)
+        self.max_hold_chars = max_hold_chars
         self._pending = ""
         self._counter = _RuleCounter()
+        self._exact_needles = tuple((needle, _smallest_period(needle)) for needle in self._sorted_secrets + self._sorted_pii)
+        self._normalizes_slashes = policy.enable_path_aliases and bool(self._path_aliases)
+        # Long matches the local cut check cannot see whole: each rule with a stand-in for the text still to come.
+        # A label (or a URI's user part) running to the end of the buffer then matches through it and waits.
+        probes: list[tuple[re.Pattern[str], str]] = []
+        if policy.enable_uri_userinfo:
+            probes.append((_URL_USERINFO_RE, ":x@"))
+        if policy.enable_bearer_header_assignment:
+            probes += [
+                (_BEARER_TOKEN_RE, "x"),
+                (_ENV_ASSIGNMENT_RE, "x"),
+                (_GENERIC_SECRET_ASSIGNMENT_RE, "x"),
+                (_API_KEY_HEADER_RE, "x"),
+                (_X_API_KEY_HEADER_RE, "x"),
+            ]
+        if policy.enable_whitespace_secret_assignment:
+            probes.append((_WHITESPACE_SECRET_ASSIGNMENT_RE, "x"))
+        # Email is left to the local cut check: no real address outlasts it, a probe would hold every long
+        # alphanumeric run (a hex dump), and the rule is slow on dotted runs.
+        if policy.enable_prefix_detection:
+            probes += [(pattern, "") for pattern in _PREFIX_RES]
+        if policy.enable_entropy_detection:
+            probes.append((_TOKEN_CANDIDATE_RE, ""))
+        self._probes = tuple(probes)
+        self._alias_patterns = (
+            tuple(p for p in map(_path_alias_pattern, self._path_aliases) if p is not None) if policy.enable_path_aliases else ()
+        )
 
     @property
     def rule_counts(self) -> Mapping[str, int]:
@@ -608,6 +717,10 @@ class StreamingTextSanitizer:
             return ""
         tentative_boundary = len(self._pending) - self.overlap_chars
         boundary = self._safe_release_boundary(tentative_boundary)
+        if tentative_boundary - boundary > self.max_hold_chars:
+            # A match (or chain of overlapping matches) past the cap: releasing part of it could expose its value,
+            # and holding it is unbounded, so the stream is refused.
+            raise StreamHoldBackExceededError("a rule match exceeds the streaming hold-back limit")
         if boundary <= 0:
             return ""
         to_release, self._pending = self._pending[:boundary], self._pending[boundary:]
@@ -621,22 +734,62 @@ class StreamingTextSanitizer:
         )
 
     def _safe_release_boundary(self, tentative_boundary: int) -> int:
-        boundary = tentative_boundary
-        changed = True
-        while changed:
-            changed = False
-            for secret in self._sorted_secrets:
-                start = 0
-                while True:
-                    idx = self._pending.find(secret, start)
-                    if idx == -1:
-                        break
-                    end = idx + len(secret)
-                    if idx < boundary < end:
-                        boundary = idx
-                        changed = True
-                    start = idx + 1
+        """The latest cut at or before the tentative one that changes no output, or 0 (#622).
+
+        A cut must lie outside every long match, and the text on either side of it must sanitize the same
+        together as apart. The local check covers what one-shot rule order does: a replaced secret creating a
+        word boundary, an alias normalizing backslashes into a URI, an earlier mask exposing a later label, and
+        the left context a rule's word boundary needs.
+        """
+        spans = sorted(self._long_match_spans(), reverse=True)
+        candidate = tentative_boundary
+        step = 64
+        for _ in range(_CUT_ATTEMPTS):
+            boundary = _cut_outside(spans, self._after_whitespace(candidate))
+            if boundary <= 0:
+                return 0
+            if self._cut_is_inert(boundary):
+                return boundary
+            candidate = boundary - step
+            step *= 2
+        return 0
+
+    def _after_whitespace(self, boundary: int) -> int:
+        """The nearest cut at or before ``boundary`` that follows whitespace, within a short scan; else ``boundary``."""
+        pending = self._pending
+        for cut in range(boundary, max(0, boundary - _CUT_CHECK_CHARS // 8), -1):
+            if pending[cut - 1].isspace():
+                return cut
         return boundary
+
+    def _long_match_spans(self) -> list[tuple[int, int]]:
+        pending = self._pending
+        spans: list[tuple[int, int]] = []
+        for needle, period in self._exact_needles:
+            spans.extend(run for run in _occurrence_runs(pending, needle, period) if run[1] - run[0] > 1)
+        # The alias rule slash-normalizes the whole text before the pattern rules run (same length).
+        text = pending.replace("\\", "/") if self._normalizes_slashes else pending
+        for pattern, probe in self._probes:
+            spans.extend(match.span() for match in pattern.finditer(text + probe))
+        for pattern in self._alias_patterns:
+            spans.extend(match.span() for match in pattern.finditer(text))
+        return spans
+
+    def _cut_is_inert(self, boundary: int) -> bool:
+        left = self._pending[max(0, boundary - _CUT_CHECK_CHARS) : boundary]
+        right = self._pending[boundary : boundary + _CUT_CHECK_CHARS]
+        return self._trial_sanitize(left + right) == self._trial_sanitize(left) + self._trial_sanitize(right)
+
+    def _trial_sanitize(self, text: str) -> str:
+        """Sanitize without counting: a trial for the cut check, not output."""
+        return _sanitize_text(
+            text,
+            sorted_secrets=self._sorted_secrets,
+            sorted_pii=self._sorted_pii,
+            path_aliases=self._path_aliases,
+            policy=self._policy,
+            counter=_RuleCounter(),
+        )
 
     def finalize(self) -> str:
         remaining, self._pending = self._pending, ""
@@ -650,6 +803,53 @@ class StreamingTextSanitizer:
             policy=self._policy,
             counter=self._counter,
         )
+
+
+def _smallest_period(needle: str) -> int:
+    """The least p > 0 with needle[i] == needle[i + p] wherever both exist (KMP failure function)."""
+    fail = [0] * len(needle)
+    k = 0
+    for i in range(1, len(needle)):
+        while k and needle[i] != needle[k]:
+            k = fail[k - 1]
+        if needle[i] == needle[k]:
+            k += 1
+        fail[i] = k
+    return len(needle) - (fail[-1] if needle else 0)
+
+
+def _occurrence_runs(text: str, needle: str, period: int) -> list[tuple[int, int]]:
+    """The union of ``needle``'s occurrences in ``text`` as maximal runs of overlapping ones, in linear time.
+
+    Searching again from each occurrence plus one compares the whole needle at every overlap, quadratic for a
+    self-overlapping needle (#622 review). Within a run, the next occurrence that overlaps the last one is one period on
+    while the text keeps repeating, an O(period) check. Once that stops, an overlapping occurrence can only start in the
+    last period of the run (Fine and Wilf), so the next search starts there.
+    """
+    size = len(needle)
+    tail = needle[size - period :]
+    runs: list[tuple[int, int]] = []
+    idx = text.find(needle)
+    while idx != -1:
+        start, end = idx, idx + size
+        while True:
+            while period < size and text.startswith(tail, end):
+                end += period
+            idx = text.find(needle, end - period + 1)
+            if idx == -1 or idx >= end:
+                break
+            end = idx + size
+        runs.append((start, end))
+    return runs
+
+
+def _cut_outside(spans: Sequence[tuple[int, int]], boundary: int) -> int:
+    """Move ``boundary`` back to the start of any span that strictly contains it; ``spans`` latest start first."""
+    # Once the cut moves to a span's start, no span already visited can contain it.
+    for start, end in spans:
+        if start < boundary < end:
+            boundary = start
+    return max(0, boundary)
 
 
 def session_correlation_tag(secret: str, *, field_name: str, session_key: bytes) -> str:

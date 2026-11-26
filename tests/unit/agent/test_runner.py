@@ -8,7 +8,7 @@ from subprocess import CompletedProcess
 
 import pytest
 
-from optimus.agent.models import AgentApproval, AgentRunRequest, AgentRunStatus
+from optimus.agent.models import WRITE_GUARD_REFUSED, AgentApproval, AgentRunRequest, AgentRunStatus
 from optimus.agent.prompts import MULTI_TURN_PLANNER_PROMPT_VERSION
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
@@ -1586,16 +1586,14 @@ def test_a_write_to_an_existing_runtime_file_fails_before_any_write(tmp_path):
     runner, guard = _guarded_runner(workspace, gateway, state_store=InMemoryAgentStateStore())
 
     plan = runner.run(_agent("Update src/a.py", workspace))
-    try:
-        approved = runner.run(
-            _agent("Update src/a.py", workspace, approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash))
-        )
-    except PermissionError:
-        approved = None
+    approved = runner.run(
+        _agent("Update src/a.py", workspace, approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash))
+    )
 
     _assert_runtime_bytes_never_surface(gateway, guard, plan, approved)
     assert runtime_file.read_text(encoding="utf-8") == RUNTIME_SENTINEL
-    assert approved is None or approved.status is not AgentRunStatus.COMPLETED
+    assert approved.status is AgentRunStatus.FAILED
+    assert approved.stop_reason == WRITE_GUARD_REFUSED
     assert "path.runtime.read" in _blocked(guard)  # the read-before-write is denied first
 
 
@@ -1608,16 +1606,14 @@ def test_a_write_never_creates_a_file_in_the_runtime_tree(tmp_path):
     runner, guard = _guarded_runner(workspace, gateway, state_store=InMemoryAgentStateStore())
 
     plan = runner.run(_agent("Update src/a.py", workspace))
-    try:
-        approved = runner.run(
-            _agent("Update src/a.py", workspace, approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash))
-        )
-    except PermissionError:
-        approved = None
+    approved = runner.run(
+        _agent("Update src/a.py", workspace, approval=AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash))
+    )
 
     _assert_runtime_bytes_never_surface(gateway, guard, plan, approved)
     assert not forged.exists()
-    assert approved is None or approved.status is not AgentRunStatus.COMPLETED
+    assert approved.status is AgentRunStatus.FAILED
+    assert approved.stop_reason == WRITE_GUARD_REFUSED
     assert "path.runtime.write" in _blocked(guard)
 
 

@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Never, SupportsIndex, TypeVar
 from urllib.parse import urlparse
 
+from optimus.acp.debug_trace import observe_operation
+from optimus.acp.request_correlation import detached_request_context
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject, TrustScanVerdict
 from optimus.mcp.client_config import ClientMcpRuntimeCapability
 from optimus.mcp.client_supervisor import (
@@ -245,6 +247,7 @@ class ClientMcpSdkAdapter:
                 raise ClientMcpSdkError("OPERATION_TIMEOUT") from exc
             raise
 
+    @observe_operation
     def open(
         self,
         capability: ClientMcpRuntimeCapability,
@@ -258,17 +261,21 @@ class ClientMcpSdkAdapter:
             )
         )
 
+    @observe_operation
     def discover(self, connection: ClientMcpConnection) -> list[dict[str, Any]]:
         return self._submit_operation(self._discover_async(connection))
 
+    @observe_operation
     def call(
         self, connection: ClientMcpConnection, tool: str, arguments: dict[str, Any]
     ) -> CallToolResult | InputRequiredResult | Result:
         return self._submit_operation(self._call_async(connection, tool, arguments))
 
+    @observe_operation
     def close(self, connection: ClientMcpConnection) -> None:
         self._submit_operation(self._close_async(connection))
 
+    @observe_operation
     def close_all(self) -> None:
         failures: list[BaseException] = []
         for connection in tuple(self._connections.values()):
@@ -482,7 +489,9 @@ class ClientMcpSdkAdapter:
                 _warning_context.reset(warning_token)
 
         connection.owner_request = request
-        connection.owner_task = asyncio.create_task(owner(), name="optimus-mcp-lifetime-owner")
+        connection.owner_task = asyncio.create_task(
+            owner(), name="optimus-mcp-lifetime-owner", context=detached_request_context(),
+        )
         self._connections[identity_key] = connection
         try:
             await asyncio.shield(ready)

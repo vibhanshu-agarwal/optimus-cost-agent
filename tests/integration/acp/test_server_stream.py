@@ -432,10 +432,12 @@ async def test_ndjson_permission_rejection_sanitizes_live_outbound_error(tmp_pat
         )
         response = await writer.wait_for_response(3)
 
-        assert response["error"]["code"] == -32099
-        assert response["error"]["message"]
+        assert response["error"] == {
+            "code": errors.INTERNAL_ERROR,
+            "message": "client rejected outbound request",
+            "data": {"reason": "CLIENT_REJECTED_OUTBOUND"},
+        }
         assert "top-secret-canary" not in json.dumps(response)
-        assert response["error"]["data"]["nested"]["url"] == "redis://**********@host/0"
     finally:
         reader.close()
         await serve_task
@@ -484,7 +486,7 @@ async def test_ndjson_permission_rejection_drops_data_when_sanitizer_fails(tmp_p
         )
         response = await writer.wait_for_response(3)
 
-        assert response["error"]["code"] == -32099
+        assert response["error"]["code"] == errors.INTERNAL_ERROR
         assert response["error"]["message"] == "internal error"
         assert "data" not in response["error"]
         assert "top-secret-canary" not in json.dumps(response)
