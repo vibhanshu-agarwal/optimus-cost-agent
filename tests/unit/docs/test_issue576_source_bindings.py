@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import hashlib
-import subprocess
+import runpy
 import sys
 from pathlib import Path
+
+import pytest
 
 from tools.doc_paths import doc_path
 
@@ -35,10 +37,10 @@ def test_sources_match_the_digests_the_pdf_was_built_from() -> None:
         assert hashlib.sha256(raw).hexdigest() == expected, name
 
 
-def test_sources_derive_from_the_issue361_predecessor_and_the_exact_edits(tmp_path: Path) -> None:
-    # The filed derive tool fails unless every edit matches once and the result equals the filed sources byte for byte.
-    subprocess.run(
-        [sys.executable, "-X", "utf8", "-I", str(BUNDLE / "tools/derive_sources.py"), str(ROOT), str(tmp_path)],
-        check=True,
-        capture_output=True,
-    )
+def test_sources_derive_from_the_issue361_predecessor_and_the_exact_edits(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The filed derive tool raises unless every edit matches once and the result equals the filed sources byte for byte.
+    # It runs in-process: it only reads and writes files, so it needs no child process.
+    tool = BUNDLE / "tools/derive_sources.py"
+    monkeypatch.setattr(sys, "argv", [str(tool), str(ROOT), str(tmp_path)])
+    runpy.run_path(str(tool), run_name="__main__")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["lld-13-context-integration.md", "lld-14-capability-status.md", "page-updates.json"]
