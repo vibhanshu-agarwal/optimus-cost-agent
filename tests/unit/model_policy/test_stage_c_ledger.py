@@ -534,3 +534,18 @@ def test_a_failing_cleanup_never_replaces_the_initialization_failure(tmp_path: P
     assert handle.closed
     guard = StageCGuard.open(path, envelope, clock=Clock())  # the lock was released despite the failed close
     guard.close()
+
+
+def test_a_failing_lock_release_never_replaces_the_initialization_failure(tmp_path: Path, monkeypatch) -> None:
+    path, envelope = _initialized(tmp_path)
+    real_release = stage_c._Lock.release
+
+    def release(self) -> None:
+        real_release(self)
+        raise OSError(errno.EIO, "release failed")
+
+    monkeypatch.setattr(stage_c._Lock, "release", release)
+    handle = _open_with_failing_initialization(path, envelope, monkeypatch)
+    assert handle.closed
+    monkeypatch.setattr(stage_c._Lock, "release", real_release)
+    StageCGuard.open(path, envelope, clock=Clock()).close()
