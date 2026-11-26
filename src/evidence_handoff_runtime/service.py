@@ -122,7 +122,9 @@ class RunningService:
                 time.sleep(0.1)
         raise TimeoutError("service_not_ready")
 
-    def stop(self) -> None:
+    def stop(self) -> bool:
+        """Stop the child and delete its files; False when any deletion failed (every one is still attempted)."""
+        removed_all = True
         try:
             if self.process.poll() is None:
                 self.process.terminate()
@@ -138,12 +140,13 @@ class RunningService:
                 try:
                     path.unlink(missing_ok=True)
                 except OSError:
-                    pass
+                    removed_all = False
                 tmp = path.with_suffix(".tmp")
                 try:
                     tmp.unlink(missing_ok=True)
                 except OSError:
-                    pass
+                    removed_all = False
+        return removed_all
 
 
 def list_advertised_tools() -> list[dict[str, str]]:
@@ -292,16 +295,17 @@ class LedgerService:
         )
         try:
             running.wait_ready(timeout_seconds=30.0)
-        except Exception:
+        except Exception as exc:
             with contextlib.suppress(Exception):
                 stderr_handle.close()
-            detail = ""
+            # Child stderr may carry secrets: report only wait_ready's own code (#649).
+            readiness_codes = {("service_process_exited",), ("service_not_ready",)}
+            reason = exc.args[0] if exc.args in readiness_codes else type(exc).__name__
             try:
-                detail = stderr_path.read_text(encoding="utf-8", errors="replace")[-4000:]
-            except OSError:
-                detail = ""
-            running.stop()
-            raise RuntimeError(f"service_start_failed: {detail}") from None
+                teardown = "complete" if running.stop() else "incomplete"
+            except Exception:
+                teardown = "incomplete"
+            raise RuntimeError(f"service_start_failed:{reason} teardown={teardown}") from None
         with contextlib.suppress(Exception):
             stderr_handle.close()
         # Child should already have unlinked the bundle; parent best-effort sweep.
