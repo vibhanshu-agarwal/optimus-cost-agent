@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from http.client import RemoteDisconnected
 from unittest.mock import create_autospec
 
 import pytest
 import redis.asyncio as aioredis
 
-from optimus.acp.preflight import PreflightFailure, run_preflight
+from optimus.acp.preflight import PreflightFailure, collect_preflight_checks, run_preflight
 from optimus.gateway.client import GatewayClient
+from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
 from optimus.gateway.models import GatewayResponse, GatewayUsage
 from optimus.redis.runtime import RedisRuntime
 
@@ -309,3 +311,80 @@ def test_contract_preflight_runtime_rejects_unknown_attributes(monkeypatch):
         boundary.unknown_runtime_operation = True
     with pytest.raises(TypeError):
         boundary.run_sync(lambda: None, obsolete_timeout=1)
+
+
+@pytest.mark.parametrize("entrypoint", ["startup", "doctor"])
+def test_timeseries_cleanup_failure_is_distinct_from_missing_support(monkeypatch, entrypoint):
+    class CleanupFails(FakeAsyncRedisClient):
+        async def delete(self, key: str):
+            raise OSError("synthetic cleanup failure")
+
+    runtime = _patch_runtime(monkeypatch, CleanupFails())
+    if entrypoint == "startup":
+        with pytest.raises(PreflightFailure) as caught:
+            run_preflight(_ENV, require_timeseries=True)
+        detail = caught.value.user_message
+        assert isinstance(caught.value.__cause__, OSError)
+    else:
+        checks = collect_preflight_checks(_ENV, require_timeseries=True)
+        check, = [check for check in checks if check.name == "redis timeseries"]
+        assert not check.passed
+        detail = check.detail
+    assert "TimeSeries probe cleanup failed" in detail
+    assert "lacks TimeSeries support" not in detail
+    assert runtime.submissions == runtime.closed == 1
+
+
+@pytest.mark.parametrize(
+    "failure, message",
+    [
+        (GatewayResponseError("malformed reply"), "returned an invalid auth probe response"),
+        (GatewayHttpError(0, "invalid JSON", failure={"kind": "gateway_invalid_json"}),
+         "returned an invalid auth probe response"),
+        (GatewayHttpError(0, "non-object JSON", failure={"kind": "gateway_non_object_json"}),
+         "returned an invalid auth probe response"),
+        (RuntimeError("synthetic local diagnostic reference 401"), "Gateway auth probe could not complete"),
+        (GatewayHttpError(401, "unauthorized"), "OPTIMUS_API_KEY was rejected"),
+        (GatewayHttpError(0, "connection refused"), "Gateway is not reachable"),
+        (TimeoutError("synthetic read timeout"), r"Gateway is not reachable.*TimeoutError"),
+        (RemoteDisconnected("synthetic dropped reply"), r"Gateway is not reachable.*RemoteDisconnected"),
+        (UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"), "returned an invalid auth probe response"),
+    ],
+    ids=["malformed-response", "invalid-json", "non-object-json", "local-failure", "auth", "transport",
+         "read-timeout", "dropped-response", "invalid-utf8"],
+)
+def test_strict_preflight_classifies_gateway_probe_failure(monkeypatch, failure, message):
+    runtime = _patch_runtime(monkeypatch, FakeAsyncRedisClient())
+    checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+    checked.create_response.side_effect = failure
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", create_autospec(GatewayClient, return_value=checked))
+
+    with pytest.raises(PreflightFailure, match=message) as caught:
+        run_preflight(
+            _ENV | {"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765", "OPTIMUS_PRODUCTION_MODE": "false"}, strict=True
+        )
+
+    assert caught.value.__cause__ is failure
+    assert runtime.closed == 1
+    checked.create_response.assert_called_once()
+
+
+def test_strict_preflight_keeps_capture_failure_separate_from_transport(monkeypatch):
+    runtime = _patch_runtime(monkeypatch, FakeAsyncRedisClient())
+    checked = create_autospec(GatewayClient, instance=True, spec_set=True)
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", create_autospec(GatewayClient, return_value=checked))
+    failure = OSError("synthetic settlement failure")
+
+    def failed_settlement(_capture, *, kind, requested_model, call):
+        call()
+        raise failure
+
+    monkeypatch.setattr("optimus.usage.operation_capture.captured_operation", failed_settlement)
+    with pytest.raises(PreflightFailure, match="Gateway auth probe could not complete") as caught:
+        run_preflight(
+            _ENV | {"OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765", "OPTIMUS_PRODUCTION_MODE": "false"}, strict=True
+        )
+
+    assert caught.value.__cause__ is failure
+    assert runtime.closed == 1
+    checked.create_response.assert_called_once()

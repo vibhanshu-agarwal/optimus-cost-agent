@@ -1489,11 +1489,13 @@ class AcpStreamServer:
                     level=DiagnosticLevel.ERROR,
                 )
                 # endregion
-                print(
-                    f"optimus.acp: process_request failed id={request_id!r} method={method!r} "
-                    f"pending_permission_id={pending_permission_id!r}: {sanitize_protocol_error_message(str(exc))}",
-                    file=sys.stderr,
-                )
+                # The diagnostic stream is independent of the RPC response channel.
+                with contextlib.suppress(Exception):
+                    print(
+                        f"optimus.acp: process_request failed id={request_id!r} method={method!r} "
+                        f"pending_permission_id={pending_permission_id!r}: {sanitize_protocol_error_message(str(exc))}",
+                        file=sys.stderr,
+                    )
                 facts = ownership_slot.gateway_failure_facts
                 control = ownership_slot.turn_control
                 reason = None

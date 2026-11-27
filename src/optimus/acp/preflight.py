@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from http.client import HTTPException
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,7 @@ from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
 from optimus_model_policy.binding import RouteBinding
 
 if TYPE_CHECKING:
+    from optimus.gateway.models import GatewayResponse
     from optimus.usage.durable_capture import DurableCapture
 
 DEFAULT_REDIS_URL_HINT = DEFAULT_REDIS_URL
@@ -153,6 +155,8 @@ def _require_redis_timeseries(runtime: RedisRuntime) -> None:
     """
     try:
         _probe_redis_timeseries(runtime)
+    except PreflightFailure:
+        raise
     except Exception as exc:
         raise PreflightFailure(
             exit_code=2,
@@ -202,7 +206,7 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
     from optimus.agent.defaults import AgentModelError, auto_requested, default_agent_model, resolve_agent_model
     from optimus.config.gateway import OptimusGatewaySettings
     from optimus.gateway.client import GatewayClient
-    from optimus.gateway.errors import GatewayHttpError
+    from optimus.gateway.errors import GatewayHttpError, GatewayResponseError
     from optimus.gateway.route_binding import RouteIdentityError
     from optimus_model_policy.binding import auto_snapshot
 
@@ -218,17 +222,24 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
         route_binding = _probe_route_binding(probe_model, settings.optimus_api_key.get_secret_value(), auto=auto)
     except (AgentModelError, RouteIdentityError) as exc:
         raise PreflightFailure(exit_code=2, user_message=f"AGENT_MODEL_INVALID: {exc}") from exc
+    call_failure: Exception | None = None
+
+    def call_probe() -> GatewayResponse:
+        nonlocal call_failure
+        try:
+            return client.create_response(
+                model=probe_model, input_text="preflight", metadata={"purpose": "preflight_auth_probe"}, route_binding=route_binding
+            )
+        except (OSError, HTTPException, UnicodeDecodeError) as exc:
+            # Bind the failure to this call while preserving the original exception for settlement.
+            call_failure = exc
+            raise
+
+    invalid_response = f"Gateway at {gateway_url} returned an invalid auth probe response."
     try:
         from optimus.usage.operation_capture import captured_operation
 
-        captured_operation(
-            durable_capture,
-            kind="preflight_probe",
-            requested_model=probe_model,
-            call=lambda: client.create_response(
-                model=probe_model, input_text="preflight", metadata={"purpose": "preflight_auth_probe"}, route_binding=route_binding
-            ),
-        )
+        captured_operation(durable_capture, kind="preflight_probe", requested_model=probe_model, call=call_probe)
     except GatewayHttpError as exc:
         if exc.status_code in {401, 403}:
             raise PreflightFailure(exit_code=2, user_message="OPTIMUS_API_KEY was rejected by the gateway.") from exc
@@ -237,18 +248,22 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
                 exit_code=2,
                 user_message=f"Gateway at {gateway_url} rejected the auth probe request: {exc}",
             ) from exc
+        if exc.failure is not None and exc.failure.get("kind") in {"gateway_invalid_json", "gateway_non_object_json"}:
+            raise PreflightFailure(exit_code=2, user_message=invalid_response) from exc
         raise PreflightFailure(
             exit_code=2,
             user_message=f"Gateway is not reachable at {gateway_url}. ({exc})",
         ) from exc
+    except GatewayResponseError as exc:
+        raise PreflightFailure(exit_code=2, user_message=invalid_response) from exc
     except Exception as exc:
-        message = str(exc)
-        if "401" in message or "403" in message:
-            raise PreflightFailure(exit_code=2, user_message="OPTIMUS_API_KEY was rejected by the gateway.") from exc
-        raise PreflightFailure(
-            exit_code=2,
-            user_message=f"Gateway is not reachable at {gateway_url}. ({exc})",
-        ) from exc
+        detail = "Gateway auth probe could not complete."
+        if exc is call_failure:
+            if isinstance(exc, UnicodeDecodeError):
+                detail = invalid_response
+            else:
+                detail = f"Gateway is not reachable at {gateway_url}. ({type(exc).__name__})"
+        raise PreflightFailure(exit_code=2, user_message=detail) from exc
 
 
 def _require_workspace_root(workspace_root: Path) -> None:
@@ -346,19 +361,11 @@ def collect_preflight_checks(
                 check.name == "redis connectivity" and check.passed for check in results
             ):
                 try:
-                    _probe_redis_timeseries(runtime)
+                    _require_redis_timeseries(runtime)
+                except PreflightFailure as exc:
+                    results.append(PreflightCheckResult(name="redis timeseries", passed=False, detail=exc.user_message))
+                else:
                     results.append(PreflightCheckResult(name="redis timeseries", passed=True, detail="TS.ADD ok"))
-                except Exception as exc:
-                    results.append(
-                        PreflightCheckResult(
-                            name="redis timeseries",
-                            passed=False,
-                            detail=(
-                                "Redis lacks TimeSeries support. Use redis:8 or redis/redis-stack-server "
-                                f"(LLD section 10 requires TS.* commands). ({exc})"
-                            ),
-                        )
-                    )
         finally:
             # Seam 2, checkpoint B: the probe runtime is closed on every path, and a
             # teardown that does not finish is a reported check, not a silent leak.
@@ -434,6 +441,11 @@ def _probe_redis_timeseries(runtime: RedisRuntime) -> None:
     async def _probe() -> None:
         client = runtime.required_client
         await client.execute_command("TS.ADD", _REDIS_TS_PROBE_KEY, "*", 1)
-        await client.delete(_REDIS_TS_PROBE_KEY)
+        try:
+            await client.delete(_REDIS_TS_PROBE_KEY)
+        except Exception as exc:
+            raise PreflightFailure(
+                exit_code=2, user_message="Redis TimeSeries probe cleanup failed after TS.ADD succeeded."
+            ) from exc
 
     runtime.run_sync(_probe)
