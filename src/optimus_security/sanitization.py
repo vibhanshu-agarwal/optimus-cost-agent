@@ -882,7 +882,7 @@ class CredentialUriError(ValueError):
 
 
 HTTP_URI_SCHEMES = frozenset({"http", "https"})
-REDIS_URI_SCHEMES = frozenset({"redis", "rediss", "unix"})  # what redis-py's from_url accepts; unix:// has no host
+REDIS_URI_SCHEMES = frozenset({"redis", "rediss", "unix"})  # what redis-py's from_url accepts; the host may be absent
 
 
 def _split_credential_uri(stripped: str, schemes: frozenset[str]) -> SplitResult | None:
@@ -903,7 +903,7 @@ def _split_credential_uri(stripped: str, schemes: frozenset[str]) -> SplitResult
     start = len(parts.scheme) + 3
     if (
         parts.scheme not in schemes
-        or (not host and parts.scheme != "unix")
+        or (not host and parts.scheme in HTTP_URI_SCHEMES)  # redis-py defaults a missing host to localhost
         or stripped[len(parts.scheme) : start] != "://"
         or stripped[start : start + len(parts.netloc)] != parts.netloc
     ):
@@ -919,7 +919,7 @@ def canonicalize_credential_uri(
     The normalized URI (a digest input) is the original text with only the userinfo cut out, as before #671, so an
     approval of a valid value keeps its digest. The display is built from the validated parts with the userinfo, the
     query and the fragment redacted; the path is shown, as it is the endpoint (a token placed in a path is not found).
-    A value that is not an absolute URI of one of ``schemes`` with a host (unix:// has none) raises CredentialUriError,
+    A value that is not an absolute URI of one of ``schemes`` (http and https with a host) raises CredentialUriError,
     whose message never contains the value. An empty value stays empty.
     """
     stripped = uri.strip()

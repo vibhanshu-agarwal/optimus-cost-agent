@@ -188,15 +188,15 @@ def credential_uri_display(name: str, value: str, layer: CredentialLayer) -> str
         raise LaunchGateError(code="CREDENTIAL_URI_INVALID", detail=f"{name} from {source} is {exc}; the value is not shown.") from None
 
 
-def require_gateway_tool_urls(config_root: Path, environ: Mapping[str, str]) -> None:
-    """Validate the Gateway tool URLs a launch hands its Gateway, from .env.gateway as well as the environment (#671)."""
-    for layer, values in (
-        (CredentialLayer.ENVIRONMENT, project_gateway_tool_child_env(environ)),
-        (CredentialLayer.CONFIG_FILE, project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))),
-    ):
-        for name, value in values.items():
-            if LAUNCH_VARIABLE_POLICIES[name].uri_userinfo:
-                credential_uri_display(name, value, layer)
+def require_gateway_tool_urls(config_root: Path, environ: Mapping[str, str]) -> dict[str, str]:
+    """The Gateway's tool configuration, merged as local_infra.gateway_tool_environ merges it (.env.gateway over the
+    environment), with each credential-bearing URL validated against the source that supplied it (#671)."""
+    from_file = project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))
+    merged = {**project_gateway_tool_child_env(environ), **from_file}
+    for name, value in merged.items():
+        if LAUNCH_VARIABLE_POLICIES[name].uri_userinfo:
+            credential_uri_display(name, value, CredentialLayer.CONFIG_FILE if name in from_file else CredentialLayer.ENVIRONMENT)
+    return merged
 
 
 # --- Config-root and .env.gateway permission validation ---

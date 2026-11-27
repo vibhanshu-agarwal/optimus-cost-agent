@@ -52,7 +52,6 @@ from optimus.acp.local_infra import (
     gateway_accounting,
     gateway_memory_index,
     gateway_memory_store,
-    gateway_tool_environ,
 )
 from optimus.acp.operator_paths import (
     OperatorPathConfigurationError,
@@ -1184,7 +1183,7 @@ def _cmd_run_gateway(
         base_url = credential_uri_display(
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL", provider_secrets.base_url or "", provider_credentials.base_url_provenance.layer
         )
-        require_gateway_tool_urls(config_root, LaunchEnvironmentSnapshot.capture(os.environ).values)
+        tool_environ = require_gateway_tool_urls(config_root, LaunchEnvironmentSnapshot.capture(os.environ).values)
     except LaunchGateError as exc:
         print(f"optimus-trust run-gateway: {exc}", file=sys.stderr)
         return 2
@@ -1290,7 +1289,8 @@ def _cmd_run_gateway(
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
         **provider_secrets.as_gateway_child_env(),
         # #465 (ADR-036): the same composition an agent expects: this file, with inherited values filling what it omits.
-        **gateway_tool_environ(config_root, LaunchEnvironmentSnapshot.capture(os.environ).values),
+        # #671: the values validated above, not a second read of the file.
+        **tool_environ,
     }
     for key in ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP"):
         value = os.environ.get(key, "")

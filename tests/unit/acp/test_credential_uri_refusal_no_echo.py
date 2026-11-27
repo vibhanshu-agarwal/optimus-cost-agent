@@ -154,14 +154,14 @@ def test_agent_start_prints_the_refusal_without_a_traceback(monkeypatch, tmp_pat
     assert started == []
 
 
-def _run_gateway(monkeypatch, tmp_path: Path, base_url: str) -> int:
+def _run_gateway(monkeypatch, tmp_path: Path, base_url: str, *, extra: str = "") -> int:
     from optimus.acp import launch_approval_cli
     from optimus.acp.launch_approval_cli import _cmd_run_gateway
     from optimus.acp.trusted_paths import TrustedOperatorRoots
 
     env_gateway = tmp_path / ".env.gateway"
     env_gateway.write_text(
-        f"OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET={'d' * 32}\n{_API_KEY}={_SYNTH_PROVIDER_KEY}\n{_BASE}={base_url}\n",
+        f"OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET={'d' * 32}\n{_API_KEY}={_SYNTH_PROVIDER_KEY}\n{_BASE}={base_url}\n{extra}",
         encoding="utf-8",
     )
     env_gateway.chmod(0o600)
@@ -328,3 +328,55 @@ def test_the_approval_ceremony_refuses_before_it_shows_or_records(monkeypatch, t
     captured = capsys.readouterr()
     assert "CREDENTIAL_URI_INVALID" in captured.err and _BASE in captured.err, captured.err
     _assert_no_value(captured.out + captured.err)
+
+
+# --- Codex round 2 (#671) -------------------------------------------------------------------------------------------
+
+
+def test_run_gateway_lets_env_gateway_override_an_unusable_inherited_tool_url(monkeypatch, tmp_path: Path, capsys) -> None:
+    """The Gateway gets the merged value (.env.gateway over the environment), so only that value is checked."""
+    monkeypatch.setenv(_TOOL_REDIS, _REDIS_MALFORMED["tab-in-authority"])
+    with pytest.raises(RuntimeError, match="stopped after"):  # reaches the summary; the stub stops it there
+        _run_gateway(monkeypatch, tmp_path, "https://gw.example/v1", extra=f"{_TOOL_REDIS}=redis://127.0.0.1:6380/0\n")
+    _assert_no_value("".join(capsys.readouterr()))
+
+
+@pytest.mark.parametrize("name", [_TOOL_REDIS, "OPTIMUS_REDIS_URL"])
+def test_a_hostless_redis_url_is_still_accepted(tmp_path: Path, name: str) -> None:
+    """redis-py reads redis:///0 as localhost:6379 (test_local_infra pins that)."""
+    _resolve(tmp_path, {**_REQUIRED_LAUNCH_ENV, name: "redis:///0"})
+
+
+def test_preflight_never_repeats_an_http_error_body(monkeypatch) -> None:
+    from optimus.acp import preflight
+    from optimus.gateway.errors import GatewayHttpError
+
+    class _Echoes:
+        def __init__(self, *, settings) -> None:
+            pass
+
+        def create_response(self, **_kwargs) -> None:
+            raise GatewayHttpError(404, "no route for /v1?token=" + _PW)
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", _Echoes)
+    with pytest.raises(preflight.PreflightFailure) as caught:
+        preflight._require_gateway_auth({**_REQUIRED_LAUNCH_ENV, "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765/v1?token=" + _PW})
+    assert "rejected the auth probe request (HTTP 404)" in caught.value.user_message, caught.value.user_message
+    _assert_no_value(caught.value.user_message)
+
+
+def test_preflight_names_a_gateway_url_the_masker_refuses_with_a_fixed_label(monkeypatch) -> None:
+    """The settings accept a space in a loopback path; the probe still fails as a PreflightFailure, not a crash."""
+    from optimus.acp import preflight
+
+    class _Unreachable:
+        def __init__(self, *, settings) -> None:
+            pass
+
+        def create_response(self, **_kwargs) -> None:
+            raise OSError("connection refused")
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", _Unreachable)
+    with pytest.raises(preflight.PreflightFailure) as caught:
+        preflight._require_gateway_auth({**_REQUIRED_LAUNCH_ENV, "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765/a b"})
+    assert "the configured OPTIMUS_GATEWAY_URL" in caught.value.user_message, caught.value.user_message
