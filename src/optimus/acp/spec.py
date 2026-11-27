@@ -3067,8 +3067,14 @@ class AcpDuplexAdapter:
         imported: set[str] = set()  # event ids of an import's commits: their replayed cards say "Imported"
         if backlog is not None:  # what any session of the project left undelivered, durably (Codex CP3 review 1, finding 6)
             with contextlib.suppress(Exception):
+                records = await asyncio.to_thread(backlog.pending)
+                owed = {record.get("event_id") for record in records if isinstance(record.get("event_id"), str)}
+                for notice in [notice for notice in due if notice.event_id not in owed]:  # another session delivered it (#643)
+                    due.remove(notice)
+                    with contextlib.suppress(ValueError):
+                        session.memory_pending.remove(notice)
                 known = {notice.event_id for notice in due}
-                for record in await asyncio.to_thread(backlog.pending):  # one by one: a malformed record is skipped alone
+                for record in records:  # one by one: a malformed record is skipped alone
                     notice = _notice_of(record)
                     if notice is None or notice.event_id in known:
                         continue

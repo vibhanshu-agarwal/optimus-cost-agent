@@ -32,8 +32,8 @@ workspace's own registry key.
 
 **Notices.** Memory notices not yet shown are kept in a durable backlog per project (`NoticeBacklog`), delivered by event id at
 the next opportunity in any session, so a restart loses no notice and a resend repeats no change. A write the disk refuses
-is held in the process and retried by the next backlog call (#643); only a disk that refuses every write until the host exits
-loses the card, never the change.
+is held in the process and retried by later backlog calls (#643); what is still held when the host exits is lost with it (a
+card, never the change: see `NoticeBacklog`).
 """
 
 from __future__ import annotations
@@ -230,12 +230,14 @@ class StateFile:
 class NoticeBacklog:
     """Memory notices a person has not been shown yet, for one project, durable across restarts (Codex CP3 review 1, finding 6).
     A notice is added before it is sent and removed once its send is confirmed; any session of the project delivers what is left,
-    under the same event id, so a resend replaces a card and never repeats a change.
+    under the same event id, so a resend never repeats a change.
 
-    #643: an add or remove the disk refuses is held in this process (records, and removals as tombstones) and written by the next
-    call, one attempt per call, so every session of the project in this process still sees it; `pending` returns no tombstoned
-    id. Held state is capped (`HELD_LIMIT` each, oldest dropped and counted). Known limit: if every write fails until the process
-    ends, what was held is lost with it; the change itself stays in the store and `/memory` lists it."""
+    #643: an add or remove the disk refuses is held in this process (records, and removals as tombstones) and written by a later
+    non-empty add or remove, each turn's `pending`, or `flush`, one attempt per call, so every session of the project in this
+    process still sees it; `pending` returns no tombstoned id. Held state is capped (`HELD_LIMIT` each, oldest dropped and
+    counted). Known limits: what is still held when the process ends is lost with it (a card not shown, or a delivered card shown
+    again by the next process); a tombstone dropped at the cap can likewise show a delivered card again after a restart. The
+    change itself stays in the store and `/memory` lists it."""
 
     HELD_LIMIT: Final = 256
 
@@ -272,8 +274,8 @@ class NoticeBacklog:
             if self._held or self._gone:
                 with contextlib.suppress(Exception):  # `_apply` logged the cause; what is held stays held
                     self._apply()
-            current = [record for record in self._load() if record.get("event_id") not in self._gone]
-            known = {record.get("event_id") for record in current}
+            current = [record for record in self._load() if _event_key(record) not in self._gone]
+            known = {_event_key(record) for record in current}
             return current + [record for event_id, record in self._held.items() if event_id not in known]
 
     def add(self, records: list[dict[str, Any]]) -> None:
@@ -307,32 +309,41 @@ class NoticeBacklog:
         held[key] = value  # newest last
 
     def _apply(self) -> None:
-        """Under `self._lock`: one attempt to apply the held records and tombstones to the file; held state is cleared only once
-        written. The first failure and the recovery are each logged once, with the error's class and counts, no values."""
+        """Under `self._lock`: one attempt to apply the held records and tombstones to the file. Held state is cleared as soon as
+        the file holds it, so an error releasing the lock afterwards never re-applies it. The first failure and the first write
+        after it are each logged once, with the error's class and counts, no values."""
+        recovered, dropped = False, 0
         try:
             with _file_lock(self.path.with_name(self.path.name + ".lock")):
                 current = self._load(writing=True)
-                known = {record.get("event_id") for record in current}  # a malformed record never blocks the rest
-                target = [record for record in current if record.get("event_id") not in self._gone]
+                known = {_event_key(record) for record in current}  # a malformed record never blocks the rest
+                target = [record for record in current if _event_key(record) not in self._gone]
                 target += [record for event_id, record in self._held.items() if event_id not in known and event_id not in self._gone]
                 if target != current:
                     _durable_json(self.path, target)  # kept until acknowledged, however many (Codex CP3 review 2, finding 4)
+                    recovered, dropped = self._failing, self._dropped  # only a real write shows the disk takes writes again
+                    self._failing, self._dropped = False, 0
+                self._held.clear()
+                self._gone.clear()
         except Exception as failure:
             for held in (self._held, self._gone):  # only what stays unwritten is capped; a write takes any number
                 while len(held) > self.HELD_LIMIT:
                     del held[next(iter(held))]
                     self._dropped += 1
-            if not self._failing:
+            if (self._held or self._gone) and not self._failing:
                 self._failing = True
                 _LOG.warning("Memory notice backlog write failed (%s); holding %d notice(s) and %d removal(s) in this process",
                              _failure_class(failure), len(self._held), len(self._gone))
             raise
-        if self._failing:
+        if recovered:
             _LOG.warning("Memory notice backlog written again; %d held notice(s) or removal(s) were dropped at the cap meanwhile",
-                         self._dropped)
-        self._held.clear()
-        self._gone.clear()
-        self._failing, self._dropped = False, 0
+                         dropped)
+
+
+def _event_key(record: dict[str, Any]) -> str | None:
+    """A record's event id, or None for a malformed one, which is kept but never matched (#643 review 1, finding 6)."""
+    event_id = record.get("event_id")
+    return event_id if isinstance(event_id, str) else None
 
 
 def _failure_class(failure: BaseException) -> str:

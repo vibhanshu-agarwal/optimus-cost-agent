@@ -276,8 +276,31 @@ def test_known_limit_a_notice_is_lost_when_every_write_fails_until_the_process_i
         _forget_shared(tmp_path)
         restarted = _Host(tmp_path, service)
         session_id = await new_session(restarted.adapter, tmp_path, mode="chat")
-        await rpc(restarted.adapter, prompt_request(session_id, "/memory", "p-3"))
-        assert restarted.cards() == []
+        await rpc(restarted.adapter, prompt_request(session_id, "Hello again", "p-3"))  # a normal turn: any record would replay
+        assert restarted.cards() == [] and _file(tmp_path) == []
+        await rpc(restarted.adapter, prompt_request(session_id, "/memory", "p-4"))
         texts = [u["content"]["text"] for u in _updates(restarted.outbound) if u["sessionUpdate"] == "agent_message_chunk"]
         assert any("active " + chr(0xB7) + " Never push to main" in text for text in texts), texts  # listed, active
+    asyncio.run(scenario())
+
+
+def test_an_extraction_notice_another_session_delivered_is_not_sent_again_from_the_first_sessions_queue(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#643 review 1, finding 1: session A's extraction notice is queued in A and held by the shared backlog. Session B's turn
+    delivers it and removes it; A's next turn must not send it again from its own queue. Also true when the write succeeds."""
+    disk = _Disk(monkeypatch)
+    service = purge_store(tmp_path)[0]
+    notice = _committed(tmp_path, service)
+
+    async def scenario() -> None:
+        host = _Host(tmp_path, service)
+        first = await new_session(host.adapter, tmp_path, mode="chat")
+        report = host.reports[-1]
+        second = await new_session(host.adapter, tmp_path, mode="chat")
+        disk.full = True
+        report(SimpleNamespace(notices=[notice]))  # A's worker
+        await rpc(host.adapter, prompt_request(second, "Hello from B", "p-1"))
+        assert host.cards() == [f"memory/{notice.event_id}"]
+        await rpc(host.adapter, prompt_request(first, "Hello from A", "p-2"))
+        assert host.cards() == [f"memory/{notice.event_id}"]  # once for the project
     asyncio.run(scenario())
