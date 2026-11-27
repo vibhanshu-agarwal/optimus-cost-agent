@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -38,6 +40,86 @@ def test_kill_tree_kills_every_descendant_including_ones_no_parent_walk_reaches(
             if process.poll() is None:
                 process.kill()
                 process.wait(10)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="job objects are the Windows path")
+def test_a_contained_tree_stays_in_the_runs_job_and_dies_without_ending_the_run(tmp_path):
+    """The guarded test run's kill-on-close job still attributes and outlives a contained tree (#274)."""
+    from tools.testing import run_context_windows
+
+    owner = run_context_windows.owner()
+    if owner is None or owner.handle is None:
+        pytest.skip("this interpreter did not enrol in a run job (for example an xdist worker)")
+    code, roles = descendant_tree(tmp_path, "parent-alive")
+    seen: dict[str, run_context_windows.ProcessIdentity] = {}
+
+    def announced() -> None:  # pin each member that has announced itself, by pid and creation time
+        for role in roles:
+            path = tmp_path / f"{role}.pid"
+            if role not in seen and path.exists():
+                seen[role] = run_context_windows.process_identity(int(path.read_text(encoding="utf-8")))
+
+    with DescendantRecorder(tmp_path, roles) as recorder:
+        launched_at = time.monotonic()  # every member starts its 30 s sleep after this
+        process = process_tree.popen([sys.executable, "-c", code])
+        try:
+            formed = recorder.wait_for(roles, timeout=15)
+            announced()
+            assert formed, "the tree never formed"
+            for role in roles:
+                assert run_context_windows.is_member(seen[role]) is True, role
+            killed_at = time.monotonic()
+            # The verdict is taken by launched_at + 25 s, before any member could exit on its own.
+            assert killed_at - launched_at < 20, "too slow to tell the kill from the members' natural exit"
+            process_tree.kill_tree(process)
+            assert_descendants_killed(recorder, roles, deadline=killed_at + 5.0, what="kill_tree inside the run job")
+            assert process_tree.wait_for_empty(process, deadline=time.monotonic() + 5)
+            assert process.wait(10) == 1, "the root was not ended by the job"  # a natural exit would be 0
+        finally:
+            with contextlib.suppress(OSError):
+                process_tree.kill_tree(process)  # ends the whole job, also when an assertion above failed
+            announced()
+            for identity in seen.values():  # whatever is still running from this tree is stopped directly
+                now = run_context_windows.process_identity(identity.pid)
+                if now.live and identity.creation_time is not None and now.creation_time == identity.creation_time:
+                    with contextlib.suppress(OSError):
+                        os.kill(identity.pid, signal.SIGTERM)
+            if process.poll() is None:
+                process.kill()
+            process.wait(10)
+    assert run_context_windows.is_member(run_context_windows.current_identity()) is True
+    assert run_context_windows.accounting()["ok"] is True
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="kernel32 is the Windows path")
+def test_the_run_context_and_the_process_tree_share_one_kernel32_binding():
+    from tools.testing import run_context_windows
+
+    assert run_context_windows._kernel32() is process_tree.kernel32()  # noqa: SLF001
+
+
+class _NoSymbols:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+
+def _load_refused(*_args: object, **_kwargs: object) -> object:
+    raise OSError("kernel32 could not be loaded")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="kernel32 is the Windows path")
+@pytest.mark.parametrize(("windll", "raised"), [(_load_refused, OSError), (_NoSymbols, AttributeError)])
+def test_a_binding_that_cannot_load_raises_from_the_first_native_call_as_before(monkeypatch, windll, raised):
+    """Unchanged by #274: a load or a missing-symbol failure raises from the first call, never at import."""
+    import ctypes
+
+    from tools.testing import run_context_windows
+
+    monkeypatch.setattr(process_tree, "_api", None)
+    monkeypatch.setattr(run_context_windows, "_api", None)
+    monkeypatch.setattr(ctypes, "WinDLL", windll)
+    with pytest.raises(raised):
+        run_context_windows.current_identity()
 
 
 def test_pipe_cleanup_reuses_one_budget_and_reports_all_unconfirmed_stages(monkeypatch):
