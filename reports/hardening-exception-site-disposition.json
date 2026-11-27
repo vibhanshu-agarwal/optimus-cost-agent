@@ -1,6 +1,6 @@
 {
   "schema": "optimus-exception-site-disposition-v1",
-  "source_sha256": "sha256:5416832127845b37b864a05b6ecabfbd88433073608440e60332d2aa8ac9e674",
+  "source_sha256": "sha256:e72b85c114438ac1c39a414ca8b9199ec9cfe1dedff9b6100471b946b5dc245d",
   "sites": [
     {
       "key": "sha256:12dc6cf0fd88164c89a3bef9b8ca106a6ecb2174b346ccd6e50e60cb04d52b77",
@@ -9281,7 +9281,7 @@
       "path": "src/optimus_security/launch_manifest.py",
       "symbol": "optimus_security.launch_manifest.read_manifest_hmac_key",
       "kind": "except",
-      "line": 146,
+      "line": 151,
       "column": 5,
       "fingerprint": "sha256:dccda93a12d8c8f5ae86a60912350547e43dabe1b8ab10bcd6a5a1345c2e1dfb",
       "occurrence": 1,
@@ -9302,7 +9302,7 @@
       "path": "src/optimus_security/launch_manifest.py",
       "symbol": "optimus_security.launch_manifest.read_manifest_hmac_key",
       "kind": "except",
-      "line": 152,
+      "line": 157,
       "column": 5,
       "fingerprint": "sha256:f3cf84fd8f53b74f87e5e100b2bde39697a4547f000acbdd9f1c94f115b38335",
       "occurrence": 1,

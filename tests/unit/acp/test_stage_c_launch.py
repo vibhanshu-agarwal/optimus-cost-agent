@@ -410,7 +410,7 @@ def test_the_gateway_child_gets_the_ledger_path_and_a_version_three_manifest(mon
 
     assert argv[argv.index("--plan12-stage-c-ledger") + 1] == str(ledger)
     manifest = json.loads(argv[argv.index("--manifest") + 1])
-    assert (manifest["schema_version"], manifest["stage_c_envelope"]) == (3, envelope)
+    assert (manifest["schema_version"], manifest["stage_c_envelope"]) == (103, envelope)
 
 
 # --- Plan 12.2 F1: the ceremony prepares the ledger before any approval is persisted ------------------------------
