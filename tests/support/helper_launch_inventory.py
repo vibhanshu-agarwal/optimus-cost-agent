@@ -38,8 +38,8 @@ def _name(node: ast.expr) -> str:
     return ""
 
 
-# Launch APIs reached through an object (`loop.subprocess_exec`, `anyio.open_process`) are matched by their last name.
-_TAIL_NAMES = {"open_process", "subprocess_exec", "subprocess_shell", "posix_spawn", "posix_spawnp"}
+# Launch APIs reached through an object (`loop.subprocess_exec`, `anyio.open_process`, `_winapi.CreateProcess`) are matched by their last name.
+_TAIL_NAMES = {"open_process", "subprocess_exec", "subprocess_shell", "posix_spawn", "posix_spawnp", "CreateProcess"}
 
 
 def _is_launch(name: str) -> bool:

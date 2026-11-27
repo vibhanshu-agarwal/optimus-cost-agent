@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import textwrap
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -35,33 +36,36 @@ def _source_of(key: str) -> str:
     if function == "<module>":
         return source
     nodes = [node for node in ast.walk(ast.parse(source)) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function]
-    return "\n".join(ast.get_source_segment(source, node) or "" for node in nodes)
+    return textwrap.dedent("\n".join(" " * node.col_offset + (ast.get_source_segment(source, node) or "") for node in nodes))
+
+
+def _launch_calls(source: str) -> list[ast.Call]:
+    """The launch calls in a function's source."""
+    return [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call) and ast.unparse(node.func).split(".")[-1] in {
+        "Popen", "run", "check_output", "check_call", "call", "popen", "run_bounded"}]
 
 
 def _launch_programs(source: str) -> list[str]:
     """The first argument of each launch call in a function's source, as written."""
-    programs = []
-    for node in ast.walk(ast.parse("if True:\n" + "".join(f"    {line}\n" for line in source.splitlines()))):
-        if isinstance(node, ast.Call) and node.args and ast.unparse(node.func).split(".")[-1] in {
-                "Popen", "run", "check_output", "check_call", "call", "popen", "run_bounded"}:
-            programs.append(ast.unparse(node.args[0]))
-    return programs
+    return [ast.unparse(call.args[0]) for call in _launch_calls(source) if call.args]
 
 
-def _test_module_names() -> dict[str, set[str]]:
-    """Every identifier and attribute each tracked test module uses."""
-    modules: dict[str, set[str]] = {}
+def _test_module_names() -> dict[str, tuple[set[str], set[str]]]:
+    """For each tracked test module: every identifier and attribute it uses, and the names it calls."""
+    modules: dict[str, tuple[set[str], set[str]]] = {}
     for path in tracked_repository_files(_ROOT, pathspecs=["tests"]):
         if path.name.startswith("test_") and path.suffix == ".py":
             tree = ast.parse(path.read_text(encoding="utf-8"))
-            modules[path.relative_to(_ROOT).as_posix()] = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} | {
-                node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+            used = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)} | {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)}
+            called = {node.func.id if isinstance(node.func, ast.Name) else node.func.attr for node in ast.walk(tree)
+                      if isinstance(node, ast.Call) and isinstance(node.func, (ast.Name, ast.Attribute))}
+            modules[path.relative_to(_ROOT).as_posix()] = (used, called)
     return modules
 
 
 def problems(
     found: Mapping[str, Mapping[str, object]], document: Mapping[str, object], *,
-    source_of: Callable[[str], str] = _source_of, test_modules: Mapping[str, set[str]] | None = None,
+    source_of: Callable[[str], str] = _source_of, test_modules: Mapping[str, tuple[set[str], set[str]]] | None = None,
     exists: Callable[[str], bool] = lambda relative: (_ROOT / relative).is_file(),
 ) -> list[str]:
     """Every way the map and the sources disagree; empty when each launch function has a verdict its check confirms."""
@@ -90,6 +94,9 @@ def problems(
             if not tools or missing:
                 found_problems.append(f"{key}: non_python needs tools that the function names (missing {missing or 'all'})")
         elif verdict == "closure_clear":
+            unnamed = [name for name in entry.get("entries") or [] if name.rpartition(".")[2] not in source]
+            if unnamed or not entry.get("entries"):
+                found_problems.append(f"{key}: closure_clear entries {unnamed or 'missing'} are not what the function launches")
             closure = child_keyring.import_closure(entry.get("entries") or ["<none>"])
             if closure["keyring_importers"] or closure["unbounded"]:
                 found_problems.append(f"{key}: the child's closure imports keyring {closure['keyring_importers']} or is unbounded {closure['unbounded']}")
@@ -105,12 +112,15 @@ def problems(
             if not control or not hasattr(child_keyring, control) or not calls:
                 found_problems.append(f"{key}: controlled needs a control that child_keyring defines and the calls that reach it")
             else:
-                for module, names in (test_modules if test_modules is not None else _test_module_names()).items():
-                    if names & set(calls) and control not in names:
-                        found_problems.append(f"{key}: {module} reaches the launch without {control}")
-        elif verdict == "not_reached":
+                if control == "control_inherited_children" and any(
+                        keyword.arg == "env" or keyword.arg is None for call in _launch_calls(source) for keyword in call.keywords):
+                    found_problems.append(f"{key}: the control relies on the child inheriting the environment, but a launch passes env=")
+                for module, (used, called) in (test_modules if test_modules is not None else _test_module_names()).items():
+                    if used & set(calls) and control not in called:
+                        found_problems.append(f"{key}: {module} reaches the launch without calling {control}")
+        elif verdict in {"not_reached", "wrapper"}:
             if len(str(entry.get("reason", ""))) < 30:
-                found_problems.append(f"{key}: not_reached needs a reason that says what the tests do instead")
+                found_problems.append(f"{key}: {verdict} needs a reason that says what the tests do instead or what launch it forwards")
     return found_problems
 
 
@@ -177,7 +187,8 @@ def test_non_python_fails_when_the_function_does_not_name_its_tool() -> None:
 
 def test_closure_clear_fails_for_a_child_whose_closure_imports_keyring() -> None:
     assert _problems({"verdict": "closure_clear", "entries": ["optimus.acp.launch_gate"]}) != []
-    assert _problems({"verdict": "closure_clear", "entries": ["evidence_handoff_runtime.service_cli"]}) == []
+    assert _problems({"verdict": "closure_clear", "entries": ["evidence_handoff_runtime.service_cli"]},
+                     source="subprocess.run([sys.executable, '-m', 'evidence_handoff_runtime.service_cli'])") == []
 
 
 def test_caller_program_fails_when_the_function_names_its_own_python() -> None:
@@ -187,9 +198,22 @@ def test_caller_program_fails_when_the_function_names_its_own_python() -> None:
 
 def test_controlled_fails_for_a_test_module_that_reaches_the_launch_without_the_control() -> None:
     entry = {"verdict": "controlled", "control": "control_inherited_children", "entry_calls": ["run_contained"]}
-    assert _problems(entry, test_modules={"tests/a.py": {"run_contained"}}) != []
-    assert _problems(entry, test_modules={"tests/a.py": {"run_contained", "control_inherited_children"}}) == []
+    assert _problems(entry, test_modules={"tests/a.py": ({"run_contained"}, set())}) != []
+    assert _problems(entry, test_modules={"tests/a.py": ({"run_contained", "control_inherited_children"}, set())}) != [], "named, never called"
+    assert _problems(entry, test_modules={"tests/a.py": ({"run_contained"}, {"control_inherited_children"})}) == []
     assert _problems({**entry, "control": "no_such_control"}, test_modules={}) != []
+
+
+def test_an_inherited_control_fails_when_the_launch_passes_its_own_environment() -> None:
+    entry = {"verdict": "controlled", "control": "control_inherited_children", "entry_calls": ["run_contained"]}
+    assert _problems(entry, source="subprocess.run(argv, env={'PATH': ''})", test_modules={}) != []
+    assert _problems(entry, source="subprocess.run(argv)", test_modules={}) == []
+
+
+def test_closure_clear_fails_when_the_function_no_longer_launches_the_listed_module() -> None:
+    entry = {"verdict": "closure_clear", "entries": ["evidence_handoff_runtime.service_cli"]}
+    assert _problems(entry, source="subprocess.run([sys.executable, '-m', 'optimus.acp'])") != []
+    assert _problems(entry, source="subprocess.run([sys.executable, '-m', 'evidence_handoff_runtime.service_cli'])") == []
 
 
 def test_not_reached_needs_its_reason_and_reached_by_needs_real_files() -> None:

@@ -3,9 +3,9 @@
  "census": {
   "method": "A pytest plugin (kept in the p661 review kit) replaced the Windows process-creation call for the whole default selection, allowed git, refused every other child, and recorded for each launch the test, the command, the child's environment (whether it names a keyring backend) and the repository frames on the stack; for a Python child it also computed the child program's import closure. No refused child started, so none could reach any credential store.",
   "head": "2df6fec",
-  "selection": "the default selection of tests/ (pyproject addopts -m expression), 570 test files minus tests/e2e; 15781 tests passed; 442 failed and 55 errored because a refused launch is not the launch they expect",
+  "selection": "the default selection of every test file under tests/ (pyproject addopts -m expression): 15793 tests passed in three runs (92 files that name a launching module, the other 474 test files, tests/e2e); 442 failed and 55 errored because a refused launch is not the launch they expect",
   "result": "Besides git, the launches a default-selection test reaches are: the Plan 11.26 measurement child (product code that reaches keyring, selects fail in its own environment, controlled), nested pytest sessions (the root conftest installs fail), `python -m evidence_handoff_runtime.service_cli` (its closure imports no keyring), the plan 12 contained probe (inherits the environment; controlled), and test-authored programs started through a helper (`caller_program`: each recorded closure imports no keyring).",
-  "limits": "A test that launched a refused child stopped there, so a second launch later in the same test is not in the census; the static inventory and the per-function verdicts do not depend on it. Windows only: a launch a Linux-only test makes is for PR CI. A test that is not in the default selection is outside the census by definition."
+  "limits": "A test that hit a refused launch stopped there, so a later launch in the same test is not in the census (for example current_identity after resolve_client in the Stage C tests; its reach was added by reading the test). Git is allowed through and identified from the command text, and a git child's own descendants (hooks) are not observed; a shell child (bash in the Stage C tests) is recorded but not classified, and its startup files are the host's. Windows only: a launch a Linux-only test makes is for PR CI. The scan reads Python only: .ps1 and .sh runner scripts are outside it, and so are aliased module names and reflective lookups (the guard's inventory documents this). A test outside the default selection is outside the census by definition."
  },
  "verdicts": {
   "non_python": "Every launch in the function starts a fixed tool (`tools`: git, docker, powershell, or acpx for `--version`), which runs none of this repository's Python. The guard checks each tool name appears in the function.",
@@ -13,7 +13,8 @@
   "nested_pytest": "The child is a pytest session over this repository's tests; it loads the root conftest, which installs keyring's fail backend (#538). Its own launches are sites of run_context_child_sites.json. The guard checks the function builds a pytest command.",
   "controlled": "The child can reach keyring, or its closure cannot be bounded, and a test applies a control (tests/support/child_keyring.py) for its duration. The guard fails for any test module that names one of `entry_calls` without the control.",
   "caller_program": "The program is the caller's argument, not one the function chooses (the guard checks no launch here names sys.executable). A child reaches keyring only if the caller names product code. The default-selection tests that reach it (`reached_by`, from the census) name programs of their own, and the census closure of each imports no keyring.",
-  "not_reached": "No default-selection test starts the child (`reason` says what the tests do instead). The function stays listed so a test that begins to reach it is a visible change in review; the guard cannot see a new reach, only that the verdict is recorded."
+  "not_reached": "No default-selection test starts the child (`reason` says what the tests do instead). The function stays listed so a test that begins to reach it is a visible change in review; the guard cannot see a new reach, only that the verdict is recorded.",
+  "wrapper": "Forwards a launch that another function makes and starts no process of its own; the launch it forwards is classified where it is made. The guard needs the reason."
  },
  "functions": {
   "src/evidence_handoff_runtime/process.py::run": {
@@ -174,17 +175,13 @@
   },
   "src/optimus/mcp/client_sdk.py::_factory": {
    "launches": 1,
-   "verdict": "caller_program",
-   "reached_by": [
-    "tests/integration/mcp/test_client_sdk_local_stdio.py"
-   ]
+   "verdict": "not_reached",
+   "reason": "The production transport factory (stdio_client over the capability's canonical target). The tests that reach the SDK adapter inject their own transport factory (test_client_sdk_local_stdio.py: transport_context), whose launch is a #540 site that applies the child tripwire's environment; the census records for the SDK adapter name that factory, not this function."
   },
   "src/optimus/mcp/client_sdk.py::stdio_server_parameters_from_capability": {
    "launches": 1,
-   "verdict": "caller_program",
-   "reached_by": [
-    "tests/integration/mcp/test_client_sdk_local_stdio.py"
-   ]
+   "verdict": "not_reached",
+   "reason": "The production transport factory (stdio_client over the capability's canonical target). The tests that reach the SDK adapter inject their own transport factory (test_client_sdk_local_stdio.py: transport_context), whose launch is a #540 site that applies the child tripwire's environment; the census records for the SDK adapter name that factory, not this function."
   },
   "src/optimus/release/runner.py::_run_command": {
    "launches": 1,
@@ -639,7 +636,10 @@
   },
   "tools/plan12_stage_c_launch_rehearsal.py::current_identity": {
    "launches": 1,
-   "verdict": "caller_program"
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py"
+   ]
   },
   "tools/plan12_stage_c_launch_rehearsal.py::resolve_client": {
    "launches": 1,
@@ -851,6 +851,11 @@
    "tools": [
     "git"
    ]
+  },
+  "tools/testing/main5_startup/main5_guard_impl.py::<module>": {
+   "launches": 2,
+   "verdict": "wrapper",
+   "reason": "The MAIN-5 start-up hook wraps _winapi.CreateProcess inside the children the MAIN-5 runner starts, to record their spawns; it forwards each launch (the caller's own) and originates none."
   },
   "tools/testing/run_profile.py::_git": {
    "launches": 1,
