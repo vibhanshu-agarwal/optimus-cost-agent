@@ -3354,7 +3354,8 @@ class AcpDuplexAdapter:
             if outcome is ConversationOutcome.COMPLETED:
                 outcome = ConversationOutcome.FAILED
         turn.turn_control.record_outcome(Settlement(outcome.value))
-        await self._emit_final_text(session_id=session_id, text=text, turn=turn)
+        shown = _shown(text) if not answer and result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES else text  # #688
+        await self._emit_final_text(session_id=session_id, text=shown, turn=turn)
         await self._commit_turn(
             conversation=conversation,
             turn=turn,
@@ -4222,7 +4223,11 @@ def _completion_message(result: AgentRunResult, shown: Callable[[str], str] = st
         return f"{shown(path)}{space}{rest}"
     if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
         return result.output_text  # the replan instruction; it no longer reaches the person as a plan entry (#570)
-    if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
+    if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES:
+        # The reference and the workspace file names it lists can be Markdown (#688); the rest of the line is fixed text,
+        # which escaping leaves rendering as before.
+        return shown(result.output_text)
+    if result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
         # A recovery stop names the repeated step, which can quote a model-authored path; the rest is fixed text. Only a
         # recovery stop: a model's refusal may hold the same words.
         head, repeated, step = result.output_text.partition(LAST_REPEATED_STEP)
