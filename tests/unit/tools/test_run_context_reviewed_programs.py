@@ -38,6 +38,8 @@ PROVEN_SITES = {
         "test_descendant_trees_announce_sleep_and_spawn_only_reviewed_programs",
     f"{PROCESS_TREE_TESTS}::test_a_failure_after_the_child_ran_kills_its_whole_tree_and_keeps_the_error#1":
         "test_descendant_trees_announce_sleep_and_spawn_only_reviewed_programs",
+    f"{PROCESS_TREE_TESTS}::test_a_contained_tree_stays_in_the_runs_job_and_dies_without_ending_the_run#1":
+        "test_descendant_trees_announce_sleep_and_spawn_only_reviewed_programs",
     f"{PROCESS_TREE_TESTS}::test_a_child_that_cannot_be_contained_never_runs_and_the_error_is_raised#1":
         "test_the_marker_program_only_creates_its_marker_under_the_synthetic_directory",
 }

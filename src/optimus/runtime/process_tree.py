@@ -51,6 +51,7 @@ _lock = threading.Lock()
 _jobs: weakref.WeakKeyDictionary[subprocess.Popen[Any], int | None] = weakref.WeakKeyDictionary()
 _api: Any = None
 _entry: Any = None
+_structures: Any = None
 _POLL_SECONDS = 0.2  # how quickly a cancellation is noticed while a command runs
 
 
@@ -229,18 +230,9 @@ def _tree_stopped(process: subprocess.Popen[Any]) -> bool:
 
 def _active_processes(job: int) -> int:
     import ctypes
-    from ctypes import wintypes
 
-    class BasicAccounting(ctypes.Structure):  # JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
-        _fields_ = [
-            ("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
-            ("ThisPeriodTotalUserTime", ctypes.c_int64), ("ThisPeriodTotalKernelTime", ctypes.c_int64),
-            ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
-            ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD),
-        ]
-
-    info = BasicAccounting()
-    if not _kernel32().QueryInformationJobObject(job, _JOB_BASIC_ACCOUNTING, ctypes.byref(info), ctypes.sizeof(info), None):
+    info = job_structures().BasicAccounting()
+    if not kernel32().QueryInformationJobObject(job, _JOB_BASIC_ACCOUNTING, ctypes.byref(info), ctypes.sizeof(info), None):
         raise _win_error()
     return int(info.ActiveProcesses)
 
@@ -274,19 +266,19 @@ def _abandon(process: subprocess.Popen[Any], job: int | None, error: BaseExcepti
 
 
 def _new_job() -> int:
-    job = _kernel32().CreateJobObjectW(None, None)
+    job = kernel32().CreateJobObjectW(None, None)
     if not job:
         raise _win_error()
     return job
 
 
 def _terminate_job(job: int) -> None:
-    if not _kernel32().TerminateJobObject(job, _KILLED_EXIT_CODE):
+    if not kernel32().TerminateJobObject(job, _KILLED_EXIT_CODE):
         raise _win_error()
 
 
 def _assign(job: int, pid: int) -> None:
-    api = _kernel32()
+    api = kernel32()
     handle = api.OpenProcess(_PROCESS_SET_QUOTA | _PROCESS_TERMINATE, False, pid)
     if not handle:
         raise _win_error()
@@ -301,7 +293,7 @@ def _resume(pid: int) -> None:
     """Resume the suspended child's thread. Subprocess closes the thread handle, so find it by id."""
     import ctypes
 
-    api = _kernel32()
+    api = kernel32()
     snapshot = api.CreateToolhelp32Snapshot(_SNAPSHOT_THREADS, 0)
     if snapshot in (None, ctypes.c_void_p(-1).value):
         raise _win_error()
@@ -329,7 +321,7 @@ def _resume(pid: int) -> None:
 
 
 def _close_handle(handle: int) -> None:
-    _kernel32().CloseHandle(handle)
+    kernel32().CloseHandle(handle)
 
 
 def _win_error() -> OSError:
@@ -358,7 +350,61 @@ def _thread_entry() -> Any:
     return _entry
 
 
-def _kernel32() -> Any:
+def job_structures() -> Any:
+    """The JOBOBJECT_* structures, defined once, for this module and the test run context (#274)."""
+    global _structures
+    if _structures is None:
+        import ctypes
+        import types
+        from ctypes import wintypes
+
+        class IoCounters(ctypes.Structure):  # IO_COUNTERS
+            _fields_ = [(name, ctypes.c_ulonglong) for name in (
+                "read_operations", "write_operations", "other_operations", "read_bytes", "write_bytes", "other_bytes",
+            )]
+
+        class BasicLimit(ctypes.Structure):  # JOBOBJECT_BASIC_LIMIT_INFORMATION
+            _fields_ = [
+                ("PerProcessUserTimeLimit", ctypes.c_longlong), ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD),
+            ]
+
+        class ExtendedLimit(ctypes.Structure):  # JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+            _fields_ = [
+                ("Basic", BasicLimit), ("IoInfo", IoCounters), ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                ("PeakJobMemoryUsed", ctypes.c_size_t),
+            ]
+
+        class BasicAccounting(ctypes.Structure):  # JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
+            _fields_ = [
+                ("TotalUserTime", ctypes.c_int64), ("TotalKernelTime", ctypes.c_int64),
+                ("ThisPeriodTotalUserTime", ctypes.c_int64), ("ThisPeriodTotalKernelTime", ctypes.c_int64),
+                ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
+                ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD),
+            ]
+
+        class AccountingAndIo(ctypes.Structure):  # JOBOBJECT_BASIC_AND_IO_ACCOUNTING_INFORMATION
+            _fields_ = [("Basic", BasicAccounting), ("Io", IoCounters)]
+
+        class ProcessIdList(ctypes.Structure):  # JOBOBJECT_BASIC_PROCESS_ID_LIST, sized for 4096 members
+            _fields_ = [("Assigned", wintypes.DWORD), ("InList", wintypes.DWORD), ("Pids", ctypes.c_size_t * 4096)]
+
+        _structures = types.SimpleNamespace(
+            ExtendedLimit=ExtendedLimit, BasicAccounting=BasicAccounting,
+            AccountingAndIo=AccountingAndIo, ProcessIdList=ProcessIdList,
+        )
+    return _structures
+
+
+def kernel32() -> Any:
+    """The one kernel32 binding for job objects and the process queries around them (#274).
+
+    `tools.testing.run_context_windows` uses this same object, so every prototype either caller
+    needs is declared here, once.
+    """
     global _api
     if sys.platform != "win32":  # the Windows job path only; lets the POSIX type check skip it
         raise AssertionError("kernel32 is Windows-only")
@@ -391,5 +437,23 @@ def _kernel32() -> Any:
         api.Thread32Next.argtypes = [handle, entry]
         api.CloseHandle.restype = wintypes.BOOL
         api.CloseHandle.argtypes = [handle]
+        # The test run context's own job and identity queries.
+        api.GetCurrentProcess.restype = handle
+        api.IsProcessInJob.argtypes = [handle, handle, ctypes.POINTER(wintypes.BOOL)]
+        api.IsProcessInJob.restype = wintypes.BOOL
+        api.SetInformationJobObject.argtypes = [handle, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+        api.SetInformationJobObject.restype = wintypes.BOOL
+        api.GetProcessTimes.argtypes = [handle] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+        api.GetProcessTimes.restype = wintypes.BOOL
+        api.WaitForSingleObject.argtypes = [handle, wintypes.DWORD]
+        api.WaitForSingleObject.restype = wintypes.DWORD
+        api.GetHandleInformation.argtypes = [handle, ctypes.POINTER(wintypes.DWORD)]
+        api.GetHandleInformation.restype = wintypes.BOOL
+        api.QueryFullProcessImageNameW.argtypes = [handle, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
+        api.QueryFullProcessImageNameW.restype = wintypes.BOOL
+        api.Process32FirstW.argtypes = [handle, ctypes.c_void_p]
+        api.Process32FirstW.restype = wintypes.BOOL
+        api.Process32NextW.argtypes = [handle, ctypes.c_void_p]
+        api.Process32NextW.restype = wintypes.BOOL
         _api = api
     return _api

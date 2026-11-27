@@ -653,13 +653,14 @@ def test_wrapper_and_direct_launches_share_one_position_sequence(tmp_path: Path)
 
 
 def test_the_repository_wrapper_sites_are_inventoried() -> None:
-    """The nine direct test call sites of tools.process_tree.popen on this tree are found, no more, no fewer."""
+    """The ten direct test call sites of tools.process_tree.popen on this tree are found, no more, no fewer."""
     wrapper_sites = sorted(site["key"] for site in launch_sites(_ROOT) if site["wrapper"])
     assert wrapper_sites == [
         "tests/unit/guardrails/test_ci_parity.py::_run#1",
         "tests/unit/guardrails/test_ci_parity.py::test_terminate_tree_reaps_even_when_tree_kill_fails#1",
         "tests/unit/tools/test_process_tree.py::test_a_child_that_cannot_be_contained_never_runs_and_the_error_is_raised#1",
         "tests/unit/tools/test_process_tree.py::test_a_cleanup_failure_is_attached_to_the_initiating_error_and_the_root_is_still_reaped#1",
+        "tests/unit/tools/test_process_tree.py::test_a_contained_tree_stays_in_the_runs_job_and_dies_without_ending_the_run#1",
         "tests/unit/tools/test_process_tree.py::test_a_failure_after_the_child_ran_kills_its_whole_tree_and_keeps_the_error#1",
         "tests/unit/tools/test_process_tree.py::test_a_tree_child_runs_normally_and_keeps_the_callers_arguments#1",
         "tests/unit/tools/test_process_tree.py::test_kill_tree_after_the_whole_tree_exited_is_harmless#1",
