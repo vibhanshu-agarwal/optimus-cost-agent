@@ -86,8 +86,9 @@ accepted state and settles any maintenance costs.
 ## Model policy
 
 `load_registry` reads the caller’s defaults file and any overrides in argument
-order. It skips `None` entries, combines mapping keys and replaces non-mapping
-values such as lists. File reads can raise `OSError`. Invalid YAML and schema
+order, then the keyword-only `operator` override, which may not set a model’s
+`context_budget`. It skips `None` entries, combines mapping keys and replaces
+non-mapping values such as lists. File reads can raise `OSError`. Invalid YAML and schema
 validation failures raise `RegistryError`. Structural findings are reported
 separately by `validate_registry` as a deterministically ordered
 `tuple[ValidationIssue, ...]`. An empty tuple means that validation reported no
@@ -100,7 +101,7 @@ structural findings.
 | `ModelEntry` | `origin` and `tier` describe recorded model classifications. |
 | `EstimatorProfile` | `method`, `tokens_per_byte`, `per_message_tokens`, `fixed_tokens` and `verified` describe the recorded estimate profile. |
 | `Origin`, `Tier`, `Role` | Classifiers for origin, cost tier and assignment role. Their member collections may evolve. |
-| `RegistryError` | `code` distinguishes `YAML_REJECTED` from `SCHEMA_INVALID`. `detail` is diagnostic text. |
+| `RegistryError` | `code` is `YAML_REJECTED`, `OVERRIDE_BUDGET_REFUSED` (an operator override sets a model's `context_budget`) or `SCHEMA_INVALID`. `detail` is diagnostic text. |
 | `ValidationIssue` | `code` and `detail` describe a finding, with `model_id` and `role` when applicable. |
 
 Read these records through the returned snapshot. The boundary covers these reads

@@ -16,25 +16,33 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from optimus.acp import launch_approval_cli, operator_paths
-from optimus.acp.trusted_paths import TrustedOperatorRoots
+from optimus.acp.launch_approvals import KeyringApprovalStore
+from optimus.acp.launch_gate import LaunchGateError, resolve_launch_candidate
+from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+from optimus.acp.operator_paths import resolve_authorized_operator_paths
+from optimus.acp.trusted_paths import TrustedOperatorRoots, resolve_workspace_security_state
 from optimus_gateway import __main__ as gateway_main
 from optimus_model_policy import Role, select_eligible_models
+from optimus_model_policy import binding as binding_module
 from optimus_model_policy.binding import (
     APPROVAL_LITERAL_NAME,
     OPERATOR_OVERRIDE_FILENAME,
     BindingError,
     approval_literal,
+    auto_snapshot,
     operator_override,
     packaged_defaults,
     trusted_approval_literal,
     trusted_snapshot,
     use_operator_override,
 )
-from optimus_model_policy.registry import load_registry
+from optimus_model_policy.registry import RegistryError, load_registry
 from tests.unit.acp.conftest import FakeKeyring
-from tests.unit.acp.test_launch_gate_model_registry import _candidate
+from tests.unit.acp.test_launch_approval_cli import _approval_cli_case
+from tests.unit.acp.test_launch_gate_model_registry import _ENV, _candidate
 from tests.unit.acp.test_local_infra_model_registry import _spawned_args
 from tests.unit.optimus_gateway.test_main_model_registry import _manifest, _run, started  # noqa: F401 - fixture
 
@@ -235,3 +243,113 @@ def test_run_gateway_signs_an_approved_override_and_passes_it_by_path(tmp_path: 
     [args] = spawned
     assert args[args.index("--registry-override") + 1] == str(path)
     assert sys.executable in args
+
+
+# --- Plan 12.15 Task 1: an operator override may not set a model's context budget ------------------------------------
+# The budget field acts only once it qualifies in the packaged defaults (#243); an override carrying it, even as null or
+# a packaged value, is refused at the shared composition, so neither the launch gate nor the Gateway composes it.
+
+HAIKU = "anthropic/claude-haiku-5.5"
+EQUAL = '{input_target_usd: "0.012288"}'  # the value the trusted_budget fixture gives the shipped entry
+_BUDGETS = ["null", "{}", '{input_target_usd: "0.008192"}', EQUAL]
+
+
+def _budget_override(config_root: Path, value: str) -> Path:
+    return _write_override(config_root, f"models:\n  {HAIKU}:\n    context_budget: {value}\n")
+
+
+@pytest.fixture
+def trusted_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Trusted defaults whose shipped entry already carries EQUAL, so an override repeating it is genuinely equal."""
+    data = yaml.safe_load(packaged_defaults().read_text(encoding="utf-8"))
+    data["models"][HAIKU]["context_budget"] = {"input_target_usd": "0.012288"}
+    path = tmp_path / "trusted-defaults.yaml"
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    assert load_registry(path).policy.models[HAIKU].context_budget is not None
+    monkeypatch.setattr(binding_module, "packaged_defaults", lambda: path)
+    return path
+
+
+@pytest.mark.parametrize("value", _BUDGETS)
+def test_an_override_that_sets_a_context_budget_is_refused_in_both_compositions(tmp_path: Path, trusted_budget: Path, value: str) -> None:
+    use_operator_override(_budget_override(tmp_path / "config", value))
+    try:
+        for compose in (trusted_snapshot, auto_snapshot):
+            with pytest.raises(RegistryError) as caught:
+                compose()
+            assert caught.value.code == "OVERRIDE_BUDGET_REFUSED" and HAIKU in caught.value.detail
+    finally:
+        use_operator_override(None)
+
+
+def test_the_refusal_reads_only_the_operator_layer(tmp_path: Path) -> None:
+    # A packaged overlay or an evaluation fixture composed as a trusted layer may still carry the field.
+    path = _budget_override(tmp_path, '{input_target_usd: "0.012288"}')
+    assert load_registry(packaged_defaults(), path).policy.models[HAIKU].context_budget is not None
+    # An override without the field composes exactly as before, so the hash the operator approved still holds.
+    plain = _write_override(tmp_path / "plain")
+    use_operator_override(plain)
+    try:
+        assert trusted_snapshot().effective_hash == load_registry(packaged_defaults(), plain).effective_hash
+    finally:
+        use_operator_override(None)
+
+
+@pytest.mark.parametrize("value", _BUDGETS)
+@pytest.mark.parametrize("model", [None, "auto"])
+def test_the_launch_gate_refuses_a_budget_override_before_anything_is_approved(
+    tmp_path: Path, trusted_budget: Path, monkeypatch: pytest.MonkeyPatch, model: str | None, value: str
+) -> None:
+    roots = TrustedOperatorRoots(
+        default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
+    )
+    monkeypatch.setattr(operator_paths, "resolve_trusted_operator_roots", lambda **_: roots)
+    keyring = FakeKeyring()
+    _budget_override(_candidate(tmp_path, keyring)[0].operator_paths.config_root, value)
+    before = dict(keyring._store)
+    env = {**_ENV, **({"OPTIMUS_AGENT_MODEL": model} if model else {})}
+    snapshot = LaunchEnvironmentSnapshot.capture(env)
+    paths = resolve_authorized_operator_paths(workspace_root=tmp_path, snapshot_values=snapshot.values, platform_name=sys.platform)
+    store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path / ".optimus-runtime")
+    with pytest.raises(LaunchGateError) as caught:
+        resolve_launch_candidate(snapshot=snapshot, workspace_state=resolve_workspace_security_state(tmp_path), operator_paths=paths, hmac_key=store.hmac_key)
+    assert (caught.value.code, caught.value.detail) == ("MODEL_REGISTRY_INVALID", "OVERRIDE_BUDGET_REFUSED")
+    assert keyring._store == before  # nothing approved or written
+
+
+@pytest.mark.parametrize("auto", [False, True])
+def test_run_gateway_refuses_a_budget_override_before_signing_or_spawning(tmp_path: Path, trusted_budget: Path, monkeypatch, auto: bool) -> None:
+    _budget_override(tmp_path / "config", EQUAL)
+    signed: list = []
+    monkeypatch.setattr(launch_approval_cli, "build_gateway_child_manifest", lambda **kwargs: signed.append(kwargs))
+    code, spawned, err = _run_gateway(tmp_path, monkeypatch, approval=None, auto=auto)
+    assert (code, spawned, signed) == (2, [], []) and "OVERRIDE_BUDGET_REFUSED" in err
+
+
+@pytest.mark.parametrize("value", _BUDGETS)
+@pytest.mark.parametrize("auto", [False, True])
+def test_the_gateway_refuses_to_start_with_a_budget_override(
+    tmp_path: Path, trusted_budget: Path, started: list, capsys, auto: bool, value: str  # noqa: F811
+) -> None:
+    path = _budget_override(tmp_path / "config", value)
+    argv = ["--bind-host", "127.0.0.1", "--port", "8765", "--registry-override", str(path), "--manifest", _manifest(None)]
+    assert gateway_main.main([*argv, *(["--auto-composition"] if auto else [])]) == 2
+    assert "OVERRIDE_BUDGET_REFUSED" in capsys.readouterr().err
+    assert started == []
+
+
+@pytest.mark.parametrize("mode", ["durable", "one-shot"])
+def test_the_approval_command_writes_no_record_for_a_budget_override(
+    tmp_path: Path, trusted_budget: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    cli_module, workspace, store = _approval_cli_case(tmp_path, monkeypatch)
+    monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
+    monkeypatch.setattr("builtins.input", lambda _prompt: "y")
+    store.hmac_key  # an established store: its key exists before the command runs  # noqa: B018
+    keyring_before = dict(store._keyring._store)
+    _budget_override(tmp_path / "config", EQUAL)
+    with pytest.raises(LaunchGateError) as caught:
+        cli_module._cmd_approve(workspace, mode=mode, target_argv=[])
+    assert (caught.value.code, caught.value.detail) == ("MODEL_REGISTRY_INVALID", "OVERRIDE_BUDGET_REFUSED")
+    assert store.read_durable(resolve_workspace_security_state(workspace).identity.digest) is None
+    assert store._keyring._store == keyring_before  # no approval record, and the key was not re-initialized
