@@ -1250,7 +1250,7 @@ _SOURCE_DOC_KEYS = ("historical_pins", "approved_source_commit", "actual_source_
                     "untracked_digest_sha256", "normal_source_sha256_before", "descriptor_fixture_sha256", "launch_config_sha256", "budget_policy_sha256")
 
 
-def derive_raw_document(context: RunContext, batches: Sequence[CollectionBatch], *, provisional_sha256: str | None,
+def derive_raw_document(context: RunContext, batches: Sequence[CollectionBatch], *, raw_bundle_sha256: str, provisional_sha256: str | None,
                         ingress_failures: Sequence[str] = ()) -> dict[str, Any]:
     if len(batches) != 1 or batches[0].collector_id != COLLECTOR_ID:
         raise HostError("collector_batch_mismatch")
@@ -1298,11 +1298,10 @@ def derive_raw_document(context: RunContext, batches: Sequence[CollectionBatch],
                 checkpoints.append(_derive_checkpoint(art, arm_id, launch_id))
         if launches or checkpoints:
             arms.append({"arm_id": arm_id, "profile_role": f"profile:{arm_id}", "workspace_role": f"workspace:{arm_id}", "launches": launches, "checkpoints": checkpoints})
-    bundle = json.loads((run_dir / "raw-bundle.json").read_text(encoding="utf-8"))
     return {
         "schema": contract.RAW_SCHEMA, "evidence_kind": contract.EVIDENCE_KIND_GATE, "scenario_id": context.scenario_id,
         "scenario_sha256": context.scenario_sha256, "run_id": context.run_id, "approval_id": start["approval_id"],
-        "raw_bundle_sha256": bundle["bundle_sha256"], "provisional_classification_sha256": provisional_sha256,
+        "raw_bundle_sha256": raw_bundle_sha256, "provisional_classification_sha256": provisional_sha256,
         "aborted": end["aborted"], "custody_failures": sorted(set(failures)),
         "run_window": {"wall_started_at": start["wall_started_at"], "wall_ended_at": end["wall_ended_at"],
                        "monotonic_started_ns": start["monotonic_started_ns"], "monotonic_ended_ns": end["monotonic_ended_ns"]},
@@ -1497,12 +1496,12 @@ _LOADER_ENVELOPE_CODES = frozenset({"relative_path_rejected", "partial_stage", "
                                     "foreign_run_id", "foreign_scenario_id", "digest_mismatch"})
 
 
-def strict_bundle_ingress(context: RunContext) -> tuple[tuple[str, ...], tuple[CollectionBatch, ...] | None]:
+def strict_bundle_ingress(context: RunContext) -> tuple[tuple[str, ...], tuple[CollectionBatch, ...] | None, str | None]:
     """Closed-schema check of the raw bundle bytes BEFORE the shared loader's int()/str() normalization.
 
     Returns fixed codes (empty when clean) and, only when the outer envelope verifies on its own (schema, completeness,
-    run, scenario, scenario digest, bundle digest), batches built from the exactly-typed KNOWN fields of items bound to
-    this run. Unknown keys and malformed containers are recorded; an item with an invalid known field is dropped and
+    run, scenario, scenario digest, bundle digest), the typed batches and the digest of that verified envelope.
+    Unknown keys and malformed containers are recorded; an item with an invalid known field is dropped and
     recorded. Never raises, never reads an artifact: a violation stays a custody failure while
     derivation continues, so malformed or foreign metadata can neither be accepted nor hide an independently captured STOP.
     """
@@ -1522,7 +1521,7 @@ def strict_bundle_ingress(context: RunContext) -> tuple[tuple[str, ...], tuple[C
         payload = (run_dir / "raw-bundle.json").read_bytes()
         document = json.loads(payload)
     except (OSError, ValueError):
-        return ("raw_bundle_ingress_invalid",), None
+        return ("raw_bundle_ingress_invalid",), None, None
     try:
         contract.strict_json_loads(payload)
     except contract.ContractError:
@@ -1532,7 +1531,7 @@ def strict_bundle_ingress(context: RunContext) -> tuple[tuple[str, ...], tuple[C
             or (document.get("schema"), document.get("run_id"), document.get("scenario_id"), document.get("scenario_sha256"))
             != (RAW_BUNDLE_SCHEMA, context.run_id, context.scenario_id, context.scenario_sha256)
             or document["bundle_sha256"] != _payload_sha256(envelope)):
-        return ("raw_bundle_ingress_invalid",), None
+        return ("raw_bundle_ingress_invalid",), None, None
     if set(document) != set(_BUNDLE_KEYS):
         bad()
     batches = []
@@ -1590,13 +1589,13 @@ def strict_bundle_ingress(context: RunContext) -> tuple[tuple[str, ...], tuple[C
             artifacts.append(CapturedArtifact(**{key: artifact[key] for key in _ARTIFACT_KEYS}))
         batches.append(CollectionBatch(collector_id=batch["collector_id"], contract_version=batch["contract_version"],
                                        observations=tuple(observations), artifacts=tuple(artifacts)))
-    return tuple(sorted(codes)), tuple(batches)
+    return tuple(sorted(codes)), tuple(batches), document["bundle_sha256"]
 
 
 def compute_redaction(context: RunContext, *, identity_tokens: Sequence[str]) -> StagedRedaction:
     """Deterministic raw -> sanitized -> report from the verified bundle; writes only the private records."""
     run_dir = context.capture_root / context.run_id
-    ingress, batches = strict_bundle_ingress(context)
+    ingress, batches, raw_bundle_sha256 = strict_bundle_ingress(context)
     try:
         load_verified_raw_bundle(context=context, bundle_path=run_dir / "raw-bundle.json")
     except (TypeError, KeyError, ValueError) as exc:
@@ -1605,19 +1604,27 @@ def compute_redaction(context: RunContext, *, identity_tokens: Sequence[str]) ->
         code = exc.args[0] if type(exc) is ValueError and exc.args and isinstance(exc.args[0], str) and exc.args[0] in _LOADER_ENVELOPE_CODES else None
         if code is not None or batches is None:
             raise HostError(code or "bundle_invalid") from None
-    if batches is None:
+    if batches is None or raw_bundle_sha256 is None:
         raise HostError("bundle_invalid")
     provisional = run_dir / "provisional-result.json"
     provisional_sha256 = None
     provisional_failure = "provisional_missing"
     try:
         if provisional.is_file():
-            provisional_sha256 = contract.sha256_hex(provisional.read_bytes())
+            payload = provisional.read_bytes()
+            contract.validate_provisional_custody(
+                payload, scenario_id=context.scenario_id, run_id=context.run_id, raw_bundle_sha256=raw_bundle_sha256,
+            )
+            provisional_sha256 = contract.sha256_hex(payload)
     except FileNotFoundError:
         pass
     except OSError:
         provisional_failure = "provisional_unreadable"
-    raw_document = derive_raw_document(context, batches, provisional_sha256=provisional_sha256, ingress_failures=ingress)
+    except contract.ContractError as exc:
+        provisional_failure = "provisional_binding_mismatch" if exc.code == "provisional_binding_mismatch" else "provisional_invalid"
+    raw_document = derive_raw_document(
+        context, batches, raw_bundle_sha256=raw_bundle_sha256, provisional_sha256=provisional_sha256, ingress_failures=ingress,
+    )
     if provisional_sha256 is None:
         custody_hit = contract.GateHit(contract.GateReason.CUSTODY_ARTIFACT_FAILURE, provisional_failure)
         gate = contract.reduce_document(raw_document, layer="raw", extra_hits=(custody_hit,))

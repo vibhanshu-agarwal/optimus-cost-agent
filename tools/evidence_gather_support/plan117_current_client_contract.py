@@ -30,6 +30,8 @@ from datetime import datetime, timezone
 from enum import IntEnum, StrEnum
 from typing import Any
 
+from evidence_handoff.collector.bundles import PROVISIONAL_RESULT_SCHEMA
+from evidence_handoff.collector.models import ClaimKind, Outcome
 from tools.evidence_gather_support.plan117_launcher import PUBLIC_LAUNCHER_IDENTITY
 
 SCENARIO_ID = "plan117-current-client-gate-v6"
@@ -216,6 +218,42 @@ def _enum(value: Any, allowed: Iterable[str], where: str) -> str:
     if type(value) is not str or value not in set(allowed):
         raise ContractError("schema_invalid", where)
     return value
+
+
+_PROVISIONAL_KEYS = ("schema", "complete", "scenario_id", "run_id", "outcome", "reason_codes", "raw_bundle_sha256", "claims")
+_PROVISIONAL_CLAIM_KEYS = (
+    "claim_kind", "scenario_id", "run_id", "detector_id", "contract_version", "evidence_sha256", "starts_at_ns", "ends_at_ns", "reason_code",
+)
+
+
+def validate_provisional_custody(payload: bytes, *, scenario_id: str, run_id: str, raw_bundle_sha256: str) -> None:
+    """Validate the classifier's custody record without deriving the gate verdict from its outcome."""
+    document = _obj(strict_json_loads(payload), _PROVISIONAL_KEYS, "$")
+    if document["schema"] != PROVISIONAL_RESULT_SCHEMA or document["complete"] is not True:
+        raise ContractError("schema_invalid", "$.provisional")
+    binding = (
+        _str(document["scenario_id"], "$.scenario_id"),
+        _str(document["run_id"], "$.run_id"),
+        _str(document["raw_bundle_sha256"], "$.raw_bundle_sha256", _HEX64),
+    )
+    if binding != (scenario_id, run_id, raw_bundle_sha256):
+        raise ContractError("provisional_binding_mismatch")
+    _enum(document["outcome"], Outcome, "$.outcome")
+    for reason in _list(document["reason_codes"], "$.reason_codes"):
+        _str(reason, "$.reason_codes[]")
+    for item in _list(document["claims"], "$.claims"):
+        claim = _obj(item, _PROVISIONAL_CLAIM_KEYS, "$.claims[]")
+        claim_scenario = _str(claim["scenario_id"], "$.claims[].scenario_id")
+        claim_run = _str(claim["run_id"], "$.claims[].run_id")
+        if (claim_scenario, claim_run) != (scenario_id, run_id):
+            raise ContractError("provisional_binding_mismatch")
+        _enum(claim["claim_kind"], ClaimKind, "$.claims[].claim_kind")
+        for field_name in ("detector_id", "contract_version", "reason_code"):
+            _str(claim[field_name], f"$.claims[].{field_name}")
+        _int(claim["starts_at_ns"], "$.claims[].starts_at_ns")
+        _int(claim["ends_at_ns"], "$.claims[].ends_at_ns")
+        for digest in _list(claim["evidence_sha256"], "$.claims[].evidence_sha256"):
+            _str(digest, "$.claims[].evidence_sha256[]", _HEX64)
 
 
 def _timestamp(value: Any, where: str) -> datetime:

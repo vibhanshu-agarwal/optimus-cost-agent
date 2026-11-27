@@ -848,8 +848,6 @@ class Run:
         return c.parse_approved_runs(registry).lookup(RUN_ID)
 
     def collect(self):
-        import json
-
         from evidence_handoff.collector.bundles import write_provisional_result, write_raw_bundle
         from evidence_handoff.collector.classification import classify
         from tools.evidence_gather_support import detectors as detectors_mod
@@ -857,18 +855,21 @@ class Run:
         inputs = col.CollectInputs(self.context, self.spec, FIXTURE, FIXTURE_SHA, self.normal, self.scratch)
         batch = col.collect_current_client_gate(inputs, self.host.actions())
         write_raw_bundle(context=self.context, batches=(batch,))
-        digest = json.loads((self.run_dir / "raw-bundle.json").read_text(encoding="utf-8"))["bundle_sha256"]
         claims = detectors_mod.detect_claims(context=self.context, batches=(batch,))
-        self.provisional = classify(context=self.context, raw_bundle_sha256=digest, claims=claims, required_collectors=(batch.collector_id,), stability_interval_ns=1)
+        self.provisional = classify(context=self.context, raw_bundle_sha256=self.bundle_sha256, claims=claims, required_collectors=(batch.collector_id,), stability_interval_ns=1)
         write_provisional_result(context=self.context, result=self.provisional)
         return batch
+
+    @property
+    def bundle_sha256(self):
+        return json.loads((self.run_dir / "raw-bundle.json").read_bytes())["bundle_sha256"]
 
     def raw(self):
         from evidence_handoff.collector.bundles import load_verified_raw_bundle
 
         batches = load_verified_raw_bundle(context=self.context, bundle_path=self.run_dir / "raw-bundle.json")
         provisional = c.sha256_hex((self.run_dir / "provisional-result.json").read_bytes())
-        return col.derive_raw_document(self.context, batches, provisional_sha256=provisional)
+        return col.derive_raw_document(self.context, batches, raw_bundle_sha256=self.bundle_sha256, provisional_sha256=provisional)
 
     def gate(self):
         return c.reduce_document(self.raw(), layer="raw")
@@ -1044,7 +1045,7 @@ def test_cp1_review_later_arm_survives_missing_earlier_record(tmp_path, windows_
         artifacts=tuple(item for item in captured.artifacts if item.role != "plan117_v5_launch:a_prime:first"),
     )
     provisional = c.sha256_hex((run.run_dir / "provisional-result.json").read_bytes())
-    raw = col.derive_raw_document(run.context, (review_batch,), provisional_sha256=provisional)
+    raw = col.derive_raw_document(run.context, (review_batch,), raw_bundle_sha256=run.bundle_sha256, provisional_sha256=provisional)
     result = c.reduce_document(raw, layer="raw")
     if captured_stop:
         assert result.disposition is D.ZERO_ENTRY_REACHABLE_STOP, result.reason_codes()
@@ -1539,7 +1540,7 @@ def test_reordered_observations_fail_transition_chronology(tmp_path, windows_sha
     observations = list(batch.observations)
     observations[6], observations[8] = observations[8], observations[6]
     reordered = replace(batch, observations=tuple(replace(o, sequence=i) for i, o in enumerate(observations)))
-    raw = col.derive_raw_document(run.context, (reordered,), provisional_sha256="0" * 64)
+    raw = col.derive_raw_document(run.context, (reordered,), raw_bundle_sha256=run.bundle_sha256, provisional_sha256="0" * 64)
     assert "transition_chronology_invalid" in raw["custody_failures"]
     assert c.reduce_document(raw, layer="raw").disposition is D.INVALID_CURRENT_CLIENT_GATE
 
@@ -1551,7 +1552,7 @@ def test_derivation_accepts_exactly_one_batch_from_this_collector(tmp_path, wind
     batch = run.collect()
     for batches in ((replace(batch, collector_id="acp_stream_collector"),), (batch, batch), ()):
         with pytest.raises(HostError) as excinfo:
-            col.derive_raw_document(run.context, batches, provisional_sha256="0" * 64)
+            col.derive_raw_document(run.context, batches, raw_bundle_sha256=run.bundle_sha256, provisional_sha256="0" * 64)
         assert excinfo.value.code == "collector_batch_mismatch"
 
 
@@ -1652,6 +1653,7 @@ def test_accepting_receipt_promotes_manifest_report_and_attestation(tmp_path, wi
     attestation = c.parse_attestation(json.loads((final / "redaction-attestation.json").read_text(encoding="utf-8")))
     assert attestation.sanitized_manifest_sha256 == c.sha256_hex((final / "manifest.json").read_bytes())
     assert attestation.redaction_report_sha256 == c.sha256_hex((final / "redaction-report.json").read_bytes())
+    assert attestation.provisional_classification_sha256 == c.sha256_hex((run.run_dir / "provisional-result.json").read_bytes())
     assert attestation.mapping_sha256 == staged.mapping_sha256
     assert attestation.raw_manifest_sha256 == c.sha256_hex((run.run_dir / col.RAW_MANIFEST_LOCATOR).read_bytes())
     assert attestation.receipt_sha256 == c.sha256_hex(c.canonical_json_bytes(dict(attestation.receipt.document)))
@@ -1806,6 +1808,43 @@ def test_redaction_requires_the_provisional_custody_result(tmp_path, windows_sha
         col.stage_redaction(run.context, staging_root=roots["staging"], quarantine_root=roots["quarantine"], identity_tokens=())
     assert excinfo.value.code == "provisional_missing"
 
+
+@pytest.mark.parametrize(
+    "changes,error",
+    [
+        pytest.param(None, "provisional_invalid", id="malformed"),
+        pytest.param({"complete": 1}, "provisional_invalid", id="not-complete"),
+        pytest.param({"extra": True}, "provisional_invalid", id="unknown-field"),
+        pytest.param({"claims": [False]}, "provisional_invalid", id="malformed-claim"),
+        pytest.param({"run_id": "p117v5-other-run"}, "provisional_binding_mismatch", id="foreign-run"),
+        pytest.param({"scenario_id": "another-scenario"}, "provisional_binding_mismatch", id="foreign-scenario"),
+        pytest.param({"raw_bundle_sha256": "0" * 64}, "provisional_binding_mismatch", id="wrong-bundle"),
+    ],
+)
+@pytest.mark.parametrize("arm", [None, "a_prime", "r_refusal"], ids=["no-signal", "a-prime-stop", "r-stop"])
+def test_invalid_provisional_custody_refuses_or_preserves_stop(tmp_path, windows_shaped_paths, changes, error, arm):
+    run = Run(tmp_path, run_options(reopen_load_arm=arm))
+    run.collect()
+    provisional = run.run_dir / "provisional-result.json"
+    if changes is None:
+        provisional.write_bytes(b"")
+    else:
+        document = json.loads(provisional.read_bytes())
+        document.update(changes)
+        provisional.write_bytes(c.canonical_json_bytes(document))
+    roots = _roots(tmp_path)
+
+    if arm is None:
+        with pytest.raises(HostError) as excinfo:
+            col.stage_redaction(run.context, staging_root=roots["staging"], quarantine_root=roots["quarantine"], identity_tokens=())
+        assert excinfo.value.code == error
+    else:
+        staged = col.stage_redaction(run.context, staging_root=roots["staging"], quarantine_root=roots["quarantine"], identity_tokens=())
+        assert staged.status == "underivable"
+        assert staged.gate.disposition is D.ZERO_ENTRY_REACHABLE_STOP
+        assert f"custody_artifact_failure:{error}" in staged.gate.reason_codes()
+    assert list(roots["staging"].iterdir()) == []
+    assert list(roots["sanitized"].iterdir()) == []
 
 
 @pytest.mark.parametrize("arm", ["a_prime", "r_refusal"])
@@ -2532,6 +2571,11 @@ def _rebind_bundle(run, mutate):
     document.pop("bundle_sha256")
     document["bundle_sha256"] = _payload_sha256(document)
     path.write_text(json.dumps(document, ensure_ascii=False, separators=(",", ":"), sort_keys=True), encoding="utf-8")
+    # Keep ingress tests focused on the bundle mutation, rather than a stale classification binding.
+    provisional = run.run_dir / "provisional-result.json"
+    classification = json.loads(provisional.read_bytes())
+    classification["raw_bundle_sha256"] = document["bundle_sha256"]
+    provisional.write_bytes(c.canonical_json_bytes(classification))
 
 
 @pytest.mark.parametrize(
