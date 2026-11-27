@@ -32,7 +32,7 @@ _EXTERNAL_EXCEPTIONS = frozenset("""
 asyncio.CancelledError asyncio.TimeoutError binascii.Error concurrent.futures.CancelledError
 concurrent.futures.InvalidStateError decimal.InvalidOperation defusedxml.ElementTree.ParseError
 defusedxml.common.DefusedXmlException http.client.HTTPException importlib.metadata.PackageNotFoundError
-json.JSONDecodeError PIL.Image.DecompressionBombError PIL.UnidentifiedImageError
+json.JSONDecodeError keyring.errors.NoKeyringError PIL.Image.DecompressionBombError PIL.UnidentifiedImageError
 psycopg.Error psycopg.OperationalError psycopg.errors.LockNotAvailable psycopg.errors.QueryCanceled
 pydantic.ValidationError queue.Empty queue.Full redis.exceptions.ConnectionError
 redis.exceptions.OutOfMemoryError redis.exceptions.RedisError redis.exceptions.ResponseError

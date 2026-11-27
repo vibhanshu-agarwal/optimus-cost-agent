@@ -1161,15 +1161,14 @@ def _cmd_run_gateway(
             config_root=config_root,
             keyring_backend=credential_keyring_backend,
         )
-    except ProviderCredentialConfigurationError as exc:
+        shared_secret = resolve_shared_secret(
+            os.environ,
+            config_root=config_root,
+            keyring_backend=credential_keyring_backend,
+        )
+    except ProviderCredentialConfigurationError as exc:  # #654: an unreadable keychain refuses here too
         print(f"optimus-trust run-gateway: {exc.user_message}", file=sys.stderr)
         return 2
-
-    shared_secret = resolve_shared_secret(
-        os.environ,
-        config_root=config_root,
-        keyring_backend=credential_keyring_backend,
-    )
 
     provider_secrets = provider_credentials.secrets
     if provider_secrets is None or not shared_secret:
