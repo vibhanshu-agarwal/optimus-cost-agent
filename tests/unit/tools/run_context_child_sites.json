@@ -748,6 +748,15 @@
     "verdict": "reviewed_program"
    }
   },
+  "tests/unit/tools/test_process_tree.py::test_a_contained_tree_stays_in_the_runs_job_and_dies_without_ending_the_run#1": {
+   "mechanism": "python:inline_script",
+   "disposition": "reviewed_program",
+   "proof": "tests/unit/tools/test_run_context_reviewed_programs.py::test_descendant_trees_announce_sleep_and_spawn_only_reviewed_programs",
+   "basis": "The program is descendant_tree(tmp_path, \"parent-alive\"): members announce their pid under the test's directory, sleep or spawn another reviewed member; the proof regenerates every shape, checks each member recursively and runs the announce prefix in isolation. The tree is killed by the test, so census rows stay start-only.",
+   "keyring": {
+    "verdict": "reviewed_program"
+   }
+  },
   "tests/unit/tools/test_process_tree.py::test_a_tree_child_runs_normally_and_keeps_the_callers_arguments#1": {
    "mechanism": "python:inline_script",
    "disposition": "literal_program",

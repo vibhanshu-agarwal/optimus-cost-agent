@@ -31,7 +31,7 @@ _V1_FIELDS = {
     "workspace_digest",
     "security_snapshot_digest",
     "provider",
-    "base_url",
+    "base_url_fingerprint",
     "bind_host",
     "bind_port",
     "provider_api_key_fingerprint",
@@ -68,7 +68,7 @@ def _verify(serialized: str, model_registry: str | None):
 
 def test_a_manifest_without_a_registry_is_exactly_version_one() -> None:
     data = json.loads(_serialized(None))
-    assert data["schema_version"] == MANIFEST_SCHEMA_VERSION == 1
+    assert data["schema_version"] == MANIFEST_SCHEMA_VERSION == 101
     assert set(data) == _V1_FIELDS | {"signature"}
     # Independent recomputation of the version-1 signature over the version-1 field set.
     signed = {name: data[name] for name in _V1_FIELDS}
@@ -81,7 +81,7 @@ def test_a_manifest_without_a_registry_is_exactly_version_one() -> None:
 def test_a_registry_manifest_is_version_two_and_signs_the_literal() -> None:
     serialized = _serialized(_LITERAL)
     data = json.loads(serialized)
-    assert data["schema_version"] == MANIFEST_REGISTRY_SCHEMA_VERSION == 2
+    assert data["schema_version"] == MANIFEST_REGISTRY_SCHEMA_VERSION == 102
     assert data["model_registry"] == _LITERAL
     assert _verify(serialized, _LITERAL).model_registry == _LITERAL
 
@@ -104,7 +104,7 @@ def test_the_gateway_refuses_a_manifest_for_another_registry(signed, gateway) ->
     ("tamper", "code"),
     [
         (lambda d: d.pop("model_registry"), "MANIFEST_CORRUPT"),  # stripped, still claiming version 2
-        (lambda d: d.update(schema_version=1), "MANIFEST_CORRUPT"),  # downgraded, still carrying it
+        (lambda d: d.update(schema_version=101), "MANIFEST_CORRUPT"),  # downgraded, still carrying it
         (lambda d: d.update(model_registry=7), "MANIFEST_CORRUPT"),
         (lambda d: d.update(model_registry="optimus-model-registry-v1:" + "e" * 64), "MANIFEST_INVALID_SIGNATURE"),
     ],
@@ -119,7 +119,7 @@ def test_tampering_with_the_registry_binding_fails_closed(tamper, code: str) -> 
 
 def test_adding_a_registry_to_a_version_one_manifest_breaks_its_signature() -> None:
     data = json.loads(_serialized(None))
-    data.update(schema_version=2, model_registry=_LITERAL)
+    data.update(schema_version=102, model_registry=_LITERAL)
     with pytest.raises(LaunchManifestError) as caught:
         _verify(json.dumps(data), _LITERAL)
     assert caught.value.code == "MANIFEST_INVALID_SIGNATURE"

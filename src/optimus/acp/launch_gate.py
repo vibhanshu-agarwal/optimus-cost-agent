@@ -142,6 +142,7 @@ class LaunchCandidate:
     registry_version: str
     display_rows: tuple[LaunchDisplayRow, ...]
     gateway_environ: Mapping[str, str]
+    gateway_tool_environ: Mapping[str, str]  # what require_gateway_tool_urls validated; the Gateway gets exactly this (#680)
     agent_environ: Mapping[str, str]
     secret_inventory: tuple[str, ...]
     security_literals: Mapping[str, str]
@@ -189,8 +190,8 @@ def credential_uri_display(name: str, value: str, layer: CredentialLayer) -> str
 
 
 def require_gateway_tool_urls(config_root: Path, environ: Mapping[str, str]) -> dict[str, str]:
-    """The Gateway's tool configuration, merged as local_infra.gateway_tool_environ merges it (.env.gateway over the
-    environment), with each credential-bearing URL validated against the source that supplied it (#671)."""
+    """The Gateway's tool configuration (.env.gateway over the environment), with each credential-bearing URL validated
+    against the source that supplied it (#671). Launchers spawn from this dictionary and never read the file again (#680)."""
     from_file = project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))
     merged = {**project_gateway_tool_child_env(environ), **from_file}
     for name, value in merged.items():
@@ -686,7 +687,7 @@ def resolve_launch_candidate(
     env_gateway_path = operator_paths.config_root / ".env.gateway"
     if env_gateway_path.is_file():
         validate_config_file_permissions(env_gateway_path)
-    require_gateway_tool_urls(operator_paths.config_root, snapshot.values)
+    gateway_tool_environ = require_gateway_tool_urls(operator_paths.config_root, snapshot.values)
 
     # 2b. Single-read credential resolution (Step 3). Resolve provider
     # credentials and the shared secret exactly once here, using only the
@@ -923,6 +924,7 @@ def resolve_launch_candidate(
         registry_version=LAUNCH_POLICY_COMPATIBILITY,
         display_rows=tuple(sorted(display_rows, key=lambda r: r.name)),
         gateway_environ=gateway_environ,
+        gateway_tool_environ=gateway_tool_environ,
         agent_environ=agent_environ,
         secret_inventory=tuple(sorted(secret_inventory)),
         security_literals=dict(security_literals),
