@@ -59,7 +59,10 @@ def raise_preserving_failure(failure: BaseException) -> None:
     try:
         raise failure
     finally:
-        failure.__cause__, failure.__context__, failure.__suppress_context__ = cause, context, suppress
+        # The base-class setter: a frozen dataclass exception refuses ordinary assignment (#685). Cause first, since
+        # setting it also sets __suppress_context__.
+        for name, value in (("__cause__", cause), ("__context__", context), ("__suppress_context__", suppress)):
+            object.__setattr__(failure, name, value)
 
 
 @dataclass(frozen=True, slots=True)

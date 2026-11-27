@@ -1,6 +1,6 @@
 {
   "schema": "optimus-exception-site-disposition-v1",
-  "source_sha256": "sha256:314b9e4f28843df72bfd387ea7dbf562ca53c1b0bf5d4729be5df76527dc5182",
+  "source_sha256": "sha256:bd81e23c3f07da57c5f5bb02f3d866e9e988ef263211ee419f121fa31ab8c088",
   "sites": [
     {
       "key": "sha256:12dc6cf0fd88164c89a3bef9b8ca106a6ecb2174b346ccd6e50e60cb04d52b77",
@@ -2880,7 +2880,7 @@
       "path": "src/optimus/acp/process_lifecycle.py",
       "symbol": "optimus.acp.process_lifecycle.ProcessLifecycle._post_stop",
       "kind": "except",
-      "line": 143,
+      "line": 146,
       "column": 9,
       "fingerprint": "sha256:4e25fd188626c6acc340b64514c7ac45ecc7a809490282336fb8b2753d6f3057",
       "occurrence": 1,
@@ -2906,7 +2906,7 @@
       "path": "src/optimus/acp/process_lifecycle.py",
       "symbol": "optimus.acp.process_lifecycle.ProcessLifecycle._consume_result",
       "kind": "except",
-      "line": 184,
+      "line": 187,
       "column": 9,
       "fingerprint": "sha256:e862b953e5cffea53d4732b3d507e5cc0ebdba8c5cd44bec6349edec5d441e29",
       "occurrence": 1,
@@ -2932,7 +2932,7 @@
       "path": "src/optimus/acp/process_lifecycle.py",
       "symbol": "optimus.acp.process_lifecycle.ProcessLifecycle.report_incomplete",
       "kind": "suppress",
-      "line": 201,
+      "line": 204,
       "column": 18,
       "fingerprint": "sha256:e5b7f18960d8d0a733ffb7f01de27c5f2aa772c876866c043d33026b43fb276c",
       "occurrence": 1,
