@@ -9,6 +9,16 @@ variable it does nothing. If it cannot load, the parent's check fails: no load w
 import os
 
 if os.environ.get("OPTIMUS_TEST_CHILD_TRIPWIRE_FILE"):
+    import sys
+
     import tests.support.child_tripwire as _child_tripwire
 
-    _child_tripwire.install()
+    try:
+        _child_tripwire.install()
+    except RuntimeError as error:
+        if str(error) != _child_tripwire.KEYRING_REFUSAL:
+            raise
+        # site.py reports an exception from sitecustomize and carries on into the child's program; this refusal must
+        # stop the interpreter before that program runs (#540, Codex round 2).
+        print(error, file=sys.stderr, flush=True)
+        os._exit(3)

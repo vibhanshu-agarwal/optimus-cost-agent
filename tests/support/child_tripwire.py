@@ -11,6 +11,10 @@ A child that runs a script file or a module gets the same tripwire through
 The parent reads the result with `observed()`. A result is trusted only if the child recorded that
 the tripwire loaded, and loaded before the trusted-path module was imported. Records hold event
 names and a process ID only.
+
+Both environments also select keyring's `fail` backend for the child (`tests.support.child_keyring`,
+#540). At start-up the child refuses to run its program unless its own environment carries that
+selection, and records that it does; a clean result requires the record.
 """
 
 from __future__ import annotations
@@ -20,15 +24,18 @@ import os
 import sys
 from pathlib import Path
 
+from tests.support import child_keyring
+
 FILE_VARIABLE = "OPTIMUS_TEST_CHILD_TRIPWIRE_FILE"
 PRELUDE = "import tests.support.child_tripwire as _child_tripwire; _child_tripwire.install()\n"
 REFUSAL = "TEST_CHILD_TRIPWIRE_REAL_ADAPTER"
+KEYRING_REFUSAL = "TEST_CHILD_TRIPWIRE_KEYRING_NOT_FAIL"
 _TARGET = "optimus.acp.trusted_paths"
 
 
 def environment(base: dict[str, str], record: Path) -> dict[str, str]:
-    """The launch environment the test already built, plus where the child records."""
-    return {**base, FILE_VARIABLE: str(record)}
+    """The launch environment the test already built, plus where the child records and keyring's `fail` backend."""
+    return {**child_keyring.environment(base), FILE_VARIABLE: str(record)}
 
 
 def hooked_environment(base: dict[str, str], record: Path) -> dict[str, str]:
@@ -38,7 +45,7 @@ def hooked_environment(base: dict[str, str], record: Path) -> dict[str, str]:
     """
     root = Path(__file__).resolve().parents[2]
     paths = [str(Path(__file__).resolve().parent / "child_tripwire_site"), str(root), base.get("PYTHONPATH", "")]
-    return {**base, FILE_VARIABLE: str(record), "PYTHONPATH": os.pathsep.join(path for path in paths if path)}
+    return {**child_keyring.environment(base), FILE_VARIABLE: str(record), "PYTHONPATH": os.pathsep.join(path for path in paths if path)}
 
 
 def observed(record: Path) -> dict[str, object]:
@@ -49,6 +56,7 @@ def observed(record: Path) -> dict[str, object]:
         "loaded_after_product_import": events.count("loaded_after_product_import"),
         "trusted_paths_imported": "trusted_paths_imported" in events,
         "real_adapter_calls": events.count("real_adapter_call"),
+        "keyring_fail_selected": events.count("keyring_fail_selected"),
     }
 
 
@@ -57,6 +65,7 @@ def assert_no_real_adapter_access(record: Path) -> dict[str, object]:
     seen = observed(record)
     assert seen["loaded"] == 1 and seen["loaded_after_product_import"] == 0, f"tripwire did not load first: {seen}"
     assert seen["real_adapter_calls"] == 0, f"the child asked for the real known folders: {seen}"
+    assert seen["keyring_fail_selected"] == 1, f"the child's environment did not select keyring's fail backend: {seen}"
     return seen
 
 
@@ -106,6 +115,9 @@ def install() -> None:
     """Child side. Fails closed: without a record file the child does not run its program."""
     if FILE_VARIABLE not in os.environ:
         raise RuntimeError("TEST_CHILD_TRIPWIRE_NOT_CONFIGURED")
+    if os.environ.get(child_keyring.VARIABLE) != child_keyring.FAIL_BACKEND:
+        raise RuntimeError(KEYRING_REFUSAL)  # before the child's own program can reach the host's store (#540)
+    _note("keyring_fail_selected")
     if getattr(sys, "_main5_guard_activated", False):
         # The MAIN-5 guard already refuses and records this in the child, and checks its own
         # adapter patch. It is left in force; this tripwire only reports that it ran.

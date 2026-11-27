@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import child_keyring
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Deliberately NOT isolated: this is the call shape that caused the incident.
@@ -84,7 +86,7 @@ def _run_contaminated_pytest(tmp_path: Path, *, protected: bool) -> tuple[dict[s
     ]
     if protected:
         args += ["-p", "tests.conftest"]
-    result = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True, env=env)
+    result = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True, env=child_keyring.environment(env))
     assert result.returncode == 0, f"inner pytest failed:\n{result.stdout}\n{result.stderr}"
     return before, _victim_state(victim)
 
