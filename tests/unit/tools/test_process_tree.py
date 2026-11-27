@@ -51,28 +51,39 @@ def test_a_contained_tree_stays_in_the_runs_job_and_dies_without_ending_the_run(
     if owner is None or owner.handle is None:
         pytest.skip("this interpreter did not enrol in a run job (for example an xdist worker)")
     code, roles = descendant_tree(tmp_path, "parent-alive")
-    pids: dict[str, int] = {}
+    seen: dict[str, run_context_windows.ProcessIdentity] = {}
+
+    def announced() -> None:  # pin each member that has announced itself, by pid and creation time
+        for role in roles:
+            path = tmp_path / f"{role}.pid"
+            if role not in seen and path.exists():
+                seen[role] = run_context_windows.process_identity(int(path.read_text(encoding="utf-8")))
+
     with DescendantRecorder(tmp_path, roles) as recorder:
+        launched_at = time.monotonic()  # every member starts its 30 s sleep after this
         process = process_tree.popen([sys.executable, "-c", code])
         try:
-            assert recorder.wait_for(roles, timeout=30), "the tree never formed"
-            formed_at = time.monotonic()
+            formed = recorder.wait_for(roles, timeout=15)
+            announced()
+            assert formed, "the tree never formed"
             for role in roles:
-                pids[role] = int((tmp_path / f"{role}.pid").read_text(encoding="utf-8"))
-                assert run_context_windows.is_member(run_context_windows.process_identity(pids[role])) is True, role
+                assert run_context_windows.is_member(seen[role]) is True, role
             killed_at = time.monotonic()
-            # Members sleep 30 s from before formed_at: a kill verdict taken by formed_at + 25 s cannot be a natural exit.
-            assert killed_at - formed_at < 20, "too slow to tell the kill from the members' natural exit"
+            # The verdict is taken by launched_at + 25 s, before any member could exit on its own.
+            assert killed_at - launched_at < 20, "too slow to tell the kill from the members' natural exit"
             process_tree.kill_tree(process)
             assert_descendants_killed(recorder, roles, deadline=killed_at + 5.0, what="kill_tree inside the run job")
             assert process_tree.wait_for_empty(process, deadline=time.monotonic() + 5)
+            assert process.wait(10) == 1, "the root was not ended by the job"  # a natural exit would be 0
         finally:
-            try:
+            with contextlib.suppress(OSError):
                 process_tree.kill_tree(process)  # ends the whole job, also when an assertion above failed
-            except OSError:
-                for pid in pids.values():  # the job could not be ended: stop each announced member directly
+            announced()
+            for identity in seen.values():  # whatever is still running from this tree is stopped directly
+                now = run_context_windows.process_identity(identity.pid)
+                if now.live and identity.creation_time is not None and now.creation_time == identity.creation_time:
                     with contextlib.suppress(OSError):
-                        os.kill(pid, signal.SIGTERM)
+                        os.kill(identity.pid, signal.SIGTERM)
             if process.poll() is None:
                 process.kill()
             process.wait(10)
