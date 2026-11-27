@@ -293,6 +293,14 @@ def test_disclosure_narrows_with_the_budget_and_the_rest_is_reported():
     assert all(item.reason == "over the budget" for item in narrow.selected if item.disclosure == "omitted")
 
 
+def test_a_whole_file_hit_with_no_summary_is_not_called_a_budget_cut():
+    """#670: such a hit has nothing to show, so a roomy pack must not blame the budget; the pack itself is unchanged."""
+    bare = _hit("f", "a.py", kind="file", file_hash=_sha(SOURCE), lines=None)
+    pack = assemble_pack(required=(), ranked=[_ranked(bare)], read=_read({"a.py": SOURCE}), estimate=_estimate, budget_tokens=10_000)
+    assert pack.text == "" and pack.selected[0].disclosure == "omitted"
+    assert pack.selected[0].reason == "no summary or excerpt to show"
+
+
 def test_a_large_item_does_not_stop_smaller_ones_after_it():
     big = b"x\n" * 5000
     files = {"big.py": big, "a.py": SOURCE}

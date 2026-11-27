@@ -351,6 +351,14 @@ def test_a_turn_shows_verified_excerpts_scope_and_writes_a_manifest_without_bodi
     assert "needle" not in written
 
 
+def test_a_whole_file_hit_with_no_summary_is_not_counted_as_left_out_by_the_budget(workspace):
+    """#670: the coverage line reaches the model, so it counts only real budget cuts."""
+    storage = _Storage([_record("x", "pkg/a.py", "helper", _sha(SOURCE), lines=(6, 7), signature="def helper():"),
+                        _record("f", "pkg/a.py", None, _sha(SOURCE), kind="file")])
+    result = _assemble(_session(workspace, storage).turn())
+    assert "return 'needle here'" in result.text and "left out by the budget" not in result.text
+
+
 def test_a_manifest_is_v2_and_records_the_budget_policy_the_pack_used(workspace):
     """Plan 12.14 Task 2: a new manifest names its budget policy, legacy when the route has none and the route's own otherwise."""
     from optimus.context.context_budget import BudgetPolicy

@@ -193,6 +193,158 @@ async def test_every_session_new_failure_retires_both_distinct_states(tmp_path, 
     await adapter.aclose()
 
 
+@pytest.mark.parametrize('cancel', ['none', 'cancel', 'cancel-inside-caller-handler'])
+async def test_a_cancel_while_session_new_rolls_back_waits_for_the_retirement_then_propagates(tmp_path, runtime, monkeypatch, cancel):
+    """#642: a typed refusal whose provisional retirement is still closing; a caller cancel delivered at that wait is not swallowed,
+    also when the caller awaits session/new while handling an earlier cancellation of its own (Codex round 2)."""
+    adapter, store, _ = make_adapter(tmp_path, client_mcp_runtime=runtime)
+    entered, release = threading.Event(), threading.Event()
+    original_close = ClientMcpSessionState.close
+    closed = []
+
+    def close(state):
+        closed.append(state)
+        if len(closed) == 2:  # the first is the disposition's own rollback; the second runs in the session's retirement job
+            entered.set()
+            assert release.wait(5)
+        return original_close(state)
+
+    monkeypatch.setattr(ClientMcpSessionState, 'close', close)
+    server = {'type': 'http', 'name': 'tools', 'url': 'https://mcp.example.com/a', 'headers': []}
+    request = new_request(tmp_path, [server, {**server, 'url': 'https://mcp.example.com/b'}])
+
+    async def caller():
+        if cancel != 'cancel-inside-caller-handler':
+            return await adapter.handle_client_request(request)
+        try:
+            raise asyncio.CancelledError('an earlier cancellation the caller is handling')
+        except asyncio.CancelledError:
+            return await adapter.handle_client_request(request)
+
+    task = asyncio.create_task(caller())
+    assert await asyncio.to_thread(entered.wait, 5)
+    if cancel != 'none':
+        task.cancel()
+        await asyncio.sleep(0.05)
+        assert not task.done(), 'the owned retirement reaches its terminal outcome before the cancellation goes on'
+    release.set()
+    if cancel != 'none':
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        assert (await task).response['error']['code'] == INVALID_REQUEST
+    assert store._sessions == {} and adapter.retention.retained_count == 0
+    await adapter.aclose()
+
+
+async def test_a_process_exit_from_session_new_setup_unwinds_as_itself_past_a_rollback_cancel(tmp_path):
+    """#642 review: a cancel delivered during rollback never replaces an in-flight non-Exception failure such as SystemExit."""
+    class ProcessExit(BaseException):  # stands in for SystemExit/KeyboardInterrupt, which an event loop would re-raise itself
+        pass
+
+    failure = ProcessExit()
+
+    def seed(session):
+        raise failure
+
+    adapter, store, _ = make_adapter(tmp_path, context_attachment=context_attachment(), session_seeder=seed)
+    entered, release = threading.Event(), threading.Event()
+    original_close = ClientMcpSessionState.close
+
+    def close(state):
+        entered.set()
+        assert release.wait(5)
+        return original_close(state)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ClientMcpSessionState, 'close', close)
+        task = asyncio.create_task(adapter.handle_client_request(new_request(tmp_path)))
+        assert await asyncio.to_thread(entered.wait, 5)
+        task.cancel()
+        await asyncio.sleep(0.05)
+        assert not task.done()
+        release.set()
+        with pytest.raises(ProcessExit) as caught:
+            await task
+    assert caught.value is failure
+    assert store._sessions == {} and adapter.retention.retained_count == 0
+    await adapter.aclose()
+
+
+@pytest.mark.parametrize('case', ['cancel-during-close', 'process-exit', 'cancel-while-queued-for-the-cleanup-lane',
+                                  'worker-cancelled-without-a-caller-cancel', 'caller-cancel-then-worker-fault'])
+async def test_a_cancel_during_the_mcp_dispositions_own_rollback_close_is_kept(tmp_path, runtime, monkeypatch, case):
+    """#642 class sweep: the MCP disposition's rollback close finishes, then a caller cancel delivered meanwhile goes on,
+    unless the setup failure is itself a non-Exception one (SystemExit stand-in), which goes on as itself. A close that
+    ends cancelled or failing is not a caller cancel, and a caller cancel queued behind the cleanup lane still gets its close."""
+    class ProcessExit(BaseException):
+        pass
+
+    failure = ProcessExit()
+
+    class Outbound(RecordingOutboundChannel):
+        async def request(self, method, params):
+            if case == 'process-exit':
+                raise failure
+            return {'outcome': {'outcome': 'selected', 'optionId': 'allow_once'}}
+
+    adapter, store, _ = make_adapter(tmp_path, client_mcp_runtime=runtime)
+    adapter._outbound = Outbound()
+    entered, release = threading.Event(), threading.Event()
+    original_close = ClientMcpSessionState.close
+    closed = []
+    hold = case in ('cancel-during-close', 'process-exit', 'caller-cancel-then-worker-fault')
+
+    def close(state):
+        closed.append(state)
+        first = len(closed) == 1  # the disposition's own rollback close
+        if first and hold:
+            entered.set()
+            assert release.wait(5)
+        result = original_close(state)
+        if first and case == 'worker-cancelled-without-a-caller-cancel':
+            raise asyncio.CancelledError('a close hook ended cancelled')
+        if first and case == 'caller-cancel-then-worker-fault':
+            raise RuntimeError('a close hook failed')
+        return result
+
+    monkeypatch.setattr(ClientMcpSessionState, 'close', close)
+    server = {'type': 'http', 'name': 'tools', 'url': 'https://mcp.example.com/a', 'headers': []}
+    servers = [server] if case == 'process-exit' else [server, {**server, 'url': 'https://mcp.example.com/b'}]
+    lane = runtime.disposition._cleanup_lock
+    if case == 'cancel-while-queued-for-the-cleanup-lane':
+        await lane.acquire()
+    task = asyncio.create_task(adapter.handle_client_request(new_request(tmp_path, servers)))
+    if hold:
+        assert await asyncio.to_thread(entered.wait, 5)
+    elif case == 'cancel-while-queued-for-the-cleanup-lane':
+        for _ in range(500):
+            if lane._waiters:
+                break
+            await asyncio.sleep(0.01)
+        assert lane._waiters, 'the rollback close is queued behind the held cleanup lane'
+    caller_cancels = case != 'worker-cancelled-without-a-caller-cancel'
+    if caller_cancels:
+        task.cancel()
+        await asyncio.sleep(0.05)
+        assert not task.done(), 'the owned close reaches its terminal outcome before the cancellation goes on'
+    release.set()
+    if case == 'cancel-while-queued-for-the-cleanup-lane':
+        lane.release()
+    if case == 'process-exit':
+        with pytest.raises(ProcessExit) as caught:
+            await task
+        assert caught.value is failure
+    elif caller_cancels:
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 5)
+    else:
+        assert (await task).response['error']['code'] == INVALID_REQUEST
+    assert closed and closed[0].prepare_owned_close().result.done()
+    assert store._sessions == {} and adapter.retention.retained_count == 0
+    await adapter.aclose()
+
+
 async def test_other_session_failure_does_not_poison_clean_rollback(tmp_path, runtime, monkeypatch):
     adapter, store, _ = make_adapter(tmp_path, client_mcp_runtime=runtime)
     broken = store.create(cwd=tmp_path)
