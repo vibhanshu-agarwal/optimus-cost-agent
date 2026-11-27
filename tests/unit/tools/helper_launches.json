@@ -983,7 +983,7 @@
    "tools": [
     "ruff"
    ],
-   "reason": "Runs ruff through the interpreter (python -m ruff), a fixed third-party linter binary that runs none of this repository's Python (#660)."
+   "note": "`python -m ruff` runs ruff's own __main__, which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. The default-selection tests replace _inventory, so neither launch is reached."
   },
   "tools/verify_exception_site_disposition.py::_ruff": {
    "launches": 1,
@@ -991,7 +991,7 @@
    "tools": [
     "ruff"
    ],
-   "reason": "Runs ruff through the interpreter (python -m ruff), a fixed third-party linter binary that runs none of this repository's Python (#660)."
+   "note": "`python -m ruff` runs ruff's own __main__, which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. The default-selection tests replace _inventory, so neither launch is reached."
   },
   "tools/verify_plan117_custody_feasibility.py::_git_output": {
    "launches": 1,

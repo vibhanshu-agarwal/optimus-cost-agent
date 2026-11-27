@@ -14,11 +14,16 @@ so a stream that cannot settle never reads as caught up), retained bytes that di
 time, this process's local and committed watermarks, the last delivery failure and the free disk space. Crossing 256 MiB pending
 or 24 hours oldest pending is reported once through ``warn``, and so is falling back below. These are visibility
 thresholds only: nothing unacknowledged is ever deleted, and no model call waits on them.
+
+A background pass that raises (#652) is reported too: ``last_report`` then names it in ``pass_failure`` with a value-free
+cause (the exception's class), keeping the last good pass's backlog count, and ``warn`` says so once per failing streak
+and again when a later pass recovers. Nothing is deleted for it and the next pass comes on the ordinary cadence.
 """
 
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import json
 import shutil
 import threading
@@ -69,6 +74,7 @@ class DrainReport:
     pending_streams: int = 0
     failures: list[str] = field(default_factory=list)
     backlog: Backlog = field(default_factory=Backlog)
+    pass_failure: str | None = None  # set only on a pass that raised; its backlog is the last good pass's count
 
 
 def _utc_now() -> datetime:
@@ -90,6 +96,7 @@ class OutboxDrain:
         self._warn_age = warn_age
         self._last_failure: str | None = None
         self._crossed: set[str] = set()
+        self._pass_failure: str | None = None  # the failing streak's cause, until a pass completes
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -111,7 +118,25 @@ class OutboxDrain:
                 self._count(stream_dir, scan, report.backlog)
         self._observe(report)
         self.last_report = report
+        if self._pass_failure is not None:
+            self._pass_failure = None
+            self._tell(f"{self._name}: drain passes recovered; pending={report.backlog.pending_events}.")
         return report
+
+    def _failed_pass(self, exc: Exception) -> None:
+        cause = f"pass_failed:{type(exc).__name__}"[:80]  # the class only: an exception's text may carry a value
+        previous = self.last_report
+        self._last_failure = cause
+        self.last_report = DrainReport(pending_streams=previous.pending_streams, failures=[cause], pass_failure=cause,
+                                       backlog=dataclasses.replace(previous.backlog, last_failure=cause))
+        entering, self._pass_failure = self._pass_failure is None, cause
+        if entering:  # once per failing streak, whatever the causes within it
+            self._tell(f"{self._name}: a drain pass failed ({cause}); nothing pending is deleted and the next pass retries.")
+
+    def _tell(self, line: str) -> None:
+        if self._warn is not None:
+            with contextlib.suppress(Exception):  # a failing log sink must not stop the loop either
+                self._warn(line)
 
     def _count(self, stream_dir: Path, scan: ob.StreamScan, backlog: Backlog) -> None:
         ack = ob.read_ack(stream_dir)
@@ -216,8 +241,10 @@ class OutboxDrain:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            with contextlib.suppress(Exception):  # a pass never takes the process down; its report keeps the cause
+            try:
                 self.drain_once()
+            except Exception as exc:  # noqa: BLE001 - a pass never takes the process down; its report keeps the cause
+                self._failed_pass(exc)
             self._wake.wait(self._pass_seconds)
             self._wake.clear()
 
