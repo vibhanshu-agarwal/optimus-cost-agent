@@ -8,7 +8,7 @@
   "limits": "A test that hit a refused launch stopped there, so a later launch in the same test is not in the census (for example current_identity after resolve_client in the Stage C tests; its reach was added by reading the test). Git is allowed through and identified from the command text, and a git child's own descendants (hooks) are not observed; a shell child (bash in the Stage C tests) is recorded but not classified, and its startup files are the host's. Windows only: a launch a Linux-only test makes is for PR CI. The scan reads Python only: .ps1 and .sh runner scripts are outside it, and so are aliased module names and reflective lookups (the guard's inventory documents this). A test outside the default selection is outside the census by definition."
  },
  "verdicts": {
-  "non_python": "Every launch in the function starts a fixed tool (`tools`: git, docker, powershell, or acpx for `--version`), which runs none of this repository's Python. The guard checks each tool name appears in the function.",
+  "non_python": "Every launch in the function starts a fixed tool (`tools`: git, docker, powershell, ruff, or acpx for `--version`), which runs none of this repository's Python. The guard checks each tool name appears in the function.",
   "closure_clear": "The child runs a fixed module or script of the repository. The guard recomputes its import closure (tests.support.child_keyring.import_closure) from the sources: no module imports keyring, and nothing is computed or unresolved.",
   "nested_pytest": "The child is a pytest session over this repository's tests; it loads the root conftest, which installs keyring's fail backend (#538). Its own launches are sites of run_context_child_sites.json. The guard checks the function builds a pytest command.",
   "controlled": "The child can reach keyring, or its closure cannot be bounded, and a test applies a control (tests/support/child_keyring.py) for its duration. The guard fails for any test module that names one of `entry_calls` without the control.",
@@ -975,6 +975,22 @@
    "verdict": "non_python",
    "tools": [
     "git"
+   ]
+  },
+  "tools/verify_exception_site_disposition.py::_inventory": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "ruff",
+    "--version"
+   ]
+  },
+  "tools/verify_exception_site_disposition.py::_ruff": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "ruff",
+    "check"
    ]
   },
   "tools/verify_plan117_custody_feasibility.py::_git_output": {
