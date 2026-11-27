@@ -34,6 +34,8 @@ from optimus.acp.launch_gate import (
     LaunchCandidate,
     LaunchGateError,
     authorize_launch,
+    credential_uri_display,
+    require_gateway_tool_urls,
     resolve_launch_candidate,
     validate_config_file_permissions,
     verify_exact_durable,
@@ -50,7 +52,6 @@ from optimus.acp.local_infra import (
     gateway_accounting,
     gateway_memory_index,
     gateway_memory_store,
-    gateway_tool_environ,
 )
 from optimus.acp.operator_paths import (
     OperatorPathConfigurationError,
@@ -102,7 +103,6 @@ from optimus_security.accounting_config import SECURITY_LITERAL_NAME as ACCOUNTI
 from optimus_security.launch_manifest import build_gateway_child_manifest, serialize_gateway_child_manifest
 from optimus_security.memory_index_config import SECURITY_LITERAL_NAME as MEMORY_INDEX_LITERAL_NAME
 from optimus_security.memory_store_config import SECURITY_LITERAL_NAME as MEMORY_STORE_LITERAL_NAME
-from optimus_security.sanitization import mask_uri_userinfo
 
 
 class CliError(SystemExit):
@@ -1179,12 +1179,19 @@ def _cmd_run_gateway(
         )
         return 2
 
+    try:  # #671: validated before anything shows or binds it
+        base_url = credential_uri_display(
+            "OPTIMUS_LOCAL_GATEWAY_BASE_URL", provider_secrets.base_url or "", provider_credentials.base_url_provenance.layer
+        )
+        tool_environ = require_gateway_tool_urls(config_root, LaunchEnvironmentSnapshot.capture(os.environ).values)
+    except LaunchGateError as exc:
+        print(f"optimus-trust run-gateway: {exc}", file=sys.stderr)
+        return 2
+
     # Display the safe (non-secret) snapshot before starting anything.
     print("optimus-trust run-gateway: effective gateway configuration:")
     print("  Gateway credential: OpenRouter (configured)")
-    print(
-        f"  Base URL: {mask_uri_userinfo(provider_secrets.base_url) if provider_secrets.base_url else '(provider default)'}"
-    )
+    print(f"  Base URL: {base_url or '(provider default)'}")
     print(f"  Bind: {bind_host}:{bind_port}")
     print()
 
@@ -1282,7 +1289,8 @@ def _cmd_run_gateway(
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
         **provider_secrets.as_gateway_child_env(),
         # #465 (ADR-036): the same composition an agent expects: this file, with inherited values filling what it omits.
-        **gateway_tool_environ(config_root, LaunchEnvironmentSnapshot.capture(os.environ).values),
+        # #671: the values validated above, not a second read of the file.
+        **tool_environ,
     }
     for key in ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "PATH", "TEMP", "TMP"):
         value = os.environ.get(key, "")
