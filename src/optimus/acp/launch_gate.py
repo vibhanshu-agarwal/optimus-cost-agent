@@ -189,10 +189,15 @@ def credential_uri_display(name: str, value: str, layer: CredentialLayer) -> str
         raise LaunchGateError(code="CREDENTIAL_URI_INVALID", detail=f"{name} from {source} is {exc}; the value is not shown.") from None
 
 
-def require_gateway_tool_urls(config_root: Path, environ: Mapping[str, str]) -> dict[str, str]:
+def require_gateway_tool_urls(
+    config_root: Path, environ: Mapping[str, str], *, dotenv_values: Mapping[str, str] | None = None,
+) -> dict[str, str]:
     """The Gateway's tool configuration (.env.gateway over the environment), with each credential-bearing URL validated
-    against the source that supplied it (#671). Launchers spawn from this dictionary and never read the file again (#680)."""
-    from_file = project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))
+    against the source that supplied it (#671). Launchers spawn from this dictionary and never read the file again (#680).
+    A launch passes ``dotenv_values``, the one reading its credentials also come from (#686)."""
+    if dotenv_values is None:
+        dotenv_values = _parse_env_gateway_file(config_root / ".env.gateway")
+    from_file = project_gateway_tool_child_env(dotenv_values)
     merged = {**project_gateway_tool_child_env(environ), **from_file}
     for name, value in merged.items():
         if LAUNCH_VARIABLE_POLICIES[name].uri_userinfo:
@@ -684,10 +689,13 @@ def resolve_launch_candidate(
     # directly without remembering to validate first. Two independent
     # "remember to call the permission check" call sites is exactly the
     # duplicated-security-check shape that produced the Task 4 digest bug.
+    # #686: parsed once, right after its check; the tools, credentials and shared secret all come from this reading.
     env_gateway_path = operator_paths.config_root / ".env.gateway"
+    dotenv_values: dict[str, str] = {}
     if env_gateway_path.is_file():
         validate_config_file_permissions(env_gateway_path)
-    gateway_tool_environ = require_gateway_tool_urls(operator_paths.config_root, snapshot.values)
+        dotenv_values = _parse_env_gateway_file(env_gateway_path)
+    gateway_tool_environ = require_gateway_tool_urls(operator_paths.config_root, snapshot.values, dotenv_values=dotenv_values)
 
     # 2b. Single-read credential resolution (Step 3). Resolve provider
     # credentials and the shared secret exactly once here, using only the
@@ -703,11 +711,13 @@ def resolve_launch_candidate(
             snapshot.values,
             config_root=operator_paths.config_root,
             keyring_backend=keyring_backend,
+            dotenv_values=dotenv_values,
         )
         resolved_shared_secret, shared_secret_provenance = resolve_shared_secret_with_provenance(
             snapshot.values,
             config_root=operator_paths.config_root,
             keyring_backend=keyring_backend,
+            dotenv_values=dotenv_values,
         )
     except CredentialStoreUnavailable as exc:  # #654: unknown is not absent
         raise LaunchGateError(code="GATEWAY_CREDENTIAL_STORE_UNAVAILABLE", detail=exc.user_message) from exc

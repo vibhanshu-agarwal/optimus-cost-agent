@@ -1,6 +1,6 @@
 {
   "schema": "optimus-exception-site-disposition-v1",
-  "source_sha256": "sha256:bd81e23c3f07da57c5f5bb02f3d866e9e988ef263211ee419f121fa31ab8c088",
+  "source_sha256": "sha256:e1ba06b7c8ce9a3b073e24cb10f07cbf2d380d880a2259eabbc83ac6a4d2dfbf",
   "sites": [
     {
       "key": "sha256:12dc6cf0fd88164c89a3bef9b8ca106a6ecb2174b346ccd6e50e60cb04d52b77",
@@ -1888,7 +1888,7 @@
       "path": "src/optimus/acp/launch_approval_cli.py",
       "symbol": "optimus.acp.launch_approval_cli._cmd_mcp_review",
       "kind": "except",
-      "line": 874,
+      "line": 875,
       "column": 9,
       "fingerprint": "sha256:b53f02d1c536f14198d8b7856a5609f9dd7bf428572e56288baaa5d5406163eb",
       "occurrence": 1,
@@ -2136,7 +2136,7 @@
       "path": "src/optimus/acp/local_gateway_secrets.py",
       "symbol": "optimus.acp.local_gateway_secrets._store_entries",
       "kind": "except",
-      "line": 302,
+      "line": 308,
       "column": 9,
       "fingerprint": "sha256:9384401add5ac37435ede213c65e703118b1ed5811aefe310734eb3400424783",
       "occurrence": 1,
@@ -2165,7 +2165,7 @@
       "path": "src/optimus/acp/local_gateway_secrets.py",
       "symbol": "optimus.acp.local_gateway_secrets._store_entries",
       "kind": "except",
-      "line": 309,
+      "line": 315,
       "column": 9,
       "fingerprint": "sha256:77a4f353af56704cffe1f89b45c10f23d399fd4487776050434414587139a4f4",
       "occurrence": 1,
