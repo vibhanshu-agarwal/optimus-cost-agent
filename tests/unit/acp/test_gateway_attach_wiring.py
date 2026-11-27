@@ -13,6 +13,7 @@ import pytest
 from optimus.acp import __main__ as acp_main
 from optimus.acp import launch_approval_cli, local_infra
 from optimus.acp.gateway_refusal import GatewayRefusalServer
+from optimus.acp.launch_gate import require_gateway_tool_urls
 from optimus.acp.launch_policy import LAUNCH_VARIABLE_POLICIES
 from optimus.acp.local_gateway_secrets import CredentialLayer, CredentialProvenance, ProviderCredentialResolution, ProviderSecrets
 from optimus.acp.local_infra import LocalInfrastructureError
@@ -265,6 +266,7 @@ def test_what_a_launch_expects_is_what_the_gateway_it_starts_serves(monkeypatch,
     launch_inputs: dict[str, Any] = {
         "gateway_url": "http://127.0.0.1:8765", "provider_credentials": _credentials(), "shared_secret": _SECRET,
         "manifest_hmac_key": _KEY, "system_env": inherited, "config_root": tmp_path,
+        "tool_environ": require_gateway_tool_urls(tmp_path, inherited),  # what the launch gate hands on (#680)
         "model_registry": auto_approval_literal() if auto else trusted_approval_literal(),
         "auto_composition": auto, "usage_accounting": True, "approved_accounting_config": None,
     }
@@ -338,7 +340,8 @@ def test_an_agent_under_the_same_approval_can_reuse_what_run_gateway_starts(monk
     key = launch_approval_cli.KeyringApprovalStore(keyring_backend=keyring, runtime_root=roots.approval_runtime_root).hmac_key
     expected = local_infra.expected_gateway_identity(
         gateway_url="http://127.0.0.1:8765", provider_credentials=_credentials(), shared_secret=_SECRET, manifest_hmac_key=key,
-        system_env={"OPTIMUS_GATEWAY_TOOL_MAX_CALLS_PER_TOOL": "2"}, config_root=config, model_registry=registry,
+        tool_environ=require_gateway_tool_urls(config, {"OPTIMUS_GATEWAY_TOOL_MAX_CALLS_PER_TOOL": "2"}),
+        config_root=config, model_registry=registry,
         auto_composition=auto, usage_accounting=True, approved_accounting_config=None,
     )
     assert expected is not None

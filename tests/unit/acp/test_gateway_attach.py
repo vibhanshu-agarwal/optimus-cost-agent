@@ -240,11 +240,11 @@ def test_each_launch_difference_refuses_by_name(listeners, tmp_path, no_spawn, o
     assert label in raised.value.user_message
 
 
-def test_tool_configuration_from_the_config_root_refuses_by_name(listeners, tmp_path, no_spawn) -> None:
+def test_a_tool_configuration_difference_refuses_by_name(listeners, tmp_path, no_spawn) -> None:
     listener, _ = _real_gateway(listeners, _expected())
-    (tmp_path / ".env.gateway").write_text("OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS=example.com\n", encoding="utf-8")
+    tools = {"OPTIMUS_GATEWAY_TOOL_ALLOWED_DOMAINS": "example.com"}  # the gate's validated tool configuration (#680)
     with pytest.raises(LocalInfrastructureError) as raised:
-        _ensure(listener.url, tmp_path, expected_identity=_expected(config_root=tmp_path))
+        _ensure(listener.url, tmp_path, expected_identity=_expected(tool_environ=tools))
     assert "tool configuration" in raised.value.user_message
 
 

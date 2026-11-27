@@ -905,7 +905,10 @@ def test_openrouter_gateway_child_env_exactly_matches_applicable_registry_projec
 
 
 def test_ensure_local_gateway_forwards_tool_env_from_config_root_env_gateway(tmp_path, monkeypatch) -> None:
-    """Plan 11.2 Task 6 pre-work: tool vars from config_root/.env.gateway reach the child."""
+    """Plan 11.2 Task 6 pre-work: tool vars from config_root/.env.gateway reach the child, through the launch gate's
+    validated tool configuration; ensure_local_gateway itself never reads the file (#680)."""
+    from optimus.acp.launch_gate import require_gateway_tool_urls
+
     reachable_calls = {"n": 0}
 
     def fake_tcp_reachable(host, port, *, timeout=1.0):
@@ -942,6 +945,7 @@ def test_ensure_local_gateway_forwards_tool_env_from_config_root_env_gateway(tmp
     local_infra.ensure_local_gateway(
         **_ensure_gateway_kwargs(),
         runtime_root=tmp_path / ".optimus",
+        tool_environ=require_gateway_tool_urls(config_root, {}),
         config_root=config_root,
     )
 
