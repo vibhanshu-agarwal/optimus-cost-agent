@@ -902,6 +902,8 @@ class MemoryExtractor:
                 self._jobs.put_nowait(None)
         for thread in self._threads:
             thread.join(timeout)
+        if self.notices is not None:  # #643: the last attempt to write a notice the backlog could not write earlier
+            self.notices.flush()
 
 
 def _automatic(decision: memory_gate.GateDecision, candidate: MemoryCandidate) -> memory_gate.GateDecision:

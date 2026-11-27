@@ -1525,7 +1525,7 @@ class AcpDuplexAdapter:
             backlog = None if session is None else session.memory_backlog
             shown = [_notice_record(notice, imported=answer.imported) for notice, _label in answer.notices]
             if backlog is not None and shown:  # kept until its card is confirmed sent; else a later turn or session shows it
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(Exception):  # a refused write stays held by the backlog, which logs why (#643)
                     await asyncio.to_thread(backlog.add, shown)
 
             def delivered() -> None:
@@ -3067,8 +3067,14 @@ class AcpDuplexAdapter:
         imported: set[str] = set()  # event ids of an import's commits: their replayed cards say "Imported"
         if backlog is not None:  # what any session of the project left undelivered, durably (Codex CP3 review 1, finding 6)
             with contextlib.suppress(Exception):
+                records, acked = await asyncio.to_thread(
+                    lambda: (backlog.pending(), backlog.acknowledged([notice.event_id for notice in due])))
+                for notice in [notice for notice in due if notice.event_id in acked]:  # another session delivered it (#643)
+                    due.remove(notice)
+                    with contextlib.suppress(ValueError):
+                        session.memory_pending.remove(notice)
                 known = {notice.event_id for notice in due}
-                for record in await asyncio.to_thread(backlog.pending):  # one by one: a malformed record is skipped alone
+                for record in records:  # one by one: a malformed record is skipped alone
                     notice = _notice_of(record)
                     if notice is None or notice.event_id in known:
                         continue
@@ -4190,8 +4196,8 @@ def _memory_report(session: AcpSpecSession) -> Callable[[Any], None]:
     def report(outcome: Any) -> None:
         session.memory_outcomes.append(outcome)
         shown = [notice for notice in outcome.notices if notice.action != "off"]
-        if session.memory_backlog is not None:  # durable first, so a restart before the next turn loses no notice
-            with contextlib.suppress(Exception):
+        if session.memory_backlog is not None:  # durable first, so a restart before the next turn loses no notice it wrote
+            with contextlib.suppress(Exception):  # a refused write stays held by the backlog, which logs why (#643)
                 session.memory_backlog.add([_notice_record(notice) for notice in shown])
         session.memory_pending.extend(shown)
 
