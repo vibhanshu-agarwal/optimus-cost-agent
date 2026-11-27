@@ -1192,8 +1192,9 @@ class TestRunGatewayCommand:
         assert child_env["OPTIMUS_GATEWAY_OSV_API_KEY"] == "osv-forward-me"  # pragma: allowlist secret - synthetic test fixture
 
     def test_run_gateway_masks_base_url_userinfo_in_display(self, tmp_path, monkeypatch) -> None:
-        """Direct run-gateway stdout must redact URI userinfo while transport
-        (child env + signed manifest) keeps the raw effective base URL."""
+        """Direct run-gateway stdout must redact URI userinfo while the child env
+        keeps the raw effective base URL; the signed manifest on the command line
+        carries only its fingerprint (#681)."""
         import io
 
         from optimus.acp.launch_approval_cli import _cmd_run_gateway
@@ -1259,8 +1260,8 @@ class TestRunGatewayCommand:
 
         args = captured["args"]
         manifest_arg = args[args.index("--manifest") + 1]
-        assert canary in manifest_arg
-        assert raw_base_url in manifest_arg
+        assert canary not in " ".join(args)  # #681: the command line binds it by fingerprint only
+        assert "base_url_fingerprint" in manifest_arg
 
 
 class TestOutputContainsNoSecrets:

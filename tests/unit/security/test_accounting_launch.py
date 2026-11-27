@@ -59,8 +59,8 @@ def test_an_accounting_manifest_is_its_version_plus_three_and_signs_the_literal(
     literal = ac.accounting_literal(Path("/x/accounting"), None)
     plain, registry = json.loads(_serialized(accounting=literal)), json.loads(_serialized(model_registry="r" * 10, accounting=literal))
 
-    assert plain["schema_version"] == MANIFEST_SCHEMA_VERSION + MANIFEST_ACCOUNTING_VERSION_OFFSET == 4
-    assert registry["schema_version"] == MANIFEST_REGISTRY_SCHEMA_VERSION + MANIFEST_ACCOUNTING_VERSION_OFFSET == 5
+    assert plain["schema_version"] == MANIFEST_SCHEMA_VERSION + MANIFEST_ACCOUNTING_VERSION_OFFSET == 104
+    assert registry["schema_version"] == MANIFEST_REGISTRY_SCHEMA_VERSION + MANIFEST_ACCOUNTING_VERSION_OFFSET == 105
     assert verify_gateway_child_manifest(_serialized(accounting=literal), hmac_key=_KEY, accounting=literal, **_INPUTS).accounting == literal
 
 
@@ -246,7 +246,7 @@ def test_the_parent_signs_the_root_and_the_approved_configuration_only_when_they
     absent = _spawned_args(tmp_path, monkeypatch, config_root=config_root)
 
     assert args[args.index("--accounting-root") + 1] == str(root)
-    assert manifest["accounting"] == ac.accounting_literal(root, approved) and manifest["schema_version"] == 4
+    assert manifest["accounting"] == ac.accounting_literal(root, approved) and manifest["schema_version"] == 104
     assert "--accounting-root" not in stale and "accounting" not in json.loads(stale[stale.index("--manifest") + 1])
     assert "--accounting-root" not in absent, "a launch that does not ask for accounting keeps its manifest"
 

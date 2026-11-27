@@ -55,7 +55,7 @@ def test_a_stage_c_manifest_is_version_three_and_signs_both_literals() -> None:
     serialized = _serialized(_REGISTRY, _ENVELOPE)
     data = json.loads(serialized)
     assert (data["schema_version"], data["model_registry"], data["stage_c_envelope"]) == (MANIFEST_STAGE_C_SCHEMA_VERSION, _REGISTRY, _ENVELOPE)
-    assert MANIFEST_STAGE_C_SCHEMA_VERSION == 3
+    assert MANIFEST_STAGE_C_SCHEMA_VERSION == 103
     verified = _verify(serialized, _REGISTRY, _ENVELOPE)
     assert (verified.model_registry, verified.stage_c_envelope) == (_REGISTRY, _ENVELOPE)
 
@@ -90,7 +90,7 @@ def test_the_gateway_refuses_a_manifest_for_another_envelope(signed, gateway) ->
     ("tamper", "code"),
     [
         (lambda d: d.pop("stage_c_envelope"), "MANIFEST_CORRUPT"),  # stripped, still claiming version 3
-        (lambda d: d.update(schema_version=2), "MANIFEST_CORRUPT"),  # downgraded, still carrying it
+        (lambda d: d.update(schema_version=102), "MANIFEST_CORRUPT"),  # downgraded, still carrying it
         (lambda d: d.update(stage_c_envelope=7), "MANIFEST_CORRUPT"),
         (lambda d: d.pop("model_registry"), "MANIFEST_CORRUPT"),  # an envelope without its registry
         (lambda d: d.update(stage_c_envelope="optimus-stage-c-envelope-v1:" + "e" * 64), "MANIFEST_INVALID_SIGNATURE"),
@@ -106,7 +106,7 @@ def test_tampering_with_the_envelope_binding_fails_closed(tamper, code: str) -> 
 
 def test_adding_an_envelope_to_a_version_two_manifest_breaks_its_signature() -> None:
     data = json.loads(_serialized(_REGISTRY, None))
-    data.update(schema_version=3, stage_c_envelope=_ENVELOPE)
+    data.update(schema_version=103, stage_c_envelope=_ENVELOPE)
     with pytest.raises(LaunchManifestError) as caught:
         _verify(json.dumps(data), _REGISTRY, _ENVELOPE)
     assert caught.value.code == "MANIFEST_INVALID_SIGNATURE"
