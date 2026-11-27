@@ -70,13 +70,13 @@ def _spawned_manifest(tmp_path, monkeypatch: pytest.MonkeyPatch, **extra: object
 
 def test_inactive_launch_signs_a_version_one_manifest(tmp_path, monkeypatch) -> None:
     manifest = _spawned_manifest(tmp_path, monkeypatch)
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 101
     assert "model_registry" not in manifest
 
 
 def test_active_launch_signs_the_approved_registry(tmp_path, monkeypatch) -> None:
     manifest = _spawned_manifest(tmp_path, monkeypatch, model_registry=_LITERAL)
-    assert (manifest["schema_version"], manifest["model_registry"]) == (2, _LITERAL)
+    assert (manifest["schema_version"], manifest["model_registry"]) == (102, _LITERAL)
 
 
 def test_a_test_profile_reaches_the_gateway_child_by_name_only(tmp_path, monkeypatch) -> None:

@@ -26,8 +26,7 @@ from redis.asyncio.connection import parse_url as parse_redis_url
 from redis.backoff import NoBackoff
 from redis.retry import Retry
 
-from optimus.acp.launch_policy import project_gateway_tool_child_env
-from optimus.acp.local_gateway_secrets import ProviderCredentialResolution, _parse_env_gateway_file
+from optimus.acp.local_gateway_secrets import ProviderCredentialResolution
 from optimus.acp.process_lifecycle import cleanup_failure, raise_preserving_failure
 from optimus.agent.defaults import default_agent_model
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES, OptimusGatewaySettings
@@ -589,14 +588,6 @@ def _listener_label(gateway_url: str) -> str:
     return f"{urlparse(gateway_url).scheme}://{f'[{host}]' if ':' in host else host}:{port}"
 
 
-def gateway_tool_environ(config_root: Path | None, system_env: Mapping[str, str]) -> dict[str, str]:
-    """The Gateway's tool configuration from `.env.gateway`, with inherited values filling what it omits."""
-    tool_env: dict[str, str] = {}
-    if config_root is not None:
-        tool_env = project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))
-    return {**project_gateway_tool_child_env(system_env), **tool_env}
-
-
 def gateway_accounting(
     config_root: Path, approved: str | None, *, log: Callable[[str], None] = _noop_log
 ) -> tuple[Path | None, str | None]:
@@ -802,6 +793,7 @@ def expected_gateway_identity(
     shared_secret: str | None,
     manifest_hmac_key: bytes,
     system_env: Mapping[str, str] = _EMPTY_MAPPING,
+    tool_environ: Mapping[str, str] = _EMPTY_MAPPING,
     config_root: Path | None = None,
     model_registry: str | None = None,
     test_profile: str | None = None,
@@ -839,7 +831,7 @@ def expected_gateway_identity(
         accounting=accounting,
         memory_index=memory_index,
         memory_store=memory_store,
-        tool_environ=gateway_tool_environ(config_root, system_env),
+        tool_environ=tool_environ,
         hmac_key=manifest_hmac_key,
     )
 
@@ -948,6 +940,7 @@ def ensure_local_gateway(
     policy_version: str,
     runtime_root: Path,
     system_env: Mapping[str, str] = _EMPTY_MAPPING,
+    tool_environ: Mapping[str, str] = _EMPTY_MAPPING,
     config_root: Path | None = None,
     otlp_endpoint: str | None = None,
     log: Callable[[str], None] = _noop_log,
@@ -975,10 +968,10 @@ def ensure_local_gateway(
     explicit CLI arguments — never through OPTIMUS_LOCAL_GATEWAY_BIND_HOST/
     PORT — closing the standalone bind seam from the parent side.
 
-    When ``config_root`` is provided, Gateway tool-provider variables from
-    ``.env.gateway`` (Tavily, domain allowlist, tool Redis URL, OSV, registry
-    base URLs, call caps) are projected into the child env so
-    ``build_tool_dependencies`` can return a real dependency bundle.
+    ``tool_environ`` is the Gateway tool configuration (Tavily, domain allowlist,
+    tool Redis URL, OSV, registry base URLs, call caps) the launch gate validated
+    (``LaunchCandidate.gateway_tool_environ``); it goes into the child env as
+    given, and ``.env.gateway`` is not read again here (#680).
 
     #465 (ADR-036): a Gateway already listening is reused only after it proves ``expected_identity``; anything else raises
     `LocalInfrastructureError` with the reason, and the listener is left running. Returns None for a reused Gateway.
@@ -1021,13 +1014,11 @@ def ensure_local_gateway(
         )
         return None
 
-    tool_env = gateway_tool_environ(config_root, system_env)
-
     child_env: dict[str, str] = {
         "OPTIMUS_LOCAL_GATEWAY_PROVIDER": provider_secrets.provider,
         "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET": shared_secret,
         **provider_secrets.as_gateway_child_env(),
-        **tool_env,
+        **tool_environ,
     }
     if otlp_endpoint:
         child_env["OTEL_EXPORTER_OTLP_ENDPOINT"] = otlp_endpoint

@@ -14,7 +14,9 @@ parent and the Gateway child can build/verify manifests without either side
 importing the other's package.
 
 The manifest contains no secret material — only HMAC fingerprints of the
-provider API key and shared secret, signed under a domain distinct from the
+provider API key, the shared secret and the provider base URL (#681: it may
+carry userinfo or a query token, and the manifest is on the child's command
+line; the child reads the URL itself from its environment), signed under a domain distinct from the
 approval-store's other HMAC uses (record HMAC, secret fingerprints, one-shot
 handles) so a manifest signature can never be reused as one of those, or
 vice versa.
@@ -31,13 +33,16 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-MANIFEST_SCHEMA_VERSION = 1
-# Plan 12.2 Task 5: a manifest that binds a trusted model registry is version 2 and signs the
-# registry's approval literal. Version 1 manifests (no registry) keep their exact bytes.
-MANIFEST_REGISTRY_SCHEMA_VERSION = 2
-# Plan 12.2 Task 13 (Stage C): a manifest that also binds the shared test envelope is version 3 and signs
-# its literal beside the registry's. Version 1 and 2 manifests keep their exact bytes.
-MANIFEST_STAGE_C_SCHEMA_VERSION = 3
+# #681: the manifest travels on the child's command line, which other processes can read, so it binds the provider
+# base URL by keyed fingerprint, never verbatim. That format starts at 101, so a manifest in the earlier format (1 to 24,
+# with a plaintext base_url) is refused as corrupt rather than misread. The offsets below are unchanged.
+MANIFEST_SCHEMA_VERSION = 101
+# Plan 12.2 Task 5: a manifest that binds a trusted model registry is version 102 and signs the
+# registry's approval literal. Version 101 manifests (no registry) keep their exact field set.
+MANIFEST_REGISTRY_SCHEMA_VERSION = 102
+# Plan 12.2 Task 13 (Stage C): a manifest that also binds the shared test envelope is version 103 and signs
+# its literal beside the registry's. Version 101 and 102 manifests keep their exact field set.
+MANIFEST_STAGE_C_SCHEMA_VERSION = 103
 # Plan 12.8 (ADR-032): a manifest that also binds the Gateway's accounting literal (its accounting root and the approved
 # accounting configuration's digest) is its version plus 3 (4, 5 or 6) and signs that literal too. Manifests without it
 # keep their exact version and bytes.
@@ -106,7 +111,7 @@ class GatewayChildManifest:
     workspace_digest: str
     security_snapshot_digest: str
     provider: str
-    base_url: str | None
+    base_url_fingerprint: str | None
     bind_host: str
     bind_port: int
     provider_api_key_fingerprint: str
@@ -158,6 +163,11 @@ def _fingerprint_credential(value: str, *, field_name: str, hmac_key: bytes) -> 
     return hmac.new(hmac_key, msg, hashlib.sha256).hexdigest()
 
 
+def _fingerprint_base_url(base_url: str | None, *, hmac_key: bytes) -> str | None:
+    """#681: the base URL exactly as given (both sides hash the string the Gateway serves), or None for no URL."""
+    return None if base_url is None else _fingerprint_credential(base_url, field_name="base_url", hmac_key=hmac_key)
+
+
 def _canonical_fields(
     *,
     schema_version: int,
@@ -165,7 +175,7 @@ def _canonical_fields(
     workspace_digest: str,
     security_snapshot_digest: str,
     provider: str,
-    base_url: str | None,
+    base_url_fingerprint: str | None,
     bind_host: str,
     bind_port: int,
     provider_api_key_fingerprint: str,
@@ -195,7 +205,7 @@ def _canonical_fields(
         "workspace_digest": workspace_digest,
         "security_snapshot_digest": security_snapshot_digest,
         "provider": provider,
-        "base_url": base_url,
+        "base_url_fingerprint": base_url_fingerprint,
         "bind_host": bind_host,
         "bind_port": bind_port,
         "provider_api_key_fingerprint": provider_api_key_fingerprint,
@@ -256,6 +266,7 @@ def build_gateway_child_manifest(
 
     provider_fp = _fingerprint_credential(provider_api_key, field_name="provider_api_key", hmac_key=hmac_key)
     shared_fp = _fingerprint_credential(shared_secret, field_name="shared_secret", hmac_key=hmac_key)
+    base_url_fp = _fingerprint_base_url(base_url, hmac_key=hmac_key)
 
     schema_version = _schema_version(model_registry, stage_c_envelope, accounting, memory_index, memory_store)
     fields = _canonical_fields(
@@ -264,7 +275,7 @@ def build_gateway_child_manifest(
         workspace_digest=workspace_digest,
         security_snapshot_digest=security_snapshot_digest,
         provider=provider,
-        base_url=base_url,
+        base_url_fingerprint=base_url_fp,
         bind_host=bind_host,
         bind_port=bind_port,
         provider_api_key_fingerprint=provider_fp,
@@ -286,7 +297,7 @@ def build_gateway_child_manifest(
         workspace_digest=workspace_digest,
         security_snapshot_digest=security_snapshot_digest,
         provider=provider,
-        base_url=base_url,
+        base_url_fingerprint=base_url_fp,
         bind_host=bind_host,
         bind_port=bind_port,
         provider_api_key_fingerprint=provider_fp,
@@ -311,7 +322,7 @@ def serialize_gateway_child_manifest(manifest: GatewayChildManifest) -> str:
         "workspace_digest": manifest.workspace_digest,
         "security_snapshot_digest": manifest.security_snapshot_digest,
         "provider": manifest.provider,
-        "base_url": manifest.base_url,
+        "base_url_fingerprint": manifest.base_url_fingerprint,
         "bind_host": manifest.bind_host,
         "bind_port": manifest.bind_port,
         "provider_api_key_fingerprint": manifest.provider_api_key_fingerprint,
@@ -357,7 +368,8 @@ def verify_gateway_child_manifest(
     the EXACT values the Gateway process is ABOUT to construct
     GatewayServiceConfig with. All six must match the manifest's signed
     values, or the manifest was issued for a different launch and startup
-    must fail closed. provider/base_url are signed but non-secret fields —
+    must fail closed. provider is signed as is and base_url by keyed
+    fingerprint (#681: the manifest is on the child's command line) —
     without comparing them here, a manifest valid for one endpoint could be
     replayed against a different (attacker-controlled) base_url while still
     presenting the same credentials, exfiltrating the provider API key to an
@@ -388,7 +400,7 @@ def verify_gateway_child_manifest(
             workspace_digest=data["workspace_digest"],
             security_snapshot_digest=data["security_snapshot_digest"],
             provider=data["provider"],
-            base_url=data.get("base_url"),
+            base_url_fingerprint=data["base_url_fingerprint"],
             bind_host=data["bind_host"],
             bind_port=data["bind_port"],
             provider_api_key_fingerprint=data["provider_api_key_fingerprint"],
@@ -405,7 +417,13 @@ def verify_gateway_child_manifest(
         signature = data["signature"]
     except (KeyError, TypeError, AttributeError) as exc:
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="missing required field") from exc
+    # Only signed fields and the signature: an unsigned extra (such as the earlier plaintext base_url, #681) is refused.
+    if set(data) != {*fields, "signature"}:
+        raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="unexpected field")
 
+    signed_base_url = fields["base_url_fingerprint"]
+    if signed_base_url is not None and not isinstance(signed_base_url, str):
+        raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="base_url_fingerprint must be a string")
     signed_registry = fields.get("model_registry")
     if signed_registry is not None and not isinstance(signed_registry, str):
         raise LaunchManifestError(code="MANIFEST_CORRUPT", detail="model_registry must be a string")
@@ -453,14 +471,19 @@ def verify_gateway_child_manifest(
     if not hmac.compare_digest(actual_shared_fp, data["shared_secret_fingerprint"]):
         raise LaunchManifestError(code="MANIFEST_CREDENTIAL_MISMATCH", detail="shared_secret")
 
-    # provider/base_url are signed but non-secret; without this comparison a
+    # provider and base_url are signed (base_url as a keyed fingerprint, #681); without this comparison a
     # validly-signed manifest for one endpoint could be presented alongside a
     # different (attacker-controlled) base_url while reusing the same
     # credentials, exfiltrating the provider API key to an unapproved host.
     if data["provider"] != provider:
         raise LaunchManifestError(code="MANIFEST_PROVIDER_MISMATCH")
 
-    if data.get("base_url") != base_url:
+    actual_base_url = _fingerprint_base_url(base_url, hmac_key=hmac_key)
+    if actual_base_url is None or signed_base_url is None:
+        base_url_matches = actual_base_url is signed_base_url  # both None: neither side names a base URL
+    else:
+        base_url_matches = hmac.compare_digest(actual_base_url, signed_base_url)
+    if not base_url_matches:
         raise LaunchManifestError(code="MANIFEST_BASE_URL_MISMATCH")
 
     if data["bind_host"] != bind_host or data["bind_port"] != bind_port:
@@ -487,7 +510,7 @@ def verify_gateway_child_manifest(
         workspace_digest=data["workspace_digest"],
         security_snapshot_digest=data["security_snapshot_digest"],
         provider=data["provider"],
-        base_url=data.get("base_url"),
+        base_url_fingerprint=signed_base_url,
         bind_host=data["bind_host"],
         bind_port=data["bind_port"],
         provider_api_key_fingerprint=data["provider_api_key_fingerprint"],

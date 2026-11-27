@@ -36,8 +36,8 @@ def _build_sample_manifest(**overrides: object) -> GatewayChildManifest:
         "base_url": "https://openrouter.ai/api/v1",
         "bind_host": "127.0.0.1",
         "bind_port": 8765,
-        "provider_api_key": "sk-or-test-key",
-        "shared_secret": "shared-secret-value",
+        "provider_api_key": "sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+        "shared_secret": "shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
         "hmac_key": _HMAC_KEY,
         "policy_version": "P9.96-v1",
     }
@@ -54,7 +54,7 @@ class TestManifestConstruction:
 
     def test_manifest_has_required_fields(self) -> None:
         manifest = _build_sample_manifest()
-        assert manifest.schema_version == 1
+        assert manifest.schema_version == 101
         assert manifest.policy_version == "P9.96-v1"
         assert manifest.workspace_digest == "a" * 64
         assert manifest.provider == "openrouter"
@@ -71,8 +71,8 @@ class TestManifestConstruction:
 
     def test_manifest_contains_no_raw_secret(self) -> None:
         manifest = _build_sample_manifest(
-            provider_api_key="sk-CANARY-SECRET-VALUE",
-            shared_secret="CANARY-SHARED-SECRET",
+            provider_api_key="sk-CANARY-SECRET-VALUE",  # pragma: allowlist secret - synthetic test fixture
+            shared_secret="CANARY-SHARED-SECRET",  # pragma: allowlist secret - synthetic test fixture
         )
         serialized = serialize_gateway_child_manifest(manifest)
         assert "sk-CANARY-SECRET-VALUE" not in serialized
@@ -102,8 +102,8 @@ class TestManifestVerification:
             hmac_key=_HMAC_KEY,
             provider="openrouter",
             base_url="https://openrouter.ai/api/v1",
-            provider_api_key="sk-or-test-key",
-            shared_secret="shared-secret-value",
+            provider_api_key="sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+            shared_secret="shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
             bind_host="127.0.0.1",
             bind_port=8765,
         )
@@ -122,8 +122,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="anthropic",  # Manifest was signed for openrouter.
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="sk-or-test-key",
-                shared_secret="shared-secret-value",
+                provider_api_key="sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
@@ -143,8 +143,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://evil.attacker.example/v1",  # Redirected.
-                provider_api_key="sk-or-test-key",
-                shared_secret="shared-secret-value",
+                provider_api_key="sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
@@ -163,8 +163,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="sk-or-test-key",
-                shared_secret="shared-secret-value",
+                provider_api_key="sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=9999,
             )
@@ -181,8 +181,8 @@ class TestManifestVerification:
                 hmac_key=wrong_key,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="sk-or-test-key",
-                shared_secret="shared-secret-value",
+                provider_api_key="sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
@@ -207,7 +207,7 @@ class TestManifestVerification:
             workspace_digest=data["workspace_digest"],
             security_snapshot_digest=data["security_snapshot_digest"],
             provider=data["provider"],
-            base_url=data["base_url"],
+            base_url_fingerprint=data["base_url_fingerprint"],
             bind_host=data["bind_host"],
             bind_port=data["bind_port"],
             provider_api_key_fingerprint=data["provider_api_key_fingerprint"],
@@ -228,8 +228,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="sk-or-test-key",
-                shared_secret="shared-secret-value",
+                provider_api_key="sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
@@ -245,8 +245,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="sk-WRONG-KEY",
-                shared_secret="shared-secret-value",
+                provider_api_key="sk-WRONG-KEY",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
@@ -262,8 +262,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="sk-or-test-key",
-                shared_secret="WRONG-SHARED-SECRET",
+                provider_api_key="sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="WRONG-SHARED-SECRET",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
@@ -279,8 +279,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="sk-or-test-key",
-                shared_secret="shared-secret-value",
+                provider_api_key="sk-or-test-key",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="shared-secret-value",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=9999,  # Wrong port.
             )
@@ -293,8 +293,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="x",
-                shared_secret="y",
+                provider_api_key="x",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="y",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
@@ -308,8 +308,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="x",
-                shared_secret="y",
+                provider_api_key="x",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="y",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
@@ -323,16 +323,16 @@ class TestManifestVerification:
         now = datetime.now(timezone.utc)
         long_expiry = now + timedelta(seconds=3600)
         fields = _canonical_fields(
-            schema_version=1,
+            schema_version=101,
             policy_version="P9.96-v1",
             workspace_digest="a" * 64,
             security_snapshot_digest="b" * 64,
             provider="openrouter",
-            base_url="https://openrouter.ai/api/v1",
+            base_url_fingerprint="fp0",
             bind_host="127.0.0.1",
             bind_port=8765,
-            provider_api_key_fingerprint="fp1",
-            shared_secret_fingerprint="fp2",
+            provider_api_key_fingerprint="fp1",  # pragma: allowlist secret - synthetic test fixture
+            shared_secret_fingerprint="fp2",  # pragma: allowlist secret - synthetic test fixture
             issued_at=now.isoformat(),
             expires_at=long_expiry.isoformat(),
             nonce="deadbeef",
@@ -348,8 +348,8 @@ class TestManifestVerification:
                 hmac_key=_HMAC_KEY,
                 provider="openrouter",
                 base_url="https://openrouter.ai/api/v1",
-                provider_api_key="whatever",
-                shared_secret="whatever",
+                provider_api_key="whatever",  # pragma: allowlist secret - synthetic test fixture
+                shared_secret="whatever",  # pragma: allowlist secret - synthetic test fixture
                 bind_host="127.0.0.1",
                 bind_port=8765,
             )
