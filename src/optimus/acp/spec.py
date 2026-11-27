@@ -136,6 +136,7 @@ from optimus.agent.planning_loop import (
     LAST_REPEATED_STEP,
     PLANNING_NEW_READ_MAX_BYTES,
     PLANNING_OBSERVATION_MAX_BYTES,
+    RECOVERY_STOP_REASON_CODES,
     CheckInDecision,
     EscalationGrant,
     EscalationRefusal,
@@ -4178,10 +4179,18 @@ def _shown_quoting(text: str, quoted: tuple[str, ...]) -> str:
     parts = [part for part in quoted if part]
     if not all(part in text for part in parts):
         return _shown(text)
-    if not parts:
-        return text
-    pattern = "|".join(re.escape(part) for part in sorted(parts, key=len, reverse=True))
-    return re.sub(pattern, lambda found: _shown(found[0]), text)
+    # Every occurrence of every part is marked, and each run of marked characters is escaped as one span, so parts that
+    # overlap (a refusal reason that is the start of the quoted step) cannot leave either one live.
+    marked = [False] * len(text)
+    for part in parts:
+        for found in re.finditer(f"(?={re.escape(part)})", text):
+            marked[found.start() : found.start() + len(part)] = [True] * len(part)
+    shown, start = [], 0
+    for hit, run in itertools.groupby(marked):
+        end = start + len(list(run))
+        shown.append(_shown(text[start:end]) if hit else text[start:end])
+        start = end
+    return "".join(shown)
 
 
 def _shown_repeated_step(step: str, shown: Callable[[str], str]) -> str:
@@ -4214,9 +4223,12 @@ def _completion_message(result: AgentRunResult, shown: Callable[[str], str] = st
     if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
         return result.output_text  # the replan instruction; it no longer reaches the person as a plan entry (#570)
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
-        # A recovery stop names the repeated step, which can quote a model-authored path; the rest is fixed text.
+        # A recovery stop names the repeated step, which can quote a model-authored path; the rest is fixed text. Only a
+        # recovery stop: a model's refusal may hold the same words.
         head, repeated, step = result.output_text.partition(LAST_REPEATED_STEP)
-        return f"{head}{repeated}{_shown_repeated_step(step, shown)}" if repeated else result.output_text
+        if repeated and result.stop_reason in RECOVERY_STOP_REASON_CODES:
+            return f"{head}{repeated}{_shown_repeated_step(step, shown)}"
+        return result.output_text
     if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
         return result.output_text
     if result.mutation_count > 0:

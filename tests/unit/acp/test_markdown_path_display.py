@@ -256,3 +256,22 @@ def test_a_host_line_escapes_only_what_it_quotes_and_everything_when_a_part_is_m
     shown = spec._shown_quoting(line, (f"{link}#bytes=0:5",))
     assert _live(shown) == [] and shown.endswith("Stop ends this turn.")  # the fixed text is left as it was
     assert _live(spec._shown_quoting(line, ("not in the line",))) == []  # a part not found: the whole line is escaped
+
+
+def test_overlapping_quoted_parts_leave_nothing_live():
+    """Codex round 2: a refusal reason that is the start of the quoted step consumed it in a single regex pass."""
+    step = f"the read of {TOKENS['link']}/b.py#bytes=0:5"
+    line = f"Planning paused: the model repeated {step}. The model then refused: repeated the read of Stop ends this turn."
+
+    assert _live(spec._shown_quoting(line, (step, "repeated the read of"))) == []
+    assert _live(spec._shown_quoting(line, ("repeated the read of", step))) == []
+
+
+def test_only_a_recovery_stop_has_its_repeated_step_reformatted():
+    """A model refusal may hold the marker words; its own Markdown (here inline code) is left as the model wrote it."""
+    refusal = f"I need more context.{spec.LAST_REPEATED_STEP}see {TICK}docs/setup.md{TICK}"
+    stop = f"Planning stopped after repeated non-progress read requests.{spec.LAST_REPEATED_STEP}{TOKENS['link']}#bytes=0:5."
+
+    assert _completion_message(_result("PLANNING_MODEL_REFUSED", refusal), spec._shown) == refusal
+    shown = _completion_message(_result("PLANNING_REPEATED_READ_REQUEST", stop), spec._shown)
+    assert _live(shown) == [] and shown.startswith("Planning stopped after repeated non-progress read requests.")

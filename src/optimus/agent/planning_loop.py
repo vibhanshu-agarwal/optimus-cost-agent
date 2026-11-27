@@ -1068,6 +1068,7 @@ _RECOVERY_STOP_REASONS: dict[str, str] = {
     _TURN_LIMIT: "PLANNING_TURN_LIMIT_EXHAUSTED",
     _WALL_CLOCK: "PLANNING_WALL_CLOCK_EXHAUSTED",
 }
+RECOVERY_STOP_REASON_CODES = frozenset(_RECOVERY_STOP_REASONS.values())  # only these carry LAST_REPEATED_STEP
 _SIGNAL_TEXT = {
     LoopSignalKind.REPEATED_READ: "repeated {subject} with unchanged results",
     LoopSignalKind.REPEATED_MCP: "repeated {subject} with unchanged results",
