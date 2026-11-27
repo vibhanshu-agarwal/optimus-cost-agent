@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -49,21 +51,31 @@ def test_a_contained_tree_stays_in_the_runs_job_and_dies_without_ending_the_run(
     if owner is None or owner.handle is None:
         pytest.skip("this interpreter did not enrol in a run job (for example an xdist worker)")
     code, roles = descendant_tree(tmp_path, "parent-alive")
+    pids: dict[str, int] = {}
     with DescendantRecorder(tmp_path, roles) as recorder:
         process = process_tree.popen([sys.executable, "-c", code])
         try:
             assert recorder.wait_for(roles, timeout=30), "the tree never formed"
+            formed_at = time.monotonic()
             for role in roles:
-                pid = int((tmp_path / f"{role}.pid").read_text(encoding="utf-8"))
-                assert run_context_windows.is_member(run_context_windows.process_identity(pid)) is True, role
+                pids[role] = int((tmp_path / f"{role}.pid").read_text(encoding="utf-8"))
+                assert run_context_windows.is_member(run_context_windows.process_identity(pids[role])) is True, role
             killed_at = time.monotonic()
+            # Members sleep 30 s from before formed_at: a kill verdict taken by formed_at + 25 s cannot be a natural exit.
+            assert killed_at - formed_at < 20, "too slow to tell the kill from the members' natural exit"
             process_tree.kill_tree(process)
             assert_descendants_killed(recorder, roles, deadline=killed_at + 5.0, what="kill_tree inside the run job")
             assert process_tree.wait_for_empty(process, deadline=time.monotonic() + 5)
         finally:
+            try:
+                process_tree.kill_tree(process)  # ends the whole job, also when an assertion above failed
+            except OSError:
+                for pid in pids.values():  # the job could not be ended: stop each announced member directly
+                    with contextlib.suppress(OSError):
+                        os.kill(pid, signal.SIGTERM)
             if process.poll() is None:
                 process.kill()
-                process.wait(10)
+            process.wait(10)
     assert run_context_windows.is_member(run_context_windows.current_identity()) is True
     assert run_context_windows.accounting()["ok"] is True
 

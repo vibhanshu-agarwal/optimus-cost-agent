@@ -317,7 +317,7 @@ existing = api.CreateJobObjectW(None, "optimus-test-run-" + run_id)
 owner = native.enroll(run_id)
 member = wintypes.BOOL()
 asked = api.IsProcessInJob(api.GetCurrentProcess(), existing, ctypes.byref(member))
-extended = native.process_tree.job_structures().ExtendedLimit
+extended = native._structures().ExtendedLimit
 limits, returned = extended(), wintypes.DWORD()
 read = api.QueryInformationJobObject(existing, 9, ctypes.byref(limits), ctypes.sizeof(limits), ctypes.byref(returned))
 print(json.dumps({

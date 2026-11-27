@@ -15,8 +15,6 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-from optimus.runtime import process_tree
-
 _KILL_ON_JOB_CLOSE = 0x2000
 _BREAKAWAY_OK = 0x0800
 _SILENT_BREAKAWAY_OK = 0x1000
@@ -75,8 +73,16 @@ def _kernel32():  # noqa: ANN202 - ctypes library object, Windows only
     """The shared job-object binding (#274); `_api` stays this module's seam for fault tests."""
     global _api
     if _api is None:
+        from optimus.runtime import process_tree  # on the native path only: importing this module needs no src
+
         _api = process_tree.kernel32()
     return _api
+
+
+def _structures():  # noqa: ANN202 - ctypes structure classes, Windows only
+    from optimus.runtime import process_tree
+
+    return process_tree.job_structures()
 
 
 def _creation_time(api: object, handle: object) -> tuple[int | None, int | None]:
@@ -155,7 +161,7 @@ def _member_pids(api: object, job: object) -> tuple[list[int] | None, int | None
     import ctypes
     from ctypes import wintypes
 
-    listing = process_tree.job_structures().ProcessIdList()
+    listing = _structures().ProcessIdList()
     returned = wintypes.DWORD()
     if not api.QueryInformationJobObject(job, _PROCESS_ID_LIST_CLASS, ctypes.byref(listing), ctypes.sizeof(listing), ctypes.byref(returned)):
         return None, ctypes.get_last_error()
@@ -259,7 +265,7 @@ def enroll(run_id: str) -> JobOwner:
     from ctypes import wintypes
 
     api = _kernel32()
-    extended_limit = process_tree.job_structures().ExtendedLimit
+    extended_limit = _structures().ExtendedLimit
     me = api.GetCurrentProcess()
     name = f"optimus-test-run-{run_id}"
     facts: dict[str, object] = {"enrolled": False}
@@ -350,7 +356,7 @@ def accounting() -> dict[str, object]:
     if _owner is None or _owner.handle is None:
         return {"ok": False, "error": "no_job"}
     api = _kernel32()
-    totals = process_tree.job_structures().AccountingAndIo()
+    totals = _structures().AccountingAndIo()
     returned = wintypes.DWORD()
     if not api.QueryInformationJobObject(_owner.handle, _ACCOUNTING_AND_IO_CLASS, ctypes.byref(totals), ctypes.sizeof(totals), ctypes.byref(returned)):
         return {"ok": False, "error": ctypes.get_last_error()}
