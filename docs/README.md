@@ -133,6 +133,7 @@ Live plans (each listed in the backlog's live plan registry):
 
 | Plan | What it is |
 |---|---|
+| [Plan 12.15: model-aware context budgets, second attempt (#243)](superpowers/plans/2026-11-27-plan-12-15-model-aware-budgets-implementation.md) | #673; operator budget overrides refused first, then a legacy-floor additive budget on one configured entry (#243), qualified on a new fresh set, with a small paid null-baseline check (USD 0.75 maximum, released separately); follows Plan 12.14 (#548, closed incomplete) |
 | [Idle client-MCP lifetime v3](superpowers/plans/2026-10-26-idle-mcp-suspension-main-port_v3.md) | #427; A-derived lifetime owner and idle renewal on main |
 | [Plan 11.7 v6: Zed resume](superpowers/plans/2026-07-29-plan-11-7-p11-feat-zed-resume-implementation_v6.md) | #240; durable ACP sessions, Zed resume and the offline #304 compatibility checkpoint. The v5 plan is archived. Its [adoption record](superpowers/reviews/2026-11-16-plan-11-7-v5-adoption-record.md) records the predecessor custody. |
 | [Plan 11.23: client-MCP runtime composition](superpowers/plans/2026-08-18-plan-11-23-p11-fu-20-client-mcp-runtime-composition.md) | Client-supplied MCP servers at runtime |
