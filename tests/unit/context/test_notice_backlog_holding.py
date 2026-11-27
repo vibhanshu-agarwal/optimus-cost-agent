@@ -209,3 +209,47 @@ def test_a_call_that_writes_nothing_is_not_reported_as_recovery(tmp_path: Path, 
             backlog.add([_record(number)])
         backlog.remove([f"e-{number}"])  # the card was delivered anyway; nothing on disk to remove
     assert caplog.messages == ["Memory notice backlog write failed (ENOSPC); holding 1 notice(s) and 0 removal(s) in this process"]
+
+
+def test_removals_of_notices_never_on_disk_never_evict_a_real_tombstone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#643 review 2, finding 3: one delivered notice on disk whose removal is refused, then a full cap of notices whose adds and
+    removals both fall in the same outage. Only the one on disk needed a tombstone; it is kept, so it is never shown again."""
+    disk = _refusing(monkeypatch)
+    disk["full"] = False
+    backlog = mr.NoticeBacklog(tmp_path, "p-1")
+    backlog.add([_record(0)])
+    disk["full"] = True
+    with pytest.raises(OSError):
+        backlog.remove(["e-0"])
+    for number in range(1, mr.NoticeBacklog.HELD_LIMIT + 2):
+        with pytest.raises(OSError):
+            backlog.add([_record(number)])
+        with pytest.raises(OSError):  # delivered anyway; e-0's removal is retried and refused again
+            backlog.remove([f"e-{number}"])
+    assert backlog.pending() == [] and _on_disk(tmp_path) == ["e-0"]
+    disk["full"] = False
+    backlog.flush()
+    assert _on_disk(tmp_path) == []
+
+
+def test_a_lock_release_error_keeps_the_recovery_warning(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                         caplog: pytest.LogCaptureFixture) -> None:
+    """#643 review 2, finding 4: the recovery is logged before the lock is released, so a release error loses no diagnostic."""
+    import contextlib
+
+    disk = _refusing(monkeypatch)
+    backlog = mr.NoticeBacklog(tmp_path, "p-1")
+    with pytest.raises(OSError):
+        backlog.add([_record(1)])
+    disk["full"] = False
+    real_lock = mr._file_lock
+
+    @contextlib.contextmanager
+    def failing_release(path: Path, **kwargs: Any) -> Any:
+        with real_lock(path, **kwargs):
+            yield
+        raise OSError(errno.EIO, "close failed")
+
+    monkeypatch.setattr(mr, "_file_lock", failing_release)
+    backlog.flush()
+    assert caplog.messages[-1].startswith("Memory notice backlog written again; 0 held") and _on_disk(tmp_path) == ["e-1"]

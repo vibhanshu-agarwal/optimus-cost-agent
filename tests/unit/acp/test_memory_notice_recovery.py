@@ -304,3 +304,32 @@ def test_an_extraction_notice_another_session_delivered_is_not_sent_again_from_t
         await rpc(host.adapter, prompt_request(first, "Hello from A", "p-2"))
         assert host.cards() == [f"memory/{notice.event_id}"]  # once for the project
     asyncio.run(scenario())
+
+
+def test_a_queued_extraction_notice_is_still_shown_when_the_backlog_cannot_be_read(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#643 review 2, finding 2: a backlog that reads as empty (a sharing violation) is no evidence another session delivered the
+    notice, so the session's own queued copy is still shown, once."""
+    _Disk(monkeypatch)
+    service = purge_store(tmp_path)[0]
+    notice = _committed(tmp_path, service)
+
+    async def scenario() -> None:
+        host = _Host(tmp_path, service)
+        session_id = await new_session(host.adapter, tmp_path, mode="chat")
+        host.reports[-1](SimpleNamespace(notices=[notice]))  # written and queued
+        path = mr.NoticeBacklog(tmp_path / "config", "p-1").path
+        real_read = Path.read_text
+
+        def read_text(self: Path, *args: Any, **kwargs: Any) -> str:
+            if self == path:
+                raise PermissionError(errno.EACCES, "sharing violation", str(self))
+            return real_read(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", read_text)
+        await rpc(host.adapter, prompt_request(session_id, "Hello there", "p-1"))
+        assert host.cards() == [f"memory/{notice.event_id}"]  # shown from the session's own queue while the file is unreadable
+        monkeypatch.setattr(Path, "read_text", real_read)
+        await rpc(host.adapter, prompt_request(session_id, "And again", "p-2"))
+        assert host.cards() == [f"memory/{notice.event_id}"] and _file(tmp_path) == []
+    asyncio.run(scenario())

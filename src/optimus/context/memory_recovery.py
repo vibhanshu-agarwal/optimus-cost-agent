@@ -31,7 +31,7 @@ copy with an empty one. A lost project registry is repaired only from a generati
 workspace's own registry key.
 
 **Notices.** Memory notices not yet shown are kept in a durable backlog per project (`NoticeBacklog`), delivered by event id at
-the next opportunity in any session, so a restart loses no notice and a resend repeats no change. A write the disk refuses
+the next opportunity in any session, so a restart loses no notice that was written and a resend repeats no change. A write the disk refuses
 is held in the process and retried by later backlog calls (#643); what is still held when the host exits is lost with it (a
 card, never the change: see `NoticeBacklog`).
 """
@@ -246,6 +246,7 @@ class NoticeBacklog:
         self._lock = threading.Lock()  # guards the file and every held field below
         self._held: dict[str, dict[str, Any]] = {}  # event id -> record not yet written, oldest first
         self._gone: dict[str, None] = {}  # event ids delivered whose removal is not yet written, oldest first
+        self._acked: dict[str, None] = {}  # event ids this process delivered, newest last, capped (#643 review 2, finding 2)
         self._dropped = 0  # held records or tombstones dropped at the cap while failing
         self._failing = False
 
@@ -284,7 +285,8 @@ class NoticeBacklog:
             return
         with self._lock:
             for record in records:
-                self._hold(self._held, record["event_id"], record)
+                if record["event_id"] not in self._gone:  # a delivered notice added again (an import's resume) stays delivered
+                    self._hold(self._held, record["event_id"], record)
             self._apply()
 
     def remove(self, event_ids: list[str]) -> None:
@@ -294,7 +296,16 @@ class NoticeBacklog:
             for event_id in event_ids:
                 self._held.pop(event_id, None)  # a delivered record is never written or shown again
                 self._hold(self._gone, event_id, None)
+                self._hold(self._acked, event_id, None)
+                if len(self._acked) > self.HELD_LIMIT:
+                    del self._acked[next(iter(self._acked))]
             self._apply()
+
+    def acknowledged(self, event_ids: list[str]) -> set[str]:
+        """Which of `event_ids` a session of this project in this process has delivered: the evidence a session's own queue
+        needs before dropping its copy, since an unreadable file or a held record dropped at the cap is no evidence."""
+        with self._lock:
+            return {event_id for event_id in event_ids if event_id in self._acked}
 
     def flush(self) -> None:
         """One attempt to write what is held (a session's close); never raises."""
@@ -312,16 +323,19 @@ class NoticeBacklog:
         """Under `self._lock`: one attempt to apply the held records and tombstones to the file. Held state is cleared as soon as
         the file holds it, so an error releasing the lock afterwards never re-applies it. The first failure and the first write
         after it are each logged once, with the error's class and counts, no values."""
-        recovered, dropped = False, 0
         try:
             with _file_lock(self.path.with_name(self.path.name + ".lock")):
                 current = self._load(writing=True)
                 known = {_event_key(record) for record in current}  # a malformed record never blocks the rest
+                for event_id in [event_id for event_id in self._gone if event_id not in known]:
+                    del self._gone[event_id]  # nothing on disk to remove: it never takes a real tombstone's place at the cap
                 target = [record for record in current if _event_key(record) not in self._gone]
                 target += [record for event_id, record in self._held.items() if event_id not in known and event_id not in self._gone]
                 if target != current:
                     _durable_json(self.path, target)  # kept until acknowledged, however many (Codex CP3 review 2, finding 4)
-                    recovered, dropped = self._failing, self._dropped  # only a real write shows the disk takes writes again
+                    if self._failing:  # only a real write shows the disk takes writes again; logged before the lock is released
+                        _LOG.warning("Memory notice backlog written again; %d held notice(s) or removal(s) were dropped at the "
+                                     "cap meanwhile", self._dropped)
                     self._failing, self._dropped = False, 0
                 self._held.clear()
                 self._gone.clear()
@@ -335,9 +349,6 @@ class NoticeBacklog:
                 _LOG.warning("Memory notice backlog write failed (%s); holding %d notice(s) and %d removal(s) in this process",
                              _failure_class(failure), len(self._held), len(self._gone))
             raise
-        if recovered:
-            _LOG.warning("Memory notice backlog written again; %d held notice(s) or removal(s) were dropped at the cap meanwhile",
-                         dropped)
 
 
 def _event_key(record: dict[str, Any]) -> str | None:
