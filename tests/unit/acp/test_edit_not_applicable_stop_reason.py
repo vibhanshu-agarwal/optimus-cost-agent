@@ -20,7 +20,8 @@ from tests.unit.acp.test_hidden_text_stops_end_turn import assert_failed_turn_sh
 PLAN = "EDIT small.py\nOLD\nold\nNEW\nnew\nEND\n"
 # What the person must read, independent of the production text: what was not made, where, why, that the plan changed
 # nothing and ran none of its tests, and what to do next (#574).
-PHRASES = ("was not made to small.py,", "not in the file", "made no changes", "ran none of its tests", "send your request again")
+# The path is escaped for Markdown where it is shown (#591).
+PHRASES = ("was not made to small\\.py,", "not in the file", "made no changes", "ran none of its tests", "send your request again")
 CODE = "(EDIT_OLD_NOT_FOUND)"
 
 
