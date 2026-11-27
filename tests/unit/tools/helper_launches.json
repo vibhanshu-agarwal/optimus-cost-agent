@@ -1,0 +1,1018 @@
+{
+ "purpose": "Every place repository code (src/ and tools/) starts a child process, with whether a default-selection test reaches it and whether its child can reach the host keyring (#661, the helper-owned residual of #540). tests/support/helper_launch_inventory.py reads the sources; tests/unit/tools/test_helper_launch_keyring.py fails for a launch function that is not listed here, for a changed launch count, and for a verdict its checks cannot confirm. Launches written in tests/ are the sites of run_context_child_sites.json, not these.",
+ "census": {
+  "method": "A pytest plugin (kept in the p661 review kit) replaced the Windows process-creation call for the whole default selection, allowed git, refused every other child, and recorded for each launch the test, the command, the child's environment (whether it names a keyring backend) and the repository frames on the stack; for a Python child it also computed the child program's import closure. No refused child started, so none could reach any credential store.",
+  "head": "2df6fec",
+  "selection": "the default selection of tests/ (pyproject addopts -m expression), 570 test files minus tests/e2e; 15781 tests passed; 442 failed and 55 errored because a refused launch is not the launch they expect",
+  "result": "Besides git, the launches a default-selection test reaches are: the Plan 11.26 measurement child (product code that reaches keyring, selects fail in its own environment, controlled), nested pytest sessions (the root conftest installs fail), `python -m evidence_handoff_runtime.service_cli` (its closure imports no keyring), the plan 12 contained probe (inherits the environment; controlled), and test-authored programs started through a helper (`caller_program`: each recorded closure imports no keyring).",
+  "limits": "A test that launched a refused child stopped there, so a second launch later in the same test is not in the census; the static inventory and the per-function verdicts do not depend on it. Windows only: a launch a Linux-only test makes is for PR CI. A test that is not in the default selection is outside the census by definition."
+ },
+ "verdicts": {
+  "non_python": "Every launch in the function starts a fixed tool (`tools`: git, docker, powershell, or acpx for `--version`), which runs none of this repository's Python. The guard checks each tool name appears in the function.",
+  "closure_clear": "The child runs a fixed module or script of the repository. The guard recomputes its import closure (tests.support.child_keyring.import_closure) from the sources: no module imports keyring, and nothing is computed or unresolved.",
+  "nested_pytest": "The child is a pytest session over this repository's tests; it loads the root conftest, which installs keyring's fail backend (#538). Its own launches are sites of run_context_child_sites.json. The guard checks the function builds a pytest command.",
+  "controlled": "The child can reach keyring, or its closure cannot be bounded, and a test applies a control (tests/support/child_keyring.py) for its duration. The guard fails for any test module that names one of `entry_calls` without the control.",
+  "caller_program": "The program is the caller's argument, not one the function chooses (the guard checks no launch here names sys.executable). A child reaches keyring only if the caller names product code. The default-selection tests that reach it (`reached_by`, from the census) name programs of their own, and the census closure of each imports no keyring.",
+  "not_reached": "No default-selection test starts the child (`reason` says what the tests do instead). The function stays listed so a test that begins to reach it is a visible change in review; the guard cannot see a new reach, only that the verdict is recorded."
+ },
+ "functions": {
+  "src/evidence_handoff_runtime/process.py::run": {
+   "launches": 1,
+   "verdict": "caller_program"
+  },
+  "src/evidence_handoff_runtime/service.py::start": {
+   "launches": 1,
+   "verdict": "closure_clear",
+   "entries": [
+    "evidence_handoff_runtime.service_cli"
+   ],
+   "reached_by": [
+    "tests/unit/evidence_handoff/test_service_start_failure.py",
+    "tests/unit/evidence_handoff/test_transport.py"
+   ]
+  },
+  "src/optimus/acp/debug_trace.py::_git_sha": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "src/optimus/acp/launch_approval_cli.py::_cmd_approve": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/acp/test_launch_approval_cli.py"
+   ]
+  },
+  "src/optimus/acp/launch_approval_cli.py::_cmd_run": {
+   "launches": 1,
+   "verdict": "caller_program"
+  },
+  "src/optimus/acp/launch_approval_cli.py::_cmd_run_gateway": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Starts `python -m optimus_gateway`, whose closure imports keyring. Every test that reaches it replaces subprocess.run (test_launch_approval_cli.py: monkeypatch.setattr('subprocess.run', ...)); the census recorded no launch from it."
+  },
+  "src/optimus/acp/local_infra.py::_container_exists": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_container_redis_run_id": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_docker_container_image": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_docker_daemon_reachable": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_docker_published_port_owners": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_ensure_dedicated_redis": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_local_docker_endpoint": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_memory_container_view": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_memory_volume_conflict": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::_phoenix_binding_conflict": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::ensure_local_gateway": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Starts `python -m optimus_gateway`, whose closure imports keyring. Every test that reaches it replaces subprocess.Popen (test_local_infra.py: monkeypatch.setattr(local_infra.subprocess, 'Popen', ...)); the census recorded no launch from it."
+  },
+  "src/optimus/acp/local_infra.py::ensure_local_phoenix": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/local_infra.py::ensure_local_redis": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "src/optimus/acp/operator_verify.py::ensure_verify_workspace": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "src/optimus/acp/operator_verify.py::run_operator_live_session": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Starts `python -m optimus.acp`, whose closure imports keyring. The tests that run it replace subprocess.Popen with a function that starts a script of their own instead (test_verify_live_agent_cli.py fake_popen; its scripts import no repository code); the census saw only those scripts.",
+   "reached_by": [
+    "tests/integration/release/test_verify_live_agent_cli.py"
+   ]
+  },
+  "src/optimus/acp/trusted_paths.py::resolve_git_context": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "src/optimus/context/memory_workspace.py::_git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "src/optimus/mcp/client_sdk.py::_factory": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/integration/mcp/test_client_sdk_local_stdio.py"
+   ]
+  },
+  "src/optimus/mcp/client_sdk.py::stdio_server_parameters_from_capability": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/integration/mcp/test_client_sdk_local_stdio.py"
+   ]
+  },
+  "src/optimus/release/runner.py::_run_command": {
+   "launches": 1,
+   "verdict": "caller_program"
+  },
+  "src/optimus/runtime/process_tree.py::popen": {
+   "launches": 2,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/integration/release/test_verify_live_agent_cli.py",
+    "tests/unit/acp/test_ndjson_subprocess_session.py",
+    "tests/unit/agent/test_test_directive_deadline.py",
+    "tests/unit/guardrails/test_ci_parity.py",
+    "tests/unit/guardrails/test_local_secret_scan_encoding.py",
+    "tests/unit/tools/plan1126_runtime_audit/test_render.py",
+    "tests/unit/tools/test_bounded_command.py",
+    "tests/unit/tools/test_evidence_gather.py",
+    "tests/unit/tools/test_plan12_memory_probes.py",
+    "tests/unit/tools/test_probe_p11_zed_session_load.py",
+    "tests/unit/tools/test_process_tree.py",
+    "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py",
+    "tests/unit/tools/test_run_plan996_acpx_security_evidence.py",
+    "tests/unit/tools/test_run_profile.py"
+   ]
+  },
+  "src/optimus/runtime/process_tree.py::run_bounded": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/agent/test_test_directive_deadline.py",
+    "tests/unit/tools/test_bounded_command.py"
+   ]
+  },
+  "src/optimus/tools/mutation_tools.py::shell_exec": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/agent/test_test_directive_deadline.py"
+   ]
+  },
+  "src/optimus_gateway/memory_files.py::read": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "tools/check_dependency_audit.py::scan": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Starts its own script (the pip-audit child) in a network audit run; tests inject the scanner."
+  },
+  "tools/check_product_coverage.py::_run_pytest": {
+   "launches": 1,
+   "verdict": "nested_pytest"
+  },
+  "tools/check_product_coverage.py::candidate_identity": {
+   "launches": 3,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/doc_paths.py::_docs_by_name": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/evidence_gather.py::_plan117_v5_checkout_head": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/evidence_gather_support/acp.py::resolve_acpx": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "acpx",
+    "--version"
+   ]
+  },
+  "tools/evidence_gather_support/acp.py::spawn_acpx": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/test_evidence_gather.py"
+   ]
+  },
+  "tools/evidence_gather_support/plan117_current_client_collector.py::git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/evidence_gather_support/plan117_workspace_approval.py::_command": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Starts the Plan 11.7 approval command; the census recorded no launch from it."
+  },
+  "tools/evidence_gather_support/zed_logs.py::discover_zed_editor_pids": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "powershell"
+   ]
+  },
+  "tools/github_work_tracking.py::_run": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs gh and git for work tracking; tests inject the runner."
+  },
+  "tools/github_work_tracking.py::git_blob_bytes": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/github_work_tracking.py::read_plans_at": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/local_secret_scan.py::_git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/measure_context_engine_limits.py::environment": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/measure_context_engine_limits.py::tracked_text_files": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan1126_runtime_audit/measurement.py::run_fresh_measurement": {
+   "launches": 1,
+   "verdict": "controlled",
+   "control": "control_measurement_children",
+   "entry_calls": [
+    "run_fresh_measurement",
+    "measure_current_entry",
+    "session_measurement_reuse"
+   ],
+   "reached_by": [
+    "tests/unit/acp/test_plan1126_queue_policy.py",
+    "tests/unit/acp/test_plan1126_shutdown.py",
+    "tests/unit/tools/plan1126_runtime_audit/test_current_measurement.py",
+    "tests/unit/tools/plan1126_runtime_audit/test_measurement_reuse.py",
+    "tests/unit/tools/plan1126_runtime_audit/test_serving_custody.py"
+   ]
+  },
+  "tools/plan1126_runtime_audit/source.py::_config_value": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan1126_runtime_audit/source.py::_git_bytes": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan1126_runtime_audit/source.py::_load_archive": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan1126_runtime_audit/source.py::_run": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan1126_unrun_binding.py::binding_commit_available": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan117_custody_relay.py::run_relay": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/test_plan117_custody_relay.py",
+    "tests/unit/tools/test_verify_plan117_custody_feasibility.py"
+   ]
+  },
+  "tools/plan12_memory/m1_evaluate.py::materialize": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m1_evaluate.py::run": {
+   "launches": 3,
+   "verdict": "non_python",
+   "tools": [
+    "docker",
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m1_qualify.py::_marker_state": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "tools/plan12_memory/m1_qualify.py::clone_large_corpus": {
+   "launches": 3,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m1_qualify.py::run_k2": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "tools/plan12_memory/m1_qualify.py::run_qualify": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker",
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m1_qualify.py::sample": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "tools/plan12_memory/m1_scale.py::__init__": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Starts a stub provider from the operator's P1210_ACPX_KIT folder; without that folder the measurement reports UNRUN."
+  },
+  "tools/plan12_memory/m1_scale.py::_corpus_copy": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m1_scale.py::_git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m1_scale.py::_provision": {
+   "launches": 3,
+   "verdict": "not_reached",
+   "reason": "Provisions a container and a Gateway for the M1 measurement (docker, a script); no default-selection test calls it."
+  },
+  "tools/plan12_memory/m1_scale.py::_redis_facts": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "tools/plan12_memory/m1_scale.py::_run": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs acpx in the M1 measurement against the operator's kit; no default-selection test calls it."
+  },
+  "tools/plan12_memory/m1_scale.py::cancel_during_a_turn": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs acpx in the M1 measurement against the operator's kit; no default-selection test calls it."
+  },
+  "tools/plan12_memory/m1_scale.py::run_assembly": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m1_scale.py::run_pilot": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "tools/plan12_memory/m2a_evaluate.py::_head": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m2a_evaluate.py::cache_identity": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m2a_evaluate.py::index_check": {
+   "launches": 3,
+   "verdict": "non_python",
+   "tools": [
+    "docker",
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m2b_evaluate.py::_repetition": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "docker"
+   ]
+  },
+  "tools/plan12_memory/m2b_evaluate.py::run_budget": {
+   "launches": 3,
+   "verdict": "non_python",
+   "tools": [
+    "docker",
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m2b_evaluate.py::run_calibration": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m2b_evaluate.py::run_qualification": {
+   "launches": 3,
+   "verdict": "non_python",
+   "tools": [
+    "docker",
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m2b_launch.py::_git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m2b_launch.py::_remove_container": {
+   "launches": 3,
+   "verdict": "not_reached",
+   "reason": "Removes the M2b measurement container (docker, or a caller-built command) in an operator run; no default-selection test calls it."
+  },
+  "tools/plan12_memory/m3_evaluate.py::_git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m3_evaluate.py::main": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m3_k2.py::_git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m3_k2.py::_throttled": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Wraps local_infra's docker run for the M3 K2 measurement; no default-selection test calls it."
+  },
+  "tools/plan12_memory/m3p2_contention.py::_git_repo": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/m3p2_contention.py::_run": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_memory/probes.py::_owner_exit": {
+   "launches": 1,
+   "verdict": "caller_program"
+  },
+  "tools/plan12_memory/probes.py::run_command": {
+   "launches": 1,
+   "verdict": "caller_program"
+  },
+  "tools/plan12_memory/probes.py::run_contained": {
+   "launches": 1,
+   "verdict": "controlled",
+   "control": "control_inherited_children",
+   "entry_calls": [
+    "run_contained"
+   ],
+   "reached_by": [
+    "tests/unit/tools/test_plan12_memory_probes.py"
+   ]
+  },
+  "tools/plan12_memory/probes.py::run_selftest": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Starts a loop program inside the contained selftest child (`run_contained`, controlled above); reached only through that child, which inherits the control."
+  },
+  "tools/plan12_stage_c_launch_rehearsal.py::_execute": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py"
+   ]
+  },
+  "tools/plan12_stage_c_launch_rehearsal.py::current_identity": {
+   "launches": 1,
+   "verdict": "caller_program"
+  },
+  "tools/plan12_stage_c_launch_rehearsal.py::resolve_client": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/test_plan12_stage_c_launch_rehearsal.py"
+   ]
+  },
+  "tools/plan12_stage_c_schedule.py::build_schedule": {
+   "launches": 2,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/plan12_stage_c_transition_check.py::host_processes": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "powershell.exe"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::_git_head": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::_launch_zed_once": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/test_probe_p11_zed_session_load.py"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::_list_process_names": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "tasklist"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::_observe_zed_help": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs the Zed binary with --help in the Plan 11 probe; tests inject the observation."
+  },
+  "tools/probe_p11_zed_session_load.py::_observe_zed_version": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs the Zed binary with --version in the Plan 11 probe; tests inject the observation."
+  },
+  "tools/probe_p11_zed_session_load.py::_run": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs a command of the Plan 11 probe (git, the harness); tests inject the runner."
+  },
+  "tools/probe_p11_zed_session_load.py::_run_interactive_required": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs the interactive Zed step; tests inject the runner."
+  },
+  "tools/probe_p11_zed_session_load.py::_tracked_py_paths": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::execution_surface_clean": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::git_cat_file_blob": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::is_ancestor": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::normal_workspace_source_paths": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/probe_p11_zed_session_load.py::read_committed_establishing_report_blob": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/run_p11_fu_10_acpx_error_code_evidence.py::_run_acpx": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py"
+   ]
+  },
+  "tools/run_p11_fu_10_acpx_error_code_evidence.py::acpx_version": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "acpx",
+    "--version"
+   ]
+  },
+  "tools/run_p11_fu_9_acpx_evidence.py::acpx_version": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "acpx",
+    "--version"
+   ]
+  },
+  "tools/run_p11_fu_9_acpx_evidence.py::assert_scratch_paths_ignored": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/run_p11_fu_9_acpx_evidence.py::run_capture": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs a live acpx capture; tests inject the runner."
+  },
+  "tools/run_plan1126_runtime_audit.py::_run_captured_command": {
+   "launches": 1,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/plan1126_runtime_audit/test_render.py"
+   ]
+  },
+  "tools/run_plan1126_runtime_audit.py::_run_task5_group_repeats": {
+   "launches": 1,
+   "verdict": "nested_pytest"
+  },
+  "tools/run_plan115_acpx_cost_obs_evidence.py::run_capture": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs a live acpx capture; tests inject the runner."
+  },
+  "tools/run_plan117_custody_feasibility.py::capture_process_records": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "powershell"
+   ]
+  },
+  "tools/run_plan987_acpx_live_evidence.py::_assert_implementation_sha_clean": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs git; tests inject the runner."
+  },
+  "tools/run_plan987_acpx_live_evidence.py::_git_sha": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/run_plan987_acpx_live_evidence.py::_run_subprocess": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs a live acpx capture; tests inject the runner."
+  },
+  "tools/run_plan988_fu4b_live_evidence.py::_run_acpx": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs a live acpx capture; tests inject the runner."
+  },
+  "tools/run_plan996_acpx_security_evidence.py::spawn_authorized_capture": {
+   "launches": 2,
+   "verdict": "caller_program",
+   "reached_by": [
+    "tests/unit/tools/test_run_plan996_acpx_security_evidence.py"
+   ]
+  },
+  "tools/run_redaction_gate_live_evidence.py::resolve_acpx": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "acpx",
+    "--version"
+   ]
+  },
+  "tools/run_redaction_gate_live_evidence.py::spawn_agent_process": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Spawns a live agent through acpx; tests inject the launcher."
+  },
+  "tools/testing/coverage_products.py::_git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/testing/run_profile.py::_git": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/testing/run_profile.py::_has_commit": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/testing/run_profile.py::collect_universe": {
+   "launches": 1,
+   "verdict": "nested_pytest",
+   "reached_by": [
+    "tests/unit/tools/test_run_profile.py"
+   ]
+  },
+  "tools/testing/run_profile.py::start_subrun": {
+   "launches": 1,
+   "verdict": "nested_pytest",
+   "reached_by": [
+    "tests/unit/tools/test_run_profile.py"
+   ]
+  },
+  "tools/testing/test_main5_runner.py::_runner": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::_runner_function_probe": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::_scoped_session": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_attempt_activation_is_unshadowable_idempotent_and_config_owned": {
+   "launches": 2,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_port_guard_startup_log_redacts_arguments_and_redis_password": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_process_identity_does_not_conflate_reused_pids": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_root_verdict_distinguishes_foreign_confounding_from_own_write": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_classifies_no_code_and_failed_python_children": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_fails_short_no_site_python_child": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_fails_suppressed_real_root_write": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_partition_overlap_is_case_sensitive": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_partition_preserves_case_distinct_nodeids_and_file_prefix": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_partition_rejects_duplicate_nodeids_and_missing_self_test": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_partitions_the_collected_suite_exactly_once": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_records_foreign_optimus_pytest_without_failing": {
+   "launches": 2,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_runner_uses_attempt_venv_not_shared_venv": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/testing/test_main5_runner.py::test_unlogged_child_verdict_requires_observed_no_code_exit": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "tools/testing/test_main5_runner.py is outside testpaths (tests/) and is run only by the MAIN-5 runner; no default selection collects it."
+  },
+  "tools/tracked_repository_files.py::tracked_repository_files": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/verify_plan117_custody_feasibility.py::_git_output": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/verify_plan117_custody_feasibility.py::_production_src_clean_vs_baseline": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/verify_plan987_acpx_evidence.py::_assert_claim_sha_clean": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "git"
+   ]
+  },
+  "tools/verify_plan99_noneditable_install.py::_live": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "acpx",
+    "--version"
+   ]
+  },
+  "tools/verify_plan99_noneditable_install.py::_run": {
+   "launches": 1,
+   "verdict": "not_reached",
+   "reason": "Runs the Plan 9.9 install check's commands; tests inject the runner."
+  },
+  "tools/verify_plan99_noneditable_install.py::validate_live_prerequisites": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "acpx",
+    "--version"
+   ]
+  }
+ }
+}

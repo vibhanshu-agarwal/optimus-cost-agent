@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 from _pytest.mark.expression import Expression
 
-from tests.support import child_launch_inventory
+from tests.support import child_keyring, child_launch_inventory
 from tools.plan12_memory import client_probe, probe_child, probes, redis_probe
 from tools.testing import run_context
 
@@ -832,7 +832,8 @@ def test_source_identity_binds_head_and_diff_and_a_change_is_inconclusive() -> N
 
 # --- Checkpoint 1 follow-up (Codex round 84, follow-up 1): B1-B5 ---
 
-def test_a_contained_probe_stops_its_body_and_an_orphaned_grandchild(tmp_path: Path) -> None:
+def test_a_contained_probe_stops_its_body_and_an_orphaned_grandchild(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_inherited_children(monkeypatch)  # run_contained's child inherits this environment (#661)
     run = probes.RELEASED_ROOT / f"plan12-probe-selftest-{uuid.uuid4().hex[:8]}"
     run.mkdir(parents=True)
     tick = run / "tick.txt"
@@ -917,6 +918,7 @@ def test_a_non_hex_screenshot_hash_is_not_evidence(tmp_path: Path) -> None:
 # --- Checkpoint 1 follow-up 2: interruption and native acquisition timeouts ---
 
 def test_an_interrupted_contained_run_still_stops_its_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_inherited_children(monkeypatch)  # run_contained's child inherits this environment (#661)
     run = probes.RELEASED_ROOT / f"plan12-probe-selftest-{uuid.uuid4().hex[:8]}"
     run.mkdir(parents=True)
     tick = run / "tick.txt"

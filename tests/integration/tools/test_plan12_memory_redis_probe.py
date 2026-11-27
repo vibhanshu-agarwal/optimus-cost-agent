@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.support import child_keyring
 from tools.plan12_memory import probes
 
 pytestmark = [pytest.mark.requires_plan12_probe_redis]
@@ -37,7 +38,8 @@ def test_the_shared_server_is_refused_on_every_database(probe_config: probes.Pro
             probes.admit_redis_endpoint(shared)
 
 
-def test_synthetic_k2_on_the_released_instance(probe_config: probes.ProbeConfig) -> None:
+def test_synthetic_k2_on_the_released_instance(probe_config: probes.ProbeConfig, monkeypatch: pytest.MonkeyPatch) -> None:
+    child_keyring.control_inherited_children(monkeypatch)  # run_contained's child inherits this environment (#661)
     outcome = probes.run_contained("redis", Path(os.environ[probes.CONFIG_ENV]))  # its whole tree is stopped on return
     record = json.loads(Path(outcome["record"]).read_text(encoding="ascii"))
     assert record["source"]["before"] == record["source"]["after"] and record["source"]["before"]["head"] != "UNKNOWN"
