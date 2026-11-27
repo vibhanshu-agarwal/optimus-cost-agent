@@ -1959,6 +1959,7 @@ class AcpDuplexAdapter:
         session.client_mcp_state = empty_state
         self.retention.retain_setup_state(session.session_id, empty_state)
         completed = False
+        handled_by_caller = sys.exc_info()[1]  # a caller's exception already being handled is not this setup's failure (#642)
         try:
             session.conversation = self._new_conversation(Path(session.cwd))
             if self._context_attachment is not None:
@@ -2027,8 +2028,13 @@ class AcpDuplexAdapter:
                 custody.remove(use)
                 use.release()
                 self.retention.request_retire(session.session_id, reason=RetirementReason.CREATE_FAILED)
-                with contextlib.suppress(BaseException):
-                    await self.retention.wait_retired(session.session_id)
+                # The owned retirement reaches its terminal outcome first; a caller's cancel delivered meanwhile then goes on (#642).
+                # The job's own outcome stays with retention (drain), so its failure never replaces the refusal or the original failure.
+                cancel = await self.retention.wait_retirement_ended(session.session_id)
+                # A setup cancel, KeyboardInterrupt or SystemExit unwinds as itself; only a refusal or ordinary failure yields.
+                unwinding = sys.exc_info()[1]
+                if cancel is not None and (unwinding is handled_by_caller or isinstance(unwinding, Exception)):
+                    raise cancel
 
     @observe_operation
     async def _handle_session_prompt(
