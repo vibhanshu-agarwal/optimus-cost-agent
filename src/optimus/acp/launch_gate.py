@@ -46,6 +46,7 @@ from optimus.acp.launch_policy import (
     project_gateway_tool_child_env,
 )
 from optimus.acp.local_gateway_secrets import (
+    _LAYER_WORDS,
     CredentialLayer,
     CredentialProvenance,
     CredentialStoreUnavailable,
@@ -89,7 +90,12 @@ from optimus_security.memory_index_config import config_literal as memory_index_
 from optimus_security.memory_store_config import SECURITY_LITERAL_NAME as MEMORY_STORE_LITERAL_NAME
 from optimus_security.memory_store_config import MemoryStoreConfigError, memory_store_root
 from optimus_security.memory_store_config import config_literal as memory_store_config_literal
-from optimus_security.sanitization import canonicalize_credential_uri, validate_secret_length
+from optimus_security.sanitization import (
+    CredentialUriError,
+    canonicalize_credential_uri,
+    mask_uri_userinfo,
+    validate_secret_length,
+)
 
 # Plan 9.96, Task 5 Batch 3 Step 5: the reviewed default each monotonic-tier
 # name is compared against in _authorize_monotonic_grants(). Values <= this
@@ -164,6 +170,20 @@ class LaunchGateError(ValueError):
         self.code = code
         self.detail = detail
         super().__init__(f"{code}: {detail}" if detail else code)
+
+
+def credential_uri_display(name: str, value: str, layer: CredentialLayer) -> str:
+    """The display form of a credential-bearing URL, or a refusal that names the variable and its source only.
+
+    #671: the value may hold a password or a pasted key, so neither it nor the parser's exception is kept.
+    """
+    try:
+        return mask_uri_userinfo(value)
+    except CredentialUriError as exc:
+        raise LaunchGateError(
+            code="CREDENTIAL_URI_INVALID",
+            detail=f"{name} from {_LAYER_WORDS.get(layer, 'configuration')} is {exc}; the value is not shown.",
+        ) from None
 
 
 # --- Config-root and .env.gateway permission validation ---
@@ -564,7 +584,10 @@ def resolve_launch_candidate(
                     detail=name,
                 )
 
-        # Build display row.
+        # Build display row. A credential-bearing URL is validated first, so its display and digest never see a
+        # value that would echo (#671).
+        if policy.uri_userinfo:
+            credential_uri_display(name, value, CredentialLayer.ENVIRONMENT)
         display_value = policy.display(value)
         decision = _compute_decision(policy, value)
         display_rows.append(LaunchDisplayRow(
@@ -675,6 +698,12 @@ def resolve_launch_candidate(
         raise LaunchGateError(code="GATEWAY_CREDENTIAL_STORE_UNAVAILABLE", detail=exc.user_message) from exc
     except ProviderCredentialConfigurationError as exc:
         raise LaunchGateError(code="GATEWAY_PROVIDER_UNSUPPORTED", detail=exc.user_message) from exc
+    if provider_credentials is not None and provider_credentials.secrets is not None:
+        credential_uri_display(  # .env.gateway is not in the environment scan above (#671)
+            "OPTIMUS_LOCAL_GATEWAY_BASE_URL",
+            provider_credentials.secrets.base_url or "",
+            provider_credentials.base_url_provenance.layer,
+        )
 
     # 2c. Fold the RESOLVED credentials (which may come from .env.gateway or
     # keyring, not just the environment scan above) into the digest inputs.
