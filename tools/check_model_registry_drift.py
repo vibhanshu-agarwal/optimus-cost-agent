@@ -168,9 +168,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.registry is None:
         with resources.as_file(resources.files("optimus_model_policy").joinpath("defaults.yaml")) as packaged:
-            snapshot = load_registry(packaged, args.override)
+            snapshot = load_registry(packaged, operator=args.override)
     else:
-        snapshot = load_registry(args.registry, args.override)
+        snapshot = load_registry(args.registry, operator=args.override)
 
     try:
         if args.fetch:
