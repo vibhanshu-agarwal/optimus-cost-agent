@@ -513,3 +513,27 @@ async def test_session_retirement_does_not_inherit_the_request_correlation(tmp_p
     result = await owner.wait_retired(session.session_id)
     assert result.status is RetirementStatus.RELEASED
     assert observed == [None]
+
+
+@pytest.mark.parametrize("readings, elapsed", [([22.0, 23.0], 1.0), ([None, 23.0], None), ([22.0, None], None)])
+async def test_retention_reports_age_only_with_both_clock_readings(tmp_path, monkeypatch, readings, elapsed):
+    from optimus.acp import session_retention
+
+    clock_values = iter(readings)
+    records = []
+
+    def clock():
+        reading = next(clock_values)
+        if reading is None:
+            raise OSError("synthetic clock failure")
+        return reading
+
+    monkeypatch.setattr(session_retention, "acp_debug_log", lambda **fields: records.append(fields["data"]()))
+    store, owner = bound_store()
+    owner._clock = clock
+    session = store.create(cwd=tmp_path)
+
+    assert owner.is_active(session.session_id)
+    created, = [record for record in records if record["event"] == "created"]
+    assert created["elapsed_seconds"] == elapsed
+    store.remove(session.session_id)

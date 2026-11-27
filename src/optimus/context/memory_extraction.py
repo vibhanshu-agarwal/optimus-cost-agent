@@ -16,6 +16,7 @@ import dataclasses
 import hashlib
 import hmac
 import json
+import logging
 import queue
 import re
 import threading
@@ -28,6 +29,8 @@ from context_engine.contracts import ContractError
 from context_engine.memory_contracts import AGENT_KINDS, MAX_STATEMENT_CHARS, USER_KINDS, HostVerdict, MemoryCandidate, MemoryNotice, Span
 from context_engine.memory_projection import ItemState
 from optimus.guardrails.prompt_injection import ConfigTrustScanner, TrustScanSubject
+
+_LOG = logging.getLogger(__name__)
 
 USER_PURPOSE: Final = "memory.extract_user"
 AGENT_PURPOSE: Final = "memory.extract_agent"
@@ -724,9 +727,15 @@ class MemoryExtractor:
             if not invocation.start():
                 continue
             try:
-                self._report(self._run(purpose, turn))
-            except Exception:  # noqa: BLE001 - a fault in one job never stops the extractor; nothing was admitted from it
-                self._report(Outcome(turn.turn_id, purpose, incomplete="extractor_fault"))
+                try:
+                    outcome = self._run(purpose, turn)
+                except Exception:  # noqa: BLE001 - report the fault and keep draining the queue
+                    outcome = Outcome(turn.turn_id, purpose, incomplete="extractor_fault")
+                try:
+                    self._report(outcome)
+                except Exception as exc:  # noqa: BLE001 - reporting cannot change the settled job
+                    with contextlib.suppress(Exception):
+                        _LOG.warning("Memory extraction outcome reporting failed (%s)", type(exc).__name__)
             finally:
                 invocation.end()
 

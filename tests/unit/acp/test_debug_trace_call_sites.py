@@ -24,7 +24,7 @@ import json
 import sys
 from decimal import Decimal
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import create_autospec
 
 import pytest
@@ -326,8 +326,10 @@ def _site_namespace(location, sink):
     elif location == WARM[12]:
         namespace["exc"] = SimpleNamespace(code="GRAMMAR_UNRECOGNIZED")
     elif location == RETENTION_SITE:
+        owner = SimpleNamespace(retained_count=1, _diagnostic_time=lambda: 6.0)
+        owner._elapsed_seconds = MethodType(retention_module.SessionRetentionOwner._elapsed_seconds, owner)
         namespace.update(event='retired', level=debug_trace.DiagnosticLevel.ERROR,
-            self=SimpleNamespace(retained_count=1, _clock=lambda: 6.0),
+            self=owner,
             entry=SimpleNamespace(session=SimpleNamespace(session_id='session-' + 'a' * 32), phase='QUARANTINED',
                 uses=0, reason=retention_module.RetirementReason.EXPLICIT_REMOVE, created=4.0,
                 result=SimpleNamespace(close=retention_module.SessionCloseResult(('SESSION_CLOSE_FAILED',), False)),
