@@ -11,6 +11,7 @@ from optimus.acp.local_infra import DEFAULT_REDIS_URL
 from optimus.agent.state_store import validate_redis_url
 from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
 from optimus_model_policy.binding import RouteBinding
+from optimus_security.sanitization import CredentialUriError, mask_uri_userinfo
 
 if TYPE_CHECKING:
     from optimus.gateway.models import GatewayResponse
@@ -167,6 +168,14 @@ def _require_redis_timeseries(runtime: RedisRuntime) -> None:
         ) from exc
 
 
+def _transport_facts(failure: Mapping[str, object] | None) -> str:
+    """The transport's bounded facts (exception class, its cause's class, errno), never exception text (#671)."""
+    facts = failure or {}
+    errno = facts.get("errno")
+    parts = [str(facts[key]) for key in ("class", "cause") if facts.get(key)] + ([f"errno {errno}"] if errno is not None else [])
+    return ", ".join(parts) or "transport failure"
+
+
 def _probe_route_binding(model_id: str, shared_secret: str, *, auto: bool = False) -> RouteBinding | None:
     """The strict auth probe's route binding under the enforced registry the launch serves (closure plan v3; the Auto
     composition for an Auto launch, Plan 12.4), so the enforced Gateway does not refuse it as unbound
@@ -212,7 +221,10 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
 
     settings = OptimusGatewaySettings.from_env(environ)
     client = GatewayClient(settings=settings) if durable_capture is None else GatewayClient(settings=settings, capture=durable_capture.hook)
-    gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "").strip()
+    try:  # #671: the validated URL with any query or fragment hidden; a fixed label if the masker refuses it
+        gateway_url = mask_uri_userinfo(settings.gateway_url)
+    except CredentialUriError:
+        gateway_url = "the configured OPTIMUS_GATEWAY_URL"
     try:
         # The probe uses the launch's own model (its --model, else the environment, else the default), and an
         # unusable model is a typed refusal here, before any request (Fable review 1, F1). An Auto launch never sends
@@ -246,13 +258,14 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
         if exc.status_code > 0:
             raise PreflightFailure(
                 exit_code=2,
-                user_message=f"Gateway at {gateway_url} rejected the auth probe request: {exc}",
+                # #671: the status only; an error body can repeat the request target, query included
+                user_message=f"Gateway at {gateway_url} rejected the auth probe request (HTTP {exc.status_code}).",
             ) from exc
         if exc.failure is not None and exc.failure.get("kind") in {"gateway_invalid_json", "gateway_non_object_json"}:
             raise PreflightFailure(exit_code=2, user_message=invalid_response) from exc
         raise PreflightFailure(
             exit_code=2,
-            user_message=f"Gateway is not reachable at {gateway_url}. ({exc})",
+            user_message=f"Gateway is not reachable at {gateway_url}. ({_transport_facts(exc.failure)})",
         ) from exc
     except GatewayResponseError as exc:
         raise PreflightFailure(exit_code=2, user_message=invalid_response) from exc

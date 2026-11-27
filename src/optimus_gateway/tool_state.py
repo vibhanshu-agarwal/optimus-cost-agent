@@ -129,12 +129,17 @@ class RedisGatewayToolStateStore:
         socket_connect_timeout: float = 2.0,
         socket_timeout: float = 2.0,
     ) -> "RedisGatewayToolStateStore":
-        client = redis.Redis.from_url(
-            url,
-            decode_responses=True,
-            socket_connect_timeout=socket_connect_timeout,
-            socket_timeout=socket_timeout,
-        )
+        try:
+            client: redis.Redis | None = redis.Redis.from_url(
+                url,
+                decode_responses=True,
+                socket_connect_timeout=socket_connect_timeout,
+                socket_timeout=socket_timeout,
+            )
+        except ValueError:  # redis-py's text can carry a query value or the URL itself (#671)
+            client = None
+        if client is None:  # raised outside the except, so redis-py's exception is not kept in the chain
+            raise ValueError("OPTIMUS_GATEWAY_TOOL_REDIS_URL is not a usable Redis URL; the value is not shown.")
         return cls(
             client=cast(GatewayRedisClient, client),
             provenance_ttl_seconds=provenance_ttl_seconds,

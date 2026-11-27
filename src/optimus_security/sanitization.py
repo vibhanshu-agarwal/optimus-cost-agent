@@ -18,12 +18,13 @@ import hmac
 import math
 import re
 import sys
+import unicodedata
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import SplitResult, urlsplit
 
 # Maximum length of a secret that the sanitizer guarantees to catch in streaming
 # mode. Secrets longer than this are rejected at launch time.
@@ -876,31 +877,74 @@ class CredentialUriCanonicalization:
     userinfo_present: bool
 
 
-def canonicalize_credential_uri(uri: str) -> CredentialUriCanonicalization:
-    """Canonicalize a credential-bearing URI using original-text slicing."""
+class CredentialUriError(ValueError):
+    """A credential-bearing URI that cannot be shown or hashed safely. Its message never contains the value (#671)."""
+
+
+HTTP_URI_SCHEMES = frozenset({"http", "https"})
+REDIS_URI_SCHEMES = frozenset({"redis", "rediss", "unix"})  # what redis-py's from_url accepts; the host may be absent
+
+
+def _split_credential_uri(stripped: str, schemes: frozenset[str]) -> SplitResult | None:
+    """The parts of an absolute URI whose netloc sits verbatim right after ``scheme://``, else None.
+
+    It returns None rather than raising inside the parser's except block, so no urllib.parse exception (whose text
+    carries the netloc, password included) is kept in any exception chain.
+    """
+    # A control, format or separator character: urllib.parse drops some (a tab) before parsing, so a slice of the
+    # original text would no longer match the parsed netloc and its password would survive the redaction.
+    if any(unicodedata.category(char)[0] in "CZ" for char in stripped):
+        return None
+    try:
+        parts = urlsplit(stripped)
+        host, _port = parts.hostname, parts.port
+    except ValueError:  # an NFKC-delimiter netloc, a bad port or a bad IPv6 literal
+        return None
+    start = len(parts.scheme) + 3
+    if (
+        parts.scheme not in schemes
+        or (not host and parts.scheme in HTTP_URI_SCHEMES)  # redis-py defaults a missing host to localhost
+        or stripped[len(parts.scheme) : start] != "://"
+        or stripped[start : start + len(parts.netloc)] != parts.netloc
+    ):
+        return None
+    return parts
+
+
+def canonicalize_credential_uri(
+    uri: str, *, schemes: frozenset[str] = HTTP_URI_SCHEMES | REDIS_URI_SCHEMES
+) -> CredentialUriCanonicalization:
+    """Canonicalize a credential-bearing URI using original-text slicing.
+
+    The normalized URI (a digest input) is the original text with only the userinfo cut out, as before #671, so an
+    approval of a valid value keeps its digest. The display is built from the validated parts with the userinfo, the
+    query and the fragment redacted; the path is shown, as it is the endpoint (a token placed in a path is not found).
+    A value that is not an absolute URI of one of ``schemes`` (http and https with a host) raises CredentialUriError,
+    whose message never contains the value. An empty value stays empty.
+    """
     stripped = uri.strip()
-    parsed = urlparse(stripped)
-    userinfo_present = parsed.username is not None or parsed.password is not None
-
-    if not userinfo_present:
-        return CredentialUriCanonicalization(
-            normalized_uri=stripped,
-            display_uri=stripped,
-            userinfo_present=False,
+    if not stripped:
+        return CredentialUriCanonicalization(normalized_uri="", display_uri="", userinfo_present=False)
+    parts = _split_credential_uri(stripped, schemes)
+    if parts is None:
+        raise CredentialUriError(
+            f"not an absolute {' or '.join(sorted(schemes))} URL without spaces or control characters"
         )
-
-    _, _, hostport = parsed.netloc.rpartition("@")
-    normalized_netloc = hostport
-    display_netloc = f"{_REDACTED}@{hostport}"
-
-    netloc_index = stripped.find(parsed.netloc)
-    prefix = stripped[:netloc_index]
-    suffix = stripped[netloc_index + len(parsed.netloc) :]
-
+    userinfo_present = parts.username is not None or parts.password is not None
+    start = len(parts.scheme) + 3
+    hostport = parts.netloc.rpartition("@")[2]
+    display = (
+        stripped[:start]
+        + (f"{_REDACTED}@" if userinfo_present else "")
+        + hostport
+        + parts.path
+        + (f"?{_REDACTED}" if parts.query else "")
+        + (f"#{_REDACTED}" if parts.fragment else "")
+    )
     return CredentialUriCanonicalization(
-        normalized_uri=prefix + normalized_netloc + suffix,
-        display_uri=prefix + display_netloc + suffix,
-        userinfo_present=True,
+        normalized_uri=stripped[:start] + hostport + stripped[start + len(parts.netloc) :],
+        display_uri=display,
+        userinfo_present=userinfo_present,
     )
 
 
