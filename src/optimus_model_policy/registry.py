@@ -563,14 +563,13 @@ def load_registry(defaults: Path, *overrides: Path | None, operator: Path | None
     base, base_raw = _load_yaml(defaults)
     combined = base
     input_hashes = [(defaults.name, hashlib.sha256(base_raw).hexdigest())]
-    for override in (*overrides, operator):
-        if override is None:
-            continue
-        extra, extra_raw = _load_yaml(override)
-        if override is operator:
-            _refuse_operator_budget(extra, override.name)
+    layers = [(path, False) for path in overrides if path is not None] + ([(operator, True)] if operator is not None else [])
+    for path, is_operator in layers:
+        extra, extra_raw = _load_yaml(path)
+        if is_operator:
+            _refuse_operator_budget(extra, path.name)  # checked on the same bytes the input hash records
         combined = _combine(combined, extra)
-        input_hashes.append((override.name, hashlib.sha256(extra_raw).hexdigest()))
+        input_hashes.append((path.name, hashlib.sha256(extra_raw).hexdigest()))
     try:
         policy = Policy.model_validate(combined)
     except ValidationError as exc:

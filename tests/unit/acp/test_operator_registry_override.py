@@ -18,8 +18,11 @@ from unittest.mock import patch
 import pytest
 
 from optimus.acp import launch_approval_cli, operator_paths
-from optimus.acp.launch_gate import LaunchGateError
-from optimus.acp.trusted_paths import TrustedOperatorRoots
+from optimus.acp.launch_approvals import KeyringApprovalStore
+from optimus.acp.launch_gate import LaunchGateError, resolve_launch_candidate
+from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
+from optimus.acp.operator_paths import resolve_authorized_operator_paths
+from optimus.acp.trusted_paths import TrustedOperatorRoots, resolve_workspace_security_state
 from optimus_gateway import __main__ as gateway_main
 from optimus_model_policy import Role, select_eligible_models
 from optimus_model_policy.binding import (
@@ -36,7 +39,7 @@ from optimus_model_policy.binding import (
 )
 from optimus_model_policy.registry import RegistryError, load_registry
 from tests.unit.acp.conftest import FakeKeyring
-from tests.unit.acp.test_launch_gate_model_registry import _candidate
+from tests.unit.acp.test_launch_gate_model_registry import _ENV, _candidate
 from tests.unit.acp.test_local_infra_model_registry import _spawned_args
 from tests.unit.optimus_gateway.test_main_model_registry import _manifest, _run, started  # noqa: F401 - fixture
 
@@ -276,16 +279,33 @@ def test_the_refusal_reads_only_the_operator_layer(tmp_path: Path) -> None:
         use_operator_override(None)
 
 
-def test_the_launch_gate_refuses_a_budget_override_before_anything_is_approved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("value", _BUDGETS)
+@pytest.mark.parametrize("model", [None, "auto"])
+def test_the_launch_gate_refuses_a_budget_override_before_anything_is_approved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str | None, value: str
+) -> None:
     roots = TrustedOperatorRoots(
         default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
     )
     monkeypatch.setattr(operator_paths, "resolve_trusted_operator_roots", lambda **_: roots)
     keyring = FakeKeyring()
-    _budget_override(_candidate(tmp_path, keyring)[0].operator_paths.config_root, "null")
+    _budget_override(_candidate(tmp_path, keyring)[0].operator_paths.config_root, value)
+    before = dict(keyring._store)
+    env = {**_ENV, **({"OPTIMUS_AGENT_MODEL": model} if model else {})}
+    snapshot = LaunchEnvironmentSnapshot.capture(env)
+    paths = resolve_authorized_operator_paths(workspace_root=tmp_path, snapshot_values=snapshot.values, platform_name=sys.platform)
+    store = KeyringApprovalStore(keyring_backend=keyring, runtime_root=tmp_path / ".optimus-runtime")
     with pytest.raises(LaunchGateError) as caught:
-        _candidate(tmp_path, keyring)
+        resolve_launch_candidate(snapshot=snapshot, workspace_state=resolve_workspace_security_state(tmp_path), operator_paths=paths, hmac_key=store.hmac_key)
     assert (caught.value.code, caught.value.detail) == ("MODEL_REGISTRY_INVALID", "OVERRIDE_BUDGET_REFUSED")
+    assert keyring._store == before  # nothing approved or written
+
+
+@pytest.mark.parametrize("auto", [False, True])
+def test_run_gateway_refuses_a_budget_override_before_signing_or_spawning(tmp_path: Path, monkeypatch, auto: bool) -> None:
+    _budget_override(tmp_path / "config", '{input_target_usd: "0.012288"}')
+    code, spawned, err = _run_gateway(tmp_path, monkeypatch, approval=None, auto=auto)
+    assert (code, spawned) == (2, []) and "OVERRIDE_BUDGET_REFUSED" in err
 
 
 def test_the_gateway_refuses_to_start_with_a_budget_override(tmp_path: Path, started: list, capsys) -> None:  # noqa: F811
