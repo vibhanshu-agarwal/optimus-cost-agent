@@ -168,6 +168,14 @@ def _require_redis_timeseries(runtime: RedisRuntime) -> None:
         ) from exc
 
 
+def _transport_facts(failure: Mapping[str, object] | None) -> str:
+    """The transport's bounded facts (exception class, its cause's class, errno), never exception text (#671)."""
+    facts = failure or {}
+    errno = facts.get("errno")
+    parts = [str(facts[key]) for key in ("class", "cause") if facts.get(key)] + ([f"errno {errno}"] if errno is not None else [])
+    return ", ".join(parts) or "transport failure"
+
+
 def _probe_route_binding(model_id: str, shared_secret: str, *, auto: bool = False) -> RouteBinding | None:
     """The strict auth probe's route binding under the enforced registry the launch serves (closure plan v3; the Auto
     composition for an Auto launch, Plan 12.4), so the enforced Gateway does not refuse it as unbound
@@ -257,7 +265,7 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
             raise PreflightFailure(exit_code=2, user_message=invalid_response) from exc
         raise PreflightFailure(
             exit_code=2,
-            user_message=f"Gateway is not reachable at {gateway_url}. ({(exc.failure or {}).get('class', 'transport failure')})",
+            user_message=f"Gateway is not reachable at {gateway_url}. ({_transport_facts(exc.failure)})",
         ) from exc
     except GatewayResponseError as exc:
         raise PreflightFailure(exit_code=2, user_message=invalid_response) from exc

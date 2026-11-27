@@ -380,3 +380,24 @@ def test_preflight_names_a_gateway_url_the_masker_refuses_with_a_fixed_label(mon
     with pytest.raises(preflight.PreflightFailure) as caught:
         preflight._require_gateway_auth({**_REQUIRED_LAUNCH_ENV, "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765/a b"})
     assert "the configured OPTIMUS_GATEWAY_URL" in caught.value.user_message, caught.value.user_message
+
+
+def test_preflight_keeps_the_transport_cause_without_its_text(monkeypatch) -> None:
+    """Codex round 3: a refused connection and a certificate failure stay distinguishable, by class and errno only."""
+    from optimus.acp import preflight
+    from optimus.gateway.errors import GatewayHttpError
+
+    failure = {"kind": "transport", "class": "URLError", "cause": "ConnectionRefusedError", "errno": 10061}
+
+    class _Refused:
+        def __init__(self, *, settings) -> None:
+            pass
+
+        def create_response(self, **_kwargs) -> None:
+            raise GatewayHttpError(0, "refused at /v1?token=" + _PW, failure=failure)
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", _Refused)
+    with pytest.raises(preflight.PreflightFailure) as caught:
+        preflight._require_gateway_auth(dict(_REQUIRED_LAUNCH_ENV))
+    assert "(URLError, ConnectionRefusedError, errno 10061)" in caught.value.user_message, caught.value.user_message
+    _assert_no_value(caught.value.user_message)
