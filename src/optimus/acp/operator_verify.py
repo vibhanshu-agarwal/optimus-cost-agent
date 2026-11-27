@@ -39,6 +39,7 @@ from optimus.acp.preflight import (
     first_preflight_failure,
     format_preflight_table,
 )
+from optimus.acp.shapes import code_block_content
 from optimus.acp.subprocess_env import SubprocessEnvConfigurationError, build_acp_subprocess_env
 from optimus.agent.defaults import AgentModelError, resolve_agent_model
 from optimus.agent.directives import AgentDirectiveParseError, parse_agent_plan
@@ -514,8 +515,8 @@ def latest_plan_text_from_transcript(transcript: E2eAcpTranscriptWriter) -> str:
             continue
         entries = update.get("entries")
         if isinstance(entries, list) and entries:
-            lines = [
-                str(entry.get("content", "")).strip()
+            lines = [  # each entry shows its plan line in a code block (#591)
+                code_block_content(str(entry.get("content", "")).strip()).strip()
                 for entry in entries
                 if isinstance(entry, dict) and str(entry.get("content", "")).strip()
             ]

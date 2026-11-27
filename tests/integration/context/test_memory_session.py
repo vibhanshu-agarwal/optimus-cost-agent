@@ -545,7 +545,9 @@ def test_the_host_drives_a_real_session_through_a_turn(root: Path, sessions: _Se
     assert [call.authorization_outcome for call in seen["ran"].calls] == ["ALLOW", "ALLOW"]
     assert any("Context index: ready, 3 of 3 files." in str(update) for update in updates)
     titles = [(update["sessionUpdate"], update["title"], update["status"]) for update in updates if update.get("sessionUpdate", "").startswith("tool_call") and update["title"].split(" ")[0] in {"SEARCH", "LIST"}]
-    assert titles == [("tool_call", "SEARCH first_function", "in_progress"), ("tool_call_update", "SEARCH first_function", "completed"), ("tool_call", "LIST .", "in_progress"), ("tool_call_update", "LIST .", "completed")]
+    # the model's argument is escaped for Markdown where it is shown (#591)
+    search, listing = "SEARCH first\\_function", "LIST \\."
+    assert titles == [("tool_call", search, "in_progress"), ("tool_call_update", search, "completed"), ("tool_call", listing, "in_progress"), ("tool_call_update", listing, "completed")]
 
 
 def _pings(connection: redis.Redis) -> bool:

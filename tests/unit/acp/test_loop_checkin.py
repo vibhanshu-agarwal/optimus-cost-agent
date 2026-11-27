@@ -182,7 +182,8 @@ async def test_stop_at_the_check_in_ends_the_turn_with_the_actual_cause(tmp_path
     checkin = await _next_request(outbound, 0)
     assert checkin["method"] == "session/request_permission"
     assert checkin["params"]["_meta"]["loopCheckIn"] is True
-    assert "repeated the read of a.py#bytes=0:5" in checkin["params"]["toolCall"]["content"][0]["content"]["text"]
+    # host text, escaped for Markdown where it is shown (#591)
+    assert "repeated the read of a\\.py\\#bytes=0:5" in checkin["params"]["toolCall"]["content"][0]["content"]["text"]
     outbound.respond(checkin["id"], STOP)
 
     response = (await prompt).response

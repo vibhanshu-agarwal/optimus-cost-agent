@@ -534,6 +534,7 @@ def test_direct_completion_cannot_grant_a_late_physical_send():
 async def test_safe_mcp_activity_keeps_terminal_text_and_settlement_gates(tmp_path, monkeypatch, typed_stop):
     audit = AgentToolCall(tool_name="mcp_call:lookup", summary="MCP call held.", authorization_outcome="HOLD")
     expected_text = "Cannot safely continue." if typed_stop else "Tool activity:\n- MCP call held."
+    shown_text = "Cannot safely continue." if typed_stop else "Tool activity:\n- MCP call held\\."  # escaped where shown (#591)
 
     class RetainedMcpScript(Script):
         def run(self, request, **kwargs):
@@ -567,7 +568,7 @@ async def test_safe_mcp_activity_keeps_terminal_text_and_settlement_gates(tmp_pa
         turn = h.adapter._active_turns[h.session_id]
         assert turn.turn_control.send_slot(TurnSendKey("terminal_set", "final_text")).authoritative is SendState.WRITE_STARTED
         terminal = h.transport.writes[-1]
-        assert terminal["params"]["update"]["content"]["text"] == expected_text + AGENT_MESSAGE_BLOCK_SEPARATOR
+        assert terminal["params"]["update"]["content"]["text"] == shown_text + AGENT_MESSAGE_BLOCK_SEPARATOR
         terminal_release.set()
         await asyncio.wait_for(rpc_entered.wait(), 3)
         assert not h.events and h.session_id in h.adapter._active_turns
