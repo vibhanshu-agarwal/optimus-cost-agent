@@ -421,6 +421,7 @@ class PlanningCheckIn(BaseModel):
     text: str
     plan_waiting: bool = False
     refusal_waiting: bool = False
+    quoted: tuple[str, ...] = ()  # the model-authored parts `text` quotes (the repeated step, a refusal reason), for display (#591)
 
 
 # Blocks the planning worker until the user answers; nothing runs meanwhile (ADR-009 requirement 3).
@@ -436,6 +437,7 @@ class PlanningEscalation(BaseModel):
     cause: str
     planning_steps: int = Field(ge=1)
     what: str
+    quoted: tuple[str, ...] = ()  # the repeated step `what` quotes, for display (#591)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1055,6 +1057,7 @@ _PLANNING_STOP_REASONS = {
     LoopStopReason.MAX_ITERATIONS: "PLANNING_TURN_LIMIT_EXHAUSTED",
     LoopStopReason.HUMAN_HALT: "PLANNING_HALTED",
 }
+LAST_REPEATED_STEP = " Last repeated step: "  # a recovery stop's detail; what follows quotes the step (#591 escapes it where shown)
 # The actual cause of a recovery stop, per detection or allowance (Plan 12.3, Design 7).
 _RECOVERY_STOP_REASONS: dict[str, str] = {
     LoopSignalKind.REPEATED_READ: "PLANNING_REPEATED_READ_REQUEST",
@@ -1082,6 +1085,7 @@ _CHECKIN_ENDINGS = {
         "send the request again to retry."
     ),
 }
+CHECKIN_ENDING_TEXTS = tuple(_CHECKIN_ENDINGS.values())  # fixed text that may follow a recovery stop's repeated step
 
 
 # #400: the same failures when they prove the experimental route stopped, as Chat says them (r8). The Gateway then
@@ -1598,15 +1602,21 @@ class _PlanningIterationRunner:
             # The nudge was carried and the model still struggles, or gave up with a REFUSE (plan r5): help comes before
             # asking (ADR-009 rung 2). A plan the nudge produced goes to the user.
             if self._escalates and not self._escalation_tried and not plan_waiting and (self._nudged or not refusal_waiting):
-                return PlanningEscalation(cause=cause, planning_steps=self._steps_run, what=self._episode_text())
+                return PlanningEscalation(
+                    cause=cause, planning_steps=self._steps_run, what=self._episode_text(), quoted=(self._episode.step.subject,)
+                )
         else:
             cause = _WALL_CLOCK if stop is LoopStopReason.WALL_CLOCK else _TURN_LIMIT
+        quoted: tuple[str | None, ...] = () if self._episode is None else (self._episode.step.subject,)
+        if refusal_waiting and self._last_decision is not None and self._last_decision.kind is PlanningTurnKind.REFUSE:
+            quoted += (self._last_decision.reason,)
         return PlanningCheckIn(
             cause=cause,
             planning_steps=self._steps_run,
             text=self._checkin_text(cause, plan_waiting, refusal_waiting),
             plan_waiting=plan_waiting,
             refusal_waiting=refusal_waiting,
+            quoted=tuple(part for part in quoted if part),
         )
 
     def record_checkin(self, checkin: PlanningCheckIn, decision: CheckInDecision) -> None:
@@ -1617,7 +1627,7 @@ class _PlanningIterationRunner:
             # A refusal that is not continued stands, with the model's reason and any check-in explanation.
             self._refusal_detail = _CHECKIN_ENDINGS.get(decision, "")
             return
-        detail = "" if self._episode is None else f" Last repeated step: {self._episode.step.subject}."
+        detail = "" if self._episode is None else f"{LAST_REPEATED_STEP}{self._episode.step.subject}."
         detail += _CHECKIN_ENDINGS.get(decision, "")
         self._recovery_stop = (_RECOVERY_STOP_REASONS[checkin.cause], detail)
 

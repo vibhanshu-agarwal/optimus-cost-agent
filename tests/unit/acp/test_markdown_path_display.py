@@ -137,7 +137,8 @@ def _result(stop_reason: str | None, output_text: str, calls: tuple[AgentToolCal
 def test_only_the_token_is_escaped_and_the_history_text_is_rebuilt_unchanged(token):
     """The EDIT failure, and two agent-authored texts the first sweep did not list: a stopped TEST's "Applied:" list and a
     refused WRITE's sentence. Only the token is escaped; the identity rebuilds each text byte for byte."""
-    stopped = _result("TEST_TIMED_OUT", f"A TEST directive timed out; the later directives were not run. Applied:{chr(10)}- wrote {token}")
+    wrote = AgentToolCall(tool_name="write_file", summary=f"wrote {token}", authorization_outcome="ALLOW")
+    stopped = _result("TEST_TIMED_OUT", f"A TEST directive timed out; the later directives were not run. Applied:{chr(10)}- wrote {token}", calls=(wrote,))
     refused = _result("WRITE_LINE_ENDINGS_MIXED", f"{token} has mixed line endings, which Optimus does not rewrite. This WRITE did not change the file.")
     failed = _result("EDIT_NOT_APPLICABLE", edit_failure_text("EDIT_OLD_NOT_FOUND", token))
     for result in (stopped, refused, failed):
@@ -194,3 +195,64 @@ async def test_a_fenced_plan_keeps_its_hash_and_its_applied_content(tmp_path):
     assert _fenced(request["params"]["toolCall"]["content"][0]["content"]["text"]) == plan
     assert (tmp_path / "a.md").read_text(encoding="utf-8") == body
     assert "_meta" in result
+
+
+# --- Codex review round 1 (#591) ---------------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("token", TOKENS.values(), ids=TOKENS.keys())
+async def test_a_recovery_check_in_and_its_stop_text_show_the_repeated_step_inert(token, tmp_path):
+    """The check-in quotes the repeated step (a model-authored ranged READ path); so does the stop text after Stop."""
+    from tests.unit.acp.test_loop_checkin import STOP, _messages, _next_request, _start
+
+    path = f"{token}/b.py"  # not a.py: the prompt names a.py, and two would be ambiguous
+    (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / path).write_text("0123456789abcdef", encoding="utf-8")
+    _adapter, _gateway, outbound, session_id, prompt = await _start(tmp_path, [f"OBSERVE: need the header{chr(10)}READ: {path}#bytes=0:5{chr(10)}"] * 4)
+    checkin = await asyncio.wait_for(_next_request(outbound, 0), 15)
+    checkin_text = checkin["params"]["toolCall"]["content"][0]["content"]["text"]
+    outbound.respond(checkin["id"], STOP)
+    await prompt
+
+    assert "repeated the read of" in checkin_text and _live(checkin_text) == []
+    shown = _messages(outbound)
+    assert "Last repeated step: " in shown and _live(shown) == []
+    [record] = _adapter._sessions.get(session_id).conversation.records.values()
+    assert BS not in record.completion_text and "Last repeated step: " in record.completion_text  # the history keeps the raw step
+
+
+def test_a_stopped_test_rebuilds_its_applied_list_from_the_write_calls():
+    """A resolved write summary can hold a line break (a POSIX symlink target); every part of it is shown escaped."""
+    summary = f"wrote a{chr(10)}{TOKENS['link']}"
+    text = f"A TEST directive timed out; the later directives were not run. Applied:{chr(10)}- {summary}"
+    result = _result("TEST_TIMED_OUT", text, calls=(AgentToolCall(tool_name="write_file", summary=summary, authorization_outcome="ALLOW"),))
+
+    assert _live(_completion_message(result, spec._shown)) == [] and _completion_message(result) == text
+
+
+def test_a_shown_token_is_never_shortened():
+    """A long TEST command keeps its exit code in view: the shown text is escaped, never cut."""
+    summary = "ran pytest " + " ".join(f"tests/test_{n}.py" for n in range(400)) + " exit=1"
+    assert spec._shown(summary).endswith("exit=1")
+
+
+def test_the_live_verifier_reads_the_plan_lines_inside_their_code_blocks():
+    from optimus.acp.e2e_transcript import E2eAcpTranscriptWriter
+    from optimus.acp.operator_verify import latest_plan_text_from_transcript
+    from optimus.acp.shapes import build_plan_session_update, code_block_content
+
+    plan = f"WRITE a.md{chr(10)}x {FENCE3} y{chr(10)}TEST pytest -q{chr(10)}"
+    transcript = E2eAcpTranscriptWriter()
+    transcript.record_inbound({"method": "session/update", "params": build_plan_session_update(session_id="s", plan_text=plan)})
+
+    assert latest_plan_text_from_transcript(transcript) == plan.strip()
+    assert code_block_content("not fenced") == "not fenced" and code_block_content(code_block(FENCE4)) == FENCE4
+
+
+def test_a_host_line_escapes_only_what_it_quotes_and_everything_when_a_part_is_missing():
+    link = TOKENS["link"]
+    line = f"Planning paused: the model repeated the read of {link}#bytes=0:5. Stop ends this turn."
+
+    shown = spec._shown_quoting(line, (f"{link}#bytes=0:5",))
+    assert _live(shown) == [] and shown.endswith("Stop ends this turn.")  # the fixed text is left as it was
+    assert _live(spec._shown_quoting(line, ("not in the line",))) == []  # a part not found: the whole line is escaped

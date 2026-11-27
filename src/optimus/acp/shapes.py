@@ -23,6 +23,14 @@ def code_block(text: str) -> str:
     return f"{fence}\n{body}{fence}"
 
 
+def code_block_content(shown: str) -> str:
+    """The one line a plan entry's `code_block` wraps, for a reader of plan entries (the live verifier); other text unchanged."""
+    fence = re.match("`{3,}", shown)
+    if fence and shown.startswith(fence[0] + "\n") and shown.endswith("\n" + fence[0]) and len(shown) > 2 * len(fence[0]) + 1:
+        return shown[len(fence[0]) + 1 : -len(fence[0]) - 1]
+    return shown
+
+
 def plan_entries_from_text(plan_text: str) -> list[dict[str, Any]]:
     """One entry per plan line, each the model's own line in a code block (#591)."""
     lines = [line.strip() for line in plan_text.splitlines() if line.strip()]
