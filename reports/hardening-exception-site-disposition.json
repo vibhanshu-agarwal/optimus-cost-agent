@@ -4564,12 +4564,13 @@
       "source_review_status": "reviewed_custody",
       "owning_issue": 643,
       "behavior_owner": "ACP memory notices",
-      "rationale": "Independent follow-up owns the remaining behavior: Recover committed ACP memory notice obligations after backlog persistence failure.",
-      "evidence": "Approved handoff and verified open issue https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/643. Source observation at src/optimus/acp/spec.py:1527 in e9c8e39789f64a56a932a141722a90d1a28b65df. See the owning issue for the remaining verification.",
+      "rationale": "A refused backlog write is contained so the committed command still answers; NoticeBacklog holds the record in the process, logs the outage once value-free and retries it on later calls, so the card is shown at the next turn, by a reopened session, or after a restart once a retry has written it. A restart while every write still fails loses the card, never the change (known limit accepted on #643).",
+      "evidence": "Current site src/optimus/acp/spec.py:1528 at the base. Verified follow-up merged through PR #668. Offline regression: tests/unit/acp/test_memory_notice_recovery.py::test_a_command_notice_whose_backlog_write_and_card_both_fail_is_shown_at_the_next_turn; tests/unit/acp/test_memory_notice_recovery.py::test_a_command_notice_held_through_a_failed_write_survives_a_restart_once_a_retry_writes_it.",
       "proposed_disposition": "contain",
       "disposition": "contain",
       "finding": "A memory command can commit a change, encounter an ordinary backlog write failure and then fail card delivery. This arm discards the backlog failure and keeps the notice only in the current response's local updates. No pending copy is enqueued, so a later turn or reopened session cannot retry that notice. Plan 12.11 requires delivery obligations to survive reconnect.",
-      "implementation_state": "follow_up"
+      "implementation_state": "follow_up",
+      "follow_up_delivery": "merged_upstream"
     },
     {
       "key": "sha256:20c170aa7426c0ddd688c2b0835018a3264a67ac6a5096ca498b8162865fd097",
@@ -5672,12 +5673,13 @@
       "source_review_status": "reviewed_custody",
       "owning_issue": 643,
       "behavior_owner": "ACP memory notices",
-      "rationale": "Independent follow-up owns the remaining behavior: Recover committed ACP memory notice obligations after backlog persistence failure.",
-      "evidence": "Approved handoff and verified open issue https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/643. Source observation at src/optimus/acp/spec.py:4190 in e9c8e39789f64a56a932a141722a90d1a28b65df. See the owning issue for the remaining verification.",
+      "rationale": "A refused backlog write is contained so extraction reporting continues; NoticeBacklog holds the record in the process, logs the outage once value-free and retries it, so a replacing session or a restart after a successful retry shows the card once. A restart while every write still fails loses the card, never the change (known limit accepted on #643).",
+      "evidence": "Current site src/optimus/acp/spec.py:4200 at the base. Verified follow-up merged through PR #668. Offline regression: tests/unit/acp/test_memory_notice_recovery.py::test_an_extraction_notice_whose_backlog_write_fails_is_shown_by_the_replacing_session; tests/unit/acp/test_memory_notice_recovery.py::test_an_extraction_notice_held_through_a_failed_write_survives_a_restart_once_a_retry_writes_it.",
       "proposed_disposition": "contain",
       "disposition": "contain",
       "finding": "A committed extraction outcome plus an OSError while registering its notice leaves only session.memory_pending. A restart before a later turn then loses the obligation because the replacement session loads the durable backlog. The plan's reconnect requirement calls for accounting for this failed persistence rather than counting the notice as recoverable.",
-      "implementation_state": "follow_up"
+      "implementation_state": "follow_up",
+      "follow_up_delivery": "merged_upstream"
     },
     {
       "key": "sha256:e628bd6bcda9eecca40d584c8fad64b311efce553d33a5fabe1f3ff49988756c",
