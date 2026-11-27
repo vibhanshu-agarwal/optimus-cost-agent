@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import keyring
+from keyring.errors import NoKeyringError
 
 from optimus_security.launch_manifest import resolve_effective_base_url
 
@@ -72,6 +73,17 @@ class ProviderCredentialConfigurationError(ValueError):
         self.user_message = user_message
 
 
+class CredentialStoreUnavailable(ProviderCredentialConfigurationError):
+    """#654: the OS credential store raised on a read, so whether it holds the entry is unknown. Never read as absent."""
+
+
+_ENV_NAME_FOR_KEY = {
+    _KEY_MODEL_PROVIDER: "OPTIMUS_LOCAL_GATEWAY_PROVIDER",
+    _KEY_MODEL_PROVIDER_API_KEY: "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY",  # pragma: allowlist secret - variable name, not a credential
+    _KEY_SHARED_SECRET: "OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET",  # pragma: allowlist secret - variable name, not a credential
+}
+
+
 def _parse_env_gateway_file(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
@@ -91,10 +103,20 @@ def _parse_env_gateway_file(path: Path) -> dict[str, str]:
 
 
 def _safe_get_password(keyring_backend: Any, key: str) -> str | None:
+    """The stored value, or None when the store holds none; raises `CredentialStoreUnavailable` when it cannot answer.
+    With no keyring backend at all (keyring's fail backend), nothing can be stored, so that is absent, not unknown."""
+    failure: str | None = None
     try:
         value = keyring_backend.get_password(_KEYRING_SERVICE, key)
-    except Exception:
+    except NoKeyringError:
         return None
+    except Exception as exc:  # noqa: BLE001 - any backend failure means "unknown"; only its class is reported
+        failure = type(exc).__name__
+    if failure is not None:  # raised outside the handler, so the backend's exception is not even its __context__
+        raise CredentialStoreUnavailable(
+            f"optimus-agent: the OS keychain could not be read for {key} ({failure}); "
+            f"set {_ENV_NAME_FOR_KEY.get(key, key)} in .env.gateway or the environment, or repair the keychain."
+        )
     if value is None:
         return None
     value = value.strip()
@@ -151,11 +173,19 @@ def resolve_shared_secret(
     return value
 
 
-def _provider_error(provider: str, *, keyring: bool = False) -> ProviderCredentialConfigurationError:
-    suffix = " Run `optimus-agent --setup` to choose a supported provider." if keyring else ""
+_LAYER_WORDS = {
+    CredentialLayer.ENVIRONMENT: "the environment",
+    CredentialLayer.CONFIG_FILE: ".env.gateway",
+    CredentialLayer.KEYRING: "the OS keychain",
+}
+
+
+def _provider_error(layer: CredentialLayer) -> ProviderCredentialConfigurationError:
+    # #669: never echo the value; an API key pasted into the provider variable would reach stderr and the IDE's log.
+    suffix = " Run `optimus-agent --setup` to choose a supported provider." if layer is CredentialLayer.KEYRING else ""
     return ProviderCredentialConfigurationError(
-        f"optimus-agent: provider {provider!r} is not supported; configure the local Gateway "
-        f"for OpenRouter only.{suffix}"
+        f"optimus-agent: OPTIMUS_LOCAL_GATEWAY_PROVIDER from {_LAYER_WORDS.get(layer, 'configuration')} is not a "
+        f"supported provider; set it to openrouter (the local Gateway supports OpenRouter only).{suffix}"
     )
 
 
@@ -182,10 +212,7 @@ def resolve_provider_credentials(
     else:
         provider = provider_raw.casefold()
     if provider not in _SUPPORTED_PROVIDERS:
-        raise _provider_error(
-            provider,
-            keyring=provider_provenance.layer is CredentialLayer.KEYRING,
-        )
+        raise _provider_error(provider_provenance.layer)
     expected_key_name = "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
     api_key, api_key_provenance = _resolve_env_config_keyring(
         environ,
@@ -264,6 +291,29 @@ def resolve_provider_credentials(
     )
 
 
+def _store_entries(keyring_backend: Any, entries: tuple[tuple[str, str], ...]) -> str | None:
+    """Write each entry, then read each back. None when all are stored; otherwise a value-free account (lookup names and
+    exception classes only) of where it stopped. Nothing is rolled back: deleting through a store that just failed can
+    fail too and cannot restore what an overwrite replaced; every entry is openrouter-paired, so none mismatches."""
+    names = [key for key, _ in entries]
+    for index, (key, value) in enumerate(entries):
+        try:
+            keyring_backend.set_password(_KEYRING_SERVICE, key, value)
+        except Exception as exc:  # noqa: BLE001 - reported by class only; its text may carry the value
+            return (f"OS keychain entries written, not verified: {', '.join(names[:index]) or 'none'}; unconfirmed: {key} "
+                    f"({type(exc).__name__}; it may or may not be stored); not written: {', '.join(names[index + 1:]) or 'none'}.")
+    for index, (key, value) in enumerate(entries):
+        try:
+            stored = keyring_backend.get_password(_KEYRING_SERVICE, key) == value
+            why = "did not read back"
+        except Exception as exc:  # noqa: BLE001 - reported by class only
+            stored, why = False, type(exc).__name__
+        if not stored:  # e.g. keyring's null backend accepts writes and keeps nothing
+            return (f"OS keychain entries written and confirmed: {', '.join(names[:index]) or 'none'}; "
+                    f"unconfirmed: {key} ({why}); not checked: {', '.join(names[index + 1:]) or 'none'}.")
+    return None
+
+
 def run_setup_wizard(
     *,
     config_root: Path,
@@ -274,7 +324,11 @@ def run_setup_wizard(
 ) -> int:
     provider = _DEFAULT_PROVIDER
 
-    existing_api_key = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
+    try:
+        existing_api_key = _safe_get_password(keyring_backend, _KEY_MODEL_PROVIDER_API_KEY)
+    except CredentialStoreUnavailable as exc:
+        print_fn(f"{exc.user_message} Nothing was changed. Use .env.gateway instead (see .env.gateway.example).")
+        return 2
     if existing_api_key:
         answer = input_fn("A provider key is already stored. Overwrite? [y/N]: ").strip().lower()
         if answer not in {"y", "yes"}:
@@ -288,15 +342,10 @@ def run_setup_wizard(
 
     shared_secret = secrets.token_urlsafe(32)
 
-    try:
-        keyring_backend.set_password(_KEYRING_SERVICE, _KEY_MODEL_PROVIDER, provider)
-        keyring_backend.set_password(_KEYRING_SERVICE, _KEY_MODEL_PROVIDER_API_KEY, api_key)
-        keyring_backend.set_password(_KEYRING_SERVICE, _KEY_SHARED_SECRET, shared_secret)
-    except Exception as exc:
-        print_fn(
-            f"Could not store credentials in the OS keychain ({exc}). "
-            "Use .env.gateway instead (see .env.gateway.example)."
-        )
+    entries = ((_KEY_MODEL_PROVIDER, provider), (_KEY_MODEL_PROVIDER_API_KEY, api_key), (_KEY_SHARED_SECRET, shared_secret))
+    incomplete = _store_entries(keyring_backend, entries)
+    if incomplete is not None:
+        print_fn(f"Setup is incomplete. {incomplete} Run setup again, or use .env.gateway instead (see .env.gateway.example).")
         return 2
 
     print_fn(

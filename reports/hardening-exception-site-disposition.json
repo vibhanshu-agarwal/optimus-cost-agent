@@ -1,6 +1,6 @@
 {
   "schema": "optimus-exception-site-disposition-v1",
-  "source_sha256": "sha256:2061b1de60176d0a89d22f5d2da5fcd15c80bbf2f345fa1e770bb9e822076b57",
+  "source_sha256": "sha256:2264b040c4ab8d576a671699425a7b82bbccba34cd21a18566c806fa168d0da7",
   "sites": [
     {
       "key": "sha256:12dc6cf0fd88164c89a3bef9b8ca106a6ecb2174b346ccd6e50e60cb04d52b77",
@@ -2103,20 +2103,20 @@
       "disposition": "contain"
     },
     {
-      "key": "sha256:b4bc3895fe5e7497c628f4a5b782a66d5e58d0f5bc241d433b7823e79b4c01f4",
+      "key": "sha256:0b9b7bb868821a0c90fe04c7b3948f9690e64d555166779dc06c8e798ca6d132",
       "path": "src/optimus/acp/local_gateway_secrets.py",
       "symbol": "optimus.acp.local_gateway_secrets._safe_get_password",
       "kind": "except",
-      "line": 96,
+      "line": 113,
       "column": 5,
-      "fingerprint": "sha256:71b4da7c411cb0a13390bfbaf025f5f8ca3fa4ac534f191a324776bee5839e33",
+      "fingerprint": "sha256:1e4afad6c85135c8801b474a4a5ac89a699d481ffdb0292ef916b51977932b68",
       "occurrence": 1,
       "caught": "Exception",
       "unresolved": false,
       "lint": [
         {
           "code": "BLE001",
-          "effective": true
+          "effective": false
         }
       ],
       "prior_inventory_key": "sha256:8a81ab3152a2e206f1ccd664c6a9218be067e721ccad060333142c30f32aa90d",
@@ -2124,27 +2124,28 @@
       "source_review_status": "reviewed_custody",
       "owning_issue": 654,
       "behavior_owner": "Gateway credential setup",
-      "rationale": "Independent follow-up owns the remaining behavior: Fail closed on unknown credential-store state and report partial credential setup safely.",
-      "evidence": "Approved handoff and verified open issue https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/654. Source observation at src/optimus/acp/local_gateway_secrets.py:96 in e9c8e39789f64a56a932a141722a90d1a28b65df. See the owning issue for the remaining verification.",
-      "proposed_disposition": "report",
+      "rationale": "A backend read failure other than keyring's NoKeyringError becomes CredentialStoreUnavailable, raised outside the handler with only the lookup name and exception class, so an unknown store is never read as absent.",
+      "evidence": "Current site src/optimus/acp/local_gateway_secrets.py:113 at e7728816d21e1ebc1978eaf2d1bec989aab78da2. Follow-up delivered in PR #672 (not yet merged). Offline regression: tests/unit/acp/test_local_gateway_secrets_store_state.py::test_an_unreadable_store_refuses_instead_of_defaulting_the_provider.",
+      "proposed_disposition": "translate",
       "disposition": "translate",
-      "implementation_state": "follow_up"
+      "implementation_state": "follow_up",
+      "follow_up_delivery": "in_review"
     },
     {
-      "key": "sha256:3909f0e3af2201bda39b350a6243ed249d6a9a24b98054e01d40eea05723a70d",
+      "key": "sha256:54bb007b6956bf4c1887f1540c9e88ecdd4d408e0f5f523564e47ab2950ad831",
       "path": "src/optimus/acp/local_gateway_secrets.py",
-      "symbol": "optimus.acp.local_gateway_secrets.run_setup_wizard",
+      "symbol": "optimus.acp.local_gateway_secrets._store_entries",
       "kind": "except",
-      "line": 295,
-      "column": 5,
-      "fingerprint": "sha256:b052c3b3a0ac4cb020d92e57e6bdc5556ecf45d294d74cb1872943c5d5d95bda",
+      "line": 302,
+      "column": 9,
+      "fingerprint": "sha256:9384401add5ac37435ede213c65e703118b1ed5811aefe310734eb3400424783",
       "occurrence": 1,
       "caught": "Exception",
       "unresolved": false,
       "lint": [
         {
           "code": "BLE001",
-          "effective": true
+          "effective": false
         }
       ],
       "prior_inventory_key": "sha256:2c749fcccb48e0c2c32bb298e8c5dd18f66c1be9a5daceb2006e7085d49cd0a9",
@@ -2152,11 +2153,41 @@
       "source_review_status": "reviewed_custody",
       "owning_issue": 654,
       "behavior_owner": "Gateway credential setup",
-      "rationale": "Independent follow-up owns the remaining behavior: Fail closed on unknown credential-store state and report partial credential setup safely.",
-      "evidence": "Approved handoff and verified open issue https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/654. Source observation at src/optimus/acp/local_gateway_secrets.py:295 in e9c8e39789f64a56a932a141722a90d1a28b65df. See the owning issue for the remaining verification.",
+      "rationale": "A write that raises ends setup with a value-free account: entries written but not verified, the unconfirmed entry by exception class, and those not written; the wizard exits 2 and deletes nothing.",
+      "evidence": "Current site src/optimus/acp/local_gateway_secrets.py:302 at e7728816d21e1ebc1978eaf2d1bec989aab78da2. Follow-up delivered in PR #672 (not yet merged). Offline regression: tests/unit/acp/test_local_gateway_secrets_store_state.py::test_a_partial_setup_names_what_it_wrote_and_deletes_nothing.",
       "proposed_disposition": "report",
       "disposition": "report",
-      "implementation_state": "follow_up"
+      "implementation_state": "follow_up",
+      "follow_up_delivery": "in_review"
+    },
+    {
+      "key": "sha256:eef4715a01f27e680ab629473eb988ba05291c0f8bd6140e04aba5b128d960da",
+      "path": "src/optimus/acp/local_gateway_secrets.py",
+      "symbol": "optimus.acp.local_gateway_secrets._store_entries",
+      "kind": "except",
+      "line": 309,
+      "column": 9,
+      "fingerprint": "sha256:77a4f353af56704cffe1f89b45c10f23d399fd4487776050434414587139a4f4",
+      "occurrence": 1,
+      "caught": "Exception",
+      "unresolved": false,
+      "lint": [
+        {
+          "code": "BLE001",
+          "effective": false
+        }
+      ],
+      "prior_inventory_key": "sha256:2c749fcccb48e0c2c32bb298e8c5dd18f66c1be9a5daceb2006e7085d49cd0a9",
+      "review_state": "source_reviewed",
+      "source_review_status": "reviewed_custody",
+      "owning_issue": 654,
+      "behavior_owner": "Gateway credential setup",
+      "rationale": "A read-back that raises marks that entry unconfirmed by exception class and the rest not checked, so a store that keeps nothing is never reported as set up.",
+      "evidence": "Current site src/optimus/acp/local_gateway_secrets.py:309 at e7728816d21e1ebc1978eaf2d1bec989aab78da2. Follow-up delivered in PR #672 (not yet merged). Offline regression: tests/unit/acp/test_local_gateway_secrets_store_state.py::test_a_read_back_that_raises_is_reported_value_free.",
+      "proposed_disposition": "report",
+      "disposition": "report",
+      "implementation_state": "follow_up",
+      "follow_up_delivery": "in_review"
     },
     {
       "key": "sha256:a9d837cb0a93128023016af827bf31984d0b12542304b74ced2d652eda4a90da",
@@ -9250,13 +9281,13 @@
       "disposition": "translate"
     },
     {
-      "key": "sha256:2d60217fdc7167a2c8228ee40e80acbe3b371150d431ca9b3a4c43fb0e8a4906",
+      "key": "sha256:a2ad1aae5eca01cc32c2b9e6569a18b17f1ff0f3ba880c34091f9a1b2c2f3050",
       "path": "src/optimus_security/outbox_drain.py",
-      "symbol": "optimus_security.outbox_drain.OutboxDrain._run",
+      "symbol": "optimus_security.outbox_drain.OutboxDrain._tell",
       "kind": "suppress",
-      "line": 219,
+      "line": 138,
       "column": 18,
-      "fingerprint": "sha256:3341aab6f479cbf714de3f14cca8f27593623bf9aeaf2cd61c8e1ef974569733",
+      "fingerprint": "sha256:b8438356e4237ac95527770595569e161efea9fe478b750356b816ffd7c08db8",
       "occurrence": 1,
       "caught": "Exception",
       "unresolved": false,
@@ -9266,19 +9297,49 @@
       "source_review_status": "reviewed_custody",
       "owning_issue": 652,
       "behavior_owner": "Memory outbox health",
-      "rationale": "Independent follow-up owns the remaining behavior: Report failed outbox background passes without dropping pending records.",
-      "evidence": "Approved handoff and verified open issue https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/652. Source observation at src/optimus_security/outbox_drain.py:219 in e9c8e39789f64a56a932a141722a90d1a28b65df. See the owning issue for the remaining verification.",
+      "rationale": "A warn sink that raises is contained so it cannot stop the drain loop; the pass's health stays in last_report.",
+      "evidence": "Current site src/optimus_security/outbox_drain.py:138 at e7728816d21e1ebc1978eaf2d1bec989aab78da2. Follow-up delivered in PR #672 (not yet merged). Offline regression: tests/unit/optimus_security/test_outbox_drain_failed_pass.py.",
+      "proposed_disposition": "contain",
+      "disposition": "contain",
+      "implementation_state": "follow_up",
+      "follow_up_delivery": "in_review"
+    },
+    {
+      "key": "sha256:f6c363128c4ba6fb11620833249bd6d99643de2e48150266f97ba5bf451ce4cc",
+      "path": "src/optimus_security/outbox_drain.py",
+      "symbol": "optimus_security.outbox_drain.OutboxDrain._run",
+      "kind": "except",
+      "line": 246,
+      "column": 13,
+      "fingerprint": "sha256:f7e8561821ff8ae1e592683f042e6818528e2f9aaf0919dc11b6a433f205aa03",
+      "occurrence": 1,
+      "caught": "Exception",
+      "unresolved": false,
+      "lint": [
+        {
+          "code": "BLE001",
+          "effective": false
+        }
+      ],
+      "prior_inventory_key": "sha256:47f9aade5177d34629465ec3eff3c5f45359b08a69692a2f94ae6d162a4e6682",
+      "review_state": "source_reviewed",
+      "source_review_status": "reviewed_custody",
+      "owning_issue": 652,
+      "behavior_owner": "Memory outbox health",
+      "rationale": "A failed pass sets last_report.pass_failure and backlog.last_failure to pass_failed:<class>, keeps the last good backlog count, warns once per failing streak and on recovery; nothing is acknowledged or compacted and the loop keeps its cadence.",
+      "evidence": "Current site src/optimus_security/outbox_drain.py:246 at e7728816d21e1ebc1978eaf2d1bec989aab78da2. Follow-up delivered in PR #672 (not yet merged). Offline regression: tests/unit/optimus_security/test_outbox_drain_failed_pass.py.",
       "proposed_disposition": "report",
       "disposition": "report",
-      "implementation_state": "follow_up"
+      "implementation_state": "follow_up",
+      "follow_up_delivery": "in_review"
     }
   ],
   "config_sha256": "sha256:dc26e425b99a9d803ffb9c5c6c8729ae14aa30648e2647e36a15250a64ec8c4e",
   "ruff": "ruff 0.15.20",
   "issue": 334,
   "checkpoint": 3,
-  "source_pin": "git-sha1:d83dc380868e8fad7109aef34df94d76fbfc17ea",
-  "source_tree": "git-sha1:42acbfae6292ae9b7a632ab7bf085fa2b630d836",
+  "source_pin": "git-sha1:e7728816d21e1ebc1978eaf2d1bec989aab78da2",
+  "source_tree": "git-sha1:56fe3a2f78408505c35d52b1592defa170c26bfc",
   "baseline_inventory_pin": "git-sha1:fd22e96d283a35660bf2e8d767c44b6b390fc3b2",
   "review_scope": "Per-site source review. Pending rows require named custody or verified fixes before acceptance.",
   "review_counts": {
@@ -9374,14 +9435,47 @@
     }
   ],
   "inventory_refresh": {
-    "source_pin": "git-sha1:d83dc380868e8fad7109aef34df94d76fbfc17ea",
-    "previous_source_pin": "git-sha1:739043eb45d87f95ce8dd2bb783282e8cc2023a5",
-    "previous_report_sha256": "sha256:2f6c2f770b68599b44fd2e73eb0ba6f8ee7e58bcedf51e1827089fe5b8c9fbb7",
-    "preserved_rows": 377,
+    "source_pin": "git-sha1:e7728816d21e1ebc1978eaf2d1bec989aab78da2",
+    "previous_source_pin": "git-sha1:d83dc380868e8fad7109aef34df94d76fbfc17ea",
+    "previous_report_sha256": "sha256:56ec56e5cc5de63acf777a60ecae3e6168775d445e86bec3c52935021de2811c",
+    "preserved_rows": 374,
     "relocated_rows": 0,
-    "reviewed_successor_rows": 0,
+    "reviewed_successor_rows": 5,
     "retired_with_no_successor": 0,
-    "main_advance_scope": "Tests and documentation. The production tree, verifier inputs and site identities are identical.",
+    "branch_pr": 672,
+    "branch_scope": "Rows describe the Bundle C branch (#652, #654, #669) merged with main. Its follow-ups retire three sites and add five reviewed successors; keyring.errors.NoKeyringError joins the verifier's narrow external exception types.",
+    "branch_rebindings": [
+      {
+        "prior_key": "sha256:b4bc3895fe5e7497c628f4a5b782a66d5e58d0f5bc241d433b7823e79b4c01f4",
+        "current_key": "sha256:0b9b7bb868821a0c90fe04c7b3948f9690e64d555166779dc06c8e798ca6d132",
+        "owning_issue": 654,
+        "pr": 672
+      },
+      {
+        "prior_key": "sha256:3909f0e3af2201bda39b350a6243ed249d6a9a24b98054e01d40eea05723a70d",
+        "current_key": "sha256:54bb007b6956bf4c1887f1540c9e88ecdd4d408e0f5f523564e47ab2950ad831",
+        "owning_issue": 654,
+        "pr": 672
+      },
+      {
+        "prior_key": "sha256:3909f0e3af2201bda39b350a6243ed249d6a9a24b98054e01d40eea05723a70d",
+        "current_key": "sha256:eef4715a01f27e680ab629473eb988ba05291c0f8bd6140e04aba5b128d960da",
+        "owning_issue": 654,
+        "pr": 672
+      },
+      {
+        "prior_key": "sha256:2d60217fdc7167a2c8228ee40e80acbe3b371150d431ca9b3a4c43fb0e8a4906",
+        "current_key": "sha256:a2ad1aae5eca01cc32c2b9e6569a18b17f1ff0f3ba880c34091f9a1b2c2f3050",
+        "owning_issue": 652,
+        "pr": 672
+      },
+      {
+        "prior_key": "sha256:2d60217fdc7167a2c8228ee40e80acbe3b371150d431ca9b3a4c43fb0e8a4906",
+        "current_key": "sha256:f6c363128c4ba6fb11620833249bd6d99643de2e48150266f97ba5bf451ce4cc",
+        "owning_issue": 652,
+        "pr": 672
+      }
+    ],
     "upstream_rebindings": [],
     "upstream_retirements": []
   },
@@ -9541,6 +9635,18 @@
       "reviewed_successor_rows": 0,
       "retired_with_no_successor": 0,
       "main_merge_pr": 664,
+      "upstream_rebindings": [],
+      "upstream_retirements": []
+    },
+    {
+      "source_pin": "git-sha1:d83dc380868e8fad7109aef34df94d76fbfc17ea",
+      "previous_source_pin": "git-sha1:739043eb45d87f95ce8dd2bb783282e8cc2023a5",
+      "previous_report_sha256": "sha256:2f6c2f770b68599b44fd2e73eb0ba6f8ee7e58bcedf51e1827089fe5b8c9fbb7",
+      "preserved_rows": 377,
+      "relocated_rows": 0,
+      "reviewed_successor_rows": 0,
+      "retired_with_no_successor": 0,
+      "main_advance_scope": "Tests and documentation. The production tree, verifier inputs and site identities are identical.",
       "upstream_rebindings": [],
       "upstream_retirements": []
     }
