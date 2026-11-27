@@ -263,7 +263,7 @@ def test_a_tool_gets_a_started_card_and_its_ending_on_one_id(tmp_path: Path) -> 
         started = next(update for update in updates if update.get("sessionUpdate") == "tool_call" and update["title"].startswith("SEARCH"))
         ended = next(update for update in updates if update.get("sessionUpdate") == "tool_call_update" and update["toolCallId"] == started["toolCallId"])
         assert started["toolCallId"] == "tool-one"  # the id its telemetry carries
-        assert started["title"] == "SEARCH first_function" and started["status"] == "in_progress" and started["kind"] == "search"
+        assert started["title"] == "SEARCH first\\_function" and started["status"] == "in_progress" and started["kind"] == "search"
         assert ended["status"] == "completed" and "3 lines in 4 ms" in str(ended["content"])
 
     asyncio.run(scenario())
@@ -288,12 +288,14 @@ def test_every_tool_has_a_kind_the_client_knows(tmp_path: Path, tool: str, kind:
 def test_a_reply_citing_what_is_not_there_gets_a_card(tmp_path: Path) -> None:
     async def scenario() -> None:
         session = FakeSession()
-        session.report = GroundingReport(unresolved=("gone.py",))
+        session.report = GroundingReport(unresolved=("gone.py", "www.evil.example/x.md"))
         adapter, outbound = _adapter(tmp_path, lambda workspace: session)
         session_id = await new_session(adapter, tmp_path, mode="chat")
         await _chat(adapter, session_id, "p1")
         card = next(update for update in _updates(outbound) if update.get("title") == "grounding_check")
-        assert "gone.py" in str(card)
+        text = card["content"][0]["content"]["text"]
+        # The names come from the model's answer, so they are escaped where shown (#591): no address a client auto-links.
+        assert "gone\\.py" in text and "www." not in text
         assert session.grounded == ["Answer 1."]
 
     asyncio.run(scenario())

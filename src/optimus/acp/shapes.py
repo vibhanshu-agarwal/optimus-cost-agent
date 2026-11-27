@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -13,11 +14,29 @@ def tool_call_text_content(text: str) -> dict[str, Any]:
     return {"type": "content", "content": text_content_block(text)}
 
 
+def code_block(text: str) -> str:
+    """`text` as one fenced code block, so a link or an image the model wrote in it is inert (#591). The fence is longer than
+    any run of backticks in `text`, so no line of it can close the block. Display only: what is approved, hashed and applied
+    is `text` itself."""
+    fence = "`" * max(3, 1 + max(map(len, re.findall("`+", text)), default=0))
+    body = text if text.endswith(("\n", "\r")) else text + "\n"
+    return f"{fence}\n{body}{fence}"
+
+
+def code_block_content(shown: str) -> str:
+    """The one line a plan entry's `code_block` wraps, for a reader of plan entries (the live verifier); other text unchanged."""
+    fence = re.match("`{3,}", shown)
+    if fence and shown.startswith(fence[0] + "\n") and shown.endswith("\n" + fence[0]) and len(shown) > 2 * len(fence[0]) + 1:
+        return shown[len(fence[0]) + 1 : -len(fence[0]) - 1]
+    return shown
+
+
 def plan_entries_from_text(plan_text: str) -> list[dict[str, Any]]:
+    """One entry per plan line, each the model's own line in a code block (#591)."""
     lines = [line.strip() for line in plan_text.splitlines() if line.strip()]
     if not lines:
         return [{"content": plan_text, "priority": "medium", "status": "pending"}]
-    return [{"content": line, "priority": "medium", "status": "pending"} for line in lines]
+    return [{"content": code_block(line), "priority": "medium", "status": "pending"} for line in lines]
 
 
 def build_plan_session_update(*, session_id: str, plan_text: str, entry_status: str = "pending") -> dict[str, Any]:
@@ -137,7 +156,7 @@ def build_permission_tool_call(*, tool_call_id: str, plan_text: str) -> dict[str
         "title": "Approve plan execution",
         "status": "pending",
         "kind": "edit",
-        "content": [tool_call_text_content(plan_text)],
+        "content": [tool_call_text_content(code_block(plan_text))],  # the model's plan, byte for byte (#591)
     }
 
 

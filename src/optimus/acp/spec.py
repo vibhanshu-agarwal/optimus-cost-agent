@@ -132,8 +132,11 @@ from optimus.agent.models import (
     AgentToolCall,
 )
 from optimus.agent.planning_loop import (
+    CHECKIN_ENDING_TEXTS,
+    LAST_REPEATED_STEP,
     PLANNING_NEW_READ_MAX_BYTES,
     PLANNING_OBSERVATION_MAX_BYTES,
+    RECOVERY_STOP_REASON_CODES,
     CheckInDecision,
     EscalationGrant,
     EscalationRefusal,
@@ -2912,11 +2915,11 @@ class AcpDuplexAdapter:
         Cards are informational, so an undelivered one never stops the tool."""
 
         def card(call_id: str, phase: str, tool: str, argument: str, summary: str) -> None:
-            title = f"{tool} {argument[:80]}"
+            title = _shown(f"{tool} {argument[:80]}")  # the argument is the model's (#591)
             if phase == "started":
                 payload = build_tool_call_notification(session_id=session_id, tool_call_id=call_id, title=title, summary="running", kind=tool_kind_for_name(f"index_{tool.lower()}"), status="in_progress")
             else:
-                payload = build_tool_call_update_notification(session_id=session_id, tool_call_id=call_id, title=title, summary=summary, status=phase)
+                payload = build_tool_call_update_notification(session_id=session_id, tool_call_id=call_id, title=title, summary=_shown(summary), status=phase)
             future = asyncio.run_coroutine_threadsafe(self._outbound.notify("session/update", payload), loop)
             future.add_done_callback(lambda done: None if done.cancelled() else done.exception())
 
@@ -3111,7 +3114,7 @@ class AcpDuplexAdapter:
             if note is None or turn.turn_control.transport_abandoned():
                 return
             await self._outbound.notify(
-                "session/update", build_tool_call_notification(session_id=turn.session_id, tool_call_id=new_tool_call_id(), title="grounding_check", summary=note, kind=tool_kind_for_name("grounding_check"))
+                "session/update", build_tool_call_notification(session_id=turn.session_id, tool_call_id=new_tool_call_id(), title="grounding_check", summary=_shown(note), kind=tool_kind_for_name("grounding_check"))
             )
         except Exception:  # noqa: BLE001 - see above
             return
@@ -3792,7 +3795,8 @@ class AcpDuplexAdapter:
 
         async def ask(checkin: PlanningCheckIn) -> CheckInDecision:
             params = build_loop_checkin_params(
-                session_id=turn.session_id, tool_call_id=new_tool_call_id(), text=checkin.text, run_id=turn.run_id
+                # host text quoting the repeated step and any refusal reason: those parts escaped (#591)
+                session_id=turn.session_id, tool_call_id=new_tool_call_id(), text=_shown_quoting(checkin.text, checkin.quoted), run_id=turn.run_id
             )
             try:
                 response = await self._send_permission_request(turn, params)
@@ -3865,7 +3869,7 @@ class AcpDuplexAdapter:
                     session_id=turn.session_id, turn_seq=turn.turn_seq, deliver_notice=self._blocking_notice(turn.session_id, loop)
                 )
                 attachment = None if turn.attached is None else router.attachments[target]
-                text = escalation_notice_text(router.snapshot, from_model=current, to_model=target, what=move.what)
+                text = escalation_notice_text(router.snapshot, from_model=current, to_model=target, what=_shown_quoting(move.what, move.quoted))  # #591
             except Exception as exc:  # noqa: BLE001 - recorded with its class facts, never its text
                 log_auto_route(run_id=turn.run_id, outcome="escalation_failed", reason="error", telemetry=self._failure_telemetry, failure=exc)
                 _operator_line(
@@ -4011,7 +4015,7 @@ class AcpDuplexAdapter:
                 session_id=session_id,
                 tool_call_id=tool_call_id,
                 title=tool_call.tool_name,
-                summary=tool_call.summary,
+                summary=_shown(tool_call.summary),  # "read <path>", "ran <command>": the model's token, escaped (#591)
                 kind=tool_kind_for_name(tool_call.tool_name),
             )
             # region agent log
@@ -4047,7 +4051,7 @@ class AcpDuplexAdapter:
             await self._outbound.notify("session/update", completed_plan)
         elif send_plan and turn is not None:
             await self._send_terminal(turn, "completed_plan", completed_plan)
-        message = _completion_message(result)
+        message = _completion_message(result, _shown)
         message_payload = build_agent_message_chunk_notification(session_id=session_id, text=message)
         # region agent log
         acp_debug_log(
@@ -4153,32 +4157,87 @@ _WRITE_NOT_EXECUTED_MESSAGE = (
 _UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED", *GUARD_REFUSAL_TEXTS})
 
 
-def _completion_message(result: AgentRunResult) -> str:
+def _shown(text: str) -> str:
+    """A model-authored token, or a one-line text that quotes one, as the person sees it (#591): escaped with `escape_text`,
+    so a path or TEST argument written as Markdown renders as itself. Not shortened: these surfaces had no cap, and a cut
+    could drop a TEST's exit code. Only what is shown: the run result, the committed history and memory extraction (which
+    parses "read <path>") keep the raw text."""
+    return memory_notices.escape_text(text, sys.maxsize)
+
+
+def _shown_edit_failure(text: str, shown: Callable[[str], str]) -> str:
+    """`edit_failure_text` with `shown` applied to its path only: the one word before the first ", because " (a plan path
+    holds no space). The fixed sentence and its closed code stay as they are."""
+    head, sep, rest = text.partition(", because ")
+    lead, space, path = head.rpartition(" ")
+    return f"{lead}{space}{shown(path)}{sep}{rest}" if sep else shown(text)
+
+
+def _shown_quoting(text: str, quoted: tuple[str, ...]) -> str:
+    """A host line with each model-authored part it quotes escaped (#591). If a part is not found as written (the line was
+    sanitized), the whole line is escaped instead, so nothing the model wrote is left live."""
+    parts = [part for part in quoted if part]
+    if not all(part in text for part in parts):
+        return _shown(text)
+    # Every occurrence of every part is marked, and each run of marked characters is escaped as one span, so parts that
+    # overlap (a refusal reason that is the start of the quoted step) cannot leave either one live.
+    marked = [False] * len(text)
+    for part in parts:
+        for found in re.finditer(f"(?={re.escape(part)})", text):
+            marked[found.start() : found.start() + len(part)] = [True] * len(part)
+    shown, start = [], 0
+    for hit, run in itertools.groupby(marked):
+        end = start + len(list(run))
+        shown.append(_shown(text[start:end]) if hit else text[start:end])
+        start = end
+    return "".join(shown)
+
+
+def _shown_repeated_step(step: str, shown: Callable[[str], str]) -> str:
+    """What follows `LAST_REPEATED_STEP` in a recovery stop: the step and its full stop, then any fixed check-in ending."""
+    ending = next((text for text in CHECKIN_ENDING_TEXTS if step.endswith(text)), "")
+    return f"{shown(step[: len(step) - len(ending)])}{ending}"
+
+
+def _completion_message(result: AgentRunResult, shown: Callable[[str], str] = str) -> str:
+    """The turn's final text. `shown` is applied to each model-authored token an agent-authored sentence quotes: `_shown` for
+    the message sent, the identity (which rebuilds the text unchanged) for the committed history."""
     if result.stop_reason == PLANNING_ANSWERED:
         return result.output_text  # the answer itself (#512)
     if result.stop_reason in TEST_STOP_REASONS.values():
-        return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
+        # it names the stopped TEST and any change already applied (Plan 12.3). The "Applied:" items are rebuilt from the
+        # write calls the runner listed, so a summary holding a line break cannot leave part of itself unescaped.
+        head, applied, _ = result.output_text.partition(" Applied:")
+        items = "".join(f"\n- {shown(call.summary)}" for call in result.tool_calls if call.tool_name == "write_file")
+        return f"{head}{applied}{items}" if applied else result.output_text
     if result.stop_reason == "EDIT_NOT_APPLICABLE":
-        return result.output_text  # why the change was not made, that the plan made no changes, the next step and the code (#574)
+        # why the change was not made, that the plan made no changes, the next step and the code (#574)
+        return _shown_edit_failure(result.output_text, shown)
     if result.stop_reason == "UNSAFE_TEST_DIRECTIVE" or result.stop_reason in GUARD_REFUSAL_TEXTS:
         return result.output_text  # what was rejected and that nothing ran (#565); a guard refusal's fixed text (#589)
     if result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED":
         return _WRITE_NOT_EXECUTED_MESSAGE
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
-        return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
+        path, space, rest = result.output_text.partition(" ")  # the refused WRITE's path comes first (#410)
+        return f"{shown(path)}{space}{rest}"
     if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
         return result.output_text  # the replan instruction; it no longer reaches the person as a plan entry (#570)
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
+        # A recovery stop names the repeated step, which can quote a model-authored path; the rest is fixed text. Only a
+        # recovery stop: a model's refusal may hold the same words.
+        head, repeated, step = result.output_text.partition(LAST_REPEATED_STEP)
+        if repeated and result.stop_reason in RECOVERY_STOP_REASON_CODES:
+            return f"{head}{repeated}{_shown_repeated_step(step, shown)}"
         return result.output_text
     if result.status is AgentRunStatus.TERMINATED and result.stop_reason == "cancelled":
         return result.output_text
     if result.mutation_count > 0:
         writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
         if writes:
-            return "Completed:\n" + "\n".join(f"- {summary}" for summary in writes)
+            return "Completed:\n" + "\n".join(f"- {shown(summary)}" for summary in writes)
         return f"Completed {result.mutation_count} file change(s)."
     if result.tool_calls:
-        return "Tool activity:\n" + "\n".join(f"- {call.summary}" for call in result.tool_calls)
+        return "Tool activity:\n" + "\n".join(f"- {shown(call.summary)}" for call in result.tool_calls)
     return "Turn completed."
 
 

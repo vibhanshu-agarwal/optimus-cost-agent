@@ -112,4 +112,4 @@ async def test_a_completed_turn_still_sends_the_pending_then_the_completed_plan(
     kinds = [u["sessionUpdate"] for u in updates if u["sessionUpdate"] in ("plan", "agent_message_chunk")]
     assert kinds[-3:] == ["plan", "plan", "agent_message_chunk"], kinds  # the completed plan comes before the final text
     final = [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"][-1]
-    assert final.startswith("Completed:\n- wrote example.py")
+    assert final.startswith("Completed:\n- wrote example\\.py")  # the path escaped where it is shown (#591)
