@@ -139,7 +139,7 @@ def use_operator_override(path: Path | None) -> None:
 def compose_trusted_snapshot(defaults: Path, override: Path | None = None) -> RegistrySnapshot:
     """Load the registry a launch may trust: the defaults, then the operator override if any. Fixture policies never
     activate."""
-    snapshot = load_registry(defaults, override)
+    snapshot = load_registry(defaults, operator=override)
     if snapshot.policy.fixture:
         raise BindingError("FIXTURE_POLICY", "a fixture registry cannot be trusted at launch")
     return snapshot
@@ -169,7 +169,7 @@ def auto_snapshot() -> RegistrySnapshot | None:
     ordinary composition."""
     if not ENFORCEMENT_ACTIVE:
         return None
-    snapshot = load_registry(packaged_defaults(), Path(__file__).with_name(AUTO_OVERLAY_FILENAME), _operator_override)
+    snapshot = load_registry(packaged_defaults(), Path(__file__).with_name(AUTO_OVERLAY_FILENAME), operator=_operator_override)
     if snapshot.policy.fixture:
         raise BindingError("FIXTURE_POLICY", "a fixture registry cannot be trusted at launch")
     return snapshot
