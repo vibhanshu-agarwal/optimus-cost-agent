@@ -70,7 +70,7 @@ class _SessionEntry:
     session: AcpSpecSession
     generation: int
     phase: str
-    created: float
+    created: float | None
     uses: int = 0
     setup_states: list[ClientMcpSessionState] = field(default_factory=list)
     reason: RetirementReason | None = None
@@ -138,6 +138,19 @@ class SessionRetentionOwner:
         if asyncio.get_running_loop() is not self._loop:
             raise RuntimeError('session retention belongs to another loop')
 
+    def _diagnostic_time(self) -> float | None:
+        with contextlib.suppress(Exception):
+            return self._clock()
+        return None
+
+    def _elapsed_seconds(self, entry: _SessionEntry | None) -> float | None:
+        if entry is None:
+            return 0.0
+        if entry.created is None:
+            return None
+        now = self._diagnostic_time()
+        return None if now is None else max(0.0, now - entry.created)
+
     def _log(self, event: str, entry: _SessionEntry | None = None) -> None:
         # Diagnostics cannot affect custody, even when a custom sink fails.
         with contextlib.suppress(Exception):
@@ -154,7 +167,7 @@ class SessionRetentionOwner:
                                         'uses': entry.uses if entry is not None else 0,
                                         'retained_count': self.retained_count,
                                         'reason': entry.reason.value if entry is not None and entry.reason else None,
-                                        'elapsed_seconds': max(0.0, self._clock() - entry.created) if entry else 0.0,
+                                        'elapsed_seconds': self._elapsed_seconds(entry),
                                         'failures': entry.result.close.failures if entry and entry.result else (),
                                         'failure_fact': entry.failure_fact if entry else None})
 
@@ -184,9 +197,7 @@ class SessionRetentionOwner:
         self._bound = True
 
     def _entry(self, session: AcpSpecSession, *, provisional: bool) -> _SessionEntry:
-        created = 0.0
-        with contextlib.suppress(Exception):
-            created = self._clock()
+        created = self._diagnostic_time()
         entry = _SessionEntry(session, next(self._generations), 'PROVISIONAL' if provisional else 'ACTIVE', created)
         entry.quiescent.set()
         return entry

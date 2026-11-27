@@ -1081,14 +1081,6 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.acp.preflight:_require_gateway_auth:exception_export",
-      "policy": "safe-by-construction",
-      "rationale": "Inspection: optimus.acp.preflight:_require_gateway_auth:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
-      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
-      "test_node": "tests/unit/acp/test_preflight.py::test_preflight_strict_gateway_probe_reports_unreachable_for_network_failure",
-      "evidence_tier": "unit"
-    },
-    {
       "key": "optimus.acp.preflight:_require_redis_url:exception_export",
       "policy": "safe-by-construction",
       "rationale": "Inspection: optimus.acp.preflight:_require_redis_url:exception_export uses exception text only to construct or return a typed in-memory failure result; it does not persist raw diagnostics.",
@@ -7470,6 +7462,46 @@
       "rationale": "#532: prints only {\"error\": <code>} to stderr, where the code is LIFECYCLE_LOCK_BUSY or LIFECYCLE_LOCK_FAILED: value-free, with no path, password or detail, and not retained.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/evidence_handoff/test_lifecycle_cli.py::test_a_lifecycle_lock_held_elsewhere_is_a_bounded_error_and_exit_2",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "optimus.context.memory_extraction:MemoryExtractor._loop:logger_export",
+      "policy": "safe-by-construction",
+      "rationale": "The fallback warning has a fixed template and the exception class name. It carries no outcome, prompt, candidate text or exception message.",
+      "sanitizer": "constant diagnostic",
+      "test_node": "tests/unit/context/test_memory_extraction.py::test_reporter_failure_does_not_relabel_jobs_or_stop_worker",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_exception_site_disposition:_digest:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Serializes local source and structural metadata in memory solely to form a digest.",
+      "sanitizer": "in-memory digest input",
+      "test_node": "tests/unit/tools/test_exception_site_disposition.py::test_report_gate_rejects_incomplete_or_invented_dispositions",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_exception_site_disposition:main:json_serialization",
+      "policy": "safe-by-construction",
+      "rationale": "Serializes the AST inventory with source hashes, relative locations, and lint metadata.",
+      "sanitizer": "schema-limited structural metadata",
+      "test_node": "tests/unit/tools/test_exception_site_disposition.py::test_inventory_cli_labels_unchanged_sha256_identities",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_exception_site_disposition:main:stderr_export",
+      "policy": "safe-by-construction",
+      "rationale": "Reports checker and inventory failures against local repository inputs.",
+      "sanitizer": "local verifier diagnostics; no runtime credential or provider input",
+      "test_node": "tests/unit/tools/test_exception_site_disposition.py::test_pending_review_cannot_pass_with_a_proposed_terminal_disposition",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.verify_exception_site_disposition:main:stdout_export",
+      "policy": "safe-by-construction",
+      "rationale": "Prints the structural inventory or an accepted site count.",
+      "sanitizer": "schema-limited structural metadata",
+      "test_node": "tests/unit/tools/test_exception_site_disposition.py::test_pending_review_cannot_pass_with_a_proposed_terminal_disposition",
       "evidence_tier": "unit"
     }
   ]
