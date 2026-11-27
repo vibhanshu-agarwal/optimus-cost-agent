@@ -11,6 +11,7 @@ from optimus.acp.local_infra import DEFAULT_REDIS_URL
 from optimus.agent.state_store import validate_redis_url
 from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
 from optimus_model_policy.binding import RouteBinding
+from optimus_security.sanitization import mask_uri_userinfo
 
 if TYPE_CHECKING:
     from optimus.gateway.models import GatewayResponse
@@ -212,7 +213,7 @@ def _require_gateway_auth(environ: Mapping[str, str], *, cli_model: str | None =
 
     settings = OptimusGatewaySettings.from_env(environ)
     client = GatewayClient(settings=settings) if durable_capture is None else GatewayClient(settings=settings, capture=durable_capture.hook)
-    gateway_url = environ.get("OPTIMUS_GATEWAY_URL", "").strip()
+    gateway_url = mask_uri_userinfo(settings.gateway_url)  # #671: the validated URL with any query or fragment hidden
     try:
         # The probe uses the launch's own model (its --model, else the environment, else the default), and an
         # unusable model is a typed refusal here, before any request (Fable review 1, F1). An Auto launch never sends

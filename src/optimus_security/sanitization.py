@@ -881,10 +881,11 @@ class CredentialUriError(ValueError):
     """A credential-bearing URI that cannot be shown or hashed safely. Its message never contains the value (#671)."""
 
 
-_CREDENTIAL_URI_SCHEMES = frozenset({"http", "https", "redis", "rediss"})
+HTTP_URI_SCHEMES = frozenset({"http", "https"})
+REDIS_URI_SCHEMES = frozenset({"redis", "rediss", "unix"})  # what redis-py's from_url accepts; unix:// has no host
 
 
-def _split_credential_uri(stripped: str) -> SplitResult | None:
+def _split_credential_uri(stripped: str, schemes: frozenset[str]) -> SplitResult | None:
     """The parts of an absolute URI whose netloc sits verbatim right after ``scheme://``, else None.
 
     It returns None rather than raising inside the parser's except block, so no urllib.parse exception (whose text
@@ -901,8 +902,8 @@ def _split_credential_uri(stripped: str) -> SplitResult | None:
         return None
     start = len(parts.scheme) + 3
     if (
-        parts.scheme not in _CREDENTIAL_URI_SCHEMES
-        or not host
+        parts.scheme not in schemes
+        or (not host and parts.scheme != "unix")
         or stripped[len(parts.scheme) : start] != "://"
         or stripped[start : start + len(parts.netloc)] != parts.netloc
     ):
@@ -910,21 +911,24 @@ def _split_credential_uri(stripped: str) -> SplitResult | None:
     return parts
 
 
-def canonicalize_credential_uri(uri: str) -> CredentialUriCanonicalization:
+def canonicalize_credential_uri(
+    uri: str, *, schemes: frozenset[str] = HTTP_URI_SCHEMES | REDIS_URI_SCHEMES
+) -> CredentialUriCanonicalization:
     """Canonicalize a credential-bearing URI using original-text slicing.
 
     The normalized URI (a digest input) is the original text with only the userinfo cut out, as before #671, so an
     approval of a valid value keeps its digest. The display is built from the validated parts with the userinfo, the
-    query and the fragment redacted. A value that is not an absolute http, https, redis or rediss URI with a host
-    raises CredentialUriError, whose message never contains the value. An empty value stays empty.
+    query and the fragment redacted; the path is shown, as it is the endpoint (a token placed in a path is not found).
+    A value that is not an absolute URI of one of ``schemes`` with a host (unix:// has none) raises CredentialUriError,
+    whose message never contains the value. An empty value stays empty.
     """
     stripped = uri.strip()
     if not stripped:
         return CredentialUriCanonicalization(normalized_uri="", display_uri="", userinfo_present=False)
-    parts = _split_credential_uri(stripped)
+    parts = _split_credential_uri(stripped, schemes)
     if parts is None:
         raise CredentialUriError(
-            "not an absolute http, https, redis or rediss URL with a host and without spaces or control characters"
+            f"not an absolute {' or '.join(sorted(schemes))} URL without spaces or control characters"
         )
     userinfo_present = parts.username is not None or parts.password is not None
     start = len(parts.scheme) + 3

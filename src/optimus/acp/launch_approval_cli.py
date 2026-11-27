@@ -35,6 +35,7 @@ from optimus.acp.launch_gate import (
     LaunchGateError,
     authorize_launch,
     credential_uri_display,
+    require_gateway_tool_urls,
     resolve_launch_candidate,
     validate_config_file_permissions,
     verify_exact_durable,
@@ -1183,6 +1184,7 @@ def _cmd_run_gateway(
         base_url = credential_uri_display(
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL", provider_secrets.base_url or "", provider_credentials.base_url_provenance.layer
         )
+        require_gateway_tool_urls(config_root, LaunchEnvironmentSnapshot.capture(os.environ).values)
     except LaunchGateError as exc:
         print(f"optimus-trust run-gateway: {exc}", file=sys.stderr)
         return 2

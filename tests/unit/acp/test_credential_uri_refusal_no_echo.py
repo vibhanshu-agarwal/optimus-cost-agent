@@ -198,3 +198,133 @@ def test_run_gateway_summary_hides_userinfo_query_and_fragment(monkeypatch, tmp_
     captured = capsys.readouterr()
     assert "Base URL: https://**********@gw.example/v1?**********#**********" in captured.out, captured.out
     _assert_no_value(captured.out + captured.err)
+
+
+# --- Codex round 1 (#671): the other launch boundaries --------------------------------------------------------------
+
+_TOOL_REDIS = "OPTIMUS_GATEWAY_TOOL_REDIS_URL"
+_REDIS_MALFORMED = {
+    "nfkc-netloc": "redis://user:" + _PW + chr(0xFF03) + "@127.0.0.1:6379/0",
+    "bare-value": _KEY,
+    "tab-in-authority": "redis://user:" + _PW + "@127.0.0.1" + chr(9) + ":6379/0",
+}
+
+
+@pytest.mark.parametrize("mechanism", sorted(MALFORMED))
+def test_agent_start_refuses_every_mechanism_without_the_value(monkeypatch, tmp_path: Path, capsys, mechanism: str) -> None:
+    from optimus.acp import __main__ as acp_main
+    from tests.unit.acp.conftest import FakeKeyring
+    from tests.unit.acp.test_main_wiring import _base_env
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("OPTIMUS_CONFIG_ROOT", str(tmp_path / "config"))
+    for name, value in {**_base_env(), "OPTIMUS_GATEWAY_URL": MALFORMED[mechanism]}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(acp_main, "keyring", FakeKeyring())
+    for starter in ("ensure_local_redis", "ensure_local_gateway", "build_configured_server"):
+        monkeypatch.setattr(acp_main, starter, lambda *_a, **_k: pytest.fail("must not start"))
+
+    assert acp_main.main(["--workspace-root", str(workspace)]) == 2
+    err = capsys.readouterr().err
+    assert "CREDENTIAL_URI_INVALID" in err and "OPTIMUS_GATEWAY_URL from the environment" in err, err
+    _assert_no_value(err)
+
+
+@pytest.mark.parametrize("mechanism", sorted(_REDIS_MALFORMED))
+def test_a_malformed_tool_url_in_env_gateway_is_refused_without_its_value(tmp_path: Path, mechanism: str) -> None:
+    with pytest.raises(LaunchGateError) as caught:
+        _resolve(tmp_path, dict(_REQUIRED_LAUNCH_ENV), env_gateway=f"{_TOOL_REDIS}={_REDIS_MALFORMED[mechanism]}\n")
+    _assert_refusal(caught.value, _TOOL_REDIS, ".env.gateway")
+
+
+@pytest.mark.parametrize("mechanism", sorted(_REDIS_MALFORMED))
+def test_run_gateway_refuses_a_malformed_tool_url_before_any_spawn(monkeypatch, tmp_path: Path, capsys, mechanism: str) -> None:
+    from optimus.acp import launch_approval_cli
+
+    monkeypatch.setattr(launch_approval_cli.subprocess, "run", lambda *_a, **_k: pytest.fail("must not spawn"))
+    monkeypatch.setenv(_TOOL_REDIS, _REDIS_MALFORMED[mechanism])
+    assert _run_gateway(monkeypatch, tmp_path, "https://gw.example/v1") == 2
+    captured = capsys.readouterr()
+    assert f"{_TOOL_REDIS} from the environment " in captured.err, captured.err
+    _assert_no_value(captured.out + captured.err)
+
+
+@pytest.mark.parametrize(
+    ("name", "value", "accepted"),
+    [
+        (_TOOL_REDIS, "unix:///run/redis/redis.sock?db=0", True),  # redis-py accepts a Unix socket
+        (_TOOL_REDIS, "rediss://[::1]:6380/0", True),
+        ("OPTIMUS_REDIS_URL", "https://127.0.0.1:6379/0", False),
+        (_BASE, "redis://gw.example:6379/0", False),
+        (_BASE, "HTTPS://GW.example:8443/v1;p/%7Ex", True),
+    ],
+)
+def test_each_variable_takes_its_consumers_schemes(tmp_path: Path, name: str, value: str, accepted: bool) -> None:
+    env = {**_REQUIRED_LAUNCH_ENV, _API_KEY: _SYNTH_PROVIDER_KEY, name: value}
+    if accepted:
+        _resolve(tmp_path, env)
+        return
+    with pytest.raises(LaunchGateError) as caught:
+        _resolve(tmp_path, env)
+    _assert_refusal(caught.value, name, "the environment")
+
+
+def test_a_gateway_url_with_userinfo_is_shown_masked_at_the_gate(tmp_path: Path) -> None:
+    """Userinfo stays a secret subfield the gate accepts (Plan 9.96); the agent's settings refuse it, value-free (below)."""
+    env = {**_REQUIRED_LAUNCH_ENV, "OPTIMUS_GATEWAY_URL": "http://user:" + _PW + "@127.0.0.1:8765"}
+    candidate = _resolve(tmp_path, env)
+    [row] = [row for row in candidate.display_rows if row.name == "OPTIMUS_GATEWAY_URL"]
+    assert row.display_value == "http://**********@127.0.0.1:8765"
+
+
+@pytest.mark.parametrize(
+    "url", [MALFORMED["nfkc-netloc"].replace("gw.example", "127.0.0.1"), "http://user:" + _PW + "@127.0.0.1:8765"]
+)
+def test_the_agents_gateway_settings_never_echo_a_refused_url(url: str) -> None:
+    from optimus.config.gateway import OptimusGatewaySettings
+
+    with pytest.raises(ValueError) as caught:
+        OptimusGatewaySettings(gateway_url=url, optimus_api_key="test-key")  # pragma: allowlist secret
+    for link in _chain(caught.value):
+        _assert_no_value(str(link))
+
+
+def test_preflight_names_the_gateway_without_its_query(monkeypatch) -> None:
+    from optimus.acp import preflight
+
+    class _Unreachable:
+        def __init__(self, *, settings) -> None:
+            pass
+
+        def create_response(self, **_kwargs) -> None:
+            raise OSError("connection refused")
+
+    monkeypatch.setattr("optimus.gateway.client.GatewayClient", _Unreachable)
+    env = {**_REQUIRED_LAUNCH_ENV, "OPTIMUS_GATEWAY_URL": "http://127.0.0.1:8765/v1?token=" + _PW}
+    with pytest.raises(preflight.PreflightFailure) as caught:
+        preflight._require_gateway_auth(env)
+    assert "http://127.0.0.1:8765/v1?**********" in caught.value.user_message, caught.value.user_message
+    _assert_no_value(caught.value.user_message)
+
+
+def test_the_approval_ceremony_refuses_before_it_shows_or_records(monkeypatch, tmp_path: Path, capsys) -> None:
+    from optimus.acp import launch_approval_cli as cli
+    from optimus.acp.launch_approvals import KeyringApprovalStore
+    from tests.unit.acp.conftest import FakeKeyring
+    from tests.unit.acp.test_launch_approval_cli import TestApprovalTimeRuntimeBootstrap
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    TestApprovalTimeRuntimeBootstrap._configure_approval_environment(tmp_path, monkeypatch)
+    monkeypatch.setenv(_BASE, MALFORMED["tab-in-authority"])
+    store = KeyringApprovalStore(keyring_backend=FakeKeyring(), runtime_root=tmp_path / "approval-runtime")
+    monkeypatch.setattr(cli, "_require_tty", lambda: None)
+    monkeypatch.setattr(cli, "_resolve_store", lambda _workspace: (store, tmp_path / "approval-runtime"))
+    monkeypatch.setattr(cli, "build_approval_record", lambda **_kwargs: pytest.fail("record must not build"))
+    monkeypatch.setattr("builtins.input", lambda _prompt: pytest.fail("must not ask"))
+
+    assert cli.main(["--workspace-root", str(workspace), "approve", "--mode", "durable"]) == 2
+    captured = capsys.readouterr()
+    assert "CREDENTIAL_URI_INVALID" in captured.err and _BASE in captured.err, captured.err
+    _assert_no_value(captured.out + captured.err)

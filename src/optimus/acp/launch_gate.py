@@ -52,6 +52,7 @@ from optimus.acp.local_gateway_secrets import (
     CredentialStoreUnavailable,
     ProviderCredentialConfigurationError,
     ProviderCredentialResolution,
+    _parse_env_gateway_file,
     resolve_provider_credentials,
     resolve_shared_secret_with_provenance,
 )
@@ -91,9 +92,10 @@ from optimus_security.memory_store_config import SECURITY_LITERAL_NAME as MEMORY
 from optimus_security.memory_store_config import MemoryStoreConfigError, memory_store_root
 from optimus_security.memory_store_config import config_literal as memory_store_config_literal
 from optimus_security.sanitization import (
+    HTTP_URI_SCHEMES,
+    REDIS_URI_SCHEMES,
     CredentialUriError,
     canonicalize_credential_uri,
-    mask_uri_userinfo,
     validate_secret_length,
 )
 
@@ -175,15 +177,26 @@ class LaunchGateError(ValueError):
 def credential_uri_display(name: str, value: str, layer: CredentialLayer) -> str:
     """The display form of a credential-bearing URL, or a refusal that names the variable and its source only.
 
-    #671: the value may hold a password or a pasted key, so neither it nor the parser's exception is kept.
+    #671: the value may hold a password or a pasted key, so neither it nor the parser's exception is kept. Each
+    variable takes its consumer's schemes. Userinfo stays a secret subfield of every one (Plan 9.96 policy table).
     """
+    schemes = REDIS_URI_SCHEMES if name.endswith("REDIS_URL") else HTTP_URI_SCHEMES
     try:
-        return mask_uri_userinfo(value)
+        return canonicalize_credential_uri(value, schemes=schemes).display_uri
     except CredentialUriError as exc:
-        raise LaunchGateError(
-            code="CREDENTIAL_URI_INVALID",
-            detail=f"{name} from {_LAYER_WORDS.get(layer, 'configuration')} is {exc}; the value is not shown.",
-        ) from None
+        source = _LAYER_WORDS.get(layer, "configuration")
+        raise LaunchGateError(code="CREDENTIAL_URI_INVALID", detail=f"{name} from {source} is {exc}; the value is not shown.") from None
+
+
+def require_gateway_tool_urls(config_root: Path, environ: Mapping[str, str]) -> None:
+    """Validate the Gateway tool URLs a launch hands its Gateway, from .env.gateway as well as the environment (#671)."""
+    for layer, values in (
+        (CredentialLayer.ENVIRONMENT, project_gateway_tool_child_env(environ)),
+        (CredentialLayer.CONFIG_FILE, project_gateway_tool_child_env(_parse_env_gateway_file(config_root / ".env.gateway"))),
+    ):
+        for name, value in values.items():
+            if LAUNCH_VARIABLE_POLICIES[name].uri_userinfo:
+                credential_uri_display(name, value, layer)
 
 
 # --- Config-root and .env.gateway permission validation ---
@@ -673,6 +686,7 @@ def resolve_launch_candidate(
     env_gateway_path = operator_paths.config_root / ".env.gateway"
     if env_gateway_path.is_file():
         validate_config_file_permissions(env_gateway_path)
+    require_gateway_tool_urls(operator_paths.config_root, snapshot.values)
 
     # 2b. Single-read credential resolution (Step 3). Resolve provider
     # credentials and the shared secret exactly once here, using only the
