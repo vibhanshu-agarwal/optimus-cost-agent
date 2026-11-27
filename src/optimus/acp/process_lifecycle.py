@@ -59,8 +59,8 @@ def raise_preserving_failure(failure: BaseException) -> None:
     try:
         raise failure
     finally:
-        # The base-class setter: a frozen dataclass exception refuses ordinary assignment (#685). Cause first, since
-        # setting it also sets __suppress_context__.
+        # The base-class setter, as the helper takes any exception: one from a dependency or an injected stream may be a
+        # frozen dataclass without `frozen_exception` (#685). Cause first, since setting it also sets the suppression.
         for name, value in (("__cause__", cause), ("__context__", context), ("__suppress_context__", suppress)):
             object.__setattr__(failure, name, value)
 

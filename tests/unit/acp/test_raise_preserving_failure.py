@@ -6,6 +6,7 @@ loopback port that does not confirm its identity. Nothing real starts; synthetic
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -45,6 +46,15 @@ FAILURES = {
 }
 
 
+@dataclasses.dataclass(frozen=True)
+class _UndecoratedFrozen(Exception):  # what a dependency or an injected stream may raise; `src` decorates its own
+    detail: str
+
+
+# Kept out of FAILURES, which the frozen-exception sweep compares with the decorated types in `src`.
+HELPER_ONLY = {"UndecoratedFrozen": lambda: _UndecoratedFrozen("synthetic")}
+
+
 def _raise_while_handling(failure: BaseException) -> None:
     try:
         raise ValueError("unrelated, being handled when the failure is re-raised")
@@ -53,9 +63,9 @@ def _raise_while_handling(failure: BaseException) -> None:
 
 
 @pytest.mark.parametrize("chain", ["explicit-cause", "implicit-context", "none"])
-@pytest.mark.parametrize("kind", sorted(FAILURES))
+@pytest.mark.parametrize("kind", sorted({**FAILURES, **HELPER_ONLY}))
 def test_the_original_failure_reaches_the_caller_with_its_own_cause_and_context(kind: str, chain: str) -> None:
-    failure = FAILURES[kind]()
+    failure = {**FAILURES, **HELPER_ONLY}[kind]()
     cause, context = LookupError("synthetic cause"), TypeError("synthetic context")
     if chain == "explicit-cause":
         object.__setattr__(failure, "__cause__", cause)  # what `raise failure from cause` leaves

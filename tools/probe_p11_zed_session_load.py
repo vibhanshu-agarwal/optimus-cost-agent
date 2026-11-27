@@ -357,6 +357,7 @@ ESTABLISHING_EXECUTION_GIT_PATHS = (
     "src/optimus/retry/gated_run.py",
     "src/optimus/retry/policy.py",
     "src/optimus/runtime/__init__.py",
+    "src/optimus/runtime/frozen_exception.py",
     "src/optimus/runtime/modes.py",
     "src/optimus/runtime/mutation.py",
     "src/optimus/runtime/process_tree.py",

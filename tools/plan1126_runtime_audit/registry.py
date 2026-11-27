@@ -29,6 +29,8 @@ from .source import SourceTree
 _REDIS_RUNTIME_PATHS = (
     "src/optimus/redis/async_bridge.py",
     "src/optimus/redis/runtime.py",
+    # #685: the Redis runtime reaches the frozen exceptions, which execute this at import; H5, H9 and S1 all bind it.
+    "src/optimus/runtime/frozen_exception.py",
 )
 #: Bound by every entry: the gate that establishes identity is itself executing code.
 _GATE_PATHS = ("tools/plan1126_runtime_audit/measurement.py",)
