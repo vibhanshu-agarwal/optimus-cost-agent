@@ -85,7 +85,7 @@ SUMMARY_FIXTURE_DIGEST = "f32fd04d25461f435daff8c39049b2468afe3e407e1c4a3a41c999
 
 
 class RegistryError(Exception):
-    """The registry could not be loaded. ``code`` is ``YAML_REJECTED`` or ``SCHEMA_INVALID``."""
+    """The registry could not be loaded. ``code`` is ``YAML_REJECTED``, ``OVERRIDE_BUDGET_REFUSED`` or ``SCHEMA_INVALID``."""
 
     def __init__(self, code: str, detail: str) -> None:
         super().__init__(f"{code}: {detail}")
@@ -536,25 +536,39 @@ def _canonical_hash(policy: Policy) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def load_registry(defaults: Path, *overrides: Path | None) -> RegistrySnapshot:
+def _refuse_operator_budget(layer: Mapping[str, Any], name: str) -> None:
+    """Plan 12.15: a context budget acts only once it qualifies in the packaged defaults (#243), so an operator
+    override may not set one for any model, not even as null or a packaged value."""
+    models = layer.get("models")
+    if isinstance(models, Mapping):
+        for model_id, entry in models.items():
+            if isinstance(entry, Mapping) and "context_budget" in entry:
+                raise RegistryError("OVERRIDE_BUDGET_REFUSED", f"{name}: an operator override may not set models.{model_id}.context_budget")
+
+
+def load_registry(defaults: Path, *overrides: Path | None, operator: Path | None = None) -> RegistrySnapshot:
     """Read and validate a local policy registry.
 
-    Apply each supplied override in order. Structural findings are reported
-    separately by ``validate_registry``.
+    Apply each supplied override in order, then the operator's override, which may not set a context budget.
+    Structural findings are reported separately by ``validate_registry``.
 
     :param defaults: The caller's defaults file.
-    :param overrides: Optional override paths. Skip None entries.
+    :param overrides: Optional trusted override paths (packaged overlays, fixtures). Skip None entries.
+    :param operator: The operator's override, composed last, or None.
     :returns: The validated snapshot, effective policy identity and input provenance.
     :raises OSError: If an input file cannot be read.
-    :raises RegistryError: If an input is invalid YAML or the combined policy fails schema validation.
+    :raises RegistryError: If an input is invalid YAML, the operator's override sets a context budget, or the combined
+        policy fails schema validation.
     """
     base, base_raw = _load_yaml(defaults)
     combined = base
     input_hashes = [(defaults.name, hashlib.sha256(base_raw).hexdigest())]
-    for override in overrides:
+    for override in (*overrides, operator):
         if override is None:
             continue
         extra, extra_raw = _load_yaml(override)
+        if override is operator:
+            _refuse_operator_budget(extra, override.name)
         combined = _combine(combined, extra)
         input_hashes.append((override.name, hashlib.sha256(extra_raw).hexdigest()))
     try:

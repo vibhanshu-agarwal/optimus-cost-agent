@@ -18,6 +18,7 @@ from unittest.mock import patch
 import pytest
 
 from optimus.acp import launch_approval_cli, operator_paths
+from optimus.acp.launch_gate import LaunchGateError
 from optimus.acp.trusted_paths import TrustedOperatorRoots
 from optimus_gateway import __main__ as gateway_main
 from optimus_model_policy import Role, select_eligible_models
@@ -26,13 +27,14 @@ from optimus_model_policy.binding import (
     OPERATOR_OVERRIDE_FILENAME,
     BindingError,
     approval_literal,
+    auto_snapshot,
     operator_override,
     packaged_defaults,
     trusted_approval_literal,
     trusted_snapshot,
     use_operator_override,
 )
-from optimus_model_policy.registry import load_registry
+from optimus_model_policy.registry import RegistryError, load_registry
 from tests.unit.acp.conftest import FakeKeyring
 from tests.unit.acp.test_launch_gate_model_registry import _candidate
 from tests.unit.acp.test_local_infra_model_registry import _spawned_args
@@ -235,3 +237,61 @@ def test_run_gateway_signs_an_approved_override_and_passes_it_by_path(tmp_path: 
     [args] = spawned
     assert args[args.index("--registry-override") + 1] == str(path)
     assert sys.executable in args
+
+
+# --- Plan 12.15 Task 1: an operator override may not set a model's context budget ------------------------------------
+# The budget field acts only once it qualifies in the packaged defaults (#243); an override carrying it, even as null or
+# a packaged value, is refused at the shared composition, so neither the launch gate nor the Gateway composes it.
+
+HAIKU = "anthropic/claude-haiku-5.5"
+_BUDGETS = ["null", "{}", '{input_target_usd: "0.008192"}', '{input_target_usd: "0.012288"}']
+
+
+def _budget_override(config_root: Path, value: str) -> Path:
+    return _write_override(config_root, f"models:\n  {HAIKU}:\n    context_budget: {value}\n")
+
+
+@pytest.mark.parametrize("value", _BUDGETS)
+def test_an_override_that_sets_a_context_budget_is_refused_in_both_compositions(tmp_path: Path, value: str) -> None:
+    use_operator_override(_budget_override(tmp_path, value))
+    try:
+        for compose in (trusted_snapshot, auto_snapshot):
+            with pytest.raises(RegistryError) as caught:
+                compose()
+            assert caught.value.code == "OVERRIDE_BUDGET_REFUSED" and HAIKU in caught.value.detail
+    finally:
+        use_operator_override(None)
+
+
+def test_the_refusal_reads_only_the_operator_layer(tmp_path: Path) -> None:
+    # A packaged overlay or an evaluation fixture composed as a trusted layer may still carry the field.
+    path = _budget_override(tmp_path, '{input_target_usd: "0.012288"}')
+    assert load_registry(packaged_defaults(), path).policy.models[HAIKU].context_budget is not None
+    # An override without the field composes exactly as before, so the hash the operator approved still holds.
+    plain = _write_override(tmp_path / "plain")
+    use_operator_override(plain)
+    try:
+        assert trusted_snapshot().effective_hash == load_registry(packaged_defaults(), plain).effective_hash
+    finally:
+        use_operator_override(None)
+
+
+def test_the_launch_gate_refuses_a_budget_override_before_anything_is_approved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    roots = TrustedOperatorRoots(
+        default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
+    )
+    monkeypatch.setattr(operator_paths, "resolve_trusted_operator_roots", lambda **_: roots)
+    keyring = FakeKeyring()
+    _budget_override(_candidate(tmp_path, keyring)[0].operator_paths.config_root, "null")
+    with pytest.raises(LaunchGateError) as caught:
+        _candidate(tmp_path, keyring)
+    assert (caught.value.code, caught.value.detail) == ("MODEL_REGISTRY_INVALID", "OVERRIDE_BUDGET_REFUSED")
+
+
+def test_the_gateway_refuses_to_start_with_a_budget_override(tmp_path: Path, started: list, capsys) -> None:  # noqa: F811
+    path = _budget_override(tmp_path, '{input_target_usd: "0.012288"}')
+    argv = ["--bind-host", "127.0.0.1", "--port", "8765", "--registry-override", str(path), "--manifest", _manifest(None)]
+    for extra in ([], ["--auto-composition"]):
+        assert gateway_main.main([*argv, *extra]) == 2
+        assert "OVERRIDE_BUDGET_REFUSED" in capsys.readouterr().err
+    assert started == []
