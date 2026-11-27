@@ -144,3 +144,10 @@ def control_measurement_children(monkeypatch) -> None:
 
     original = measurement.fresh_child_environment
     monkeypatch.setattr(measurement, "fresh_child_environment", lambda cache_directory: environment(original(cache_directory)))
+
+
+def control_inherited_children(monkeypatch) -> None:
+    """A child that repository code launches with no `env=` inherits this process's environment (`probes.run_contained`).
+    A test that reaches such a launch selects `fail` for its own duration (#661); `monkeypatch` restores the environment
+    afterwards, so nothing outlives the test and nothing is session-wide (#538 rejected that)."""
+    monkeypatch.setenv(VARIABLE, FAIL_BACKEND)
