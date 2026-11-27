@@ -189,7 +189,9 @@ def assemble_pack(*, required: Sequence[str], ranked: Sequence[Ranked], read: Ca
         elif hit.id in shown_signature:
             disclosure = "signature"
         else:
-            selected.append(_omitted(item, "over the budget"))
+            # A hit with neither a signature line nor an excerpt (a summary-free whole-file match) is never a budget cut (#670).
+            showable = hit.id in lines_by_id or any(c.id == hit.id for c in blocks_pool)
+            selected.append(_omitted(item, "over the budget" if showable else "no summary or excerpt to show"))
             continue
         selected.append(Selected(hit.path, hit.kind, hit.symbol, hit.file_hash, hit.start_line, hit.end_line, disclosure, item.score, dict(item.ranks), _reason(item)))
 

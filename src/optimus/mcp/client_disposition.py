@@ -517,12 +517,29 @@ class ClientMcpDisposition:
                         identity_fingerprint=fingerprint,
                     )
             return state
-        except BaseException:
-            with suppress(BaseException):
+        except BaseException as failure:
+            # The owned close reaches its terminal outcome first; a caller's cancel delivered meanwhile then goes on,
+            # unless the setup failure is itself a cancel, SystemExit or KeyboardInterrupt (#642 class sweep).
+            cancel: asyncio.CancelledError | None = None
+
+            async def settled(owned: asyncio.Future[Any]) -> None:
+                nonlocal cancel
+                while not owned.done():
+                    try:
+                        await asyncio.wait((owned,))
+                    except asyncio.CancelledError as exc:
+                        cancel = exc  # only the caller's: asyncio.wait never raises the owned future's own outcome
+
+            with suppress(BaseException):  # a rollback fault cannot replace the setup failure
                 operation = state.prepare_owned_close()
                 if not operation.result.done():
-                    await self.run_blocking(state.close)
-                await asyncio.shield(asyncio.wrap_future(operation.result))
+                    # Its own task, so a caller cancel abandons neither the cleanup-lane wait nor the worker.
+                    close = asyncio.ensure_future(self.run_blocking(state.close))
+                    await settled(close)
+                    close.result()  # the close's own failure stays contained here, as before
+                await settled(asyncio.wrap_future(operation.result))
+            if cancel is not None and isinstance(failure, Exception):
+                raise cancel from failure
             raise
 
 

@@ -367,6 +367,21 @@ class SessionRetentionOwner:
         return tuple(results)
 
     @observe_operation
+    async def wait_retirement_ended(self, session_id: str) -> asyncio.CancelledError | None:
+        """Wait until the session's retirement job has ended, leaving its outcome to this owner (drain retrieves a failure).
+        A cancel delivered to the caller meanwhile does not stop the wait; it is returned for the caller to raise (#642)."""
+        self._check_loop()
+        entry = self._entries.get(session_id)
+        job = None if entry is None else entry.job
+        cancel: asyncio.CancelledError | None = None
+        while job is not None and not job.done():
+            try:
+                await asyncio.wait((job,))
+            except asyncio.CancelledError as exc:
+                cancel = exc
+        return cancel
+
+    @observe_operation
     async def wait_retired(self, session_id: str) -> RetirementResult | None:
         self._check_loop()
         entry = self._entries.get(session_id)
