@@ -34,7 +34,8 @@ class ProviderKeyViolation(ValueError):
 
 
 class OptimusGatewaySettings(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    # #671: a refused gateway_url may carry a credential, and a ValidationError otherwise prints its input
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
 
     gateway_url: str = _DEFAULT_GATEWAY_URL
     optimus_api_key: SecretStr = Field(min_length=1)
@@ -100,8 +101,10 @@ def _validate_loopback_gateway_url(value: object) -> str:
         parsed = urlparse(url)
         hostname = parsed.hostname
         port = parsed.port
-    except ValueError as exc:
-        raise ValueError(f"gateway_url is malformed: {value}") from exc
+    except ValueError:
+        parsed = None
+    if parsed is None:  # #671: raised outside the except, so the parser's text (the netloc, password included) is not kept
+        raise ValueError("gateway_url is malformed")
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
