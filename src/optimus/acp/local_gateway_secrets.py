@@ -173,11 +173,19 @@ def resolve_shared_secret(
     return value
 
 
-def _provider_error(provider: str, *, keyring: bool = False) -> ProviderCredentialConfigurationError:
-    suffix = " Run `optimus-agent --setup` to choose a supported provider." if keyring else ""
+_LAYER_WORDS = {
+    CredentialLayer.ENVIRONMENT: "the environment",
+    CredentialLayer.CONFIG_FILE: ".env.gateway",
+    CredentialLayer.KEYRING: "the OS keychain",
+}
+
+
+def _provider_error(layer: CredentialLayer) -> ProviderCredentialConfigurationError:
+    # #669: never echo the value; an API key pasted into the provider variable would reach stderr and the IDE's log.
+    suffix = " Run `optimus-agent --setup` to choose a supported provider." if layer is CredentialLayer.KEYRING else ""
     return ProviderCredentialConfigurationError(
-        f"optimus-agent: provider {provider!r} is not supported; configure the local Gateway "
-        f"for OpenRouter only.{suffix}"
+        f"optimus-agent: OPTIMUS_LOCAL_GATEWAY_PROVIDER from {_LAYER_WORDS.get(layer, 'configuration')} is not a "
+        f"supported provider; set it to openrouter (the local Gateway supports OpenRouter only).{suffix}"
     )
 
 
@@ -204,10 +212,7 @@ def resolve_provider_credentials(
     else:
         provider = provider_raw.casefold()
     if provider not in _SUPPORTED_PROVIDERS:
-        raise _provider_error(
-            provider,
-            keyring=provider_provenance.layer is CredentialLayer.KEYRING,
-        )
+        raise _provider_error(provider_provenance.layer)
     expected_key_name = "OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"
     api_key, api_key_provenance = _resolve_env_config_keyring(
         environ,

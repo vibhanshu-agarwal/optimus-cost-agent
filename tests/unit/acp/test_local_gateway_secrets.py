@@ -283,7 +283,8 @@ def test_env_provider_and_mismatched_keyring_provider_fails_closed(tmp_path) -> 
         )
 
     message = str(exc_info.value)
-    assert "openai" in message and "OpenRouter" in message
+    assert "openai" not in message and "OpenRouter" in message  # #669: the value is never echoed
+    assert "OPTIMUS_LOCAL_GATEWAY_PROVIDER from the environment" in message
     assert "sk-private-value" not in message
 
 
