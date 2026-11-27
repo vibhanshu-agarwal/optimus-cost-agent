@@ -298,7 +298,7 @@ def test_the_refusal_reads_only_the_operator_layer(tmp_path: Path) -> None:
 @pytest.mark.parametrize("value", _BUDGETS)
 @pytest.mark.parametrize("model", [None, "auto"])
 def test_the_launch_gate_refuses_a_budget_override_before_anything_is_approved(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, model: str | None, value: str
+    tmp_path: Path, trusted_budget: Path, monkeypatch: pytest.MonkeyPatch, model: str | None, value: str
 ) -> None:
     roots = TrustedOperatorRoots(
         default_config_root=tmp_path.parent / (tmp_path.name + "-config"), approval_runtime_root=tmp_path / "runtime"
@@ -318,7 +318,7 @@ def test_the_launch_gate_refuses_a_budget_override_before_anything_is_approved(
 
 
 @pytest.mark.parametrize("auto", [False, True])
-def test_run_gateway_refuses_a_budget_override_before_signing_or_spawning(tmp_path: Path, monkeypatch, auto: bool) -> None:
+def test_run_gateway_refuses_a_budget_override_before_signing_or_spawning(tmp_path: Path, trusted_budget: Path, monkeypatch, auto: bool) -> None:
     _budget_override(tmp_path / "config", EQUAL)
     signed: list = []
     monkeypatch.setattr(launch_approval_cli, "build_gateway_child_manifest", lambda **kwargs: signed.append(kwargs))
@@ -339,7 +339,9 @@ def test_the_gateway_refuses_to_start_with_a_budget_override(
 
 
 @pytest.mark.parametrize("mode", ["durable", "one-shot"])
-def test_the_approval_command_writes_no_record_for_a_budget_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+def test_the_approval_command_writes_no_record_for_a_budget_override(
+    tmp_path: Path, trusted_budget: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
     cli_module, workspace, store = _approval_cli_case(tmp_path, monkeypatch)
     monkeypatch.setattr(cli_module, "_require_tty", lambda: None)
     monkeypatch.setattr("builtins.input", lambda _prompt: "y")
@@ -351,5 +353,3 @@ def test_the_approval_command_writes_no_record_for_a_budget_override(tmp_path: P
     assert (caught.value.code, caught.value.detail) == ("MODEL_REGISTRY_INVALID", "OVERRIDE_BUDGET_REFUSED")
     assert store.read_durable(resolve_workspace_security_state(workspace).identity.digest) is None
     assert store._keyring._store == keyring_before  # no approval record, and the key was not re-initialized
-
-
