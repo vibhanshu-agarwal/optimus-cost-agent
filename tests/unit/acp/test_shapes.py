@@ -5,15 +5,16 @@ from optimus.acp.shapes import (
     build_request_permission_params,
     build_tool_call_notification,
     build_tool_call_update_notification,
+    code_block,
     plan_entries_from_text,
 )
 
 
 def test_plan_entry_content_is_plain_string_not_content_blocks():
     entries = plan_entries_from_text("READ README.md\nWRITE example.py")
-    assert entries == [
-        {"content": "READ README.md", "priority": "medium", "status": "pending"},
-        {"content": "WRITE example.py", "priority": "medium", "status": "pending"},
+    assert entries == [  # each line of the model's plan in a code block (#591)
+        {"content": code_block("READ README.md"), "priority": "medium", "status": "pending"},
+        {"content": code_block("WRITE example.py"), "priority": "medium", "status": "pending"},
     ]
     for entry in entries:
         assert isinstance(entry["content"], str)
@@ -26,7 +27,7 @@ def test_build_plan_session_update_matches_acp_v1_shape():
         "update": {
             "sessionUpdate": "plan",
             "entries": [
-                {"content": "WRITE example.py", "priority": "medium", "status": "pending"},
+                {"content": code_block("WRITE example.py"), "priority": "medium", "status": "pending"},
             ],
         },
     }

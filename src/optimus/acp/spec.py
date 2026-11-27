@@ -2912,11 +2912,11 @@ class AcpDuplexAdapter:
         Cards are informational, so an undelivered one never stops the tool."""
 
         def card(call_id: str, phase: str, tool: str, argument: str, summary: str) -> None:
-            title = f"{tool} {argument[:80]}"
+            title = _shown(f"{tool} {argument[:80]}")  # the argument is the model's (#591)
             if phase == "started":
                 payload = build_tool_call_notification(session_id=session_id, tool_call_id=call_id, title=title, summary="running", kind=tool_kind_for_name(f"index_{tool.lower()}"), status="in_progress")
             else:
-                payload = build_tool_call_update_notification(session_id=session_id, tool_call_id=call_id, title=title, summary=summary, status=phase)
+                payload = build_tool_call_update_notification(session_id=session_id, tool_call_id=call_id, title=title, summary=_shown(summary), status=phase)
             future = asyncio.run_coroutine_threadsafe(self._outbound.notify("session/update", payload), loop)
             future.add_done_callback(lambda done: None if done.cancelled() else done.exception())
 
@@ -3111,7 +3111,7 @@ class AcpDuplexAdapter:
             if note is None or turn.turn_control.transport_abandoned():
                 return
             await self._outbound.notify(
-                "session/update", build_tool_call_notification(session_id=turn.session_id, tool_call_id=new_tool_call_id(), title="grounding_check", summary=note, kind=tool_kind_for_name("grounding_check"))
+                "session/update", build_tool_call_notification(session_id=turn.session_id, tool_call_id=new_tool_call_id(), title="grounding_check", summary=_shown(note), kind=tool_kind_for_name("grounding_check"))
             )
         except Exception:  # noqa: BLE001 - see above
             return
@@ -4011,7 +4011,7 @@ class AcpDuplexAdapter:
                 session_id=session_id,
                 tool_call_id=tool_call_id,
                 title=tool_call.tool_name,
-                summary=tool_call.summary,
+                summary=_shown(tool_call.summary),  # "read <path>", "ran <command>": the model's token, escaped (#591)
                 kind=tool_kind_for_name(tool_call.tool_name),
             )
             # region agent log
@@ -4047,7 +4047,7 @@ class AcpDuplexAdapter:
             await self._outbound.notify("session/update", completed_plan)
         elif send_plan and turn is not None:
             await self._send_terminal(turn, "completed_plan", completed_plan)
-        message = _completion_message(result)
+        message = _completion_message(result, _shown)
         message_payload = build_agent_message_chunk_notification(session_id=session_id, text=message)
         # region agent log
         acp_debug_log(
@@ -4153,19 +4153,42 @@ _WRITE_NOT_EXECUTED_MESSAGE = (
 _UNAPPLIED_PLAN_STOP_REASONS = frozenset({"EDIT_NOT_APPLICABLE", "UNSAFE_TEST_DIRECTIVE", "WRITE_DIRECTIVE_NOT_EXECUTED", *GUARD_REFUSAL_TEXTS})
 
 
-def _completion_message(result: AgentRunResult) -> str:
+_SHOWN_CHARS: Final = 2000  # agent-selected: one shown model-authored token or one-line card text, before escaping
+
+
+def _shown(text: str) -> str:
+    """A model-authored token, or a one-line card that quotes one, as the person sees it (#591): escaped with `escape_text`,
+    so a path or TEST argument written as Markdown renders as itself. Only what is shown: the run result, the committed
+    history and memory extraction (which parses "read <path>") keep the raw text."""
+    return memory_notices.escape_text(text, _SHOWN_CHARS)
+
+
+def _shown_edit_failure(text: str, shown: Callable[[str], str]) -> str:
+    """`edit_failure_text` with `shown` applied to its path only: the one word before the first ", because " (a plan path
+    holds no space). The fixed sentence and its closed code stay as they are."""
+    head, sep, rest = text.partition(", because ")
+    lead, space, path = head.rpartition(" ")
+    return f"{lead}{space}{shown(path)}{sep}{rest}" if sep else shown(text)
+
+
+def _completion_message(result: AgentRunResult, shown: Callable[[str], str] = str) -> str:
+    """The turn's final text. `shown` is applied to each model-authored token an agent-authored sentence quotes: `_shown` for
+    the message sent, the identity (which rebuilds the text unchanged) for the committed history."""
     if result.stop_reason == PLANNING_ANSWERED:
         return result.output_text  # the answer itself (#512)
     if result.stop_reason in TEST_STOP_REASONS.values():
-        return result.output_text  # it names the stopped TEST and any change already applied (Plan 12.3)
+        # it names the stopped TEST and any change already applied (Plan 12.3); each "- wrote <path>" item is the token
+        return "\n".join(f"- {shown(line[2:])}" if line.startswith("- ") else line for line in result.output_text.split("\n"))
     if result.stop_reason == "EDIT_NOT_APPLICABLE":
-        return result.output_text  # why the change was not made, that the plan made no changes, the next step and the code (#574)
+        # why the change was not made, that the plan made no changes, the next step and the code (#574)
+        return _shown_edit_failure(result.output_text, shown)
     if result.stop_reason == "UNSAFE_TEST_DIRECTIVE" or result.stop_reason in GUARD_REFUSAL_TEXTS:
         return result.output_text  # what was rejected and that nothing ran (#565); a guard refusal's fixed text (#589)
     if result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED":
         return _WRITE_NOT_EXECUTED_MESSAGE
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
-        return result.output_text  # the refused WRITE and the TESTs that did not run (#410)
+        path, space, rest = result.output_text.partition(" ")  # the refused WRITE's path comes first (#410)
+        return f"{shown(path)}{space}{rest}"
     if result.stop_reason == "PLAN_NOT_FOUND_OR_EXPIRED":
         return result.output_text  # the replan instruction; it no longer reaches the person as a plan entry (#570)
     if result.stop_reason in _VISIBLE_WORKSPACE_CONTEXT_FAILURES or result.stop_reason in _PLANNING_TERMINAL_STOP_REASONS:
@@ -4175,10 +4198,10 @@ def _completion_message(result: AgentRunResult) -> str:
     if result.mutation_count > 0:
         writes = [call.summary for call in result.tool_calls if call.tool_name == "write_file"]
         if writes:
-            return "Completed:\n" + "\n".join(f"- {summary}" for summary in writes)
+            return "Completed:\n" + "\n".join(f"- {shown(summary)}" for summary in writes)
         return f"Completed {result.mutation_count} file change(s)."
     if result.tool_calls:
-        return "Tool activity:\n" + "\n".join(f"- {call.summary}" for call in result.tool_calls)
+        return "Tool activity:\n" + "\n".join(f"- {shown(call.summary)}" for call in result.tool_calls)
     return "Turn completed."
 
 

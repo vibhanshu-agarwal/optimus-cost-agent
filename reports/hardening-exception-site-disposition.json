@@ -1,6 +1,6 @@
 {
   "schema": "optimus-exception-site-disposition-v1",
-  "source_sha256": "sha256:6202d5c413ecbff2fc32bb3f595cf0499c55d7102a557e6357b74586b2c9c060",
+  "source_sha256": "sha256:a15a9c0107d273d95c10941bcc20a498bb9ff002fadefcd51c1b42e721604afa",
   "sites": [
     {
       "key": "sha256:12dc6cf0fd88164c89a3bef9b8ca106a6ecb2174b346ccd6e50e60cb04d52b77",
@@ -5637,7 +5637,7 @@
       "path": "src/optimus/acp/spec.py",
       "symbol": "optimus.acp.spec._memory_report.report",
       "kind": "suppress",
-      "line": 4206,
+      "line": 4229,
       "column": 18,
       "fingerprint": "sha256:8a0987d0f2030a1ced0845a9742eb2788ec4e6c12d59451a343ea4505fbe70b7",
       "occurrence": 1,
@@ -5662,7 +5662,7 @@
       "path": "src/optimus/acp/spec.py",
       "symbol": "optimus.acp.spec._notice_of",
       "kind": "except",
-      "line": 4225,
+      "line": 4248,
       "column": 5,
       "fingerprint": "sha256:71b4da7c411cb0a13390bfbaf025f5f8ca3fa4ac534f191a324776bee5839e33",
       "occurrence": 1,
