@@ -121,6 +121,9 @@ class Collect(ast.NodeVisitor):
         self.visit(node.value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is None and isinstance(node.target, ast.Attribute):
+            self.visit(node.target.value)  # an annotation alone assigns nothing
+            return
         self._bind(node.target, node.value)
         if node.value is not None:
             self.visit(node.value)
@@ -132,6 +135,20 @@ class Collect(ast.NodeVisitor):
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, (ast.Store, ast.Del)):
             self.scope.bindings[node.id].append(None)
+
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.name:
+            self.scope.bindings[node.name].append(None)
+        self.generic_visit(node)
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name:
+            self.scope.bindings[node.name].append(None)
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        if node.rest:
+            self.scope.bindings[node.rest].append(None)
+        self.generic_visit(node)
 
     def visit_Global(self, node: ast.Global) -> None:
         for name in node.names:
@@ -152,9 +169,11 @@ class Collect(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
-        if isinstance(node.func, ast.Name) and node.func.id == "exec":
-            self.scope.dynamic = True
-        if isinstance(node.func, ast.Name) and node.func.id in ("setattr", "delattr") and node.args:
+        called = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
+        if called in ("exec", "eval"):
+            # Either can be handed globals(), so the module namespace is dynamic too.
+            self.scope.dynamic = self.module.dynamic = True
+        if called in ("setattr", "delattr") and node.args:
             name = node.args[1] if len(node.args) > 1 else None
             literal = name.value if isinstance(name, ast.Constant) and isinstance(name.value, str) else None
             self.writes.append((self.scope, node.args[0], literal, node.lineno))
@@ -199,6 +218,16 @@ class Collect(ast.NodeVisitor):
     ) -> None:
         outer = self.scope
         qualified = f"{outer.name}.{node.name}"
+        # Decorators, bases, keywords, defaults and annotations run in the enclosing scope at definition time.
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        if isinstance(node, ast.ClassDef):
+            for header in [*node.bases, *node.keywords]:
+                self.visit(header)
+        else:
+            self.visit(node.args)
+            if node.returns is not None:
+                self.visit(node.returns)
         slot = outer.bindings[node.name]
         slot.append(None)
         # A custom metaclass can return an arbitrary object, so a class with keywords stays unresolved.
@@ -247,7 +276,8 @@ class Collect(ast.NodeVisitor):
 # - writes from outside src (tests, plugins, sitecustomize, interpreter startup);
 # - vars(m)[...], m.__dict__[...], globals()[...], object.__setattr__(m, ...), m.__setattr__(...);
 # - an aliased setattr (s = setattr), or a computed-name setattr on a target that does not resolve to the module;
-# - eval, an aliased exec, importlib.reload. A bare exec call or a star import already makes its scope dynamic.
+# - setattr(*args) with unpacked arguments, an aliased exec or eval, importlib.reload.
+# A call named exec or eval makes its own scope and its module dynamic; a star import makes its scope dynamic.
 class Resolve:
     def __init__(self, modules: Mapping[str, Scope], classes: set[str]) -> None:
         self.modules = modules
@@ -277,6 +307,9 @@ class Resolve:
             else self.expression(item, scope, seen | {token})
             for item in choices
         }
+        if scope.is_class and scope.parent is not None:
+            # A class body runs in order: before its own binding, a name still resolves in the enclosing scope.
+            result.add(self.name(name, scope.parent, seen | {token}))
         if len(result) != 1:
             return frozenset({_AMBIGUOUS}).union(*result)
         resolved = result.pop()
@@ -373,6 +406,7 @@ def discover(source: Mapping[str, str], lint: Iterable[Lint] = ()) -> dict[str, 
     """Discover from source, independently of any supplied disposition report."""
     modules: dict[str, Scope] = {}
     paths: dict[str, str] = {}
+    trees: dict[str, ast.Module] = {}
     collectors: dict[str, Collect] = {}
     classes: set[str] = set()
     for path, value in sorted(source.items()):
@@ -384,7 +418,8 @@ def discover(source: Mapping[str, str], lint: Iterable[Lint] = ()) -> dict[str, 
         modules[module] = scope
         paths[module] = path
         collectors[path] = Collect(scope, classes)
-        collectors[path].visit(ast.parse(value, filename=path))
+        trees[path] = ast.parse(value, filename=path)
+        collectors[path].visit(trees[path])
     triggers = [
         (path, line, trusted, rule) for path, collector in collectors.items()
         for trusted, line, rule in collector.overwritten()
@@ -399,6 +434,11 @@ def discover(source: Mapping[str, str], lint: Iterable[Lint] = ()) -> dict[str, 
         elif export is not None and export.bindings.get(name) != [None]:
             count = len(export.bindings.get(name, []))
             triggers.append((paths[module_name], 1, trusted, f"canonical module binds {name} {count} times, not once by its def"))
+        elif export is not None and not any(
+            isinstance(node, ast.FunctionDef) and node.name == name and not node.decorator_list
+            for node in trees[paths[module_name]].body
+        ):
+            triggers.append((paths[module_name], 1, trusted, f"canonical module binds {name} other than by an undecorated def"))
     untrusted = {trusted for _, _, trusted, _ in triggers}
     for collector in collectors.values():
         collector.trust(untrusted)

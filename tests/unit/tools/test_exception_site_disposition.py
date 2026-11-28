@@ -290,10 +290,15 @@ def _unresolved(text, **files):
         (f"import {_FROZEN} as m\nm.frozen_exception: object = replacement", "@m.frozen_exception\n@dataclass"),
         ("import dataclasses as d\ndel d.dataclass", "@d.dataclass"),
         ("import dataclasses as d\nsetattr(d, choose(), replacement)", "@d.dataclass"),
-        ("import sys\nsys.modules['dataclasses'].dataclass = replacement", "@dataclass"),
+        ("import dataclasses, sys\nsys.modules['dataclasses'].dataclass = replacement", "@dataclasses.dataclass"),
+        ("import builtins, dataclasses as d\nbuiltins.setattr(d, 'dataclass', replacement)", "@d.dataclass"),
+        ("import dataclasses as d\ndef configure(_=setattr(d, 'dataclass', replacement)):\n    pass", "@d.dataclass"),
+        ("import dataclasses as d\n@setattr(d, 'dataclass', replacement) or keep\ndef configure():\n    pass",
+         "@d.dataclass"),
     ],
+    # augmented and del cannot run on the real function; they pin conservative detection of the write itself.
     ids=["frozen-alias-assign", "dataclasses-alias-assign", "setattr-literal", "augmented", "annotated", "del",
-         "setattr-computed-on-module", "through-sys-modules"],
+         "setattr-computed-on-module", "through-sys-modules", "qualified-setattr", "in-a-default", "in-a-decorator"],
 )
 def test_an_overwritten_trusted_attribute_is_not_trusted(header, decorators):
     # #697: Refused is Exception at runtime, so the catch is broad and must be reported.
@@ -302,7 +307,7 @@ def test_an_overwritten_trusted_attribute_is_not_trusted(header, decorators):
 
 
 def test_an_attribute_write_in_another_file_untrusts_the_name():
-    patch = "import dataclasses\n\ndef install():\n    dataclasses.dataclass = replacement\n"
+    patch = "import dataclasses\n\ndef install():\n    dataclasses.dataclass = replacement\n\ninstall()\n"
     text = f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"
     assert _unresolved(text, **{"src/patch.py": patch}) == [True]
 
@@ -317,8 +322,13 @@ _CANONICAL = "def frozen_exception(cls):\n    return cls\n"
         _CANONICAL + "def install():\n    global frozen_exception\n    frozen_exception = replacement\n",
         _CANONICAL + "from elsewhere import *\n",
         _CANONICAL + "exec(code)\n",
+        _CANONICAL + "def install():\n    exec(code, globals())\n",
+        "class frozen_exception:\n    def __new__(cls, decorated):\n        return Exception\n",
+        "@replace\n" + _CANONICAL,
+        _CANONICAL + "match replacement:\n    case frozen_exception:\n        pass\n",
     ],
-    ids=["conditional-rebinding", "global-rebinding", "star-import", "exec"],
+    ids=["conditional-rebinding", "global-rebinding", "star-import", "exec", "exec-in-a-function", "a-class",
+         "a-decorated-def", "match-capture"],
 )
 def test_a_rebound_canonical_export_is_not_trusted(canonical):
     text = (f"from dataclasses import dataclass\nfrom {_FROZEN} import frozen_exception\n\n"
@@ -347,8 +357,11 @@ def handle():
          "def install():\n    global dataclass\n    dataclass = replacement"),
         ("from dataclasses import dataclass", "dataclass", "from elsewhere import *"),
         ("from dataclasses import dataclass", "dataclass", "exec(code)"),
+        ("from dataclasses import dataclass", "dataclass", "def install():\n    exec(code, globals())"),
+        ("from dataclasses import dataclass", "dataclass", "match replacement:\n    case dataclass:\n        pass"),
     ],
-    ids=["conditional-rebinding", "later-rebinding", "later-global", "later-star-import", "later-exec"],
+    ids=["conditional-rebinding", "later-rebinding", "later-global", "later-star-import", "later-exec",
+         "exec-in-another-function", "match-capture"],
 )
 def test_a_local_class_waits_for_the_enclosing_bindings(imports, decorator, later):
     # #698: the module-level statement after the function can run before handle() is called.
@@ -367,9 +380,11 @@ def test_a_local_class_waits_for_the_enclosing_bindings(imports, decorator, late
          f"@m.frozen_exception\n@d.dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}"),
         "from dataclasses import dataclass\n" + _LOCAL_CLASS.format(decorator="dataclass"),
         f"from {_FROZEN} import frozen_exception\n" + _LOCAL_CLASS.format(decorator="frozen_exception"),
+        (f"from dataclasses import dataclass\n\ndef stamp(box):\n    box.dataclass: bool\n\n"
+         f"@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"),
     ],
     ids=["bare-dataclass", "called-dataclass", "frozen-over-dataclass", "aliases-without-a-write",
-         "local-dataclass", "local-frozen-exception"],
+         "local-dataclass", "local-frozen-exception", "attribute-annotation-only"],
 )
 def test_trusted_decorators_without_a_rebinding_still_resolve(text, request):
     # The canonical module as it is in the tree must not untrust its own export.
@@ -396,3 +411,29 @@ def test_a_rebound_canonical_module_is_reported_at_its_path():
     assert inventory["untrusted_decorators"] == [
         "src/optimus/runtime/frozen_exception.py:1 optimus.runtime.frozen_exception.frozen_exception:"
         " canonical module binds frozen_exception 2 times, not once by its def"]
+
+
+_CLASS_LOCAL_IMPORT = """
+def decorate(cls):
+    return Exception
+
+class Box:
+    @decorate
+    class Refused(Exception):
+        pass
+    from dataclasses import dataclass as decorate
+
+Refused = Box.Refused
+try:
+    raise ValueError()
+except Refused:
+    captured = True
+"""
+
+
+def test_a_class_body_decorator_sees_the_enclosing_binding_before_its_own():
+    # A class body runs in order, so @decorate here is the module function and Refused is Exception.
+    namespace: dict[str, object] = {}
+    exec(_CLASS_LOCAL_IMPORT, namespace)  # noqa: S102 - a fixed fixture, run to show the catch is broad
+    assert namespace["Refused"] is Exception and namespace["captured"]
+    assert _unresolved(_CLASS_LOCAL_IMPORT) == [True]
