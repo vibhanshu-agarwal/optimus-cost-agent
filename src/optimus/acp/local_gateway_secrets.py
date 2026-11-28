@@ -87,8 +87,12 @@ _ENV_NAME_FOR_KEY = {
 def _parse_env_gateway_file(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
+    return _parse_env_gateway_text(path.read_text(encoding="utf-8"))
+
+
+def _parse_env_gateway_text(text: str) -> dict[str, str]:
     values: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue

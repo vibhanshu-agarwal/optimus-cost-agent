@@ -46,14 +46,12 @@ def _typing_dacl_api(monkeypatch, module, *, null):
             raise AssertionError("NULL ACE reached dereference")
         return real_cast(pointer, target)
 
-    def security(_path, _flags, _buffer, _size, needed):
-        needed._obj.value = 64
-        return True
+    descriptor = 0x51D  # a stand-in address for the security descriptor GetSecurityInfo allocates
 
-    def dacl(_buffer, present, pointer, _defaulted):
-        present._obj.value = True
-        pointer._obj.value = ctypes.addressof(ace)
-        return True
+    def security(_handle, _kind, _flags, _owner, _group, dacl, _sacl, sd):
+        dacl._obj.value = ctypes.addressof(ace)
+        sd._obj.value = descriptor
+        return 0  # ERROR_SUCCESS
 
     def information(_pointer, size, _length, _kind):
         size._obj.AceCount = 1
@@ -69,10 +67,10 @@ def _typing_dacl_api(monkeypatch, module, *, null):
         text._obj.value = "S-1-5-18"
         return True
 
-    def free(_pointer):
-        calls.append("LocalFree")
+    def free(pointer):
+        calls.append("FreeDescriptor" if getattr(pointer, "value", None) == descriptor else "LocalFree")
 
-    native = SimpleNamespace(GetFileSecurityW=security, GetSecurityDescriptorDacl=dacl,
+    native = SimpleNamespace(GetSecurityInfo=security,
                              GetAclInformation=information, GetAce=get_ace, ConvertSidToStringSidW=convert)
     monkeypatch.setattr(ctypes, "windll", SimpleNamespace(advapi32=native, kernel32=SimpleNamespace(LocalFree=free)), raising=False)
     monkeypatch.setattr(ctypes, "cast", checked_cast)
@@ -87,12 +85,12 @@ def test_typing_dacl_pointer_refusal_precedes_sid_conversion(monkeypatch, tmp_pa
     calls = _typing_dacl_api(monkeypatch, gate, null=null)
     if null:
         with pytest.raises(LaunchGateError) as error:
-            gate._check_windows_dacl_real(tmp_path / "offline-config")
+            gate._check_windows_dacl_real(0x7E57)  # #693: a handle; nothing real is opened
         assert (error.value.code, error.value.detail) == ("CONFIG_FILE_DACL_UNREADABLE", "cannot read ACE")
-        assert calls == ["GetAce"]
+        assert calls == ["GetAce", "FreeDescriptor"]
     else:
-        gate._check_windows_dacl_real(tmp_path / "offline-config")
-        assert calls == ["GetAce", "ConvertSid", "LocalFree"]
+        gate._check_windows_dacl_real(0x7E57)
+        assert calls == ["GetAce", "ConvertSid", "LocalFree", "FreeDescriptor"]
 
 
 def test_typing_posix_check_on_windows_has_explicit_refusal(monkeypatch, tmp_path):
@@ -106,8 +104,8 @@ def test_typing_posix_check_on_windows_has_explicit_refusal(monkeypatch, tmp_pat
         pytest.fail("unsupported platform reached UID query")
 
     monkeypatch.setattr(gate.os, "getuid", forbidden_uid, raising=False)
-    with pytest.raises(LaunchGateError) as error:
-        gate._validate_posix_permissions(path)
+    with pytest.raises(LaunchGateError) as error, path.open("rb") as opened:
+        gate._validate_posix_permissions(opened.fileno())
     assert (error.value.code, error.value.detail) == ("CONFIG_FILE_PLATFORM_CHECK_FAILED", "platform cannot verify file permissions")
 
 

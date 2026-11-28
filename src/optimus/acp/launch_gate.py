@@ -20,7 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from optimus.acp.launch_approvals import (
     LAUNCH_POLICY_COMPATIBILITY,
@@ -53,6 +53,7 @@ from optimus.acp.local_gateway_secrets import (
     ProviderCredentialConfigurationError,
     ProviderCredentialResolution,
     _parse_env_gateway_file,
+    _parse_env_gateway_text,
     resolve_provider_credentials,
     resolve_shared_secret_with_provenance,
 )
@@ -222,6 +223,17 @@ def validate_config_file_permissions(
 
     Raises LaunchGateError if validation fails.
     """
+    read_config_file_checked(file_path, platform_name=platform_name, win32_security_adapter=win32_security_adapter)
+
+
+def read_config_file_checked(
+    file_path: Path,
+    *,
+    platform_name: str | None = None,
+    win32_security_adapter: object | None = None,
+) -> str:
+    """The file's text, read through the one handle its permissions were checked on (#693), so the file checked is the
+    file parsed. Checks as `validate_config_file_permissions`; raises LaunchGateError, naming no value."""
     platform = platform_name or sys.platform
 
     if not file_path.exists():
@@ -244,16 +256,22 @@ def validate_config_file_permissions(
             detail="symlink target does not exist",
         )
 
-    if platform != "win32":
-        _validate_posix_permissions(resolved)
-    else:
-        _validate_windows_permissions(resolved, adapter=win32_security_adapter)
-
-
-def _validate_posix_permissions(file_path: Path) -> None:
-    """POSIX: require current UID ownership and reject group/other bits."""
     try:
-        stat = file_path.stat()
+        handle = open(resolved, "rb")  # noqa: SIM115 - closed by the with below
+    except OSError as exc:
+        raise LaunchGateError(code="CONFIG_FILE_STAT_FAILED", detail="cannot open configuration file") from exc
+    with handle:
+        if platform != "win32":
+            _validate_posix_permissions(handle.fileno())
+        else:
+            _validate_windows_permissions(resolved, handle.fileno(), adapter=win32_security_adapter)
+        return handle.read().decode("utf-8")
+
+
+def _validate_posix_permissions(fd: int) -> None:
+    """POSIX: require current UID ownership and reject group/other bits, on the opened file."""
+    try:
+        stat = os.fstat(fd)
     except OSError as exc:
         raise LaunchGateError(
             code="CONFIG_FILE_STAT_FAILED",
@@ -280,8 +298,8 @@ def _validate_posix_permissions(file_path: Path) -> None:
         )
 
 
-def _validate_windows_permissions(file_path: Path, *, adapter: object | None = None) -> None:
-    """Windows: check DACL through injectable adapter.
+def _validate_windows_permissions(file_path: Path, fd: int, *, adapter: object | None = None) -> None:
+    """Windows: check the opened file's DACL, or ask an injected adapter (tests).
 
     Allow current user, SYSTEM, and Administrators. Reject read/write allow
     ACEs for Everyone, Users, Authenticated Users, or unknown principals.
@@ -301,7 +319,9 @@ def _validate_windows_permissions(file_path: Path, *, adapter: object | None = N
     # Real Windows DACL check: enumerate every ACE and reject unless every
     # allow-ACE's SID is the current user, SYSTEM, or Administrators.
     try:
-        _check_windows_dacl_real(file_path)
+        import msvcrt
+
+        _check_windows_dacl_real(msvcrt.get_osfhandle(fd))
     except (OSError, AttributeError, ImportError) as exc:
         raise LaunchGateError(
             code="CONFIG_FILE_PLATFORM_CHECK_FAILED",
@@ -326,11 +346,12 @@ _ACCESS_ALLOWED_ACE_TYPE = 0x00
 _TOKEN_QUERY = 0x0008
 _TOKEN_USER = 1
 _DACL_SECURITY_INFORMATION = 0x00000004
+_SE_FILE_OBJECT = 1
 _ACL_SIZE_INFORMATION_CLASS = 2
 
 
-def _check_windows_dacl_real(file_path: Path) -> None:
-    """Enumerate the file's DACL and reject unauthorized allow-ACEs.
+def _check_windows_dacl_real(handle: int) -> None:
+    """Enumerate the opened file's DACL and reject unauthorized allow-ACEs.
 
     Every module-level Win32 function used here has explicit argtypes/restype
     declarations — ctypes silently mismarshals pointer-sized arguments when
@@ -345,22 +366,18 @@ def _check_windows_dacl_real(file_path: Path) -> None:
     advapi32 = ctypes.windll.advapi32  # type: ignore[attr-defined]
     kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
 
-    advapi32.GetFileSecurityW.argtypes = [
-        wintypes.LPCWSTR,
+    out_pointer = ctypes.POINTER(ctypes.c_void_p)
+    advapi32.GetSecurityInfo.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,  # SE_OBJECT_TYPE
         wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        ctypes.POINTER(wintypes.DWORD),
+        out_pointer,
+        out_pointer,
+        out_pointer,
+        out_pointer,
+        out_pointer,
     ]
-    advapi32.GetFileSecurityW.restype = wintypes.BOOL
-
-    advapi32.GetSecurityDescriptorDacl.argtypes = [
-        wintypes.LPVOID,
-        ctypes.POINTER(wintypes.BOOL),
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(wintypes.BOOL),
-    ]
-    advapi32.GetSecurityDescriptorDacl.restype = wintypes.BOOL
+    advapi32.GetSecurityInfo.restype = wintypes.DWORD
 
     advapi32.GetAclInformation.argtypes = [
         ctypes.c_void_p,
@@ -386,30 +403,25 @@ def _check_windows_dacl_real(file_path: Path) -> None:
     kernel32.LocalFree.argtypes = [ctypes.c_void_p]
     kernel32.LocalFree.restype = ctypes.c_void_p
 
-    file_str = str(file_path)
-
-    # 1. Get the security descriptor.
-    needed = wintypes.DWORD(0)
-    advapi32.GetFileSecurityW(file_str, _DACL_SECURITY_INFORMATION, None, 0, ctypes.byref(needed))
-    if needed.value == 0:
-        raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="cannot size security descriptor")
-
-    sd_buffer = ctypes.create_string_buffer(needed.value)
-    if not advapi32.GetFileSecurityW(
-        file_str, _DACL_SECURITY_INFORMATION, sd_buffer, needed.value, ctypes.byref(needed)
+    # 1-2. The opened file's DACL, and the security descriptor holding it, which this process must free (#693).
+    dacl_ptr = ctypes.c_void_p()
+    sd_ptr = ctypes.c_void_p()
+    if advapi32.GetSecurityInfo(
+        handle, _SE_FILE_OBJECT, _DACL_SECURITY_INFORMATION, None, None, ctypes.byref(dacl_ptr), None,
+        ctypes.byref(sd_ptr),
     ):
         raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="cannot read security descriptor")
+    try:
+        if not dacl_ptr:
+            raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="no DACL present on file")
+        _reject_unauthorized_aces(dacl_ptr, advapi32, kernel32)
+    finally:
+        kernel32.LocalFree(sd_ptr)
 
-    # 2. Extract the DACL pointer from the security descriptor.
-    dacl_present = wintypes.BOOL()
-    dacl_ptr = ctypes.c_void_p()
-    dacl_defaulted = wintypes.BOOL()
-    if not advapi32.GetSecurityDescriptorDacl(
-        sd_buffer, ctypes.byref(dacl_present), ctypes.byref(dacl_ptr), ctypes.byref(dacl_defaulted)
-    ):
-        raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="cannot extract DACL")
-    if not dacl_present.value or not dacl_ptr:
-        raise LaunchGateError(code="CONFIG_FILE_DACL_UNREADABLE", detail="no DACL present on file")
+
+def _reject_unauthorized_aces(dacl_ptr: Any, advapi32: Any, kernel32: Any) -> None:
+    import ctypes
+    from ctypes import wintypes
 
     # 3. Get the ACE count.
     class _AclSizeInformation(ctypes.Structure):
@@ -689,12 +701,12 @@ def resolve_launch_candidate(
     # directly without remembering to validate first. Two independent
     # "remember to call the permission check" call sites is exactly the
     # duplicated-security-check shape that produced the Task 4 digest bug.
-    # #686: parsed once, right after its check; the tools, credentials and shared secret all come from this reading.
+    # #686: parsed once; the tools, credentials and shared secret all come from this reading.
+    # #693: read through the handle its permissions were checked on.
     env_gateway_path = operator_paths.config_root / ".env.gateway"
     dotenv_values: dict[str, str] = {}
     if env_gateway_path.is_file():
-        validate_config_file_permissions(env_gateway_path)
-        dotenv_values = _parse_env_gateway_file(env_gateway_path)
+        dotenv_values = _parse_env_gateway_text(read_config_file_checked(env_gateway_path))
     gateway_tool_environ = require_gateway_tool_urls(operator_paths.config_root, snapshot.values, dotenv_values=dotenv_values)
 
     # 2b. Single-read credential resolution (Step 3). Resolve provider
