@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -263,3 +264,135 @@ def test_a_called_frozen_exception_is_not_trusted():
         "@frozen_exception\n", "@frozen_exception(Replacement)\n")
     inventory = discover({"src/demo_errors.py": errors, "src/demo.py": _CATCHES_IT})
     assert [site["unresolved"] for site in inventory["sites"]] == [True]
+
+
+_FROZEN = "optimus.runtime.frozen_exception"
+_CATCH = """
+def handle():
+    try:
+        pass
+    except Refused:
+        pass
+"""
+
+
+def _unresolved(text, **files):
+    return [site["unresolved"] for site in discover({"src/demo.py": text, **files})["sites"]]
+
+
+@pytest.mark.parametrize(
+    "header, decorators",
+    [
+        (f"import {_FROZEN} as m\nm.frozen_exception = lambda cls: Exception", "@m.frozen_exception\n@dataclass(frozen=True)"),
+        ("import dataclasses as d\nd.dataclass = lambda cls: Exception", "@d.dataclass"),
+        (f"import {_FROZEN} as m\nsetattr(m, 'frozen_exception', lambda cls: Exception)", "@m.frozen_exception\n@dataclass"),
+        ("import dataclasses as d\nd.dataclass += replacement", "@d.dataclass"),
+        (f"import {_FROZEN} as m\nm.frozen_exception: object = replacement", "@m.frozen_exception\n@dataclass"),
+        ("import dataclasses as d\ndel d.dataclass", "@d.dataclass"),
+        ("import dataclasses as d\nsetattr(d, choose(), replacement)", "@d.dataclass"),
+        ("import sys\nsys.modules['dataclasses'].dataclass = replacement", "@dataclass"),
+    ],
+    ids=["frozen-alias-assign", "dataclasses-alias-assign", "setattr-literal", "augmented", "annotated", "del",
+         "setattr-computed-on-module", "through-sys-modules"],
+)
+def test_an_overwritten_trusted_attribute_is_not_trusted(header, decorators):
+    # #697: Refused is Exception at runtime, so the catch is broad and must be reported.
+    text = f"from dataclasses import dataclass\n{header}\n\n{decorators}\nclass Refused(Exception):\n    pass\n{_CATCH}"
+    assert _unresolved(text) == [True]
+
+
+def test_an_attribute_write_in_another_file_untrusts_the_name():
+    patch = "import dataclasses\n\ndef install():\n    dataclasses.dataclass = replacement\n"
+    text = f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"
+    assert _unresolved(text, **{"src/patch.py": patch}) == [True]
+
+
+_CANONICAL = "def frozen_exception(cls):\n    return cls\n"
+
+
+@pytest.mark.parametrize(
+    "canonical",
+    [
+        _CANONICAL + "if flag:\n    frozen_exception = replacement\n",
+        _CANONICAL + "def install():\n    global frozen_exception\n    frozen_exception = replacement\n",
+        _CANONICAL + "from elsewhere import *\n",
+        _CANONICAL + "exec(code)\n",
+    ],
+    ids=["conditional-rebinding", "global-rebinding", "star-import", "exec"],
+)
+def test_a_rebound_canonical_export_is_not_trusted(canonical):
+    text = (f"from dataclasses import dataclass\nfrom {_FROZEN} import frozen_exception\n\n"
+            f"@frozen_exception\n@dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}")
+    assert _unresolved(text, **{"src/optimus/runtime/frozen_exception.py": canonical}) == [True]
+
+
+_LOCAL_CLASS = """
+def handle():
+    @{decorator}
+    class Refused(Exception):
+        pass
+    try:
+        pass
+    except Refused:
+        pass
+"""
+
+
+@pytest.mark.parametrize(
+    "imports, decorator, later",
+    [
+        (f"from {_FROZEN} import frozen_exception", "frozen_exception", "if flag:\n    frozen_exception = replacement"),
+        ("from dataclasses import dataclass", "dataclass", "dataclass = replacement"),
+        ("from dataclasses import dataclass", "dataclass",
+         "def install():\n    global dataclass\n    dataclass = replacement"),
+        ("from dataclasses import dataclass", "dataclass", "from elsewhere import *"),
+        ("from dataclasses import dataclass", "dataclass", "exec(code)"),
+    ],
+    ids=["conditional-rebinding", "later-rebinding", "later-global", "later-star-import", "later-exec"],
+)
+def test_a_local_class_waits_for_the_enclosing_bindings(imports, decorator, later):
+    # #698: the module-level statement after the function can run before handle() is called.
+    text = f"{imports}\n{_LOCAL_CLASS.format(decorator=decorator)}\n{later}\n"
+    assert _unresolved(text) == [True]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}",
+        f"from dataclasses import dataclass\n\n@dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}",
+        (f"from dataclasses import dataclass\nfrom {_FROZEN} import frozen_exception\n\n"
+         f"@frozen_exception\n@dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}"),
+        (f"import dataclasses as d\nimport {_FROZEN} as m\nm.other = 1\nsetattr(state, name, value)\n\n"
+         f"@m.frozen_exception\n@d.dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}"),
+        "from dataclasses import dataclass\n" + _LOCAL_CLASS.format(decorator="dataclass"),
+        f"from {_FROZEN} import frozen_exception\n" + _LOCAL_CLASS.format(decorator="frozen_exception"),
+    ],
+    ids=["bare-dataclass", "called-dataclass", "frozen-over-dataclass", "aliases-without-a-write",
+         "local-dataclass", "local-frozen-exception"],
+)
+def test_trusted_decorators_without_a_rebinding_still_resolve(text, request):
+    # The canonical module as it is in the tree must not untrust its own export.
+    canonical = Path(request.config.rootpath, "src/optimus/runtime/frozen_exception.py").read_text(encoding="utf-8")
+    assert _unresolved(text, **{"src/optimus/runtime/frozen_exception.py": canonical}) == []
+
+
+def test_an_untrusting_write_is_reported_first_with_its_site(tmp_path, monkeypatch, capsys):
+    # One unrelated write can untrust a decorator tree-wide; the gate must say where, before any unresolved row.
+    text = f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"
+    inventory = discover({"src/demo.py": text, "src/other.py": "def f(box):\n    box.dataclass = 1\n"})
+    assert inventory["untrusted_decorators"] == ["src/other.py:2 dataclasses.dataclass: attribute write named dataclass"]
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(_complete(inventory)), encoding="utf-8")
+    monkeypatch.setattr(checker, "_inventory", lambda root: inventory)
+    assert checker.main(["--report", str(path)]) == 1
+    first = capsys.readouterr().err.splitlines()[0]
+    assert first == "untrusted decorator src/other.py:2 dataclasses.dataclass: attribute write named dataclass"
+
+
+def test_a_rebound_canonical_module_is_reported_at_its_path():
+    canonical = _CANONICAL + "if flag:\n    frozen_exception = replacement\n"
+    inventory = discover({"src/optimus/runtime/frozen_exception.py": canonical})
+    assert inventory["untrusted_decorators"] == [
+        "src/optimus/runtime/frozen_exception.py:1 optimus.runtime.frozen_exception.frozen_exception:"
+        " canonical module binds frozen_exception 2 times, not once by its def"]
