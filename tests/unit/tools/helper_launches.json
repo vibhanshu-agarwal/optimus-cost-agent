@@ -983,7 +983,7 @@
    "tools": [
     "ruff"
    ],
-   "note": "`python -m ruff` runs ruff's own __main__, which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. The default-selection tests replace _inventory, so neither launch is reached."
+   "note": "`python -m ruff` runs ruff's own __main__, which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. test_exception_site_report_gate.py runs the verifier on the committed report, so a default-selection test reaches both launches; the 2df6fec census predates it."
   },
   "tools/verify_exception_site_disposition.py::_ruff": {
    "launches": 1,
@@ -991,7 +991,7 @@
    "tools": [
     "ruff"
    ],
-   "note": "`python -m ruff` runs ruff's own __main__, which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. The default-selection tests replace _inventory, so neither launch is reached."
+   "note": "`python -m ruff` runs ruff's own __main__, which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. test_exception_site_report_gate.py runs the verifier on the committed report, so a default-selection test reaches both launches; the 2df6fec census predates it."
   },
   "tools/verify_plan117_custody_feasibility.py::_git_output": {
    "launches": 1,
