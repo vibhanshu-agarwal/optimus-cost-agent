@@ -20,6 +20,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+if __package__:
+    from . import acpx_runner_cli
+else:  # Direct script execution puts tools/ on sys.path.
+    import acpx_runner_cli
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -58,13 +63,7 @@ class ScratchConfigPaths:
 
 
 def resolve_acpx() -> str:
-    acpx = shutil.which("acpx")
-    if acpx is None:
-        raise AcpxNotFoundError(
-            "acpx not found on PATH. Install the independent acpx ACP client "
-            "(https://github.com/openclaw/acpx); never substitute a project client."
-        )
-    return acpx
+    return acpx_runner_cli.resolve_acpx(AcpxNotFoundError)
 
 
 def resolve_optimus_agent() -> str:
@@ -81,20 +80,7 @@ def resolve_optimus_agent() -> str:
 
 
 def acpx_version(acpx: str) -> str:
-    completed = subprocess.run(  # noqa: S603
-        [acpx, "--version"],
-        capture_output=True,
-        text=True,
-        check=False,
-        shell=False,
-        timeout=30,
-    )
-    if completed.returncode != 0:
-        raise AcpxEvidenceError("acpx --version failed")
-    version = (completed.stdout or completed.stderr or "").strip()
-    if not version:
-        raise AcpxEvidenceError("acpx --version returned empty output")
-    return version
+    return acpx_runner_cli.acpx_version(acpx, AcpxEvidenceError)
 
 
 def assert_scratch_paths_ignored(*, repo_root: Path) -> None:

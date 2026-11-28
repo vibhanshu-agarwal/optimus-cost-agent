@@ -14,13 +14,17 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+
+if __package__:
+    from . import acpx_runner_cli
+else:  # Direct script execution puts tools/ on sys.path.
+    import acpx_runner_cli
 
 try:
     from tools import process_tree
@@ -107,30 +111,11 @@ class AcpxEvidenceError(ValueError):
 
 
 def resolve_acpx() -> str:
-    acpx = shutil.which("acpx")
-    if acpx is None:
-        raise AcpxNotFoundError(
-            "acpx not found on PATH. Install the independent acpx ACP client "
-            "(https://github.com/openclaw/acpx); never substitute a project client."
-        )
-    return acpx
+    return acpx_runner_cli.resolve_acpx(AcpxNotFoundError)
 
 
 def acpx_version(acpx: str) -> str:
-    completed = subprocess.run(  # noqa: S603
-        [acpx, "--version"],
-        capture_output=True,
-        text=True,
-        check=False,
-        shell=False,
-        timeout=30,
-    )
-    if completed.returncode != 0:
-        raise AcpxEvidenceError("acpx --version failed")
-    version = (completed.stdout or completed.stderr or "").strip()
-    if not version:
-        raise AcpxEvidenceError("acpx --version returned empty output")
-    return version
+    return acpx_runner_cli.acpx_version(acpx, AcpxEvidenceError)
 
 
 def assert_report_destination(path: Path, *, reports_root: Path) -> None:
