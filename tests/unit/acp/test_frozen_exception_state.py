@@ -18,14 +18,16 @@ import pytest
 
 from optimus.acp.process_lifecycle import ProcessLifecycle, cleanup_failure, signal_handlers
 from tests.unit.acp.test_raise_preserving_failure import FAILURES
+from tools.tracked_repository_files import tracked_repository_files
 
-_SRC = Path(__file__).resolve().parents[3] / "src"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SRC = _REPO_ROOT / "src"
 FROZEN = sorted(name for name in FAILURES if dataclasses.is_dataclass(FAILURES[name]()))
 
 
 def _frozen_exception_classes_in_src() -> set[str]:
     found: set[str] = set()
-    for path in sorted(_SRC.rglob("*.py")):
+    for path in (p for p in tracked_repository_files(_REPO_ROOT, pathspecs=("src",)) if p.suffix == ".py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ClassDef) and node.bases and any(
                 isinstance(d, ast.Call) and getattr(d.func, "id", getattr(d.func, "attr", "")) == "dataclass"
