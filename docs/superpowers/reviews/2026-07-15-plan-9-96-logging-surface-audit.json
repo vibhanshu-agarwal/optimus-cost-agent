@@ -7537,9 +7537,9 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.tools.mutation_tools:_writable:file_open",
+      "key": "optimus.tools.mutation_tools:_write_refusal:file_open",
       "policy": "safe-by-construction",
-      "rationale": "optimus.tools.mutation_tools:_writable:file_open opens an existing approved WRITE target for writing without creating or truncating it, and closes it at once, to keep today's refusals (#691); nothing is written and no diagnostic is persisted.",
+      "rationale": "optimus.tools.mutation_tools:_write_refusal:file_open opens an existing approved WRITE target for writing without creating or truncating it, and closes it at once, to keep today's refusals (#691); nothing is written and no diagnostic is persisted.",
       "sanitizer": "MutationGuard and PreToolGuard authorization; no diagnostic sanitization",
       "test_node": "tests/unit/tools/test_atomic_write.py::test_a_target_this_process_may_not_write_is_refused_before_staging",
       "evidence_tier": "unit"

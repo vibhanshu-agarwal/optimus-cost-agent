@@ -279,12 +279,13 @@ def _failure_terminal(exc: BaseException) -> str:
     # Only a typed guard denial proves an effectful producer never ran: MutationForbidden is raised
     # before any write or subprocess (the toolbox re-raises it as PermissionError, keeping it as the
     # cause). Any other failure after the lease may already have had an effect.
+    if isinstance(exc, WriteFailed):
+        # #691: its own account wins over its cause; a stale EDIT whose staging file could not be removed is an effect
+        return "failed_no_effect" if exc.no_effect else "failed_effect_unknown"
     if isinstance(exc, (MutationForbidden, WriteRefused)) or isinstance(exc.__cause__, MutationForbidden):
         return "failed_no_effect"  # WriteRefused is raised before the write (#410)
     if isinstance(exc, CommandStopped) and exc.outcome == "not_started":
         return "failed_no_effect"  # #700: Popen failed, so no process ever existed
-    if isinstance(exc, WriteFailed) and exc.no_effect:
-        return "failed_no_effect"  # #691: the staged write never reached its target and left nothing behind
     return "failed_effect_unknown"
 
 

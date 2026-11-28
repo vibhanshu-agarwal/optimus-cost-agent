@@ -26,7 +26,7 @@ def staging_name() -> str:
 
 
 def is_staging_name(name: str) -> bool:
-    return _STAGING_NAME.fullmatch(name.casefold() if _WINDOWS else name) is not None
+    return _STAGING_NAME.fullmatch(name.casefold()) is not None  # casefolded everywhere: NTFS and APFS ignore case
 
 
 def has_runtime_component(parts: tuple[str, ...]) -> bool:

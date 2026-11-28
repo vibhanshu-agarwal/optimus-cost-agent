@@ -91,6 +91,7 @@ def write_file(
     if newline not in (None, "", "\n", "\r", "\r\n"):  # what `write_text` accepted
         raise ValueError(f"illegal newline value: {newline!r}")
     _authorize_file_mutation(path, context=context, guard=guard, requested_relative_path=requested_relative_path, target_unresolved=target_unresolved)
+    real = _resolved_now(Path(path))
 
     def base_unchanged() -> None:
         try:
@@ -104,7 +105,7 @@ def write_file(
         base_unchanged()
     if newline not in ("", "\n"):  # as `write_text` translates: None is the platform's line break
         content = content.replace("\n", os.linesep if newline is None else newline)
-    _publish(Path(path), content.encode("utf-8"), before_replace=None if expected_sha256 is None else base_unchanged)
+    _publish(Path(path), real, content.encode("utf-8"), before_replace=None if expected_sha256 is None else base_unchanged)
 
 
 def write_file_keeping_line_endings(
@@ -124,6 +125,7 @@ def write_file_keeping_line_endings(
     write fails, the folders this call created are removed again (only while empty and still resolving to itself) and the
     failure is re-raised. The file itself is published atomically (#691): a failed write leaves its original bytes."""
     _authorize_file_mutation(path, context=context, guard=guard, requested_relative_path=requested_relative_path, target_unresolved=target_unresolved)
+    real = _resolved_now(Path(path))
     target = Path(path)
     existing = target.read_bytes() if target.is_file() else None
     if existing is not None and line_ending_style(existing) == "mixed":
@@ -132,7 +134,7 @@ def write_file_keeping_line_endings(
     try:
         if workspace_root is not None:
             _create_missing_folders(target.parent, workspace_root, created)
-        _publish(target, fit_body_to_file(body, existing).encode("utf-8"))
+        _publish(target, real, fit_body_to_file(body, existing).encode("utf-8"))
     except (OSError, MutationForbidden) as failed:
         for folder in reversed(created):
             if resolve_target(folder) == folder:  # a link swapped in is not this write's to remove
@@ -159,17 +161,28 @@ _SHARING_ERRORS = (5, 32)  # Windows access denied and sharing violation: anothe
 _REPLACE_RETRY_WAITS = (0.05, 0.05, 0.05)
 
 
-def _writable(target: Path) -> bool:
-    """Whether this process may open ``target`` for writing, as today's in-place write did: a non-truncating open under the
-    process's own credentials, so a read-only attribute, mode or an ACL that denies writing data all refuse (#691)."""
+def _resolved_now(path: Path) -> Path:
+    """The target the guard just judged, resolved once, straight after it allowed the write (#691, Codex r2 H1): publication
+    never adopts a destination first seen later. What a folder swap between the guard and this line can do is the race
+    #689 accepted; holding the folder's identity through publication needs handle-anchored calls Windows does not offer."""
+    real = resolve_target(path)
+    if real is None:
+        raise WriteFailed("resolve", OSError(errno.ENOENT, "the target cannot be resolved"), no_effect=True)
+    return real
+
+
+def _write_refusal(target: Path) -> OSError | None:
+    """Why this process may not open the existing regular file ``target`` for writing, as today's in-place write would
+    have: a non-truncating, non-creating open under the process's own credentials, so a read-only attribute or mode, an
+    ACL that denies writing data or another process's exclusive handle all refuse (#691). None when it may."""
     try:
         os.close(os.open(target, os.O_WRONLY | getattr(os, "O_BINARY", 0)))
-    except OSError:
-        return False
-    return True
+    except OSError as error:
+        return error
+    return None
 
 
-def _publish(path: Path, data: bytes, *, before_replace: Callable[[], None] | None = None) -> None:
+def _publish(path: Path, real: Path, data: bytes, *, before_replace: Callable[[], None] | None = None) -> None:
     """#691: write ``data`` to a staging file beside the resolved target, flush it to disk, give it the target's mode and
     replace the target with it, so a failure at any step leaves the target's original bytes. The target is resolved, so a
     link stays a link and the file the guard judged is the one changed. A target this process could not open for writing
@@ -177,17 +190,20 @@ def _publish(path: Path, data: bytes, *, before_replace: Callable[[], None] | No
     ``WriteFailed``; the staging file is removed first, and if it cannot be, or is no longer where it was made (it moved,
     or a replace that reported an error may have happened), ``no_effect`` is false. ``before_replace`` runs before every
     replace attempt, as does a check that the target still resolves where it did; either failing stops the write."""
-    real = resolve_target(path)
-    if real is None:
-        raise WriteFailed("resolve", OSError(errno.ENOENT, "the target cannot be resolved"), no_effect=True)
     try:
         facts: os.stat_result | None = os.stat(real)
     except FileNotFoundError:
         facts = None
     except OSError as error:
         raise WriteFailed("resolve", error, no_effect=True) from error
-    if facts is not None and (getattr(facts, "st_file_attributes", 0) & _HIDDEN_OR_SYSTEM or not _writable(real)):
-        raise WriteFailed("refused", PermissionError(errno.EACCES, "the target is not writable"), no_effect=True)
+    if facts is not None:
+        if not stat.S_ISREG(facts.st_mode):  # a FIFO or device: never opened, so the probe cannot block or signal it
+            raise WriteFailed("refused", OSError(errno.EINVAL, "the target is not a regular file"), no_effect=True)
+        if getattr(facts, "st_file_attributes", 0) & _HIDDEN_OR_SYSTEM:
+            raise WriteFailed("refused", PermissionError(errno.EACCES, "the target is hidden or a system file"), no_effect=True)
+        refusal = _write_refusal(real)
+        if refusal is not None:
+            raise WriteFailed("refused", refusal, no_effect=True) from refusal
     mode = 0o666 if facts is None else stat.S_IMODE(facts.st_mode)  # created no wider than the target; the umask applies
     staging = real.with_name(staging_name())
     step, made = "stage", False

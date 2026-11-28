@@ -483,3 +483,137 @@ async def test_a_staging_file_left_behind_is_recorded_as_an_unknown_effect(tmp_p
     assert (tmp_path / "a.py").read_bytes() == b"old\n"
     [record] = records.values()
     assert record.effect_state is EffectState.INDETERMINATE
+
+
+def test_the_target_is_resolved_once_after_the_guard_and_never_adopted_later(tmp_path, monkeypatch):
+    # Codex r2 H1: a redirect after the guard's decision is never adopted; nothing is staged or written in the new place
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    (tmp_path / "other").mkdir()
+    real_resolve, calls = mutation_tools.resolve_target, []
+
+    def redirected_after_the_first_look(path):
+        calls.append(path)
+        resolved = real_resolve(path)
+        if len(calls) == 1 or resolved is None or resolved.name != "a.py":
+            return resolved
+        return tmp_path / "other" / "a.py"
+
+    monkeypatch.setattr(mutation_tools, "resolve_target", redirected_after_the_first_look)
+    with pytest.raises(WriteFailed):
+        _write(tmp_path / "a.py")
+    assert _names(tmp_path / "other") == [] and (tmp_path / "a.py").read_bytes() == b"old\n" and _names(tmp_path) == ["a.py", "other"]
+
+
+def _held_once_then(monkeypatch, during_wait):
+    real, attempts = os.replace, []
+
+    def held_once(source, target):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise _Sharing(13, "in use")
+        real(source, target)
+
+    monkeypatch.setattr(os, "replace", held_once)
+    monkeypatch.setattr(mutation_tools.time, "sleep", lambda seconds: during_wait())
+    return attempts
+
+
+def test_an_edit_base_that_changes_during_a_retry_wait_writes_nothing(tmp_path, monkeypatch):
+    import hashlib
+
+    from optimus.tools.mutation_tools import WriteSourceChanged
+
+    target = tmp_path / "e.py"
+    target.write_bytes(b"a = 1\n")
+    attempts = _held_once_then(monkeypatch, lambda: target.write_bytes(b"a = 1\nsaved meanwhile\n"))
+    with pytest.raises(WriteSourceChanged):
+        write_file(target, "a = 2\n", context=_context(), guard=_Allow(), expected_sha256=hashlib.sha256(b"a = 1\n").hexdigest())
+    assert attempts == [1] and target.read_bytes() == b"a = 1\nsaved meanwhile\n" and _names(tmp_path) == ["e.py"]
+
+
+def test_a_target_redirected_during_a_retry_wait_is_not_replaced(tmp_path, monkeypatch):
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    moved = []
+    real_resolve = mutation_tools.resolve_target
+    monkeypatch.setattr(mutation_tools, "resolve_target", lambda p: (tmp_path / "x.py") if moved else real_resolve(p))
+    attempts = _held_once_then(monkeypatch, lambda: moved.append(1))
+    with pytest.raises(WriteFailed):
+        _write(tmp_path / "a.py")
+    assert attempts == [1] and (tmp_path / "a.py").read_bytes() == b"old\n" and _names(tmp_path) == ["a.py"]
+
+
+def test_the_write_probe_neither_creates_nor_truncates_and_keeps_the_real_cause(tmp_path, monkeypatch):
+    target = tmp_path / "a.py"
+    target.write_bytes(b"old\n")
+    real_open, probes = os.open, []
+
+    def note(path, flags, *args, **kwargs):
+        if Path(path) == target:
+            probes.append(flags)
+            raise PermissionError(13, "write access denied")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", note)
+    with pytest.raises(WriteFailed) as failed:
+        _write(target)
+    [flags] = probes
+    assert flags & (os.O_CREAT | os.O_TRUNC | os.O_APPEND) == 0 and flags & os.O_WRONLY
+    assert isinstance(failed.value.__cause__, PermissionError) and failed.value.errno == 13  # Codex r2 L7
+
+
+def test_a_target_that_is_not_a_regular_file_is_refused_without_being_opened(tmp_path, monkeypatch):
+    # Codex r2 M3, stand-in everywhere for a FIFO: opening one for writing could block or signal its reader
+    target = tmp_path / "pipe"
+    target.write_bytes(b"")
+    real_stat, opened = os.stat, []
+
+    class _Fifo:
+        def __init__(self, facts):
+            self._facts = facts
+            self.st_mode = stat.S_IFIFO | 0o644
+
+        def __getattr__(self, name):
+            return getattr(self._facts, name)
+
+    monkeypatch.setattr(os, "stat", lambda path, *a, **k: _Fifo(real_stat(path, *a, **k)) if Path(path) == target else real_stat(path, *a, **k))
+    real_open = os.open
+    monkeypatch.setattr(os, "open", lambda path, *a, **k: opened.append(path) or real_open(path, *a, **k))
+    with pytest.raises(WriteFailed) as failed:
+        _write(target)
+    assert failed.value.step == "refused" and opened == []
+
+
+def test_a_stale_edit_whose_staging_file_stays_is_settled_as_an_unknown_effect(tmp_path, monkeypatch):
+    # Codex r2 M4: the WriteFailed's own account wins over its WriteSourceChanged cause
+    import hashlib
+
+    from optimus.agent.runner import _failure_terminal
+
+    target = tmp_path / "e.py"
+    target.write_bytes(b"a = 1\n")
+    real_fsync = os.fsync
+
+    def saved_meanwhile(descriptor):
+        real_fsync(descriptor)
+        target.write_bytes(b"a = 1\nb = 2\n")
+
+    def stuck(self, missing_ok=False):
+        raise PermissionError(13, "in use")
+
+    monkeypatch.setattr(os, "fsync", saved_meanwhile)
+    monkeypatch.setattr(Path, "unlink", stuck)
+    with pytest.raises(WriteFailed) as failed:
+        write_file(target, "a = 2\n", context=_context(), guard=_Allow(), expected_sha256=hashlib.sha256(b"a = 1\n").hexdigest())
+    assert failed.value.no_effect is False and _failure_terminal(failed.value) == "failed_effect_unknown"
+
+
+def test_a_case_variant_of_a_leftover_is_refused_too(tmp_path):
+    # Codex r2 H2: APFS and NTFS open the same file for any casing, so the predicate casefolds on every platform
+    from optimus.guardrails.path_safety import PathSafetyValidator
+    from optimus.guardrails.runtime_tree import is_staging_name
+    from optimus.guardrails.validation import ValidationVerdict
+
+    variant = LEFTOVER.upper()
+    assert is_staging_name(variant) and FilePolicy(tmp_path).path_denial(variant) == "deny.staging_file"
+    verdict = PathSafetyValidator(workspace_root=tmp_path).validate_read(tmp_path / variant, requested_relative_path=variant).verdict
+    assert verdict is ValidationVerdict.BLOCK
