@@ -88,8 +88,12 @@ class Collect(ast.NodeVisitor):
         self.candidates: list[Candidate] = []
         # Classes whose decorators are judged after every binding in the tree is collected (#698).
         self.pending: list[tuple[Scope, ast.ClassDef, list[str | ast.expr | None], int]] = []
-        # Attribute writes as (scope, target, attribute name or None when computed, line) (#697).
-        self.writes: list[tuple[Scope, ast.expr, str | None, int]] = []
+        # Invalidation is syntactic, per file (#697): literal attribute writes as (name, line), the lines of
+        # computed-name setattr/delattr calls, the modules this file binds as objects, and exec/eval method calls.
+        self.writes: list[tuple[str, int]] = []
+        self.computed: list[int] = []
+        self.bound_modules: set[str] = set()
+        self.method_exec: list[Scope] = []
 
     def _bind(self, target: ast.expr, value: str | ast.expr | None) -> None:
         if isinstance(target, ast.Name):
@@ -101,6 +105,7 @@ class Collect(ast.NodeVisitor):
         for name in node.names:
             key = name.asname or name.name.split(".")[0]
             self.scope.bindings[key].append(name.name if name.asname else key)
+            self.bound_modules.add(name.name)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         package = self.scope.package.split(".") if self.scope.package else []
@@ -113,7 +118,9 @@ class Collect(ast.NodeVisitor):
             if name.name == "*":
                 self.scope.dynamic = True
             else:
-                self.scope.bindings[name.asname or name.name].append(".".join(filter(None, (prefix, name.name))))
+                qualified = ".".join(filter(None, (prefix, name.name)))
+                self.scope.bindings[name.asname or name.name].append(qualified)
+                self.bound_modules.add(qualified)  # names a module when it is one, e.g. optimus.runtime.frozen_exception
 
     def visit_Assign(self, node: ast.Assign) -> None:
         for target in node.targets:
@@ -165,40 +172,44 @@ class Collect(ast.NodeVisitor):
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
         if isinstance(node.ctx, (ast.Store, ast.Del)):
-            self.writes.append((self.scope, node.value, node.attr, node.lineno))
+            self.writes.append((node.attr, node.lineno))
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
         called = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
-        builtin = isinstance(node.func, ast.Name) or (
-            isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
-            and node.func.value.id == "builtins"
-        )
-        if called in ("exec", "eval") and builtin:  # not an ordinary method such as model.eval()
-            # Either can be handed globals(), so the module namespace is dynamic too.
-            self.scope.dynamic = self.module.dynamic = True
-        if called in ("setattr", "delattr") and node.args:
+        first = node.args[0] if node.args else None
+        if called in ("exec", "eval"):
+            if isinstance(node.func, ast.Name):
+                # Either can be handed globals(), so the module namespace is dynamic too.
+                self.scope.dynamic = self.module.dynamic = True
+            else:
+                self.method_exec.append(self.scope)  # dynamic only if this file binds builtins
+        elif called in ("setattr", "delattr"):
             name = node.args[1] if len(node.args) > 1 else None
-            literal = name.value if isinstance(name, ast.Constant) and isinstance(name.value, str) else None
-            self.writes.append((self.scope, node.args[0], literal, node.lineno))
+            if isinstance(name, ast.Constant) and isinstance(name.value, str):
+                self.writes.append((name.value, node.lineno))
+            else:
+                self.computed.append(node.lineno)
+        elif called in ("import_module", "__import__") and isinstance(first, ast.Constant):
+            self.bound_modules.add(str(first.value))
         self.generic_visit(node)
 
     def overwritten(self) -> list[tuple[str, int, str]]:
-        """Writes to a trusted name as (name, line, rule).
+        """Syntactic writes to a trusted name as (name, line, rule); no target is resolved.
 
         The attribute-name rule is deliberately broad: any write of an attribute named like a trusted decorator, on
         any target, untrusts it tree-wide. There is no allowlist; a legitimate attribute with that name is renamed.
+        A computed-name setattr/delattr untrusts the names of each trusted module this file binds as an object.
         """
-        # A dynamic scope must not hide a visible trusted-module target from the computed-name check.
-        resolve = Resolve({}, set(), respect_dynamic=False).expression
+        if "builtins" in self.bound_modules:
+            for scope in self.method_exec:
+                scope.dynamic = self.module.dynamic = True
         found = []
-        for scope, target, attr, line in self.writes:
-            for trusted in sorted(_TRUSTED):
-                module, _, name = trusted.rpartition(".")
-                if attr == name:
-                    found.append((trusted, line, f"attribute write named {name}"))
-                elif attr is None and module in resolve(target, scope):
-                    found.append((trusted, line, f"computed setattr or delattr on {module}"))
+        for trusted in sorted(_TRUSTED):
+            module, _, name = trusted.rpartition(".")
+            found += [(trusted, line, f"attribute write named {name}") for attr, line in self.writes if attr == name]
+            if module in self.bound_modules and self.computed:
+                found.append((trusted, self.computed[0], f"computed setattr or delattr in a file that binds {module}"))
         return found
 
     def trust(self, untrusted: set[str]) -> None:
@@ -289,19 +300,21 @@ class Collect(ast.NodeVisitor):
     visit_AsyncWith = visit_With
 
 
-# Out of reach by design: the verifier sees only tracked src files and these forms of decorator overwrite.
+# The two sides are asymmetric. Trusting a class may resolve names as carefully as it likes. Invalidating trust never
+# resolves a target through scopes: it is decided per file from what is syntactically present. Precision is allowed
+# only where it makes the tool stricter. The tool inventories honest code; it is not a defence against evasion.
+# Out of reach by design (adversarial forms, or outside what the verifier reads):
 # - writes from outside src (tests, plugins, sitecustomize, interpreter startup);
+# - a trusted module object passed in from another file, or reached through sys.modules[...];
 # - vars(m)[...], m.__dict__[...], globals()[...], object.__setattr__(m, ...), m.__setattr__(...);
-# - an aliased setattr (s = setattr), or a computed-name setattr on a target that does not resolve to the module;
-# - setattr(*args) with unpacked arguments, an aliased exec or eval, importlib.reload.
-# A bare or builtins-qualified exec or eval call makes its own scope and its module dynamic; a star import makes its
-# scope dynamic.
+# - an aliased setattr or delattr (s = setattr);
+# - an aliased exec or eval (e = exec), or an exec/eval method call in a file that does not import builtins;
+# - importlib.reload, and provenance through a package re-export.
+# A bare exec or eval call makes its own scope and its module dynamic; a star import makes its scope dynamic.
 class Resolve:
-    def __init__(self, modules: Mapping[str, Scope], classes: set[str], *, respect_dynamic: bool = True) -> None:
+    def __init__(self, modules: Mapping[str, Scope], classes: set[str]) -> None:
         self.modules = modules
         self.classes = classes
-        # False asks what a name could visibly be, ignoring that a dynamic scope may also rebind it.
-        self.respect_dynamic = respect_dynamic
 
     def _qualified(self, value: str, seen: frozenset[tuple[Scope, str]]) -> frozenset[str]:
         module_name, _, name = value.rpartition(".")
@@ -314,7 +327,7 @@ class Resolve:
         self, name: str, scope: Scope, seen: frozenset[tuple[Scope, str]] = frozenset(),
     ) -> frozenset[str]:
         token = scope, name
-        if (scope.dynamic and self.respect_dynamic) or token in seen:
+        if scope.dynamic or token in seen:
             return frozenset()
         choices = scope.bindings.get(name)
         if choices is None:
@@ -328,12 +341,12 @@ class Resolve:
             for item in choices
         }
         if scope.is_class and scope.parent is not None:
-            # A class body runs in order. Before its own binding, a class-local name is looked up in the module
-            # globals, then builtins, skipping any enclosing function.
+            # A class body runs in order, so before its own binding a name can still mean what the module (or, for
+            # a free name, the enclosing scope) binds. Trust needs all of them to agree.
             module = scope.parent
             while module.parent is not None:
                 module = module.parent
-            result.add(self.name(name, module, seen | {token}))
+            result |= {self.name(name, scope.parent, seen | {token}), self.name(name, module, seen | {token})}
         if len(result) != 1:
             return frozenset({_AMBIGUOUS}).union(*result)
         resolved = result.pop()
