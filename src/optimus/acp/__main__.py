@@ -153,6 +153,20 @@ def _stop_startup_gateway(gateway: LocalGatewayProcess, lifecycle: ProcessLifecy
     lifecycle.record(ShutdownObservation(True, "done", 0, lifecycle.observation.failure_stages))
 
 
+def _await_retained_gateway(exc: BaseException, lifecycle: ProcessLifecycle) -> None:
+    """Wait for a Gateway child whose failed stop `exc` retained; never repeat terminate/kill."""
+    retained = getattr(exc, "_optimus_pending_gateway", None)
+    if not isinstance(retained, LocalGatewayProcess):
+        return
+    lifecycle.begin_cleanup()
+    while retained.stop_pending or (retained.process is not None and retained.process.poll() is None):
+        lifecycle.record(ShutdownObservation(False, "gateway", 1, ("gateway",)))
+        if lifecycle.remaining() <= 0:
+            lifecycle.report_incomplete()
+        time.sleep(0.1)
+    lifecycle.record(ShutdownObservation(True, "done", 0, ("gateway",)))
+
+
 async def _run_serving_process(
     server: Any,
     *,
@@ -1100,6 +1114,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             except LocalInfrastructureError as exc:  # there is no panel here to show it in
                 print(f"optimus-agent: {exc.code}: {exc.user_message}", file=sys.stderr)
+                _await_retained_gateway(exc, lifecycle)  # #692
                 return 2
             except BaseException as exc:
                 startup_failure = exc
@@ -1141,7 +1156,10 @@ def main(argv: list[str] | None = None) -> int:
                         otlp_endpoint=_start_local_dependencies(), on_reuse=record_borrowed_gateway,
                     )
                 except LocalInfrastructureError as exc:
-                    return _serve_gateway_refusal(exc)
+                    try:
+                        return _serve_gateway_refusal(exc)
+                    finally:
+                        _await_retained_gateway(exc, lifecycle)  # #692: the refusal is shown first
                 if test_composition is not None and gateway_process is None:
                     # The profiled launch owns its profiled Gateway child. A Gateway already listening, or none
                     # at all, would refuse every bound request with a generic text (Fable CP4 release review M1).
@@ -1225,15 +1243,7 @@ def main(argv: list[str] | None = None) -> int:
         try:
             return run_authorized()
         except BaseException as exc:
-            retained = getattr(exc, "_optimus_pending_gateway", None)
-            if isinstance(retained, LocalGatewayProcess):
-                lifecycle.begin_cleanup()
-                while retained.stop_pending or (retained.process is not None and retained.process.poll() is None):
-                    lifecycle.record(ShutdownObservation(False, "gateway", 1, ("gateway",)))
-                    if lifecycle.remaining() <= 0:
-                        lifecycle.report_incomplete()
-                    time.sleep(0.1)
-                lifecycle.record(ShutdownObservation(True, "done", 0, ("gateway",)))
+            _await_retained_gateway(exc, lifecycle)
             stages = getattr(exc, "_optimus_cleanup_stages", ())
             if stages:
                 lifecycle.record(ShutdownObservation(True, "done", 0, stages))
