@@ -26,6 +26,9 @@ _LEDGER_BACKLOG_OWNERS = frozenset({
 _BROAD = frozenset({"builtins.Exception", "builtins.BaseException", "builtins.ExceptionGroup", "builtins.BaseExceptionGroup"})
 _SUPPRESS = "contextlib.suppress"
 _AMBIGUOUS = "<unresolved binding>"
+# Class decorators trusted to return a distinct class, by resolved name (compared as a one-name set).
+_DATACLASS = "dataclasses.dataclass"
+_FROZEN_EXCEPTION = "optimus.runtime.frozen_exception.frozen_exception"
 _OUTCOMES = frozenset({"retain", "contain", "translate", "report", "re-raise"})
 # These external names are narrow exception types at the pinned dependency boundary.
 _EXTERNAL_EXCEPTIONS = frozenset("""
@@ -148,12 +151,18 @@ class Collect(ast.NodeVisitor):
     ) -> None:
         outer = self.scope
         qualified = f"{outer.name}.{node.name}"
-        # A dataclass decorator preserves a distinct class. Other decorators and
-        # custom metaclasses can return arbitrary objects.
+        # A dataclass decorator (bare or called) preserves a distinct class, and frozen_exception, applied
+        # uncalled, returns the class it was given (pinned by test_frozen_exception_returns_the_class_it_decorates).
+        # A call of frozen_exception returns whatever it returns. Other decorators and custom metaclasses can
+        # return arbitrary objects.
         value = None
         if isinstance(node, ast.ClassDef) and not node.keywords:
-            decorators = [item.func if isinstance(item, ast.Call) else item for item in node.decorator_list]
-            if all(Resolve({}, set()).expression(item, outer) == {"dataclasses.dataclass"} for item in decorators):
+            resolve = Resolve({}, set()).expression
+            if all(
+                resolve(item.func, outer) == {_DATACLASS} if isinstance(item, ast.Call)
+                else resolve(item, outer) in ({_DATACLASS}, {_FROZEN_EXCEPTION})
+                for item in node.decorator_list
+            ):
                 value = qualified
                 self.classes.add(value)
         outer.bindings[node.name].append(value)
@@ -411,7 +420,7 @@ def verify_report(inventory: Mapping[str, Any], report: object) -> list[str]:
 def _ruff(root: Path, paths: Sequence[str], *, ignore_noqa: bool) -> set[tuple[str, int, int, str]]:
     flags = ["--ignore-noqa"] if ignore_noqa else []
     result = subprocess.run(
-        [sys.executable, "-m", "ruff", "check", "--config", "pyproject.toml", "--select", "BLE001,SIM105",
+        [sys.executable, "-I", "-m", "ruff", "check", "--config", "pyproject.toml", "--select", "BLE001,SIM105",
          "--output-format", "json", *flags, "--", *paths],
         cwd=root, capture_output=True, timeout=60, check=False,
     )
@@ -443,7 +452,7 @@ def _inventory(root: Path) -> dict[str, Any]:
             raise ValueError(f"source changed during discovery: {path}")
     if _digest([path.read_text(encoding="utf-8") for path in (root / "pyproject.toml", root / "uv.lock")]) != config:
         raise ValueError("configuration changed during discovery")
-    version = subprocess.check_output([sys.executable, "-m", "ruff", "--version"], cwd=root, timeout=10).decode().strip()
+    version = subprocess.check_output([sys.executable, "-I", "-m", "ruff", "--version"], cwd=root, timeout=10).decode().strip()
     return dict(inventory, config_sha256=_sha256_id(config), ruff=version)
 
 
