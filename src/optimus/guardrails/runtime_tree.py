@@ -8,11 +8,25 @@ same name, nor through a file alias or junction whose target lies in one.
 
 from __future__ import annotations
 
+import re
+import secrets
 import sys
 from pathlib import Path
 
 RUNTIME_DIR_NAME = ".optimus"
+# #691: an approved WRITE stages its bytes in a file of this name beside the target, then replaces the target with it. A
+# leftover (a crash between the two) is Optimus runtime residue: never read, written, listed, indexed or attached.
+_STAGING_NAME = re.compile(r"\.optimus-write-[0-9a-f]{16}\.tmp")
 _WINDOWS = sys.platform == "win32"  # NTFS is case-insensitive, so the reserved name is compared casefolded there
+
+
+def staging_name() -> str:
+    """A fresh name for a WRITE's staging file (#691); `is_staging_name` matches exactly this shape."""
+    return f".optimus-write-{secrets.token_hex(8)}.tmp"
+
+
+def is_staging_name(name: str) -> bool:
+    return _STAGING_NAME.fullmatch(name.casefold() if _WINDOWS else name) is not None
 
 
 def has_runtime_component(parts: tuple[str, ...]) -> bool:

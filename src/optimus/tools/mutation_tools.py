@@ -11,10 +11,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Protocol, TypeVar
 
-from optimus.guardrails.file_policy import FilePolicy, staging_name
+from optimus.guardrails.file_policy import FilePolicy
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
-from optimus.guardrails.runtime_tree import resolve_target
+from optimus.guardrails.runtime_tree import resolve_target, staging_name
 from optimus.runtime.modes import GenerationScope
 from optimus.runtime.mutation import MutationForbidden, MutationKind, assert_mutation_allowed
 from optimus.runtime.process_tree import run_bounded
@@ -86,18 +86,25 @@ def write_file(
 
     ``newline`` defaults to ``""``: no platform newline translation, for every caller (#410). ``expected_sha256`` is
     re-checked against the target's bytes after the guard allows the write and immediately before it: a mismatch
-    raises ``WriteSourceChanged`` (#407). Neither excludes a concurrent external writer."""
+    raises ``WriteSourceChanged`` (#407); it is checked again just before the file is replaced (#691). Neither excludes a
+    concurrent external writer."""
+    if newline not in (None, "", "\n", "\r", "\r\n"):  # what `write_text` accepted
+        raise ValueError(f"illegal newline value: {newline!r}")
     _authorize_file_mutation(path, context=context, guard=guard, requested_relative_path=requested_relative_path, target_unresolved=target_unresolved)
-    if expected_sha256 is not None:
+
+    def base_unchanged() -> None:
         try:
             current = hashlib.sha256(Path(path).read_bytes()).hexdigest()
         except FileNotFoundError:
             current = None
         if current != expected_sha256:
             raise WriteSourceChanged(f"source changed before write: {path}")
+
+    if expected_sha256 is not None:
+        base_unchanged()
     if newline not in ("", "\n"):  # as `write_text` translates: None is the platform's line break
         content = content.replace("\n", os.linesep if newline is None else newline)
-    _publish(Path(path), content.encode("utf-8"))
+    _publish(Path(path), content.encode("utf-8"), before_replace=None if expected_sha256 is None else base_unchanged)
 
 
 def write_file_keeping_line_endings(
@@ -152,12 +159,24 @@ _SHARING_ERRORS = (5, 32)  # Windows access denied and sharing violation: anothe
 _REPLACE_RETRY_WAITS = (0.05, 0.05, 0.05)
 
 
-def _publish(path: Path, data: bytes) -> None:
+def _writable(target: Path) -> bool:
+    """Whether this process may open ``target`` for writing, as today's in-place write did: a non-truncating open under the
+    process's own credentials, so a read-only attribute, mode or an ACL that denies writing data all refuse (#691)."""
+    try:
+        os.close(os.open(target, os.O_WRONLY | getattr(os, "O_BINARY", 0)))
+    except OSError:
+        return False
+    return True
+
+
+def _publish(path: Path, data: bytes, *, before_replace: Callable[[], None] | None = None) -> None:
     """#691: write ``data`` to a staging file beside the resolved target, flush it to disk, give it the target's mode and
     replace the target with it, so a failure at any step leaves the target's original bytes. The target is resolved, so a
     link stays a link and the file the guard judged is the one changed. A target this process could not open for writing
     today (read-only, or hidden or system on Windows) is refused before anything is staged. Every failure raises
-    ``WriteFailed``; the staging file is removed first, and if that fails too, ``no_effect`` is false."""
+    ``WriteFailed``; the staging file is removed first, and if it cannot be, or is no longer where it was made (it moved,
+    or a replace that reported an error may have happened), ``no_effect`` is false. ``before_replace`` runs before every
+    replace attempt, as does a check that the target still resolves where it did; either failing stops the write."""
     real = resolve_target(path)
     if real is None:
         raise WriteFailed("resolve", OSError(errno.ENOENT, "the target cannot be resolved"), no_effect=True)
@@ -167,7 +186,7 @@ def _publish(path: Path, data: bytes) -> None:
         facts = None
     except OSError as error:
         raise WriteFailed("resolve", error, no_effect=True) from error
-    if facts is not None and (not os.access(real, os.W_OK) or getattr(facts, "st_file_attributes", 0) & _HIDDEN_OR_SYSTEM):
+    if facts is not None and (getattr(facts, "st_file_attributes", 0) & _HIDDEN_OR_SYSTEM or not _writable(real)):
         raise WriteFailed("refused", PermissionError(errno.EACCES, "the target is not writable"), no_effect=True)
     mode = 0o666 if facts is None else stat.S_IMODE(facts.st_mode)  # created no wider than the target; the umask applies
     staging = real.with_name(staging_name())
@@ -184,18 +203,34 @@ def _publish(path: Path, data: bytes) -> None:
             step = "chmod"
             os.chmod(staging, mode)  # the umask may have narrowed it
         step = "replace"
-        _replace(staging, real)
-    except OSError as error:
+
+        def still_the_judged_target() -> None:
+            if resolve_target(path) != real:  # a folder on the way was swapped since the guard judged the target
+                raise OSError(errno.EXDEV, "the target no longer resolves where it did")
+            if before_replace is not None:
+                before_replace()
+
+        _replace(staging, real, still_the_judged_target)
+    except (OSError, MutationForbidden) as error:
         if made:
             try:
-                staging.unlink(missing_ok=True)
+                # a FileNotFoundError here counts as an effect: the file moved with its folder, or a replace that
+                # reported an error still renamed it
+                staging.unlink()
             except OSError:
-                raise WriteFailed(f"{step}, then cleanup", error, no_effect=False) from error
+                raise WriteFailed(f"{step}, then cleanup", _as_os_error(error), no_effect=False) from error
+        if isinstance(error, MutationForbidden):
+            raise  # an EDIT's base changed (WriteSourceChanged): nothing was written
         raise WriteFailed(step, error, no_effect=True) from error
 
 
-def _replace(staging: Path, target: Path) -> None:
+def _as_os_error(error: BaseException) -> OSError:
+    return error if isinstance(error, OSError) else OSError(errno.EIO, type(error).__name__)
+
+
+def _replace(staging: Path, target: Path, check: Callable[[], None]) -> None:
     for wait in (*_REPLACE_RETRY_WAITS, None):
+        check()
         try:
             os.replace(staging, target)
             return

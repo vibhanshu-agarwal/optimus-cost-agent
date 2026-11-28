@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from optimus.guardrails.file_policy import FilePolicy, FilePurpose, staging_name
+from optimus.guardrails.file_policy import FilePolicy, FilePurpose
 from optimus.guardrails.pre_tool import PreToolResult, PreToolVerdict
+from optimus.guardrails.runtime_tree import staging_name
 from optimus.runtime.modes import ExecutionMode
 from optimus.runtime.state import AgentState, RuntimeContext
 from optimus.tools import mutation_tools
@@ -54,12 +55,12 @@ def test_an_exact_write_translates_newlines_as_write_text_did(tmp_path):
         assert (tmp_path / "e.py").read_bytes() == expected, newline
 
 
-def _fail(monkeypatch, name: str, *, after_real: bool = False):
+def _fail(monkeypatch, name: str):
     real = {"open": os.open, "fsync": os.fsync, "chmod": os.chmod, "replace": os.replace}[name]
 
     def failing(*args, **kwargs):
-        if after_real:
-            real(*args, **kwargs)
+        if name == "open" and not args[1] & os.O_CREAT:
+            return real(*args, **kwargs)  # the write-open probe of the existing target; only the staging open fails
         raise OSError(28, "No space left on device")
 
     monkeypatch.setattr(os, name, failing)
@@ -147,10 +148,12 @@ def test_a_replace_held_briefly_by_another_process_is_retried(tmp_path, monkeypa
             raise _Sharing(13, "in use")
         real(source, target)
 
+    waits: list[float] = []
     monkeypatch.setattr(os, "replace", held_twice)
-    monkeypatch.setattr(mutation_tools.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(mutation_tools.time, "sleep", waits.append)
     _write(tmp_path / "a.py")
 
+    assert waits == [0.05, 0.05]  # about 50 ms between attempts
     assert len(attempts) == 3 and (tmp_path / "a.py").read_bytes() == b"new\n" and _names(tmp_path) == ["a.py"]
 
 
@@ -197,16 +200,23 @@ def test_a_target_open_without_delete_sharing_fails_honestly_on_windows(tmp_path
 
 
 def test_a_target_this_process_may_not_write_is_refused_before_staging(tmp_path, monkeypatch):
-    # stand-in for a read-only file on every platform: os.access is what the refusal consults
-    (tmp_path / "a.py").write_bytes(b"old\n")
-    monkeypatch.setattr(os, "access", lambda path, mode: False)
-    opened = []
-    monkeypatch.setattr(os, "open", lambda *args, **kwargs: opened.append(args) or 0)
+    # stand-in on every platform for a read-only file or an ACL that denies writing data: the write-open probe is refused
+    target = tmp_path / "a.py"
+    target.write_bytes(b"old\n")
+    real_open, opened = os.open, []
 
+    def denied_for_the_target(path, flags, *args, **kwargs):
+        opened.append((Path(path).name, flags & os.O_CREAT))
+        if Path(path) == target:
+            raise PermissionError(13, "write access denied")
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", denied_for_the_target)
     with pytest.raises(WriteFailed) as failed:
-        _write(tmp_path / "a.py")
-    assert failed.value.step == "refused" and failed.value.no_effect is True and opened == []
-    assert (tmp_path / "a.py").read_bytes() == b"old\n"
+        _write(target)
+    assert failed.value.step == "refused" and failed.value.no_effect is True
+    assert opened == [("a.py", 0)]  # the probe never creates or truncates, and nothing was staged
+    assert target.read_bytes() == b"old\n" and _names(tmp_path) == ["a.py"]
 
 
 def test_a_read_only_file_is_refused_unchanged(tmp_path):
@@ -262,15 +272,22 @@ def test_the_target_mode_is_kept_and_the_staging_file_is_never_wider(tmp_path, m
     target = tmp_path / "run.sh"
     target.write_bytes(b"old\n")
     os.chmod(target, 0o750)
-    seen = []
-    real = os.replace
+    seen, created_with = [], []
+    real, real_open = os.replace, os.open
 
     def look(source, destination):
         seen.append(stat.S_IMODE(os.stat(source).st_mode))
         real(source, destination)
 
+    def note_mode(path, flags, mode=0o777, *args, **kwargs):
+        if flags & os.O_CREAT:
+            created_with.append(mode)
+        return real_open(path, flags, mode, *args, **kwargs)
+
     monkeypatch.setattr(os, "replace", look)
+    monkeypatch.setattr(os, "open", note_mode)
     _write(target)
+    assert created_with == [0o750]  # never wider than the target, from the moment it exists
     assert seen == [0o750] and stat.S_IMODE(os.stat(target).st_mode) == 0o750
 
 
@@ -347,3 +364,122 @@ async def test_a_leftover_is_never_sent_to_the_model_even_when_named(mode, tmp_p
     [gateway] = gateways
     assert gateway.calls and all("half a write" not in sent for sent in gateway.calls)
     assert any("kept_marker" in sent for sent in gateway.calls)  # an ordinary file next to it is still attached
+
+
+def test_a_replace_that_renamed_and_then_reported_an_error_is_an_effect(tmp_path, monkeypatch):
+    # Codex r1 M6: an NFS rename can complete and still return an error; the staging file is gone, so nothing proves no effect
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    real = os.replace
+
+    def renamed_then_failed(source, target):
+        real(source, target)
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(os, "replace", renamed_then_failed)
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "a.py")
+    assert failed.value.no_effect is False and failed.value.step == "replace, then cleanup"
+
+
+def test_a_target_that_resolves_elsewhere_before_the_replace_is_not_replaced(tmp_path, monkeypatch):
+    # Codex r1 H1: a folder on the way swapped after the guard judged the target; the replace is not attempted
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    real_resolve, calls = mutation_tools.resolve_target, []
+
+    def moved_on_second_look(path):
+        calls.append(path)
+        resolved = real_resolve(path)
+        return resolved if len(calls) == 1 or resolved is None else resolved.with_name("elsewhere.py")
+
+    monkeypatch.setattr(mutation_tools, "resolve_target", moved_on_second_look)
+    replaced = []
+    monkeypatch.setattr(os, "replace", lambda *args: replaced.append(args))
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "a.py")
+    assert replaced == [] and failed.value.step == "replace" and failed.value.no_effect is True
+    assert (tmp_path / "a.py").read_bytes() == b"old\n" and _names(tmp_path) == ["a.py"]
+
+
+def test_an_edit_whose_base_changes_while_it_is_staged_writes_nothing(tmp_path, monkeypatch):
+    # Codex r1 M3: an editor saves during the fsync; the base is checked again just before the replace
+    import hashlib
+
+    from optimus.tools.mutation_tools import WriteSourceChanged
+
+    target = tmp_path / "e.py"
+    target.write_bytes(b"a = 1\n")
+    base = hashlib.sha256(b"a = 1\n").hexdigest()
+    real_fsync = os.fsync
+
+    def saved_meanwhile(descriptor):
+        real_fsync(descriptor)
+        target.write_bytes(b"a = 1\nb = 2\n")  # the user's newer save
+
+    monkeypatch.setattr(os, "fsync", saved_meanwhile)
+    with pytest.raises(WriteSourceChanged):
+        write_file(target, "a = 2\n", context=_context(), guard=_Allow(), expected_sha256=base)
+    assert target.read_bytes() == b"a = 1\nb = 2\n" and _names(tmp_path) == ["e.py"]
+
+
+@pytest.mark.parametrize("newline", ["|", "\n\n", "x"])
+def test_an_illegal_newline_value_is_refused_as_write_text_did(newline, tmp_path):
+    with pytest.raises(ValueError):
+        write_file(tmp_path / "e.py", "a\n", context=_context(), guard=_Allow(), newline=newline)
+    assert _names(tmp_path) == []
+
+
+def test_a_carriage_return_newline_is_translated_as_write_text_did(tmp_path):
+    write_file(tmp_path / "e.py", "a\nb\n", context=_context(), guard=_Allow(), newline="\r")
+    assert (tmp_path / "e.py").read_bytes() == b"a\rb\r"
+
+
+@pytest.mark.parametrize("requested", [LEFTOVER, f"src/{LEFTOVER}"])
+def test_the_read_and_write_guard_refuses_a_leftover_by_name(requested, tmp_path):
+    # Codex r1 H2: the direct guard, not only discovery, refuses the staging name, so a READ_MORE or WRITE cannot reach it
+    from optimus.guardrails.path_safety import PathSafetyValidator
+    from optimus.guardrails.validation import ValidationVerdict
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / requested).write_text("half a write" + chr(10))
+    validator = PathSafetyValidator(workspace_root=tmp_path)
+    target = (tmp_path / requested).resolve()
+
+    assert validator.validate_read(target, requested_relative_path=requested).verdict is ValidationVerdict.BLOCK
+    assert validator.validate_write(target, requested_relative_path=requested).verdict is ValidationVerdict.BLOCK
+
+
+def test_the_guard_refuses_a_link_whose_target_is_a_leftover(tmp_path):
+    from optimus.guardrails.path_safety import PathSafetyValidator
+    from optimus.guardrails.validation import ValidationVerdict
+
+    (tmp_path / LEFTOVER).write_text("half a write" + chr(10))
+    try:
+        os.symlink(tmp_path / LEFTOVER, tmp_path / "innocent.py")
+    except OSError:
+        pytest.skip("this host cannot create a file symlink (Windows without the privilege)")
+    validator = PathSafetyValidator(workspace_root=tmp_path)
+    verdict = validator.validate_read((tmp_path / "innocent.py").resolve(), requested_relative_path="innocent.py").verdict
+    assert verdict is ValidationVerdict.BLOCK
+
+
+async def test_a_staging_file_left_behind_is_recorded_as_an_unknown_effect(tmp_path, monkeypatch):
+    # through session/prompt: the replace fails and the staging file cannot be removed, so the record is INDETERMINATE
+    from optimus.acp.settlement import EffectState
+    from tests.unit.agent.test_directive_path_characters import _drive, _SamePlan
+
+    (tmp_path / "a.py").write_bytes(b"old\n")
+
+    def refused(*args):
+        raise PermissionError(13, "denied")
+
+    def stuck(self, missing_ok=False):
+        raise PermissionError(13, "in use")
+
+    monkeypatch.setattr(os, "replace", refused)
+    monkeypatch.setattr(Path, "unlink", stuck)
+    result, _outbound, _runner, records = await _drive(tmp_path, _SamePlan("WRITE a.py" + chr(10) + "new" + chr(10)))
+
+    assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
+    assert (tmp_path / "a.py").read_bytes() == b"old\n"
+    [record] = records.values()
+    assert record.effect_state is EffectState.INDETERMINATE
