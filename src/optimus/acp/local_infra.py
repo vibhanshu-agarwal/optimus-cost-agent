@@ -30,6 +30,7 @@ from optimus.acp.local_gateway_secrets import ProviderCredentialResolution
 from optimus.acp.process_lifecycle import cleanup_failure, raise_preserving_failure
 from optimus.agent.defaults import default_agent_model
 from optimus.config.gateway import _LOOPBACK_HOSTS, LOCAL_PROVIDER_KEY_NAMES, OptimusGatewaySettings
+from optimus.runtime.frozen_exception import frozen_exception
 from optimus.usage.savings_report import ReportTransportError, gateway_post
 from optimus_model_policy.binding import operator_override, trusted_snapshot
 from optimus_security import gateway_identity
@@ -97,6 +98,7 @@ _SYSTEM_ENV_KEYS = ("SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT",
 _EMPTY_MAPPING: Mapping[str, str] = {}
 
 
+@frozen_exception
 @dataclass(frozen=True)
 class LocalInfrastructureError(Exception):
     code: str

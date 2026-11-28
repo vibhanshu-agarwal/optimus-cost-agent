@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from optimus.acp.local_infra import DEFAULT_REDIS_URL
 from optimus.agent.state_store import validate_redis_url
 from optimus.redis.runtime import RedisRuntime, RedisRuntimeShutdownIncomplete
+from optimus.runtime.frozen_exception import frozen_exception
 from optimus_model_policy.binding import RouteBinding
 from optimus_security.sanitization import CredentialUriError, mask_uri_userinfo
 
@@ -24,6 +25,7 @@ _LOCAL_STARTUP_RUNBOOK = (
 _REDIS_TS_PROBE_KEY = "optimus:preflight:timeseries-probe"
 
 
+@frozen_exception
 @dataclass(frozen=True)
 class PreflightFailure(Exception):
     exit_code: int

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from optimus.runtime.frozen_exception import frozen_exception
 from optimus.runtime.modes import ExecutionMode
 
 if TYPE_CHECKING:
@@ -18,6 +19,7 @@ class MutationKind(StrEnum):
     SHADOW_APPLY = "shadow_apply"
 
 
+@frozen_exception
 @dataclass(frozen=True)
 class MutationForbidden(Exception):
     message: str

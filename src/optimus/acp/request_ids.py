@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from optimus.runtime.frozen_exception import frozen_exception
 
+
+@frozen_exception
 @dataclass(frozen=True)
 class DuplicateRequestId(Exception):
     request_id: str | int
