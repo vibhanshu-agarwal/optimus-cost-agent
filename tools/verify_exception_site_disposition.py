@@ -105,7 +105,8 @@ class Collect(ast.NodeVisitor):
         for name in node.names:
             key = name.asname or name.name.split(".")[0]
             self.scope.bindings[key].append(name.name if name.asname else key)
-            self.bound_modules.add(name.name)
+            # import a.b binds the package a, which reaches a.b; import a.b as x binds a.b itself.
+            self.bound_modules |= {name.name, name.name if name.asname else key}
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         package = self.scope.package.split(".") if self.scope.package else []
@@ -190,8 +191,9 @@ class Collect(ast.NodeVisitor):
                 self.writes.append((name.value, node.lineno))
             else:
                 self.computed.append(node.lineno)
-        elif called in ("import_module", "__import__") and isinstance(first, ast.Constant):
-            self.bound_modules.add(str(first.value))
+        elif called in ("import_module", "__import__"):
+            named = [first, *(keyword.value for keyword in node.keywords if keyword.arg == "name")]
+            self.bound_modules |= {str(item.value) for item in named if isinstance(item, ast.Constant)}
         self.generic_visit(node)
 
     def overwritten(self) -> list[tuple[str, int, str]]:
@@ -208,7 +210,8 @@ class Collect(ast.NodeVisitor):
         for trusted in sorted(_TRUSTED):
             module, _, name = trusted.rpartition(".")
             found += [(trusted, line, f"attribute write named {name}") for attr, line in self.writes if attr == name]
-            if module in self.bound_modules and self.computed:
+            # Binding the module or any package above it reaches the module as an attribute.
+            if self.computed and any(module == bound or module.startswith(bound + ".") for bound in self.bound_modules):
                 found.append((trusted, self.computed[0], f"computed setattr or delattr in a file that binds {module}"))
         return found
 
@@ -386,8 +389,13 @@ class Resolve:
         if _SUPPRESS in manager:
             unresolved = unresolved or bool(node.keywords) or manager != {_SUPPRESS}
             return broad or unresolved, unresolved
+        # A dynamic scope can hide that a manager is suppress, so every manager there is reported.
+        chain: Scope | None = scope
+        dynamic = False
+        while chain is not None:
+            dynamic, chain = dynamic or chain.dynamic, chain.parent
         # A broad exception argument to an opaque manager can hide indirect suppression.
-        if broad or any(isinstance(item, ast.Starred) for item in caught) or "suppress" in ast.unparse(node.func):
+        if broad or dynamic or any(isinstance(item, ast.Starred) for item in caught) or "suppress" in ast.unparse(node.func):
             return True, True
         return False, False
 

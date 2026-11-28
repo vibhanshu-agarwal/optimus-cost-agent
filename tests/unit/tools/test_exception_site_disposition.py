@@ -608,3 +608,68 @@ def test_intended_strictness_is_pinned():
     inventory = discover({"src/demo.py": text, "src/patch.py": patch})
     assert [site["unresolved"] for site in inventory["sites"]] == [True]
     assert inventory["untrusted_decorators"][0].startswith("src/patch.py:4 dataclasses.dataclass")
+
+
+_IMPORT_MODULE_BY_KEYWORD = """
+import importlib
+from builtins import ValueError as Refused
+
+builtins = importlib.import_module(name="builtins")
+builtins.exec("Refused = Exception")
+try:
+    raise TypeError()
+except Refused:
+    broad = True
+"""
+
+_SUPPRESS_IN_A_DYNAMIC_SCOPE = """
+import builtins as py
+from contextlib import suppress as quiet
+
+py.eval("1 + 1")
+with quiet(Exception):
+    raise TypeError()
+broad = True
+"""
+
+
+@pytest.mark.parametrize(
+    "fixture", [_IMPORT_MODULE_BY_KEYWORD, _SUPPRESS_IN_A_DYNAMIC_SCOPE],
+    ids=["import-module-by-keyword", "suppress-alias-in-a-dynamic-scope"],
+)
+def test_round_four_omissions_are_reported(fixture):
+    # Codex round 4: each fixture runs, patches nothing, and catches or suppresses broadly.
+    namespace: dict[str, object] = {}
+    exec(fixture, namespace)  # noqa: S102 - a fixed fixture, run to show the catch is broad
+    assert namespace["broad"] is True
+    assert True in _unresolved(fixture)
+
+
+_THROUGH_THE_PARENT_PACKAGE = """
+import optimus.runtime as runtime
+from optimus.runtime.frozen_exception import frozen_exception as original
+
+setattr(runtime.frozen_exception, original.__name__, replacement)
+from optimus.runtime.frozen_exception import frozen_exception
+
+@frozen_exception
+class Refused(Exception):
+    pass
+
+def handle():
+    try:
+        pass
+    except Refused:
+        pass
+"""
+
+
+@pytest.mark.parametrize(
+    "binding", ["import optimus.runtime as runtime", "import optimus.acp.errors"], ids=["package-alias", "top-package"])
+def test_a_computed_write_in_a_file_that_binds_a_parent_package_untrusts_it(binding):
+    # Static only: running it would patch the real module. import optimus.acp.errors binds optimus itself.
+    text = _THROUGH_THE_PARENT_PACKAGE.replace("import optimus.runtime as runtime", binding)
+    text = text if "as runtime" in binding else text.replace("runtime.frozen_exception,", "optimus.runtime.frozen_exception,")
+    inventory = discover({"src/demo.py": text})
+    assert [site["unresolved"] for site in inventory["sites"]] == [True]
+    assert any("binds optimus.runtime.frozen_exception" in item for item in inventory["untrusted_decorators"])
