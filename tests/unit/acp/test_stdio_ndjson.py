@@ -1377,3 +1377,126 @@ async def test_serve_ndjson_delivers_internal_error_when_stderr_write_fails(tmp_
     finally:
         reader.close()
         await asyncio.wait_for(serve, timeout=3)
+
+
+async def _exercise_held_response_send(tmp_path, monkeypatch, *, turn: bool, cancel: bool) -> None:
+    import threading
+
+    from optimus.acp.lifecycle import (
+        NonTurnResponseEnvelope,
+        NoticeControl,
+        ResponseKind,
+        RpcResponseDelivery,
+        SendOutcome,
+        TurnControl,
+        TurnResponseEnvelope,
+    )
+
+    loop = asyncio.get_running_loop()
+    writing = asyncio.Event()
+    release = threading.Event()
+    reader = InteractiveLineReader()
+    notice = NoticeControl()
+    owner = TurnControl(session_id="fixture", turn_seq=1) if turn else notice.allocate_response_handle(ResponseKind.ORDINARY)
+    finalized = []
+    frozen = []
+    teardown = []
+    sent = []
+
+    class HeldWriter(MemoryLineWriter):
+        def write_bytes(self, wire: bytes) -> None:
+            loop.call_soon_threadsafe(writing.set)
+            if not release.wait(timeout=5):
+                raise TimeoutError("fixture did not release the dedicated write")
+            sent.append(json.loads(wire))
+
+        def flush(self) -> None:
+            return None
+
+    if turn:
+        request_teardown = owner.request_transport_teardown
+
+        def record_teardown():
+            teardown.append("transport")
+            return request_teardown()
+
+        monkeypatch.setattr(owner, "request_transport_teardown", record_teardown)
+    else:
+        original_finalize = owner.finalize_once
+        original_freeze = owner.freeze_abandoned
+
+        def record_finalize(outcome):
+            finalized.append(outcome.outcome)
+            return original_finalize(outcome)
+
+        def record_freeze():
+            frozen.append("abandoned")
+            return original_freeze()
+
+        monkeypatch.setattr(owner, "finalize_once", record_finalize)
+        monkeypatch.setattr(owner, "freeze_abandoned", record_freeze)
+
+    requests = []
+
+    async def respond(_self, message, *, ownership_slot):
+        # Keep the request slot unbound so process_request's outer cancellation
+        # path cannot supply a missing teardown from the dedicated send itself.
+        assert not ownership_slot.is_bound
+        requests.append(asyncio.current_task())
+        response = {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+        if turn:
+            return TurnResponseEnvelope(response, owner)
+        return NonTurnResponseEnvelope(response, owner)
+
+    monkeypatch.setattr(server.AcpDuplexAdapter, "handle_client_request", respond)
+    configured = configured_test_agent_server(tmp_path, output_text="unused")
+    serving = asyncio.create_task(configured.server.serve_ndjson(reader, HeldWriter(), notice_control=notice))
+    try:
+        await reader.send({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        await asyncio.wait_for(writing.wait(), timeout=3.0)
+        assert len(requests) == 1
+        request = requests[0]
+        assert request is not None and not request.done()
+        assert sent == []
+        if cancel:
+            request.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(asyncio.shield(request), timeout=3.0)
+            assert request.cancelled()
+            assert owner.rpc_response_delivery is RpcResponseDelivery.AMBIGUOUS
+            if turn:
+                assert teardown == ["transport"]
+            else:
+                assert frozen == ["abandoned"]
+                assert finalized == [SendOutcome.SUPPRESSED]
+                assert notice.lookup_response(owner.response_id) is owner
+                assert notice.live_response_count() == 1
+            assert sent == []
+        release.set()
+        if not cancel:
+            await asyncio.wait_for(asyncio.shield(request), timeout=3.0)
+            assert owner.rpc_response_delivery is RpcResponseDelivery.FLUSHED
+            assert frozen == teardown == []
+            assert finalized == ([] if turn else [SendOutcome.FLUSHED])
+    finally:
+        release.set()
+        reader.close()
+        await asyncio.wait_for(serving, timeout=5.0)
+    assert sent == [{"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}]
+    if not turn:
+        assert finalized == [SendOutcome.SUPPRESSED if cancel else SendOutcome.FLUSHED]
+        assert notice.lookup_response(owner.response_id) == "unknown_or_retired"
+        assert notice.live_response_count() == 0
+
+
+async def test_turn_send_cancellation_after_submit_requests_teardown_and_propagates(tmp_path, monkeypatch) -> None:
+    await _exercise_held_response_send(tmp_path, monkeypatch, turn=True, cancel=True)
+
+
+async def test_notice_send_cancellation_after_submit_freezes_and_finalizes_once(tmp_path, monkeypatch) -> None:
+    await _exercise_held_response_send(tmp_path, monkeypatch, turn=False, cancel=True)
+
+
+@pytest.mark.parametrize("turn", [True, False], ids=["turn", "notice"])
+async def test_successful_dedicated_send_flushes_without_cancellation_cleanup(tmp_path, monkeypatch, turn: bool) -> None:
+    await _exercise_held_response_send(tmp_path, monkeypatch, turn=turn, cancel=False)

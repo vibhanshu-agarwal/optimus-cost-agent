@@ -380,6 +380,17 @@ _FIXTURE_SET_SHA256 = "5c7fce60c18ce867b2bc7064045d5ba7c769f3eb4249f1d1ab43543d2
 _FIXTURE_ROW_FIELDS = frozenset({"filename", "type", "hashed_secret", "is_secret", "is_verified"})
 
 
+# #306 release artifacts and their archived-report test pins.
+_REPEATABILITY_FILE_SHA256 = {
+    "reports/repeatability-attribution/composite.json": "a7734dd0a192bfc0804b22ae3726b9f338f2138255c76e9ff1bf03ec7bcf1ecf",  # pragma: allowlist secret - reviewed file checksum
+    "reports/repeatability-attribution/historical-input.json": "d5b0bddaea80ece66e5e35e401a2927847fa62b5c4c701ff480a820a276b16de",  # pragma: allowlist secret - reviewed file checksum
+    "reports/repeatability-attribution/historical-manifest.json": "f7de6ce22d2568c3a681751bccc9246318048574b2d09496f0e9eaed414bf675",  # pragma: allowlist secret - reviewed file checksum
+    "reports/repeatability-attribution/residual-dispositions.json": "6d5c76ae90ba7d2c3d106f70b03a65f5a998a5580c99499b344e14dde011c870",  # pragma: allowlist secret - reviewed file checksum
+    "tests/unit/tools/plan1126_runtime_audit/test_composite_report.py": "0fb11637e5b29f1a84d6497f88c9e6daefad1f0bd6164fd189270f8f21f2a59f",  # pragma: allowlist secret - reviewed file checksum
+}
+_REPEATABILITY_FINDINGS_SHA256 = "d007368627106044c5e370c35d5885ac3fc91b0ca5a27e0bc33003e6cb709596"  # pragma: allowlist secret - reviewed finding-set checksum
+
+
 def _unique_baseline_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for name, value in pairs:
@@ -390,6 +401,20 @@ def _unique_baseline_object(pairs: list[tuple[str, object]]) -> dict[str, object
 
 def _read_live_baseline(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_baseline_object)
+
+
+def _assert_repeatability_baseline(results: dict[str, list[dict]]) -> None:
+    assert results.keys() == _REPEATABILITY_FILE_SHA256.keys(), "expected the five reviewed repeatability paths"
+    rows = []
+    for path, entries in results.items():
+        for entry in entries:
+            assert set(entry) == _FIXTURE_ROW_FIELDS | {"line_number"}, "unexpected repeatability finding fields"
+            assert _canonical(entry["filename"]) == path, "repeatability finding filename must match its path"
+            assert entry["is_secret"] is False and entry["is_verified"] is False, "repeatability finding classification changed"
+            rows.append((path, entry["line_number"], entry["type"], entry["hashed_secret"]))
+    assert len(rows) == 65, "expected exactly 65 reviewed repeatability findings"
+    payload = json.dumps(sorted(rows), separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    assert hashlib.sha256(payload).hexdigest() == _REPEATABILITY_FINDINGS_SHA256, "repeatability finding set changed"
 
 
 def _assert_live_baseline_policy(baseline: dict) -> None:
@@ -408,7 +433,12 @@ def _assert_live_baseline_policy(baseline: dict) -> None:
     legacy = {path: entries for path, entries in canonical_results.items() if path in APPROVED_BASELINE_RELPATHS}
     _assert_baseline_policy({**baseline, "results": legacy})
 
-    fixtures = {path: entries for path, entries in canonical_results.items() if path not in legacy}
+    repeatability = {path: entries for path, entries in canonical_results.items() if path in _REPEATABILITY_FILE_SHA256}
+    _assert_repeatability_baseline(repeatability)
+
+    fixtures = {
+        path: entries for path, entries in canonical_results.items() if path not in legacy and path not in repeatability
+    }
     rows: list[tuple[str, str, str]] = []
     for path, entries in fixtures.items():
         root, *parts = path.split("/")
@@ -439,12 +469,47 @@ def test_detect_secrets_baseline_matches_the_approved_exception_set():
     _assert_live_baseline_policy(_read_live_baseline(ROOT / ".secrets.baseline"))
 
 
+@pytest.mark.parametrize("relpath", sorted(_REPEATABILITY_FILE_SHA256))
+def test_repeatability_scan_evidence_bytes_are_unchanged(relpath: str) -> None:
+    assert hashlib.sha256((ROOT / relpath).read_bytes()).hexdigest() == _REPEATABILITY_FILE_SHA256[relpath]
+
+
+@pytest.mark.parametrize(
+    "field,value,expected",
+    [
+        ("type", "Other Detector", "repeatability finding set changed"),
+        ("hashed_secret", "0" * 40, "repeatability finding set changed"),
+        ("line_number", 9999, "repeatability finding set changed"),
+        ("filename", "reports/elsewhere.json", "repeatability finding filename must match"),
+        ("is_secret", True, "repeatability finding classification changed"),
+        ("is_verified", True, "repeatability finding classification changed"),
+    ],
+)
+def test_repeatability_baseline_rejects_mutated_finding(field: str, value: object, expected: str) -> None:
+    baseline = _read_live_baseline(ROOT / ".secrets.baseline")
+    path = next(iter(_REPEATABILITY_FILE_SHA256))
+    baseline["results"][path][0][field] = value
+    with pytest.raises(AssertionError, match=expected):
+        _assert_live_baseline_policy(baseline)
+
+
+def test_repeatability_baseline_rejects_an_unreviewed_finding() -> None:
+    baseline = _read_live_baseline(ROOT / ".secrets.baseline")
+    path = next(iter(_REPEATABILITY_FILE_SHA256))
+    rows = baseline["results"][path]
+    rows.append({**rows[0], "hashed_secret": "0" * 40})
+    with pytest.raises(AssertionError, match="expected exactly 65 reviewed repeatability findings"):
+        _assert_live_baseline_policy(baseline)
+
+
 @pytest.fixture
 def fixture_baseline_delta() -> tuple[dict, str]:
     baseline = _read_live_baseline(ROOT / ".secrets.baseline")
     path = next(
         path for path, entries in sorted(baseline["results"].items())
-        if _canonical(path) not in APPROVED_BASELINE_RELPATHS and len(entries) > 1
+        if _canonical(path) not in APPROVED_BASELINE_RELPATHS
+        and _canonical(path) not in _REPEATABILITY_FILE_SHA256
+        and len(entries) > 1
     )
     return baseline, path
 

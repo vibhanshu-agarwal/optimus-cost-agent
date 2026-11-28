@@ -7503,6 +7503,30 @@
       "sanitizer": "schema-limited structural metadata",
       "test_node": "tests/unit/tools/test_exception_site_disposition.py::test_pending_review_cannot_pass_with_a_proposed_terminal_disposition",
       "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.composite_report:_cell:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Formats values from the caller-supplied report model for the local Markdown artifact. This path does not collect runtime diagnostics or send data.",
+      "sanitizer": "JSON formatting and Markdown escaping of explicit input fields",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_composite_report.py::test_json_and_markdown_reconcile_same_counts_and_residuals",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.plan1126_runtime_audit.composite_report:render_json:json_serialization",
+      "policy": "protocol-only",
+      "rationale": "Serializes the evidence model from the two files explicitly supplied by the caller. Report generation does not open the original archive or load runtime state.",
+      "sanitizer": "Deterministic serialization of the validated or explicitly invalid report model",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_composite_report.py::test_regeneration_is_byte_identical",
+      "evidence_tier": "unit"
+    },
+    {
+      "key": "tools.report_repeatability_attribution:main:stderr_export",
+      "policy": "protocol-only",
+      "rationale": "Emits bounded diagnostics for the handled usage, parsing, validation and I/O paths. Those diagnostics omit tracebacks and exception paths.",
+      "sanitizer": "Fixed diagnostic kinds and bounded parser messages",
+      "test_node": "tests/unit/tools/plan1126_runtime_audit/test_composite_report.py::test_parse_error_and_write_failure_leave_no_partial_report",
+      "evidence_tier": "unit"
     }
   ]
 }

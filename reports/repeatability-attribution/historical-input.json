@@ -1,0 +1,1587 @@
+{
+  "schema": "optimus-repeatability-input-v1",
+  "observations": [
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-01",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 334,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 57399.901,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 1,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-02",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 335,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120310.205,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "dfc53c9e77f3e55e73a3b1189725d47237aa566b348d8e5b7476c06b7b7f900b",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 2,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-03",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 336,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 58608.609,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 3,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-04",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 337,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120302.384,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "dfc53c9e77f3e55e73a3b1189725d47237aa566b348d8e5b7476c06b7b7f900b",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 4,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-05",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 338,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 57441.428,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 5,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-06",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 339,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 60498.37,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 6,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-07",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 340,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120330.834,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "dfc53c9e77f3e55e73a3b1189725d47237aa566b348d8e5b7476c06b7b7f900b",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 7,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-08",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 341,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 57545.037,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 8,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-09",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 342,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120299.685,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "dfc53c9e77f3e55e73a3b1189725d47237aa566b348d8e5b7476c06b7b7f900b",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 9,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-10",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 343,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 57249.167,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 10,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-11",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 344,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120288.406,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "dfc53c9e77f3e55e73a3b1189725d47237aa566b348d8e5b7476c06b7b7f900b",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 11,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-12",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 345,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 58141.672,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 12,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-13",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 346,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120307.952,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "dfc53c9e77f3e55e73a3b1189725d47237aa566b348d8e5b7476c06b7b7f900b",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 13,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-14",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 347,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 57669.321,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 14,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-15",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 348,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120297.045,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "dfc53c9e77f3e55e73a3b1189725d47237aa566b348d8e5b7476c06b7b7f900b",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 15,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-16",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 349,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 57985.666,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 16,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-17",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 350,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 58249.087,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 17,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-18",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 351,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120334.277,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "6f0d2fc54aa04f6a6e467dc77053e6a11df6c6cbaf99f0018dc66aacf2ddb80c",
+        "timeout_output_truncated": false,
+        "timeout_subject": "UNRESOLVED"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 18,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "UNRESOLVED",
+        "evidence_kind": "ACCEPTED_LEGACY_UNRESOLVED",
+        "evidence_ref": "unresolved",
+        "rationale": "The stream identifies the active shutdown test without attributing its failing operation."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-19",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 352,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 57657.043,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 19,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-20",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 353,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 61289.263,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 20,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-21",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 354,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120291.224,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "dfc53c9e77f3e55e73a3b1189725d47237aa566b348d8e5b7476c06b7b7f900b",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 21,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-22",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 355,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 59274.574,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 22,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-23",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 356,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 58156.032,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 23,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-24",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 357,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 120305.064,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "6f0d2fc54aa04f6a6e467dc77053e6a11df6c6cbaf99f0018dc66aacf2ddb80c",
+        "timeout_output_truncated": false,
+        "timeout_subject": "UNRESOLVED"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "group",
+      "repeat_index": 24,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "UNRESOLVED",
+        "evidence_kind": "ACCEPTED_LEGACY_UNRESOLVED",
+        "evidence_ref": "unresolved",
+        "rationale": "The stream identifies the active shutdown test without attributing its failing operation."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-25",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 358,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py tests/unit/acp/test_bootstrap.py tests/unit/acp/test_preflight.py tests/unit/redis/test_runtime.py tests/unit/telemetry/test_redis_adapter.py tests/unit/telemetry/test_redis_sink.py -vv",
+      "duration_ms": 58166.255,
+      "harness_fingerprint_after": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "harness_fingerprint_before": "cd6da1af495324f5dab4204469f2dd47902dc7892d70d306963043860236c1bf",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 36,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "825f25e83353f0f2049f1d877f3179164b698cf84b0e2186b80df56e9016b27f",
+      "omitted_fields": [],
+      "cohort": "group",
+      "repeat_index": 25,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-01",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 324,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 57609.541,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 4,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [],
+      "cohort": "narrow",
+      "repeat_index": 1,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-02",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 325,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 59393.284,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 4,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [],
+      "cohort": "narrow",
+      "repeat_index": 2,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-03",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 326,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 120302.326,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "5d83ae7a1fb05e6ef430a8195e6740e9a6bb6d9f8e1296491d938bcc67e06994",
+        "timeout_output_truncated": false,
+        "timeout_subject": "UNRESOLVED"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "narrow",
+      "repeat_index": 3,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "UNRESOLVED",
+        "evidence_kind": "ACCEPTED_LEGACY_UNRESOLVED",
+        "evidence_ref": "unresolved",
+        "rationale": "The stream identifies the active shutdown test without attributing its failing operation."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-04",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 327,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 57246.993,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 4,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [],
+      "cohort": "narrow",
+      "repeat_index": 4,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-05",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 328,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 59105.009,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 4,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [],
+      "cohort": "narrow",
+      "repeat_index": 5,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-06",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 329,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 120314.172,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_shutdown_causes_repeat_100_with_control_allowlist",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "5d83ae7a1fb05e6ef430a8195e6740e9a6bb6d9f8e1296491d938bcc67e06994",
+        "timeout_output_truncated": false,
+        "timeout_subject": "UNRESOLVED"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "narrow",
+      "repeat_index": 6,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "UNRESOLVED",
+        "evidence_kind": "ACCEPTED_LEGACY_UNRESOLVED",
+        "evidence_ref": "unresolved",
+        "rationale": "The stream identifies the active shutdown test without attributing its failing operation."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-07",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 330,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 57164.127,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 4,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [],
+      "cohort": "narrow",
+      "repeat_index": 7,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-08",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 331,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 120334.504,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "669ff54404614239ef78aa605d46a40728a8b4fe54e26be210bd5d82aa65821e",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "narrow",
+      "repeat_index": 8,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-09",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 332,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 56958.714,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {
+          "deselected": 0,
+          "error": 0,
+          "errors": 0,
+          "failed": 0,
+          "passed": 4,
+          "skipped": 0
+        },
+        "returncode": 0,
+        "status": "PASS",
+        "timeout_subject": null,
+        "last_test_nodeid": null,
+        "stdout_sha256": null,
+        "stderr_sha256": null,
+        "timeout_output_truncated": null
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [],
+      "cohort": "narrow",
+      "repeat_index": 9,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [],
+      "attribution": {
+        "subject": "NONE",
+        "evidence_kind": "NONE",
+        "evidence_ref": null,
+        "rationale": "Historical PASS supplies no positive failure attribution."
+      },
+      "product_evidence": []
+    },
+    {
+      "observation_id": "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-10",
+      "artifact_digest": "021b797ca3fc0a4bc4c944bd000661cad0283a9d5fb35d78427512d4050e66b7",
+      "checkpoint_revision": 333,
+      "command": "<historical-interpreter> -m pytest tests/unit/acp/test_plan1126_shutdown.py -vv",
+      "duration_ms": 120312.667,
+      "harness_fingerprint_after": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "harness_fingerprint_before": "b8a409600e29dbb26b34a38064d54a91f095bb7adf0c166cb0f3bf86151d99e7",
+      "measurement_generation": "c18-latest-complete-v1",
+      "outcome": {
+        "counts": {},
+        "last_test_nodeid": "tests/unit/acp/test_plan1126_shutdown.py::test_h5_artifact_derives_s1_cost_coverage_and_scope_out_register",
+        "returncode": null,
+        "status": "TIMEOUT",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "669ff54404614239ef78aa605d46a40728a8b4fe54e26be210bd5d82aa65821e",
+        "timeout_output_truncated": false,
+        "timeout_subject": "HARNESS"
+      },
+      "platform": "Windows-11-10.0.26200-SP0",
+      "provenance_fingerprint": "59528ad852b5e6107ef29eb40e739062e34c12d063f104d7439de6cf54349beb",
+      "python": "3.14.4",
+      "original_command_sha256": "e7cbb49013ce97bd1aeefc19f1903974b75ce7eee8ee74d9e60568c1139e350e",
+      "omitted_fields": [
+        "outcome.stdout_tail",
+        "outcome.stderr_tail"
+      ],
+      "cohort": "narrow",
+      "repeat_index": 10,
+      "provenance_refs": [
+        "checkpoint",
+        "terminal"
+      ],
+      "limitations": [
+        "Raw tails are archival. The original verdict and stream hashes are retained."
+      ],
+      "attribution": {
+        "subject": "HARNESS",
+        "evidence_kind": "DECLARED_HARNESS_NODE_MATCH",
+        "evidence_ref": "harness",
+        "rationale": "The retained harness subject and last node match the declared H5 harness evidence. The underlying cause remains unestablished."
+      },
+      "product_evidence": []
+    }
+  ]
+}

@@ -736,3 +736,52 @@ def test_post_teardown_fields_expose_transport_abandoned() -> None:
     assert control.transport_abandoned() is True
     fields = control.current_settlement_fields()
     assert fields["post_teardown"] is True
+
+
+@pytest.mark.parametrize("flushed", [False, True], ids=["empty-slots", "already-flushed"])
+def test_response_abandonment_keeps_terminal_outcome_and_is_idempotent(flushed: bool) -> None:
+    notices = NoticeControl()
+    handle = notices.allocate_response_handle(ResponseKind.ORDINARY)
+    slot = None
+    ticket = None
+    if flushed:
+        ticket = handle.start_non_turn_response_send()
+        assert isinstance(ticket.send_key, ResponseSendKey)
+        assert handle.mark_write_started(ticket.send_key)
+        handle.publish_authoritative(ticket.send_key, SendOutcome.FLUSHED)
+        handle.publish_diagnostic(ticket.send_key, SendOutcome.FLUSHED)
+        slot = handle._slots[ticket.send_key]  # noqa: SLF001
+    else:
+        assert not handle._slots  # noqa: SLF001
+
+    for _ in range(2):
+        notices.mark_transport_abandoned()
+        handle.freeze_abandoned()
+        assert notices.lookup_response(handle.response_id) is handle
+        assert notices.live_response_count() == 1
+        assert handle.rpc_response_delivery is (
+            RpcResponseDelivery.FLUSHED if flushed else RpcResponseDelivery.NOT_ATTEMPTED
+        )
+        if slot is None:
+            assert not handle._slots  # noqa: SLF001
+        else:
+            assert slot.authoritative is SendState.FLUSHED
+            assert slot.diagnostic is SendOutcome.FLUSHED
+
+    if ticket is None:
+        blocked = handle.start_non_turn_response_send()
+        assert blocked.immediate_completion is not None
+        assert blocked.immediate_completion.outcome is SendOutcome.SUPPRESSED
+        assert blocked.writer_token is None
+    else:
+        assert ticket.source_future is not None
+        ticket.source_future.set_result(SendCompletion(send_key=ticket.send_key, outcome=SendOutcome.FLUSHED))
+
+    assert handle.finalize_once("original") == "original"
+    assert handle.finalize_once("second attempt") == "original"
+    if ticket is not None:
+        assert notices.lookup_response(handle.response_id) is handle
+        assert ticket.writer_token is not None
+        ticket.writer_token.release()
+    assert notices.lookup_response(handle.response_id) == "unknown_or_retired"
+    assert notices.live_response_count() == 0
