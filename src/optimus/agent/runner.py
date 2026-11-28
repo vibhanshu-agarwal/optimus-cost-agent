@@ -281,6 +281,8 @@ def _failure_terminal(exc: BaseException) -> str:
     # cause). Any other failure after the lease may already have had an effect.
     if isinstance(exc, (MutationForbidden, WriteRefused)) or isinstance(exc.__cause__, MutationForbidden):
         return "failed_no_effect"  # WriteRefused is raised before the write (#410)
+    if isinstance(exc, CommandStopped) and exc.outcome == "not_started":
+        return "failed_no_effect"  # #700: Popen failed, so no process ever existed
     return "failed_effect_unknown"
 
 
@@ -346,6 +348,27 @@ def _log_write_failure(run_id: str, failed: OSError | UnicodeDecodeError) -> Non
             "winerror": getattr(failed, "winerror", None),
         },
         hypothesis_id="P689-WRITE",
+        run_id=run_id,
+        level=DiagnosticLevel.WARNING,
+    )
+
+
+def _log_test_failure(run_id: str, failed: BaseException, *, program: str, step: str) -> None:
+    """#700: why an approved TEST did not finish: the step, the error's type and numbers and the program's name, never its
+    arguments or the environment."""
+    from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log
+
+    acp_debug_log(
+        location="runner.py:test_failure",
+        message="an approved TEST did not finish",
+        data=lambda: {
+            "step": step,
+            "program": program,
+            "error_type": type(failed).__name__,
+            "errno": getattr(failed, "errno", None),
+            "winerror": getattr(failed, "winerror", None),
+        },
+        hypothesis_id="P700-TEST",
         run_id=run_id,
         level=DiagnosticLevel.WARNING,
     )
@@ -1595,9 +1618,6 @@ class AgentRunner:
             directives = parse_agent_plan(plan_text)
         except AgentDirectiveParseError:
             return []
-        # A READ of the EDIT's own target (as a path, so ./a.py is a.py) leaves a decode failure to the EDIT,
-        # which reports it typed (#407).
-        edit_target = workspace_root / directives.write.path if isinstance(directives.write, AgentEditDirective) else None
         calls: list[AgentToolCall] = []
         for ordinal, relative_path in enumerate(directives.read_paths):
             if not self._is_safe_relative_path(relative_path):
@@ -1611,11 +1631,9 @@ class AgentRunner:
                 started, read = _run_gated(
                     gate, kind, operation_id, partial(toolbox.read_file, target, requested=relative_path), effectful=False
                 )
-            except OSError:
-                continue
-            except UnicodeDecodeError:
-                if edit_target is None or target != edit_target:
-                    raise
+            except (OSError, UnicodeDecodeError):
+                # _run_gated settled the READ failed_no_effect. A READ only informs: the plan's change was fixed at
+                # planning time. A WRITE or EDIT of the same file meets the failure in its own read and stops typed (#700).
                 continue
             if not started:
                 break
@@ -1730,6 +1748,13 @@ class AgentRunner:
         except GuardDenied as denied:
             _guard_refused(gate, WRITE_GUARD_REFUSED, denied, suppress=[(DirectiveKind.WRITE, write_id)])
             return calls
+        except OSError as failed:
+            # #700: the file went away or is locked: as a WRITE's read-before-write (#689), nothing is written, the WRITE
+            # and the TESTs are suppressed and the plan ends WRITE_DIRECTIVE_NOT_EXECUTED.
+            gate.write_failed = True
+            gate.complete(DirectiveKind.WRITE, write_id, "suppressed")
+            _log_write_failure(gate.run_id, failed)
+            return calls
         if not started:
             return calls
         text, read_call = read
@@ -1752,6 +1777,11 @@ class AgentRunner:
             return calls
         except GuardDenied as denied:
             _guard_refused(gate, WRITE_GUARD_REFUSED, denied)
+            return calls
+        except OSError as failed:
+            # #700: as a WRITE's (#689): _run_gated settled the WRITE, the TESTs are suppressed, WRITE_DIRECTIVE_NOT_EXECUTED.
+            gate.write_failed = True
+            _log_write_failure(gate.run_id, failed)
             return calls
         if started:
             calls.append(write_call)
@@ -1796,7 +1826,14 @@ class AgentRunner:
                 unstarted = [(DirectiveKind.TEST, gate.operation_id("test", n)) for n in range(ordinal + 1, len(directives.tests))]
                 _guard_refused(gate, TEST_GUARD_REFUSED, denied, suppress=unstarted)
                 break
-            except CommandStopped as stop:
+            except (CommandStopped, OSError) as raised:
+                if isinstance(raised, CommandStopped):
+                    stop = raised
+                    if stop.outcome == "not_started" and stop.__cause__ is not None:
+                        _log_test_failure(gate.run_id, stop.__cause__, program=command[0], step="launch")
+                else:  # #700: the command failed after it started; nothing confirmed it stopped
+                    _log_test_failure(gate.run_id, raised, program=command[0], step="running")
+                    stop = CommandStopped("stop_unconfirmed", "failed while running: the command may still be running")
                 calls.append(
                     AgentToolCall(tool_name="test_runner", summary=f"ran {' '.join(command)}: {stop}", authorization_outcome="ALLOW")
                 )

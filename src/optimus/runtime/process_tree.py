@@ -90,6 +90,8 @@ def run_bounded(args: Sequence[str], *, deadline: float, cancelled: Callable[[],
         if error.may_have_run:
             raise CommandStopped("containment_failed", "containment failed after the command started; it was stopped") from error
         raise CommandStopped("containment_failed", "containment failed, so the command was not run") from error
+    except OSError as error:  # #700: Popen itself failed (no such program): no process exists, nothing ran
+        raise CommandStopped("not_started", "could not be started, so it did not run") from error
     drained = False
     while (remaining := deadline - time.monotonic()) > 0 and not cancelled():
         try:

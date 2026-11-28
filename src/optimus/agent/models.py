@@ -159,6 +159,7 @@ TEST_STOP_REASONS = {
     "timed_out": "TEST_TIMED_OUT",
     "containment_failed": "TEST_CONTAINMENT_FAILED",
     "stop_unconfirmed": "TEST_STOP_UNCONFIRMED",
+    "not_started": "TEST_NOT_STARTED",  # #700: the launch failed (pytest missing): nothing ran
 }
 
 # #589: a guard refused a step of an approved plan. The text is fixed: it never quotes the refused path or command (#583).

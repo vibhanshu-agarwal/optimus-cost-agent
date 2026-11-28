@@ -102,9 +102,11 @@ def test_a_descendant_that_outlives_its_root_makes_the_stop_unconfirmed(monkeypa
 
 
 def test_a_missing_executable_is_an_ordinary_launch_failure_not_a_containment_failure():
-    with pytest.raises(OSError) as raised:
+    # #700: a typed stop the runner can settle, "not_started", never "containment_failed"; the OSError is kept as its cause
+    with pytest.raises(CommandStopped) as raised:
         run_bounded(["optimus-no-such-test-runner-12-3"], deadline=time.monotonic() + 60, cancelled=_never)
-    assert not isinstance(raised.value, process_tree.ContainmentError)
+    assert raised.value.outcome == "not_started"
+    assert isinstance(raised.value.__cause__, OSError) and not isinstance(raised.value.__cause__, process_tree.ContainmentError)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="job containment is the Windows path")
