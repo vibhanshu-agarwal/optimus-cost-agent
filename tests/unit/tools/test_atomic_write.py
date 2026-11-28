@@ -399,7 +399,8 @@ def test_a_target_that_resolves_elsewhere_before_the_replace_is_not_replaced(tmp
     monkeypatch.setattr(mutation_tools, "_swap_in", lambda *args, **kwargs: replaced.append(args))
     with pytest.raises(WriteFailed) as failed:
         _write(tmp_path / "a.py")
-    assert replaced == [] and failed.value.step == "replace" and failed.value.no_effect is True
+    # Codex r3 #7 narrowing: the redirect is caught by the check before staging, so nothing was ever created
+    assert replaced == [] and failed.value.step == "stage" and failed.value.no_effect is True
     assert (tmp_path / "a.py").read_bytes() == b"old\n" and _names(tmp_path) == ["a.py"]
 
 
@@ -705,36 +706,136 @@ def test_an_existing_target_is_published_through_the_platform_swap(tmp_path, mon
     assert seen == [True, False]
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")
-def test_replacefile_1176_finishes_the_publish_when_the_target_is_already_gone(tmp_path, monkeypatch):
-    # ReplaceFileW without a backup file: 1176 means it removed the target but could not rename the staging file
-    def removed_target_then_failed(target, staging):
+def _displaced(code: int, *, then=None):
+    def replace_file_w(target, staging):  # what ReplaceFileW leaves for 1176 or 1177 when it gives no backup file
         os.remove(target)
-        return 1176
+        if then is not None:
+            then(target)
+        return code
 
-    monkeypatch.setattr(mutation_tools, "_replace_file_w", removed_target_then_failed)
+    return replace_file_w
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")
+def test_replacefile_1176_puts_the_new_bytes_in_place_but_never_claims_success(tmp_path, monkeypatch):
+    # Codex r3 #2: the original is gone and whether its streams came along is unknown, so the outcome stays unconfirmed
+    monkeypatch.setattr(mutation_tools, "_replace_file_w", _displaced(1176))
     (tmp_path / "a.py").write_bytes(b"old\n")
-    _write(tmp_path / "a.py")
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "a.py")
+    assert failed.value.no_effect is False and failed.value.step == "replace, unconfirmed"
     assert (tmp_path / "a.py").read_bytes() == b"new\n" and _names(tmp_path) == ["a.py"]
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")
-def test_replacefile_1176_never_deletes_the_only_copy_left(tmp_path, monkeypatch):
-    def removed_target_then_failed(target, staging):
-        os.remove(target)
-        return 1176
-
-    def move_fails(*args, **kwargs):
-        raise PermissionError(13, "denied")
-
-    monkeypatch.setattr(mutation_tools, "_replace_file_w", removed_target_then_failed)
-    monkeypatch.setattr(os, "replace", move_fails)
+def test_replacefile_1176_never_overwrites_a_file_that_arrived_meanwhile(tmp_path, monkeypatch):
+    # Codex r3 #2: a sync client restores the name between ReplaceFileW and the recovery; the recovery does not overwrite it
+    monkeypatch.setattr(mutation_tools, "_replace_file_w", _displaced(1176, then=lambda target: Path(target).write_bytes(b"synced\n")))
     (tmp_path / "a.py").write_bytes(b"old\n")
     with pytest.raises(WriteFailed) as failed:
         _write(tmp_path / "a.py")
-    assert failed.value.no_effect is False and "staging file kept" in failed.value.step
+    assert failed.value.no_effect is False
+    assert (tmp_path / "a.py").read_bytes() == b"synced\n"
+    [kept] = [name for name in _names(tmp_path) if name != "a.py"]
+    assert (tmp_path / kept).read_bytes() == b"new\n"  # the new bytes survive under the staging name, never deleted
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")
+def test_replacefile_1177_keeps_the_staging_file_and_is_unconfirmed(tmp_path, monkeypatch):
+    # Codex r3 #1: the staging file kept its name while the original moved away; it is never deleted
+    monkeypatch.setattr(mutation_tools, "_replace_file_w", _displaced(1177))
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "a.py")
+    assert failed.value.no_effect is False and failed.value.step == "replace, unconfirmed"
     [kept] = _names(tmp_path)
-    assert (tmp_path / kept).read_bytes() == b"new\n"  # the new bytes survive under the staging name
+    assert (tmp_path / kept).read_bytes() == b"new\n"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")
+async def test_replacefile_1177_shows_the_unconfirmed_text_and_records_an_unknown_effect(tmp_path, monkeypatch):
+    from optimus.acp.settlement import EffectState
+    from tests.unit.agent.test_directive_path_characters import _drive, _SamePlan
+    from tests.unit.agent.test_write_new_folders import _final_text
+
+    monkeypatch.setattr(mutation_tools, "_replace_file_w", _displaced(1177))
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    result, outbound, _runner, records = await _drive(tmp_path, _SamePlan("WRITE a.py" + chr(10) + "new" + chr(10)))
+    [record] = records.values()
+    assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED" and record.effect_state is EffectState.INDETERMINATE
+    assert _final_text(outbound).startswith(UNCONFIRMED) and record.completion_text.startswith(UNCONFIRMED)
+
+
+def test_a_retry_restages_clean_bytes_before_trying_again(tmp_path, monkeypatch):
+    # Codex r3 #4: a failed ReplaceFileW may have merged the target's metadata into the staging file; the retry gets a new one
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    real, stagings = mutation_tools._swap_in, []
+
+    def held_once_after_touching_the_stage(source, target, **kwargs):
+        stagings.append((os.stat(source).st_ino, source.read_bytes()))
+        if len(stagings) == 1:
+            source.write_bytes(b"merged metadata")  # what a partial merge could leave
+            raise _Sharing(13, "in use")
+        real(source, target, **kwargs)
+
+    monkeypatch.setattr(mutation_tools, "_swap_in", held_once_after_touching_the_stage)
+    monkeypatch.setattr(mutation_tools.time, "sleep", lambda seconds: None)
+    _write(tmp_path / "a.py")
+    assert [data for _ino, data in stagings] == [b"new\n", b"new\n"]
+    assert (tmp_path / "a.py").read_bytes() == b"new\n" and _names(tmp_path) == ["a.py"]
+
+
+@pytest.mark.parametrize("writer", ["write", "edit"])
+def test_a_read_that_fails_before_staging_is_no_effect(writer, tmp_path, monkeypatch):
+    # Codex r3 #5: an editor's sharing lock on the first read; nothing was created, so the record is not "unknown"
+    import hashlib
+
+    target = tmp_path / "a.py"
+    target.write_bytes(b"old\n")
+
+    def locked(self):
+        raise PermissionError(13, "locked")
+
+    monkeypatch.setattr(Path, "read_bytes", locked)
+    with pytest.raises(WriteFailed) as failed:
+        if writer == "write":
+            _write(target)
+        else:
+            write_file(target, "x\n", context=_context(), guard=_Allow(), expected_sha256=hashlib.sha256(b"old\n").hexdigest())
+    assert failed.value.step == "read" and failed.value.no_effect is True
+
+
+def test_a_folder_whose_removal_cannot_be_proven_is_an_effect(tmp_path, monkeypatch):
+    # Codex r3 #6: rmdir fails on a dropped share; an inaccessible folder is never counted as gone
+    real_mkdir = Path.mkdir
+
+    def second_fails(self, *args, **kwargs):
+        if self.name == "inner":
+            raise OSError(64, "The specified network name is no longer available")
+        return real_mkdir(self, *args, **kwargs)
+
+    def unreachable(self):
+        raise OSError(64, "The specified network name is no longer available")
+
+    monkeypatch.setattr(Path, "mkdir", second_fails)
+    monkeypatch.setattr(Path, "rmdir", unreachable)
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "outer" / "inner" / "a.py", root=tmp_path)
+    assert failed.value.step == "folders" and failed.value.no_effect is False
+
+
+def test_a_mkdir_that_failed_but_left_a_folder_is_an_effect(tmp_path, monkeypatch):
+    # Codex r3 #6: the mkdir completed on the server but its reply was lost; the folder exists although mkdir raised
+    real_mkdir = Path.mkdir
+
+    def made_then_failed(self, *args, **kwargs):
+        real_mkdir(self, *args, **kwargs)
+        raise OSError(121, "The semaphore timeout period has expired")
+
+    monkeypatch.setattr(Path, "mkdir", made_then_failed)
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "deep" / "a.py", root=tmp_path)
+    assert failed.value.no_effect is False
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")

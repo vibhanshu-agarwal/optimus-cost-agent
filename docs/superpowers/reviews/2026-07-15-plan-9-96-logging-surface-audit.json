@@ -7521,17 +7521,17 @@
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.tools.mutation_tools:_publish:file_open",
+      "key": "optimus.tools.mutation_tools:stage:file_open",
       "policy": "safe-by-construction",
-      "rationale": "optimus.tools.mutation_tools:_publish:file_open is the authorized WRITE or EDIT mutation payload, staged beside the resolved target and published with an atomic replace (#691) after the mutation gate and guard allow it; sanitization would alter approved content rather than protect a diagnostic artifact.",
+      "rationale": "optimus.tools.mutation_tools:stage:file_open (the staging step nested in _publish) is the authorized WRITE or EDIT mutation payload, staged beside the resolved target and published with an atomic replace (#691) after the mutation gate and guard allow it; sanitization would alter approved content rather than protect a diagnostic artifact.",
       "sanitizer": "MutationGuard and PreToolGuard authorization; no diagnostic sanitization",
       "test_node": "tests/unit/tools/test_atomic_write.py::test_a_write_replaces_the_file_and_leaves_no_staging_file",
       "evidence_tier": "unit"
     },
     {
-      "key": "optimus.tools.mutation_tools:_publish:text_write",
+      "key": "optimus.tools.mutation_tools:stage:text_write",
       "policy": "safe-by-construction",
-      "rationale": "optimus.tools.mutation_tools:_publish:text_write is the authorized WRITE or EDIT mutation payload, staged beside the resolved target and published with an atomic replace (#691) after the mutation gate and guard allow it; sanitization would alter approved content rather than protect a diagnostic artifact.",
+      "rationale": "optimus.tools.mutation_tools:stage:text_write (the staging step nested in _publish) is the authorized WRITE or EDIT mutation payload, staged beside the resolved target and published with an atomic replace (#691) after the mutation gate and guard allow it; sanitization would alter approved content rather than protect a diagnostic artifact.",
       "sanitizer": "MutationGuard and PreToolGuard authorization; no diagnostic sanitization",
       "test_node": "tests/unit/tools/test_atomic_write.py::test_a_write_replaces_the_file_and_leaves_no_staging_file",
       "evidence_tier": "unit"

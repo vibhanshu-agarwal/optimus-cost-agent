@@ -103,7 +103,10 @@ def write_file(
             raise WriteSourceChanged(f"source changed before write: {path}")
 
     if expected_sha256 is not None:
-        base_unchanged()
+        try:
+            base_unchanged()
+        except OSError as error:  # nothing has been created yet (Codex r3 #5)
+            raise WriteFailed("read", error, no_effect=True) from error
     if newline not in ("", "\n"):  # as `write_text` translates: None is the platform's line break
         content = content.replace("\n", os.linesep if newline is None else newline)
     _publish(Path(path), real, content.encode("utf-8"), before_replace=None if expected_sha256 is None else base_unchanged)
@@ -128,20 +131,27 @@ def write_file_keeping_line_endings(
     _authorize_file_mutation(path, context=context, guard=guard, requested_relative_path=requested_relative_path, target_unresolved=target_unresolved)
     real = _resolved_now(Path(path))
     target = Path(path)
-    existing = target.read_bytes() if target.is_file() else None
+    try:
+        existing = target.read_bytes() if target.is_file() else None
+    except OSError as error:  # nothing has been created yet (Codex r3 #5)
+        raise WriteFailed("read", error, no_effect=True) from error
     if existing is not None and line_ending_style(existing) == "mixed":
         raise WriteRefused(WRITE_LINE_ENDINGS_MIXED, requested_relative_path or path)
+    attempted: list[Path] = []
     created: list[Path] = []
     try:
         if workspace_root is not None:
-            _create_missing_folders(target.parent, workspace_root, created)
+            _create_missing_folders(target.parent, workspace_root, created, attempted)
         _publish(target, real, fit_body_to_file(body, existing).encode("utf-8"))
     except (OSError, MutationForbidden) as failed:
+        removed = 0
         for folder in reversed(created):
             if resolve_target(folder) == folder:  # a link swapped in is not this write's to remove
                 with contextlib.suppress(OSError):  # a folder no longer empty is not this write's to remove
                     folder.rmdir()
-        folders_gone = not any(os.path.lexists(folder) for folder in created)
+                    removed += 1
+        # gone only as far as it is proven: each folder made was removed, and a mkdir that failed left nothing there
+        folders_gone = removed == len(created) and all(_absent(folder) for folder in attempted[len(created):])
         if isinstance(failed, WriteFailed):  # nothing remains only if every folder this write made is gone too
             failed.no_effect = failed.no_effect and folders_gone
         elif isinstance(failed, OSError):  # a folder could not be made (#689): no effect once the rollback removed them all
@@ -211,7 +221,10 @@ def _publish(path: Path, real: Path, data: bytes, *, before_replace: Callable[[]
     mode = 0o666 if facts is None else stat.S_IMODE(facts.st_mode)  # created no wider than the target; the umask applies
     staging = real.with_name(staging_name())
     step, made = "stage", False
-    try:
+
+    def stage() -> None:
+        nonlocal step, made
+        step = "stage"
         descriptor = os.open(staging, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0), mode)
         made = True
         with os.fdopen(descriptor, "wb") as handle:
@@ -224,16 +237,29 @@ def _publish(path: Path, real: Path, data: bytes, *, before_replace: Callable[[]
             os.chmod(staging, mode)  # the umask may have narrowed it
         step = "replace"
 
-        def still_the_judged_target() -> None:
-            if resolve_target(path) != real:  # a folder on the way was swapped since the guard judged the target
-                raise OSError(errno.EXDEV, "the target no longer resolves where it did")
-            if before_replace is not None:
-                before_replace()
+    def restage() -> None:
+        # a failed ReplaceFileW may have merged the target's streams into the staging file; a retry starts from clean bytes
+        nonlocal made
+        staging.unlink()
+        made = False
+        stage()
 
-        _replace(staging, real, still_the_judged_target, existed=facts is not None)
+    def still_where_judged() -> None:
+        if resolve_target(path) != real:  # a folder on the way was swapped since the guard judged the target
+            raise OSError(errno.EXDEV, "the target no longer resolves where it did")
+
+    def ready_to_replace() -> None:
+        still_where_judged()
+        if before_replace is not None:
+            before_replace()
+
+    try:
+        still_where_judged()  # before anything is created, as well as before every replace attempt
+        stage()
+        _replace(staging, real, ready_to_replace, restage, existed=facts is not None)
     except (OSError, MutationForbidden) as error:
-        if isinstance(error, _OnlyCopyStaged):  # never remove the only copy; whether the change landed is unknown
-            raise WriteFailed(f"{step}, staging file kept", error, no_effect=False) from error
+        if isinstance(error, _PublishUnconfirmed):  # never remove what may be the only copy; the outcome is unknown
+            raise WriteFailed(f"{step}, unconfirmed", error, no_effect=False) from error
         if made:
             try:
                 # a FileNotFoundError here counts as an effect: the file moved with its folder, or a replace that
@@ -257,44 +283,44 @@ if sys.platform == "win32":
     _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
     _KERNEL32.ReplaceFileW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD, wintypes.LPVOID, wintypes.LPVOID]
     _KERNEL32.ReplaceFileW.restype = wintypes.BOOL
-    _REPLACEFILE_WRITE_THROUGH = 0x1
-    # Without a backup file this one means the target is already gone and the staging file kept its own name (Microsoft's
-    # ReplaceFileW remarks); 1175 and the other failures leave both files under their own names.
-    _ERROR_UNABLE_TO_MOVE_REPLACEMENT = 1176
+    # 1176: the original left the target name and the staging file kept its own; 1177: the staging file kept its name and
+    # took on the original's streams while the original moved. Every other failure leaves both files under their names.
+    _ORIGINAL_DISPLACED = (1176, 1177)
 
     def _replace_file_w(target: Path, staging: Path) -> int:
-        """0 when ``ReplaceFileW`` replaced the target, else its Windows error code."""
-        if _KERNEL32.ReplaceFileW(str(target), str(staging), None, _REPLACEFILE_WRITE_THROUGH, None, None):
+        """0 when ``ReplaceFileW`` replaced the target, else its Windows error code. No flags: write-through is documented
+        as unsupported, and the staging file was flushed to disk before this call."""
+        if _KERNEL32.ReplaceFileW(str(target), str(staging), None, 0, None, None):
             return 0
         return ctypes.get_last_error()
 
 
-class _OnlyCopyStaged(OSError):
-    """The target was removed but the staging file could not take its place: the staging file holds the only copy left of
-    anything, so cleanup never removes it."""
+class _PublishUnconfirmed(OSError):
+    """``ReplaceFileW`` moved the original away without putting the staging file in its place. The staging file may be the
+    only copy of anything, so cleanup never removes it, and the outcome is unknown."""
 
 
 def _swap_in(staging: Path, target: Path, *, existed: bool) -> None:
     """Make ``staging`` the target. On Windows an existing target goes through ``ReplaceFileW``, which keeps its named
     streams (``Zone.Identifier``, the Mark of the Web), its ACL and its attributes, where ``os.replace`` drops them (#691,
     probe-replacefile.txt). A failure it reports leaves the target's bytes and the staging file under their names, so the
-    caller's cleanup accounts for it, raised as an ``OSError`` carrying its winerror; the one exception is 1176, handled
-    here."""
+    caller's cleanup accounts for it, raised as an ``OSError`` carrying its winerror; the exceptions are 1176 and 1177,
+    which never report success."""
     if sys.platform == "win32" and existed:
         code = _replace_file_w(target, staging)
         if code == 0:
             return
-        if code == _ERROR_UNABLE_TO_MOVE_REPLACEMENT:
-            try:  # the old file is gone: finish the publish (its named streams went with it), or keep the only copy
-                os.replace(staging, target)
-                return
-            except OSError as error:
-                raise _OnlyCopyStaged(error.errno, "the target was removed and the new file could not take its place") from error
+        if code in _ORIGINAL_DISPLACED:
+            if code == 1176:  # the name is free: put the new bytes there, never over a file that arrived meanwhile
+                with contextlib.suppress(OSError):
+                    os.rename(staging, target)
+            displaced = ctypes.WinError(code)
+            raise _PublishUnconfirmed(displaced.errno, f"ReplaceFileW {code}: the original was displaced") from displaced
         raise ctypes.WinError(code)
     os.replace(staging, target)
 
 
-def _replace(staging: Path, target: Path, check: Callable[[], None], *, existed: bool) -> None:
+def _replace(staging: Path, target: Path, check: Callable[[], None], restage: Callable[[], None], *, existed: bool) -> None:
     for wait in (*_REPLACE_RETRY_WAITS, None):
         check()
         try:
@@ -304,9 +330,21 @@ def _replace(staging: Path, target: Path, check: Callable[[], None], *, existed:
             if wait is None or getattr(error, "winerror", None) not in _SHARING_ERRORS:
                 raise
             time.sleep(wait)
+            restage()
 
 
-def _create_missing_folders(parent: Path, workspace_root: Path, created: list[Path]) -> None:
+def _absent(path: Path) -> bool:
+    """Whether ``path`` provably names nothing: an inaccessible path or share is not proof."""
+    try:
+        os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return True
+    except OSError:
+        return False
+    return False
+
+
+def _create_missing_folders(parent: Path, workspace_root: Path, created: list[Path], attempted: list[Path] | None = None) -> None:
     """#689: create a WRITE's missing folders, outermost first, after the guard accepted the resolved target. Every folder
     is judged before any is made: inside the root, and nothing the file policy refuses by its spelling (a skipped,
     runtime or secret folder, a Windows device name); a refusal there has had no effect. Each one made must resolve to
@@ -322,6 +360,8 @@ def _create_missing_folders(parent: Path, workspace_root: Path, created: list[Pa
         if not folder.is_relative_to(root) or policy.path_denial(folder.relative_to(root).as_posix()) is not None:
             raise MutationForbidden("a folder this write needs is not allowed")
     for folder in reversed(missing):
+        if attempted is not None:
+            attempted.append(folder)  # before the mkdir: one that fails may still have made it (a lost reply on a share)
         folder.mkdir()
         created.append(folder)
         if resolve_target(folder) != folder:
