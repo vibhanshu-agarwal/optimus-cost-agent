@@ -20,6 +20,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from stat import S_ISREG
 from typing import Any, Literal
 
 from optimus.acp.launch_approvals import (
@@ -223,7 +224,7 @@ def validate_config_file_permissions(
 
     Raises LaunchGateError if validation fails.
     """
-    read_config_file_checked(file_path, platform_name=platform_name, win32_security_adapter=win32_security_adapter)
+    _checked_config_bytes(file_path, platform_name=platform_name, win32_security_adapter=win32_security_adapter)
 
 
 def read_config_file_checked(
@@ -234,6 +235,12 @@ def read_config_file_checked(
 ) -> str:
     """The file's text, read through the one handle its permissions were checked on (#693), so the file checked is the
     file parsed. Checks as `validate_config_file_permissions`; raises LaunchGateError, naming no value."""
+    return _checked_config_bytes(
+        file_path, platform_name=platform_name, win32_security_adapter=win32_security_adapter,
+    ).decode("utf-8")
+
+
+def _checked_config_bytes(file_path: Path, *, platform_name: str | None, win32_security_adapter: object | None) -> bytes:
     platform = platform_name or sys.platform
 
     if not file_path.exists():
@@ -257,15 +264,22 @@ def read_config_file_checked(
         )
 
     try:
-        handle = open(resolved, "rb")  # noqa: SIM115 - closed by the with below
+        # Non-blocking, so a FIFO swapped in after the checks above cannot hold the open (Codex #693 review 1).
+        fd = os.open(resolved, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
     except OSError as exc:
         raise LaunchGateError(code="CONFIG_FILE_STAT_FAILED", detail="cannot open configuration file") from exc
-    with handle:
+    with open(fd, "rb") as handle:
+        try:
+            regular = S_ISREG(os.fstat(fd).st_mode)
+        except OSError as exc:
+            raise LaunchGateError(code="CONFIG_FILE_STAT_FAILED", detail="cannot stat configuration file") from exc
+        if not regular:
+            raise LaunchGateError(code="CONFIG_FILE_NOT_REGULAR", detail="configuration path is not a regular file")
         if platform != "win32":
-            _validate_posix_permissions(handle.fileno())
+            _validate_posix_permissions(fd)
         else:
-            _validate_windows_permissions(resolved, handle.fileno(), adapter=win32_security_adapter)
-        return handle.read().decode("utf-8")
+            _validate_windows_permissions(resolved, fd, adapter=win32_security_adapter)
+        return handle.read()
 
 
 def _validate_posix_permissions(fd: int) -> None:

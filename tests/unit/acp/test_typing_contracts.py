@@ -33,8 +33,9 @@ def test_fixed_offline_approval_json_and_hmac_vector(monkeypatch, mode, expected
     assert record.expires_at == (None if mode == "durable" else datetime(2026, 10, 18, 0, 5, tzinfo=timezone.utc))
 
 
-def _typing_dacl_api(monkeypatch, module, *, null):
-    """Allocated ACE positive control; NULL is intercepted before any unsafe dereference."""
+def _typing_dacl_api(monkeypatch, module, *, null, status=0, null_dacl=False):
+    """Allocated ACE positive control; NULL is intercepted before any unsafe dereference. `status` is what
+    GetSecurityInfo returns, and `null_dacl` makes a successful call report no DACL (#693)."""
     import ctypes
 
     calls = []
@@ -48,8 +49,11 @@ def _typing_dacl_api(monkeypatch, module, *, null):
 
     descriptor = 0x51D  # a stand-in address for the security descriptor GetSecurityInfo allocates
 
-    def security(_handle, _kind, _flags, _owner, _group, dacl, _sacl, sd):
-        dacl._obj.value = ctypes.addressof(ace)
+    def security(handle, kind, flags, _owner, _group, dacl, _sacl, sd):
+        calls.append(("GetSecurityInfo", handle, kind, flags))
+        if status:
+            return status
+        dacl._obj.value = None if null_dacl else ctypes.addressof(ace)
         sd._obj.value = descriptor
         return 0  # ERROR_SUCCESS
 
@@ -83,14 +87,29 @@ def test_typing_dacl_pointer_refusal_precedes_sid_conversion(monkeypatch, tmp_pa
     from optimus.acp import launch_gate as gate
 
     calls = _typing_dacl_api(monkeypatch, gate, null=null)
+    queried = ("GetSecurityInfo", 0x7E57, gate._SE_FILE_OBJECT, gate._DACL_SECURITY_INFORMATION)  # the handle given
     if null:
         with pytest.raises(LaunchGateError) as error:
             gate._check_windows_dacl_real(0x7E57)  # #693: a handle; nothing real is opened
         assert (error.value.code, error.value.detail) == ("CONFIG_FILE_DACL_UNREADABLE", "cannot read ACE")
-        assert calls == ["GetAce", "FreeDescriptor"]
+        assert calls == [queried, "GetAce", "FreeDescriptor"]
     else:
         gate._check_windows_dacl_real(0x7E57)
-        assert calls == ["GetAce", "ConvertSid", "LocalFree", "FreeDescriptor"]
+        assert calls == [queried, "GetAce", "ConvertSid", "LocalFree", "FreeDescriptor"]
+
+
+@pytest.mark.parametrize(("status", "null_dacl", "detail", "freed"), [
+    (5, False, "cannot read security descriptor", False),  # ERROR_ACCESS_DENIED: nothing was allocated
+    (0, True, "no DACL present on file", True),
+], ids=["failed-call", "null-dacl"])
+def test_typing_security_info_refusals_free_only_what_was_allocated(monkeypatch, status, null_dacl, detail, freed):
+    from optimus.acp import launch_gate as gate
+
+    calls = _typing_dacl_api(monkeypatch, gate, null=False, status=status, null_dacl=null_dacl)
+    with pytest.raises(LaunchGateError) as error:
+        gate._check_windows_dacl_real(0x7E57)
+    assert (error.value.code, error.value.detail) == ("CONFIG_FILE_DACL_UNREADABLE", detail)
+    assert calls[1:] == (["FreeDescriptor"] if freed else [])
 
 
 def test_typing_posix_check_on_windows_has_explicit_refusal(monkeypatch, tmp_path):

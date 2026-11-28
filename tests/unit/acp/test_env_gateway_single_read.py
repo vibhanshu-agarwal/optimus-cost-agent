@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import os
-import sys
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -125,19 +125,21 @@ def _swap_right_after_the_check(monkeypatch, path: Path) -> list[str]:
     """#693: revision A is the one checked; revision B replaces it the moment this platform's real check returns.
     Returns what each swap did: on Windows an open handle refuses the replace, on POSIX it succeeds."""
     _write(path, A)
-    name = "_validate_windows_permissions" if sys.platform == "win32" else "_validate_posix_permissions"
-    real = getattr(launch_gate, name)
     swaps: list[str] = []
 
-    def check_then_swap(*args: Any, **kwargs: Any) -> None:
-        real(*args, **kwargs)
-        try:
-            _write(path, B)
-            swaps.append("replaced")
-        except PermissionError:
-            swaps.append("refused")
+    def hook(real: Any) -> Any:
+        def check_then_swap(*args: Any, **kwargs: Any) -> None:
+            real(*args, **kwargs)
+            try:
+                _write(path, B)
+                swaps.append("replaced")
+            except PermissionError:
+                swaps.append("refused")
 
-    monkeypatch.setattr(launch_gate, name, check_then_swap)
+        return check_then_swap
+
+    for name in ("_validate_windows_permissions", "_validate_posix_permissions"):  # only this platform's one runs
+        monkeypatch.setattr(launch_gate, name, hook(getattr(launch_gate, name)))
     return swaps
 
 
@@ -213,6 +215,27 @@ def test_each_platform_branch_reads_through_the_handle_it_checked(monkeypatch, t
     text = launch_gate.read_config_file_checked(path, platform_name=branch, win32_security_adapter=adapter)
     assert text == _text(A)
     assert checked == ([len(_text(A).encode())] if branch == "posix" else [])
+
+
+@pytest.mark.parametrize("branch", ["posix", "win32"])
+def test_a_path_that_opens_as_something_else_is_refused_before_any_check_or_read(monkeypatch, tmp_path, branch) -> None:
+    """Codex #693 review 1: a FIFO swapped in after the path checks opens (non-blocking) but is not a regular file."""
+    path = tmp_path / ".env.gateway"
+    _write(path, A)
+    real_fstat = os.fstat
+    calls: list[str] = []
+
+    def fifo_fstat(fd: int) -> os.stat_result:
+        found = real_fstat(fd)
+        return os.stat_result((stat.S_IFIFO | 0o600, *tuple(found)[1:]))
+
+    monkeypatch.setattr(launch_gate.os, "fstat", fifo_fstat)
+    monkeypatch.setattr(launch_gate, "_validate_posix_permissions", lambda fd: calls.append("posix"))
+    adapter = SimpleNamespace(check_file_permissions=lambda _path: calls.append("win32") or True)
+    with pytest.raises(launch_gate.LaunchGateError) as refused:
+        launch_gate.read_config_file_checked(path, platform_name=branch, win32_security_adapter=adapter)
+    assert refused.value.code == "CONFIG_FILE_NOT_REGULAR" and calls == []
+    assert "synth" not in str(refused.value)
 
 
 @pytest.mark.parametrize("layer", [CredentialLayer.ENVIRONMENT, CredentialLayer.CONFIG_FILE, CredentialLayer.KEYRING])
