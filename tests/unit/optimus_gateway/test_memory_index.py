@@ -48,47 +48,48 @@ class _Store:
             return self.entered.wait_for(lambda: self.calls >= count, 10)
 
 
-class _Admissions(threading.BoundedSemaphore):
-    """A service's waiting-slot semaphore that says when every slot is taken, so a test waits on that and not on a clock."""
+class _Admissions:
+    """Wraps a service's own waiting-slot semaphore and says when every slot is taken, so a test waits on that and not on
+    a clock. Wrapping, not copying, keeps whatever the service did to its semaphore visible."""
 
-    def __init__(self, value: int) -> None:
-        super().__init__(value)
+    def __init__(self, slots: threading.BoundedSemaphore) -> None:
+        self.slots = slots
         self.changed = threading.Condition()
 
     def acquire(self, blocking: bool = True, timeout: float | None = None) -> bool:
-        taken = super().acquire(blocking, timeout)
+        taken = self.slots.acquire(blocking, timeout)
         with self.changed:
             self.changed.notify_all()
         return taken
 
+    def release(self) -> None:
+        self.slots.release()
+
     def wait_until_full(self) -> bool:
         with self.changed:
-            return self.changed.wait_for(lambda: self._value == 0, 10)
+            return self.changed.wait_for(lambda: self.slots._value == 0, 10)  # type: ignore[attr-defined]
 
 
 def _watch_admissions(service: Any) -> _Admissions:
-    """Swap the service's waiting-slot semaphore for a watched one of the service's own capacity, so a wrong capacity
-    still shows."""
-    service._waiting = _Admissions(service._waiting._initial_value)
+    service._waiting = _Admissions(service._waiting)
     return service._waiting
 
 
-def _start(target: Any, count: int) -> list[threading.Thread]:
-    threads = [threading.Thread(target=target) for _ in range(count)]
-    for thread in threads:
+def _start(target: Any, count: int, threads: list[threading.Thread]) -> None:
+    for _ in range(count):
+        threads.append(thread := threading.Thread(target=target))
         thread.start()
-    return threads
 
 
-def _saturate(store: Any, admissions: _Admissions, target: Any, *, workers: int, depth: int) -> list[threading.Thread]:
-    """Both workers held in the store, then every waiting slot taken. The waiters start only once the holders are in the
-    store, which is after each gave its waiting slot back: started together, a holder between taking its worker and
-    freeing its slot makes the last waiter find the queue full, and the queue never fills (#678)."""
-    holders = _start(target, workers)
+def _saturate(store: Any, admissions: _Admissions, target: Any, threads: list[threading.Thread], *, workers: int, depth: int) -> None:
+    """Both workers held in the store, then every waiting slot taken; each thread joins the caller's list as it starts, so
+    a failed step is still cleaned up. The waiters start only once the holders are in the store, which is after each gave
+    its waiting slot back: started together, a holder between taking its worker and freeing its slot makes the last
+    waiter find the queue full, and the queue never fills (#678)."""
+    _start(target, workers, threads)
     assert store.wait_for_calls(workers), "both workers were not held in the store"
-    waiters = _start(target, depth)
+    _start(target, depth, threads)
     assert admissions.wait_until_full(), "the waiting requests were not all admitted"
-    return holders + waiters
 
 
 def _service(store: _Store, **kwargs: Any) -> memory_index.IndexService:
@@ -105,14 +106,17 @@ def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
     def request() -> None:  # a far deadline, so the held state cannot time out while the test looks at it
         results.append(service.handle(_COVERAGE, deadline=time.monotonic() + 30)[0])
 
-    threads = _saturate(store, admissions, request, workers=mic.SERVING_WORKERS, depth=mic.QUEUE_DEPTH)
-    assert store.calls == mic.SERVING_WORKERS
-    started = time.monotonic()
-    refused = service.handle(_COVERAGE, deadline=time.monotonic() + 5)
-    assert refused == (503, mic.error_body("INDEX_BUSY")) and time.monotonic() - started < 1
-    release.set()
-    for thread in threads:
-        thread.join(10)
+    threads: list[threading.Thread] = []
+    try:
+        _saturate(store, admissions, request, threads, workers=mic.SERVING_WORKERS, depth=mic.QUEUE_DEPTH)
+        assert store.calls == mic.SERVING_WORKERS
+        started = time.monotonic()
+        refused = service.handle(_COVERAGE, deadline=time.monotonic() + 5)
+        assert refused == (503, mic.error_body("INDEX_BUSY")) and time.monotonic() - started < 1
+    finally:
+        release.set()
+        for thread in threads:
+            thread.join(10)
     assert store.calls == len(threads) and results == [200] * len(threads)
 
 
@@ -139,15 +143,17 @@ def test_a_model_request_and_an_accepted_capture_batch_pass_a_saturated_index(tm
 
     held: list[threading.Thread] = []
     try:
-        held = _saturate(store, admissions, lambda: post(mic.PATH, _COVERAGE), workers=mic.SERVING_WORKERS, depth=mic.QUEUE_DEPTH)
-        assert post(mic.PATH, _COVERAGE)[:2] == (503, mic.error_body("INDEX_BUSY"))
+        _saturate(store, admissions, lambda: post(mic.PATH, _COVERAGE), held, workers=mic.SERVING_WORKERS, depth=mic.QUEUE_DEPTH)
+        # refused at once: a probe admitted after the held requests' product 5 s deadline would also end INDEX_BUSY, later
+        status, body, seconds = post(mic.PATH, _COVERAGE)
+        assert (status, body) == (503, mic.error_body("INDEX_BUSY")) and seconds < 1
         status, _reply, seconds = post("/v1/responses", json.dumps({"model": "claude-haiku", "input": "hello"}).encode())
         assert status == 200 and seconds < 2
         started = time.monotonic()
         report = CaptureDelivery(capture, client).drain_once()
         assert report.failures == [] and report.committed == capture.writer.stats().confirmed_sequence > 0
         assert ledger.batches and time.monotonic() - started < 2
-        assert service._waiting._value == 0, "the index was still saturated when the batch was accepted"
+        assert admissions.slots._value == 0, "the index was still saturated when the batch was accepted"
     finally:
         capture.stop()
         release.set()

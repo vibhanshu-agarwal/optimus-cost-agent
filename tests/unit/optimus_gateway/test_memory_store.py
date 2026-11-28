@@ -154,14 +154,17 @@ def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
     def request() -> None:  # a far deadline, so the held state cannot time out while the test looks at it
         results.append(service.handle(_CAPS, deadline=time.monotonic() + 30)[0])
 
-    threads = _saturate(store, admissions, request, workers=msc.SERVING_WORKERS, depth=msc.QUEUE_DEPTH)
-    assert store.calls == msc.SERVING_WORKERS
-    started = time.monotonic()
-    assert service.handle(_CAPS, deadline=time.monotonic() + 5) == (503, msc.error_body("MEMORY_BUSY"))
-    assert time.monotonic() - started < 1
-    release.set()
-    for thread in threads:
-        thread.join(10)
+    threads: list[threading.Thread] = []
+    try:
+        _saturate(store, admissions, request, threads, workers=msc.SERVING_WORKERS, depth=msc.QUEUE_DEPTH)
+        assert store.calls == msc.SERVING_WORKERS
+        started = time.monotonic()
+        assert service.handle(_CAPS, deadline=time.monotonic() + 5) == (503, msc.error_body("MEMORY_BUSY"))
+        assert time.monotonic() - started < 1
+    finally:
+        release.set()
+        for thread in threads:
+            thread.join(10)
     assert store.calls == len(threads) and results == [200] * len(threads)
 
 
