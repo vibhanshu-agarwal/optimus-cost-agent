@@ -19,6 +19,7 @@ import pytest
 from optimus.acp.process_lifecycle import ProcessLifecycle, cleanup_failure, signal_handlers
 from tests.unit.acp.test_raise_preserving_failure import FAILURES
 from tools.tracked_repository_files import tracked_repository_files
+from tools.verify_exception_site_disposition import discover
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SRC = _REPO_ROOT / "src"
@@ -113,3 +114,11 @@ def test_frozen_exception_returns_the_class_it_decorates():
         reason: str
 
     assert frozen_exception(Sample) is Sample
+
+
+def test_frozen_exception_module_binds_its_export_once_by_its_def():
+    # The exception-site verifier also requires this module to bind frozen_exception only by its def, statically.
+    source = (_SRC / "optimus" / "runtime" / "frozen_exception.py").read_text(encoding="utf-8")
+    assert "untrusted_decorators" not in discover({"src/optimus/runtime/frozen_exception.py": source})
+    tree = ast.parse(source)
+    assert [node.name for node in tree.body if isinstance(node, ast.FunctionDef)].count("frozen_exception") == 1
