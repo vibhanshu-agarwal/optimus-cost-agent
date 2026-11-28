@@ -548,3 +548,65 @@ def test_source_tree_is_sorted_and_rejects_path_traversal() -> None:
         assert "repository-relative" in str(exc)
     else:
         raise AssertionError("path traversal must be rejected")
+
+
+def test_rev_parse_timeout_preserves_original_error_without_retry(monkeypatch, tmp_path: Path) -> None:
+    error = subprocess.TimeoutExpired(["git", "rev-parse"], 10.0)
+    attempts = []
+
+    def timed_out(command, **kwargs):
+        assert command[:2] == ["git", "rev-parse"]
+        assert kwargs["timeout"] == 10.0
+        attempts.append(command)
+        raise error
+
+    monkeypatch.setattr(subprocess, "run", timed_out)
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        GitCommitSource(commit="deadbeef", repository=tmp_path)
+    assert raised.value is error
+    assert len(attempts) == 1
+
+
+def test_archive_timeout_does_not_publish_or_reuse_a_failed_export(monkeypatch, tmp_path: Path) -> None:
+    repo, commit = _repository(tmp_path)
+    source_module.clear_export_cache()
+    original = subprocess.run
+    error = subprocess.TimeoutExpired(["git", "archive"], 10.0)
+    attempts = []
+
+    def time_out_first_archive(command, **kwargs):
+        assert kwargs["timeout"] == 10.0
+        if command[:2] == ["git", "archive"]:
+            attempts.append(command)
+            if len(attempts) == 1:
+                raise error
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", time_out_first_archive)
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        GitCommitSource(commit=commit, repository=repo).read_text("a.py")
+    assert raised.value is error
+    assert len(attempts) == 1
+    assert GitCommitSource(commit=commit, repository=repo).read_text("a.py") == "A = 1\n"
+    assert len(attempts) == 2
+
+
+def test_export_key_timeout_disables_cache_without_relaxing_archive_deadline(monkeypatch, tmp_path: Path) -> None:
+    repo, commit = _repository(tmp_path)
+    source_module.clear_export_cache()
+    original = subprocess.run
+    operations = []
+
+    def time_out_metadata(command, **kwargs):
+        assert kwargs["timeout"] == 10.0
+        if command[:2] == ["git", "version"]:
+            operations.append("key")
+            raise subprocess.TimeoutExpired(command, 10.0)
+        if command[:2] == ["git", "archive"]:
+            operations.append("archive")
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", time_out_metadata)
+    for expected in (["key", "archive"], ["key", "archive", "key", "archive"]):
+        assert GitCommitSource(commit=commit, repository=repo).read_text("a.py") == "A = 1\n"
+        assert operations == expected
