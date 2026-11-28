@@ -157,3 +157,10 @@ def test_a_cancellation_that_arrives_as_the_root_exits_still_stops_its_descendan
             run_bounded([sys.executable, "-c", code], deadline=time.monotonic() + 60, cancelled=marker.exists)
         assert stopped.value.outcome == "cancelled"
         assert_descendants_killed(recorder, ("grandchild",), deadline=time.monotonic() + 5.0, what="a TEST cancelled as its root exited")
+
+
+def test_output_that_is_not_valid_text_does_not_fail_the_run():
+    # Codex Bundle J r1 M5: strict decoding raised UnicodeDecodeError out of the replay; 0x81 is undefined in cp1252 too
+    code = "import sys; sys.stdout.buffer.write(bytes([0x81, 0xFF])); sys.stderr.buffer.write(bytes([0x81]))"
+    result = run_bounded([sys.executable, "-c", code], deadline=time.monotonic() + 60, cancelled=_never)
+    assert result.returncode == 0 and isinstance(result.stdout, str)

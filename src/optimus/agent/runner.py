@@ -1840,7 +1840,11 @@ class AgentRunner:
                     _log_test_failure(gate.run_id, raised, program=command[0], step="running")
                     stop = CommandStopped("stop_unconfirmed", "failed while running: the command may still be running")
                 calls.append(
-                    AgentToolCall(tool_name="test_runner", summary=f"ran {' '.join(command)}: {stop}", authorization_outcome="ALLOW")
+                    AgentToolCall(
+                        tool_name="test_runner",
+                        summary=f"{'did not start' if stop.outcome == 'not_started' else 'ran'} {' '.join(command)}: {stop}",
+                        authorization_outcome="ALLOW",
+                    )
                 )
                 if stop.outcome == "cancelled":
                     gate.halted = True

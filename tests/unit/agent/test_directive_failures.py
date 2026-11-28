@@ -14,7 +14,7 @@ from optimus.acp.spec import _shown
 from optimus.agent.runner import AgentRunner
 from optimus.agent.state_store import InMemoryAgentStateStore
 from tests.unit.agent import test_directive_path_characters as drive_module
-from tests.unit.agent.test_directive_path_characters import _drive, _RealRunner, _SamePlan
+from tests.unit.agent.test_directive_path_characters import _drive, _RealRunner, _SamePlan, _strings
 from tests.unit.agent.test_write_new_folders import NOT_APPLIED, _final_text
 
 NOT_UTF8 = bytes([0x63, 0x61, 0x66, 0xE9, 0x0A, 0xFF, 0x00])  # Latin-1 text and stray bytes: not UTF-8
@@ -74,6 +74,8 @@ async def test_a_test_that_cannot_be_launched_stops_with_a_reason_and_keeps_the_
     assert result["_meta"]["runStopReason"] == "TEST_NOT_STARTED" and result["stopReason"] == "end_turn"
     assert (tmp_path / "a.py").read_bytes() == b"A = 1\n"  # the WRITE that succeeded is kept
     assert launches == [["pytest", "-q"]]  # the later TEST was not tried
+    tool_calls = [n["params"]["update"] for n in outbound.notifications if n["params"].get("update", {}).get("sessionUpdate") == "tool_call"]
+    assert any(_shown("did not start pytest -q") in text for text in _strings(tool_calls))  # Codex r1 L9: not "ran"
     final = _final_text(outbound)
     assert "could not be started" in final and "Applied:" + chr(10) + "- " + _shown("wrote a.py") in final  # escaped as #688 does
     assert _effect(records) is EffectState.PARTIAL  # the WRITE happened; neither TEST ran
@@ -148,3 +150,22 @@ def test_a_planning_read_of_a_file_that_is_not_utf8_does_not_raise(plan, tmp_pat
     result = runner.run(AgentRunRequest(run_id="r", task="Explain it", execution_mode=ExecutionMode.PLAN, workspace_root=tmp_path))
 
     assert result.final_state == "CHAT_ONLY"
+
+
+async def test_a_markdown_shaped_name_in_a_test_stop_is_shown_inert_and_kept_raw(tmp_path, monkeypatch):
+    # Codex r1: the applied WRITE listed by a TEST stop is escaped where it is shown (#688); the history keeps it raw
+    from tests.unit.acp.test_markdown_path_display import TOKENS, _live
+
+    def missing(args, *pargs, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory")
+
+    name = TOKENS["bare-address"] + "/a.py"
+    monkeypatch.setattr(drive_module, "_RealRunner", _LaunchingRunner)
+    monkeypatch.setattr(subprocess, "Popen", missing)
+    result, outbound, _runner, records = await _drive(tmp_path, _SamePlan(f"WRITE {name}\nA = 1\nTEST pytest -q\n"))
+
+    assert result["_meta"]["runStopReason"] == "TEST_NOT_STARTED"
+    final = _final_text(outbound)
+    assert _shown(f"wrote {name}") in final and _live(final) == []
+    [record] = records.values()
+    assert f"wrote {name}" in record.completion_text
