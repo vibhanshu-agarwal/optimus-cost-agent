@@ -22,6 +22,7 @@ from optimus.config.gateway import OptimusGatewaySettings
 from optimus.gateway.client import GatewayClient
 from optimus.guardrails.pre_tool import PreToolGuard
 from optimus.redis.runtime import RedisRuntime
+from optimus.runtime.frozen_exception import frozen_exception
 from optimus.telemetry.fanout import TelemetryFanout
 from optimus.telemetry.jsonl import JsonlTelemetryWriter
 from optimus.telemetry.observability import GatewayObservabilityExporter
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
     from optimus.usage.durable_capture import DurableCapture
 
 
+@frozen_exception
 @dataclass(frozen=True)
 class StartupConfigurationError(Exception):
     exit_code: int

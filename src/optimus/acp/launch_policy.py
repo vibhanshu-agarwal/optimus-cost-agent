@@ -17,6 +17,7 @@ from types import MappingProxyType
 from urllib.parse import urlparse
 
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
+from optimus.runtime.frozen_exception import frozen_exception
 from optimus_security.sanitization import mask_uri_userinfo
 
 # --- Enumerations ---
@@ -61,6 +62,7 @@ class LaunchVariablePolicy:
 # --- Error type ---
 
 
+@frozen_exception
 @dataclass(frozen=True)
 class LaunchPolicyError(ValueError):
     """Raised when a variable cannot be classified or validated."""

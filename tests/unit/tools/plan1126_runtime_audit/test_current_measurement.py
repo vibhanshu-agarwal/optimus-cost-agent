@@ -469,6 +469,7 @@ def test_an_entry_binds_its_own_runtime_even_when_the_caller_omits_it() -> None:
 
     bound = {path for path, _, _ in binding.module_origins}
     assert {_BRIDGE, _RUNTIME, _GATE, "tools/plan1126_runtime_audit/queue_policy.py"} <= bound
+    assert "src/optimus/runtime/frozen_exception.py" in bound  # #685: executed through the Redis runtime
     assert [name for name, _ in binding.dependency_files] == ["redis"]
     assert result["observations"], "the entry produced no observations"
 

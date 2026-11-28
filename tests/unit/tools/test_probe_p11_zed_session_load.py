@@ -4245,6 +4245,12 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
     file_lock_committed = b"from optimus_file_lock import" in probe.git_cat_file_blob(REPO_ROOT, "HEAD", "src/optimus/context/memory_recovery.py")
     if not file_lock_committed:
         expected -= {file_lock_path}
+    # #685 adds the shared frozen-exception decorator (one path) the frozen exceptions import, keyed on HEAD's bootstrap.
+    frozen_exception_path = "src/optimus/runtime/frozen_exception.py"
+    frozen_exception_committed = b"from optimus.runtime.frozen_exception import" in head_bootstrap
+    if not frozen_exception_committed:
+        expected -= {frozen_exception_path}
+    assert (frozen_exception_path in closure) is frozen_exception_committed
     assert (file_lock_path in closure) is file_lock_committed
     assert (backups_path in closure) is backups_committed
     assert (import_path in closure) is import_committed
@@ -4308,7 +4314,9 @@ def test_establishing_import_closure_equals_explicit_module_path_subset() -> Non
         8 if capture_committed else 0
     ) + report_contract_committed + savings_committed + identity_committed + refusal_committed + memory_config_committed + memory_setup_committed + index_turn_committed + (
         5 if memory_session_committed else 0
-    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed + why_committed + budget_committed + correlation_committed
+    ) + store_config_committed + (3 if extraction_committed else 0) + (5 if continuity_committed else 0) + url_schemes_committed + backups_committed + import_committed + file_lock_committed + why_committed + budget_committed + correlation_committed + (
+        frozen_exception_committed
+    )
 
 
 _SEAM2_PREDECESSOR = "7059fd2f02269c4e8a841b979f7519a347e230a0"  # pragma: allowlist secret - main at seam 2's base

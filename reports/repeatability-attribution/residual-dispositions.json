@@ -1,0 +1,84 @@
+[
+  {
+    "id": "D1",
+    "preserved_verdict": "TIMEOUT / UNRESOLVED (four rows)",
+    "owning_issue": 306,
+    "observations": [
+      "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-18",
+      "task11-group-task6_shutdown_group-c18-latest-complete-v1-repeat-24",
+      "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-03",
+      "task11-narrow-task6_shutdown-c18-latest-complete-v1-repeat-06"
+    ],
+    "state": "ACCEPTED",
+    "decision_source_ref": "operator",
+    "decision_text": "Accept these four named historical observations as terminal accepted-unresolved residuals for #306/#321 after their immutable per-row reporting ships. This explicitly substitutes risk acceptance for resolving their cause: the active test exercises Optimus shutdown, so a possible product shutdown hang remains an accepted unknown risk. Preserve TIMEOUT/UNRESOLVED, do not rank them as attributed product defects, and make no stable-product or root-cause claim. No repeat campaign is authorized."
+  },
+  {
+    "id": "D2",
+    "preserved_verdict": "Original Git timeout failure and later isolated PASS",
+    "owning_issue": 306,
+    "observations": [
+      "PKGA-GIT-T3-FIRST-HOOK",
+      "audit-timeouts-rerun-1"
+    ],
+    "evidence_refs": [
+      "failed-hook",
+      "isolated-attempt"
+    ],
+    "state": "ACCEPTED",
+    "decision_source_ref": "operator",
+    "decision_text": "Accept the historical audit-Git cause as unresolved, with the recovered failed hook and later isolated attempt retained separately, conditional on #306's bounded failure-path controls passing. No missing-data waiver is requested. The original legacy attempt lacks modern run/native context; no retrospective completeness claim follows. Do not increase the per-subprocess10-second bound or authorize historical retries."
+  },
+  {
+    "id": "D3",
+    "preserved_verdict": "Historical coverage varied. ADR-017 criterion NOT MET with its exact accepted residual.",
+    "owning_issue": 306,
+    "observations": [
+      "PKGA-COV-FULL-2",
+      "PKGA-COV-780faed",
+      "PKGA-COV-38a465f"
+    ],
+    "evidence_refs": [
+      "adr-017"
+    ],
+    "state": "ACCEPTED",
+    "decision_source_ref": "operator",
+    "decision_text": "Accept the recovered historical coverage variation as not causally resolved. Keep ADR-017 limited to its four statements and exact head. Close #306's forward-control obligation only after every varied statement/arc in the three saved datasets maps to the listed current deterministic behavior/negative controls and those controls pass. No missing-data waiver, later-head numeric waiver, claim of exhaustive variability across all possible runs, coverage union or new sampling campaign is approved."
+  },
+  {
+    "id": "D4",
+    "preserved_verdict": "ERROR / INVALID_CAPTURE / UNKNOWN",
+    "owning_issue": 287,
+    "observation_id": "H5-287-ROW-1720",
+    "close_path": "h5-33bba16fd9a272af",
+    "terminal_cause": "transport_failure",
+    "failure": "transport_failure:probe_error:OSError",
+    "underlying_close_count": 0,
+    "close_invocation_count": 3,
+    "complete": true,
+    "record": "https://github.com/vibhanshu-agarwal/optimus-cost-agent/issues/287#issuecomment-6394974830",
+    "state": "ACCEPTED",
+    "decision_source_ref": "operator",
+    "decision_text": "Accept #287's original H5 event as terminal accepted-unresolved, with diagnostics delivered but historical cause unestablished. Permit this residual disposition to satisfy the CAND-5 closure obligation after #306 ships its retained ledger. No retry, loaded run, claim of repair or Phase 1 working-agent sign-off follows. Issue closure/publication requires separate authorization."
+  },
+  {
+    "id": "D5",
+    "preserved_verdict": "Cancellation group 24 PASS / 1 FAIL, FLAKY",
+    "owning_issue": 306,
+    "fixture_control_commit": "c1989985171c3054916732f1306d5ffc85d5b094",
+    "separate_completed_owner": 288,
+    "separate_timing_owner": 262,
+    "state": "ACCEPTED",
+    "decision_source_ref": "operator",
+    "decision_text": "Accept cancellation of a still-running request task when reader EOF is observed as intended transport-loss behavior for this disposition, consistent with `tests/unit/acp/test_stdio_ndjson.py::test_serve_ndjson_eof_cancels_pending_requests_and_closes_owned_state_once`. Existing physical-write ownership/drain limits remain unchanged. The original product FLAKY observation is retained as history with this semantic disposition; the response-before-EOF test change is not evidence of a product fix."
+  },
+  {
+    "id": "D6",
+    "preserved_verdict": "Open unscheduled ambient lookup work",
+    "owning_issue": 232,
+    "custody": "The operator accepted #232 as intended owner. Cross-linked #232 and #321 custody records are required before parent closure.",
+    "state": "ACCEPTED",
+    "decision_source_ref": "operator",
+    "decision_text": "Retain unrelated ambient lookups as open, unscheduled scope under #232, with the next gate a bounded site inventory and separately authorized owning issue before implementation. Accept #306/#321 closure as per-observation repeatability delivery only; no ambient-elimination claim follows."
+  }
+]

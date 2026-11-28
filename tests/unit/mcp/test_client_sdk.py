@@ -1105,3 +1105,94 @@ async def test_contract_http_stream_yields_real_response():
         assert isinstance(response, httpx2.Response)
         assert b"".join([part async for part in response.aiter_bytes()]) == b"firstsecond"
     assert response.is_closed
+
+
+def _submit_inner_sdk_operation(supervisor, operation, action, timeout_seconds=0.05):
+    session = FakeSession()
+    if operation == "discover":
+        session.list_tools = action
+    else:
+        session.call_tool = action
+    adapter = _adapter(supervisor, session=session)
+    connection = adapter.open(_capability(), session_id="inner-deadline")
+    adapter._operation_timeout_seconds = timeout_seconds
+    work = (
+        adapter._discover_async(connection, direct=True) if operation == "discover"
+        else adapter._call_async(connection, "search", {}, direct=True)
+    )
+    return supervisor.submit(work, timeout_seconds=5.0)
+
+
+@pytest.mark.parametrize("operation", ["discover", "call"])
+def test_sdk_inner_timeout_is_attributed_after_operation_entry(supervisor, operation: str) -> None:
+    entered, cleaned = threading.Event(), threading.Event()
+    injected = TimeoutError("operation's own failure")
+
+    async def fail(*args, **kwargs):
+        entered.set()
+        try:
+            raise injected
+        finally:
+            cleaned.set()
+
+    with pytest.raises(ClientMcpSdkError) as raised:
+        _submit_inner_sdk_operation(supervisor, operation, fail)
+    assert entered.is_set() and cleaned.is_set()
+    assert raised.value.code == "OPERATION_TIMEOUT"
+    assert raised.value.__cause__ is injected
+
+
+@pytest.mark.parametrize("operation", ["discover", "call"])
+def test_sdk_non_timeout_failure_is_not_relabelled(supervisor, operation: str) -> None:
+    entered, cleaned = threading.Event(), threading.Event()
+    injected = ValueError("operation's ordinary failure")
+
+    async def fail(*args, **kwargs):
+        entered.set()
+        try:
+            raise injected
+        finally:
+            cleaned.set()
+
+    failure = ValueError if operation == "discover" else ClientMcpSdkError
+    with pytest.raises(failure) as raised:
+        _submit_inner_sdk_operation(supervisor, operation, fail)
+    assert entered.is_set() and cleaned.is_set()
+    if operation == "call":
+        assert raised.value.code == "CALL_FAILED"
+        assert raised.value.__cause__ is injected
+    else:
+        assert raised.value is injected
+
+
+@pytest.mark.parametrize("operation", ["discover", "call"])
+def test_sdk_real_inner_deadline_precedes_outer_guard(supervisor, operation: str) -> None:
+    entered, cleaned = threading.Event(), threading.Event()
+
+    async def block_until_cancelled(*args, **kwargs):
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cleaned.set()
+
+    with pytest.raises(ClientMcpSdkError) as raised:
+        _submit_inner_sdk_operation(supervisor, operation, block_until_cancelled)
+    assert entered.is_set() and cleaned.is_set()
+    assert raised.value.code == "OPERATION_TIMEOUT"
+    assert type(raised.value.__cause__) is TimeoutError
+
+
+@pytest.mark.parametrize("operation", ["discover", "call"])
+def test_sdk_inner_operation_success_preserves_valid_result(supervisor, operation: str) -> None:
+    async def succeed(*args, **kwargs):
+        return ListToolsResult(tools=[]) if operation == "discover" else CallToolResult(content=[])
+
+    result = _submit_inner_sdk_operation(supervisor, operation, succeed)
+    if operation == "discover":
+        assert len(result) == 1
+        assert result[0]["tools"] == []
+        assert result[0]["resultType"] == "complete"
+    else:
+        assert isinstance(result, CallToolResult)
+        assert result.content == []
