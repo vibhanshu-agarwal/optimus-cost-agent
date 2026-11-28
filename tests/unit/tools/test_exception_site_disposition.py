@@ -213,3 +213,53 @@ def test_inventory_cli_labels_unchanged_sha256_identities(monkeypatch, capsys):
     assert output["sites"][0]["key"] == "sha256:45912d243bd39df14ba9d48db60a0c17bd9a21352495191619b955d2bf377299"
     assert output["sites"][0]["fingerprint"] == "sha256:34a6444a8a77f5826f00f5811fcc583ffe9e63ca26755ffb0cb6f5ed24df8821"
     assert not verify_report(output, _complete(output))
+
+
+_FROZEN_ERROR = """
+from dataclasses import dataclass
+{decorator_import}
+
+@frozen_exception
+@dataclass(frozen=True)
+class Refused(Exception):
+    reason: str
+"""
+_CATCHES_IT = """
+from demo_errors import Refused
+
+def handle():
+    try:
+        pass
+    except Refused:
+        pass
+"""
+
+
+def test_a_frozen_exception_class_is_a_known_class_and_its_catch_resolves():
+    # #694 put @frozen_exception over @dataclass(frozen=True) on eight exceptions; every catch of them read as unresolved.
+    errors = _FROZEN_ERROR.format(decorator_import="from optimus.runtime.frozen_exception import frozen_exception")
+    inventory = discover({"src/demo_errors.py": errors, "src/demo.py": _CATCHES_IT})
+    assert inventory["sites"] == []
+
+
+@pytest.mark.parametrize(
+    "decorator_import",
+    [
+        "def frozen_exception(cls):\n    return Proxy(cls)",
+        "from elsewhere import frozen_exception",
+        "from optimus.runtime import frozen_exception",
+    ],
+    ids=["local-function", "other-module", "the-module-not-the-function"],
+)
+def test_a_decorator_merely_named_frozen_exception_is_not_trusted(decorator_import):
+    inventory = discover({"src/demo_errors.py": _FROZEN_ERROR.format(decorator_import=decorator_import),
+                          "src/demo.py": _CATCHES_IT})
+    assert [site["unresolved"] for site in inventory["sites"]] == [True]
+
+
+def test_a_called_frozen_exception_is_not_trusted():
+    # Python applies what the call returns, not frozen_exception itself.
+    errors = _FROZEN_ERROR.format(decorator_import="from optimus.runtime.frozen_exception import frozen_exception").replace(
+        "@frozen_exception\n", "@frozen_exception(Replacement)\n")
+    inventory = discover({"src/demo_errors.py": errors, "src/demo.py": _CATCHES_IT})
+    assert [site["unresolved"] for site in inventory["sites"]] == [True]

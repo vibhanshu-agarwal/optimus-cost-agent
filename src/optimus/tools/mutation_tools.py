@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import subprocess
 import time
@@ -7,8 +8,10 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Protocol, TypeVar
 
+from optimus.guardrails.file_policy import FilePolicy
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
+from optimus.guardrails.runtime_tree import resolve_target
 from optimus.runtime.modes import GenerationScope
 from optimus.runtime.mutation import MutationForbidden, MutationKind, assert_mutation_allowed
 from optimus.runtime.process_tree import run_bounded
@@ -100,15 +103,52 @@ def write_file_keeping_line_endings(
     guard: PreToolGuardLike | None = None,
     requested_relative_path: str | None = None,
     target_unresolved: bool = False,
+    workspace_root: Path | None = None,
 ) -> None:
     """An Agent WRITE (#410): only after the gate and the guard allow it is the target read, as bytes; the body then
-    takes the file's line endings, final newline and BOM. A mixed-ending file is refused, unchanged."""
+    takes the file's line endings, final newline and BOM. A mixed-ending file is refused, unchanged.
+
+    With ``workspace_root`` (#689), the target's missing folders are created first, inside that root. If a folder or the
+    write fails, the folders this call created are removed again (only while empty and still resolving to itself) and the
+    failure is re-raised. A partial file is left: it may no longer be the one this call wrote."""
     _authorize_file_mutation(path, context=context, guard=guard, requested_relative_path=requested_relative_path, target_unresolved=target_unresolved)
     target = Path(path)
     existing = target.read_bytes() if target.is_file() else None
     if existing is not None and line_ending_style(existing) == "mixed":
         raise WriteRefused(WRITE_LINE_ENDINGS_MIXED, requested_relative_path or path)
-    target.write_text(fit_body_to_file(body, existing), encoding="utf-8", newline="")
+    created: list[Path] = []
+    try:
+        if workspace_root is not None:
+            _create_missing_folders(target.parent, workspace_root, created)
+        target.write_text(fit_body_to_file(body, existing), encoding="utf-8", newline="")
+    except (OSError, MutationForbidden):
+        for folder in reversed(created):
+            if resolve_target(folder) == folder:  # a link swapped in is not this write's to remove
+                with contextlib.suppress(OSError):  # a folder no longer empty is not this write's to remove
+                    folder.rmdir()
+        raise
+
+
+def _create_missing_folders(parent: Path, workspace_root: Path, created: list[Path]) -> None:
+    """#689: create a WRITE's missing folders, outermost first, after the guard accepted the resolved target. Every folder
+    is judged before any is made: inside the root, and nothing the file policy refuses by its spelling (a skipped,
+    runtime or secret folder, a Windows device name); a refusal there has had no effect. Each one made must resolve to
+    itself, so no link raced in; that failure comes after an effect, so it is an OSError, not a guard refusal."""
+    root = workspace_root.resolve()
+    missing: list[Path] = []
+    folder = parent
+    while not folder.exists() and folder != folder.parent:
+        missing.append(folder)
+        folder = folder.parent
+    policy = FilePolicy(root)
+    for folder in missing:
+        if not folder.is_relative_to(root) or policy.path_denial(folder.relative_to(root).as_posix()) is not None:
+            raise MutationForbidden("a folder this write needs is not allowed")
+    for folder in reversed(missing):
+        folder.mkdir()
+        created.append(folder)
+        if resolve_target(folder) != folder:
+            raise OSError("a folder this write created does not resolve to itself")
 
 
 def _authorize_file_mutation(

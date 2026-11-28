@@ -102,3 +102,14 @@ def test_fields_stay_frozen_and_equality_hashing_copying_are_unchanged(kind: str
     for clone in (copy.copy, copy.deepcopy, lambda e: pickle.loads(pickle.dumps(e))):
         with pytest.raises(TypeError):
             clone(first)
+
+
+def test_frozen_exception_returns_the_class_it_decorates():
+    # The exception-site verifier trusts this decorator as class-preserving; a wrapper here would silently widen that gate.
+    from optimus.runtime.frozen_exception import frozen_exception
+
+    @dataclasses.dataclass(frozen=True)
+    class Sample(Exception):
+        reason: str
+
+    assert frozen_exception(Sample) is Sample
