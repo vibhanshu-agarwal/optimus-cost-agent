@@ -301,7 +301,7 @@ def _unresolved(text, **files):
          "setattr-computed-on-module", "through-sys-modules", "qualified-setattr", "in-a-default", "in-a-decorator"],
 )
 def test_an_overwritten_trusted_attribute_is_not_trusted(header, decorators):
-    # #697: Refused is Exception at runtime, so the catch is broad and must be reported.
+    # #697: static detection of a visible write to the decorator; most forms would make Refused Exception at runtime.
     text = f"from dataclasses import dataclass\n{header}\n\n{decorators}\nclass Refused(Exception):\n    pass\n{_CATCH}"
     assert _unresolved(text) == [True]
 
@@ -437,3 +437,91 @@ def test_a_class_body_decorator_sees_the_enclosing_binding_before_its_own():
     exec(_CLASS_LOCAL_IMPORT, namespace)  # noqa: S102 - a fixed fixture, run to show the catch is broad
     assert namespace["Refused"] is Exception and namespace["captured"]
     assert _unresolved(_CLASS_LOCAL_IMPORT) == [True]
+
+
+_LAMBDA_WALRUS = """
+from dataclasses import dataclass
+
+def decorate(cls):
+    return Exception
+
+def outer():
+    def configure(_=lambda: (decorate := dataclass)):
+        pass
+    @decorate
+    class Refused(Exception):
+        pass
+    try:
+        raise ValueError()
+    except Refused:
+        return Refused is Exception
+
+broad = outer()
+"""
+
+_CLASS_IN_A_FUNCTION = """
+def decorate(cls):
+    return Exception
+
+def outer():
+    from dataclasses import dataclass as decorate
+    class Box:
+        @decorate
+        class Refused(Exception):
+            pass
+        from dataclasses import dataclass as decorate
+    try:
+        raise ValueError()
+    except Box.Refused:
+        return Box.Refused is Exception
+
+broad = outer()
+"""
+
+_CATCH_IN_A_CLASS_BODY = """
+Refused = Exception
+
+def outer():
+    Refused = ValueError
+    class Box:
+        try:
+            raise TypeError()
+        except Refused:
+            caught = True
+        Refused = ValueError
+    return Box.caught
+
+broad = outer()
+"""
+
+
+@pytest.mark.parametrize(
+    "fixture", [_LAMBDA_WALRUS, _CLASS_IN_A_FUNCTION, _CATCH_IN_A_CLASS_BODY],
+    ids=["walrus-in-a-lambda-default", "class-local-name-skips-the-function", "catch-in-a-class-body"],
+)
+def test_lookup_follows_the_scopes_python_uses(fixture):
+    # Codex round 2: each fixture runs, patches nothing, and catches broadly.
+    namespace: dict[str, object] = {}
+    exec(fixture, namespace)  # noqa: S102 - a fixed fixture, run to show the catch is broad
+    assert namespace["broad"] is True
+    assert True in _unresolved(fixture)
+
+
+def test_a_dynamic_scope_does_not_hide_a_computed_write_to_the_module():
+    patch = """
+import dataclasses as d
+
+def configure(_=eval("1")):
+    pass
+
+name = "dataclass"
+setattr(d, name, replacement)
+"""
+    text = f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"
+    assert _unresolved(text, **{"src/patch.py": patch}) == [True]
+
+
+def test_a_method_named_eval_or_exec_is_not_dynamic_execution():
+    text = ("from dataclasses import dataclass\n\ndef prepare(model):\n    model.eval()\n    runner.exec(job)\n\n"
+            f"@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}")
+    assert _unresolved(text) == []

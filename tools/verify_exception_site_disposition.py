@@ -170,7 +170,11 @@ class Collect(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         called = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
-        if called in ("exec", "eval"):
+        builtin = isinstance(node.func, ast.Name) or (
+            isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "builtins"
+        )
+        if called in ("exec", "eval") and builtin:  # not an ordinary method such as model.eval()
             # Either can be handed globals(), so the module namespace is dynamic too.
             self.scope.dynamic = self.module.dynamic = True
         if called in ("setattr", "delattr") and node.args:
@@ -185,7 +189,8 @@ class Collect(ast.NodeVisitor):
         The attribute-name rule is deliberately broad: any write of an attribute named like a trusted decorator, on
         any target, untrusts it tree-wide. There is no allowlist; a legitimate attribute with that name is renamed.
         """
-        resolve = Resolve({}, set()).expression
+        # A dynamic scope must not hide a visible trusted-module target from the computed-name check.
+        resolve = Resolve({}, set(), respect_dynamic=False).expression
         found = []
         for scope, target, attr, line in self.writes:
             for trusted in sorted(_TRUSTED):
@@ -244,6 +249,18 @@ class Collect(ast.NodeVisitor):
             self.visit(item)
         self.scope = outer
 
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        # Defaults run in the enclosing scope; a walrus in the body binds only inside the lambda.
+        self.visit(node.args)
+        outer = self.scope
+        self.scope = Scope(f"{outer.name}.<lambda>", outer.package, outer.parent if outer.is_class else outer)
+        args = node.args
+        for argument in [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg]:
+            if argument is not None:
+                self.scope.bindings[argument.arg].append(None)
+        self.visit(node.body)
+        self.scope = outer
+
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self._visit_body(node, is_class=False)
 
@@ -277,11 +294,14 @@ class Collect(ast.NodeVisitor):
 # - vars(m)[...], m.__dict__[...], globals()[...], object.__setattr__(m, ...), m.__setattr__(...);
 # - an aliased setattr (s = setattr), or a computed-name setattr on a target that does not resolve to the module;
 # - setattr(*args) with unpacked arguments, an aliased exec or eval, importlib.reload.
-# A call named exec or eval makes its own scope and its module dynamic; a star import makes its scope dynamic.
+# A bare or builtins-qualified exec or eval call makes its own scope and its module dynamic; a star import makes its
+# scope dynamic.
 class Resolve:
-    def __init__(self, modules: Mapping[str, Scope], classes: set[str]) -> None:
+    def __init__(self, modules: Mapping[str, Scope], classes: set[str], *, respect_dynamic: bool = True) -> None:
         self.modules = modules
         self.classes = classes
+        # False asks what a name could visibly be, ignoring that a dynamic scope may also rebind it.
+        self.respect_dynamic = respect_dynamic
 
     def _qualified(self, value: str, seen: frozenset[tuple[Scope, str]]) -> frozenset[str]:
         module_name, _, name = value.rpartition(".")
@@ -294,7 +314,7 @@ class Resolve:
         self, name: str, scope: Scope, seen: frozenset[tuple[Scope, str]] = frozenset(),
     ) -> frozenset[str]:
         token = scope, name
-        if scope.dynamic or token in seen:
+        if (scope.dynamic and self.respect_dynamic) or token in seen:
             return frozenset()
         choices = scope.bindings.get(name)
         if choices is None:
@@ -308,8 +328,12 @@ class Resolve:
             for item in choices
         }
         if scope.is_class and scope.parent is not None:
-            # A class body runs in order: before its own binding, a name still resolves in the enclosing scope.
-            result.add(self.name(name, scope.parent, seen | {token}))
+            # A class body runs in order. Before its own binding, a class-local name is looked up in the module
+            # globals, then builtins, skipping any enclosing function.
+            module = scope.parent
+            while module.parent is not None:
+                module = module.parent
+            result.add(self.name(name, module, seen | {token}))
         if len(result) != 1:
             return frozenset({_AMBIGUOUS}).union(*result)
         resolved = result.pop()
