@@ -6,6 +6,7 @@ import hashlib
 import os
 import stat
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -140,8 +141,11 @@ def write_file_keeping_line_endings(
             if resolve_target(folder) == folder:  # a link swapped in is not this write's to remove
                 with contextlib.suppress(OSError):  # a folder no longer empty is not this write's to remove
                     folder.rmdir()
+        folders_gone = not any(os.path.lexists(folder) for folder in created)
         if isinstance(failed, WriteFailed):  # nothing remains only if every folder this write made is gone too
-            failed.no_effect = failed.no_effect and not any(os.path.lexists(folder) for folder in created)
+            failed.no_effect = failed.no_effect and folders_gone
+        elif isinstance(failed, OSError):  # a folder could not be made (#689): no effect once the rollback removed them all
+            raise WriteFailed("folders", failed, no_effect=folders_gone) from failed
         raise
 
 
@@ -226,8 +230,10 @@ def _publish(path: Path, real: Path, data: bytes, *, before_replace: Callable[[]
             if before_replace is not None:
                 before_replace()
 
-        _replace(staging, real, still_the_judged_target)
+        _replace(staging, real, still_the_judged_target, existed=facts is not None)
     except (OSError, MutationForbidden) as error:
+        if isinstance(error, _OnlyCopyStaged):  # never remove the only copy; whether the change landed is unknown
+            raise WriteFailed(f"{step}, staging file kept", error, no_effect=False) from error
         if made:
             try:
                 # a FileNotFoundError here counts as an effect: the file moved with its folder, or a replace that
@@ -244,11 +250,55 @@ def _as_os_error(error: BaseException) -> OSError:
     return error if isinstance(error, OSError) else OSError(errno.EIO, type(error).__name__)
 
 
-def _replace(staging: Path, target: Path, check: Callable[[], None]) -> None:
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _KERNEL32.ReplaceFileW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD, wintypes.LPVOID, wintypes.LPVOID]
+    _KERNEL32.ReplaceFileW.restype = wintypes.BOOL
+    _REPLACEFILE_WRITE_THROUGH = 0x1
+    # Without a backup file this one means the target is already gone and the staging file kept its own name (Microsoft's
+    # ReplaceFileW remarks); 1175 and the other failures leave both files under their own names.
+    _ERROR_UNABLE_TO_MOVE_REPLACEMENT = 1176
+
+    def _replace_file_w(target: Path, staging: Path) -> int:
+        """0 when ``ReplaceFileW`` replaced the target, else its Windows error code."""
+        if _KERNEL32.ReplaceFileW(str(target), str(staging), None, _REPLACEFILE_WRITE_THROUGH, None, None):
+            return 0
+        return ctypes.get_last_error()
+
+
+class _OnlyCopyStaged(OSError):
+    """The target was removed but the staging file could not take its place: the staging file holds the only copy left of
+    anything, so cleanup never removes it."""
+
+
+def _swap_in(staging: Path, target: Path, *, existed: bool) -> None:
+    """Make ``staging`` the target. On Windows an existing target goes through ``ReplaceFileW``, which keeps its named
+    streams (``Zone.Identifier``, the Mark of the Web), its ACL and its attributes, where ``os.replace`` drops them (#691,
+    probe-replacefile.txt). A failure it reports leaves the target's bytes and the staging file under their names, so the
+    caller's cleanup accounts for it, raised as an ``OSError`` carrying its winerror; the one exception is 1176, handled
+    here."""
+    if sys.platform == "win32" and existed:
+        code = _replace_file_w(target, staging)
+        if code == 0:
+            return
+        if code == _ERROR_UNABLE_TO_MOVE_REPLACEMENT:
+            try:  # the old file is gone: finish the publish (its named streams went with it), or keep the only copy
+                os.replace(staging, target)
+                return
+            except OSError as error:
+                raise _OnlyCopyStaged(error.errno, "the target was removed and the new file could not take its place") from error
+        raise ctypes.WinError(code)
+    os.replace(staging, target)
+
+
+def _replace(staging: Path, target: Path, check: Callable[[], None], *, existed: bool) -> None:
     for wait in (*_REPLACE_RETRY_WAITS, None):
         check()
         try:
-            os.replace(staging, target)
+            _swap_in(staging, target, existed=existed)
             return
         except PermissionError as error:
             if wait is None or getattr(error, "winerror", None) not in _SHARING_ERRORS:

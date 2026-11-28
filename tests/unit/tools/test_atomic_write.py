@@ -56,14 +56,17 @@ def test_an_exact_write_translates_newlines_as_write_text_did(tmp_path):
 
 
 def _fail(monkeypatch, name: str):
-    real = {"open": os.open, "fsync": os.fsync, "chmod": os.chmod, "replace": os.replace}[name]
+    real = {"open": os.open, "fsync": os.fsync, "chmod": os.chmod, "replace": mutation_tools._swap_in}[name]
 
     def failing(*args, **kwargs):
         if name == "open" and not args[1] & os.O_CREAT:
             return real(*args, **kwargs)  # the write-open probe of the existing target; only the staging open fails
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(os, name, failing)
+    if name == "replace":  # the publish seam: os.replace, or ReplaceFileW for an existing target on Windows
+        monkeypatch.setattr(mutation_tools, "_swap_in", failing)
+    else:
+        monkeypatch.setattr(os, name, failing)
 
 
 @pytest.mark.parametrize(("patched", "step"), [("open", "stage"), ("fsync", "fsync"), ("chmod", "chmod"), ("replace", "replace")])
@@ -140,16 +143,16 @@ class _Sharing(PermissionError):
 
 def test_a_replace_held_briefly_by_another_process_is_retried(tmp_path, monkeypatch):
     (tmp_path / "a.py").write_bytes(b"old\n")
-    real, attempts = os.replace, []
+    real, attempts = mutation_tools._swap_in, []
 
-    def held_twice(source, target):
+    def held_twice(source, target, **kwargs):
         attempts.append(1)
         if len(attempts) <= 2:
             raise _Sharing(13, "in use")
-        real(source, target)
+        real(source, target, **kwargs)
 
     waits: list[float] = []
-    monkeypatch.setattr(os, "replace", held_twice)
+    monkeypatch.setattr(mutation_tools, "_swap_in", held_twice)
     monkeypatch.setattr(mutation_tools.time, "sleep", waits.append)
     _write(tmp_path / "a.py")
 
@@ -161,11 +164,11 @@ def test_a_target_held_open_for_good_fails_after_three_retries_and_keeps_its_byt
     (tmp_path / "a.py").write_bytes(b"old\n")
     attempts = []
 
-    def held(source, target):
+    def held(source, target, **kwargs):
         attempts.append(1)
         raise _Sharing(13, "in use")
 
-    monkeypatch.setattr(os, "replace", held)
+    monkeypatch.setattr(mutation_tools, "_swap_in", held)
     monkeypatch.setattr(mutation_tools.time, "sleep", lambda seconds: None)
     with pytest.raises(WriteFailed) as failed:
         _write(tmp_path / "a.py")
@@ -178,11 +181,11 @@ def test_another_permission_error_on_replace_is_not_retried(tmp_path, monkeypatc
     (tmp_path / "a.py").write_bytes(b"old\n")
     attempts = []
 
-    def denied(source, target):
+    def denied(source, target, **kwargs):
         attempts.append(1)
         raise PermissionError(13, "denied")
 
-    monkeypatch.setattr(os, "replace", denied)
+    monkeypatch.setattr(mutation_tools, "_swap_in", denied)
     with pytest.raises(WriteFailed):
         _write(tmp_path / "a.py")
     assert len(attempts) == 1
@@ -273,18 +276,18 @@ def test_the_target_mode_is_kept_and_the_staging_file_is_never_wider(tmp_path, m
     target.write_bytes(b"old\n")
     os.chmod(target, 0o750)
     seen, created_with = [], []
-    real, real_open = os.replace, os.open
+    real, real_open = mutation_tools._swap_in, os.open
 
-    def look(source, destination):
+    def look(source, destination, **kwargs):
         seen.append(stat.S_IMODE(os.stat(source).st_mode))
-        real(source, destination)
+        real(source, destination, **kwargs)
 
     def note_mode(path, flags, mode=0o777, *args, **kwargs):
         if flags & os.O_CREAT:
             created_with.append(mode)
         return real_open(path, flags, mode, *args, **kwargs)
 
-    monkeypatch.setattr(os, "replace", look)
+    monkeypatch.setattr(mutation_tools, "_swap_in", look)
     monkeypatch.setattr(os, "open", note_mode)
     _write(target)
     assert created_with == [0o750]  # never wider than the target, from the moment it exists
@@ -369,13 +372,13 @@ async def test_a_leftover_is_never_sent_to_the_model_even_when_named(mode, tmp_p
 def test_a_replace_that_renamed_and_then_reported_an_error_is_an_effect(tmp_path, monkeypatch):
     # Codex r1 M6: an NFS rename can complete and still return an error; the staging file is gone, so nothing proves no effect
     (tmp_path / "a.py").write_bytes(b"old\n")
-    real = os.replace
+    real = mutation_tools._swap_in
 
-    def renamed_then_failed(source, target):
-        real(source, target)
+    def renamed_then_failed(source, target, **kwargs):
+        real(source, target, **kwargs)
         raise OSError(5, "Input/output error")
 
-    monkeypatch.setattr(os, "replace", renamed_then_failed)
+    monkeypatch.setattr(mutation_tools, "_swap_in", renamed_then_failed)
     with pytest.raises(WriteFailed) as failed:
         _write(tmp_path / "a.py")
     assert failed.value.no_effect is False and failed.value.step == "replace, then cleanup"
@@ -393,7 +396,7 @@ def test_a_target_that_resolves_elsewhere_before_the_replace_is_not_replaced(tmp
 
     monkeypatch.setattr(mutation_tools, "resolve_target", moved_on_second_look)
     replaced = []
-    monkeypatch.setattr(os, "replace", lambda *args: replaced.append(args))
+    monkeypatch.setattr(mutation_tools, "_swap_in", lambda *args, **kwargs: replaced.append(args))
     with pytest.raises(WriteFailed) as failed:
         _write(tmp_path / "a.py")
     assert replaced == [] and failed.value.step == "replace" and failed.value.no_effect is True
@@ -469,20 +472,25 @@ async def test_a_staging_file_left_behind_is_recorded_as_an_unknown_effect(tmp_p
 
     (tmp_path / "a.py").write_bytes(b"old\n")
 
-    def refused(*args):
+    def refused(*args, **kwargs):
         raise PermissionError(13, "denied")
 
     def stuck(self, missing_ok=False):
         raise PermissionError(13, "in use")
 
-    monkeypatch.setattr(os, "replace", refused)
+    monkeypatch.setattr(mutation_tools, "_swap_in", refused)
     monkeypatch.setattr(Path, "unlink", stuck)
-    result, _outbound, _runner, records = await _drive(tmp_path, _SamePlan("WRITE a.py" + chr(10) + "new" + chr(10)))
+    result, outbound, _runner, records = await _drive(tmp_path, _SamePlan("WRITE a.py" + chr(10) + "new" + chr(10)))
 
     assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
     assert (tmp_path / "a.py").read_bytes() == b"old\n"
     [record] = records.values()
     assert record.effect_state is EffectState.INDETERMINATE
+    # the shown text and the history both follow that record: never "was not applied" for an unknown effect
+    from tests.unit.agent.test_write_new_folders import _final_text
+
+    for text in (_final_text(outbound), record.completion_text):
+        assert text.startswith(UNCONFIRMED) and "was not applied" not in text
 
 
 def test_the_target_is_resolved_once_after_the_guard_and_never_adopted_later(tmp_path, monkeypatch):
@@ -505,15 +513,15 @@ def test_the_target_is_resolved_once_after_the_guard_and_never_adopted_later(tmp
 
 
 def _held_once_then(monkeypatch, during_wait):
-    real, attempts = os.replace, []
+    real, attempts = mutation_tools._swap_in, []
 
-    def held_once(source, target):
+    def held_once(source, target, **kwargs):
         attempts.append(1)
         if len(attempts) == 1:
             raise _Sharing(13, "in use")
-        real(source, target)
+        real(source, target, **kwargs)
 
-    monkeypatch.setattr(os, "replace", held_once)
+    monkeypatch.setattr(mutation_tools, "_swap_in", held_once)
     monkeypatch.setattr(mutation_tools.time, "sleep", lambda seconds: during_wait())
     return attempts
 
@@ -617,3 +625,123 @@ def test_a_case_variant_of_a_leftover_is_refused_too(tmp_path):
     assert is_staging_name(variant) and FilePolicy(tmp_path).path_denial(variant) == "deny.staging_file"
     verdict = PathSafetyValidator(workspace_root=tmp_path).validate_read(tmp_path / variant, requested_relative_path=variant).verdict
     assert verdict is ValidationVerdict.BLOCK
+
+
+UNCONFIRMED = "Optimus could not confirm whether the file change in the approved plan was applied."
+
+
+@pytest.mark.parametrize(("effect", "starts"), [("NONE", "The file change in the approved plan was not applied."), ("INDETERMINATE", UNCONFIRMED)])
+def test_the_not_executed_text_follows_the_recorded_effect(effect, starts):
+    # orchestrator ruling on Codex r2 M5: no effect never shows the uncertain text, unknown never shows "was not applied"
+    from optimus.acp.settlement import EffectState
+    from optimus.acp.spec import _completion_message
+    from optimus.agent.models import AgentRunResult, AgentRunStatus, ExecutionMode
+
+    result = AgentRunResult(run_id="r", session_id="s", execution_mode=ExecutionMode.AGENT, status=AgentRunStatus.FAILED,
+                            final_state="FAILED", output_text="WRITE a.py\nx", stop_reason="WRITE_DIRECTIVE_NOT_EXECUTED")
+    text = _completion_message(result, effect=EffectState[effect])
+    assert text.startswith(starts) and (effect == "NONE") == ("was not applied" in text)
+
+
+def test_a_failed_folder_is_no_effect_once_the_rollback_removed_it(tmp_path, monkeypatch):
+    def refuse(self, *args, **kwargs):
+        raise OSError(36, "File name too long")
+
+    monkeypatch.setattr(Path, "mkdir", refuse)
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "deep" / "a.py", root=tmp_path)
+    assert failed.value.step == "folders" and failed.value.no_effect is True
+
+
+def _with_streams(target: Path) -> None:
+    target.write_bytes(b"old\r\n")
+    Path(f"{target}:Zone.Identifier").write_bytes(b"[ZoneTransfer]\r\nZoneId=3\r\n")
+    Path(f"{target}:custom").write_bytes(b"custom stream")
+
+
+def _streams(target: Path) -> tuple[bytes, bytes]:
+    return Path(f"{target}:Zone.Identifier").read_bytes(), Path(f"{target}:custom").read_bytes()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NTFS named streams")
+def test_a_write_keeps_the_mark_of_the_web_and_other_named_streams_on_windows(tmp_path):
+    target = tmp_path / "downloaded.py"
+    _with_streams(target)
+    _write(target, "new\n")
+    assert target.read_bytes() == b"new\r\n" and _streams(target) == (b"[ZoneTransfer]\r\nZoneId=3\r\n", b"custom stream")
+    assert _names(tmp_path) == ["downloaded.py"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NTFS named streams")
+def test_an_edit_keeps_the_mark_of_the_web_and_other_named_streams_on_windows(tmp_path):
+    import hashlib
+
+    target = tmp_path / "downloaded.py"
+    _with_streams(target)
+    write_file(target, "a = 2\r\n", context=_context(), guard=_Allow(), expected_sha256=hashlib.sha256(b"old\r\n").hexdigest())
+    assert target.read_bytes() == b"a = 2\r\n" and _streams(target)[0].startswith(b"[ZoneTransfer]")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows file ACLs")
+def test_a_write_keeps_an_explicit_acl_entry_on_windows(tmp_path):
+    import subprocess
+
+    target = tmp_path / "acl.py"
+    target.write_bytes(b"old\n")
+    subprocess.run(["icacls", str(target), "/grant", "*S-1-5-32-545:(R)"], capture_output=True, check=True)
+    _write(target, "new\n")
+    listed = subprocess.run(["icacls", str(target)], capture_output=True, text=True, check=True).stdout
+    assert "BUILTIN" + chr(92) + "Users:(R)" in listed or "S-1-5-32-545" in listed
+
+
+def test_an_existing_target_is_published_through_the_platform_swap(tmp_path, monkeypatch):
+    # stand-in everywhere: the publish step is told whether the target existed (ReplaceFileW on Windows, os.replace otherwise)
+    seen = []
+    real = mutation_tools._swap_in
+    monkeypatch.setattr(mutation_tools, "_swap_in", lambda s, t, **kwargs: seen.append(kwargs["existed"]) or real(s, t, **kwargs))
+    (tmp_path / "old.py").write_bytes(b"old\n")
+    _write(tmp_path / "old.py")
+    _write(tmp_path / "new.py")
+    assert seen == [True, False]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")
+def test_replacefile_1176_finishes_the_publish_when_the_target_is_already_gone(tmp_path, monkeypatch):
+    # ReplaceFileW without a backup file: 1176 means it removed the target but could not rename the staging file
+    def removed_target_then_failed(target, staging):
+        os.remove(target)
+        return 1176
+
+    monkeypatch.setattr(mutation_tools, "_replace_file_w", removed_target_then_failed)
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    _write(tmp_path / "a.py")
+    assert (tmp_path / "a.py").read_bytes() == b"new\n" and _names(tmp_path) == ["a.py"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")
+def test_replacefile_1176_never_deletes_the_only_copy_left(tmp_path, monkeypatch):
+    def removed_target_then_failed(target, staging):
+        os.remove(target)
+        return 1176
+
+    def move_fails(*args, **kwargs):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(mutation_tools, "_replace_file_w", removed_target_then_failed)
+    monkeypatch.setattr(os, "replace", move_fails)
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "a.py")
+    assert failed.value.no_effect is False and "staging file kept" in failed.value.step
+    [kept] = _names(tmp_path)
+    assert (tmp_path / kept).read_bytes() == b"new\n"  # the new bytes survive under the staging name
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="ReplaceFileW is Windows'")
+@pytest.mark.parametrize("code", [1175, 87])
+def test_other_replacefile_failures_leave_the_target_and_remove_the_staging_file(code, tmp_path, monkeypatch):
+    monkeypatch.setattr(mutation_tools, "_replace_file_w", lambda target, staging: code)
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    with pytest.raises(WriteFailed) as failed:
+        _write(tmp_path / "a.py")
+    assert failed.value.no_effect is True and (tmp_path / "a.py").read_bytes() == b"old\n" and _names(tmp_path) == ["a.py"]

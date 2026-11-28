@@ -54,7 +54,7 @@ async def test_a_failed_write_after_new_folders_removes_only_the_folders_it_crea
     def refuse(*args, **kwargs):
         raise PermissionError(13, "denied")
 
-    monkeypatch.setattr("os.replace", refuse)
+    monkeypatch.setattr("optimus.tools.mutation_tools._swap_in", refuse)
     result, outbound, _runner, records = await _drive(tmp_path, _SamePlan("WRITE src/x/y/z.py\nZ = 3\n"))
 
     assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
@@ -117,7 +117,7 @@ async def test_a_second_folder_that_cannot_be_created_removes_the_first_one(tmp_
     assert runner.commands == []
     assert _final_text(outbound).startswith(NOT_APPLIED)
     [record] = records.values()
-    assert record.effect_state is EffectState.INDETERMINATE
+    assert record.effect_state is EffectState.NONE  # #691: the rollback removed every folder this write made
 
 
 async def test_a_folder_that_cannot_be_created_stops_with_a_reason(tmp_path, monkeypatch):
