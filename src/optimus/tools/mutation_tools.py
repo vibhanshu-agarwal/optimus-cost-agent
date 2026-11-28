@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
+import os
+import stat
 import subprocess
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Protocol, TypeVar
 
-from optimus.guardrails.file_policy import FilePolicy
+from optimus.guardrails.file_policy import FilePolicy, staging_name
 from optimus.guardrails.permissions import ToolSurface
 from optimus.guardrails.pre_tool import PreToolGuard, PreToolRequest, PreToolResult, PreToolVerdict
 from optimus.guardrails.runtime_tree import resolve_target
@@ -92,7 +95,9 @@ def write_file(
             current = None
         if current != expected_sha256:
             raise WriteSourceChanged(f"source changed before write: {path}")
-    Path(path).write_text(content, encoding="utf-8", newline=newline)
+    if newline not in ("", "\n"):  # as `write_text` translates: None is the platform's line break
+        content = content.replace("\n", os.linesep if newline is None else newline)
+    _publish(Path(path), content.encode("utf-8"))
 
 
 def write_file_keeping_line_endings(
@@ -110,7 +115,7 @@ def write_file_keeping_line_endings(
 
     With ``workspace_root`` (#689), the target's missing folders are created first, inside that root. If a folder or the
     write fails, the folders this call created are removed again (only while empty and still resolving to itself) and the
-    failure is re-raised. A partial file is left: it may no longer be the one this call wrote."""
+    failure is re-raised. The file itself is published atomically (#691): a failed write leaves its original bytes."""
     _authorize_file_mutation(path, context=context, guard=guard, requested_relative_path=requested_relative_path, target_unresolved=target_unresolved)
     target = Path(path)
     existing = target.read_bytes() if target.is_file() else None
@@ -120,13 +125,84 @@ def write_file_keeping_line_endings(
     try:
         if workspace_root is not None:
             _create_missing_folders(target.parent, workspace_root, created)
-        target.write_text(fit_body_to_file(body, existing), encoding="utf-8", newline="")
-    except (OSError, MutationForbidden):
+        _publish(target, fit_body_to_file(body, existing).encode("utf-8"))
+    except (OSError, MutationForbidden) as failed:
         for folder in reversed(created):
             if resolve_target(folder) == folder:  # a link swapped in is not this write's to remove
                 with contextlib.suppress(OSError):  # a folder no longer empty is not this write's to remove
                     folder.rmdir()
+        if isinstance(failed, WriteFailed):  # nothing remains only if every folder this write made is gone too
+            failed.no_effect = failed.no_effect and not any(os.path.lexists(folder) for folder in created)
         raise
+
+
+class WriteFailed(OSError):
+    """#691: a staged write did not reach its target, which keeps its bytes. ``step`` names where it failed (resolve, refused,
+    stage, fsync, chmod, replace, or a cleanup after one); ``no_effect`` is true only when nothing of the write is left."""
+
+    def __init__(self, step: str, cause: OSError, *, no_effect: bool) -> None:
+        super().__init__(cause.errno, f"the write failed at {step}")
+        self.step = step
+        self.no_effect = no_effect
+
+
+# Windows' own write refuses a hidden or system file (CREATE_ALWAYS); a replace would not, so it is refused here as before.
+_HIDDEN_OR_SYSTEM = getattr(stat, "FILE_ATTRIBUTE_HIDDEN", 0x2) | getattr(stat, "FILE_ATTRIBUTE_SYSTEM", 0x4)
+_SHARING_ERRORS = (5, 32)  # Windows access denied and sharing violation: another process holds the target briefly
+_REPLACE_RETRY_WAITS = (0.05, 0.05, 0.05)
+
+
+def _publish(path: Path, data: bytes) -> None:
+    """#691: write ``data`` to a staging file beside the resolved target, flush it to disk, give it the target's mode and
+    replace the target with it, so a failure at any step leaves the target's original bytes. The target is resolved, so a
+    link stays a link and the file the guard judged is the one changed. A target this process could not open for writing
+    today (read-only, or hidden or system on Windows) is refused before anything is staged. Every failure raises
+    ``WriteFailed``; the staging file is removed first, and if that fails too, ``no_effect`` is false."""
+    real = resolve_target(path)
+    if real is None:
+        raise WriteFailed("resolve", OSError(errno.ENOENT, "the target cannot be resolved"), no_effect=True)
+    try:
+        facts: os.stat_result | None = os.stat(real)
+    except FileNotFoundError:
+        facts = None
+    except OSError as error:
+        raise WriteFailed("resolve", error, no_effect=True) from error
+    if facts is not None and (not os.access(real, os.W_OK) or getattr(facts, "st_file_attributes", 0) & _HIDDEN_OR_SYSTEM):
+        raise WriteFailed("refused", PermissionError(errno.EACCES, "the target is not writable"), no_effect=True)
+    mode = 0o666 if facts is None else stat.S_IMODE(facts.st_mode)  # created no wider than the target; the umask applies
+    staging = real.with_name(staging_name())
+    step, made = "stage", False
+    try:
+        descriptor = os.open(staging, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0), mode)
+        made = True
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            step = "fsync"
+            os.fsync(handle.fileno())
+        if facts is not None:
+            step = "chmod"
+            os.chmod(staging, mode)  # the umask may have narrowed it
+        step = "replace"
+        _replace(staging, real)
+    except OSError as error:
+        if made:
+            try:
+                staging.unlink(missing_ok=True)
+            except OSError:
+                raise WriteFailed(f"{step}, then cleanup", error, no_effect=False) from error
+        raise WriteFailed(step, error, no_effect=True) from error
+
+
+def _replace(staging: Path, target: Path) -> None:
+    for wait in (*_REPLACE_RETRY_WAITS, None):
+        try:
+            os.replace(staging, target)
+            return
+        except PermissionError as error:
+            if wait is None or getattr(error, "winerror", None) not in _SHARING_ERRORS:
+                raise
+            time.sleep(wait)
 
 
 def _create_missing_folders(parent: Path, workspace_root: Path, created: list[Path]) -> None:

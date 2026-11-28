@@ -124,17 +124,18 @@ async def test_an_edit_whose_read_fails_stops_with_a_reason(tmp_path, monkeypatc
 async def test_an_edit_whose_write_fails_stops_with_a_reason(tmp_path, monkeypatch):
     (tmp_path / "small.py").write_text("a = 1\n")
 
-    def disk_full(self, *args, **kwargs):
+    def disk_full(descriptor):
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr("pathlib.Path.write_text", disk_full)
+    monkeypatch.setattr("os.fsync", disk_full)
     plan = "EDIT small.py\n<<<<<<< OLD\na = 1\n======= NEW\na = 2\n>>>>>>> END\nTEST pytest -q\n"
     result, outbound, runner, records = await _drive(tmp_path, _SamePlan(plan))
 
     assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED" and result["stopReason"] == "end_turn"
     assert runner.commands == []
     assert _final_text(outbound).startswith(NOT_APPLIED)
-    assert _effect(records) is EffectState.INDETERMINATE  # a write that raised may have changed the file
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["small.py"] and (tmp_path / "small.py").read_text() == "a = 1\n"
+    assert _effect(records) is EffectState.NONE  # #691: the staged write left nothing behind
 
 
 @pytest.mark.parametrize("plan", ["READ legacy.txt\nExplain it.\n"], ids=["planning-read"])

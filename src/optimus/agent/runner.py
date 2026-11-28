@@ -73,7 +73,7 @@ from optimus.runtime.state import AgentState, AwaitingApproval, RuntimeContext, 
 from optimus.skills.registry import SkillRegistry
 from optimus.telemetry.events import TelemetryEvent
 from optimus.tools.line_endings import WRITE_LINE_ENDINGS_MIXED
-from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS, WriteRefused, WriteSourceChanged
+from optimus.tools.mutation_tools import DEFAULT_TEST_DEADLINE_SECONDS, WriteFailed, WriteRefused, WriteSourceChanged
 from optimus.usage.accounting import UsageAccountingService
 from optimus.usage.turn_settlement import ReceiptConflictError, StageReceipt, publish_accounting_conflict
 
@@ -283,6 +283,8 @@ def _failure_terminal(exc: BaseException) -> str:
         return "failed_no_effect"  # WriteRefused is raised before the write (#410)
     if isinstance(exc, CommandStopped) and exc.outcome == "not_started":
         return "failed_no_effect"  # #700: Popen failed, so no process ever existed
+    if isinstance(exc, WriteFailed) and exc.no_effect:
+        return "failed_no_effect"  # #691: the staged write never reached its target and left nothing behind
     return "failed_effect_unknown"
 
 
@@ -339,13 +341,16 @@ def _guard_refused(gate: _DirectiveGate, code: str, exc: BaseException, *, suppr
 def _log_write_failure(run_id: str, failed: OSError | UnicodeDecodeError) -> None:
     from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log
 
+    cause = failed.__cause__ if isinstance(failed, WriteFailed) and failed.__cause__ is not None else failed
+
     acp_debug_log(
         location="runner.py:write_failure",
         message="an approved WRITE could not be written",
         data=lambda: {
-            "error_type": type(failed).__name__,
-            "errno": getattr(failed, "errno", None),
-            "winerror": getattr(failed, "winerror", None),
+            "step": getattr(failed, "step", None),  # #691: which step of the staged write failed
+            "error_type": type(cause).__name__,
+            "errno": getattr(cause, "errno", None),
+            "winerror": getattr(cause, "winerror", None),
         },
         hypothesis_id="P689-WRITE",
         run_id=run_id,

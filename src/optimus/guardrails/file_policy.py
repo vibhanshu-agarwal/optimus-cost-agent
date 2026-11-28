@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
+import secrets
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -42,6 +44,9 @@ DEFAULT_MAX_INDEX_FILE_BYTES = 1024 * 1024
 IGNORE_FILE_NAMES = (".gitignore", ".optimusignore")
 SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".venv", "node_modules", ".idea"})
 _MAX_IGNORE_FILE_BYTES = 1024 * 1024
+# #691: an approved WRITE stages its bytes in a file of this name beside the target, then replaces the target with it. A
+# leftover (a crash between the two) is denied by name, so it is never read, indexed or attached as context.
+_STAGING_NAME: Final = re.compile(r"\.optimus-write-[0-9a-f]{16}\.tmp")
 # NTFS and APFS treat names case-insensitively, and Git's core.ignorecase there depends on the repository. A file is
 # ignored if either the exact or the case-folded rules ignore it, so neither reading can make more files eligible.
 _CASE_INSENSITIVE = sys.platform in ("win32", "darwin")
@@ -55,6 +60,7 @@ REASON_TEXT = {
     "deny.windows_name": "a name Windows would normalize or treat as a device",
     "deny.skipped_dir": "inside a skipped tool folder",
     "deny.runtime_tree": "inside the Optimus runtime folder",
+    "deny.staging_file": "an unfinished Optimus write",
     "deny.secret": "a secret or credential file",  # pragma: allowlist secret - a reason label
     "deny.unresolvable": "its target cannot be resolved",
     "deny.outside_workspace": "its target is outside the workspace",
@@ -378,6 +384,11 @@ def _resolved(path: Path) -> Path | None:
     return None if target is None else Path(_plain(os.fspath(target)))
 
 
+def staging_name() -> str:
+    """A fresh name for a WRITE's staging file (#691); `_parts_denial` refuses exactly this shape."""
+    return f".optimus-write-{secrets.token_hex(8)}.tmp"
+
+
 def describe(reason: str) -> str:
     return REASON_TEXT.get(reason, reason)
 
@@ -395,6 +406,8 @@ def _parts_denial(parts: tuple[str, ...]) -> str | None:
         return "deny.skipped_dir"
     if has_runtime_component(parts):
         return "deny.runtime_tree"
+    if _STAGING_NAME.fullmatch(names[-1]):
+        return "deny.staging_file"
     if is_secret_path("/".join(parts)):
         return "deny.secret"
     return None

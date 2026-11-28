@@ -51,30 +51,36 @@ async def test_a_failed_write_after_new_folders_removes_only_the_folders_it_crea
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "kept.py").write_text("kept\n")
 
-    def refuse(self, *args, **kwargs):
+    def refuse(*args, **kwargs):
         raise PermissionError(13, "denied")
 
-    monkeypatch.setattr("pathlib.Path.write_text", refuse)
-    result, outbound, _runner, _records = await _drive(tmp_path, _SamePlan("WRITE src/x/y/z.py\nZ = 3\n"))
+    monkeypatch.setattr("os.replace", refuse)
+    result, outbound, _runner, records = await _drive(tmp_path, _SamePlan("WRITE src/x/y/z.py\nZ = 3\n"))
 
     assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
-    assert sorted(p.name for p in (tmp_path / "src").iterdir()) == ["kept.py"]
+    assert sorted(p.name for p in (tmp_path / "src").iterdir()) == ["kept.py"]  # no folder and no staging file left
     assert _final_text(outbound).startswith(NOT_APPLIED)
+    [record] = records.values()
+    assert record.effect_state is EffectState.NONE  # #691: nothing of the write remains
 
 
-async def test_a_write_that_fails_part_way_stops_with_a_reason_and_deletes_no_file(tmp_path, monkeypatch):
-    real = __import__("pathlib").Path.write_text
+@pytest.mark.parametrize("plan", ["WRITE old.py\nnew text\n", "WRITE new/deeper/z.py\nZ = 3\n"], ids=["existing", "new-folders"])
+async def test_a_write_that_fails_part_way_leaves_the_original_bytes_and_says_so(plan, tmp_path, monkeypatch):
+    # #691: the bytes reached the staging file, then the disk filled before they were flushed; the target never changed
+    (tmp_path / "old.py").write_bytes(b"old\r\n")
 
-    def disk_full(self, data, *args, **kwargs):
-        real(self, data[:2], *args, **kwargs)
+    def disk_full(descriptor):
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr("pathlib.Path.write_text", disk_full)
-    result, _outbound, _runner, _records = await _drive(tmp_path, _SamePlan("WRITE new/deeper/z.py\nZ = 3\n"))
+    monkeypatch.setattr("os.fsync", disk_full)
+    result, outbound, _runner, records = await _drive(tmp_path, _SamePlan(plan))
 
     assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
-    # by then the file may be another writer's, so it is never deleted; its folder, no longer empty, stays with it
-    assert (tmp_path / "new" / "deeper" / "z.py").read_text() == "Z "
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["old.py"]  # no partial file, staging file or new folder
+    assert (tmp_path / "old.py").read_bytes() == b"old\r\n"
+    assert _final_text(outbound).startswith(NOT_APPLIED)  # true now: the file was not changed
+    [record] = records.values()
+    assert record.effect_state is EffectState.NONE
 
 
 async def test_a_created_folder_that_does_not_resolve_to_itself_is_an_effect_not_a_guard_refusal(tmp_path, monkeypatch):
