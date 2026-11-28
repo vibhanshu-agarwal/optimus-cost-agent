@@ -1153,7 +1153,7 @@ def _cmd_run_gateway(
     try:
         checked_text = read_config_file_checked(env_gateway_path)  # through the handle it checked (#693)
     except LaunchGateError as exc:
-        print(f"optimus-trust run-gateway: {exc.code}: .env.gateway permissions are too open.", file=sys.stderr)
+        print(f"optimus-trust run-gateway: {exc.code}: .env.gateway: {exc.detail}.", file=sys.stderr)  # fixed text
         return 2
 
     dotenv_values = _parse_env_gateway_text(checked_text)  # the one reading this Gateway uses (#686)

@@ -224,7 +224,9 @@ def validate_config_file_permissions(
 
     Raises LaunchGateError if validation fails.
     """
-    _checked_config_bytes(file_path, platform_name=platform_name, win32_security_adapter=win32_security_adapter)
+    _checked_config_bytes(
+        file_path, platform_name=platform_name, win32_security_adapter=win32_security_adapter, read=False,
+    )
 
 
 def read_config_file_checked(
@@ -235,12 +237,15 @@ def read_config_file_checked(
 ) -> str:
     """The file's text, read through the one handle its permissions were checked on (#693), so the file checked is the
     file parsed. Checks as `validate_config_file_permissions`; raises LaunchGateError, naming no value."""
-    return _checked_config_bytes(
-        file_path, platform_name=platform_name, win32_security_adapter=win32_security_adapter,
-    ).decode("utf-8")
+    contents = _checked_config_bytes(
+        file_path, platform_name=platform_name, win32_security_adapter=win32_security_adapter, read=True,
+    )
+    return (contents or b"").decode("utf-8")
 
 
-def _checked_config_bytes(file_path: Path, *, platform_name: str | None, win32_security_adapter: object | None) -> bytes:
+def _checked_config_bytes(
+    file_path: Path, *, platform_name: str | None, win32_security_adapter: object | None, read: bool,
+) -> bytes | None:
     platform = platform_name or sys.platform
 
     if not file_path.exists():
@@ -268,7 +273,7 @@ def _checked_config_bytes(file_path: Path, *, platform_name: str | None, win32_s
         fd = os.open(resolved, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
     except OSError as exc:
         raise LaunchGateError(code="CONFIG_FILE_STAT_FAILED", detail="cannot open configuration file") from exc
-    with open(fd, "rb") as handle:
+    try:  # the descriptor is checked before any stream wraps it, and closed here on every path (Codex #693 review 2)
         try:
             regular = S_ISREG(os.fstat(fd).st_mode)
         except OSError as exc:
@@ -279,7 +284,12 @@ def _checked_config_bytes(file_path: Path, *, platform_name: str | None, win32_s
             _validate_posix_permissions(fd)
         else:
             _validate_windows_permissions(resolved, fd, adapter=win32_security_adapter)
-        return handle.read()
+        if not read:
+            return None
+        with open(fd, "rb", closefd=False) as handle:
+            return handle.read()
+    finally:
+        os.close(fd)
 
 
 def _validate_posix_permissions(fd: int) -> None:

@@ -229,13 +229,31 @@ def test_a_path_that_opens_as_something_else_is_refused_before_any_check_or_read
         found = real_fstat(fd)
         return os.stat_result((stat.S_IFIFO | 0o600, *tuple(found)[1:]))
 
+    real_open, real_close = os.open, os.close
+    opened: list[tuple[int, int]] = []
+    closed: list[int] = []
+
+    def recording_open(target: Any, flags: int, *args: Any) -> int:
+        fd = real_open(target, flags, *args)
+        opened.append((fd, flags))
+        return fd
+
+    def recording_close(fd: int) -> None:
+        closed.append(fd)
+        real_close(fd)
+
     monkeypatch.setattr(launch_gate.os, "fstat", fifo_fstat)
+    monkeypatch.setattr(launch_gate.os, "open", recording_open)
+    monkeypatch.setattr(launch_gate.os, "close", recording_close)
     monkeypatch.setattr(launch_gate, "_validate_posix_permissions", lambda fd: calls.append("posix"))
     adapter = SimpleNamespace(check_file_permissions=lambda _path: calls.append("win32") or True)
     with pytest.raises(launch_gate.LaunchGateError) as refused:
         launch_gate.read_config_file_checked(path, platform_name=branch, win32_security_adapter=adapter)
     assert refused.value.code == "CONFIG_FILE_NOT_REGULAR" and calls == []
     assert "synth" not in str(refused.value)
+    [(fd, flags)] = opened
+    nonblocking = getattr(os, "O_NONBLOCK", 0)  # Codex #693 review 2: a FIFO's open must not wait (POSIX only)
+    assert flags & nonblocking == nonblocking and closed == [fd]  # the refused descriptor is closed
 
 
 @pytest.mark.parametrize("layer", [CredentialLayer.ENVIRONMENT, CredentialLayer.CONFIG_FILE, CredentialLayer.KEYRING])

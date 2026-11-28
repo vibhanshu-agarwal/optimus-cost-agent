@@ -1019,7 +1019,7 @@
     {
       "key": "optimus.acp.launch_gate:_checked_config_bytes:file_open",
       "policy": "safe-by-construction",
-      "rationale": "Inspection: opens the operator's .env.gateway read-only, checks the opened file's permissions and returns its text to the in-memory parser (#693); nothing is written, and a refusal carries only a fixed code and detail, never a value.",
+      "rationale": "Inspection: opens the operator's .env.gateway read-only, checks the opened file's type and permissions and returns its bytes to the in-memory parser (#693); it writes and emits nothing, and its own LaunchGateError refusals carry only a fixed code and detail, never a value.",
       "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
       "test_node": "tests/unit/acp/test_env_gateway_single_read.py::test_the_launch_gate_parses_the_file_it_checked",
       "evidence_tier": "unit"
