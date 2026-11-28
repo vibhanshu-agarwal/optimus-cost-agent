@@ -77,8 +77,9 @@ def _watch_admissions(service: Any) -> _Admissions:
 
 def _start(target: Any, count: int, threads: list[threading.Thread]) -> None:
     for _ in range(count):
-        threads.append(thread := threading.Thread(target=target))
+        thread = threading.Thread(target=target)
         thread.start()
+        threads.append(thread)  # only once started, so cleanup never joins a thread that never ran
 
 
 def _saturate(store: Any, admissions: _Admissions, target: Any, threads: list[threading.Thread], *, workers: int, depth: int) -> None:

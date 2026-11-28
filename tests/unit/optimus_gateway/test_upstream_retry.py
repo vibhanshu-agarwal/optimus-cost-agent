@@ -757,7 +757,7 @@ def test_stalled_attempts_hold_at_most_their_slots_and_later_ones_fail_at_once(m
     holds = [threading.Event()]  # the lookups stall until the test lets them go, never on a clock it could sleep past (#678)
 
     def stalled_getaddrinfo(*args, **kwargs):
-        holds[-1].wait(10)
+        holds[-1].wait()  # no fallback timeout: a pause of any length must not free the slots; finally sets every hold
         raise socket.gaierror(11001, "getaddrinfo failed")  # a real lookup could outlive the joins below
 
     monkeypatch.setattr(socket, "getaddrinfo", stalled_getaddrinfo)
