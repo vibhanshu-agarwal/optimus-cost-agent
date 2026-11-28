@@ -5,6 +5,7 @@ from enum import StrEnum
 from typing import Any, assert_never
 
 from optimus.gateway.errors import GatewayFailureReason
+from optimus.runtime.frozen_exception import frozen_exception
 from optimus_security.sanitization import sanitize_for_persistence
 
 PARSE_ERROR = -32700
@@ -70,6 +71,7 @@ def select_acp_error(outcome: AcpErrorOutcome | GatewayFailureReason) -> JsonRpc
     assert_never(outcome)
 
 
+@frozen_exception
 @dataclass(frozen=True)
 class AcpOutboundError(Exception):
     """ACP outbound/application refusal with a protocol-safe structured reason."""

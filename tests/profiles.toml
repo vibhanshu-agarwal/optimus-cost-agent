@@ -685,6 +685,7 @@ paths = [
   "tests/unit/acp/test_trusted_paths.py",
   "tests/unit/agent/test_runner.py",
   "tests/unit/agent/test_workspace_context.py",
+  "tests/unit/agent/test_write_new_folders.py",
   "tests/unit/evidence/test_private_files.py",
   "tests/unit/guardrails/test_ci_parity.py",
   "tests/unit/context/test_memory_backups.py",

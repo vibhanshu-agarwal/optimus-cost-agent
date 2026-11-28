@@ -35,14 +35,15 @@ from optimus.acp.launch_gate import (
     LaunchGateError,
     authorize_launch,
     credential_uri_display,
+    read_config_file_checked,
     require_gateway_tool_urls,
     resolve_launch_candidate,
-    validate_config_file_permissions,
     verify_exact_durable,
 )
 from optimus.acp.launch_policy import LaunchEnvironmentSnapshot
 from optimus.acp.local_gateway_secrets import (
     ProviderCredentialConfigurationError,
+    _parse_env_gateway_text,
     resolve_provider_credentials,
     resolve_shared_secret,
 )
@@ -460,7 +461,7 @@ def _resolve_candidate(
     hole, reintroduced through an ambient re-read.
 
     .env.gateway's permissions are validated by resolve_launch_candidate()
-    itself (validate_config_file_permissions(), POSIX owner/mode bits or real
+    itself (read_config_file_checked(), POSIX owner/mode bits or real
     Windows DACL enumeration) before it is parsed — that check lives inside
     resolve_launch_candidate rather than here, so every caller gets it
     structurally rather than by remembering to call it.
@@ -1150,21 +1151,24 @@ def _cmd_run_gateway(
         return 2
 
     try:
-        validate_config_file_permissions(env_gateway_path)
+        checked_text = read_config_file_checked(env_gateway_path)  # through the handle it checked (#693)
     except LaunchGateError as exc:
-        print(f"optimus-trust run-gateway: {exc.code}: .env.gateway permissions are too open.", file=sys.stderr)
+        print(f"optimus-trust run-gateway: {exc.code}: .env.gateway: {exc.detail}.", file=sys.stderr)  # fixed text
         return 2
 
+    dotenv_values = _parse_env_gateway_text(checked_text)  # the one reading this Gateway uses (#686)
     try:
         provider_credentials = resolve_provider_credentials(
             os.environ,
             config_root=config_root,
             keyring_backend=credential_keyring_backend,
+            dotenv_values=dotenv_values,
         )
         shared_secret = resolve_shared_secret(
             os.environ,
             config_root=config_root,
             keyring_backend=credential_keyring_backend,
+            dotenv_values=dotenv_values,
         )
     except ProviderCredentialConfigurationError as exc:  # #654: an unreadable keychain refuses here too
         print(f"optimus-trust run-gateway: {exc.user_message}", file=sys.stderr)
@@ -1183,7 +1187,9 @@ def _cmd_run_gateway(
         base_url = credential_uri_display(
             "OPTIMUS_LOCAL_GATEWAY_BASE_URL", provider_secrets.base_url or "", provider_credentials.base_url_provenance.layer
         )
-        tool_environ = require_gateway_tool_urls(config_root, LaunchEnvironmentSnapshot.capture(os.environ).values)
+        tool_environ = require_gateway_tool_urls(
+            config_root, LaunchEnvironmentSnapshot.capture(os.environ).values, dotenv_values=dotenv_values,
+        )
     except LaunchGateError as exc:
         print(f"optimus-trust run-gateway: {exc}", file=sys.stderr)
         return 2

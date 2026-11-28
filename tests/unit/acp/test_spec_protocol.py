@@ -21,6 +21,7 @@ from optimus.acp.spec import (
     AcpOutboundChannel,
     InMemoryAcpSpecSessionStore,
     RecordingOutboundChannel,
+    _shown,
     resolve_max_planning_turns,
 )
 from optimus.agent.models import AgentRunResult, AgentRunStatus, AgentToolCall
@@ -736,7 +737,7 @@ async def test_workspace_context_failure_surfaces_corrective_refusal_message(tmp
         for item in outbound.notifications
         if item["params"]["update"]["sessionUpdate"] == "agent_message_chunk"
     ]
-    assert messages[-1] == failure_text + AGENT_MESSAGE_BLOCK_SEPARATOR
+    assert messages[-1] == _shown(failure_text) + AGENT_MESSAGE_BLOCK_SEPARATOR  # the names escaped where shown (#688)
     assert messages[-1] != "Turn completed."
 
 

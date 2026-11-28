@@ -246,6 +246,7 @@ class _DirectiveGate:
         self.refused: WriteRefused | None = None  # a WRITE refused before any effect (#410)
         self.edit_failure: str | None = None  # an EDIT that could not be applied: nothing written, TESTs suppressed
         self.guard_refused: str | None = None  # #589: the stop code of an approved WRITE or TEST a guard refused
+        self.write_failed = False  # #689: an approved WRITE's folder or file could not be written: TESTs suppressed
 
     def halt_requested(self) -> bool:
         return self._control is not None and self._control.halt_requested()
@@ -329,6 +330,23 @@ def _guard_refused(gate: _DirectiveGate, code: str, exc: BaseException, *, suppr
         },
         hypothesis_id="P589-GUARD",
         run_id=gate.run_id,
+        level=DiagnosticLevel.WARNING,
+    )
+
+
+def _log_write_failure(run_id: str, failed: OSError | UnicodeDecodeError) -> None:
+    from optimus.acp.debug_trace import DiagnosticLevel, acp_debug_log
+
+    acp_debug_log(
+        location="runner.py:write_failure",
+        message="an approved WRITE could not be written",
+        data=lambda: {
+            "error_type": type(failed).__name__,
+            "errno": getattr(failed, "errno", None),
+            "winerror": getattr(failed, "winerror", None),
+        },
+        hypothesis_id="P689-WRITE",
+        run_id=run_id,
         level=DiagnosticLevel.WARNING,
     )
 
@@ -1639,6 +1657,13 @@ class AgentRunner:
             except GuardDenied as denied:
                 _guard_refused(gate, WRITE_GUARD_REFUSED, denied, suppress=[(DirectiveKind.WRITE, write_id)])
                 return calls
+            except (OSError, UnicodeDecodeError) as failed:
+                # #689: the file is not UTF-8, or went away before its read. Nothing is written: no encoding is guessed and
+                # the file keeps its bytes. The WRITE and the TESTs are suppressed; the plan ends WRITE_DIRECTIVE_NOT_EXECUTED.
+                gate.write_failed = True
+                gate.complete(DirectiveKind.WRITE, write_id, "suppressed")
+                _log_write_failure(gate.run_id, failed)
+                return calls
             if not started:
                 return calls
             calls.append(read[1])
@@ -1654,6 +1679,12 @@ class AgentRunner:
             gate.refused = refused
             for ordinal in range(len(directives.tests)):
                 gate.complete(DirectiveKind.TEST, gate.operation_id("test", ordinal), "suppressed")
+            return calls
+        except OSError as failed:
+            # #689: a folder or the file could not be written. _run_gated settled the WRITE; its TESTs are suppressed and
+            # the plan ends WRITE_DIRECTIVE_NOT_EXECUTED. The cause is logged by type and errno, never the path.
+            gate.write_failed = True
+            _log_write_failure(gate.run_id, failed)
             return calls
         if started:
             calls.append(write_call)
@@ -1743,7 +1774,7 @@ class AgentRunner:
         from optimus.acp.lifecycle import DirectiveKind
 
         directives = parse_agent_plan(plan_text)
-        if gate.edit_failure is not None or gate.guard_refused is not None:
+        if gate.edit_failure is not None or gate.guard_refused is not None or gate.write_failed:
             # A plan's TESTs check its change; with the EDIT or WRITE not applied, none of them runs.
             for ordinal in range(len(directives.tests)):
                 gate.complete(DirectiveKind.TEST, gate.operation_id("test", ordinal), "suppressed")

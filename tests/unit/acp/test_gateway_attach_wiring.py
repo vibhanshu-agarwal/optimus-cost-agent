@@ -145,6 +145,67 @@ def test_a_launch_that_starts_nothing_confirms_its_redis_first(launch, monkeypat
         assert code == 0 and isinstance(launch["served"][0], GatewayRefusalServer)
 
 
+@pytest.mark.parametrize("flags", [[], ["--check-config", "--strict"]], ids=["serve", "strict-check"])
+def test_a_refusal_keeps_waiting_on_a_gateway_child_whose_stop_failed(launch, monkeypatch, tmp_path, capsys, flags) -> None:
+    """#692: a refusal that retains its own child (the stop failed and it still runs) is shown, and the launch then
+    waits for that child as the success path does, rather than returning while it runs on."""
+    events: list[str] = []
+
+    class StuckChild:
+        """A fake child that is still running for its first two polls; nothing is terminated or killed."""
+        polls = 0
+
+        def poll(self) -> int | None:
+            StuckChild.polls += 1
+            if StuckChild.polls > 2:
+                events.append("exited")
+                return 0
+            return None
+
+    refusal = LocalInfrastructureError(code="GATEWAY_IDENTITY_UNCONFIRMED", user_message="the child's reason")
+    refusal.__dict__["_optimus_pending_gateway"] = local_infra.LocalGatewayProcess(process=StuckChild(), log_path=None)
+
+    def refuse(**_kwargs: object) -> None:
+        raise refusal
+
+    async def serving(server: Any, **_kwargs: Any) -> int:
+        events.append("served")
+        return 0
+
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", refuse)
+    monkeypatch.setattr(acp_main, "_run_serving_process", serving)
+    assert acp_main.main([*flags, "--workspace-root", str(tmp_path)]) == (2 if flags else 0)
+    assert events == (["exited"] if flags else ["served", "exited"])
+    assert "GATEWAY_IDENTITY_UNCONFIRMED: the child's reason" in capsys.readouterr().err
+
+
+def test_check_config_waits_on_the_retained_child_when_its_refusal_cannot_be_written(launch, monkeypatch, tmp_path) -> None:
+    """Codex #692 review 1: a stderr that is gone must not skip the wait on a child whose stop failed."""
+    polls: list[int] = []
+
+    class StuckChild:
+        def poll(self) -> int | None:
+            polls.append(1)
+            return 0 if len(polls) > 2 else None
+
+    refusal = LocalInfrastructureError(code="GATEWAY_IDENTITY_UNCONFIRMED", user_message="the child's reason")
+    refusal.__dict__["_optimus_pending_gateway"] = local_infra.LocalGatewayProcess(process=StuckChild(), log_path=None)
+
+    def refuse(**_kwargs: object) -> None:
+        raise refusal
+
+    def print_to_a_closed_pipe(*args: object, **kwargs: Any) -> None:
+        if args and "GATEWAY_IDENTITY_UNCONFIRMED" in str(args[0]):
+            raise BrokenPipeError
+        print(*args, **kwargs)
+
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", refuse)
+    monkeypatch.setattr(acp_main, "print", print_to_a_closed_pipe, raising=False)
+    with pytest.raises(BrokenPipeError):
+        acp_main.main(["--check-config", "--strict", "--workspace-root", str(tmp_path)])
+    assert len(polls) == 3  # polled until the child exited
+
+
 def test_plain_check_config_makes_no_request_so_it_needs_no_confirmation(launch, monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(acp_main, "ensure_local_gateway", _refuse)
     monkeypatch.setattr(acp_main, "confirm_running_gateway", _refuse_running)

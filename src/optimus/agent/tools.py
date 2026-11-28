@@ -167,6 +167,7 @@ class AgentToolbox:
                     guard=self._guard,
                     requested_relative_path=requested,
                     target_unresolved=resolved is None,
+                    workspace_root=self._workspace_root,  # #689: a WRITE may need new folders; an EDIT's file exists
                 )
             else:
                 exact_write_file(

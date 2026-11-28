@@ -1017,6 +1017,14 @@
       "evidence_tier": "unit"
     },
     {
+      "key": "optimus.acp.launch_gate:_checked_config_bytes:file_open",
+      "policy": "safe-by-construction",
+      "rationale": "Inspection: opens the operator's .env.gateway read-only, checks the opened file's type and permissions and returns its bytes to the in-memory parser (#693); it writes and emits nothing, and its own LaunchGateError refusals carry only a fixed code and detail, never a value.",
+      "sanitizer": "schema-limited functional path or AST overmatch; no raw diagnostic retention",
+      "test_node": "tests/unit/acp/test_env_gateway_single_read.py::test_the_launch_gate_parses_the_file_it_checked",
+      "evidence_tier": "unit"
+    },
+    {
       "key": "optimus.acp.ndjson_subprocess_session:NdjsonSubprocessSession.send:json_serialization",
       "policy": "protocol-only",
       "rationale": "Functional protocol serialization at optimus.acp.ndjson_subprocess_session:NdjsonSubprocessSession.send:json_serialization sends verbatim ACP/Gateway payloads to its trusted protocol peer; it is not diagnostic retention and sanitizing it would corrupt the protocol contract.",

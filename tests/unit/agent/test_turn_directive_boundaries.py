@@ -340,9 +340,10 @@ def test_failure_after_a_write_may_have_started_is_indeterminate(
 
     monkeypatch.setattr(agent_tools, "guarded_write_file", failing)
 
-    with pytest.raises(type(error)):
-        runner.run(request, operation_control=control)
+    result = runner.run(request, operation_control=control)  # #689: a stated stop, not an exception out of the run
 
+    assert result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED" and result.mutation_count == 0
+    assert control.terminal(DirectiveKind.TEST, _single(control, DirectiveKind.TEST)) == "suppressed"
     assert control.terminal(DirectiveKind.WRITE, _single(control, DirectiveKind.WRITE)) == "failed_effect_unknown"
     assert control.refresh_effect_state() is EffectState.INDETERMINATE
 
@@ -577,3 +578,31 @@ def test_the_refusal_never_denies_an_earlier_mcp_effect(tmp_path: Path) -> None:
 
     assert result.output_text == _REFUSAL_TEXT
     assert "Nothing" not in result.output_text and "no change" not in result.output_text.lower()
+
+
+@pytest.mark.parametrize("failure", ["not-utf8", "removed"])
+def test_a_failed_read_before_a_write_settles_every_operation_with_no_effect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """#689: the read before a WRITE fails, so nothing is written: READ failed_no_effect, WRITE and TEST suppressed."""
+    control = _RecordingControl()
+    (tmp_path / "example.py").write_text("old\n")
+    runner, request = _approved(tmp_path, WRITE_THEN_TEST, _Shell(control))
+    if failure == "not-utf8":
+        (tmp_path / "example.py").write_bytes(bytes([0x63, 0x61, 0x66, 0xE9, 0x0A]))
+    else:
+        real = agent_tools.AgentToolbox.read_file
+
+        def removed_first(self: Any, path: Any, **kwargs: Any) -> Any:
+            Path(path).unlink()
+            return real(self, path, **kwargs)
+
+        monkeypatch.setattr(agent_tools.AgentToolbox, "read_file", removed_first)
+
+    result = runner.run(request, operation_control=control)
+
+    assert result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED" and result.mutation_count == 0
+    assert control.terminal(DirectiveKind.READ, _single(control, DirectiveKind.READ)) == "failed_no_effect"
+    assert control.terminal(DirectiveKind.WRITE, _single(control, DirectiveKind.WRITE)) == "suppressed"
+    assert control.terminal(DirectiveKind.TEST, _single(control, DirectiveKind.TEST)) == "suppressed"
+    assert control.refresh_effect_state() is EffectState.NONE

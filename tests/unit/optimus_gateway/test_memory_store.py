@@ -15,29 +15,18 @@ import pytest
 from optimus_gateway import memory_store
 from optimus_security import memory_store_contract as msc
 from optimus_security.memory_store_config import MemoryStoreConfig
+from tests.unit.optimus_gateway.test_memory_index import _saturate, _watch_admissions
+from tests.unit.optimus_gateway.test_memory_index import _Store as _IndexStore
 from tests.unit.optimus_gateway.test_server import _config, _start_server
 
 _CAPS = json.dumps({"op": "capabilities"}).encode()
 
 
-class _Store:
-    def __init__(self, *, release: threading.Event | None = None, error: Exception | None = None) -> None:
-        self.release = release
-        self.error = error
-        self.calls = 0
-
+class _Store(_IndexStore):
     suspect = False
 
     def connection_lost(self) -> None:
         self.lost = getattr(self, "lost", 0) + 1
-
-    def dispatch(self, _body: dict[str, Any], *, deadline: float | None = None) -> dict[str, Any]:
-        self.calls += 1
-        if self.release is not None:
-            self.release.wait(5)
-        if self.error is not None:
-            raise self.error
-        return {"status": "ok"}
 
     def forget(self) -> None:
         self.forgotten = getattr(self, "forgotten", 0) + 1
@@ -159,21 +148,24 @@ def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
     release = threading.Event()
     store = _Store(release=release)
     service = _service(store)
-    threads = [threading.Thread(target=service.handle, args=(_CAPS,), kwargs={"deadline": time.monotonic() + 5})
-               for _ in range(msc.SERVING_WORKERS + msc.QUEUE_DEPTH)]
-    for thread in threads:
-        thread.start()
-    deadline = time.monotonic() + 5
-    while store.calls < msc.SERVING_WORKERS and time.monotonic() < deadline:
-        time.sleep(0.01)
-    time.sleep(0.05)
-    started = time.monotonic()
-    assert service.handle(_CAPS, deadline=time.monotonic() + 5) == (503, msc.error_body("MEMORY_BUSY"))
-    assert time.monotonic() - started < 1
-    release.set()
-    for thread in threads:
-        thread.join(10)
-    assert store.calls == len(threads)
+    admissions = _watch_admissions(service)
+    results: list[int] = []
+
+    def request() -> None:  # a far deadline, so the held state cannot time out while the test looks at it
+        results.append(service.handle(_CAPS, deadline=time.monotonic() + 30)[0])
+
+    threads: list[threading.Thread] = []
+    try:
+        _saturate(store, admissions, request, threads, workers=msc.SERVING_WORKERS, depth=msc.QUEUE_DEPTH)
+        assert store.calls == msc.SERVING_WORKERS
+        started = time.monotonic()
+        assert service.handle(_CAPS, deadline=time.monotonic() + 5) == (503, msc.error_body("MEMORY_BUSY"))
+        assert time.monotonic() - started < 1
+    finally:
+        release.set()
+        for thread in threads:
+            thread.join(10)
+    assert store.calls == len(threads) and results == [200] * len(threads)
 
 
 def test_an_expired_deadline_never_reaches_the_store() -> None:

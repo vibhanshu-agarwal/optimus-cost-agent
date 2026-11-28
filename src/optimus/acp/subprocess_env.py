@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from optimus.acp.launch_policy import LAUNCH_VARIABLE_POLICIES, PropagationTarget
 from optimus.config.gateway import LOCAL_PROVIDER_KEY_NAMES
+from optimus.runtime.frozen_exception import frozen_exception
 
 # Plan 11.6 Task 1: the agent child's allowed names are a projection of the
 # SINGLE registry (launch_policy.LAUNCH_VARIABLE_POLICIES). This module forwards
@@ -32,6 +33,7 @@ def _agent_child_registry_names() -> frozenset[str]:
     )
 
 
+@frozen_exception
 @dataclass(frozen=True)
 class SubprocessEnvConfigurationError(Exception):
     message: str

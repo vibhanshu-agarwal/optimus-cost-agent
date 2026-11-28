@@ -87,8 +87,12 @@ _ENV_NAME_FOR_KEY = {
 def _parse_env_gateway_file(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}
+    return _parse_env_gateway_text(path.read_text(encoding="utf-8"))
+
+
+def _parse_env_gateway_text(text: str) -> dict[str, str]:
     values: dict[str, str] = {}
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
@@ -148,8 +152,10 @@ def resolve_shared_secret_with_provenance(
     *,
     config_root: Path,
     keyring_backend: Any = keyring,
+    dotenv_values: Mapping[str, str] | None = None,
 ) -> tuple[str | None, CredentialProvenance]:
-    dotenv_values = _parse_env_gateway_file(config_root / ".env.gateway")
+    if dotenv_values is None:  # a launch passes the one reading it validated (#686)
+        dotenv_values = _parse_env_gateway_file(config_root / ".env.gateway")
     return _resolve_env_config_keyring(
         environ,
         dotenv_values=dotenv_values,
@@ -164,11 +170,13 @@ def resolve_shared_secret(
     *,
     config_root: Path,
     keyring_backend: Any = keyring,
+    dotenv_values: Mapping[str, str] | None = None,
 ) -> str | None:
     value, _provenance = resolve_shared_secret_with_provenance(
         environ,
         config_root=config_root,
         keyring_backend=keyring_backend,
+        dotenv_values=dotenv_values,
     )
     return value
 
@@ -194,8 +202,10 @@ def resolve_provider_credentials(
     *,
     config_root: Path,
     keyring_backend: Any = keyring,
+    dotenv_values: Mapping[str, str] | None = None,
 ) -> ProviderCredentialResolution:
-    dotenv_values = _parse_env_gateway_file(config_root / ".env.gateway")
+    if dotenv_values is None:  # a launch passes the one reading it validated (#686)
+        dotenv_values = _parse_env_gateway_file(config_root / ".env.gateway")
     provider_raw, provider_provenance = _resolve_env_config_keyring(
         environ,
         dotenv_values=dotenv_values,

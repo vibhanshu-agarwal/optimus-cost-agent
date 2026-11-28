@@ -975,7 +975,10 @@
    "tools": [
     "ruff"
    ],
-   "note": "`python -m ruff` runs ruff's own __main__, which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. The default-selection tests replace _inventory, so neither launch is reached."
+   "note": "`python -I -m ruff` runs ruff's own __main__ in isolated mode (no checkout-local module or PYTHONPATH can stand in for it), which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. reached_by is current evidence added after the 2df6fec census.",
+   "reached_by": [
+    "tests/unit/tools/test_exception_site_report_gate.py"
+   ]
   },
   "tools/verify_exception_site_disposition.py::_ruff": {
    "launches": 1,
@@ -983,7 +986,10 @@
    "tools": [
     "ruff"
    ],
-   "note": "`python -m ruff` runs ruff's own __main__, which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. The default-selection tests replace _inventory, so neither launch is reached."
+   "note": "`python -I -m ruff` runs ruff's own __main__ in isolated mode (no checkout-local module or PYTHONPATH can stand in for it), which hands off to the ruff binary: no repository module is imported, so the child cannot reach keyring. reached_by is current evidence added after the 2df6fec census.",
+   "reached_by": [
+    "tests/unit/tools/test_exception_site_report_gate.py"
+   ]
   },
   "tools/verify_plan117_custody_feasibility.py::_git_output": {
    "launches": 1,
