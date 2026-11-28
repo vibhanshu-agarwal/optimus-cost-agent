@@ -6,14 +6,16 @@ keyrings and synthetic values only; nothing starts."""
 
 from __future__ import annotations
 
+import contextlib
 import os
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
-from optimus.acp import launch_approval_cli
+from optimus.acp import launch_approval_cli, launch_gate
 from optimus.acp.launch_gate import LaunchEnvironmentSnapshot, resolve_launch_candidate
 from optimus.acp.local_gateway_secrets import (
     CredentialLayer,
@@ -55,17 +57,25 @@ def _replace_after_first_read(monkeypatch, path: Path) -> list[str]:
     """Write revision A, then swap in revision B as soon as the file has been read once. Returns the readings."""
     _write(path, A)
     original = Path.read_text
+    checked_read = launch_gate.read_config_file_checked
     reads: list[str] = []
+
+    def seen(text: str) -> str:
+        reads.append(text)
+        if len(reads) == 1:
+            _write(path, B)
+        return text
 
     def read_text(self: Path, *args: Any, **kwargs: Any) -> str:
         text = original(self, *args, **kwargs)
-        if self.name == ".env.gateway":
-            reads.append(text)
-            if len(reads) == 1:
-                _write(path, B)
-        return text
+        return seen(text) if self.name == ".env.gateway" else text
+
+    def read_checked(file_path: Path, **kwargs: Any) -> str:
+        return seen(checked_read(file_path, **kwargs))  # #693: the launch's reading, through its checked handle
 
     monkeypatch.setattr(Path, "read_text", read_text)
+    monkeypatch.setattr(launch_gate, "read_config_file_checked", read_checked)
+    monkeypatch.setattr(launch_approval_cli, "read_config_file_checked", read_checked)
     return reads
 
 
@@ -109,6 +119,141 @@ def test_run_gateway_takes_tools_and_credentials_from_one_revision(monkeypatch, 
     assert spawned["env"][_CAP] == A["cap"]
     assert spawned["env"]["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] == A["key"]
     assert spawned["env"]["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] == A["secret"]
+
+
+def _swap_right_after_the_check(monkeypatch, path: Path) -> list[str]:
+    """#693: revision A is the one checked; revision B replaces it the moment this platform's real check returns.
+    Returns what each swap did: on Windows an open handle refuses the replace, on POSIX it succeeds."""
+    _write(path, A)
+    swaps: list[str] = []
+
+    def hook(real: Any) -> Any:
+        def check_then_swap(*args: Any, **kwargs: Any) -> None:
+            real(*args, **kwargs)
+            try:
+                _write(path, B)
+                swaps.append("replaced")
+            except PermissionError:
+                swaps.append("refused")
+
+        return check_then_swap
+
+    for name in ("_validate_windows_permissions", "_validate_posix_permissions"):  # only this platform's one runs
+        monkeypatch.setattr(launch_gate, name, hook(getattr(launch_gate, name)))
+    return swaps
+
+
+def test_the_launch_gate_parses_the_file_it_checked(monkeypatch, tmp_path: Path) -> None:
+    paths = _sample_operator_paths(tmp_path)
+    swaps = _swap_right_after_the_check(monkeypatch, paths.config_root / ".env.gateway")
+
+    candidate = resolve_launch_candidate(
+        snapshot=LaunchEnvironmentSnapshot.capture(_REQUIRED_LAUNCH_ENV), workspace_identity=_sample_workspace_identity(),
+        operator_paths=paths, hmac_key=_HMAC_KEY, credential_keyring_backend=FakeKeyring(),
+    )
+
+    assert len(swaps) == 1
+    assert candidate.gateway_tool_environ[_CAP] == A["cap"]
+    assert candidate.provider_credentials is not None and candidate.provider_credentials.secrets is not None
+    assert candidate.provider_credentials.secrets.model_provider_api_key == A["key"]
+    assert candidate.shared_secret == A["secret"]
+
+
+def test_run_gateway_parses_the_file_it_checked(monkeypatch, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    swaps = _swap_right_after_the_check(monkeypatch, workspace / ".env.gateway")
+    for name in _NAMES:
+        monkeypatch.delenv(name, raising=False)
+    approved = SimpleNamespace(security_literals={APPROVAL_LITERAL_NAME: trusted_approval_literal()})
+    monkeypatch.setattr(launch_approval_cli.KeyringApprovalStore, "read_durable", lambda self, digest: approved)
+    roots = TrustedOperatorRoots(default_config_root=tmp_path / "config", approval_runtime_root=tmp_path / "runtime")
+    spawned: dict[str, Any] = {}
+
+    def run(args: list[str], **kwargs: Any) -> SimpleNamespace:
+        spawned.update(env=kwargs["env"])
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(launch_approval_cli.subprocess, "run", run)
+    monkeypatch.setattr(launch_approval_cli, "_require_tty", lambda: None)
+    assert launch_approval_cli._cmd_run_gateway(workspace, bind_host="127.0.0.1", bind_port=8765, trusted_roots=roots,
+                                                credential_keyring_backend=FakeKeyring()) == 0
+
+    assert len(swaps) == 1
+    assert spawned["env"][_CAP] == A["cap"]
+    assert spawned["env"]["OPTIMUS_LOCAL_GATEWAY_PROVIDER_API_KEY"] == A["key"]
+    assert spawned["env"]["OPTIMUS_LOCAL_GATEWAY_SHARED_SECRET"] == A["secret"]
+
+
+class _SwappingWindowsAdapter:
+    """Stands in for the Windows DACL check on any platform: it passes, then swaps the file."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def check_file_permissions(self, _path: Path) -> bool:
+        with contextlib.suppress(PermissionError):  # Windows: the open handle refuses the replace
+            _write(self.path, B)
+        return True
+
+
+@pytest.mark.parametrize("branch", ["posix", "win32"])
+def test_each_platform_branch_reads_through_the_handle_it_checked(monkeypatch, tmp_path: Path, branch: str) -> None:
+    """#693, both branches on every platform: the check sees the opened file, and the text comes from that same handle."""
+    path = tmp_path / ".env.gateway"
+    _write(path, A)
+    checked: list[int] = []
+    adapter = None
+    if branch == "posix":
+        def posix_stand_in(fd: int) -> None:  # the real one needs a POSIX uid; this keeps its input, the opened file
+            checked.append(os.fstat(fd).st_size)
+            with contextlib.suppress(PermissionError):
+                _write(path, B)
+
+        monkeypatch.setattr(launch_gate, "_validate_posix_permissions", posix_stand_in)
+    else:
+        adapter = _SwappingWindowsAdapter(path)
+    text = launch_gate.read_config_file_checked(path, platform_name=branch, win32_security_adapter=adapter)
+    assert text == _text(A)
+    assert checked == ([len(_text(A).encode())] if branch == "posix" else [])
+
+
+@pytest.mark.parametrize("branch", ["posix", "win32"])
+def test_a_path_that_opens_as_something_else_is_refused_before_any_check_or_read(monkeypatch, tmp_path, branch) -> None:
+    """Codex #693 review 1: a FIFO swapped in after the path checks opens (non-blocking) but is not a regular file."""
+    path = tmp_path / ".env.gateway"
+    _write(path, A)
+    real_fstat = os.fstat
+    calls: list[str] = []
+
+    def fifo_fstat(fd: int) -> os.stat_result:
+        found = real_fstat(fd)
+        return os.stat_result((stat.S_IFIFO | 0o600, *tuple(found)[1:]))
+
+    real_open, real_close = os.open, os.close
+    opened: list[tuple[int, int]] = []
+    closed: list[int] = []
+
+    def recording_open(target: Any, flags: int, *args: Any) -> int:
+        fd = real_open(target, flags, *args)
+        opened.append((fd, flags))
+        return fd
+
+    def recording_close(fd: int) -> None:
+        closed.append(fd)
+        real_close(fd)
+
+    monkeypatch.setattr(launch_gate.os, "fstat", fifo_fstat)
+    monkeypatch.setattr(launch_gate.os, "open", recording_open)
+    monkeypatch.setattr(launch_gate.os, "close", recording_close)
+    monkeypatch.setattr(launch_gate, "_validate_posix_permissions", lambda fd: calls.append("posix"))
+    adapter = SimpleNamespace(check_file_permissions=lambda _path: calls.append("win32") or True)
+    with pytest.raises(launch_gate.LaunchGateError) as refused:
+        launch_gate.read_config_file_checked(path, platform_name=branch, win32_security_adapter=adapter)
+    assert refused.value.code == "CONFIG_FILE_NOT_REGULAR" and calls == []
+    assert "synth" not in str(refused.value)
+    [(fd, flags)] = opened
+    nonblocking = getattr(os, "O_NONBLOCK", 0)  # Codex #693 review 2: a FIFO's open must not wait (POSIX only)
+    assert flags & nonblocking == nonblocking and closed == [fd]  # the refused descriptor is closed
 
 
 @pytest.mark.parametrize("layer", [CredentialLayer.ENVIRONMENT, CredentialLayer.CONFIG_FILE, CredentialLayer.KEYRING])

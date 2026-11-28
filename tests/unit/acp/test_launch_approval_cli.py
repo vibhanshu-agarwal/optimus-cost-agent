@@ -726,7 +726,7 @@ class TestConfigFilePermissionsWiredIntoResolution:
     def test_env_gateway_permission_check_is_actually_invoked(self, tmp_path, monkeypatch) -> None:
         """Platform-agnostic proof that resolving a candidate through the CLI
         entry point (_resolve_candidate -> resolve_launch_candidate) calls
-        validate_config_file_permissions() with the .env.gateway path when
+        read_config_file_checked() with the .env.gateway path when
         the file exists — mocked so this runs identically on any CI
         platform, complementing the POSIX-mode-bit tests above which are
         platform-guarded. The check itself now lives inside
@@ -760,10 +760,11 @@ class TestConfigFilePermissionsWiredIntoResolution:
         store = KeyringApprovalStore(keyring_backend=FakeKeyring(), runtime_root=tmp_path / "runtime")
 
         calls: list[Path] = []
-        def recording_validate(path: Path, **_kwargs: object) -> None:
+        def recording_validate(path: Path, **_kwargs: object) -> str:
             calls.append(path)
+            return ""
 
-        monkeypatch.setattr(launch_gate_module, "validate_config_file_permissions", recording_validate)
+        monkeypatch.setattr(launch_gate_module, "read_config_file_checked", recording_validate)  # #693
 
         snapshot, paths = _prepare_candidate_context(workspace)
         _resolve_candidate(workspace, store, snapshot=snapshot, operator_paths=paths)
