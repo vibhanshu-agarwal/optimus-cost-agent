@@ -229,6 +229,14 @@
     "docker"
    ]
   },
+  "tools/acpx_runner_cli.py::acpx_version": {
+   "launches": 1,
+   "verdict": "non_python",
+   "tools": [
+    "acpx",
+    "--version"
+   ]
+  },
   "tools/check_dependency_audit.py::scan": {
    "launches": 1,
    "verdict": "not_reached",
@@ -750,22 +758,6 @@
    "verdict": "caller_program",
    "reached_by": [
     "tests/unit/tools/test_run_p11_fu_10_acpx_error_code_evidence.py"
-   ]
-  },
-  "tools/run_p11_fu_10_acpx_error_code_evidence.py::acpx_version": {
-   "launches": 1,
-   "verdict": "non_python",
-   "tools": [
-    "acpx",
-    "--version"
-   ]
-  },
-  "tools/run_p11_fu_9_acpx_evidence.py::acpx_version": {
-   "launches": 1,
-   "verdict": "non_python",
-   "tools": [
-    "acpx",
-    "--version"
    ]
   },
   "tools/run_p11_fu_9_acpx_evidence.py::assert_scratch_paths_ignored": {

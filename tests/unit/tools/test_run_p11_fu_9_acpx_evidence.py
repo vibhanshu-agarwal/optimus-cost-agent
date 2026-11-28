@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -118,14 +119,14 @@ def test_assert_scratch_paths_ignored_passes_when_all_ignored(
 
 def test_resolve_acpx_uses_shutil_which_for_the_external_binary(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "tools.run_p11_fu_9_acpx_evidence.shutil.which",
+        shutil, "which",
         lambda name: r"C:\tools\acpx.exe" if name == "acpx" else None,
     )
     assert resolve_acpx() == r"C:\tools\acpx.exe"
 
 
 def test_resolve_acpx_fails_closed_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("tools.run_p11_fu_9_acpx_evidence.shutil.which", lambda _name: None)
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
     with pytest.raises(AcpxNotFoundError, match="acpx not found"):
         resolve_acpx()
 
