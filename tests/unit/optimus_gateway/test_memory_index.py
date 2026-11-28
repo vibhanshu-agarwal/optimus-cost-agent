@@ -30,15 +30,65 @@ class _Store:
         self.release = release
         self.error = error
         self.calls = 0
+        self.entered = threading.Condition()
 
     def dispatch(self, _body: dict[str, Any], *, deadline: float | None = None) -> dict[str, Any]:
-        self.calls += 1
+        with self.entered:
+            self.calls += 1
+            self.entered.notify_all()
         self.deadline = deadline
         if self.release is not None:
-            self.release.wait(5)
+            self.release.wait(30)  # every test that holds the store sets release; the bound only stops a hang
         if self.error is not None:
             raise self.error
         return {"status": "ok"}
+
+    def wait_for_calls(self, count: int) -> bool:
+        with self.entered:
+            return self.entered.wait_for(lambda: self.calls >= count, 10)
+
+
+class _Admissions(threading.BoundedSemaphore):
+    """A service's waiting-slot semaphore that says when every slot is taken, so a test waits on that and not on a clock."""
+
+    def __init__(self, value: int) -> None:
+        super().__init__(value)
+        self.changed = threading.Condition()
+
+    def acquire(self, blocking: bool = True, timeout: float | None = None) -> bool:
+        taken = super().acquire(blocking, timeout)
+        with self.changed:
+            self.changed.notify_all()
+        return taken
+
+    def wait_until_full(self) -> bool:
+        with self.changed:
+            return self.changed.wait_for(lambda: self._value == 0, 10)
+
+
+def _watch_admissions(service: Any) -> _Admissions:
+    """Swap the service's waiting-slot semaphore for a watched one of the service's own capacity, so a wrong capacity
+    still shows."""
+    service._waiting = _Admissions(service._waiting._initial_value)
+    return service._waiting
+
+
+def _start(target: Any, count: int) -> list[threading.Thread]:
+    threads = [threading.Thread(target=target) for _ in range(count)]
+    for thread in threads:
+        thread.start()
+    return threads
+
+
+def _saturate(store: Any, admissions: _Admissions, target: Any, *, workers: int, depth: int) -> list[threading.Thread]:
+    """Both workers held in the store, then every waiting slot taken. The waiters start only once the holders are in the
+    store, which is after each gave its waiting slot back: started together, a holder between taking its worker and
+    freeing its slot makes the last waiter find the queue full, and the queue never fills (#678)."""
+    holders = _start(target, workers)
+    assert store.wait_for_calls(workers), "both workers were not held in the store"
+    waiters = _start(target, depth)
+    assert admissions.wait_until_full(), "the waiting requests were not all admitted"
+    return holders + waiters
 
 
 def _service(store: _Store, **kwargs: Any) -> memory_index.IndexService:
@@ -49,30 +99,28 @@ def test_two_requests_serve_and_a_full_queue_is_refused_at_once() -> None:
     release = threading.Event()
     store = _Store(release=release)
     service = _service(store)
+    admissions = _watch_admissions(service)
     results: list[int] = []
-    threads = [threading.Thread(target=lambda: results.append(service.handle(_COVERAGE, deadline=time.monotonic() + 5)[0]))
-               for _ in range(mic.SERVING_WORKERS + mic.QUEUE_DEPTH)]
-    for thread in threads:
-        thread.start()
-    deadline = time.monotonic() + 5
-    # both workers are held in the store and every queue slot is taken; this holds until release is set or the 5 s
-    # store wait and request deadlines run out, far beyond the probe's 1 s
-    while (store.calls < mic.SERVING_WORKERS or service._waiting._value) and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert store.calls == mic.SERVING_WORKERS and service._waiting._value == 0
+
+    def request() -> None:  # a far deadline, so the held state cannot time out while the test looks at it
+        results.append(service.handle(_COVERAGE, deadline=time.monotonic() + 30)[0])
+
+    threads = _saturate(store, admissions, request, workers=mic.SERVING_WORKERS, depth=mic.QUEUE_DEPTH)
+    assert store.calls == mic.SERVING_WORKERS
     started = time.monotonic()
     refused = service.handle(_COVERAGE, deadline=time.monotonic() + 5)
     assert refused == (503, mic.error_body("INDEX_BUSY")) and time.monotonic() - started < 1
     release.set()
     for thread in threads:
         thread.join(10)
-    assert store.calls == len(threads)
+    assert store.calls == len(threads) and results == [200] * len(threads)
 
 
 def test_a_model_request_and_an_accepted_capture_batch_pass_a_saturated_index(tmp_path: Path) -> None:
     release = threading.Event()
     store = _Store(release=release)
     service = _service(store)
+    admissions = _watch_admissions(service)
     ledger = _AckingStore()
     config = replace(_config(), memory_index=service, usage_store=ledger)
     server, thread, host, port = _start_server(config=config)
@@ -89,13 +137,9 @@ def test_a_model_request_and_an_accepted_capture_batch_pass_a_saturated_index(tm
         connection.close()
         return response.status, payload, time.monotonic() - started
 
-    held = [threading.Thread(target=post, args=(mic.PATH, _COVERAGE)) for _ in range(mic.SERVING_WORKERS + mic.QUEUE_DEPTH)]
+    held: list[threading.Thread] = []
     try:
-        for request in held:
-            request.start()
-        deadline = time.monotonic() + 4
-        while service._waiting._value and time.monotonic() < deadline:  # connections can take a moment to be accepted
-            time.sleep(0.01)
+        held = _saturate(store, admissions, lambda: post(mic.PATH, _COVERAGE), workers=mic.SERVING_WORKERS, depth=mic.QUEUE_DEPTH)
         assert post(mic.PATH, _COVERAGE)[:2] == (503, mic.error_body("INDEX_BUSY"))
         status, _reply, seconds = post("/v1/responses", json.dumps({"model": "claude-haiku", "input": "hello"}).encode())
         assert status == 200 and seconds < 2
@@ -141,8 +185,7 @@ def test_a_request_past_its_deadline_is_refused_without_reaching_the_store() -> 
     holders = [threading.Thread(target=service.handle, args=(_COVERAGE,), kwargs={"deadline": time.monotonic() + 5}) for _ in range(mic.SERVING_WORKERS)]
     for holder in holders:
         holder.start()
-    while store.calls < mic.SERVING_WORKERS:
-        time.sleep(0.01)
+    assert store.wait_for_calls(mic.SERVING_WORKERS)
     assert service.handle(_COVERAGE, deadline=time.monotonic() + 0.05) == (503, mic.error_body("INDEX_BUSY"))
     release.set()
     for holder in holders:
