@@ -342,6 +342,11 @@ def _validate_windows_permissions(file_path: Path, fd: int, *, adapter: object |
 
     # Real Windows DACL check: enumerate every ACE and reject unless every
     # allow-ACE's SID is the current user, SYSTEM, or Administrators.
+    if sys.platform != "win32":  # a direct check, so mypy narrows the Windows-only msvcrt call below
+        raise LaunchGateError(
+            code="CONFIG_FILE_PLATFORM_CHECK_FAILED",
+            detail="platform cannot verify file permissions",
+        )
     try:
         import msvcrt
 
