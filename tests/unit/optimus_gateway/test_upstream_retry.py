@@ -754,8 +754,10 @@ def test_stalled_attempts_hold_at_most_their_slots_and_later_ones_fail_at_once(m
     for earlier in [t for t in threading.enumerate() if t.name == "optimus-upstream-attempt"]:
         earlier.join(10)  # workers abandoned by earlier tests, so the count below is this test's own
     monkeypatch.setattr(upstream_module, "_ATTEMPT_SLOTS", threading.BoundedSemaphore(2))
+    holds = [threading.Event()]  # the lookups stall until the test lets them go, never on a clock it could sleep past (#678)
+
     def stalled_getaddrinfo(*args, **kwargs):
-        time.sleep(2)
+        holds[-1].wait()  # no fallback timeout: a pause of any length must not free the slots; finally sets every hold
         raise socket.gaierror(11001, "getaddrinfo failed")  # a real lookup could outlive the joins below
 
     monkeypatch.setattr(socket, "getaddrinfo", stalled_getaddrinfo)
@@ -765,17 +767,23 @@ def test_stalled_attempts_hold_at_most_their_slots_and_later_ones_fail_at_once(m
             _client("https://upstream.test").create_message_once(model="m", input_text="x", max_tokens=1, provider_controls={}, reasoning=None)
         return raised.value
 
-    stalled = [attempt(), attempt()]
-    started = time.monotonic()
-    refused = attempt()
-    assert time.monotonic() - started < 0.2
-    workers = [t for t in threading.enumerate() if t.name == "optimus-upstream-attempt"]
-    assert len(workers) <= 2
-    assert [(f.outcome, f.failure) for f in stalled] == [("not_sent", {"kind": "attempt_deadline"})] * 2
-    assert (refused.outcome, refused.failure) == ("not_sent", {"kind": "attempt_capacity"})
-    for worker in workers:
-        worker.join(5)
-    assert attempt().failure == {"kind": "attempt_deadline"}, "a slot is free again once its worker exits"
+    try:
+        stalled = [attempt(), attempt()]
+        started = time.monotonic()
+        refused = attempt()
+        assert time.monotonic() - started < 0.2
+        workers = [t for t in threading.enumerate() if t.name == "optimus-upstream-attempt"]
+        assert len(workers) <= 2
+        assert [(f.outcome, f.failure) for f in stalled] == [("not_sent", {"kind": "attempt_deadline"})] * 2
+        assert (refused.outcome, refused.failure) == ("not_sent", {"kind": "attempt_capacity"})
+        holds[0].set()
+        for worker in workers:
+            worker.join(5)
+        holds.append(threading.Event())
+        assert attempt().failure == {"kind": "attempt_deadline"}, "a slot is free again once its worker exits"
+    finally:
+        for hold in holds:
+            hold.set()
 
 
 def test_the_production_tool_adapters_use_the_watched_opener():
