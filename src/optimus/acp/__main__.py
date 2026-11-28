@@ -1113,8 +1113,10 @@ def main(argv: list[str] | None = None) -> int:
                 print("Optimus ACP agent configuration OK.", file=sys.stderr)
                 return 0
             except LocalInfrastructureError as exc:  # there is no panel here to show it in
-                print(f"optimus-agent: {exc.code}: {exc.user_message}", file=sys.stderr)
-                _await_retained_gateway(exc, lifecycle)  # #692
+                try:
+                    print(f"optimus-agent: {exc.code}: {exc.user_message}", file=sys.stderr)
+                finally:
+                    _await_retained_gateway(exc, lifecycle)  # #692, even when stderr is gone
                 return 2
             except BaseException as exc:
                 startup_failure = exc

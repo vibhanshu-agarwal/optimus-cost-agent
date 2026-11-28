@@ -179,6 +179,33 @@ def test_a_refusal_keeps_waiting_on_a_gateway_child_whose_stop_failed(launch, mo
     assert "GATEWAY_IDENTITY_UNCONFIRMED: the child's reason" in capsys.readouterr().err
 
 
+def test_check_config_waits_on_the_retained_child_when_its_refusal_cannot_be_written(launch, monkeypatch, tmp_path) -> None:
+    """Codex #692 review 1: a stderr that is gone must not skip the wait on a child whose stop failed."""
+    polls: list[int] = []
+
+    class StuckChild:
+        def poll(self) -> int | None:
+            polls.append(1)
+            return 0 if len(polls) > 2 else None
+
+    refusal = LocalInfrastructureError(code="GATEWAY_IDENTITY_UNCONFIRMED", user_message="the child's reason")
+    refusal.__dict__["_optimus_pending_gateway"] = local_infra.LocalGatewayProcess(process=StuckChild(), log_path=None)
+
+    def refuse(**_kwargs: object) -> None:
+        raise refusal
+
+    def print_to_a_closed_pipe(*args: object, **kwargs: Any) -> None:
+        if args and "GATEWAY_IDENTITY_UNCONFIRMED" in str(args[0]):
+            raise BrokenPipeError
+        print(*args, **kwargs)
+
+    monkeypatch.setattr(acp_main, "ensure_local_gateway", refuse)
+    monkeypatch.setattr(acp_main, "print", print_to_a_closed_pipe, raising=False)
+    with pytest.raises(BrokenPipeError):
+        acp_main.main(["--check-config", "--strict", "--workspace-root", str(tmp_path)])
+    assert len(polls) == 3  # polled until the child exited
+
+
 def test_plain_check_config_makes_no_request_so_it_needs_no_confirmation(launch, monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(acp_main, "ensure_local_gateway", _refuse)
     monkeypatch.setattr(acp_main, "confirm_running_gateway", _refuse_running)
