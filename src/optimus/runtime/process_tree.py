@@ -83,13 +83,16 @@ def run_bounded(args: Sequence[str], *, deadline: float, cancelled: Callable[[],
     """
     allowed = max(0.0, deadline - time.monotonic())
     try:
-        process = popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # errors="replace": output that is not valid text must not fail the run (#700); only the exit code is reported
+        process = popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
     except ContainmentError as error:
         if not error.stopped:
             raise CommandStopped("stop_unconfirmed", "containment failed and the command may still be running") from error
         if error.may_have_run:
             raise CommandStopped("containment_failed", "containment failed after the command started; it was stopped") from error
         raise CommandStopped("containment_failed", "containment failed, so the command was not run") from error
+    except OSError as error:  # #700: Popen itself failed (no such program): no process exists, nothing ran
+        raise CommandStopped("not_started", "could not be started, so it did not run") from error
     drained = False
     while (remaining := deadline - time.monotonic()) > 0 and not cancelled():
         try:

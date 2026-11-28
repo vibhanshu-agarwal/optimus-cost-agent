@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
+from optimus.guardrails.runtime_tree import has_runtime_component, is_staging_name, resolve_target, target_reserved
 from optimus.guardrails.secret_paths import is_secret_path
 from optimus.guardrails.validation import ValidationResult, ValidationVerdict
 
@@ -66,6 +66,8 @@ class PathSafetyValidator:
             target = resolve_target(root / candidate)
         if has_runtime_component(lexical):
             return True
+        if (lexical and is_staging_name(lexical[-1])) or (target is not None and is_staging_name(target.name)):
+            return True  # #691: a WRITE's leftover staging file is runtime residue, by its name or a link's target
         return target is not None and target_reserved(target, root)
 
     def _inside_workspace(self, path: Path) -> bool:

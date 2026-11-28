@@ -34,7 +34,7 @@ from typing import Final
 
 import pathspec
 
-from optimus.guardrails.runtime_tree import has_runtime_component, resolve_target, target_reserved
+from optimus.guardrails.runtime_tree import has_runtime_component, is_staging_name, resolve_target, target_reserved
 from optimus.guardrails.secret_paths import is_secret_path, target_secret
 
 POLICY_VERSION = "file-policy-v1"
@@ -55,6 +55,7 @@ REASON_TEXT = {
     "deny.windows_name": "a name Windows would normalize or treat as a device",
     "deny.skipped_dir": "inside a skipped tool folder",
     "deny.runtime_tree": "inside the Optimus runtime folder",
+    "deny.staging_file": "an unfinished Optimus write",
     "deny.secret": "a secret or credential file",  # pragma: allowlist secret - a reason label
     "deny.unresolvable": "its target cannot be resolved",
     "deny.outside_workspace": "its target is outside the workspace",
@@ -395,6 +396,8 @@ def _parts_denial(parts: tuple[str, ...]) -> str | None:
         return "deny.skipped_dir"
     if has_runtime_component(parts):
         return "deny.runtime_tree"
+    if is_staging_name(parts[-1]):  # #691: a WRITE's leftover staging file
+        return "deny.staging_file"
     if is_secret_path("/".join(parts)):
         return "deny.secret"
     return None

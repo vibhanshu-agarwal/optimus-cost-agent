@@ -94,6 +94,7 @@ from optimus.acp.session_retention import (
     SessionUseLease,
 )
 from optimus.acp.settlement import (
+    EffectState,
     RpcResponseDelivery,
     SendOutcome,
     SendState,
@@ -3425,7 +3426,7 @@ class AcpDuplexAdapter:
         raw_plan = result.candidate_plan_text or ""
         plan_text = conversation.sanitize_text(raw_plan) if raw_plan else ""
         completion = conversation.sanitize_text(
-            completion_text if completion_text is not None else _completion_message(result)
+            completion_text if completion_text is not None else _completion_message(result, effect=turn.turn_control.refresh_effect_state())
         )
         self.record_turn_commit(turn.session_id, turn.turn_seq, committed=None)
         decision = conversation.prepare_commit(
@@ -4052,7 +4053,8 @@ class AcpDuplexAdapter:
             await self._outbound.notify("session/update", completed_plan)
         elif send_plan and turn is not None:
             await self._send_terminal(turn, "completed_plan", completed_plan)
-        message = _completion_message(result, _shown)
+        effect = turn.turn_control.refresh_effect_state() if turn is not None else EffectState.NONE
+        message = _completion_message(result, _shown, effect=effect)
         message_payload = build_agent_message_chunk_notification(session_id=session_id, text=message)
         # region agent log
         acp_debug_log(
@@ -4149,6 +4151,12 @@ _PLANNING_TERMINAL_STOP_REASONS = frozenset(
 
 
 # The run's output_text is the plan for this stop, so the person's text is fixed here (#565). TESTs run before the check.
+# #691: the same stop when the write's own outcome could not be confirmed (a replace that reported an error may still have
+# happened, or a staging file or folder was left). Which one is shown follows the turn's recorded effect, nothing else.
+_WRITE_UNCONFIRMED_MESSAGE = (
+    "Optimus could not confirm whether the file change in the approved plan was applied. "
+    "Any tests in the plan may still have run. Check the file, then send your request again to get a new plan."
+)
 _WRITE_NOT_EXECUTED_MESSAGE = (
     "The file change in the approved plan was not applied. "
     "Any tests in the plan may still have run. Send your request again to get a new plan."
@@ -4200,9 +4208,10 @@ def _shown_repeated_step(step: str, shown: Callable[[str], str]) -> str:
     return f"{shown(step[: len(step) - len(ending)])}{ending}"
 
 
-def _completion_message(result: AgentRunResult, shown: Callable[[str], str] = str) -> str:
+def _completion_message(result: AgentRunResult, shown: Callable[[str], str] = str, *, effect: EffectState = EffectState.NONE) -> str:
     """The turn's final text. `shown` is applied to each model-authored token an agent-authored sentence quotes: `_shown` for
-    the message sent, the identity (which rebuilds the text unchanged) for the committed history."""
+    the message sent, the identity (which rebuilds the text unchanged) for the committed history. `effect` is the turn's
+    recorded effect; the sent message and the history pass the same one, so they cannot disagree with the record (#691)."""
     if result.stop_reason == PLANNING_ANSWERED:
         return result.output_text  # the answer itself (#512)
     if result.stop_reason in TEST_STOP_REASONS.values():
@@ -4217,7 +4226,8 @@ def _completion_message(result: AgentRunResult, shown: Callable[[str], str] = st
     if result.stop_reason == "UNSAFE_TEST_DIRECTIVE" or result.stop_reason in GUARD_REFUSAL_TEXTS:
         return result.output_text  # what was rejected and that nothing ran (#565); a guard refusal's fixed text (#589)
     if result.stop_reason == "WRITE_DIRECTIVE_NOT_EXECUTED":
-        return _WRITE_NOT_EXECUTED_MESSAGE
+        # its TESTs are always suppressed, so an indeterminate effect is the WRITE's own
+        return _WRITE_UNCONFIRMED_MESSAGE if effect is EffectState.INDETERMINATE else _WRITE_NOT_EXECUTED_MESSAGE
     if result.stop_reason == WRITE_LINE_ENDINGS_MIXED:
         path, space, rest = result.output_text.partition(" ")  # the refused WRITE's path comes first (#410)
         return f"{shown(path)}{space}{rest}"

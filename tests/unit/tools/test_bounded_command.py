@@ -102,9 +102,11 @@ def test_a_descendant_that_outlives_its_root_makes_the_stop_unconfirmed(monkeypa
 
 
 def test_a_missing_executable_is_an_ordinary_launch_failure_not_a_containment_failure():
-    with pytest.raises(OSError) as raised:
+    # #700: a typed stop the runner can settle, "not_started", never "containment_failed"; the OSError is kept as its cause
+    with pytest.raises(CommandStopped) as raised:
         run_bounded(["optimus-no-such-test-runner-12-3"], deadline=time.monotonic() + 60, cancelled=_never)
-    assert not isinstance(raised.value, process_tree.ContainmentError)
+    assert raised.value.outcome == "not_started"
+    assert isinstance(raised.value.__cause__, OSError) and not isinstance(raised.value.__cause__, process_tree.ContainmentError)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="job containment is the Windows path")
@@ -155,3 +157,10 @@ def test_a_cancellation_that_arrives_as_the_root_exits_still_stops_its_descendan
             run_bounded([sys.executable, "-c", code], deadline=time.monotonic() + 60, cancelled=marker.exists)
         assert stopped.value.outcome == "cancelled"
         assert_descendants_killed(recorder, ("grandchild",), deadline=time.monotonic() + 5.0, what="a TEST cancelled as its root exited")
+
+
+def test_output_that_is_not_valid_text_does_not_fail_the_run():
+    # Codex Bundle J r1 M5: strict decoding raised UnicodeDecodeError out of the replay; 0x81 is undefined in cp1252 too
+    code = "import sys; sys.stdout.buffer.write(bytes([0x81, 0xFF])); sys.stderr.buffer.write(bytes([0x81]))"
+    result = run_bounded([sys.executable, "-c", code], deadline=time.monotonic() + 60, cancelled=_never)
+    assert result.returncode == 0 and isinstance(result.stdout, str)

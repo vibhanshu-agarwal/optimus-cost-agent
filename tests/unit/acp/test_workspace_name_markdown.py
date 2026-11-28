@@ -50,6 +50,61 @@ async def test_an_ambiguous_candidate_named_as_markdown_is_inert_where_it_is_sho
     assert on_disk in record.completion_text and "\\" not in record.completion_text
 
 
+class _Recording(_RealRunner):
+    """The real runner, keeping each raw run result the adapter received."""
+
+    def __init__(self, gateway) -> None:
+        super().__init__(gateway)
+        self.results: list[AgentRunResult] = []
+
+    def run(self, request, **kwargs):
+        result = super().run(request, **kwargs)
+        self.results.append(result)
+        return result
+
+
+# Only the bare address reaches these two stops: reference extraction keeps a link or image spelling from becoming the
+# reference (it reads "README.md" or nothing), so those forms end elsewhere; that extraction belongs to #701.
+@pytest.mark.parametrize("token", [TOKENS["bare-address"]], ids=["bare-address"])
+@pytest.mark.parametrize(
+    ("code", "name", "body", "raw"),
+    [
+        ("WORKSPACE_REFERENCE_NOT_READABLE", "data.py", bytes([0xE9, 0xFF, 0x00]), "Workspace reference '{t}/data.py' cannot be read safely: not UTF-8 text."),
+        (
+            "REQUIRED_WORKSPACE_FILE_TOO_LARGE",
+            "big.py",
+            b"x" * (17 * 1024),
+            "Workspace reference '{t}/big.py' exceeds the available context budget. Retry with a smaller scope.",
+        ),
+    ],
+    ids=["not-readable", "too-large"],
+)
+async def test_a_chat_workspace_context_stop_with_a_markdown_name_is_shown_inert_through_the_protocol(
+    code, name, body, raw, token, tmp_path, monkeypatch
+):
+    # #700 (Codex Low 5 on #688): the not-readable and too-large stops, driven end to end in Chat as ambiguity already is.
+    from tests.unit.acp import test_workspace_name_markdown as module
+
+    recording: list[_Recording] = []
+    monkeypatch.setattr(module, "_RealRunner", lambda gateway: recording.append(_Recording(gateway)) or recording[-1])
+    (tmp_path / token).mkdir(parents=True)
+    (tmp_path / token / name).write_bytes(body)
+
+    result, outbound, records = await _prompt(tmp_path, f"Explain {token}/{name}", "chat")
+
+    expected = raw.format(t=(tmp_path / token / name).relative_to(tmp_path).parent.as_posix())
+    [run] = recording[0].results
+    assert run.stop_reason == code and run.output_text == expected  # the raw run result
+    assert result["_meta"] == {"runStopReason": code, "outcome": "failed"}  # the code and outcome only, no prose
+    updates = [n["params"]["update"] for n in outbound.notifications if n["method"] == "session/update"]
+    [final] = [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"]
+    assert final.rstrip("\n") == _shown(expected) and _live(final) == []  # the rendered text (the chunk ends its paragraph)
+    others = _strings([u for u in updates if u["sessionUpdate"] != "agent_message_chunk"]) + _strings(list(outbound.requests))
+    assert not any("Workspace reference" in text for text in others)  # no stop prose in plan or tool-call updates
+    [record] = records.values()
+    assert record.completion_text == expected  # the history keeps the raw name
+
+
 def _stop(code: str, text: str) -> AgentRunResult:
     return AgentRunResult(
         run_id="r",

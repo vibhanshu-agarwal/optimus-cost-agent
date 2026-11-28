@@ -370,8 +370,9 @@ def test_test_runner_failure_after_start_is_indeterminate(tmp_path: Path) -> Non
     plan = runner.run(AgentRunRequest(**base))
     approval = AgentApproval(approved=True, approval_id="approval-1", plan_hash=plan.plan_hash)
 
-    with pytest.raises(OSError):
-        runner.run(AgentRunRequest(**base, approval=approval), operation_control=control)
+    result = runner.run(AgentRunRequest(**base, approval=approval), operation_control=control)
+
+    assert result.stop_reason == "TEST_STOP_UNCONFIRMED"  # #700: a typed stop, no longer an exception out of the turn
 
     assert control.terminal(DirectiveKind.TEST, _single(control, DirectiveKind.TEST)) == "failed_effect_unknown"
     assert control.refresh_effect_state() is EffectState.INDETERMINATE

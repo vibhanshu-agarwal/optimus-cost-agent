@@ -9,6 +9,7 @@ import sys
 
 import pytest
 
+from optimus.acp.settlement import EffectState
 from tests.unit.agent.test_directive_path_characters import _drive, _SamePlan
 
 NOT_APPLIED = "The file change in the approved plan was not applied."
@@ -50,30 +51,36 @@ async def test_a_failed_write_after_new_folders_removes_only_the_folders_it_crea
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "kept.py").write_text("kept\n")
 
-    def refuse(self, *args, **kwargs):
+    def refuse(*args, **kwargs):
         raise PermissionError(13, "denied")
 
-    monkeypatch.setattr("pathlib.Path.write_text", refuse)
-    result, outbound, _runner, _records = await _drive(tmp_path, _SamePlan("WRITE src/x/y/z.py\nZ = 3\n"))
+    monkeypatch.setattr("optimus.tools.mutation_tools._swap_in", refuse)
+    result, outbound, _runner, records = await _drive(tmp_path, _SamePlan("WRITE src/x/y/z.py\nZ = 3\n"))
 
     assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
-    assert sorted(p.name for p in (tmp_path / "src").iterdir()) == ["kept.py"]
+    assert sorted(p.name for p in (tmp_path / "src").iterdir()) == ["kept.py"]  # no folder and no staging file left
     assert _final_text(outbound).startswith(NOT_APPLIED)
+    [record] = records.values()
+    assert record.effect_state is EffectState.NONE  # #691: nothing of the write remains
 
 
-async def test_a_write_that_fails_part_way_stops_with_a_reason_and_deletes_no_file(tmp_path, monkeypatch):
-    real = __import__("pathlib").Path.write_text
+@pytest.mark.parametrize("plan", ["WRITE old.py\nnew text\n", "WRITE new/deeper/z.py\nZ = 3\n"], ids=["existing", "new-folders"])
+async def test_a_write_that_fails_part_way_leaves_the_original_bytes_and_says_so(plan, tmp_path, monkeypatch):
+    # #691: the bytes reached the staging file, then the disk filled before they were flushed; the target never changed
+    (tmp_path / "old.py").write_bytes(b"old\r\n")
 
-    def disk_full(self, data, *args, **kwargs):
-        real(self, data[:2], *args, **kwargs)
+    def disk_full(descriptor):
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr("pathlib.Path.write_text", disk_full)
-    result, _outbound, _runner, _records = await _drive(tmp_path, _SamePlan("WRITE new/deeper/z.py\nZ = 3\n"))
+    monkeypatch.setattr("os.fsync", disk_full)
+    result, outbound, _runner, records = await _drive(tmp_path, _SamePlan(plan))
 
     assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
-    # by then the file may be another writer's, so it is never deleted; its folder, no longer empty, stays with it
-    assert (tmp_path / "new" / "deeper" / "z.py").read_text() == "Z "
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["old.py"]  # no partial file, staging file or new folder
+    assert (tmp_path / "old.py").read_bytes() == b"old\r\n"
+    assert _final_text(outbound).startswith(NOT_APPLIED)  # true now: the file was not changed
+    [record] = records.values()
+    assert record.effect_state is EffectState.NONE
 
 
 async def test_a_created_folder_that_does_not_resolve_to_itself_is_an_effect_not_a_guard_refusal(tmp_path, monkeypatch):
@@ -81,12 +88,36 @@ async def test_a_created_folder_that_does_not_resolve_to_itself_is_an_effect_not
 
     real = mutation_tools.resolve_target
     monkeypatch.setattr(mutation_tools, "resolve_target", lambda p: None if p.name == "raced" else real(p))
-    result, _outbound, _runner, _records = await _drive(tmp_path, _SamePlan("WRITE raced/z.py\nZ = 3\n"))
+    result, _outbound, _runner, records = await _drive(tmp_path, _SamePlan("WRITE raced/z.py\nZ = 3\n"))
 
     # a folder was made before the check failed, so the WRITE did not end failed_no_effect as a guard refusal would
     assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
     assert not (tmp_path / "raced" / "z.py").exists()
     assert (tmp_path / "raced").is_dir()  # a folder that does not resolve to itself is not this write's to remove
+    [record] = records.values()
+    assert record.effect_state is EffectState.INDETERMINATE  # #700: the committed record, not only the stop code
+
+
+async def test_a_second_folder_that_cannot_be_created_removes_the_first_one(tmp_path, monkeypatch):
+    real = __import__("pathlib").Path.mkdir
+    made: list[str] = []
+
+    def second_fails(self, *args, **kwargs):
+        made.append(self.name)
+        if len(made) == 2:
+            raise OSError(36, "File name too long")
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr("pathlib.Path.mkdir", second_fails)
+    result, outbound, runner, records = await _drive(tmp_path, _SamePlan("WRITE outer/inner/z.py\nZ = 3\nTEST pytest -q\n"))
+
+    assert made == ["outer", "inner"]  # the first folder was made before the second failed
+    assert result["_meta"]["runStopReason"] == "WRITE_DIRECTIVE_NOT_EXECUTED"
+    assert not (tmp_path / "outer").exists()  # the rollback removed the folder this write made
+    assert runner.commands == []
+    assert _final_text(outbound).startswith(NOT_APPLIED)
+    [record] = records.values()
+    assert record.effect_state is EffectState.NONE  # #691: the rollback removed every folder this write made
 
 
 async def test_a_folder_that_cannot_be_created_stops_with_a_reason(tmp_path, monkeypatch):
