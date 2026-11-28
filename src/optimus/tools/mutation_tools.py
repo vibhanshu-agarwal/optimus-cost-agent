@@ -237,16 +237,17 @@ def _publish(path: Path, real: Path, data: bytes, *, before_replace: Callable[[]
             os.chmod(staging, mode)  # the umask may have narrowed it
         step = "replace"
 
+    def still_where_judged() -> None:
+        if resolve_target(path) != real:  # a folder on the way was swapped since the guard judged the target
+            raise OSError(errno.EXDEV, "the target no longer resolves where it did")
+
     def restage() -> None:
         # a failed ReplaceFileW may have merged the target's streams into the staging file; a retry starts from clean bytes
         nonlocal made
         staging.unlink()
         made = False
+        still_where_judged()  # checked again before anything new is written
         stage()
-
-    def still_where_judged() -> None:
-        if resolve_target(path) != real:  # a folder on the way was swapped since the guard judged the target
-            raise OSError(errno.EXDEV, "the target no longer resolves where it did")
 
     def ready_to_replace() -> None:
         still_where_judged()
@@ -337,11 +338,15 @@ def _absent(path: Path) -> bool:
     """Whether ``path`` provably names nothing: an inaccessible path or share is not proof."""
     try:
         os.lstat(path)
-    except (FileNotFoundError, NotADirectoryError):
-        return True
+    except (FileNotFoundError, NotADirectoryError) as error:
+        # Windows maps a vanished share (53 bad net path, 67 bad net name) to FileNotFoundError too: that proves nothing
+        return getattr(error, "winerror", None) not in _NETWORK_GONE
     except OSError:
         return False
     return False
+
+
+_NETWORK_GONE = (53, 67)
 
 
 def _create_missing_folders(parent: Path, workspace_root: Path, created: list[Path], attempted: list[Path] | None = None) -> None:

@@ -846,3 +846,37 @@ def test_other_replacefile_failures_leave_the_target_and_remove_the_staging_file
     with pytest.raises(WriteFailed) as failed:
         _write(tmp_path / "a.py")
     assert failed.value.no_effect is True and (tmp_path / "a.py").read_bytes() == b"old\n" and _names(tmp_path) == ["a.py"]
+
+
+@pytest.mark.parametrize("winerror", [53, 67])
+def test_a_vanished_share_is_never_proof_that_a_folder_is_absent(winerror, monkeypatch):
+    # Codex verification: Windows maps a lost network path or name to FileNotFoundError; that proves nothing
+    class _Gone(FileNotFoundError):
+        pass
+
+    def lost(path):
+        error = _Gone(2, "The network path was not found")
+        error.winerror = winerror
+        raise error
+
+    monkeypatch.setattr(os, "lstat", lost)
+    assert mutation_tools._absent(Path("Z:/share/deep")) is False
+
+
+def test_a_redirect_during_the_retry_wait_stops_before_anything_is_restaged(tmp_path, monkeypatch):
+    # Codex verification: restage() checks the path before it writes a new staging file
+    (tmp_path / "a.py").write_bytes(b"old\n")
+    moved, creates = [], []
+    real_resolve, real_open = mutation_tools.resolve_target, os.open
+    monkeypatch.setattr(mutation_tools, "resolve_target", lambda p: (tmp_path / "x.py") if moved else real_resolve(p))
+
+    def note_creates(path, flags, *args, **kwargs):
+        if flags & os.O_CREAT:
+            creates.append(path)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", note_creates)
+    _held_once_then(monkeypatch, lambda: moved.append(1))
+    with pytest.raises(WriteFailed):
+        _write(tmp_path / "a.py")
+    assert len(creates) == 1 and _names(tmp_path) == ["a.py"]
