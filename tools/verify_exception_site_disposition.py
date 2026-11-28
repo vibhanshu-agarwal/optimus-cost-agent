@@ -26,6 +26,8 @@ _LEDGER_BACKLOG_OWNERS = frozenset({
 _BROAD = frozenset({"builtins.Exception", "builtins.BaseException", "builtins.ExceptionGroup", "builtins.BaseExceptionGroup"})
 _SUPPRESS = "contextlib.suppress"
 _AMBIGUOUS = "<unresolved binding>"
+# Resolved names, each compared as a one-name set: a decorator that resolves to anything else is not trusted.
+_CLASS_PRESERVING_DECORATORS = (frozenset({"dataclasses.dataclass"}), frozenset({"optimus.runtime.frozen_exception.frozen_exception"}))
 _OUTCOMES = frozenset({"retain", "contain", "translate", "report", "re-raise"})
 # These external names are narrow exception types at the pinned dependency boundary.
 _EXTERNAL_EXCEPTIONS = frozenset("""
@@ -148,12 +150,13 @@ class Collect(ast.NodeVisitor):
     ) -> None:
         outer = self.scope
         qualified = f"{outer.name}.{node.name}"
-        # A dataclass decorator preserves a distinct class. Other decorators and
-        # custom metaclasses can return arbitrary objects.
+        # A dataclass decorator preserves a distinct class, and frozen_exception returns the class it
+        # was given (pinned by test_frozen_exception_returns_the_class_it_decorates). Other decorators
+        # and custom metaclasses can return arbitrary objects.
         value = None
         if isinstance(node, ast.ClassDef) and not node.keywords:
             decorators = [item.func if isinstance(item, ast.Call) else item for item in node.decorator_list]
-            if all(Resolve({}, set()).expression(item, outer) == {"dataclasses.dataclass"} for item in decorators):
+            if all(Resolve({}, set()).expression(item, outer) in _CLASS_PRESERVING_DECORATORS for item in decorators):
                 value = qualified
                 self.classes.add(value)
         outer.bindings[node.name].append(value)
