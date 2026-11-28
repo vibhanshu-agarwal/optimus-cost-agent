@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
 from tools import verify_exception_site_disposition as checker
 from tools.verify_exception_site_disposition import discover, verify_report
+
+NL = chr(10)
 
 
 def _discover(text, **files):
@@ -263,3 +266,410 @@ def test_a_called_frozen_exception_is_not_trusted():
         "@frozen_exception\n", "@frozen_exception(Replacement)\n")
     inventory = discover({"src/demo_errors.py": errors, "src/demo.py": _CATCHES_IT})
     assert [site["unresolved"] for site in inventory["sites"]] == [True]
+
+
+_FROZEN = "optimus.runtime.frozen_exception"
+_CATCH = """
+def handle():
+    try:
+        pass
+    except Refused:
+        pass
+"""
+
+
+def _unresolved(text, **files):
+    return [site["unresolved"] for site in discover({"src/demo.py": text, **files})["sites"]]
+
+
+@pytest.mark.parametrize(
+    "header, decorators",
+    [
+        (f"import {_FROZEN} as m\nm.frozen_exception = lambda cls: Exception", "@m.frozen_exception\n@dataclass(frozen=True)"),
+        ("import dataclasses as d\nd.dataclass = lambda cls: Exception", "@d.dataclass"),
+        (f"import {_FROZEN} as m\nsetattr(m, 'frozen_exception', lambda cls: Exception)", "@m.frozen_exception\n@dataclass"),
+        ("import dataclasses as d\nd.dataclass += replacement", "@d.dataclass"),
+        (f"import {_FROZEN} as m\nm.frozen_exception: object = replacement", "@m.frozen_exception\n@dataclass"),
+        ("import dataclasses as d\ndel d.dataclass", "@d.dataclass"),
+        ("import dataclasses as d\nsetattr(d, choose(), replacement)", "@d.dataclass"),
+        ("import dataclasses, sys\nsys.modules['dataclasses'].dataclass = replacement", "@dataclasses.dataclass"),
+        ("import builtins, dataclasses as d\nbuiltins.setattr(d, 'dataclass', replacement)", "@d.dataclass"),
+        ("import dataclasses as d\ndef configure(_=setattr(d, 'dataclass', replacement)):\n    pass", "@d.dataclass"),
+        ("import dataclasses as d\n@setattr(d, 'dataclass', replacement) or keep\ndef configure():\n    pass",
+         "@d.dataclass"),
+    ],
+    # augmented and del cannot run on the real function; they pin conservative detection of the write itself.
+    ids=["frozen-alias-assign", "dataclasses-alias-assign", "setattr-literal", "augmented", "annotated", "del",
+         "setattr-computed-on-module", "through-sys-modules", "qualified-setattr", "in-a-default", "in-a-decorator"],
+)
+def test_an_overwritten_trusted_attribute_is_not_trusted(header, decorators):
+    # #697: static detection of a visible write to the decorator; most forms would make Refused Exception at runtime.
+    text = f"from dataclasses import dataclass\n{header}\n\n{decorators}\nclass Refused(Exception):\n    pass\n{_CATCH}"
+    assert _unresolved(text) == [True]
+
+
+def test_an_attribute_write_in_another_file_untrusts_the_name():
+    patch = "import dataclasses\n\ndef install():\n    dataclasses.dataclass = replacement\n\ninstall()\n"
+    text = f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"
+    assert _unresolved(text, **{"src/patch.py": patch}) == [True]
+
+
+_CANONICAL = "def frozen_exception(cls):\n    return cls\n"
+
+
+@pytest.mark.parametrize(
+    "canonical",
+    [
+        _CANONICAL + "if flag:\n    frozen_exception = replacement\n",
+        _CANONICAL + "def install():\n    global frozen_exception\n    frozen_exception = replacement\n",
+        _CANONICAL + "from elsewhere import *\n",
+        _CANONICAL + "exec(code)\n",
+        _CANONICAL + "def install():\n    exec(code, globals())\n",
+        "class frozen_exception:\n    def __new__(cls, decorated):\n        return Exception\n",
+        "@replace\n" + _CANONICAL,
+        _CANONICAL + "match replacement:\n    case frozen_exception:\n        pass\n",
+    ],
+    ids=["conditional-rebinding", "global-rebinding", "star-import", "exec", "exec-in-a-function", "a-class",
+         "a-decorated-def", "match-capture"],
+)
+def test_a_rebound_canonical_export_is_not_trusted(canonical):
+    text = (f"from dataclasses import dataclass\nfrom {_FROZEN} import frozen_exception\n\n"
+            f"@frozen_exception\n@dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}")
+    assert _unresolved(text, **{"src/optimus/runtime/frozen_exception.py": canonical}) == [True]
+
+
+_LOCAL_CLASS = """
+def handle():
+    @{decorator}
+    class Refused(Exception):
+        pass
+    try:
+        pass
+    except Refused:
+        pass
+"""
+
+
+@pytest.mark.parametrize(
+    "imports, decorator, later",
+    [
+        (f"from {_FROZEN} import frozen_exception", "frozen_exception", "if flag:\n    frozen_exception = replacement"),
+        ("from dataclasses import dataclass", "dataclass", "dataclass = replacement"),
+        ("from dataclasses import dataclass", "dataclass",
+         "def install():\n    global dataclass\n    dataclass = replacement"),
+        ("from dataclasses import dataclass", "dataclass", "from elsewhere import *"),
+        ("from dataclasses import dataclass", "dataclass", "exec(code)"),
+        ("from dataclasses import dataclass", "dataclass", "def install():\n    exec(code, globals())"),
+        ("from dataclasses import dataclass", "dataclass", "match replacement:\n    case dataclass:\n        pass"),
+    ],
+    ids=["conditional-rebinding", "later-rebinding", "later-global", "later-star-import", "later-exec",
+         "exec-in-another-function", "match-capture"],
+)
+def test_a_local_class_waits_for_the_enclosing_bindings(imports, decorator, later):
+    # #698: the module-level statement after the function can run before handle() is called.
+    text = f"{imports}\n{_LOCAL_CLASS.format(decorator=decorator)}\n{later}\n"
+    assert _unresolved(text) == [True]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}",
+        f"from dataclasses import dataclass\n\n@dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}",
+        (f"from dataclasses import dataclass\nfrom {_FROZEN} import frozen_exception\n\n"
+         f"@frozen_exception\n@dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}"),
+        (f"import dataclasses as d\nimport {_FROZEN} as m\nm.other = 1\nsetattr(state, 'name', value)\n\n"
+         f"@m.frozen_exception\n@d.dataclass(frozen=True)\nclass Refused(Exception):\n    pass\n{_CATCH}"),
+        "from dataclasses import dataclass\n" + _LOCAL_CLASS.format(decorator="dataclass"),
+        f"from {_FROZEN} import frozen_exception\n" + _LOCAL_CLASS.format(decorator="frozen_exception"),
+        (f"from dataclasses import dataclass\n\ndef stamp(box):\n    box.dataclass: bool\n\n"
+         f"@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"),
+        (f"from dataclasses import dataclass\n\ndef restore(state, name, value):\n    setattr(state, name, value)\n"
+         f"    delattr(state, name)\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"),
+    ],
+    ids=["bare-dataclass", "called-dataclass", "frozen-over-dataclass", "aliases-without-a-write",
+         "local-dataclass", "local-frozen-exception", "attribute-annotation-only",
+         "computed-setattr-without-the-module"],
+)
+def test_trusted_decorators_without_a_rebinding_still_resolve(text, request):
+    # The canonical module as it is in the tree must not untrust its own export.
+    canonical = Path(request.config.rootpath, "src/optimus/runtime/frozen_exception.py").read_text(encoding="utf-8")
+    assert _unresolved(text, **{"src/optimus/runtime/frozen_exception.py": canonical}) == []
+
+
+def test_an_untrusting_write_is_reported_first_with_its_site(tmp_path, monkeypatch, capsys):
+    # One unrelated write can untrust a decorator tree-wide; the gate must say where, before any unresolved row.
+    text = f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"
+    inventory = discover({"src/demo.py": text, "src/other.py": "def f(box):\n    box.dataclass = 1\n"})
+    assert inventory["untrusted_decorators"] == ["src/other.py:2 dataclasses.dataclass: attribute write named dataclass"]
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(_complete(inventory)), encoding="utf-8")
+    monkeypatch.setattr(checker, "_inventory", lambda root: inventory)
+    assert checker.main(["--report", str(path)]) == 1
+    first = capsys.readouterr().err.splitlines()[0]
+    assert first == "untrusted decorator src/other.py:2 dataclasses.dataclass: attribute write named dataclass"
+
+
+def test_a_rebound_canonical_module_is_reported_at_its_path():
+    canonical = _CANONICAL + "if flag:\n    frozen_exception = replacement\n"
+    inventory = discover({"src/optimus/runtime/frozen_exception.py": canonical})
+    assert inventory["untrusted_decorators"] == [
+        "src/optimus/runtime/frozen_exception.py:1 optimus.runtime.frozen_exception.frozen_exception:"
+        " canonical module binds frozen_exception 2 times, not once by its def"]
+
+
+_CLASS_LOCAL_IMPORT = """
+def decorate(cls):
+    return Exception
+
+class Box:
+    @decorate
+    class Refused(Exception):
+        pass
+    from dataclasses import dataclass as decorate
+
+Refused = Box.Refused
+try:
+    raise ValueError()
+except Refused:
+    captured = True
+"""
+
+
+def test_a_class_body_decorator_sees_the_enclosing_binding_before_its_own():
+    # A class body runs in order, so @decorate here is the module function and Refused is Exception.
+    namespace: dict[str, object] = {}
+    exec(_CLASS_LOCAL_IMPORT, namespace)  # noqa: S102 - a fixed fixture, run to show the catch is broad
+    assert namespace["Refused"] is Exception and namespace["captured"]
+    assert _unresolved(_CLASS_LOCAL_IMPORT) == [True]
+
+
+_LAMBDA_WALRUS = """
+from dataclasses import dataclass
+
+def decorate(cls):
+    return Exception
+
+def outer():
+    def configure(_=lambda: (decorate := dataclass)):
+        pass
+    @decorate
+    class Refused(Exception):
+        pass
+    try:
+        raise ValueError()
+    except Refused:
+        return Refused is Exception
+
+broad = outer()
+"""
+
+_CLASS_IN_A_FUNCTION = """
+def decorate(cls):
+    return Exception
+
+def outer():
+    from dataclasses import dataclass as decorate
+    class Box:
+        @decorate
+        class Refused(Exception):
+            pass
+        from dataclasses import dataclass as decorate
+    try:
+        raise ValueError()
+    except Box.Refused:
+        return Box.Refused is Exception
+
+broad = outer()
+"""
+
+_CATCH_IN_A_CLASS_BODY = """
+Refused = Exception
+
+def outer():
+    Refused = ValueError
+    class Box:
+        try:
+            raise TypeError()
+        except Refused:
+            caught = True
+        Refused = ValueError
+    return Box.caught
+
+broad = outer()
+"""
+
+
+@pytest.mark.parametrize(
+    "fixture", [_LAMBDA_WALRUS, _CLASS_IN_A_FUNCTION, _CATCH_IN_A_CLASS_BODY],
+    ids=["walrus-in-a-lambda-default", "class-local-name-skips-the-function", "catch-in-a-class-body"],
+)
+def test_lookup_follows_the_scopes_python_uses(fixture):
+    # Codex round 2: each fixture runs, patches nothing, and catches broadly.
+    namespace: dict[str, object] = {}
+    exec(fixture, namespace)  # noqa: S102 - a fixed fixture, run to show the catch is broad
+    assert namespace["broad"] is True
+    assert True in _unresolved(fixture)
+
+
+def test_a_dynamic_scope_does_not_hide_a_computed_write_to_the_module():
+    patch = """
+import dataclasses as d
+
+def configure(_=eval("1")):
+    pass
+
+name = "dataclass"
+setattr(d, name, replacement)
+"""
+    text = f"from dataclasses import dataclass\n\n@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}"
+    assert _unresolved(text, **{"src/patch.py": patch}) == [True]
+
+
+def test_a_method_named_eval_or_exec_is_not_dynamic_execution():
+    text = ("from dataclasses import dataclass\n\ndef prepare(model):\n    model.eval()\n    runner.exec(job)\n\n"
+            f"@dataclass\nclass Refused(Exception):\n    pass\n{_CATCH}")
+    assert _unresolved(text) == []
+
+
+_ALIASED_BUILTINS_EXEC = """
+import builtins as py
+from builtins import ValueError as Refused
+
+py.exec("from builtins import Exception as Refused", globals())
+try:
+    raise TypeError()
+except Refused:
+    broad = True
+"""
+
+_COMPREHENSION_IN_A_CLASS_BODY = """
+def initialize(ignorable=Exception):
+    from contextlib import suppress as quiet
+    class Hooks:
+        with quiet(ignorable):
+            raise ValueError()
+        hooks = [quiet for quiet in ()]
+    return True
+
+broad = initialize()
+"""
+
+
+@pytest.mark.parametrize(
+    "fixture", [_ALIASED_BUILTINS_EXEC, _COMPREHENSION_IN_A_CLASS_BODY],
+    ids=["exec-through-a-builtins-alias", "comprehension-target-in-a-class-body"],
+)
+def test_round_three_omissions_are_reported(fixture):
+    # Codex round 3: each fixture runs, patches nothing, and catches or suppresses broadly.
+    namespace: dict[str, object] = {}
+    exec(fixture, namespace)  # noqa: S102 - a fixed fixture, run to show the catch is broad
+    assert namespace["broad"] is True
+    assert True in _unresolved(fixture)
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        'import dataclasses as d' + NL + 'name = "dataclass"' + NL + 'install = lambda d=d: setattr(d, name, replacement)',
+        'import dataclasses as d' + NL + 'setattr(*(d, "dataclass", replacement))',
+        'import importlib' + NL + 'd = importlib.import_module("dataclasses")' + NL + 'setattr(d, choose(), replacement)',
+    ],
+    ids=["lambda-parameter-target", "unpacked-arguments", "import-module-by-name"],
+)
+def test_a_computed_write_in_a_file_that_binds_the_module_untrusts_it(patch):
+    # The rule is syntactic: no target is resolved, so a parameter, alias or dynamic scope cannot hide it.
+    text = f"from dataclasses import dataclass{NL}{NL}@dataclass{NL}class Refused(Exception):{NL}    pass{NL}{_CATCH}"
+    inventory = discover({"src/demo.py": text, "src/patch.py": patch + NL})
+    assert [site["unresolved"] for site in inventory["sites"]] == [True]
+    assert [item.split(": ")[1] for item in inventory["untrusted_decorators"]] == [
+        "computed setattr or delattr in a file that binds dataclasses"]
+
+
+def test_intended_strictness_is_pinned():
+    # Round 3 findings 4 and 5: stricter than runtime on purpose; both fail loudly at a named site.
+    nested = NL.join([
+        "def outer():",
+        "    from dataclasses import dataclass",
+        "    class Box:",
+        "        from dataclasses import dataclass",
+        "        @dataclass",
+        "        class Refused(Exception):",
+        "            pass",
+        "    try:",
+        "        pass",
+        "    except Box.Refused:",
+        "        pass",
+        "",
+    ])
+    assert _unresolved(nested) == [True]
+    patch = NL.join(['import dataclasses as d', 'eval("1")', 'name = "legacy_dataclass"', 'setattr(d, name, d.dataclass)', ''])
+    text = f"from dataclasses import dataclass{NL}{NL}@dataclass{NL}class Refused(Exception):{NL}    pass{NL}{_CATCH}"
+    inventory = discover({"src/demo.py": text, "src/patch.py": patch})
+    assert [site["unresolved"] for site in inventory["sites"]] == [True]
+    assert inventory["untrusted_decorators"][0].startswith("src/patch.py:4 dataclasses.dataclass")
+
+
+_IMPORT_MODULE_BY_KEYWORD = """
+import importlib
+from builtins import ValueError as Refused
+
+builtins = importlib.import_module(name="builtins")
+builtins.exec("Refused = Exception")
+try:
+    raise TypeError()
+except Refused:
+    broad = True
+"""
+
+_SUPPRESS_IN_A_DYNAMIC_SCOPE = """
+import builtins as py
+from contextlib import suppress as quiet
+
+py.eval("1 + 1")
+with quiet(Exception):
+    raise TypeError()
+broad = True
+"""
+
+
+@pytest.mark.parametrize(
+    "fixture", [_IMPORT_MODULE_BY_KEYWORD, _SUPPRESS_IN_A_DYNAMIC_SCOPE],
+    ids=["import-module-by-keyword", "suppress-alias-in-a-dynamic-scope"],
+)
+def test_round_four_omissions_are_reported(fixture):
+    # Codex round 4: each fixture runs, patches nothing, and catches or suppresses broadly.
+    namespace: dict[str, object] = {}
+    exec(fixture, namespace)  # noqa: S102 - a fixed fixture, run to show the catch is broad
+    assert namespace["broad"] is True
+    assert True in _unresolved(fixture)
+
+
+_THROUGH_THE_PARENT_PACKAGE = """
+import optimus.runtime as runtime
+from optimus.runtime.frozen_exception import frozen_exception as original
+
+setattr(runtime.frozen_exception, original.__name__, replacement)
+from optimus.runtime.frozen_exception import frozen_exception
+
+@frozen_exception
+class Refused(Exception):
+    pass
+
+def handle():
+    try:
+        pass
+    except Refused:
+        pass
+"""
+
+
+@pytest.mark.parametrize(
+    "binding", ["import optimus.runtime as runtime", "import optimus.acp.errors"], ids=["package-alias", "top-package"])
+def test_a_computed_write_in_a_file_that_binds_a_parent_package_untrusts_it(binding):
+    # Static only: running it would patch the real module. import optimus.acp.errors binds optimus itself.
+    text = _THROUGH_THE_PARENT_PACKAGE.replace("import optimus.runtime as runtime", binding)
+    text = text if "as runtime" in binding else text.replace("runtime.frozen_exception,", "optimus.runtime.frozen_exception,")
+    inventory = discover({"src/demo.py": text})
+    assert [site["unresolved"] for site in inventory["sites"]] == [True]
+    assert any("binds optimus.runtime.frozen_exception" in item for item in inventory["untrusted_decorators"])

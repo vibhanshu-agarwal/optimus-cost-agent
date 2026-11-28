@@ -29,6 +29,7 @@ _AMBIGUOUS = "<unresolved binding>"
 # Class decorators trusted to return a distinct class, by resolved name (compared as a one-name set).
 _DATACLASS = "dataclasses.dataclass"
 _FROZEN_EXCEPTION = "optimus.runtime.frozen_exception.frozen_exception"
+_TRUSTED = frozenset({_DATACLASS, _FROZEN_EXCEPTION})
 _OUTCOMES = frozenset({"retain", "contain", "translate", "report", "re-raise"})
 # These external names are narrow exception types at the pinned dependency boundary.
 _EXTERNAL_EXCEPTIONS = frozenset("""
@@ -85,6 +86,14 @@ class Collect(ast.NodeVisitor):
         self.scope = self.module = module
         self.classes = classes
         self.candidates: list[Candidate] = []
+        # Classes whose decorators are judged after every binding in the tree is collected (#698).
+        self.pending: list[tuple[Scope, ast.ClassDef, list[str | ast.expr | None], int]] = []
+        # Invalidation is syntactic, per file (#697): literal attribute writes as (name, line), the lines of
+        # computed-name setattr/delattr calls, the modules this file binds as objects, and exec/eval method calls.
+        self.writes: list[tuple[str, int]] = []
+        self.computed: list[int] = []
+        self.bound_modules: set[str] = set()
+        self.method_exec: list[Scope] = []
 
     def _bind(self, target: ast.expr, value: str | ast.expr | None) -> None:
         if isinstance(target, ast.Name):
@@ -96,6 +105,8 @@ class Collect(ast.NodeVisitor):
         for name in node.names:
             key = name.asname or name.name.split(".")[0]
             self.scope.bindings[key].append(name.name if name.asname else key)
+            # import a.b binds the package a, which reaches a.b; import a.b as x binds a.b itself.
+            self.bound_modules |= {name.name, name.name if name.asname else key}
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         package = self.scope.package.split(".") if self.scope.package else []
@@ -108,7 +119,9 @@ class Collect(ast.NodeVisitor):
             if name.name == "*":
                 self.scope.dynamic = True
             else:
-                self.scope.bindings[name.asname or name.name].append(".".join(filter(None, (prefix, name.name))))
+                qualified = ".".join(filter(None, (prefix, name.name)))
+                self.scope.bindings[name.asname or name.name].append(qualified)
+                self.bound_modules.add(qualified)  # names a module when it is one, e.g. optimus.runtime.frozen_exception
 
     def visit_Assign(self, node: ast.Assign) -> None:
         for target in node.targets:
@@ -116,6 +129,9 @@ class Collect(ast.NodeVisitor):
         self.visit(node.value)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is None and isinstance(node.target, ast.Attribute):
+            self.visit(node.target.value)  # an annotation alone assigns nothing
+            return
         self._bind(node.target, node.value)
         if node.value is not None:
             self.visit(node.value)
@@ -127,6 +143,20 @@ class Collect(ast.NodeVisitor):
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, (ast.Store, ast.Del)):
             self.scope.bindings[node.id].append(None)
+
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.name:
+            self.scope.bindings[node.name].append(None)
+        self.generic_visit(node)
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name:
+            self.scope.bindings[node.name].append(None)
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        if node.rest:
+            self.scope.bindings[node.rest].append(None)
+        self.generic_visit(node)
 
     def visit_Global(self, node: ast.Global) -> None:
         for name in node.names:
@@ -141,31 +171,87 @@ class Collect(ast.NodeVisitor):
                 outer.bindings[name].append(None)
                 outer = outer.parent
 
-    def visit_Call(self, node: ast.Call) -> None:
-        if isinstance(node.func, ast.Name) and node.func.id == "exec":
-            self.scope.dynamic = True
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.writes.append((node.attr, node.lineno))
         self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        called = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
+        first = node.args[0] if node.args else None
+        if called in ("exec", "eval"):
+            if isinstance(node.func, ast.Name):
+                # Either can be handed globals(), so the module namespace is dynamic too.
+                self.scope.dynamic = self.module.dynamic = True
+            else:
+                self.method_exec.append(self.scope)  # dynamic only if this file binds builtins
+        elif called in ("setattr", "delattr"):
+            name = node.args[1] if len(node.args) > 1 else None
+            if isinstance(name, ast.Constant) and isinstance(name.value, str):
+                self.writes.append((name.value, node.lineno))
+            else:
+                self.computed.append(node.lineno)
+        elif called in ("import_module", "__import__"):
+            named = [first, *(keyword.value for keyword in node.keywords if keyword.arg == "name")]
+            self.bound_modules |= {str(item.value) for item in named if isinstance(item, ast.Constant)}
+        self.generic_visit(node)
+
+    def overwritten(self) -> list[tuple[str, int, str]]:
+        """Syntactic writes to a trusted name as (name, line, rule); no target is resolved.
+
+        The attribute-name rule is deliberately broad: any write of an attribute named like a trusted decorator, on
+        any target, untrusts it tree-wide. There is no allowlist; a legitimate attribute with that name is renamed.
+        A computed-name setattr/delattr untrusts the names of each trusted module this file binds as an object.
+        """
+        if "builtins" in self.bound_modules:
+            for scope in self.method_exec:
+                scope.dynamic = self.module.dynamic = True
+        found = []
+        for trusted in sorted(_TRUSTED):
+            module, _, name = trusted.rpartition(".")
+            found += [(trusted, line, f"attribute write named {name}") for attr, line in self.writes if attr == name]
+            # Binding the module or any package above it reaches the module as an attribute.
+            if self.computed and any(module == bound or module.startswith(bound + ".") for bound in self.bound_modules):
+                found.append((trusted, self.computed[0], f"computed setattr or delattr in a file that binds {module}"))
+        return found
+
+    def trust(self, untrusted: set[str]) -> None:
+        """Judge each class's decorators against the enclosing scope's complete bindings."""
+        resolve = Resolve({}, set()).expression
+        trusted = [{name} for name in _TRUSTED - untrusted]
+        for outer, node, slot, index in self.pending:
+            # A dataclass decorator (bare or called) preserves a distinct class, and frozen_exception, applied
+            # uncalled, returns the class it was given (pinned by test_frozen_exception_returns_the_class_it_decorates).
+            # A call of frozen_exception returns whatever it returns. Other decorators can return arbitrary objects.
+            if all(
+                resolve(item.func, outer) == {_DATACLASS} and _DATACLASS not in untrusted
+                if isinstance(item, ast.Call) else resolve(item, outer) in trusted
+                for item in node.decorator_list
+            ):
+                qualified = f"{outer.name}.{node.name}"
+                slot[index] = qualified
+                self.classes.add(qualified)
 
     def _visit_body(
         self, node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef, *, is_class: bool
     ) -> None:
         outer = self.scope
         qualified = f"{outer.name}.{node.name}"
-        # A dataclass decorator (bare or called) preserves a distinct class, and frozen_exception, applied
-        # uncalled, returns the class it was given (pinned by test_frozen_exception_returns_the_class_it_decorates).
-        # A call of frozen_exception returns whatever it returns. Other decorators and custom metaclasses can
-        # return arbitrary objects.
-        value = None
+        # Decorators, bases, keywords, defaults and annotations run in the enclosing scope at definition time.
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        if isinstance(node, ast.ClassDef):
+            for header in [*node.bases, *node.keywords]:
+                self.visit(header)
+        else:
+            self.visit(node.args)
+            if node.returns is not None:
+                self.visit(node.returns)
+        slot = outer.bindings[node.name]
+        slot.append(None)
+        # A custom metaclass can return an arbitrary object, so a class with keywords stays unresolved.
         if isinstance(node, ast.ClassDef) and not node.keywords:
-            resolve = Resolve({}, set()).expression
-            if all(
-                resolve(item.func, outer) == {_DATACLASS} if isinstance(item, ast.Call)
-                else resolve(item, outer) in ({_DATACLASS}, {_FROZEN_EXCEPTION})
-                for item in node.decorator_list
-            ):
-                value = qualified
-                self.classes.add(value)
-        outer.bindings[node.name].append(value)
+            self.pending.append((outer, node, slot, len(slot) - 1))
         parent = outer.parent if outer.is_class else outer
         self.scope = Scope(qualified, outer.package, parent, is_class)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -175,6 +261,18 @@ class Collect(ast.NodeVisitor):
                     self.scope.bindings[argument.arg].append(None)
         for item in node.body:
             self.visit(item)
+        self.scope = outer
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        # Defaults run in the enclosing scope; a walrus in the body binds only inside the lambda.
+        self.visit(node.args)
+        outer = self.scope
+        self.scope = Scope(f"{outer.name}.<lambda>", outer.package, outer.parent if outer.is_class else outer)
+        args = node.args
+        for argument in [*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg]:
+            if argument is not None:
+                self.scope.bindings[argument.arg].append(None)
+        self.visit(node.body)
         self.scope = outer
 
     def visit_FunctionDef(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
@@ -205,6 +303,17 @@ class Collect(ast.NodeVisitor):
     visit_AsyncWith = visit_With
 
 
+# The two sides are asymmetric. Trusting a class may resolve names as carefully as it likes. Invalidating trust never
+# resolves a target through scopes: it is decided per file from what is syntactically present. Precision is allowed
+# only where it makes the tool stricter. The tool inventories honest code; it is not a defence against evasion.
+# Out of reach by design (adversarial forms, or outside what the verifier reads):
+# - writes from outside src (tests, plugins, sitecustomize, interpreter startup);
+# - a trusted module object passed in from another file, or reached through sys.modules[...];
+# - vars(m)[...], m.__dict__[...], globals()[...], object.__setattr__(m, ...), m.__setattr__(...);
+# - an aliased setattr or delattr (s = setattr);
+# - an aliased exec or eval (e = exec), or an exec/eval method call in a file that does not import builtins;
+# - importlib.reload, and provenance through a package re-export.
+# A bare exec or eval call makes its own scope and its module dynamic; a star import makes its scope dynamic.
 class Resolve:
     def __init__(self, modules: Mapping[str, Scope], classes: set[str]) -> None:
         self.modules = modules
@@ -234,6 +343,13 @@ class Resolve:
             else self.expression(item, scope, seen | {token})
             for item in choices
         }
+        if scope.is_class and scope.parent is not None:
+            # A class body runs in order, so before its own binding a name can still mean what the module (or, for
+            # a free name, the enclosing scope) binds. Trust needs all of them to agree.
+            module = scope.parent
+            while module.parent is not None:
+                module = module.parent
+            result |= {self.name(name, scope.parent, seen | {token}), self.name(name, module, seen | {token})}
         if len(result) != 1:
             return frozenset({_AMBIGUOUS}).union(*result)
         resolved = result.pop()
@@ -273,8 +389,13 @@ class Resolve:
         if _SUPPRESS in manager:
             unresolved = unresolved or bool(node.keywords) or manager != {_SUPPRESS}
             return broad or unresolved, unresolved
+        # A dynamic scope can hide that a manager is suppress, so every manager there is reported.
+        chain: Scope | None = scope
+        dynamic = False
+        while chain is not None:
+            dynamic, chain = dynamic or chain.dynamic, chain.parent
         # A broad exception argument to an opaque manager can hide indirect suppression.
-        if broad or any(isinstance(item, ast.Starred) for item in caught) or "suppress" in ast.unparse(node.func):
+        if broad or dynamic or any(isinstance(item, ast.Starred) for item in caught) or "suppress" in ast.unparse(node.func):
             return True, True
         return False, False
 
@@ -329,6 +450,8 @@ def _lint_owner(
 def discover(source: Mapping[str, str], lint: Iterable[Lint] = ()) -> dict[str, Any]:
     """Discover from source, independently of any supplied disposition report."""
     modules: dict[str, Scope] = {}
+    paths: dict[str, str] = {}
+    trees: dict[str, ast.Module] = {}
     collectors: dict[str, Collect] = {}
     classes: set[str] = set()
     for path, value in sorted(source.items()):
@@ -338,8 +461,32 @@ def discover(source: Mapping[str, str], lint: Iterable[Lint] = ()) -> dict[str, 
             module = module.removesuffix(".__init__")
         scope = Scope(module, module if is_package else module.rpartition(".")[0])
         modules[module] = scope
+        paths[module] = path
         collectors[path] = Collect(scope, classes)
-        collectors[path].visit(ast.parse(value, filename=path))
+        trees[path] = ast.parse(value, filename=path)
+        collectors[path].visit(trees[path])
+    triggers = [
+        (path, line, trusted, rule) for path, collector in collectors.items()
+        for trusted, line, rule in collector.overwritten()
+    ]
+    for trusted in sorted(_TRUSTED):
+        module_name, _, name = trusted.rpartition(".")
+        export = modules.get(module_name)
+        # The canonical module must bind its export exactly once, by its def, in a static scope.
+        # Bindings carry no line numbers, so these triggers point at line 1 of that module.
+        if export is not None and export.dynamic:
+            triggers.append((paths[module_name], 1, trusted, "canonical module has a star import or exec"))
+        elif export is not None and export.bindings.get(name) != [None]:
+            count = len(export.bindings.get(name, []))
+            triggers.append((paths[module_name], 1, trusted, f"canonical module binds {name} {count} times, not once by its def"))
+        elif export is not None and not any(
+            isinstance(node, ast.FunctionDef) and node.name == name and not node.decorator_list
+            for node in trees[paths[module_name]].body
+        ):
+            triggers.append((paths[module_name], 1, trusted, f"canonical module binds {name} other than by an undecorated def"))
+    untrusted = {trusted for _, _, trusted, _ in triggers}
+    for collector in collectors.values():
+        collector.trust(untrusted)
     resolver = Resolve(modules, classes)
     annotations: dict[tuple[str, int], list[dict[str, object]]] = defaultdict(list)
     for path, line, column, rule, effective in lint:
@@ -358,7 +505,12 @@ def discover(source: Mapping[str, str], lint: Iterable[Lint] = ()) -> dict[str, 
                 row = _as_site(path, candidate, occurrences, unresolved)
                 row["lint"] = sorted(flags, key=lambda flag: (str(flag["code"]), bool(flag["effective"])))
                 sites.append(row)
-    return {"schema": _SCHEMA, "source_sha256": _sha256_id(_digest(source)), "sites": sites}
+    inventory: dict[str, Any] = {"schema": _SCHEMA, "source_sha256": _sha256_id(_digest(source)), "sites": sites}
+    if triggers:
+        inventory["untrusted_decorators"] = [
+            f"{path}:{line} {trusted}: {rule}" for path, line, trusted, rule in sorted(triggers)
+        ]
+    return inventory
 
 
 def _has_owner(row: Mapping[str, Any], path: str) -> bool:
@@ -377,7 +529,8 @@ def _has_owner(row: Mapping[str, Any], path: str) -> bool:
 def verify_report(inventory: Mapping[str, Any], report: object) -> list[str]:
     if not isinstance(report, dict) or report.get("schema") != _SCHEMA or not isinstance(report.get("sites"), list):
         return ["invalid report schema"]
-    errors = []
+    # Shown first: one write can untrust a decorator tree-wide and turn many catches unresolved.
+    errors = [f"untrusted decorator {trigger}" for trigger in inventory.get("untrusted_decorators", ())]
     for label in ("source_sha256", "config_sha256", "ruff"):
         if inventory.get(label) != report.get(label):
             errors.append(f"{label} differs from fresh discovery")
