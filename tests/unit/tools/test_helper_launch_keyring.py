@@ -138,7 +138,7 @@ def test_the_map_describes_what_the_census_recorded() -> None:
     assert reached, "the census found launches that default-selection tests reach"
     # The one reached child that runs product code reaching keyring is the measurement child, and it is controlled.
     assert document["functions"]["tools/plan1126_runtime_audit/measurement.py::run_fresh_measurement"]["verdict"] == "controlled"
-    assert {entry["verdict"] for entry in reached.values()} <= {"closure_clear", "controlled", "caller_program", "nested_pytest", "not_reached"}
+    assert {entry["verdict"] for entry in reached.values()} <= {"closure_clear", "controlled", "caller_program", "nested_pytest", "non_python", "not_reached"}
 
 
 # Mutation controls: each change a reviewer could make wrongly, and the check that must catch it.

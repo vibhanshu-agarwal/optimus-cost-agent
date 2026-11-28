@@ -255,3 +255,11 @@ def test_a_decorator_merely_named_frozen_exception_is_not_trusted(decorator_impo
     inventory = discover({"src/demo_errors.py": _FROZEN_ERROR.format(decorator_import=decorator_import),
                           "src/demo.py": _CATCHES_IT})
     assert [site["unresolved"] for site in inventory["sites"]] == [True]
+
+
+def test_a_called_frozen_exception_is_not_trusted():
+    # Python applies what the call returns, not frozen_exception itself.
+    errors = _FROZEN_ERROR.format(decorator_import="from optimus.runtime.frozen_exception import frozen_exception").replace(
+        "@frozen_exception\n", "@frozen_exception(Replacement)\n")
+    inventory = discover({"src/demo_errors.py": errors, "src/demo.py": _CATCHES_IT})
+    assert [site["unresolved"] for site in inventory["sites"]] == [True]
